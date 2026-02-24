@@ -17,7 +17,10 @@
         </div>
         <div class="field">
             <label for="login-pass">Password</label>
-            <input type="password" id="login-pass" autocomplete="current-password">
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
         </div>
         <div id="login-error" class="error-messages" style="display:none"></div>
         <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
@@ -76,6 +79,11 @@ function doLogout() {
     fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
         location.reload();
     });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
 }
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {

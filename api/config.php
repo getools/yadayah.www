@@ -21,10 +21,11 @@ function getDb(): PDO {
     static $pdo = null;
     if ($pdo === null) {
         $host = getenv('PG_HOST') ?: 'postgres';
+        $port = getenv('PG_PORT') ?: '5432';
         $name = getenv('PG_DB')   ?: 'yada';
         $user = getenv('PG_USER') ?: 'postgres';
         $pass = getenv('PG_PASS') ?: 'yada_password';
-        $dsn = "pgsql:host=$host;dbname=$name";
+        $dsn = "pgsql:host=$host;port=$port;dbname=$name";
         $pdo = new PDO($dsn, $user, $pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

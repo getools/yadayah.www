@@ -60,7 +60,9 @@
         }
         .word-popup {
             position: fixed;
-            width: 320px;
+            width: 380px;
+            max-height: 60vh;
+            overflow-y: auto;
             background: #fff;
             border: 1px solid #ccc;
             border-radius: 6px;
@@ -79,7 +81,8 @@
         .word-popup .wp-strongs a { color: #3498db; text-decoration: none; }
         .word-popup .wp-strongs a:hover { text-decoration: underline; }
         .word-popup .wp-grammar { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
-        .word-popup .wp-definition { font-size: 0.875rem; color: #444; word-wrap: break-word; }
+        .word-popup .wp-definition { font-size: 0.875rem; color: #444; word-wrap: break-word; margin-bottom: 6px; }
+        .word-popup .wp-definition:last-child { margin-bottom: 0; }
         .word-popup hr { border: none; border-top: 1px solid #eee; margin: 8px 0; }
 
         /* Site header - matching yadayah.com Elementor header */
@@ -206,10 +209,10 @@
 
         <button onclick="fetchResults()">Go</button>
     </div>
-    <div id="result-count" style="font-size: 0.85rem; color: #555; margin-bottom: 5px;"></div>
+    <div id="result-count" style="font-size: 0.85rem; color: #555; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
 
     <div id="initial-prompt" style="text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select Translation Filters and Hit 'Go'</div>
-    <div id="word-link-status" style="font-size: 0.8rem; color: #888; margin-bottom: 5px;"></div>
+    <div id="word-link-status" style="font-size: 0.8rem; color: #888; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
     <div id="results" class="results"></div>
 
     <script>
@@ -539,10 +542,18 @@
             if (grammarParts.length > 0) {
                 html += '<div class="wp-grammar">' + escHtml(grammarParts.join(' ')) + '</div>';
             }
-            var def = info.word_definition_yy || info.word_definition_kirk;
-            if (def) {
+            var hasDef = info.word_definition_yy || info.word_definition_kirk || info.word_definition_external;
+            if (hasDef) {
                 html += '<hr>';
-                html += '<div class="wp-definition">' + escHtml(def) + '</div>';
+                if (info.word_definition_yy) {
+                    html += '<div class="wp-definition"><strong>YY:</strong> ' + escHtml(info.word_definition_yy) + '</div>';
+                }
+                if (info.word_definition_kirk) {
+                    html += '<div class="wp-definition"><strong>Kirk:</strong> ' + escHtml(info.word_definition_kirk) + '</div>';
+                }
+                if (info.word_definition_external) {
+                    html += '<div class="wp-definition"><strong>Ext:</strong> ' + escHtml(info.word_definition_external) + '</div>';
+                }
             }
 
             var overlay = document.createElement('div');

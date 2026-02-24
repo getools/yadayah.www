@@ -131,9 +131,9 @@ function handlePost(PDO $db, array $user): void {
             INSERT INTO yy_word (word_strongs, word_hebrew,
                 word_gender, word_flag_plural,
                 word_flag_noun, word_flag_verb, word_flag_adjective,
-                word_flag_adverb, word_flag_preposition, word_flag_conjunction, word_flag_subst,
+                word_flag_adverb, word_flag_preposition, word_flag_conjunction, word_flag_subst, word_flag_pronoun,
                 word_definition_kirk, word_definition_yy, word_definition_external, word_active_flag)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             str_pad(trim($data['word_strongs']), 4, '0', STR_PAD_LEFT),
@@ -147,6 +147,7 @@ function handlePost(PDO $db, array $user): void {
             toBool($data, 'word_flag_preposition'),
             toBool($data, 'word_flag_conjunction'),
             toBool($data, 'word_flag_subst'),
+            toBool($data, 'word_flag_pronoun'),
             emptyToNull($data, 'word_definition_kirk'),
             emptyToNull($data, 'word_definition_yy'),
             emptyToNull($data, 'word_definition_external'),
@@ -195,7 +196,7 @@ function handlePut(PDO $db, array $user): void {
                 word_strongs = ?, word_hebrew = ?,
                 word_gender = ?, word_flag_plural = ?,
                 word_flag_noun = ?, word_flag_verb = ?, word_flag_adjective = ?,
-                word_flag_adverb = ?, word_flag_preposition = ?, word_flag_conjunction = ?, word_flag_subst = ?,
+                word_flag_adverb = ?, word_flag_preposition = ?, word_flag_conjunction = ?, word_flag_subst = ?, word_flag_pronoun = ?,
                 word_definition_kirk = ?, word_definition_yy = ?, word_definition_external = ?,
                 word_active_flag = ?
             WHERE word_id = ?
@@ -212,6 +213,7 @@ function handlePut(PDO $db, array $user): void {
             toBool($data, 'word_flag_preposition'),
             toBool($data, 'word_flag_conjunction'),
             toBool($data, 'word_flag_subst'),
+            toBool($data, 'word_flag_pronoun'),
             emptyToNull($data, 'word_definition_kirk'),
             emptyToNull($data, 'word_definition_yy'),
             emptyToNull($data, 'word_definition_external'),

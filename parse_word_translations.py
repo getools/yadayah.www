@@ -18,7 +18,7 @@ import argparse
 import logging
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from enum import Enum
 
 try:
@@ -448,12 +448,120 @@ def build_page_map_from_xml(doc_path: Path) -> Dict[int, int]:
     return para_to_page
 
 
+def build_footer_page_map(doc_path: Path) -> Tuple[Dict[int, int], int, int]:
+    """
+    Build a paragraph-to-page map based on footer section page numbering.
+
+    Reads pgNumType from section properties (which controls what the footer displays)
+    and uses lastRenderedPageBreak for page boundary detection.
+
+    Correctly applies page number restarts at the FIRST paragraph of each section
+    (not at the section break paragraph, which is the LAST paragraph of the section).
+
+    Args:
+        doc_path: Path to .docx file
+
+    Returns:
+        Tuple of (page_map, content_start_idx, last_page):
+        - page_map: Dict mapping python-docx 0-based paragraph index -> page number
+        - content_start_idx: python-docx index where footer decimal page 1 content begins
+        - last_page: maximum page number in the content section
+    """
+    doc = Document(str(doc_path))
+    nsmap = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
+    body = doc.element.body
+
+    direct_paras = body.findall('w:p', nsmap)
+    all_paras = body.findall('.//w:p', nsmap)
+    top_level_ids = set(id(p) for p in direct_paras)
+
+    # Collect section definitions: (break_abs_idx, fmt, start_val)
+    # break_abs_idx = abs index of the LAST paragraph in the section
+    raw_sections = []
+
+    for sect in body.findall('.//w:sectPr', nsmap):
+        pg_num = sect.find('w:pgNumType', nsmap)
+        fmt = None
+        start_val = None
+        if pg_num is not None:
+            fmt = pg_num.get(f'{{{nsmap["w"]}}}fmt')
+            start_str = pg_num.get(f'{{{nsmap["w"]}}}start')
+            if start_str is not None:
+                start_val = int(start_str)
+
+        parent = sect.getparent()
+        if parent.tag == f'{{{nsmap["w"]}}}body':
+            # Final section - use last paragraph as sentinel
+            raw_sections.append((len(all_paras) - 1, fmt, start_val))
+        elif parent.tag == f'{{{nsmap["w"]}}}pPr':
+            p_elem = parent.getparent()
+            for pi, pe in enumerate(all_paras):
+                if pe is p_elem:
+                    raw_sections.append((pi, fmt, start_val))
+                    break
+
+    raw_sections.sort(key=lambda x: x[0])
+
+    # Build section ranges: (start_abs, end_abs, fmt, start_val)
+    # Each section's sectPr is at its LAST paragraph (end_abs).
+    # The section starts at previous section's end + 1.
+    section_ranges = []
+    for i, (break_idx, fmt, start_val) in enumerate(raw_sections):
+        sec_start = 0 if i == 0 else raw_sections[i - 1][0] + 1
+        section_ranges.append((sec_start, break_idx, fmt, start_val))
+
+    # Build lookup: abs_idx of section FIRST paragraph -> restart value
+    section_start_map = {}
+    for sec_start, sec_end, fmt, start_val in section_ranges:
+        if start_val is not None:
+            section_start_map[sec_start] = start_val
+
+    # Find content start: first paragraph of the LAST section with decimal start=1
+    content_start_abs = 0
+    for sec_start, sec_end, fmt, start_val in section_ranges:
+        if start_val == 1 and (fmt is None or fmt == 'decimal'):
+            content_start_abs = sec_start
+
+    # Build page map with corrected section restart positions
+    page = 1
+    para_to_page = {}
+    docx_idx = 0
+    content_start_docx = 0
+    found_content_start = False
+
+    for abs_idx in range(len(all_paras)):
+        para_elem = all_paras[abs_idx]
+
+        # Apply section restart at FIRST paragraph of each section
+        if abs_idx in section_start_map:
+            page = section_start_map[abs_idx]
+
+        is_top_level = id(para_elem) in top_level_ids
+        if is_top_level:
+            if not found_content_start and abs_idx >= content_start_abs:
+                content_start_docx = docx_idx
+                found_content_start = True
+            para_to_page[docx_idx] = page
+            docx_idx += 1
+
+        # Increment page at lastRenderedPageBreak elements
+        for br in para_elem.findall('.//w:lastRenderedPageBreak', nsmap):
+            page += 1
+
+    # Last page = max page from content section onwards
+    content_pages = [p for idx, p in para_to_page.items() if idx >= content_start_docx]
+    last_page = max(content_pages) if content_pages else 1
+
+    return para_to_page, content_start_docx, last_page
+
+
 def get_all_page_numbers(doc_para_map: Dict[str, List[int]]) -> Dict[str, Dict[int, int]]:
     """
-    Get page numbers for all documents. Tries COM per document, falls back to XML.
+    Get page numbers for all documents using footer section page numbering.
 
-    Uses text-based Find in VBScript to locate paragraphs, avoiding mismatches
-    between python-docx and COM paragraph indexing.
+    Reads pgNumType from section properties and uses lastRenderedPageBreak
+    for page boundary detection. No COM automation required.
 
     Args:
         doc_para_map: Dict mapping absolute doc path -> list of 0-based paragraph indices
@@ -469,73 +577,20 @@ def get_all_page_numbers(doc_para_map: Dict[str, List[int]]) -> Dict[str, Dict[i
     logging.info(f"Getting page numbers for {total_docs} documents, {total_paras} paragraphs...")
 
     all_page_numbers = {}
-    com_success = 0
-    xml_fallback = 0
 
-    # Sort by file size (smaller first - they work better with COM)
-    sorted_docs = sorted(doc_para_map.items(), key=lambda x: Path(x[0]).stat().st_size)
-
-    for doc_path, indices in sorted_docs:
+    for doc_path, indices in doc_para_map.items():
         doc_name = Path(doc_path).name
-        file_size_mb = Path(doc_path).stat().st_size / (1024 * 1024)
+        logging.info(f"  {doc_name} ({len(indices)} paras)")
 
-        # Timeout based on file size: 60s base + 30s per MB
-        timeout = int(60 + file_size_mb * 30)
+        try:
+            page_map, content_start, last_page = build_footer_page_map(Path(doc_path))
+            result = {idx: page_map[idx] for idx in indices if idx in page_map}
+            all_page_numbers[doc_path] = result
+            logging.info(f"    Footer: {len(result)}/{len(indices)} page numbers (content starts at para {content_start}, last page {last_page})")
+        except Exception as e:
+            logging.warning(f"    Failed to get page numbers: {e}")
 
-        logging.info(f"  {doc_name} ({file_size_mb:.1f}MB, {len(indices)} paras, timeout {timeout}s)")
-
-        # Get paragraph text for text-based Find (avoids index mapping issues)
-        doc = Document(str(doc_path))
-        para_texts = {}
-        for idx in indices:
-            if idx < len(doc.paragraphs):
-                raw_text = doc.paragraphs[idx].text.strip()
-                # Use first 150 chars as search text (enough for uniqueness)
-                snippet = raw_text[:150] if len(raw_text) > 150 else raw_text
-                if snippet:
-                    para_texts[idx] = snippet
-
-        page_map = get_page_numbers_for_doc_com(doc_path, para_texts, timeout=timeout)
-
-        if page_map:
-            all_page_numbers[doc_path] = page_map
-            com_success += 1
-            logging.info(f"    COM: {len(page_map)}/{len(indices)} page numbers")
-        else:
-            # Try re-saving via python-docx to create a clean copy (strips problematic elements)
-            logging.info(f"    COM failed on original, trying clean copy via python-docx...")
-            try:
-                clean_dir = tempfile.mkdtemp()
-                clean_path = os.path.join(clean_dir, "clean_copy.docx")
-                clean_doc = Document(str(doc_path))
-                clean_doc.save(clean_path)
-                page_map = get_page_numbers_for_doc_com(clean_path, para_texts, timeout=timeout)
-                try:
-                    os.unlink(clean_path)
-                    os.rmdir(clean_dir)
-                except:
-                    pass
-            except Exception as e:
-                logging.warning(f"    Clean copy attempt failed: {e}")
-                page_map = {}
-
-            if page_map:
-                all_page_numbers[doc_path] = page_map
-                com_success += 1
-                logging.info(f"    COM (clean copy): {len(page_map)}/{len(indices)} page numbers")
-            else:
-                # Fall back to XML-based page mapping using lastRenderedPageBreak + pgNumType restarts
-                logging.info(f"    COM failed on clean copy too, using XML fallback")
-                try:
-                    full_page_map = build_page_map_from_xml(Path(doc_path))
-                    page_map = {idx: full_page_map.get(idx, 1) for idx in indices}
-                    all_page_numbers[doc_path] = page_map
-                    xml_fallback += 1
-                    logging.info(f"    XML: {len(page_map)} page numbers (from lastRenderedPageBreak + pgNumType)")
-                except Exception as e:
-                    logging.warning(f"    XML fallback also failed: {e}")
-
-    logging.info(f"Page numbers: {com_success} docs via COM, {xml_fallback} docs via XML fallback")
+    logging.info(f"Page numbers: {len(all_page_numbers)} docs via footer section XML")
     return all_page_numbers
 
 

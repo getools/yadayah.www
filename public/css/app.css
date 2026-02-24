@@ -30,9 +30,13 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
     box-shadow: 0 4px 16px rgba(0,0,0,0.15);
     padding: 32px;
     width: 100%;
-    max-width: 380px;
+    max-width: 480px;
 }
 .login-card h1 { font-size: 1.4rem; margin-bottom: 20px; }
+.pass-wrap { position: relative; }
+.pass-wrap input { padding-right: 36px; }
+.pass-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; color: #888; font-size: 1.1rem; line-height: 1; }
+.pass-toggle:hover { color: #555; }
 
 /* ── App Header ── */
 .app-header {
@@ -284,7 +288,9 @@ select.col-filter {
 
 .word-popup {
     position: fixed;
-    width: 300px;
+    width: 380px;
+    max-height: 60vh;
+    overflow-y: auto;
     background: #fff;
     border: 1px solid #ccc;
     border-radius: 6px;
@@ -323,6 +329,10 @@ select.col-filter {
     font-size: 0.875rem;
     color: #444;
     word-wrap: break-word;
+    margin-bottom: 6px;
+}
+.word-popup .word-definition:last-child {
+    margin-bottom: 0;
 }
 
 /* ── TinyMCE ── */

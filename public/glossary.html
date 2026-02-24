@@ -161,6 +161,31 @@
             line-height: 1.7;
             color: #333;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            position: relative;
+            overflow: hidden;
+        }
+        .letter-content {
+            position: relative;
+        }
+        .letter-content.has-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--letter-bg) center top/contain no-repeat;
+            opacity: 0.15;
+            pointer-events: none;
+        }
+        .letter-content.has-bg .letter-overview {
+            background: transparent;
+            box-shadow: none;
+            border-color: transparent;
+        }
+        .letter-content.has-bg ~ #word-table thead th,
+        .letter-content.has-bg #word-table thead th {
+            background: transparent;
         }
         .letter-info {
             margin-bottom: 12px;
@@ -305,6 +330,7 @@
     <div style="max-width:1024px;margin:0 auto;">
     <div id="letter-grid" class="letter-grid"></div>
 
+    <div id="letter-content" class="letter-content">
     <div id="letter-intro" class="letter-overview"></div>
 
     <div id="letter-overview" class="letter-overview"></div>
@@ -333,6 +359,7 @@
         <div id="books-panel" style="display:none;"></div>
     </div>
     </div>
+    </div>
 
     <script>
         var allLetters = [];
@@ -342,6 +369,14 @@
         var wordInfoStore = {};
         var wordInfoCounter = 0;
         var currentBooksWordId = null;
+
+        // Letter background images: label -> filename in images/
+        var letterBackgrounds = {
+            'ayin': 'letter-ayin.01851x00436.png',
+            'lamed': 'letter-lamed.01124x01683.png',
+            'theth': 'letter-theth.00686x00391.png',
+            'tsade': 'letter-tsade.02181x01412.png'
+        };
 
         function escHtml(str) {
             if (str == null) return '';
@@ -398,6 +433,17 @@
         function selectLetter(idx) {
             var lt = letters[idx];
             selectedLetter = lt;
+            var letterName = lt.letter_label.toLowerCase();
+
+            // Letter background image
+            var contentEl = document.getElementById('letter-content');
+            var bgFile = letterBackgrounds[letterName];
+            if (bgFile) {
+                contentEl.style.setProperty('--letter-bg', "url('images/" + bgFile + "')");
+                contentEl.classList.add('has-bg');
+            } else {
+                contentEl.classList.remove('has-bg');
+            }
 
             // Highlight
             var squares = document.querySelectorAll('.letter-square');

@@ -1,3 +1,8 @@
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
 $(function () {
     // ── State ──
     var currentScrollKey = null;
@@ -649,14 +654,21 @@ $(function () {
         if (grammarParts.length > 0) {
             html += '<div class="word-grammar">' + escHtml(grammarParts.join(' ')) + '</div>';
         }
-        var defParts = [];
-        if (info.word_definition_yy) defParts.push(info.word_definition_yy);
-        if (info.word_definition_kirk) defParts.push(info.word_definition_kirk);
-        if (info.word_definition_external) defParts.push(info.word_definition_external);
-        if (info.word_definition) defParts.push(info.word_definition);
-        if (defParts.length > 0) {
+        var hasDef = info.word_definition_yy || info.word_definition_kirk || info.word_definition_external || info.word_definition;
+        if (hasDef) {
             html += '<hr>';
-            html += '<div class="word-definition">' + escHtml(defParts.join(' ')) + '</div>';
+            if (info.word_definition_yy) {
+                html += '<div class="word-definition"><strong>YY:</strong> ' + escHtml(info.word_definition_yy) + '</div>';
+            }
+            if (info.word_definition_kirk) {
+                html += '<div class="word-definition"><strong>Kirk:</strong> ' + escHtml(info.word_definition_kirk) + '</div>';
+            }
+            if (info.word_definition_external) {
+                html += '<div class="word-definition"><strong>Ext:</strong> ' + escHtml(info.word_definition_external) + '</div>';
+            }
+            if (info.word_definition) {
+                html += '<div class="word-definition">' + escHtml(info.word_definition) + '</div>';
+            }
         }
         html += '</div>';
 

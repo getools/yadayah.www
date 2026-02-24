@@ -18,7 +18,10 @@
             </div>
             <div class="field">
                 <label for="login-pass">Password</label>
-                <input type="password" id="login-pass" autocomplete="current-password">
+                <div class="pass-wrap">
+                    <input type="password" id="login-pass" autocomplete="current-password">
+                    <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+                </div>
             </div>
             <button id="btn-login" class="btn btn-primary" style="width:100%;margin-top:8px;">Sign In</button>
         </div>
