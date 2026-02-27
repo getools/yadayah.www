@@ -13,7 +13,7 @@
     <style>
         @font-face {
             font-family: "Yada Towrah";
-            src: url('fonts/YadaTowrah-Times.woff2') format('woff2');
+            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -109,8 +109,7 @@
             z-index: 1;
         }
         header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-        header .header-logos a:first-child img { width: 81px; height: 90px; }
-        header .header-logos a:last-child img { width: 352px; height: auto; }
+        header .header-logos img { width: auto; height: auto; }
         header nav {
             display: flex; flex-direction: row; justify-content: center;
             gap: 0 35px; padding: 15px 0; flex-wrap: wrap;
@@ -162,8 +161,7 @@
         </video>
         <div class="header-inner">
             <div class="header-logos">
-                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/logo.Manowrah.00081x00090.png" alt=""></a>
-                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/yy.YadaYahowah.002.0352x0040.png" alt="Yada Yahowah"></a>
+                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
             </div>
             <nav>
                 <a href="https://yadayah.com/books">Books</a>
@@ -239,11 +237,11 @@
             var select = document.getElementById('cite');
             books.forEach(function(book) {
                 var option = document.createElement('option');
-                option.value = book.cite_book_id;
+                option.value = book.cite_book_key;
                 option.textContent = book.cite_book_hebrew + ' / ' + book.cite_book_common;
                 select.appendChild(option);
                 if (book.yah_scroll_key) {
-                    citeBookScrollMap[book.cite_book_id] = book.yah_scroll_key;
+                    citeBookScrollMap[book.cite_book_key] = book.yah_scroll_key;
                 }
             });
         }
@@ -307,7 +305,7 @@
             var verse = document.getElementById('verse').value;
 
             var params = new URLSearchParams();
-            if (citeId) params.set('cite_book_id', citeId);
+            if (citeId) params.set('cite_book_key', citeId);
             if (chapter) params.set('chapter', chapter);
             if (verse) params.set('verse', verse);
 
@@ -404,7 +402,7 @@
 
             records.forEach(function(record) {
                 // Show section header when cite_book_id, chapter, or verse changes
-                if (lastCiteBookId !== record.translation_cite_book_id ||
+                if (lastCiteBookId !== record.translation_cite_book_key ||
                     lastChapter !== record.translation_cite_chapter ||
                     lastVerse !== record.translation_cite_verse) {
                     var breakDiv = document.createElement('div');
@@ -435,7 +433,7 @@
                         breakDiv.textContent = citeName + ref;
                     }
                     resultsDiv.appendChild(breakDiv);
-                    lastCiteBookId = record.translation_cite_book_id;
+                    lastCiteBookId = record.translation_cite_book_key;
                     lastChapter = record.translation_cite_chapter;
                     lastVerse = record.translation_cite_verse;
                 }
@@ -528,7 +526,7 @@
                 html += '</div>';
                 html += '<div class="wp-top-right">';
                 if (info.word_yt) {
-                    html += '<div class="wp-yt">' + escHtml(info.word_yt) + '</div>';
+                    html += '<div class="wp-yt">' + escHtml(info.word_yt.split('').reverse().join('')) + '</div>';
                 }
                 if (info.word_hebrew) {
                     html += '<div class="wp-hebrew">' + escHtml(info.word_hebrew) + '</div>';

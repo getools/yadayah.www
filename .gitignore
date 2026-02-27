@@ -9,3 +9,5 @@ strongs-hebrew.json
 strongs_scraped.json
 strongs_matches.sql
 unlinked_words.txt
+sql/yada_full_dump.sql
+sql/yada_full_dump.custom

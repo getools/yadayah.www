@@ -1,9 +1,9 @@
 """
-Import scraped Strong's Hebrew data into yy_word and yy_word_spelling tables.
+Import scraped Strong's Hebrew data into yy_word and yy_word_translit tables.
 - Updates existing yy_word entries with new data (hebrew, definition, flags)
 - Creates new yy_word entries for Strong's numbers not yet in the table
-- Adds new yy_word_spelling entries for spellings not yet in the table
-- Links existing unlinked yy_word_spelling entries to the correct yy_word
+- Adds new yy_word_translit entries for spellings not yet in the table
+- Links existing unlinked yy_word_translit entries to the correct yy_word
 """
 import json
 import psycopg2
@@ -20,7 +20,7 @@ DB_CONFIG = {
 }
 
 def normalize_for_match(text):
-    """Normalize spelling for matching against yy_word_spelling."""
+    """Normalize spelling for matching against yy_word_translit."""
     text = unicodedata.normalize('NFD', text)
     text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
     text = text.lower()
@@ -37,13 +37,13 @@ def main():
     cur = conn.cursor()
 
     # Get existing yy_word entries by strongs number
-    cur.execute("SELECT word_id, word_strongs FROM yy_word")
+    cur.execute("SELECT word_key, word_strongs FROM yy_word")
     existing_words = {}
     for row in cur.fetchall():
         existing_words[row[1].strip()] = row[0]
 
-    # Get existing yy_word_spelling entries
-    cur.execute("SELECT word_spelling_id, word_id, word_spelling_text FROM yy_word_spelling")
+    # Get existing yy_word_translit entries
+    cur.execute("SELECT word_translit_key, word_id, word_translit_text FROM yy_word_translit")
     existing_spellings = {}
     existing_spellings_lower = {}  # for matching
     for row in cur.fetchall():
@@ -123,20 +123,20 @@ def main():
                 # Link if unlinked
                 sp = existing_spellings[clean_spelling]
                 if sp['word_id'] is None:
-                    cur.execute("UPDATE yy_word_spelling SET word_id = %s WHERE word_spelling_id = %s",
+                    cur.execute("UPDATE yy_word_translit SET word_id = %s WHERE word_translit_key = %s",
                                 (word_id, sp['id']))
                     spellings_linked += 1
             elif clean_spelling.lower() in existing_spellings_lower:
                 # Case-insensitive match exists
                 sp = existing_spellings_lower[clean_spelling.lower()]
                 if sp['word_id'] is None:
-                    cur.execute("UPDATE yy_word_spelling SET word_id = %s WHERE word_spelling_id = %s",
+                    cur.execute("UPDATE yy_word_translit SET word_id = %s WHERE word_translit_key = %s",
                                 (word_id, sp['id']))
                     spellings_linked += 1
             else:
                 # Add new spelling
                 cur.execute("""
-                    INSERT INTO yy_word_spelling (word_id, word_spelling_text)
+                    INSERT INTO yy_word_translit (word_id, word_translit_text)
                     VALUES (%s, %s)
                 """, (word_id, clean_spelling))
                 spellings_added += 1
@@ -151,7 +151,7 @@ def main():
             norm_spellings.add(normalize_for_match(sp.replace('@', "'")))
 
     # Second pass: try to link remaining unlinked spellings
-    cur.execute("SELECT word_spelling_id, word_spelling_text FROM yy_word_spelling WHERE word_id IS NULL")
+    cur.execute("SELECT word_translit_key, word_translit_text FROM yy_word_translit WHERE word_id IS NULL")
     unlinked = cur.fetchall()
 
     # Build normalized lookup from all scraped data
@@ -181,7 +181,7 @@ def main():
         if matched_strongs:
             wid = existing_words.get(matched_strongs)
             if wid:
-                cur.execute("UPDATE yy_word_spelling SET word_id = %s WHERE word_spelling_id = %s AND word_id IS NULL",
+                cur.execute("UPDATE yy_word_translit SET word_id = %s WHERE word_translit_key = %s AND word_id IS NULL",
                             (wid, sp_id))
                 if cur.rowcount > 0:
                     spellings_linked += 1
@@ -191,11 +191,11 @@ def main():
     # Final stats
     cur.execute("SELECT COUNT(*) FROM yy_word")
     total_words = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM yy_word_spelling")
+    cur.execute("SELECT COUNT(*) FROM yy_word_translit")
     total_spellings = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM yy_word_spelling WHERE word_id IS NOT NULL")
+    cur.execute("SELECT COUNT(*) FROM yy_word_translit WHERE word_id IS NOT NULL")
     linked = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM yy_word_spelling WHERE word_id IS NULL")
+    cur.execute("SELECT COUNT(*) FROM yy_word_translit WHERE word_id IS NULL")
     still_null = cur.fetchone()[0]
 
     cur.close()
@@ -207,7 +207,7 @@ def main():
     print(f"Spellings linked: {spellings_linked}")
     print(f"")
     print(f"Total yy_word:         {total_words}")
-    print(f"Total yy_word_spelling: {total_spellings}")
+    print(f"Total yy_word_translit: {total_spellings}")
     print(f"  Linked:              {linked}")
     print(f"  Still unlinked:      {still_null}")
 

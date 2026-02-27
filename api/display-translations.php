@@ -7,7 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $pdo = getDb();
 
-$citeBookId = isset($_GET['cite_book_id']) && $_GET['cite_book_id'] !== '' ? (int)$_GET['cite_book_id'] : null;
+$citeBookId = isset($_GET['cite_book_key']) && $_GET['cite_book_key'] !== '' ? (int)$_GET['cite_book_key'] : null;
 $scrollKey  = isset($_GET['scroll_key']) && $_GET['scroll_key'] !== '' ? (int)$_GET['scroll_key'] : null;
 $chapter    = isset($_GET['chapter']) && $_GET['chapter'] !== '' ? (int)$_GET['chapter'] : null;
 $verse      = isset($_GET['verse']) && $_GET['verse'] !== '' ? (int)$_GET['verse'] : null;
@@ -16,8 +16,8 @@ $conditions = [];
 $params = [];
 
 if ($citeBookId !== null) {
-    // Map cite_book_id to yah_scroll_key via yy_cite_book
-    $conditions[] = "t.yah_scroll_key IN (SELECT yah_scroll_key FROM yy_cite_book WHERE cite_book_id = ?)";
+    // Map cite_book_key to yah_scroll_key via yy_cite_book
+    $conditions[] = "t.yah_scroll_key IN (SELECT yah_scroll_key FROM yy_cite_book WHERE cite_book_key = ?)";
     $params[] = $citeBookId;
 } elseif ($scrollKey !== null) {
     $conditions[] = "t.yah_scroll_key = ?";
@@ -47,7 +47,7 @@ $stmt = $pdo->prepare("
            c.yah_chapter_number AS translation_cite_chapter,
            v.yah_verse_number AS translation_cite_verse,
            NULL AS translation_cite_verse_end,
-           t.yah_scroll_key AS translation_cite_book_id,
+           t.yah_scroll_key AS translation_cite_book_key,
            vol.yy_volume_flip_code,
            (SELECT 'Chapter ' || ch.yy_chapter_number || ':' || ch.yy_chapter_name FROM yy_chapter ch
             WHERE ch.yy_volume_key = t.yy_volume_key
@@ -57,7 +57,7 @@ $stmt = $pdo->prepare("
     JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
     JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
     JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-    JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
+    JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key AND vol.volume_active_flag = TRUE
     $where
     ORDER BY s.yah_scroll_sort ASC, s.yah_scroll_label_yy ASC,
              c.yah_chapter_number ASC, v.yah_verse_number ASC,

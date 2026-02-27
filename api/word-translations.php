@@ -7,18 +7,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $pdo = getDb();
 
-$wordId = isset($_GET['word_id']) && $_GET['word_id'] !== '' ? (int)$_GET['word_id'] : null;
+$wordId = isset($_GET['word_key']) && $_GET['word_key'] !== '' ? (int)$_GET['word_key'] : null;
 
 if ($wordId === null) {
-    errorResponse('word_id parameter required');
+    errorResponse('word_key parameter required');
 }
 
 // Get all spellings for this word
 $stmt = $pdo->prepare("
-    SELECT word_spelling_text
-    FROM yy_word_spelling
-    WHERE word_id = ?
-    ORDER BY word_spelling_sort, word_spelling_id
+    SELECT word_translit_text
+    FROM yy_word_translit
+    WHERE word_key = ?
+    ORDER BY word_translit_sort, word_translit_key
 ");
 $stmt->execute([$wordId]);
 $spellings = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -61,7 +61,7 @@ $stmt = $pdo->prepare("
               AND ch.yy_chapter_page <= t.yy_translation_page
             ORDER BY ch.yy_chapter_page DESC LIMIT 1) AS yy_chapter_name
     FROM yy_translation t
-    JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
+    JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key AND vol.volume_active_flag = TRUE
     JOIN yy_series ser ON ser.yy_series_key = vol.yy_series_key
     JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
     JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key

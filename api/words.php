@@ -24,15 +24,15 @@ switch ($method) {
 
 function handleGet(PDO $db): void {
     // Single word by ID with spellings
-    if (isset($_GET['word_id']) && ctype_digit($_GET['word_id'])) {
-        $wordId = (int)$_GET['word_id'];
-        $stmt = $db->prepare("SELECT * FROM yy_word WHERE word_id = ?");
+    if (isset($_GET['word_key']) && ctype_digit($_GET['word_key'])) {
+        $wordId = (int)$_GET['word_key'];
+        $stmt = $db->prepare("SELECT * FROM yy_word WHERE word_key = ?");
         $stmt->execute([$wordId]);
         $word = $stmt->fetch();
         if (!$word) {
             errorResponse('Word not found', 404);
         }
-        $spStmt = $db->prepare("SELECT word_spelling_id, word_spelling_text, word_spelling_sort, word_spelling_count_yy FROM yy_word_spelling WHERE word_id = ? ORDER BY word_spelling_sort, word_spelling_id");
+        $spStmt = $db->prepare("SELECT word_translit_key, word_translit_text, word_translit_sort, word_translit_count_yy FROM yy_word_translit WHERE word_key = ? ORDER BY word_translit_sort, word_translit_key");
         $spStmt->execute([$wordId]);
         $word['spellings'] = $spStmt->fetchAll();
         jsonResponse($word);
@@ -66,9 +66,9 @@ function handleGet(PDO $db): void {
         if (empty($spellings)) { jsonResponse(['word_ids' => []]); }
 
         $phs = implode(',', array_fill(0, count($spellings), '?'));
-        $stmt2 = $db->prepare("SELECT DISTINCT word_id FROM yy_word_spelling WHERE LOWER(word_spelling_text) IN ($phs)");
+        $stmt2 = $db->prepare("SELECT DISTINCT word_key FROM yy_word_translit WHERE LOWER(word_translit_text) IN ($phs)");
         $stmt2->execute(array_keys($spellings));
-        $ids = array_map('intval', array_column($stmt2->fetchAll(), 'word_id'));
+        $ids = array_map('intval', array_column($stmt2->fetchAll(), 'word_key'));
 
         jsonResponse(['word_ids' => $ids]);
     }
@@ -77,16 +77,16 @@ function handleGet(PDO $db): void {
     if (isset($_GET['search']) && trim($_GET['search']) !== '') {
         $term = '%' . trim($_GET['search']) . '%';
         $stmt = $db->prepare("
-            SELECT DISTINCT w.word_id, w.word_strongs, w.word_hebrew, w.word_yt, w.word_active_flag,
+            SELECT DISTINCT w.word_key, w.word_strongs, w.word_hebrew, w.word_translit, w.word_active_flag,
                    w.word_definition_kirk, w.word_definition_yy, w.word_definition_external, w.word_count_yy,
-                   (SELECT string_agg(s.word_spelling_text, ', ' ORDER BY s.word_spelling_sort, s.word_spelling_id)
-                    FROM yy_word_spelling s WHERE s.word_id = w.word_id) AS spellings_display
+                   (SELECT string_agg(s.word_translit_text, ', ' ORDER BY s.word_translit_sort, s.word_translit_key)
+                    FROM yy_word_translit s WHERE s.word_key = w.word_key) AS spellings_display
             FROM yy_word w
-            LEFT JOIN yy_word_spelling s ON s.word_id = w.word_id
+            LEFT JOIN yy_word_translit s ON s.word_key = w.word_key
             WHERE w.word_strongs LIKE ?
                OR w.word_hebrew LIKE ?
-               OR w.word_yt LIKE ?
-               OR s.word_spelling_text ILIKE ?
+               OR w.word_translit LIKE ?
+               OR s.word_translit_text ILIKE ?
                OR w.word_definition_kirk ILIKE ?
                OR w.word_definition_yy ILIKE ?
                OR w.word_definition_external ILIKE ?
@@ -100,17 +100,17 @@ function handleGet(PDO $db): void {
     // List all
     if (isset($_GET['list']) && $_GET['list'] === 'all') {
         $stmt = $db->query("
-            SELECT w.word_id, w.word_strongs, w.word_hebrew, w.word_yt, w.word_active_flag,
+            SELECT w.word_key, w.word_strongs, w.word_hebrew, w.word_translit, w.word_active_flag,
                    w.word_definition_kirk, w.word_definition_yy, w.word_definition_external, w.word_count_yy,
-                   (SELECT string_agg(s.word_spelling_text, ', ' ORDER BY s.word_spelling_sort, s.word_spelling_id)
-                    FROM yy_word_spelling s WHERE s.word_id = w.word_id) AS spellings_display
+                   (SELECT string_agg(s.word_translit_text, ', ' ORDER BY s.word_translit_sort, s.word_translit_key)
+                    FROM yy_word_translit s WHERE s.word_key = w.word_key) AS spellings_display
             FROM yy_word w
             ORDER BY w.word_strongs
         ");
         jsonResponse($stmt->fetchAll());
     }
 
-    errorResponse('Provide word_id, search, or list=all');
+    errorResponse('Provide word_key, search, or list=all');
 }
 
 function handlePost(PDO $db, array $user): void {
@@ -153,7 +153,7 @@ function handlePost(PDO $db, array $user): void {
             emptyToNull($data, 'word_definition_external'),
             !empty($data['word_active_flag']) ? 't' : 'f',
         ]);
-        $wordId = (int)$db->lastInsertId('yy_word_word_id_seq');
+        $wordId = (int)$db->lastInsertId('yy_word_word_key_seq');
         insertSpellings($db, $wordId, $data['spellings'] ?? []);
         $db->commit();
     } catch (\Exception $e) {
@@ -167,13 +167,13 @@ function handlePost(PDO $db, array $user): void {
 
 function handlePut(PDO $db, array $user): void {
     setCurrentUser($db, $user['user_key']);
-    $wordId = $_GET['word_id'] ?? null;
+    $wordId = $_GET['word_key'] ?? null;
     if (!$wordId || !ctype_digit($wordId)) {
-        errorResponse('word_id is required');
+        errorResponse('word_key is required');
     }
     $wordId = (int)$wordId;
 
-    $check = $db->prepare('SELECT word_id FROM yy_word WHERE word_id = ?');
+    $check = $db->prepare('SELECT word_key FROM yy_word WHERE word_key = ?');
     $check->execute([$wordId]);
     if (!$check->fetch()) {
         errorResponse('Word not found', 404);
@@ -199,7 +199,7 @@ function handlePut(PDO $db, array $user): void {
                 word_flag_adverb = ?, word_flag_preposition = ?, word_flag_conjunction = ?, word_flag_subst = ?, word_flag_pronoun = ?,
                 word_definition_kirk = ?, word_definition_yy = ?, word_definition_external = ?,
                 word_active_flag = ?
-            WHERE word_id = ?
+            WHERE word_key = ?
         ");
         $stmt->execute([
             str_pad(trim($data['word_strongs']), 4, '0', STR_PAD_LEFT),
@@ -222,7 +222,7 @@ function handlePut(PDO $db, array $user): void {
         ]);
 
         // Replace spellings
-        $del = $db->prepare("DELETE FROM yy_word_spelling WHERE word_id = ?");
+        $del = $db->prepare("DELETE FROM yy_word_translit WHERE word_key = ?");
         $del->execute([$wordId]);
         insertSpellings($db, $wordId, $data['spellings'] ?? []);
         $db->commit();
@@ -236,13 +236,13 @@ function handlePut(PDO $db, array $user): void {
 
 function handleDelete(PDO $db, array $user): void {
     setCurrentUser($db, $user['user_key']);
-    $wordId = $_GET['word_id'] ?? null;
+    $wordId = $_GET['word_key'] ?? null;
     if (!$wordId || !ctype_digit($wordId)) {
-        errorResponse('word_id is required');
+        errorResponse('word_key is required');
     }
     $wordId = (int)$wordId;
 
-    $check = $db->prepare('SELECT word_id FROM yy_word WHERE word_id = ?');
+    $check = $db->prepare('SELECT word_key FROM yy_word WHERE word_key = ?');
     $check->execute([$wordId]);
     if (!$check->fetch()) {
         errorResponse('Word not found', 404);
@@ -250,9 +250,9 @@ function handleDelete(PDO $db, array $user): void {
 
     $db->beginTransaction();
     try {
-        $del = $db->prepare("DELETE FROM yy_word_spelling WHERE word_id = ?");
+        $del = $db->prepare("DELETE FROM yy_word_translit WHERE word_key = ?");
         $del->execute([$wordId]);
-        $del2 = $db->prepare("DELETE FROM yy_word WHERE word_id = ?");
+        $del2 = $db->prepare("DELETE FROM yy_word WHERE word_key = ?");
         $del2->execute([$wordId]);
         $db->commit();
     } catch (\Exception $e) {
@@ -265,10 +265,10 @@ function handleDelete(PDO $db, array $user): void {
 
 function insertSpellings(PDO $db, int $wordId, array $spellings): void {
     if (empty($spellings)) return;
-    $stmt = $db->prepare("INSERT INTO yy_word_spelling (word_id, word_spelling_text, word_spelling_sort, word_spelling_count_yy) VALUES (?, ?, ?, ?)");
+    $stmt = $db->prepare("INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort, word_translit_count_yy) VALUES (?, ?, ?, ?)");
     $sort = 0;
     foreach ($spellings as $sp) {
-        $text = is_array($sp) ? ($sp['word_spelling_text'] ?? '') : (string)$sp;
+        $text = is_array($sp) ? ($sp['word_translit_text'] ?? '') : (string)$sp;
         $text = strtolower(trim($text));
         if ($text !== '') {
             $count = countSpellingInTranslations($db, $text);
@@ -304,10 +304,10 @@ function countSpellingInTranslations(PDO $db, string $spelling): int {
 }
 
 function returnWord(PDO $db, int $wordId, int $status = 200): void {
-    $stmt = $db->prepare("SELECT * FROM yy_word WHERE word_id = ?");
+    $stmt = $db->prepare("SELECT * FROM yy_word WHERE word_key = ?");
     $stmt->execute([$wordId]);
     $word = $stmt->fetch();
-    $spStmt = $db->prepare("SELECT word_spelling_id, word_spelling_text, word_spelling_sort, word_spelling_count_yy FROM yy_word_spelling WHERE word_id = ? ORDER BY word_spelling_sort, word_spelling_id");
+    $spStmt = $db->prepare("SELECT word_translit_key, word_translit_text, word_translit_sort, word_translit_count_yy FROM yy_word_translit WHERE word_key = ? ORDER BY word_translit_sort, word_translit_key");
     $spStmt->execute([$wordId]);
     $word['spellings'] = $spStmt->fetchAll();
     jsonResponse($word, $status);

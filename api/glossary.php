@@ -13,14 +13,14 @@ switch ($action) {
         $letter = $_GET['letter'] ?? '';
         if (!$letter || strlen($letter) !== 1) errorResponse('letter parameter required (single character)');
         $stmt = $pdo->prepare("
-            SELECT w.word_id, w.word_strongs, w.word_hebrew, w.word_yt,
+            SELECT w.word_key, w.word_strongs, w.word_hebrew, w.word_translit, w.word_yt,
                    w.word_definition_kirk, w.word_definition_yy,
                    w.word_flag_noun, w.word_flag_verb, w.word_flag_adjective,
                    w.word_flag_adverb, w.word_flag_preposition, w.word_flag_conjunction,
                    w.word_flag_subst, w.word_flag_plural, w.word_gender,
                    w.word_count_yy,
-                   (SELECT string_agg(ws.word_spelling_text, ', ' ORDER BY ws.word_spelling_sort, ws.word_spelling_id)
-                    FROM yy_word_spelling ws WHERE ws.word_id = w.word_id) AS word_spellings
+                   (SELECT string_agg(ws.word_translit_text, ', ' ORDER BY ws.word_translit_sort, ws.word_translit_key)
+                    FROM yy_word_translit ws WHERE ws.word_key = w.word_key) AS word_spellings
             FROM yy_word w
             WHERE w.word_active_flag = true
               AND LEFT(w.word_yt, 1) = ?

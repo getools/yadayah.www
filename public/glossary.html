@@ -10,7 +10,7 @@
     <style>
         @font-face {
             font-family: "Yada Towrah";
-            src: url('fonts/YadaTowrah-Times.woff2') format('woff2');
+            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -42,8 +42,7 @@
             z-index: 1;
         }
         header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-        header .header-logos a:first-child img { width: 81px; height: 90px; }
-        header .header-logos a:last-child img { width: 352px; height: auto; }
+        header .header-logos img { width: auto; height: auto; }
         header nav {
             display: flex; flex-direction: row; justify-content: center;
             gap: 0 35px; padding: 15px 0; flex-wrap: wrap;
@@ -306,8 +305,7 @@
         </video>
         <div class="header-inner">
             <div class="header-logos">
-                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/logo.Manowrah.00081x00090.png" alt=""></a>
-                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/yy.YadaYahowah.002.0352x0040.png" alt="Yada Yahowah"></a>
+                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
             </div>
             <nav>
                 <a href="https://yadayah.com/books">Books</a>
@@ -350,7 +348,7 @@
                         <th>Strong's</th>
                         <th>Grammar</th>
                         <th>Definition</th>
-                        <th>Count</th>
+                        <!-- <th>Count</th> -->
                     </tr>
                 </thead>
                 <tbody id="word-tbody"></tbody>
@@ -372,10 +370,27 @@
 
         // Letter background images: label -> filename in images/
         var letterBackgrounds = {
+            'aleph': 'letter-aleph.01165x00872.png',
+            'beyth': 'letter-beyth.01530x01485.png',
+            'chet': 'letter-chet.00920x00245.png',
+            'dalet': 'letter-dalet.00729x00553.png',
+            'gimal': 'letter-gimal.01530x00820.png',
+            'hey': 'letter-hey.01850x02112.png',
             'ayin': 'letter-ayin.01851x00436.png',
+            'kaph': 'letter-kaph.00980x00759.png',
             'lamed': 'letter-lamed.01124x01683.png',
-            'theth': 'letter-theth.00686x00391.png',
-            'tsade': 'letter-tsade.02181x01412.png'
+            'mem': 'letter-mem.00896x00114.png',
+            'nun': 'letter-nun.01114x00435.png',
+            'peh': 'letter-peh.02305x00672.png',
+            'rosh': 'letter-rosh.01290x01052.png',
+            'samech': 'letter-samech.00686x00391.png',
+            'shin': 'letter-shin.01171x00573.png',
+            'theth': 'letter-theth.00983x00421.png',
+            'taw': 'letter-taw.02120x01852.png',
+            'tsade': 'letter-tsade.02181x01412.png',
+            'wah': 'letter-wah.01212x00440.png',
+            'yowd': 'letter-yowd.00907x00797.png',
+            'zayin': 'letter-zayin.02341x01726.png'
         };
 
         function escHtml(str) {
@@ -536,21 +551,13 @@
                 var strongsLink = strongs
                     ? '<a href="https://www.blueletterbible.org/lexicon/h' + escHtml(strongs) + '" target="_blank" rel="noopener">H' + escHtml(strongs) + '</a>'
                     : '';
-                var countVal = w.word_count_yy != null ? String(w.word_count_yy) : '';
-                var countCell;
-                if (countVal && parseInt(countVal) > 0 && w.word_id) {
-                    countCell = '<td><span class="count-link" data-word-id="' + escHtml(String(w.word_id)) + '">' + escHtml(countVal) + '</span></td>';
-                } else {
-                    countCell = '<td>' + escHtml(countVal) + '</td>';
-                }
                 html += '<tr>';
                 html += '<td class="col-translit">' + escHtml(w.word_spellings) + '</td>';
-                html += '<td class="col-yt">' + escHtml(w.word_yt) + '</td>';
+                html += '<td class="col-yt">' + (w.word_yt ? escHtml(w.word_yt) : '') + '</td>';
                 html += '<td class="col-hebrew">' + escHtml(w.word_hebrew) + '</td>';
                 html += '<td class="col-strongs">' + strongsLink + '</td>';
                 html += '<td class="col-grammar">' + escHtml(buildGrammar(w)) + '</td>';
                 html += '<td class="col-def">' + escHtml(getDefinition(w)) + '</td>';
-                html += countCell;
                 html += '</tr>';
             }
             tbody.innerHTML = html;
@@ -601,7 +608,7 @@
             booksPanel.innerHTML = '<div style="color:#888;padding:20px;">Loading translations...</div>';
 
             try {
-                var resp = await fetch('/api/word-translations.php?word_id=' + wordId);
+                var resp = await fetch('/api/word-translations.php?word_key=' + wordId);
                 var records = await resp.json();
                 tabBooks.textContent = 'Books (' + records.length + ')';
                 await renderBooksPanel(records, booksPanel);
@@ -781,7 +788,7 @@
                 }
                 html += '</div>';
                 html += '<div class="wp-top-right">';
-                if (info.word_yt) html += '<div class="wp-yt">' + escHtml(info.word_yt) + '</div>';
+                if (info.word_yt) html += '<div class="wp-yt">' + escHtml(info.word_yt.split('').reverse().join('')) + '</div>';
                 if (info.word_hebrew) html += '<div class="wp-hebrew">' + escHtml(info.word_hebrew) + '</div>';
                 html += '</div>';
                 html += '</div>';

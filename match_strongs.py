@@ -1,7 +1,7 @@
 """
-Match unlinked yy_word_spelling entries to Strong's Hebrew numbers.
+Match unlinked yy_word_translit entries to Strong's Hebrew numbers.
 Reads the OpenScriptures Strong's Hebrew dictionary JSON and attempts to match
-transliterated Hebrew words from the yy_word_spelling table.
+transliterated Hebrew words from the yy_word_translit table.
 """
 import json
 import re
@@ -157,7 +157,7 @@ print()
 # First, check which Strong's numbers already exist in yy_word
 # We'll output SQL that:
 # 1. Creates new yy_word entries for new Strong's numbers
-# 2. Links yy_word_spelling entries to the appropriate yy_word
+# 2. Links yy_word_translit entries to the appropriate yy_word
 
 # Group matches by Strong's number
 from collections import defaultdict
@@ -177,7 +177,7 @@ for word, strongs_key, entry in matches[:20]:
 
 # Write SQL output
 with open(r"C:\Users\Joe\Work\dev\yada\translations\strongs_matches.sql", "w", encoding="utf-8") as f:
-    f.write("-- Auto-generated: Link yy_word_spelling to yy_word via Strong's numbers\n")
+    f.write("-- Auto-generated: Link yy_word_translit to yy_word via Strong's numbers\n")
     f.write("BEGIN;\n\n")
 
     for strongs_num, word_entries in sorted(by_strongs.items(), key=lambda x: int(x[0])):
@@ -192,14 +192,14 @@ with open(r"C:\Users\Joe\Work\dev\yada\translations\strongs_matches.sql", "w", e
 
         f.write(f"-- Strong's H{strongs_num}: {xlit} = {lemma}\n")
         f.write(f"DO $$ DECLARE wid INTEGER; BEGIN\n")
-        f.write(f"  SELECT word_id INTO wid FROM yy_word WHERE word_strongs = '{strongs_4digit}' LIMIT 1;\n")
+        f.write(f"  SELECT word_key INTO wid FROM yy_word WHERE word_strongs = '{strongs_4digit}' LIMIT 1;\n")
         f.write(f"  IF wid IS NULL THEN\n")
         f.write(f"    INSERT INTO yy_word (word_strongs, word_hebrew, word_definition)\n")
         f.write(f"    VALUES ('{strongs_4digit}', '{lemma}', '{definition}')\n")
         f.write(f"    RETURNING word_id INTO wid;\n")
         f.write(f"  END IF;\n")
-        f.write(f"  UPDATE yy_word_spelling SET word_id = wid\n")
-        f.write(f"  WHERE word_spelling_text IN ({spellings_sql}) AND word_id IS NULL;\n")
+        f.write(f"  UPDATE yy_word_translit SET word_id = wid\n")
+        f.write(f"  WHERE word_translit_text IN ({spellings_sql}) AND word_id IS NULL;\n")
         f.write(f"END $$;\n\n")
 
     f.write("COMMIT;\n")

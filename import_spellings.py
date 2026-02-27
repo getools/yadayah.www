@@ -19,7 +19,7 @@ with open(csv_path, 'r', encoding='utf-8-sig') as f:
         spellings = [s.strip() for s in spellings_raw.split('\n') if s.strip()]
         for sort_idx, spelling in enumerate(spellings):
             cur.execute("""
-                INSERT INTO yy_word_spelling (word_id, word_spelling_text, word_spelling_sort)
+                INSERT INTO yy_word_translit (word_id, word_translit_text, word_translit_sort)
                 VALUES (%s, %s, %s)
             """, (word_id, spelling, sort_idx))
             count += 1

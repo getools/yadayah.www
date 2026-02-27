@@ -27,54 +27,54 @@ $placeholders = implode(',', array_fill(0, count($wordList), 'LOWER(?)'));
 $params = array_map('strtolower', $wordList);
 
 $sql = "
-    SELECT w.word_id, s.word_spelling_text,
-           w.word_yt, w.word_hebrew, w.word_strongs,
+    SELECT w.word_key, s.word_translit_text,
+           w.word_translit, w.word_yt, w.word_hebrew, w.word_strongs,
            w.word_gender, w.word_flag_plural,
            w.word_flag_noun, w.word_flag_verb, w.word_flag_adjective,
            w.word_flag_adverb, w.word_flag_preposition, w.word_flag_conjunction,
            w.word_flag_subst, w.word_definition_kirk, w.word_definition_yy,
            w.word_definition_external
-    FROM yy_word_spelling s
-    JOIN yy_word w ON s.word_id = w.word_id
+    FROM yy_word_translit s
+    JOIN yy_word w ON s.word_key = w.word_key
     WHERE w.word_active_flag = true
-      AND LOWER(s.word_spelling_text) IN ($placeholders)
-    ORDER BY s.word_spelling_sort
+      AND LOWER(s.word_translit_text) IN ($placeholders)
+    ORDER BY s.word_translit_sort
 ";
 
 $stmt = $pg->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-// Index by lowercase word_spelling_text (first match wins per word)
-// Also collect word_ids to fetch all spellings
+// Index by lowercase word_translit_text (first match wins per word)
+// Also collect word_keys to fetch all translits
 $result = [];
 $wordIds = [];
 foreach ($rows as $row) {
-    $key = strtolower($row['word_spelling_text']);
+    $key = strtolower($row['word_translit_text']);
     if (!isset($result[$key])) {
         $result[$key] = $row;
-        $wordIds[$row['word_id']] = true;
+        $wordIds[$row['word_key']] = true;
     }
 }
 
-// Fetch all spellings for matched word_ids
+// Fetch all translits for matched word_keys
 if (!empty($wordIds)) {
     $idList = array_keys($wordIds);
     $idPlaceholders = implode(',', array_fill(0, count($idList), '?'));
-    $spSql = "SELECT word_id, word_spelling_text FROM yy_word_spelling WHERE word_id IN ($idPlaceholders) ORDER BY word_id, word_spelling_sort";
+    $spSql = "SELECT word_key, word_translit_text FROM yy_word_translit WHERE word_key IN ($idPlaceholders) ORDER BY word_key, word_translit_sort";
     $spStmt = $pg->prepare($spSql);
     $spStmt->execute($idList);
     $spRows = $spStmt->fetchAll();
 
-    // Group spellings by word_id
+    // Group translits by word_key
     $spByWord = [];
     foreach ($spRows as $sp) {
-        $spByWord[$sp['word_id']][] = $sp['word_spelling_text'];
+        $spByWord[$sp['word_key']][] = $sp['word_translit_text'];
     }
 
     // Attach spellings to each result
     foreach ($result as $key => &$entry) {
-        $wid = $entry['word_id'];
+        $wid = $entry['word_key'];
         $entry['word_spellings'] = isset($spByWord[$wid]) ? $spByWord[$wid] : [];
     }
     unset($entry);

@@ -643,7 +643,7 @@ $(function () {
 
         var html = '<div class="word-popup" id="word-popup">';
         if (info.word_yt) {
-            html += '<div class="font_yt">' + escHtml(info.word_yt) + '</div>';
+            html += '<div class="font_yt">' + escHtml(info.word_yt.split('').reverse().join('')) + '</div>';
         }
         if (info.word_hebrew) {
             html += '<div class="font_mh">' + escHtml(info.word_hebrew) + '</div>';

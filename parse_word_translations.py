@@ -380,6 +380,216 @@ WScript.StdErr.WriteLine "Done"
 
 
 
+def get_com_page_map_iter(doc_path: str, timeout: int = 600) -> Dict[int, int]:
+    """
+    Get footer page numbers for ALL paragraphs via COM Paragraphs iteration.
+
+    Creates a VBScript that iterates through all COM Paragraphs, recording
+    page number (rng.Information(1)) and text prefix for each. Then matches
+    COM paragraphs to python-docx paragraphs by text content.
+
+    Much faster than Find-based approach for large documents since it makes
+    a single pass through the Paragraphs collection.
+
+    Args:
+        doc_path: Absolute path to .docx file
+        timeout: Seconds before timeout
+
+    Returns:
+        Dict mapping python-docx 0-based paragraph index -> footer page number
+    """
+    import subprocess, tempfile
+
+    abs_path = str(Path(doc_path).absolute())
+
+    out = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+    out.close()
+
+    # VBScript iterates ALL COM Paragraphs, outputs page_num<TAB>text_prefix for each
+    vbs_content = f'''
+Dim word, fso, outFile
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set word = CreateObject("Word.Application")
+word.Visible = False
+word.DisplayAlerts = 0
+
+WScript.StdErr.WriteLine "Opening document..."
+Dim doc
+Set doc = word.Documents.Open("{abs_path}", , True)
+Dim total
+total = doc.Paragraphs.Count
+WScript.StdErr.WriteLine "Paragraphs: " & total
+
+Set outFile = fso.CreateTextFile("{out.name}", True, True)
+
+Dim i, rng, pageNum, txt, inTable
+For i = 1 To total
+    Set rng = doc.Paragraphs(i).Range
+    On Error Resume Next
+    inTable = rng.Information(12)
+    If Err.Number <> 0 Then
+        inTable = False
+        Err.Clear
+    End If
+    On Error GoTo 0
+    If inTable = 0 Then
+        On Error Resume Next
+        pageNum = rng.Information(1)
+        If Err.Number <> 0 Then
+            pageNum = -1
+            Err.Clear
+        End If
+        On Error GoTo 0
+        txt = rng.Text
+        If Right(txt, 1) = Chr(13) Then
+            txt = Left(txt, Len(txt) - 1)
+        End If
+        If Len(txt) > 200 Then
+            txt = Left(txt, 200)
+        End If
+        txt = Replace(txt, vbTab, " ")
+        txt = Replace(txt, vbCr, " ")
+        txt = Replace(txt, vbLf, " ")
+        outFile.WriteLine pageNum & vbTab & txt
+    End If
+Next
+
+outFile.Close
+doc.Close False
+word.Quit
+WScript.StdErr.WriteLine "Done"
+'''
+
+    vbs_file = tempfile.NamedTemporaryFile(mode='w', suffix='.vbs', delete=False, encoding='utf-8')
+    vbs_file.write(vbs_content)
+    vbs_file.close()
+
+    try:
+        result = subprocess.run(
+            ["cscript", "//NoLogo", vbs_file.name],
+            capture_output=True, text=True, timeout=timeout
+        )
+
+        if result.stderr:
+            for line in result.stderr.strip().split('\n'):
+                if line.strip():
+                    logging.debug(f"  VBS iter: {line.strip()}")
+
+        # Read COM output: page_num<TAB>text_prefix (UTF-16 with BOM)
+        com_paragraphs = []  # list of (page_num, text_prefix)
+        if os.path.exists(out.name):
+            with open(out.name, 'r', encoding='utf-16', errors='replace') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith('\ufeff'):
+                        line = line[1:]
+                    parts = line.split('\t', 1)
+                    if len(parts) >= 2:
+                        try:
+                            page = int(parts[0])
+                            text = parts[1]
+                            com_paragraphs.append((page, text))
+                        except ValueError:
+                            continue
+                    elif len(parts) == 1:
+                        try:
+                            page = int(parts[0])
+                            com_paragraphs.append((page, ''))
+                        except ValueError:
+                            continue
+
+        logging.info(f"    COM iter returned {len(com_paragraphs)} body paragraphs")
+
+        # Load python-docx and match by text
+        # Use full XML text (including hyperlinks) for matching since COM includes hyperlink text
+        nsmap = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        doc = Document(doc_path)
+
+        def full_para_text(para):
+            """Get full paragraph text including hyperlink runs."""
+            return ''.join(t.text or '' for t in para._p.findall('.//w:t', nsmap))
+
+        # Step 1: Build list of non-empty COM paragraphs for matching
+        com_text_list = []
+        for ci, (page, text) in enumerate(com_paragraphs):
+            prefix = replace_unicode_chars(text[:180]).strip()
+            if prefix:
+                com_text_list.append((page, prefix))
+
+        # Step 2: Match only non-empty python-docx paragraphs to non-empty COM paragraphs
+        page_map = {}
+        com_ptr = 0
+
+        for docx_idx, para in enumerate(doc.paragraphs):
+            docx_text = replace_unicode_chars(full_para_text(para))
+            docx_prefix = docx_text[:180].strip()
+
+            if not docx_prefix:
+                continue  # Skip empty paragraphs, will interpolate later
+
+            # Find matching COM paragraph by text prefix
+            found = False
+            for k in range(com_ptr, min(com_ptr + 300, len(com_text_list))):
+                com_page, com_prefix = com_text_list[k]
+
+                if docx_prefix[:80] == com_prefix[:80]:
+                    if com_page > 0:
+                        page_map[docx_idx] = com_page
+                    com_ptr = k + 1
+                    found = True
+                    break
+
+            if not found:
+                # Try shorter prefix (handles field/character differences)
+                for k in range(com_ptr, min(com_ptr + 300, len(com_text_list))):
+                    com_page, com_prefix = com_text_list[k]
+                    if docx_prefix[:30] == com_prefix[:30]:
+                        if com_page > 0:
+                            page_map[docx_idx] = com_page
+                        com_ptr = k + 1
+                        found = True
+                        break
+
+        # Step 3: Interpolate page numbers for empty/unmatched paragraphs
+        sorted_known = sorted(page_map.keys())
+        for docx_idx in range(len(doc.paragraphs)):
+            if docx_idx not in page_map and sorted_known:
+                # Find nearest previous matched paragraph
+                prev_page = None
+                for k in reversed(sorted_known):
+                    if k < docx_idx:
+                        prev_page = page_map[k]
+                        break
+                if prev_page is not None:
+                    page_map[docx_idx] = prev_page
+                else:
+                    page_map[docx_idx] = page_map[sorted_known[0]]
+
+        logging.info(f"    Matched {com_ptr}/{len(com_text_list)} non-empty COM paragraphs, {len(page_map)}/{len(doc.paragraphs)} total (with interpolation)")
+        return page_map
+
+    except subprocess.TimeoutExpired:
+        logging.warning(f"  COM iter timed out for {Path(doc_path).name} after {timeout}s")
+        try:
+            subprocess.run(["powershell", "-Command",
+                "Stop-Process -Name WINWORD -Force -ErrorAction SilentlyContinue"],
+                capture_output=True, timeout=10)
+        except:
+            pass
+        return {}
+    except Exception as e:
+        logging.warning(f"  COM iter failed for {Path(doc_path).name}: {e}")
+        return {}
+    finally:
+        for fp in [out.name, vbs_file.name]:
+            try:
+                os.unlink(fp)
+            except:
+                pass
+
+
 def build_page_map_from_xml(doc_path: Path) -> Dict[int, int]:
     """
     Build a paragraph-to-page map from XML page breaks and section restarts.
@@ -558,10 +768,10 @@ def build_footer_page_map(doc_path: Path) -> Tuple[Dict[int, int], int, int]:
 
 def get_all_page_numbers(doc_para_map: Dict[str, List[int]]) -> Dict[str, Dict[int, int]]:
     """
-    Get page numbers for all documents using footer section page numbering.
+    Get page numbers for all documents using Word COM automation.
 
-    Reads pgNumType from section properties and uses lastRenderedPageBreak
-    for page boundary detection. No COM automation required.
+    Uses VBScript with rng.Information(1) to get accurate footer page numbers
+    via text-based Find matching. Falls back to XML if COM fails.
 
     Args:
         doc_para_map: Dict mapping absolute doc path -> list of 0-based paragraph indices
@@ -574,7 +784,7 @@ def get_all_page_numbers(doc_para_map: Dict[str, List[int]]) -> Dict[str, Dict[i
 
     total_paras = sum(len(v) for v in doc_para_map.values())
     total_docs = len(doc_para_map)
-    logging.info(f"Getting page numbers for {total_docs} documents, {total_paras} paragraphs...")
+    logging.info(f"Getting page numbers via COM for {total_docs} documents, {total_paras} paragraphs...")
 
     all_page_numbers = {}
 
@@ -583,14 +793,28 @@ def get_all_page_numbers(doc_para_map: Dict[str, List[int]]) -> Dict[str, Dict[i
         logging.info(f"  {doc_name} ({len(indices)} paras)")
 
         try:
-            page_map, content_start, last_page = build_footer_page_map(Path(doc_path))
-            result = {idx: page_map[idx] for idx in indices if idx in page_map}
-            all_page_numbers[doc_path] = result
-            logging.info(f"    Footer: {len(result)}/{len(indices)} page numbers (content starts at para {content_start}, last page {last_page})")
+            # Load document to get paragraph texts for COM search
+            doc = Document(doc_path)
+            para_texts = {}
+            for idx in indices:
+                if idx < len(doc.paragraphs):
+                    text = replace_unicode_chars(doc.paragraphs[idx].text)
+                    snippet = text[:120].strip()
+                    if snippet:
+                        para_texts[idx] = snippet
+
+            if para_texts:
+                result = get_page_numbers_for_doc_com(
+                    str(Path(doc_path).absolute()), para_texts, timeout=300
+                )
+                all_page_numbers[doc_path] = result
+                logging.info(f"    COM: {len(result)}/{len(indices)} page numbers")
+            else:
+                logging.warning(f"    No searchable paragraph texts found")
         except Exception as e:
             logging.warning(f"    Failed to get page numbers: {e}")
 
-    logging.info(f"Page numbers: {len(all_page_numbers)} docs via footer section XML")
+    logging.info(f"Page numbers: {len(all_page_numbers)} docs via COM")
     return all_page_numbers
 
 

@@ -20,8 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 function getDb(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $host = getenv('PG_HOST') ?: 'postgres';
-        $port = getenv('PG_PORT') ?: '5432';
+        $host = getenv('PG_HOST') ?: 'localhost';
+        $port = getenv('PG_PORT') ?: '5433';
         $name = getenv('PG_DB')   ?: 'yada';
         $user = getenv('PG_USER') ?: 'postgres';
         $pass = getenv('PG_PASS') ?: 'yada_password';

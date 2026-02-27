@@ -8,7 +8,7 @@
     <style>
         @font-face {
             font-family: "Yada Towrah";
-            src: url('fonts/YadaTowrah-Times.woff2') format('woff2');
+            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -557,11 +557,11 @@ function getColumnFilters() {
 }
 
 function matchesFilters(w, f) {
-    if (scriptureWordIds !== null && !scriptureWordIds.has(w.word_id)) return false;
+    if (scriptureWordIds !== null && !scriptureWordIds.has(w.word_key)) return false;
     if (f.active !== '' && ((f.active === '1') !== !!w.word_active_flag)) return false;
     if (f.strongs && !(w.word_strongs || '').toLowerCase().startsWith(f.strongs)) return false;
     if (f.hebrew && !(w.word_hebrew || '').toLowerCase().includes(f.hebrew)) return false;
-    if (f.yt && !(w.word_yt || '').toLowerCase().includes(f.yt)) return false;
+    if (f.yt && !(w.word_translit || '').toLowerCase().includes(f.yt)) return false;
     if (f.spellings && !(w.spellings_display || '').toLowerCase().includes(f.spellings)) return false;
     if (f.def) {
         var defAll = ((w.word_definition_yy || '') + ' ' + (w.word_definition_kirk || '') + ' ' + (w.word_definition_external || '')).toLowerCase();
@@ -609,11 +609,11 @@ function renderTable(words) {
         if (w.word_definition_external) defParts.push(w.word_definition_external);
         var defFull = defParts.join(' ');
         var defPreview = defFull.length > 80 ? defFull.substring(0, 80) + '...' : defFull;
-        html += '<tr onclick="editWord(' + w.word_id + ')">';
+        html += '<tr onclick="editWord(' + w.word_key + ')">';
         html += '<td class="col-active"><span class="active-dot ' + (w.word_active_flag ? 'on' : 'off') + '"></span></td>';
         html += '<td class="col-strongs">' + esc(w.word_strongs) + '</td>';
         html += '<td class="col-hebrew">' + esc(w.word_hebrew) + '</td>';
-        html += '<td class="col-yt">' + esc(w.word_yt || '') + '</td>';
+        html += '<td class="col-yt">' + esc(w.word_translit || '') + '</td>';
         html += '<td class="col-spellings" title="' + esc(w.spellings_display || '') + '">' + esc(w.spellings_display || '') + '</td>';
         html += '<td class="col-def" title="' + esc(defFull) + '">' + esc(defPreview) + '</td>';
         html += '<td class="col-count">' + (w.word_count_yy != null ? w.word_count_yy : '') + '</td>';
@@ -671,15 +671,15 @@ function newWord() {
 }
 
 function editWord(wordId) {
-    fetch(API + '/words.php?word_id=' + wordId, {credentials:'include'}).then(r=>r.json()).then(function(w) {
+    fetch(API + '/words.php?word_key=' + wordId, {credentials:'include'}).then(r=>r.json()).then(function(w) {
         if (w.error) { alert(w.error); return; }
-        editingWordId = w.word_id;
+        editingWordId = w.word_key;
         document.getElementById('edit-title').textContent = 'Edit Word: ' + (w.word_strongs || '') + ' ' + (w.word_hebrew || '');
         document.getElementById('btn-delete').style.display = '';
 
         document.getElementById('f-strongs').value = w.word_strongs ? w.word_strongs.trim() : '';
         document.getElementById('f-hebrew').value = w.word_hebrew || '';
-        document.getElementById('f-yt').value = w.word_yt || '';
+        document.getElementById('f-yt').value = w.word_translit || '';
         document.getElementById('f-active').checked = !!w.word_active_flag;
 
         document.getElementById('f-gender').value = w.word_gender || '';
@@ -701,7 +701,7 @@ function editWord(wordId) {
         list.innerHTML = '';
         if (w.spellings && w.spellings.length > 0) {
             for (var i = 0; i < w.spellings.length; i++) {
-                addSpelling(w.spellings[i].word_spelling_text, w.spellings[i].word_spelling_count_yy);
+                addSpelling(w.spellings[i].word_translit_text, w.spellings[i].word_translit_count_yy);
             }
             updateSpellingTotal();
         } else {
@@ -802,7 +802,7 @@ function saveWord() {
     var method, url;
     if (editingWordId) {
         method = 'PUT';
-        url = API + '/words.php?word_id=' + editingWordId;
+        url = API + '/words.php?word_key=' + editingWordId;
     } else {
         method = 'POST';
         url = API + '/words.php';
@@ -830,7 +830,7 @@ function saveWord() {
 function deleteWord() {
     if (!editingWordId) return;
     if (!confirm('Delete this word and all its spellings?')) return;
-    fetch(API + '/words.php?word_id=' + editingWordId, {
+    fetch(API + '/words.php?word_key=' + editingWordId, {
         method: 'DELETE', credentials: 'include'
     }).then(r=>r.json()).then(function(resp) {
         if (resp.error) { alert(resp.error); return; }

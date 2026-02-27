@@ -1,5 +1,5 @@
 """
-Import Hebrew glossary from Excel into yy_word and yy_word_spelling.
+Import Hebrew glossary from Excel into yy_word and yy_word_translit.
 Reads from the AllExport sheet in the .xlsx workbook.
 Matches entries against existing yy_word rows by transliteration.
 Updates matched rows with Strong's, Hebrew, definition, and flags.
@@ -64,7 +64,7 @@ def load_xlsx_entries():
             header = [c.strip() if c else None for c in row]
             continue
         row_dict = {header[i]: row[i] for i in range(len(header)) if header[i]}
-        if not row_dict.get('word_id'):
+        if not row_dict.get('word_key'):
             continue
         entries.append(row_dict)
 
@@ -86,12 +86,12 @@ def main():
 
     # --- Clean up previous import ---
     print("Cleaning up previous kirk import...")
-    cur.execute("DELETE FROM yy_word_spelling WHERE word_id IN (SELECT word_id FROM yy_word WHERE word_source_code = 'kirk')")
+    cur.execute("DELETE FROM yy_word_translit WHERE word_key IN (SELECT word_key FROM yy_word WHERE word_source_code = 'kirk')")
     kirk_sp_del = cur.rowcount
     cur.execute("DELETE FROM yy_word WHERE word_source_code = 'kirk'")
     kirk_del = cur.rowcount
     # Remove kirk-added spellings from matched yy rows (count_yy=0 and not the primary spelling)
-    cur.execute("DELETE FROM yy_word_spelling WHERE word_spelling_count_yy = 0 AND word_spelling_sort > 0")
+    cur.execute("DELETE FROM yy_word_translit WHERE word_translit_count_yy = 0 AND word_translit_sort > 0")
     extra_sp_del = cur.rowcount
     # Clear corrupted Hebrew ('??' values) from previous CSV import
     cur.execute("UPDATE yy_word SET word_hebrew = '' WHERE word_hebrew ~ '^\\?+$'")
@@ -102,12 +102,12 @@ def main():
     print()
 
     # --- Load existing yy_word (now clean) ---
-    cur.execute("SELECT word_id, word_yt FROM yy_word")
+    cur.execute("SELECT word_key, word_translit FROM yy_word")
     db_rows = cur.fetchall()
 
     # Build indexes for matching
-    exact_index = {}   # stripped_yt -> (word_id, original_yt)
-    skel_index = {}    # consonant_skeleton -> [(word_id, stripped_yt, original_yt)]
+    exact_index = {}   # stripped_translit -> (word_key, original_translit)
+    skel_index = {}    # consonant_skeleton -> [(word_key, stripped_translit, original_translit)]
 
     for wid, wyt in db_rows:
         if not wyt:
@@ -183,11 +183,11 @@ def main():
 
     print("First 30 matches:")
     for wid, row, mt in matched[:30]:
-        cur.execute("SELECT word_yt FROM yy_word WHERE word_id = %s", (wid,))
+        cur.execute("SELECT word_translit FROM yy_word WHERE word_key = %s", (wid,))
         db_yt = cur.fetchone()[0]
         hebrew = row.get('word_hebrew') or ''
         strongs = row.get('word_strongs')
-        print(f"  DB#{wid:>5d} '{db_yt}' <- xlsx#{row['word_id']} "
+        print(f"  DB#{wid:>5d} '{db_yt}' <- xlsx#{row['word_key']} "
               f"yt='{row.get('word_yt','')}' hebrew={hebrew} "
               f"H{strongs} [{mt}]")
     print()
@@ -196,7 +196,7 @@ def main():
     for row in unmatched[:30]:
         hebrew = row.get('word_hebrew') or ''
         strongs = row.get('word_strongs')
-        print(f"  xlsx#{row['word_id']} yt='{row.get('word_yt','')}' "
+        print(f"  xlsx#{row['word_key']} yt='{row.get('word_yt','')}' "
               f"hebrew={hebrew} H{strongs}")
     print()
 
@@ -223,7 +223,7 @@ def main():
                 word_flag_conjunction = COALESCE(%s, word_flag_conjunction),
                 word_flag_subst = COALESCE(%s, word_flag_subst),
                 word_definition_kirk = COALESCE(%s, word_definition_kirk)
-            WHERE word_id = %s
+            WHERE word_key = %s
         """, (
             strongs,
             row.get('word_hebrew'),
@@ -253,12 +253,12 @@ def main():
 
         cur.execute("""
             INSERT INTO yy_word (
-                word_strongs, word_hebrew, word_yt, word_gender,
+                word_strongs, word_hebrew, word_translit, word_gender,
                 word_flag_plural, word_flag_noun, word_flag_verb, word_flag_adjective,
                 word_flag_adverb, word_flag_preposition, word_flag_conjunction, word_flag_subst,
                 word_definition_kirk, word_count_yy, word_active_flag, word_source_code
             ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,true,'kirk')
-            RETURNING word_id
+            RETURNING word_key
         """, (
             strongs,
             row.get('word_hebrew'),
@@ -277,8 +277,8 @@ def main():
         new_ids.append((cur.fetchone()[0], row))
     conn.commit()
 
-    # --- Add yy_word_spelling entries ---
-    print("Adding yy_word_spelling entries...")
+    # --- Add yy_word_translit entries ---
+    print("Adding yy_word_translit entries...")
     sp_count = 0
 
     # For matched: add word_yt as additional spelling if not already present
@@ -287,14 +287,14 @@ def main():
         if not yt:
             continue
         cur.execute(
-            "SELECT 1 FROM yy_word_spelling WHERE word_id = %s AND word_spelling_text = %s",
+            "SELECT 1 FROM yy_word_translit WHERE word_key = %s AND word_translit_text = %s",
             (wid, yt)
         )
         if not cur.fetchone():
             cur.execute("""
-                INSERT INTO yy_word_spelling (word_id, word_spelling_text, word_spelling_sort, word_spelling_count_yy)
+                INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort, word_translit_count_yy)
                 VALUES (%s, %s,
-                    (SELECT COALESCE(MAX(word_spelling_sort), -1) + 1 FROM yy_word_spelling WHERE word_id = %s),
+                    (SELECT COALESCE(MAX(word_translit_sort), -1) + 1 FROM yy_word_translit WHERE word_key = %s),
                     0)
             """, (wid, yt, wid))
             sp_count += 1
@@ -304,41 +304,41 @@ def main():
         yt = str(row.get('word_yt') or '').strip().lower()
         if yt:
             cur.execute("""
-                INSERT INTO yy_word_spelling (word_id, word_spelling_text, word_spelling_sort, word_spelling_count_yy)
+                INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort, word_translit_count_yy)
                 VALUES (%s, %s, 0, 0)
             """, (new_id, yt))
             sp_count += 1
 
     conn.commit()
-    print(f"Added {sp_count} yy_word_spelling entries")
+    print(f"Added {sp_count} yy_word_translit entries")
 
     # --- Reset sequence ---
-    cur.execute("SELECT setval('yy_word_word_id_seq', (SELECT MAX(word_id) FROM yy_word))")
+    cur.execute("SELECT setval('yy_word_word_key_seq', (SELECT MAX(word_key) FROM yy_word))")
     conn.commit()
 
     # --- Final summary ---
     print()
     print("=== FINAL COUNTS ===")
-    for table in ['yy_word', 'yy_word_spelling', 'yy_word_translation']:
+    for table in ['yy_word', 'yy_word_translit', 'yy_word_translation']:
         cur.execute(f"SELECT COUNT(*) FROM {table}")
         print(f"  {table}: {cur.fetchone()[0]}")
 
     print()
     print("Sample updated rows (with Hebrew):")
-    cur.execute("""SELECT word_id, word_yt, word_strongs, word_hebrew, word_gender,
+    cur.execute("""SELECT word_key, word_translit, word_strongs, word_hebrew, word_gender,
                           LEFT(word_definition_kirk, 60)
         FROM yy_word WHERE word_hebrew IS NOT NULL AND word_source_code = 'yy'
-        ORDER BY word_id LIMIT 15""")
+        ORDER BY word_key LIMIT 15""")
     for wid, yt, strongs, hebrew, gender, defn in cur.fetchall():
         s = strongs.strip() if strongs else ''
         print(f"  {wid:>5d} {yt:<20s} H{s:<5s} {hebrew or '':<6s} {gender or '-'} {defn or ''}")
 
     print()
     print("Sample new rows (kirk source):")
-    cur.execute("""SELECT word_id, word_yt, word_strongs, word_hebrew, word_gender,
+    cur.execute("""SELECT word_key, word_translit, word_strongs, word_hebrew, word_gender,
                           LEFT(word_definition_kirk, 60)
         FROM yy_word WHERE word_source_code = 'kirk'
-        ORDER BY word_id LIMIT 15""")
+        ORDER BY word_key LIMIT 15""")
     for wid, yt, strongs, hebrew, gender, defn in cur.fetchall():
         s = strongs.strip() if strongs else ''
         print(f"  {wid:>5d} {yt:<20s} H{s:<5s} {hebrew or '':<6s} {gender or '-'} {defn or ''}")

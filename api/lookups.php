@@ -79,10 +79,10 @@ $TABLES = [
         'display' => 'label',
     ],
     'yy_cite_book' => [
-        'pk' => 'cite_book_id',
-        'order' => 'cite_book_sort ASC, cite_book_id ASC',
+        'pk' => 'cite_book_key',
+        'order' => 'cite_book_sort ASC, cite_book_key ASC',
         'columns' => [
-            ['name' => 'cite_book_id',            'label' => 'ID',             'type' => 'pk'],
+            ['name' => 'cite_book_key',            'label' => 'ID',             'type' => 'pk'],
             ['name' => 'yah_scroll_key',          'label' => 'Scroll',         'type' => 'fk', 'fk_table' => 'yah_scroll'],
             ['name' => 'cite_book_hebrew',        'label' => 'Hebrew Name',    'type' => 'text'],
             ['name' => 'cite_book_common',        'label' => 'Common Name',    'type' => 'text'],
@@ -93,11 +93,11 @@ $TABLES = [
         'display' => "cite_book_hebrew || ' / ' || cite_book_common",
     ],
     'yy_cite_book_map' => [
-        'pk' => 'cite_book_map_id',
-        'order' => 'cite_book_id ASC, cite_book_map_id ASC',
+        'pk' => 'cite_book_map_key',
+        'order' => 'cite_book_key ASC, cite_book_map_key ASC',
         'columns' => [
-            ['name' => 'cite_book_map_id',      'label' => 'ID',           'type' => 'pk'],
-            ['name' => 'cite_book_id',           'label' => 'Cite Book',   'type' => 'fk', 'fk_table' => 'yy_cite_book'],
+            ['name' => 'cite_book_map_key',      'label' => 'ID',           'type' => 'pk'],
+            ['name' => 'cite_book_key',           'label' => 'Cite Book',   'type' => 'fk', 'fk_table' => 'yy_cite_book'],
             ['name' => 'cite_book_map_hebrew',   'label' => 'Hebrew Map',  'type' => 'text'],
         ],
     ],
@@ -146,6 +146,7 @@ $TABLES = [
             ['name' => 'yy_volume_page_count',      'label' => 'Page Count',      'type' => 'int'],
             ['name' => 'yy_volume_paragraph_count', 'label' => 'Paragraph Count', 'type' => 'int'],
             ['name' => 'yy_volume_sort',            'label' => 'Sort',            'type' => 'int'],
+            ['name' => 'volume_active_flag',        'label' => 'Active',          'type' => 'bool'],
         ],
         'display' => 'yy_volume_label',
     ],
