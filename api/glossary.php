@@ -6,7 +6,7 @@ $action = $_GET['action'] ?? '';
 
 switch ($action) {
     case 'letters':
-        $stmt = $pdo->query("SELECT letter_key, letter_yt, letter_hebrew, letter_label, letter_overview, letter_numeric_value, letter_sort FROM yy_letter ORDER BY letter_sort ASC, letter_key ASC");
+        $stmt = $pdo->query("SELECT letter_key, letter_yt, letter_hebrew, letter_label, letter_overview, letter_numeric_value, letter_sort FROM yy_letter WHERE letter_active = true ORDER BY letter_sort ASC, letter_key ASC");
         jsonResponse($stmt->fetchAll());
 
     case 'words':
