@@ -1,0 +1,111 @@
+/* YY Books Global Stylesheet */
+/* Generated: 2026-02-26 22:36:23 */
+/* Unique formatting classes: 93 */
+
+/* -- Fonts -- */
+.yy-font-hebrew { font-family: "hebrew"; }
+.yy-font-isaiah-scroll { font-family: "Isaiah Scroll"; }
+.yy-font-jupiter-yada { font-family: "Jupiter-Yada"; }
+.yy-font-moabite-stone { font-family: "Moabite Stone"; }
+.yy-font-segoe-ui-historic { font-family: "Segoe UI Historic"; }
+.yy-font-semitic-early { font-family: "Semitic Early"; }
+.yy-font-times-new-roman { font-family: "Times New Roman"; }
+.yy-font-wingdings { font-family: "Wingdings"; }
+.yy-font-yada-towrah { font-family: "Yada Towrah"; }
+
+/* -- Sizes -- */
+.yy-size-2 { font-size: 2.0pt; }
+.yy-size-3 { font-size: 3.0pt; }
+.yy-size-7 { font-size: 7.0pt; }
+.yy-size-8 { font-size: 8.0pt; }
+.yy-size-9 { font-size: 9.0pt; }
+.yy-size-10 { font-size: 10.0pt; }
+.yy-size-10-5 { font-size: 10.5pt; }
+.yy-size-11 { font-size: 11.0pt; }
+.yy-size-11-5 { font-size: 11.5pt; }
+.yy-size-12 { font-size: 12.0pt; }
+.yy-size-12-5 { font-size: 12.5pt; }
+.yy-size-13 { font-size: 13.0pt; }
+.yy-size-14 { font-size: 14.0pt; }
+.yy-size-16 { font-size: 16.0pt; }
+.yy-size-18 { font-size: 18.0pt; }
+.yy-size-21 { font-size: 21.0pt; }
+
+/* -- Colors -- */
+.yy-color-000000 { color: #000000; }
+.yy-color-002060 { color: #002060; }
+.yy-color-0070c0 { color: #0070c0; }
+.yy-color-00b050 { color: #00b050; }
+.yy-color-275317 { color: #275317; }
+.yy-color-35657a { color: #35657a; }
+.yy-color-404040 { color: #404040; }
+.yy-color-6b8e23 { color: #6b8e23; }
+.yy-color-7030a0 { color: #7030a0; }
+.yy-color-807566 { color: #807566; }
+.yy-color-833c0b { color: #833c0b; }
+.yy-color-984806 { color: #984806; }
+.yy-color-c00000 { color: #c00000; }
+.yy-color-ee0000 { color: #ee0000; }
+.yy-color-ff0000 { color: #ff0000; }
+
+/* -- Alignment -- */
+.yy-align-center { text-align: center; }
+.yy-align-justify { text-align: justify; }
+.yy-align-left { text-align: left; }
+
+/* -- Indents -- */
+.yy-indent-first--14-2 { text-indent: -14.2pt; }
+.yy-indent-first--6-3 { text-indent: -6.3pt; }
+.yy-indent-first--4-5 { text-indent: -4.5pt; }
+.yy-indent-first-18 { text-indent: 18.0pt; }
+.yy-indent-first-21-6 { text-indent: 21.6pt; }
+.yy-indent-left-13-5 { margin-left: 13.5pt; }
+.yy-indent-left-18 { margin-left: 18.0pt; }
+.yy-indent-left-21-6 { margin-left: 21.6pt; }
+.yy-indent-left-27 { margin-left: 27.0pt; }
+.yy-indent-left-35-9 { margin-left: 35.9pt; }
+.yy-indent-left-36 { margin-left: 36.0pt; }
+.yy-indent-left-54 { margin-left: 54.0pt; }
+.yy-indent-right-21-8 { margin-right: 21.8pt; }
+.yy-indent-right-53-3 { margin-right: 53.3pt; }
+
+/* -- Spacing -- */
+.yy-space-before-0-1 { margin-top: 0.1pt; }
+.yy-space-before-0-3 { margin-top: 0.3pt; }
+.yy-space-before-0-7 { margin-top: 0.7pt; }
+.yy-space-before-2-2 { margin-top: 2.2pt; }
+.yy-space-before-2-4 { margin-top: 2.4pt; }
+.yy-space-before-2-5 { margin-top: 2.5pt; }
+.yy-space-before-5 { margin-top: 5.0pt; }
+.yy-space-before-6 { margin-top: 6.0pt; }
+.yy-space-before-7-1 { margin-top: 7.1pt; }
+.yy-space-before-12 { margin-top: 12.0pt; }
+.yy-space-before-18 { margin-top: 18.0pt; }
+.yy-space-before-23 { margin-top: 23.0pt; }
+.yy-space-after-4-5 { margin-bottom: 4.5pt; }
+.yy-space-after-5-4 { margin-bottom: 5.4pt; }
+.yy-space-after-5-5 { margin-bottom: 5.5pt; }
+.yy-space-after-5-8 { margin-bottom: 5.8pt; }
+.yy-space-after-5-9 { margin-bottom: 5.9pt; }
+.yy-space-after-6 { margin-bottom: 6.0pt; }
+.yy-space-after-6-1 { margin-bottom: 6.1pt; }
+.yy-space-after-6-2 { margin-bottom: 6.2pt; }
+.yy-space-after-6-3 { margin-bottom: 6.3pt; }
+.yy-space-after-6-4 { margin-bottom: 6.4pt; }
+.yy-space-after-6-5 { margin-bottom: 6.5pt; }
+.yy-space-after-8 { margin-bottom: 8.0pt; }
+.yy-space-after-10 { margin-bottom: 10.0pt; }
+.yy-space-after-12 { margin-bottom: 12.0pt; }
+.yy-space-after-18 { margin-bottom: 18.0pt; }
+.yy-space-after-23 { margin-bottom: 23.0pt; }
+.yy-space-after-24 { margin-bottom: 24.0pt; }
+
+/* -- Line Spacing -- */
+.yy-line-0 { line-height: 0.0; }
+.yy-line-0-25 { line-height: 0.25; }
+.yy-line-1-07 { line-height: 1.07; }
+.yy-line-1-08 { line-height: 1.08; }
+.yy-line-1-15 { line-height: 1.15; }
+.yy-line-1-16 { line-height: 1.16; }
+.yy-line-5 { line-height: 5.0pt; }
+

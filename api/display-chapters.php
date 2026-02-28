@@ -11,6 +11,6 @@ if ($scrollKey === null) {
 }
 
 $pdo = getDb();
-$stmt = $pdo->prepare('SELECT yah_chapter_key, yah_scroll_key, yah_chapter_number FROM yah_chapter WHERE yah_scroll_key = ? ORDER BY yah_chapter_sort');
+$stmt = $pdo->prepare('SELECT yah_chapter_key, yah_scroll_key, yah_chapter_number FROM yah_chapter WHERE yah_scroll_key = ? AND yah_chapter_count > 0 ORDER BY yah_chapter_sort, yah_chapter_number');
 $stmt->execute([$scrollKey]);
 jsonResponse($stmt->fetchAll());

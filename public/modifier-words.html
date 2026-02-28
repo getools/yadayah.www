@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modifier Words - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        @font-face {
+            font-family: "Yada Towrah";
+            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        /* Table */
+        .results { margin: 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th {
+            background: #31345A; color: #fff; padding: 8px 12px; text-align: left;
+            position: sticky; top: 0; cursor: pointer; user-select: none;
+            white-space: nowrap;
+        }
+        th:hover { background: #4a4e7a; }
+        th .sort-arrow { margin-left: 4px; font-size: 0.7rem; }
+        .filter-row th { background: #f0f2f5; padding: 4px 8px; cursor: default; }
+        .filter-row th:hover { background: #f0f2f5; }
+        .filter-row select, .filter-row input[type="text"] { font-size: 0.85rem; padding: 4px 6px; }
+        .filter-row select { width: 100%; }
+        .page-filter { display: flex; gap: 0; }
+        .page-filter input { flex: 1; min-width: 0; border-radius: 4px 0 0 4px; border-right: none; }
+        .page-dir-btn {
+            padding: 4px 8px; font-size: 0.85rem; font-weight: bold;
+            border: 1px solid #ccc; border-radius: 0 4px 4px 0;
+            background: #fff; cursor: pointer; white-space: nowrap;
+            min-width: 28px; text-align: center;
+        }
+        .page-dir-btn:hover { background: #e8e8e8; }
+        .filter-row label { font-weight: normal; font-size: 0.85rem; cursor: pointer; margin-right: 6px; }
+        td { padding: 6px 12px; border-bottom: 1px solid #eee; }
+        tr:hover td { background: #f5f5ff; }
+        td a { color: #1a5276; text-decoration: none; }
+        td a:hover { text-decoration: underline; }
+        .font-yt { font-family: "Yada Towrah", serif; }
+
+        /* Three-state checkbox */
+        .tri-check {
+            display: inline-block;
+            width: 18px; height: 18px;
+            border: 2px solid #999;
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+            line-height: 14px;
+            font-size: 14px;
+            font-weight: bold;
+            vertical-align: middle;
+            background: #fff;
+        }
+        .tri-check.checked { background: #2ecc71; border-color: #27ae60; color: #fff; }
+        .tri-check.unchecked { background: #e74c3c; border-color: #c0392b; color: #fff; }
+        .tri-check.null { background: #fff; border-color: #999; color: transparent; }
+        td.col-valid { text-align: center; }
+
+        /* Status bar */
+        .status { text-align: center; color: #666; margin: 10px 0; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-misc.html" class="nav-tab active">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Modifier Words</h1>
+
+    <div id="status" class="status">Loading...</div>
+
+    <div class="results">
+        <table>
+            <thead>
+                <tr>
+                    <th data-col="translit">Word<span class="sort-arrow"></span></th>
+                    <th data-col="filename">Volume<span class="sort-arrow"></span></th>
+                    <th data-col="page" style="width:120px">Page<span class="sort-arrow"></span></th>
+                    <th data-col="status" style="text-align:center">Valid<span class="sort-arrow"></span></th>
+                </tr>
+                <tr class="filter-row">
+                    <th><input type="text" id="filter-word" placeholder="Search..."></th>
+                    <th><select id="filter-volume"><option value="">All</option></select></th>
+                    <th><div class="page-filter"><input type="text" id="filter-page" placeholder="#"><button type="button" id="page-dir-btn" class="page-dir-btn" title="Toggle greater/less than">&gt;</button></div></th>
+                    <th style="text-align:center;white-space:nowrap">
+                        <label><input type="checkbox" id="filter-valid-t" checked> T</label>
+                        <label><input type="checkbox" id="filter-valid-f" checked> F</label>
+                        <label><input type="checkbox" id="filter-valid-null" checked> ?</label>
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var allRows = [];
+var volumes = {};
+var sortCol = null;
+var sortDir = 1; // 1=asc, -1=desc
+var rowById = {};
+var pageDir = 'gt'; // 'gt' or 'lt'
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            load();
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            load();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function load() {
+    fetch(API + '/modifier-words.php')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            allRows = data;
+            rowById = {};
+            data.forEach(function(r) { rowById[r.id] = r; });
+            buildVolumeFilter(data);
+            render(data);
+        })
+        .catch(function(err) {
+            document.getElementById('status').textContent = 'Error loading data: ' + err.message;
+        });
+}
+
+function buildVolumeFilter(data) {
+    var sel = document.getElementById('filter-volume');
+    var seen = {};
+    data.forEach(function(r) {
+        var key = r.series + '-' + r.volume;
+        if (!seen[key]) {
+            seen[key] = true;
+            volumes[key] = {
+                series: r.series,
+                volume: r.volume,
+                seriesName: r.yy_series_name || '',
+                volumeName: r.yy_volume_name || '',
+                filename: r.filename
+            };
+        }
+    });
+    var keys = Object.keys(volumes).sort(function(a, b) {
+        var va = volumes[a], vb = volumes[b];
+        if (va.series !== vb.series) return va.series - vb.series;
+        return va.volume - vb.volume;
+    });
+    keys.forEach(function(key) {
+        var v = volumes[key];
+        var opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = 's' + String(v.series).padStart(2, '0') + 'v' + String(v.volume).padStart(2, '0') + ' - ' + v.seriesName + ' - ' + v.volumeName;
+        sel.appendChild(opt);
+    });
+}
+
+function getFiltered() {
+    var volKey = document.getElementById('filter-volume').value;
+    var wordFilter = document.getElementById('filter-word').value.toLowerCase().trim();
+    var pageVal = document.getElementById('filter-page').value.trim();
+    var pageNum = pageVal !== '' ? parseInt(pageVal, 10) : NaN;
+    var showT = document.getElementById('filter-valid-t').checked;
+    var showF = document.getElementById('filter-valid-f').checked;
+    var showNull = document.getElementById('filter-valid-null').checked;
+    return allRows.filter(function(r) {
+        if (volKey) {
+            var rKey = r.series + '-' + r.volume;
+            if (rKey !== volKey) return false;
+        }
+        if (wordFilter && r.translit.toLowerCase().indexOf(wordFilter) === -1) return false;
+        if (!isNaN(pageNum)) {
+            if (r.page == null) return false;
+            if (pageDir === 'gt' && r.page <= pageNum) return false;
+            if (pageDir === 'lt' && r.page >= pageNum) return false;
+        }
+        if (r.status === 'T' && !showT) return false;
+        if (r.status === 'F' && !showF) return false;
+        if ((r.status === null || r.status === undefined) && !showNull) return false;
+        return true;
+    });
+}
+
+function sortData(data) {
+    if (!sortCol) return data;
+    var col = sortCol;
+    var dir = sortDir;
+    return data.slice().sort(function(a, b) {
+        var va = a[col], vb = b[col];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+        va = String(va).toLowerCase();
+        vb = String(vb).toLowerCase();
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+    });
+}
+
+function render(data) {
+    var tbody = document.getElementById('table-body');
+    var statusEl = document.getElementById('status');
+
+    if (!data) data = getFiltered();
+    data = sortData(data);
+
+    var MAX_ROWS = 5000;
+    var truncated = data.length > MAX_ROWS;
+    var displayData = truncated ? data.slice(0, MAX_ROWS) : data;
+
+    var html = '';
+    displayData.forEach(function(r) {
+        var flipUrl = '';
+        if (r.yy_volume_flip_code && r.page != null) {
+            flipUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(r.yy_volume_flip_code) + '/#p=' + (r.page + 6);
+        }
+
+        var wordCell = formatTranslit(r.translit);
+        var fileCell = escapeHtml(r.filename);
+        var pageCell = r.page != null ? '' + r.page : '';
+        if (flipUrl) {
+            wordCell = '<a href="' + flipUrl + '" target="_blank">' + wordCell + '</a>';
+            fileCell = '<a href="' + flipUrl + '" target="_blank">' + fileCell + '</a>';
+            pageCell = '<a href="' + flipUrl + '" target="_blank">' + pageCell + '</a>';
+        }
+
+        var validClass, validText;
+        if (r.status === 'T') {
+            validClass = 'checked';
+            validText = '\u2713';
+        } else if (r.status === 'F') {
+            validClass = 'unchecked';
+            validText = '\u2717';
+        } else {
+            validClass = 'null';
+            validText = '\u00A0';
+        }
+
+        html += '<tr>';
+        html += '<td>' + wordCell + '</td>';
+        html += '<td>' + fileCell + '</td>';
+        html += '<td>' + pageCell + '</td>';
+        html += '<td class="col-valid"><span class="tri-check ' + validClass + '" data-id="' + r.id + '">' + validText + '</span></td>';
+        html += '</tr>';
+    });
+    tbody.innerHTML = html;
+
+    var msg = data.length.toLocaleString() + ' records';
+    if (truncated) msg += ' (showing first ' + MAX_ROWS.toLocaleString() + ')';
+    statusEl.textContent = msg;
+
+    updateSortArrows();
+}
+
+function formatTranslit(str) {
+    if (!str) return '';
+    return escapeHtml(str).replace(/[\u02BE\u02BF]/g, function(ch) {
+        return '<span class="font-yt">' + ch + '</span>';
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function updateSortArrows() {
+    document.querySelectorAll('th[data-col]').forEach(function(th) {
+        var arrow = th.querySelector('.sort-arrow');
+        if (th.getAttribute('data-col') === sortCol) {
+            arrow.textContent = sortDir === 1 ? ' \u25B2' : ' \u25BC';
+        } else {
+            arrow.textContent = '';
+        }
+    });
+}
+
+document.querySelectorAll('th[data-col]').forEach(function(th) {
+    th.addEventListener('click', function() {
+        var col = th.getAttribute('data-col');
+        if (sortCol === col) {
+            sortDir *= -1;
+        } else {
+            sortCol = col;
+            sortDir = 1;
+        }
+        render();
+    });
+});
+
+document.getElementById('table-body').addEventListener('click', function(e) {
+    var el = e.target;
+    if (!el.classList.contains('tri-check')) return;
+
+    var id = parseInt(el.getAttribute('data-id'));
+    var row = rowById[id];
+    if (!row) return;
+
+    var newStatus;
+    if (row.status === null || row.status === undefined) {
+        newStatus = 'T';
+    } else if (row.status === 'T') {
+        newStatus = 'F';
+    } else {
+        newStatus = null;
+    }
+
+    row.status = newStatus;
+    if (newStatus === 'T') {
+        el.className = 'tri-check checked';
+        el.textContent = '\u2713';
+    } else if (newStatus === 'F') {
+        el.className = 'tri-check unchecked';
+        el.textContent = '\u2717';
+    } else {
+        el.className = 'tri-check null';
+        el.textContent = '\u00A0';
+    }
+
+    fetch(API + '/modifier-words.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: id, status: newStatus})
+    }).catch(function(err) {
+        console.error('Failed to save status:', err);
+    });
+});
+
+document.getElementById('filter-volume').addEventListener('change', function() { render(); });
+document.getElementById('filter-word').addEventListener('input', function() { render(); });
+document.getElementById('filter-valid-t').addEventListener('change', function() { render(); });
+document.getElementById('filter-valid-f').addEventListener('change', function() { render(); });
+document.getElementById('filter-valid-null').addEventListener('change', function() { render(); });
+document.getElementById('filter-page').addEventListener('input', function() { render(); });
+document.getElementById('page-dir-btn').addEventListener('click', function() {
+    pageDir = pageDir === 'gt' ? 'lt' : 'gt';
+    this.textContent = pageDir === 'gt' ? '>' : '<';
+    render();
+});
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

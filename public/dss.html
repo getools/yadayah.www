@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Yada Yah-Dead Sea Scrolls</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'Yada Towrah';
+            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .filters { margin-bottom: 20px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 1024px; margin-left: auto; margin-right: auto; }
+        .filter-group { margin-bottom: 0; }
+        .filter-group > label { font-weight: bold; display: block; margin-bottom: 5px; padding-left: 2px; }
+        select { padding: 5px; width: 250px; }
+        select:disabled { background: #e9ecef; cursor: not-allowed; color: #999; }
+        #dss-chapter, #dss-verse { width: 100px; }
+        button {
+            padding: 9px 22px; background-color: #31345A; color: white; border: none; cursor: pointer;
+            border-radius: 6px; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.3px;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        button:hover { background-color: #4a4e7a; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+        .results { margin-top: 20px; max-width: 1024px; margin-left: auto; margin-right: auto; }
+        .section-break { margin-top: 15px; padding: 10px 0; border-top: 3px solid #999; border-bottom: 2px solid #ccc; font-weight: bold; }
+        #chapter-verse-filters { display: flex; gap: 16px; }
+
+        /* DSS verse record */
+        .dss-record {
+            margin: 8px 0;
+            padding: 10px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        .dss-scroll-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #31345A;
+            margin-bottom: 6px;
+        }
+        .dss-columns {
+            display: flex;
+            gap: 16px;
+        }
+        .dss-col-english {
+            flex: 1;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: #444;
+        }
+        .dss-col-hebrew {
+            flex: 1;
+            font-size: 1em;
+            line-height: 1.8;
+            direction: rtl;
+            text-align: right;
+            color: #333;
+        }
+        .dss-col-english:empty { display: none; }
+        .dss-col-hebrew:empty + .dss-col-english { flex: none; width: 100%; }
+
+        /* DSS Hebrew color classes */
+        .dss-olive { color: #808000; }
+        .dss-green { color: #00b050; }
+        .dss-blue { color: #0070c0; }
+        .dss-red { color: #ff0000; }
+        .dss-paleo { font-style: italic; }
+
+        /* DSS English markup classes */
+        .dss-eng-partial { color: #2970B8; }
+        .dss-eng-spelling { color: #00b050; }
+        .dss-eng-red { color: #ff0000; }
+        .dss-eng-purple { color: #800080; }
+        .dss-eng-missing { color: red; text-decoration: line-through; }
+        .dss-eng-differs { color: #FF8C00; }
+        .dss-eng-filler { color: #999; font-style: italic; }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            margin: -20px -20px 0 -20px;
+            position: relative;
+            overflow: hidden;
+        }
+        header .header-video {
+            position: absolute;
+            top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover;
+            z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 35px; padding: 15px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.2em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 1024px) {
+            header nav a.hide-narrow { display: none; }
+        }
+        @media (max-width: 767px) {
+            header nav a.hide-narrower { display: none; }
+        }
+
+        /* Page tabs */
+        .page-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            margin: 0 -20px 20px -20px;
+            background: #f0f0f0;
+            border-bottom: 2px solid #ddd;
+        }
+        .page-tabs a {
+            padding: 12px 32px;
+            text-decoration: none;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .page-tabs a:hover { color: #31345A; }
+        .page-tabs a.active {
+            color: #31345A;
+            border-bottom-color: #31345A;
+        }
+
+        /* Legends row */
+        .dss-legends-row {
+            display: flex; gap: 16px; max-width: 1024px;
+            margin: 0 auto 8px; font-size: 0.8rem; color: #666;
+        }
+        .dss-legends-row .dss-legend {
+            flex: 1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+        }
+        .dss-legends-row .dss-legend:last-child { justify-content: flex-end; }
+        .dss-legend span { display: inline-flex; align-items: center; gap: 4px; }
+        .dss-legend .swatch { display: inline-block; width: 16px; height: 16px; border-radius: 2px; }
+        .dss-legend-item input[type="checkbox"] {
+            appearance: none; -webkit-appearance: none;
+            width: 16px; height: 16px; border-radius: 2px; border: none;
+            cursor: pointer; vertical-align: middle; position: relative;
+        }
+        .dss-legend-item input[type="checkbox"]:checked::after {
+            content: '\2713'; position: absolute; top: -1px; left: 2px;
+            font-size: 13px; color: #fff; font-weight: bold;
+        }
+        .dss-font-toggle { gap: 8px; }
+        .dss-font-toggle label { cursor: pointer; }
+        .dss-legend-item { position: relative; cursor: pointer; }
+        .dss-legend-item > .dss-eng-missing { text-decoration: none; }
+        .dss-legend-item .dss-popover {
+            display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: #f5e6c8; color: #000; padding: 8px 12px; border-radius: 6px;
+            font-size: 0.78rem; line-height: 1.5; width: 260px; z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25); text-align: left; margin-bottom: 6px;
+        }
+        .dss-legend-item:hover .dss-popover { display: block; }
+    </style>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+            </div>
+            <nav>
+                <a href="https://yadayah.com/books">Books</a>
+                <a href="https://yadayah.com/blog">Blog</a>
+                <a href="https://yadayah.com/timeline">Timeline</a>
+                <a href="https://yadayah.com/media" class="hide-narrower">Media</a>
+                <a href="https://yadayah.com/Craig_Winn" class="hide-narrow">Craig&nbsp;Winn</a>
+                <a href="https://yadayah.com/music" class="hide-narrow">Music</a>
+                <a href="https://t.yadayah.com" class="active">Translations</a>
+                <a href="https://yadayah.com/resources" class="hide-narrow">Resources</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="page-tabs">
+        <a href="/">Translations</a>
+        <a href="/glossary.html">Glossary</a>
+        <a href="/dss.html" class="active">Dead Sea Scrolls</a>
+    </div>
+
+    <div class="filters">
+        <div class="filter-group">
+            <label for="dss-book">Book</label>
+            <select id="dss-book">
+                <option value="">Select...</option>
+            </select>
+        </div>
+
+        <div id="chapter-verse-filters">
+            <div class="filter-group">
+                <label for="dss-chapter">Chapter</label>
+                <select id="dss-chapter" disabled>
+                    <option value="">All</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="dss-verse">Verse</label>
+                <select id="dss-verse" disabled>
+                    <option value="">All</option>
+                </select>
+            </div>
+        </div>
+
+        <button onclick="fetchResults()">Go</button>
+    </div>
+
+    <div id="result-count" style="font-size: 0.85rem; color: #555; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
+    <div class="dss-legends-row">
+        <div class="dss-legend">
+            <label class="dss-legend-item"><input type="checkbox" data-eng-class="" style="background:#444"> Match<span class="dss-popover">Words in the scrolls matching the traditional text for that passage.</span></label>
+            <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-filler" style="background:#999"> Filler<span class="dss-popover">Words added to assist with readability to fill missing scroll fragments - often pulled from an English Bible.</span></label>
+            <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-partial" style="background:#2970B8"> Partial<span class="dss-popover">Words present in the scroll but with <span class="dss-eng-partial">some letters unreadable or missing</span>. When a Hebrew word is translated into multiple English words, all the <span class="dss-eng-partial">English words are highlighted</span>.</span></label>
+            <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-spelling" style="background:#00b050"> Spelling<span class="dss-popover">Words present in the scroll with <span class="dss-eng-spelling">spelling differences</span>. They do not affect the meaning and it is common in Hebrew.</span></label>
+            <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-missing" style="background:red"> Missing<span class="dss-popover">Words in the traditional text <span class="dss-eng-missing">missing from the scroll</span>.</span></label>
+            <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-differs" style="background:#FF8C00"> Differs<span class="dss-popover">Words in the scroll <span class="dss-eng-differs">not in the traditional text</span>.</span></label>
+        </div>
+        <div class="dss-legend">
+            <span><span class="swatch" style="background:#808000"></span> Preserved</span>
+            <span><span class="swatch" style="background:#00b050"></span> Reconstructed</span>
+            <span class="dss-font-toggle">
+                <label style="cursor: pointer;"><input type="checkbox" id="dss-yt-toggle"> Yada Towrah</label>
+            </span>
+        </div>
+    </div>
+    <div id="initial-prompt" style="text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select a Book, Chapter, and Verse</div>
+    <div id="results" class="results"></div>
+
+    <div style="margin-top: 50px; text-align: center; font-size: 0.8em; color: #666; line-height: 2.2;">
+        Hebrew and markup sourced from <a href="https://thewaytoyahuweh.com">TheWayToYahuweh.com</a><br>
+        English and markup sourced from <a href="https://dssenglishbible.com">DSSEnglishBible.com</a>
+    </div>
+
+    <script>
+        function escHtml(str) {
+            if (str == null) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // ── Load books ──
+        async function loadBooks() {
+            var response = await fetch('/api/dss-books.php');
+            var books = await response.json();
+            var select = document.getElementById('dss-book');
+            books.forEach(function(book) {
+                var option = document.createElement('option');
+                option.value = book.book_code;
+                var label = book.yah_scroll_label_yy
+                    ? book.yah_scroll_label_yy + ' / ' + book.book_code
+                    : book.book_code;
+                option.textContent = label;
+                select.appendChild(option);
+            });
+        }
+
+        // ── Cascading dropdowns: Book → Chapter → Verse ──
+        document.getElementById('dss-book').addEventListener('change', function() {
+            var chapterSel = document.getElementById('dss-chapter');
+            var verseSel = document.getElementById('dss-verse');
+            chapterSel.innerHTML = '<option value="">All</option>';
+            verseSel.innerHTML = '<option value="">All</option>';
+            verseSel.disabled = true;
+
+            if (!this.value) {
+                chapterSel.disabled = true;
+                return;
+            }
+
+            fetch('/api/dss-chapters.php?book=' + encodeURIComponent(this.value))
+                .then(function(r) { return r.json(); })
+                .then(function(chapters) {
+                    chapters.forEach(function(ch) {
+                        var opt = document.createElement('option');
+                        opt.value = ch.chapter_number;
+                        opt.textContent = ch.chapter_number;
+                        chapterSel.appendChild(opt);
+                    });
+                    chapterSel.disabled = false;
+                });
+        });
+
+        document.getElementById('dss-chapter').addEventListener('change', function() {
+            var verseSel = document.getElementById('dss-verse');
+            verseSel.innerHTML = '<option value="">All</option>';
+
+            var book = document.getElementById('dss-book').value;
+            if (!this.value || !book) {
+                verseSel.disabled = true;
+                return;
+            }
+
+            fetch('/api/dss-verses.php?book=' + encodeURIComponent(book) + '&chapter=' + this.value)
+                .then(function(r) { return r.json(); })
+                .then(function(verses) {
+                    verses.forEach(function(v) {
+                        var opt = document.createElement('option');
+                        opt.value = v.verse_number;
+                        opt.textContent = v.verse_number;
+                        verseSel.appendChild(opt);
+                    });
+                    verseSel.disabled = false;
+                });
+        });
+
+        // Auto-fetch when verse is selected
+        document.getElementById('dss-verse').addEventListener('change', function() {
+            if (this.value) fetchResults();
+        });
+
+        // ── Fetch and display results ──
+        async function fetchResults() {
+            var book = document.getElementById('dss-book').value;
+            var chapter = document.getElementById('dss-chapter').value;
+            var verse = document.getElementById('dss-verse').value;
+
+            if (!book) return;
+
+            var params = new URLSearchParams();
+            params.set('book', book);
+            if (chapter) params.set('chapter', chapter);
+            if (verse) params.set('verse', verse);
+
+            try {
+                var response = await fetch('/api/dss-display.php?' + params);
+                var records = await response.json();
+                displayResults(records);
+            } catch (err) {
+                console.error('DSS fetchResults error:', err);
+            }
+        }
+
+        function isYTMode() {
+            return document.getElementById('dss-yt-toggle').checked;
+        }
+
+        var currentRecords = [];
+
+        function displayResults(records) {
+            currentRecords = records;
+            var resultsDiv = document.getElementById('results');
+            var countDiv = document.getElementById('result-count');
+            resultsDiv.innerHTML = '';
+
+            var initialPrompt = document.getElementById('initial-prompt');
+            if (initialPrompt) initialPrompt.style.display = 'none';
+
+            // Filter by checked English legend classes
+            var checkedClasses = getCheckedEngClasses();
+            var filtered = records.filter(function(r) {
+                return verseMatchesEngFilter(r.verse_text_english, checkedClasses);
+            });
+
+            if (checkedClasses.length > 0) {
+                countDiv.textContent = filtered.length + ' of ' + records.length + ' record' + (records.length !== 1 ? 's' : '') + ' shown';
+            } else {
+                countDiv.textContent = records.length + ' record' + (records.length !== 1 ? 's' : '') + ' found';
+            }
+
+            if (filtered.length === 0) {
+                resultsDiv.textContent = records.length > 0 ? 'No records match the selected filters.' : 'No records found.';
+                return;
+            }
+
+            var isYT = isYTMode();
+            var lastBook = null, lastChapter = null, lastVerse = null;
+
+            filtered.forEach(function(record) {
+                // Section header when book, chapter, or verse changes
+                if (lastBook !== record.book_code ||
+                    lastChapter !== record.chapter_number ||
+                    lastVerse !== record.verse_number) {
+
+                    var breakDiv = document.createElement('div');
+                    breakDiv.className = 'section-break';
+                    var bookLabel = record.book_code_hebrew
+                        ? record.book_code_hebrew + ' / ' + record.book_code
+                        : record.book_code;
+                    breakDiv.textContent = bookLabel + ' ' + record.chapter_number + ':' + record.verse_number;
+                    resultsDiv.appendChild(breakDiv);
+
+                    lastBook = record.book_code;
+                    lastChapter = record.chapter_number;
+                    lastVerse = record.verse_number;
+                }
+
+                // Verse record card
+                var card = document.createElement('div');
+                card.className = 'dss-record';
+
+                var scrollLabel = document.createElement('div');
+                scrollLabel.className = 'dss-scroll-label';
+                scrollLabel.innerHTML = record.scroll_code;
+                card.appendChild(scrollLabel);
+
+                var cols = document.createElement('div');
+                cols.className = 'dss-columns';
+
+                var colEn = document.createElement('div');
+                colEn.className = 'dss-col-english';
+                if (record.verse_text_english) {
+                    colEn.innerHTML = record.verse_text_english;
+                }
+
+                var colHe = document.createElement('div');
+                colHe.className = 'dss-col-hebrew';
+                if (isYT && record.verse_text_yt) {
+                    colHe.style.fontFamily = "'Yada Towrah', serif";
+                    colHe.style.unicodeBidi = 'bidi-override';
+                    colHe.innerHTML = record.verse_text_yt;
+                } else if (record.verse_text_hebrew) {
+                    colHe.innerHTML = record.verse_text_hebrew;
+                    // Greek LXX text: detect and switch to LTR with serif font
+                    if (/[\u0370-\u03FF]/.test(record.verse_text_hebrew)) {
+                        colHe.style.direction = 'ltr';
+                        colHe.style.textAlign = 'left';
+                        colHe.style.fontFamily = "'Calibri', 'Segoe UI', sans-serif";
+                        colHe.style.unicodeBidi = 'normal';
+                    }
+                }
+
+                cols.appendChild(colEn);
+                cols.appendChild(colHe);
+                card.appendChild(cols);
+                resultsDiv.appendChild(card);
+            });
+        }
+
+        // Re-render when YT checkbox changes
+        document.getElementById('dss-yt-toggle').addEventListener('change', function() {
+            if (currentRecords.length > 0) {
+                displayResults(currentRecords);
+            }
+        });
+
+        // English legend checkboxes: filter verses by checked styles
+        function getCheckedEngClasses() {
+            var classes = [];
+            document.querySelectorAll('.dss-legend-item input[data-eng-class]').forEach(function(cb) {
+                if (cb.checked) classes.push(cb.dataset.engClass);
+            });
+            return classes;
+        }
+
+        function verseMatchesEngFilter(englishHtml, checkedClasses) {
+            if (!checkedClasses.length) return true; // no filter active = show all
+            if (!englishHtml) return false;
+            for (var i = 0; i < checkedClasses.length; i++) {
+                var cls = checkedClasses[i];
+                if (cls === '') {
+                    // "Match" = has plain text outside dss-eng-* spans
+                    var stripped = englishHtml.replace(/<span class="dss-eng-[^"]*">[^<]*<\/span>/g, '');
+                    stripped = stripped.replace(/<[^>]*>/g, '').trim();
+                    if (stripped.length > 0) return true;
+                } else {
+                    if (englishHtml.indexOf('class="' + cls + '"') !== -1) return true;
+                }
+            }
+            return false;
+        }
+
+        document.querySelectorAll('.dss-legend-item input[data-eng-class]').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                if (currentRecords.length > 0) displayResults(currentRecords);
+            });
+        });
+
+        // ── Init ──
+        loadBooks();
+    </script>
+</body>
+</html>

@@ -11,6 +11,6 @@ if ($chapterKey === null) {
 }
 
 $pdo = getDb();
-$stmt = $pdo->prepare('SELECT yah_verse_key, yah_chapter_key, yah_verse_number FROM yah_verse WHERE yah_chapter_key = ? ORDER BY yah_verse_sort');
+$stmt = $pdo->prepare('SELECT yah_verse_key, yah_chapter_key, yah_verse_number FROM yah_verse WHERE yah_chapter_key = ? AND yah_verse_count > 0 ORDER BY yah_verse_sort, yah_verse_number');
 $stmt->execute([$chapterKey]);
 jsonResponse($stmt->fetchAll());
