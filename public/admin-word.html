@@ -30,11 +30,11 @@
         #words-table .col-hebrew { width: 90px; }
         #words-table td.col-hebrew { direction: rtl; font-size: 1.1rem; }
         #words-table .col-yt { width: 80px; }
-        #words-table td.col-yt { font-family: "Yada Towrah", serif; font-size: 1rem; }
+        #words-table td.col-yt { font-family: "Yada Towrah", serif; font-size: 1rem; direction: rtl; unicode-bidi: bidi-override; }
         #words-table .col-count { width: 90px; text-align: right; }
         #words-table thead th.sortable { white-space: nowrap; }
         #words-table .col-def { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        #words-table .col-spellings { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #words-table .col-translits { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #words-table .filter-row th { background: #f0f0f0; padding: 4px 6px; position: sticky; top: 33px; z-index: 1; }
         .col-filter { width: 100%; padding: 3px 5px; font-size: 0.8rem; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; }
         select.col-filter { padding: 2px 3px; }
@@ -48,20 +48,34 @@
 
         .form-section { margin-bottom: 20px; }
         .form-section h3 { margin: 0 0 12px 0; font-size: 1rem; color: #34495e; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-        .flags-row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
-        .flag-item { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; }
-        .flag-item input[type="checkbox"] { width: 16px; height: 16px; }
-        .flag-item label { margin: 0; font-weight: 500; }
-
         textarea { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; resize: vertical; }
 
-        .spelling-list { list-style: none; padding: 0; margin: 0 0 8px 0; }
-        .spelling-item { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-        .spelling-item input { flex: 1; }
-        .spelling-item .btn-remove { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 1.2rem; padding: 0 4px; font-weight: bold; }
-        .spelling-item .btn-remove:hover { color: #c0392b; }
-        .spelling-item .sort-num { font-size: 0.75rem; color: #999; width: 20px; text-align: right; }
-        .spelling-count { font-size: 0.75rem; color: #3498db; background: #eef6fc; border-radius: 3px; padding: 2px 6px; min-width: 30px; text-align: center; }
+        .translit-list { list-style: none; padding: 0; margin: 0 0 8px 0; }
+        .translit-item { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+        .translit-item input { flex: 1; }
+        .translit-item .btn-remove { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 1.2rem; padding: 0 4px; font-weight: bold; }
+        .translit-item .btn-remove:hover { color: #c0392b; }
+        .translit-count { font-size: 0.75rem; color: #3498db; background: #eef6fc; border-radius: 3px; padding: 2px 6px; min-width: 30px; text-align: center; }
+        .translit-item .btn-sort { background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0; width: 20px; text-align: center; color: #777; line-height: 1; }
+        .translit-item .btn-sort:hover { color: #3498db; }
+        .translit-item .btn-sort.hidden { visibility: hidden; }
+        .translit-item .sort-arrows { display: flex; gap: 0; flex-shrink: 0; }
+
+        /* Definition cards */
+        .def-add-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+        .def-add-bar select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; }
+        .def-cards { display: flex; flex-direction: column; gap: 10px; }
+        .def-card { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; background: #fafbfc; }
+        .def-card-header { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        .def-card-header .def-pos-label { font-weight: 600; font-size: 0.9rem; color: #2c3e50; background: #e8eef4; padding: 2px 10px; border-radius: 3px; }
+        .def-card-header .def-meta { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+        .def-card-header .def-meta select { font-size: 0.8rem; padding: 2px 6px; border: 1px solid #ccc; border-radius: 3px; }
+        .def-card-header .def-meta label { font-size: 0.8rem; display: flex; align-items: center; gap: 4px; }
+        .def-card-header .btn-def-delete { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 1.1rem; font-weight: bold; padding: 0 4px; }
+        .def-card-header .btn-def-delete:hover { color: #c0392b; }
+        .def-card textarea { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; resize: vertical; min-height: 50px; box-sizing: border-box; }
+        .def-card .def-saving { font-size: 0.75rem; color: #999; margin-top: 2px; }
+        .def-disabled-msg { font-size: 0.85rem; color: #999; font-style: italic; }
 
         .edit-panel { display: none; }
         .edit-panel.active { display: block; }
@@ -100,10 +114,8 @@
         .hebrew-kb button:hover { background: #eef6fc; border-color: #3498db; }
         .hebrew-kb button:active { background: #d4eaf7; }
         .hebrew-kb button.kb-special {
-            font-size: 0.75rem;
+            font-size: 1.1rem;
             color: #666;
-            width: auto;
-            padding: 0 10px;
         }
         .hebrew-kb-label { font-size: 0.8rem; color: #888; margin-top: 4px; }
         .hebrew-kb button .kb-sub {
@@ -133,12 +145,12 @@
         .filter-kb-popover .hebrew-kb { margin: 0; max-width: none; }
         .filter-kb-popover .hebrew-kb button { width: 30px; height: 30px; font-size: 1rem; }
         .filter-kb-popover .hebrew-kb button .kb-sub { font-size: 0.5rem; }
-        .filter-kb-popover .hebrew-kb button.kb-special { font-size: 0.7rem; padding: 0 6px; }
+        .filter-kb-popover .hebrew-kb button.kb-special { font-size: 0.95rem; }
         .filter-kb-popover .yt-kb button { font-family: "Yada Towrah", serif; font-size: 1.1rem; width: 30px; height: 30px; }
         .filter-kb-popover .yt-kb button .kb-sub { font-family: "Times New Roman", Times, serif; font-size: 0.5rem; color: #999; position: absolute; bottom: 1px; right: 3px; }
-        .filter-kb-popover .yt-kb button.kb-special { font-family: inherit; font-size: 0.7rem; padding: 0 6px; }
+        .filter-kb-popover .yt-kb button.kb-special { font-family: inherit; font-size: 0.95rem; }
         .filter-kb-popover .yt-kb { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }
-        #filter-yt { font-family: "Yada Towrah", serif; font-size: 0.9rem; }
+        #filter-yt { font-family: "Yada Towrah", serif; font-size: 0.9rem; direction: rtl; unicode-bidi: bidi-override; }
         .filter-row th { position: relative; }
 
         /* Loading indicator */
@@ -203,7 +215,7 @@
     <div id="list-panel" class="list-panel">
         <div class="card">
             <div class="search-bar">
-                <input type="text" id="search-input" placeholder="Search by Strong's #, Hebrew, spelling, or definition..." autocomplete="off">
+                <input type="text" id="search-input" placeholder="Search by Strong's #, Hebrew, translit, or definition..." autocomplete="off">
                 <button class="btn btn-primary btn-sm" onclick="doSearch()">Search</button>
                 <button class="btn btn-secondary btn-sm" onclick="clearSearch()">Clear</button>
                 <span id="result-count" class="result-count"></span>
@@ -236,7 +248,7 @@
                             <th class="col-strongs sortable" data-col="strongs">Strong's</th>
                             <th class="col-hebrew sortable" data-col="hebrew">Hebrew</th>
                             <th class="col-yt sortable" data-col="yt">YT</th>
-                            <th class="col-spellings">Spellings</th>
+                            <th class="col-translits">Translits</th>
                             <th class="col-def">Definition</th>
                             <th class="col-count sortable" data-col="count">Count</th>
                         </tr>
@@ -245,7 +257,7 @@
                             <th><input type="text" id="filter-strongs" class="col-filter" placeholder="..." oninput="applyFilters()"></th>
                             <th><input type="text" id="filter-hebrew" class="col-filter" placeholder="..." dir="rtl" oninput="applyFilters()" onfocus="showFilterKb()" autocomplete="off"><div id="filter-kb-popover" class="filter-kb-popover"></div></th>
                             <th><input type="text" id="filter-yt" class="col-filter" placeholder="..." oninput="applyFilters()" onfocus="showFilterYtKb()" autocomplete="off"><div id="filter-yt-kb-popover" class="filter-kb-popover"></div></th>
-                            <th><input type="text" id="filter-spellings" class="col-filter" placeholder="..." oninput="applyFilters()"></th>
+                            <th><input type="text" id="filter-translits" class="col-filter" placeholder="..." oninput="applyFilters()"></th>
                             <th><input type="text" id="filter-def" class="col-filter" placeholder="..." oninput="applyFilters()"></th>
                             <th><div class="count-filter-wrap"><button type="button" id="count-mode-btn" class="count-mode-btn" onclick="toggleCountMode()" title="Toggle greater/less than">&gt;</button><input type="text" id="filter-count" class="col-filter" placeholder="..." oninput="applyFilters()"></div></th>
                         </tr>
@@ -266,7 +278,8 @@
 
             <div id="edit-errors" class="error-messages" style="display:none"><ul></ul></div>
 
-            <div class="form-section">
+            <div style="display:flex;gap:24px;align-items:flex-start">
+            <div class="form-section" style="flex:1;min-width:0">
                 <h3>Word Details</h3>
                 <div class="field-row">
                     <div class="field field-narrow">
@@ -275,16 +288,16 @@
                     </div>
                     <div class="field field-medium">
                         <label for="f-hebrew">Hebrew</label>
-                        <input type="text" id="f-hebrew" dir="rtl" style="font-size:1.2rem" oninput="updateYtPreview()" onfocus="switchKbMode('hebrew')">
+                        <input type="text" id="f-hebrew" dir="rtl" style="font-size:1.2rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" oninput="updateYtPreview()" onfocus="switchKbMode('hebrew')">
                     </div>
                     <div class="field" style="flex:0 0 200px; min-width:150px">
                         <label for="f-yt">YT</label>
-                        <input type="text" id="f-yt" style="font-family:'Yada Towrah',serif; font-size:1.1rem" class="kb-inactive" onfocus="switchKbMode('yt')" oninput="updateHebrewPreview()">
+                        <input type="text" id="f-yt" dir="rtl" style="font-family:'Yada Towrah',serif; font-size:1.1rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" class="kb-inactive" onfocus="switchKbMode('yt')" oninput="updateHebrewPreview()">
                     </div>
                     <div class="field field-narrow" style="justify-content:flex-end">
-                        <label class="flag-item">
-                            <input type="checkbox" id="f-active">
-                            <label for="f-active">Active</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;font-weight:500">
+                            <input type="checkbox" id="f-active" style="width:16px;height:16px">
+                            Active
                         </label>
                     </div>
                 </div>
@@ -292,50 +305,28 @@
                 <div class="hebrew-kb-label" id="kb-label">Click letters to insert into Hebrew field. Backspace removes last character.</div>
             </div>
 
-            <div class="form-section">
-                <h3>Grammar</h3>
-                <div class="flags-row">
-                    <label class="flag-item">
-                        <label for="f-gender">Gender</label>
-                        <select id="f-gender" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.875rem">
-                            <option value="">Unknown</option>
-                            <option value="M">Masculine</option>
-                            <option value="F">Feminine</option>
-                            <option value="N">Neutral</option>
-                        </select>
-                    </label>
-                    <label class="flag-item"><input type="checkbox" id="f-plural"><label>Plural</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-noun"><label>Noun</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-verb"><label>Verb</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-adjective"><label>Adjective</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-adverb"><label>Adverb</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-preposition"><label>Preposition</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-conjunction"><label>Conjunction</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-subst"><label>Substantive</label></label>
-                    <label class="flag-item"><input type="checkbox" id="f-pronoun"><label>Pronoun</label></label>
+            <div class="form-section" style="flex:0 0 320px;min-width:280px">
+                <h3>Transliterations <span id="translit-total" style="font-weight:normal;font-size:0.85rem;color:#3498db;margin-left:8px;"></span></h3>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;padding:0 0 4px 0;border-bottom:1px solid #eee">
+                    <span style="flex:1;font-size:0.75rem;color:#999">Text</span>
+                    <span style="font-size:0.75rem;color:#999;width:40px;text-align:center">&uarr;&darr;</span>
+                    <span style="font-size:0.75rem;color:#999;min-width:30px;text-align:center">#</span>
+                    <span style="width:20px"></span>
                 </div>
+                <ul id="translit-list" class="translit-list"></ul>
+                <button class="btn btn-secondary btn-sm" onclick="addTranslit()">+ Add Transliteration</button>
+            </div>
             </div>
 
             <div class="form-section">
                 <h3>Definitions</h3>
-                <div class="field">
-                    <label for="f-def-yy">Definition (YY)</label>
-                    <textarea id="f-def-yy" rows="3"></textarea>
+                <div id="def-add-section" class="def-add-bar" style="display:none">
+                    <select id="def-pos-select" onchange="addDefinition()">
+                        <option value="">Select POS...</option>
+                    </select>
                 </div>
-                <div class="field">
-                    <label for="f-def-kirk">Definition (Kirk)</label>
-                    <textarea id="f-def-kirk" rows="3"></textarea>
-                </div>
-                <div class="field">
-                    <label for="f-def-external">Definition (External)</label>
-                    <textarea id="f-def-external" rows="2"></textarea>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <h3>Spellings <span id="spelling-total" style="font-weight:normal;font-size:0.85rem;color:#3498db;margin-left:8px;"></span></h3>
-                <ul id="spelling-list" class="spelling-list"></ul>
-                <button class="btn btn-secondary btn-sm" onclick="addSpelling()">+ Add Spelling</button>
+                <div id="def-disabled-msg" class="def-disabled-msg" style="display:none">Save the word first, then add definitions.</div>
+                <div id="def-cards" class="def-cards"></div>
             </div>
 
             <div class="button-row">
@@ -356,6 +347,10 @@ var editingWordId = null;
 var sortCol = 'strongs';
 var sortDir = 'asc';
 var countMode = 'gt'; // 'gt' or 'lt'
+var allPosList = [];
+var allSourceList = [];
+var currentDefinitions = [];
+var defSaveTimers = {};
 
 function toggleCountMode() {
     countMode = countMode === 'gt' ? 'lt' : 'gt';
@@ -371,6 +366,7 @@ function checkAuth() {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
             loadWords();
+            loadDefLookups();
         }
     });
 }
@@ -390,6 +386,7 @@ function doLogin() {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
             loadWords();
+            loadDefLookups();
         } else {
             errEl.textContent = d.error || 'Login failed';
             errEl.style.display = '';
@@ -522,7 +519,7 @@ function clearSearch() {
     document.getElementById('filter-strongs').value = '';
     document.getElementById('filter-hebrew').value = '';
     document.getElementById('filter-yt').value = '';
-    document.getElementById('filter-spellings').value = '';
+    document.getElementById('filter-translits').value = '';
     document.getElementById('filter-def').value = '';
     document.getElementById('filter-count').value = '';
     countMode = 'gt';
@@ -551,7 +548,7 @@ function getColumnFilters() {
         strongs: document.getElementById('filter-strongs').value.trim().toLowerCase(),
         hebrew: document.getElementById('filter-hebrew').value.trim().toLowerCase(),
         yt: document.getElementById('filter-yt').value.trim().toLowerCase(),
-        spellings: document.getElementById('filter-spellings').value.trim().toLowerCase(),
+        translits: document.getElementById('filter-translits').value.trim().toLowerCase(),
         def: document.getElementById('filter-def').value.trim().toLowerCase(),
         count: document.getElementById('filter-count').value.trim()
     };
@@ -562,10 +559,10 @@ function matchesFilters(w, f) {
     if (f.active !== '' && ((f.active === '1') !== !!w.word_active_flag)) return false;
     if (f.strongs && !(w.word_strongs || '').toLowerCase().startsWith(f.strongs)) return false;
     if (f.hebrew && !(w.word_hebrew || '').toLowerCase().includes(f.hebrew)) return false;
-    if (f.yt && !(w.word_translit || '').toLowerCase().includes(f.yt)) return false;
-    if (f.spellings && !(w.spellings_display || '').toLowerCase().includes(f.spellings)) return false;
+    if (f.yt && !(w.word_yt || '').toLowerCase().includes(f.yt)) return false;
+    if (f.translits && !(w.translits_display || '').toLowerCase().includes(f.translits)) return false;
     if (f.def) {
-        var defAll = ((w.word_definition_yy || '') + ' ' + (w.word_definition_kirk || '') + ' ' + (w.word_definition_external || '')).toLowerCase();
+        var defAll = (w.definitions_display || '').toLowerCase();
         if (!defAll.includes(f.def)) return false;
     }
     if (f.count) {
@@ -604,18 +601,14 @@ function renderTable(words) {
     var html = '';
     for (var i = 0; i < sorted.length; i++) {
         var w = sorted[i];
-        var defParts = [];
-        if (w.word_definition_yy) defParts.push(w.word_definition_yy);
-        if (w.word_definition_kirk) defParts.push(w.word_definition_kirk);
-        if (w.word_definition_external) defParts.push(w.word_definition_external);
-        var defFull = defParts.join(' ');
+        var defFull = w.definitions_display || '';
         var defPreview = defFull.length > 80 ? defFull.substring(0, 80) + '...' : defFull;
         html += '<tr onclick="editWord(' + w.word_key + ')">';
         html += '<td class="col-active"><span class="active-dot ' + (w.word_active_flag ? 'on' : 'off') + '"></span></td>';
         html += '<td class="col-strongs">' + esc(w.word_strongs) + '</td>';
         html += '<td class="col-hebrew">' + esc(w.word_hebrew) + '</td>';
-        html += '<td class="col-yt">' + esc(w.word_translit || '') + '</td>';
-        html += '<td class="col-spellings" title="' + esc(w.spellings_display || '') + '">' + esc(w.spellings_display || '') + '</td>';
+        html += '<td class="col-yt">' + esc(w.word_yt || '') + '</td>';
+        html += '<td class="col-translits" title="' + esc(w.translits_display || '') + '">' + esc(w.translits_display || '') + '</td>';
         html += '<td class="col-def" title="' + esc(defFull) + '">' + esc(defPreview) + '</td>';
         html += '<td class="col-count">' + (w.word_count_yy != null ? w.word_count_yy : '') + '</td>';
         html += '</tr>';
@@ -659,6 +652,7 @@ function cancelEdit() {
     document.getElementById('edit-panel').classList.remove('active');
     document.getElementById('list-panel').classList.remove('hidden');
     editingWordId = null;
+    applyFilters();
 }
 
 function newWord() {
@@ -667,7 +661,9 @@ function newWord() {
     document.getElementById('btn-delete').style.display = 'none';
     clearForm();
     document.getElementById('f-active').checked = true;
-    addSpelling();
+    addTranslit();
+    document.getElementById('def-add-section').style.display = 'none';
+    document.getElementById('def-disabled-msg').style.display = '';
     showEdit();
 }
 
@@ -680,34 +676,20 @@ function editWord(wordId) {
 
         document.getElementById('f-strongs').value = w.word_strongs ? w.word_strongs.trim() : '';
         document.getElementById('f-hebrew').value = w.word_hebrew || '';
-        document.getElementById('f-yt').value = w.word_translit || '';
+        document.getElementById('f-yt').value = w.word_yt || '';
         document.getElementById('f-active').checked = !!w.word_active_flag;
 
-        document.getElementById('f-gender').value = w.word_gender || '';
-        document.getElementById('f-plural').checked = !!w.word_flag_plural;
-        document.getElementById('f-noun').checked = !!w.word_flag_noun;
-        document.getElementById('f-verb').checked = !!w.word_flag_verb;
-        document.getElementById('f-adjective').checked = !!w.word_flag_adjective;
-        document.getElementById('f-adverb').checked = !!w.word_flag_adverb;
-        document.getElementById('f-preposition').checked = !!w.word_flag_preposition;
-        document.getElementById('f-conjunction').checked = !!w.word_flag_conjunction;
-        document.getElementById('f-subst').checked = !!w.word_flag_subst;
-        document.getElementById('f-pronoun').checked = !!w.word_flag_pronoun;
-
-        document.getElementById('f-def-yy').value = w.word_definition_yy || '';
-        document.getElementById('f-def-kirk').value = w.word_definition_kirk || '';
-        document.getElementById('f-def-external').value = w.word_definition_external || '';
-
-        var list = document.getElementById('spelling-list');
+        var list = document.getElementById('translit-list');
         list.innerHTML = '';
-        if (w.spellings && w.spellings.length > 0) {
-            for (var i = 0; i < w.spellings.length; i++) {
-                addSpelling(w.spellings[i].word_translit_text, w.spellings[i].word_translit_count_yy);
+        if (w.translits && w.translits.length > 0) {
+            for (var i = 0; i < w.translits.length; i++) {
+                addTranslit(w.translits[i].word_translit_text, w.translits[i].word_translit_count_yy, w.translits[i].word_translit_key);
             }
-            updateSpellingTotal();
+            updateTranslitTotal();
         } else {
-            addSpelling();
+            addTranslit();
         }
+        loadDefinitions(w.word_key);
         showEdit();
     });
 }
@@ -717,59 +699,159 @@ function clearForm() {
     document.getElementById('f-hebrew').value = '';
     document.getElementById('f-yt').value = '';
     document.getElementById('f-active').checked = true;
-    document.getElementById('spelling-total').textContent = '';
-    document.getElementById('f-gender').value = '';
-    var flags = ['f-plural','f-noun','f-verb','f-adjective','f-adverb','f-preposition','f-conjunction','f-subst','f-pronoun'];
-    for (var i = 0; i < flags.length; i++) document.getElementById(flags[i]).checked = false;
-    document.getElementById('f-def-yy').value = '';
-    document.getElementById('f-def-kirk').value = '';
-    document.getElementById('f-def-external').value = '';
-    document.getElementById('spelling-list').innerHTML = '';
+    document.getElementById('translit-total').textContent = '';
+    document.getElementById('translit-list').innerHTML = '';
+    currentDefinitions = [];
+    document.getElementById('def-cards').innerHTML = '';
+    updatePosDropdown();
 }
 
-// ── Spellings ──
-function updateSpellingTotal() {
-    var counts = document.querySelectorAll('#spelling-list .spelling-count');
+// ── Translits ──
+function updateTranslitTotal() {
+    var counts = document.querySelectorAll('#translit-list .translit-count');
     var total = 0;
     for (var i = 0; i < counts.length; i++) {
         total += parseInt(counts[i].textContent) || 0;
     }
-    var el = document.getElementById('spelling-total');
+    var el = document.getElementById('translit-total');
     el.textContent = total > 0 ? '(Total count: ' + total + ')' : '';
 }
 
-function addSpelling(text, count) {
-    var list = document.getElementById('spelling-list');
+var translitSaveTimers = {};
+
+function addTranslit(text, count, translitKey) {
+    var list = document.getElementById('translit-list');
+
+    // If this is a new translit (no key) and we have a saved word, create in DB first
+    if (!translitKey && editingWordId) {
+        fetch(API + '/word-translits.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ word_key: editingWordId, word_translit_text: text || '' })
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(resp) {
+            if (resp.error) { alert(resp.error); return; }
+            appendTranslitItem(list, resp.word_translit_text, resp.word_translit_count_yy, resp.word_translit_key, true);
+        }).catch(function(err) {
+            console.error('Failed to create translit:', err);
+            // Fallback: add local row without DB key
+            appendTranslitItem(list, text || '', null, null, true);
+        });
+        return;
+    }
+
+    appendTranslitItem(list, text, count, translitKey, !text && !translitKey);
+}
+
+function appendTranslitItem(list, text, count, translitKey, focus) {
     var li = document.createElement('li');
-    li.className = 'spelling-item';
-    var num = list.children.length;
-    var countDisplay = (count != null && count !== '') ? '<span class="spelling-count" title="Occurrences in translations">' + count + '</span>' : '';
-    li.innerHTML = '<span class="sort-num">' + num + '</span>' +
-        '<input type="text" value="' + esc(text || '') + '" placeholder="Spelling variant">' +
+    li.className = 'translit-item';
+    if (translitKey) li.setAttribute('data-key', translitKey);
+    var countDisplay = (count != null && count !== '') ? '<span class="translit-count" title="Occurrences in translations">' + count + '</span>' : '<span class="translit-count" title="Occurrences in translations"></span>';
+    li.innerHTML =
+        '<input type="text" value="' + esc(text || '') + '" placeholder="Transliteration" oninput="debounceTranslitSave(this)">' +
+        '<div class="sort-arrows">' +
+            '<button type="button" class="btn-sort btn-sort-up" onclick="moveTranslitUp(this)" title="Move up">&#9650;</button>' +
+            '<button type="button" class="btn-sort btn-sort-down" onclick="moveTranslitDown(this)" title="Move down">&#9660;</button>' +
+        '</div>' +
         countDisplay +
-        '<button type="button" class="btn-remove" onclick="removeSpelling(this)" title="Remove">&times;</button>';
+        '<button type="button" class="btn-remove" onclick="removeTranslit(this)" title="Remove">&times;</button>';
     list.appendChild(li);
-    if (!text) li.querySelector('input').focus();
+    updateTranslitArrows();
+    if (focus) li.querySelector('input').focus();
 }
 
-function removeSpelling(btn) {
-    var item = btn.closest('.spelling-item');
+function debounceTranslitSave(input) {
+    var item = input.closest('.translit-item');
+    var key = item.getAttribute('data-key');
+    if (!key) return;
+    if (translitSaveTimers[key]) clearTimeout(translitSaveTimers[key]);
+    translitSaveTimers[key] = setTimeout(function() {
+        var text = input.value.trim();
+        fetch(API + '/word-translits.php?word_translit_key=' + key, {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ word_translit_text: text })
+        }).then(function(r) { return r.json(); }).then(function(resp) {
+            if (resp.error) return;
+            var countEl = item.querySelector('.translit-count');
+            if (countEl) countEl.textContent = resp.word_translit_count_yy;
+            updateTranslitTotal();
+        });
+    }, 600);
+}
+
+function removeTranslit(btn) {
+    var item = btn.closest('.translit-item');
     var text = item.querySelector('input').value.trim();
-    if (!confirm('Remove spelling' + (text ? ' "' + text + '"' : '') + '?')) return;
+    if (!confirm('Remove translit' + (text ? ' "' + text + '"' : '') + '?')) return;
     item.remove();
-    renumberSpellings();
-    updateSpellingTotal();
+    updateTranslitArrows();
+    updateTranslitTotal();
 }
 
-function renumberSpellings() {
-    var items = document.querySelectorAll('#spelling-list .spelling-item');
-    for (var i = 0; i < items.length; i++) {
-        items[i].querySelector('.sort-num').textContent = i;
+function moveTranslitUp(btn) {
+    var item = btn.closest('.translit-item');
+    var prev = item.previousElementSibling;
+    if (prev) {
+        item.parentNode.insertBefore(item, prev);
+        updateTranslitArrows();
+        saveTranslitOrder();
     }
 }
 
-function getSpellings() {
-    var items = document.querySelectorAll('#spelling-list .spelling-item input');
+function moveTranslitDown(btn) {
+    var item = btn.closest('.translit-item');
+    var next = item.nextElementSibling;
+    if (next) {
+        item.parentNode.insertBefore(next, item);
+        updateTranslitArrows();
+        saveTranslitOrder();
+    }
+}
+
+function updateTranslitArrows() {
+    var items = document.querySelectorAll('#translit-list .translit-item');
+    for (var i = 0; i < items.length; i++) {
+        var up = items[i].querySelector('.btn-sort-up');
+        var down = items[i].querySelector('.btn-sort-down');
+        if (up) up.classList.toggle('hidden', i === 0);
+        if (down) down.classList.toggle('hidden', i === items.length - 1);
+    }
+}
+
+function saveTranslitOrder() {
+    if (!editingWordId) return;
+    var items = document.querySelectorAll('#translit-list .translit-item');
+    var order = [];
+    for (var i = 0; i < items.length; i++) {
+        var key = items[i].getAttribute('data-key');
+        if (key) order.push(parseInt(key));
+    }
+    if (order.length === 0) return;
+    var texts = [];
+    for (var i = 0; i < items.length; i++) {
+        var val = items[i].querySelector('input').value.trim();
+        if (val) texts.push(val);
+    }
+    for (var i = 0; i < allWords.length; i++) {
+        if (allWords[i].word_key == editingWordId) {
+            allWords[i].translits_display = texts.join(', ');
+            break;
+        }
+    }
+    fetch(API + '/words.php', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ word_key: editingWordId, translit_order: order })
+    });
+}
+
+function getTranslits() {
+    var items = document.querySelectorAll('#translit-list .translit-item input');
     var result = [];
     for (var i = 0; i < items.length; i++) {
         var val = items[i].value.trim();
@@ -778,28 +860,172 @@ function getSpellings() {
     return result;
 }
 
+// ── Definitions ──
+function loadDefLookups() {
+    fetch(API + '/word-definitions.php?pos_list', {credentials:'include'}).then(r=>r.json()).then(function(data) {
+        allPosList = data;
+    });
+    fetch(API + '/word-definitions.php?source_list', {credentials:'include'}).then(r=>r.json()).then(function(data) {
+        allSourceList = data;
+    });
+}
+
+function getPosInfo(posKey) {
+    for (var i = 0; i < allPosList.length; i++) {
+        if (allPosList[i].word_pos_key == posKey) return allPosList[i];
+    }
+    return null;
+}
+
+function loadDefinitions(wordKey) {
+    document.getElementById('def-add-section').style.display = '';
+    document.getElementById('def-disabled-msg').style.display = 'none';
+    fetch(API + '/word-definitions.php?word_key=' + wordKey, {credentials:'include'}).then(r=>r.json()).then(function(data) {
+        currentDefinitions = data;
+        renderDefinitions();
+    });
+}
+
+function renderDefinitions() {
+    var container = document.getElementById('def-cards');
+    var html = '';
+    currentDefinitions.forEach(function(d) {
+        if (d.word_definition_active_flag === false || d.word_definition_active_flag === 'f') return;
+        var posLabel = d.word_pos_label || 'Unknown';
+        var posInfo = getPosInfo(d.word_pos_key);
+        var showGender = posInfo && posInfo.word_pos_gender_flag;
+        var showPlural = posInfo && posInfo.word_pos_plural_flag;
+
+        html += '<div class="def-card" data-def-key="' + d.word_definition_key + '">';
+        html += '<div class="def-card-header">';
+        html += '<label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox"' + (d.word_definition_active_flag ? ' checked' : '') + ' onchange="updateDefField(' + d.word_definition_key + ',\'word_definition_active_flag\',this.checked)"><span class="def-pos-label">' + esc(posLabel) + '</span></label>';
+        html += '<div class="def-meta">';
+        if (showGender) {
+            html += '<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px">Gender <select onchange="updateDefField(' + d.word_definition_key + ',\'word_gender_code\',this.value)">';
+            html += '<option value="">-</option>';
+            html += '<option value="m"' + (d.word_gender_code === 'm' ? ' selected' : '') + '>M</option>';
+            html += '<option value="f"' + (d.word_gender_code === 'f' ? ' selected' : '') + '>F</option>';
+            html += '<option value="b"' + (d.word_gender_code === 'b' ? ' selected' : '') + '>Both</option>';
+            html += '<option value="n"' + (d.word_gender_code === 'n' ? ' selected' : '') + '>N</option>';
+            html += '</select></label>';
+        }
+        if (showPlural) {
+            html += '<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px">Plural <input type="checkbox"' + (d.word_definition_plural_flag ? ' checked' : '') + ' onchange="updateDefField(' + d.word_definition_key + ',\'word_definition_plural_flag\',this.checked)"></label>';
+        }
+        html += '<select onchange="updateDefField(' + d.word_definition_key + ',\'word_definition_source_key\',this.value)" title="Source">';
+        allSourceList.forEach(function(s) {
+            var selected = (d.word_definition_source_key || d.word_source_key) == s.word_definition_source_key ? ' selected' : '';
+            html += '<option value="' + s.word_definition_source_key + '"' + selected + '>' + esc(s.word_definition_source_label) + '</option>';
+        });
+        html += '</select>';
+        html += '<button type="button" class="btn-def-delete" onclick="deleteDefinition(' + d.word_definition_key + ')" title="Delete">&times;</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<textarea oninput="debounceSaveDef(' + d.word_definition_key + ',this.value)">' + esc(d.word_definition_text || '') + '</textarea>';
+        html += '<div class="def-saving" id="def-saving-' + d.word_definition_key + '"></div>';
+        html += '</div>';
+    });
+    container.innerHTML = html;
+    updatePosDropdown();
+}
+
+function updatePosDropdown() {
+    var sel = document.getElementById('def-pos-select');
+    var usedPosKeys = {};
+    currentDefinitions.forEach(function(d) { if (d.word_definition_active_flag !== false && d.word_definition_active_flag !== 'f') usedPosKeys[d.word_pos_key] = true; });
+    sel.innerHTML = '<option value="">Select POS...</option>';
+    allPosList.forEach(function(p) {
+        if (!usedPosKeys[p.word_pos_key]) {
+            var opt = document.createElement('option');
+            opt.value = p.word_pos_key;
+            opt.textContent = p.word_pos_label;
+            sel.appendChild(opt);
+        }
+    });
+}
+
+function addDefinition() {
+    var sel = document.getElementById('def-pos-select');
+    var posKey = sel.value;
+    if (!posKey || !editingWordId) return;
+    var sourceKey = allSourceList.length > 0 ? allSourceList[0].word_definition_source_key : 1;
+
+    sel.disabled = true;
+    fetch(API + '/word-definitions.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ word_key: editingWordId, word_pos_key: parseInt(posKey), word_source_key: parseInt(sourceKey) })
+    }).then(r=>r.json()).then(function(resp) {
+        sel.disabled = false;
+        if (resp.error) { alert(resp.error); return; }
+        currentDefinitions.push(resp);
+        renderDefinitions();
+    });
+}
+
+function debounceSaveDef(defKey, text) {
+    if (defSaveTimers[defKey]) clearTimeout(defSaveTimers[defKey]);
+    var el = document.getElementById('def-saving-' + defKey);
+    if (el) el.textContent = 'Typing...';
+    defSaveTimers[defKey] = setTimeout(function() {
+        updateDefField(defKey, 'word_definition_text', text);
+    }, 600);
+}
+
+function updateDefField(defKey, field, value) {
+    var body = {};
+    body[field] = value;
+    var el = document.getElementById('def-saving-' + defKey);
+    if (field === 'word_definition_text' && el) el.textContent = 'Saving...';
+
+    fetch(API + '/word-definitions.php?word_definition_key=' + defKey, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    }).then(r=>r.json()).then(function(resp) {
+        if (field === 'word_definition_active_flag' && !value) {
+            // Deactivated: remove from local list and re-render
+            currentDefinitions = currentDefinitions.filter(function(d) { return d.word_definition_key != defKey; });
+            renderDefinitions();
+            return;
+        }
+        if (el && field === 'word_definition_text') {
+            el.textContent = 'Saved';
+            setTimeout(function() { el.textContent = ''; }, 1500);
+        }
+        // Update local cache
+        for (var i = 0; i < currentDefinitions.length; i++) {
+            if (currentDefinitions[i].word_definition_key == defKey) {
+                currentDefinitions[i][field] = value;
+                break;
+            }
+        }
+    }).catch(function() {
+        if (el) el.textContent = 'Error saving';
+    });
+}
+
+function deleteDefinition(defKey) {
+    if (!confirm('Delete this definition?')) return;
+    fetch(API + '/word-definitions.php?word_definition_key=' + defKey, {
+        method: 'DELETE', credentials: 'include'
+    }).then(r=>r.json()).then(function() {
+        currentDefinitions = currentDefinitions.filter(function(d) { return d.word_definition_key != defKey; });
+        renderDefinitions();
+    });
+}
+
 // ── Save ──
 function saveWord() {
     var data = {
         word_strongs: document.getElementById('f-strongs').value,
         word_hebrew: document.getElementById('f-hebrew').value,
+        word_yt: document.getElementById('f-yt').value,
         word_active_flag: document.getElementById('f-active').checked,
-        word_gender: document.getElementById('f-gender').value,
-        word_flag_plural: document.getElementById('f-plural').checked,
-        word_flag_noun: document.getElementById('f-noun').checked,
-        word_flag_verb: document.getElementById('f-verb').checked,
-        word_flag_adjective: document.getElementById('f-adjective').checked,
-        word_flag_adverb: document.getElementById('f-adverb').checked,
-        word_flag_preposition: document.getElementById('f-preposition').checked,
-        word_flag_conjunction: document.getElementById('f-conjunction').checked,
-        word_flag_subst: document.getElementById('f-subst').checked,
-        word_flag_pronoun: document.getElementById('f-pronoun').checked,
-        word_definition_kirk: document.getElementById('f-def-kirk').value,
-        word_definition_yy: document.getElementById('f-def-yy').value,
-        word_definition_external: document.getElementById('f-def-external').value,
-        spellings: getSpellings()
+        translits: getTranslits()
     };
 
+    var isNew = !editingWordId;
     var method, url;
     if (editingWordId) {
         method = 'PUT';
@@ -822,15 +1048,26 @@ function saveWord() {
             showErrors([resp.error]);
             return;
         }
-        cancelEdit();
-        loadWords();
+        if (isNew && resp.word_key) {
+            // After creating a new word, enable definitions and stay in edit mode
+            editingWordId = resp.word_key;
+            document.getElementById('edit-title').textContent = 'Edit Word: ' + (data.word_strongs || '') + ' ' + (document.getElementById('f-hebrew').value || '');
+            document.getElementById('btn-delete').style.display = '';
+            document.getElementById('def-add-section').style.display = '';
+            document.getElementById('def-disabled-msg').style.display = 'none';
+            loadDefinitions(editingWordId);
+            loadWords();
+        } else {
+            cancelEdit();
+            loadWords();
+        }
     });
 }
 
 // ── Delete ──
 function deleteWord() {
     if (!editingWordId) return;
-    if (!confirm('Delete this word and all its spellings?')) return;
+    if (!confirm('Delete this word and all its translits?')) return;
     fetch(API + '/words.php?word_key=' + editingWordId, {
         method: 'DELETE', credentials: 'include'
     }).then(r=>r.json()).then(function(resp) {
@@ -877,9 +1114,9 @@ function hebrewToYt(hebrew) {
         var cp = hebrew.charCodeAt(i);
         if (cp < 0x0591 || cp > 0x05C7) cleaned += hebrew[i];
     }
-    // Reverse (Hebrew RTL -> English LTR) and map
+    // Map Hebrew chars to YT chars (keep same order for RTL display)
     var result = '';
-    for (var i = cleaned.length - 1; i >= 0; i--) {
+    for (var i = 0; i < cleaned.length; i++) {
         result += HEBREW_YT_MAP[cleaned[i]] || '';
     }
     return result;
@@ -902,7 +1139,7 @@ var YT_HEBREW_MAP = {
 function ytToHebrew(yt) {
     if (!yt) return '';
     var result = '';
-    for (var i = yt.length - 1; i >= 0; i--) {
+    for (var i = 0; i < yt.length; i++) {
         result += YT_HEBREW_MAP[yt[i]] || '';
     }
     return result;
@@ -936,7 +1173,7 @@ function buildHebrewKeyboard() {
         html += '<button type="button" title="' + lt.name + ' \u2192 ' + yt + '" onclick="insertHebrew(\'' + lt.ch + '\')">' +
                 lt.ch + '<span class="kb-sub">' + yt + '</span></button>';
     }
-    html += '<button type="button" class="kb-special" onclick="hebrewBackspace()" title="Remove last character">\u232B Backspace</button>';
+    html += '<button type="button" class="kb-special" onclick="hebrewBackspace()" title="Backspace">\u232B</button>';
     kb.innerHTML = html;
     var label = document.getElementById('kb-label');
     if (label) label.textContent = 'Click letters to insert into Hebrew field. Backspace removes last character.';
@@ -997,7 +1234,7 @@ function buildYtKeyboard() {
         html += '<button type="button" title="' + lt.name + ' (' + lt.ch + ')" onclick="insertYtChar(\'' + lt.ch + '\')" style="font-family:\'Yada Towrah\',serif;">' +
                 lt.ch + '<span class="kb-sub" style="font-family:serif;">' + heb + '</span></button>';
     }
-    html += '<button type="button" class="kb-special" onclick="ytBackspace()" title="Remove last character">\u232B Backspace</button>';
+    html += '<button type="button" class="kb-special" onclick="ytBackspace()" title="Backspace">\u232B</button>';
     kb.innerHTML = html;
     var label = document.getElementById('kb-label');
     if (label) label.textContent = 'Click letters to insert into YT field. Backspace removes last character.';
