@@ -628,19 +628,6 @@ $(function () {
         closeWordPopup();
         var rect = anchorEl.getBoundingClientRect();
 
-        var grammarParts = [];
-        if (info.word_gender === 'M') grammarParts.push('m');
-        else if (info.word_gender === 'F') grammarParts.push('f');
-        else if (info.word_gender === 'N') grammarParts.push('n');
-        if (info.word_flag_plural) grammarParts.push('pl');
-        if (info.word_flag_noun) grammarParts.push('noun');
-        if (info.word_flag_verb) grammarParts.push('verb');
-        if (info.word_flag_adjective) grammarParts.push('adj');
-        if (info.word_flag_adverb) grammarParts.push('adv');
-        if (info.word_flag_preposition) grammarParts.push('prep');
-        if (info.word_flag_conjunction) grammarParts.push('conj');
-        if (info.word_flag_subst) grammarParts.push('subst');
-
         var html = '<div class="word-popup" id="word-popup">';
         if (info.word_yt) {
             html += '<div class="font_yt">' + escHtml(info.word_yt.split('').reverse().join('')) + '</div>';
@@ -651,23 +638,19 @@ $(function () {
         if (info.word_strongs) {
             html += '<div><a class="word-strongs-link" href="http://lexiconcordance.com/hebrew/' + encodeURIComponent(info.word_strongs.trim()) + '.html" target="_blank">' + escHtml(info.word_strongs.trim()) + '</a></div>';
         }
-        if (grammarParts.length > 0) {
-            html += '<div class="word-grammar">' + escHtml(grammarParts.join(' ')) + '</div>';
-        }
-        var hasDef = info.word_definition_yy || info.word_definition_kirk || info.word_definition_external || info.word_definition;
-        if (hasDef) {
+        if (info.definitions && info.definitions.length > 0) {
             html += '<hr>';
-            if (info.word_definition_yy) {
-                html += '<div class="word-definition"><strong>YY:</strong> ' + escHtml(info.word_definition_yy) + '</div>';
-            }
-            if (info.word_definition_kirk) {
-                html += '<div class="word-definition"><strong>Kirk:</strong> ' + escHtml(info.word_definition_kirk) + '</div>';
-            }
-            if (info.word_definition_external) {
-                html += '<div class="word-definition"><strong>Ext:</strong> ' + escHtml(info.word_definition_external) + '</div>';
-            }
-            if (info.word_definition) {
-                html += '<div class="word-definition">' + escHtml(info.word_definition) + '</div>';
+            for (var di = 0; di < info.definitions.length; di++) {
+                var d = info.definitions[di];
+                if (d.pos_label) {
+                    var grammarNote = d.pos_label;
+                    if (d.gender_label) grammarNote += ' (' + d.gender_label + ')';
+                    if (d.plural_flag) grammarNote += ' (plural)';
+                    html += '<div class="word-pos-label">' + escHtml(grammarNote) + '</div>';
+                }
+                if (d.text) {
+                    html += '<div class="word-definition">' + escHtml(d.text) + '</div>';
+                }
             }
         }
         html += '</div>';

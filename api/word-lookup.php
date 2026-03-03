@@ -28,12 +28,7 @@ $params = array_map('strtolower', $wordList);
 
 $sql = "
     SELECT w.word_key, s.word_translit_text,
-           w.word_translit, w.word_yt, w.word_hebrew, w.word_strongs,
-           w.word_gender, w.word_flag_plural,
-           w.word_flag_noun, w.word_flag_verb, w.word_flag_adjective,
-           w.word_flag_adverb, w.word_flag_preposition, w.word_flag_conjunction,
-           w.word_flag_subst, w.word_definition_kirk, w.word_definition_yy,
-           w.word_definition_external
+           w.word_translit, w.word_yt, w.word_hebrew, w.word_strongs
     FROM yy_word_translit s
     JOIN yy_word w ON s.word_key = w.word_key
     WHERE w.word_active_flag = true
@@ -76,6 +71,40 @@ if (!empty($wordIds)) {
     foreach ($result as $key => &$entry) {
         $wid = $entry['word_key'];
         $entry['word_spellings'] = isset($spByWord[$wid]) ? $spByWord[$wid] : [];
+    }
+    unset($entry);
+
+    // Fetch definitions with POS labels
+    $defSql = "
+        SELECT d.word_key, d.word_definition_text, d.word_gender_key, d.word_definition_plural_flag,
+               p.word_pos_label, g.word_gender_label
+        FROM yy_word_definition d
+        LEFT JOIN yy_word_pos p ON p.word_pos_key = d.word_pos_key
+        LEFT JOIN yy_word_gender g ON g.word_gender_key = d.word_gender_key
+        WHERE d.word_key IN ($idPlaceholders)
+          AND d.word_definition_active_flag = true
+        ORDER BY d.word_pos_key
+    ";
+    $defStmt = $pg->prepare($defSql);
+    $defStmt->execute($idList);
+    $defRows = $defStmt->fetchAll();
+
+    // Group definitions by word_key
+    $defByWord = [];
+    foreach ($defRows as $def) {
+        $defByWord[$def['word_key']][] = [
+            'pos_label' => $def['word_pos_label'],
+            'text' => $def['word_definition_text'],
+            'gender_key' => $def['word_gender_key'],
+            'gender_label' => $def['word_gender_label'],
+            'plural_flag' => $def['word_definition_plural_flag'],
+        ];
+    }
+
+    // Attach definitions to each result
+    foreach ($result as $key => &$entry) {
+        $wid = $entry['word_key'];
+        $entry['definitions'] = isset($defByWord[$wid]) ? $defByWord[$wid] : [];
     }
     unset($entry);
 }

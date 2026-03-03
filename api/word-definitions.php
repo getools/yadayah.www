@@ -18,6 +18,11 @@ switch ($method) {
             jsonResponse($stmt->fetchAll());
         }
 
+        if (isset($_GET['gender_list'])) {
+            $stmt = $db->query("SELECT word_gender_key, word_gender_code, word_gender_label FROM yy_word_gender ORDER BY word_gender_key");
+            jsonResponse($stmt->fetchAll());
+        }
+
         $wordKey = $_GET['word_key'] ?? null;
         if (!$wordKey || !ctype_digit($wordKey)) {
             errorResponse('word_key is required');
@@ -26,7 +31,7 @@ switch ($method) {
         $stmt = $db->prepare("
             SELECT d.word_definition_key, d.word_key, d.word_pos_key, d.word_source_key,
                    d.word_definition_text, d.word_definition_active_flag,
-                   d.word_gender_code, d.word_definition_plural_flag,
+                   d.word_gender_key, d.word_definition_plural_flag,
                    d.word_definition_source_key,
                    p.word_pos_label
             FROM yy_word_definition d
@@ -105,9 +110,9 @@ switch ($method) {
             $sets[] = 'word_definition_active_flag = ?';
             $params[] = $data['word_definition_active_flag'] ? 't' : 'f';
         }
-        if (array_key_exists('word_gender_code', $data)) {
-            $sets[] = 'word_gender_code = ?';
-            $params[] = $data['word_gender_code'] ?: null;
+        if (array_key_exists('word_gender_key', $data)) {
+            $sets[] = 'word_gender_key = ?';
+            $params[] = $data['word_gender_key'] ? (int)$data['word_gender_key'] : null;
         }
         if (array_key_exists('word_definition_plural_flag', $data)) {
             $sets[] = 'word_definition_plural_flag = ?';

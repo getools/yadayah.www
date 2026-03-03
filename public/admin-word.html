@@ -284,19 +284,19 @@
                 <div class="field-row">
                     <div class="field field-narrow">
                         <label for="f-strongs">Strong's #</label>
-                        <input type="text" id="f-strongs" maxlength="4" placeholder="0001">
+                        <input type="text" id="f-strongs" maxlength="4" placeholder="0001" oninput="autoSaveWordField('word_strongs', this.value)">
                     </div>
                     <div class="field field-medium">
                         <label for="f-hebrew">Hebrew</label>
-                        <input type="text" id="f-hebrew" dir="rtl" style="font-size:1.2rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" oninput="updateYtPreview()" onfocus="switchKbMode('hebrew')">
+                        <input type="text" id="f-hebrew" dir="rtl" style="font-size:1.2rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" oninput="updateYtPreview(); autoSaveWordField('word_hebrew', this.value); autoSaveWordField('word_yt', document.getElementById('f-yt').value)" onfocus="switchKbMode('hebrew')">
                     </div>
                     <div class="field" style="flex:0 0 200px; min-width:150px">
                         <label for="f-yt">YT</label>
-                        <input type="text" id="f-yt" dir="rtl" style="font-family:'Yada Towrah',serif; font-size:1.1rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" class="kb-inactive" onfocus="switchKbMode('yt')" oninput="updateHebrewPreview()">
+                        <input type="text" id="f-yt" dir="rtl" style="font-family:'Yada Towrah',serif; font-size:1.1rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" class="kb-inactive" onfocus="switchKbMode('yt')" oninput="updateHebrewPreview(); autoSaveWordField('word_yt', this.value); autoSaveWordField('word_hebrew', document.getElementById('f-hebrew').value)">
                     </div>
                     <div class="field field-narrow" style="justify-content:flex-end">
                         <label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;font-weight:500">
-                            <input type="checkbox" id="f-active" style="width:16px;height:16px">
+                            <input type="checkbox" id="f-active" style="width:16px;height:16px" onchange="autoSaveWordField('word_active_flag', this.checked, true)">
                             Active
                         </label>
                     </div>
@@ -349,6 +349,7 @@ var sortDir = 'asc';
 var countMode = 'gt'; // 'gt' or 'lt'
 var allPosList = [];
 var allSourceList = [];
+var allGenderList = [];
 var currentDefinitions = [];
 var defSaveTimers = {};
 
@@ -652,7 +653,7 @@ function cancelEdit() {
     document.getElementById('edit-panel').classList.remove('active');
     document.getElementById('list-panel').classList.remove('hidden');
     editingWordId = null;
-    applyFilters();
+    loadWords();
 }
 
 function newWord() {
@@ -787,9 +788,15 @@ function removeTranslit(btn) {
     var item = btn.closest('.translit-item');
     var text = item.querySelector('input').value.trim();
     if (!confirm('Remove translit' + (text ? ' "' + text + '"' : '') + '?')) return;
+    var key = item.getAttribute('data-key');
     item.remove();
     updateTranslitArrows();
     updateTranslitTotal();
+    if (key) {
+        fetch(API + '/word-translits.php?word_translit_key=' + key, {
+            method: 'DELETE', credentials: 'include'
+        });
+    }
 }
 
 function moveTranslitUp(btn) {
@@ -868,6 +875,9 @@ function loadDefLookups() {
     fetch(API + '/word-definitions.php?source_list', {credentials:'include'}).then(r=>r.json()).then(function(data) {
         allSourceList = data;
     });
+    fetch(API + '/word-definitions.php?gender_list', {credentials:'include'}).then(r=>r.json()).then(function(data) {
+        allGenderList = data;
+    });
 }
 
 function getPosInfo(posKey) {
@@ -901,12 +911,12 @@ function renderDefinitions() {
         html += '<label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox"' + (d.word_definition_active_flag ? ' checked' : '') + ' onchange="updateDefField(' + d.word_definition_key + ',\'word_definition_active_flag\',this.checked)"><span class="def-pos-label">' + esc(posLabel) + '</span></label>';
         html += '<div class="def-meta">';
         if (showGender) {
-            html += '<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px">Gender <select onchange="updateDefField(' + d.word_definition_key + ',\'word_gender_code\',this.value)">';
+            html += '<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px">Gender <select onchange="updateDefField(' + d.word_definition_key + ',\'word_gender_key\',this.value)">';
             html += '<option value="">-</option>';
-            html += '<option value="m"' + (d.word_gender_code === 'm' ? ' selected' : '') + '>M</option>';
-            html += '<option value="f"' + (d.word_gender_code === 'f' ? ' selected' : '') + '>F</option>';
-            html += '<option value="b"' + (d.word_gender_code === 'b' ? ' selected' : '') + '>Both</option>';
-            html += '<option value="n"' + (d.word_gender_code === 'n' ? ' selected' : '') + '>N</option>';
+            allGenderList.forEach(function(g) {
+                var selected = d.word_gender_key == g.word_gender_key ? ' selected' : '';
+                html += '<option value="' + g.word_gender_key + '"' + selected + '>' + esc(g.word_gender_label) + '</option>';
+            });
             html += '</select></label>';
         }
         if (showPlural) {
@@ -1013,6 +1023,41 @@ function deleteDefinition(defKey) {
         currentDefinitions = currentDefinitions.filter(function(d) { return d.word_definition_key != defKey; });
         renderDefinitions();
     });
+}
+
+// ── Auto-save individual word fields ──
+var wordFieldTimers = {};
+
+function autoSaveWordField(field, value, immediate) {
+    if (!editingWordId) return;
+    if (wordFieldTimers[field]) clearTimeout(wordFieldTimers[field]);
+    var doSave = function() {
+        var fields = {};
+        fields[field] = value;
+        fetch(API + '/words.php', {
+            method: 'PATCH', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ word_key: editingWordId, fields: fields })
+        }).then(function(r) { return r.json(); }).then(function(resp) {
+            if (resp.error) { console.error('Auto-save error:', resp.error); return; }
+            // Update local cache
+            for (var i = 0; i < allWords.length; i++) {
+                if (allWords[i].word_key == editingWordId) {
+                    if (field === 'word_strongs') allWords[i].word_strongs = resp.word_strongs;
+                    if (field === 'word_hebrew') allWords[i].word_hebrew = resp.word_hebrew;
+                    if (field === 'word_yt') allWords[i].word_yt = resp.word_yt;
+                    if (field === 'word_active_flag') allWords[i].word_active_flag = resp.word_active_flag;
+                    break;
+                }
+            }
+            applyFilters();
+        }).catch(function(err) { console.error('Auto-save failed:', err); });
+    };
+    if (immediate) {
+        doSave();
+    } else {
+        wordFieldTimers[field] = setTimeout(doSave, 600);
+    }
 }
 
 // ── Save ──

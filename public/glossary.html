@@ -174,7 +174,7 @@
             width: 100%;
             height: 100%;
             background: var(--letter-bg) center top/contain no-repeat;
-            opacity: 0.15;
+            opacity: 0.08;
             pointer-events: none;
         }
         .letter-content.has-bg .letter-overview {
@@ -294,7 +294,9 @@
         .word-popup .wp-strongs a { color: #3498db; text-decoration: none; }
         .word-popup .wp-strongs a:hover { text-decoration: underline; }
         .word-popup .wp-grammar { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
-        .word-popup .wp-definition { font-size: 0.875rem; color: #444; word-wrap: break-word; }
+        .word-popup .wp-pos-label { font-size: 0.8rem; font-weight: 600; color: #2c3e50; margin-top: 6px; }
+        .word-popup .wp-pos-label:first-child { margin-top: 0; }
+        .word-popup .wp-definition { font-size: 0.875rem; color: #444; word-wrap: break-word; margin-bottom: 4px; }
         .word-popup hr { border: none; border-top: 1px solid #eee; margin: 8px 0; }
     </style>
 </head>
@@ -504,22 +506,13 @@
         }
 
         function buildGrammar(w) {
-            var parts = [];
-            if (w.word_flag_noun === true || w.word_flag_noun === 't') parts.push('noun');
-            if (w.word_flag_verb === true || w.word_flag_verb === 't') parts.push('verb');
-            if (w.word_flag_adjective === true || w.word_flag_adjective === 't') parts.push('adj');
-            if (w.word_flag_adverb === true || w.word_flag_adverb === 't') parts.push('adv');
-            if (w.word_flag_preposition === true || w.word_flag_preposition === 't') parts.push('prep');
-            if (w.word_flag_conjunction === true || w.word_flag_conjunction === 't') parts.push('conj');
-            if (w.word_flag_subst === true || w.word_flag_subst === 't') parts.push('subst');
-            if (w.word_flag_plural === true || w.word_flag_plural === 't') parts.push('pl');
-            if (w.word_gender === 'm') parts.push('masc');
-            else if (w.word_gender === 'f') parts.push('fem');
-            return parts.join(', ');
+            if (!w.definitions || w.definitions.length === 0) return '';
+            return w.definitions.map(function(d) { return d.pos_label || ''; }).filter(Boolean).join(', ');
         }
 
         function getDefinition(w) {
-            return w.word_definition_yy || w.word_definition_kirk || w.word_definition_external || '';
+            if (!w.definitions || w.definitions.length === 0) return '';
+            return w.definitions.map(function(d) { return d.text || ''; }).filter(Boolean).join(' | ');
         }
 
         function renderWordTable(words) {
@@ -766,18 +759,6 @@
             closeWordPopup();
             var rect = anchorEl.getBoundingClientRect();
 
-            var grammarParts = [];
-            if (info.word_flag_gender_m) grammarParts.push('m');
-            if (info.word_flag_gender_f) grammarParts.push('f');
-            if (info.word_flag_plural) grammarParts.push('pl');
-            if (info.word_flag_noun) grammarParts.push('noun');
-            if (info.word_flag_verb) grammarParts.push('verb');
-            if (info.word_flag_adjective) grammarParts.push('adj');
-            if (info.word_flag_adverb) grammarParts.push('adv');
-            if (info.word_flag_preposition) grammarParts.push('prep');
-            if (info.word_flag_conjunction) grammarParts.push('conj');
-            if (info.word_flag_subst) grammarParts.push('subst');
-
             var html = '';
             var hasLeft = info.word_spellings && info.word_spellings.length > 0;
             var hasRight = info.word_yt || info.word_hebrew;
@@ -797,13 +778,20 @@
             if (info.word_strongs) {
                 html += '<div class="wp-strongs"><a href="http://lexiconcordance.com/hebrew/' + encodeURIComponent(info.word_strongs.trim()) + '.html" target="_blank">' + escHtml(info.word_strongs.trim()) + '</a></div>';
             }
-            if (grammarParts.length > 0) {
-                html += '<div class="wp-grammar">' + escHtml(grammarParts.join(' ')) + '</div>';
-            }
-            var def = info.word_definition_yy || info.word_definition_kirk;
-            if (def) {
+            if (info.definitions && info.definitions.length > 0) {
                 html += '<hr>';
-                html += '<div class="wp-definition">' + escHtml(def) + '</div>';
+                for (var di = 0; di < info.definitions.length; di++) {
+                    var d = info.definitions[di];
+                    if (d.pos_label) {
+                        var grammarNote = d.pos_label;
+                        if (d.gender_label) grammarNote += ' (' + d.gender_label + ')';
+                        if (d.plural_flag) grammarNote += ' (plural)';
+                        html += '<div class="wp-pos-label">' + escHtml(grammarNote) + '</div>';
+                    }
+                    if (d.text) {
+                        html += '<div class="wp-definition">' + escHtml(d.text) + '</div>';
+                    }
+                }
             }
 
             var overlay = document.createElement('div');
