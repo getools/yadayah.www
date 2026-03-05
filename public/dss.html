@@ -186,6 +186,30 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.25); text-align: left; margin-bottom: 6px;
         }
         .dss-legend-item:hover .dss-popover { display: block; }
+
+        /* Word definition popovers */
+        .dss-word-def {
+            position: relative; cursor: pointer;
+        }
+        .dss-word-def .dss-word-popover {
+            display: none; position: absolute; bottom: 100%; right: 0;
+            background: #f5e6c8; color: #000; padding: 8px 12px; border-radius: 6px;
+            font-size: 0.82rem; line-height: 1.5; width: 280px; z-index: 200;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25); text-align: left;
+            direction: ltr; margin-bottom: 6px; font-family: Arial, sans-serif;
+        }
+        .dss-word-def:hover .dss-word-popover,
+        .dss-word-popover.expanded { display: block; }
+        .dss-word-popover.expanded { width: 380px; }
+        .dss-word-popover .dss-def-full { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #d4c4a0; }
+        .dss-word-popover.expanded .dss-def-full { display: block; }
+        .dss-word-popover.expanded .dss-def-more { display: none; }
+        .dss-def-more {
+            display: block; margin-top: 6px; color: #31345A; cursor: pointer;
+            font-size: 0.75rem; font-style: italic;
+        }
+        .dss-def-more:hover { color: #4a4e7a; }
+        .dss-word-popover.popover-below { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -220,7 +244,6 @@
         <div class="filter-group">
             <label for="dss-book">Book</label>
             <select id="dss-book">
-                <option value="">Select...</option>
             </select>
         </div>
 
@@ -240,7 +263,6 @@
             </div>
         </div>
 
-        <button onclick="fetchResults()">Go</button>
     </div>
 
     <div id="result-count" style="font-size: 0.85rem; color: #555; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
@@ -252,6 +274,7 @@
             <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-spelling" style="background:#00b050"> Spelling<span class="dss-popover">Words present in the scroll with <span class="dss-eng-spelling">spelling differences</span>. They do not affect the meaning and it is common in Hebrew.</span></label>
             <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-missing" style="background:red"> Missing<span class="dss-popover">Words in the traditional text <span class="dss-eng-missing">missing from the scroll</span>.</span></label>
             <label class="dss-legend-item"><input type="checkbox" data-eng-class="dss-eng-differs" style="background:#FF8C00"> Differs<span class="dss-popover">Words in the scroll <span class="dss-eng-differs">not in the traditional text</span>.</span></label>
+            <div style="font-size: 0.8rem; color: #666; margin-top: 4px;">Check one or more boxes to only display verses with those conditions present.</div>
         </div>
         <div class="dss-legend">
             <span><span class="swatch" style="background:#808000"></span> Preserved</span>
@@ -259,9 +282,10 @@
             <span class="dss-font-toggle">
                 <label style="cursor: pointer;"><input type="checkbox" id="dss-yt-toggle"> Yada Towrah</label>
             </span>
+            <div style="font-size: 0.8rem; color: #666; margin-top: 4px;">Check 'Yada Towrah' to view pictographs instead of square hebrew letters.</div>
         </div>
     </div>
-    <div id="initial-prompt" style="text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select a Book, Chapter, and Verse</div>
+    <div id="initial-prompt" style="display:none; text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select a Book, Chapter, and Verse</div>
     <div id="results" class="results"></div>
 
     <div style="margin-top: 50px; text-align: center; font-size: 0.8em; color: #666; line-height: 2.2;">
@@ -273,6 +297,125 @@
         function escHtml(str) {
             if (str == null) return '';
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        var initialLoad = true;
+        var wordDefMap = {}; // Hebrew word → { summary, full }
+
+        // ── Load word definitions ──
+        async function loadWordDefinitions() {
+            try {
+                var response = await fetch('/api/dss-word-definitions.php');
+                var rows = await response.json();
+                rows.forEach(function(r) {
+                    wordDefMap[r.word_hebrew_text] = {
+                        summary: r.word_hebrew_definition_summary,
+                        full: r.word_hebrew_definition_full
+                    };
+                });
+            } catch (err) {
+                console.error('Failed to load word definitions:', err);
+            }
+        }
+
+        function repositionPopover(popover) {
+            var pad = 30; // min distance from viewport top/bottom
+            // Reset any fixed positioning from previous repositioning
+            popover.style.position = '';
+            popover.style.top = '';
+            popover.style.left = '';
+            popover.style.right = '';
+            popover.style.bottom = '';
+            popover.style.maxHeight = '';
+            popover.style.overflowY = '';
+            popover.classList.remove('popover-below');
+            var rect = popover.getBoundingClientRect();
+            var vh = window.innerHeight;
+            // If it overflows the top, try below
+            if (rect.top < pad) {
+                popover.classList.add('popover-below');
+                rect = popover.getBoundingClientRect();
+            }
+            // If it overflows the bottom, try above
+            if (rect.bottom > vh - pad) {
+                popover.classList.remove('popover-below');
+                rect = popover.getBoundingClientRect();
+            }
+            // If still overflows (too tall for either direction), use fixed positioning
+            if (rect.top < pad || rect.bottom > vh - pad) {
+                var parentRect = popover.parentElement.getBoundingClientRect();
+                popover.style.position = 'fixed';
+                popover.style.right = (window.innerWidth - parentRect.right) + 'px';
+                // Place top at word position or pad, whichever is lower
+                var idealTop = Math.max(pad, parentRect.bottom + 6);
+                // If it would overflow the bottom, shift it up
+                var popHeight = rect.height;
+                if (idealTop + popHeight > vh - pad) {
+                    idealTop = vh - pad - popHeight;
+                }
+                // But never above the padding
+                if (idealTop < pad) idealTop = pad;
+                popover.style.top = idealTop + 'px';
+                popover.style.bottom = 'auto';
+            }
+        }
+
+        function applyWordPopovers(container) {
+            if (Object.keys(wordDefMap).length === 0) return;
+            var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+            var textNodes = [];
+            while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+            textNodes.forEach(function(node) {
+                var text = node.nodeValue;
+                if (!text || !text.trim()) return;
+
+                // Split on spaces, preserving them
+                var parts = text.split(/(\s+)/);
+                var hasMatch = false;
+                for (var i = 0; i < parts.length; i++) {
+                    var clean = parts[i].replace(/[\u200f\u200e\u00a0]/g, '').trim();
+                    if (clean && wordDefMap[clean]) { hasMatch = true; break; }
+                }
+                if (!hasMatch) return;
+
+                var frag = document.createDocumentFragment();
+                parts.forEach(function(part) {
+                    var clean = part.replace(/[\u200f\u200e\u00a0]/g, '').trim();
+                    if (clean && wordDefMap[clean]) {
+                        var def = wordDefMap[clean];
+                        var span = document.createElement('span');
+                        span.className = 'dss-word-def';
+                        span.textContent = part;
+                        var popover = document.createElement('span');
+                        popover.className = 'dss-word-popover';
+                        var html = '<strong>' + escHtml(clean) + '</strong><br>' + def.summary;
+                        if (def.full) {
+                            html += '<span class="dss-def-more">Click word for more details</span>';
+                            html += '<div class="dss-def-full">' + def.full + '</div>';
+                        }
+                        popover.innerHTML = html;
+                        span.appendChild(popover);
+                        // Close other expanded popovers on hover, but not our own
+                        span.addEventListener('mouseenter', function() {
+                            document.querySelectorAll('.dss-word-popover.expanded').forEach(function(p) {
+                                if (p !== popover) p.classList.remove('expanded');
+                            });
+                            requestAnimationFrame(function() { repositionPopover(popover); });
+                        });
+                        // Click to expand full definition
+                        span.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            popover.classList.toggle('expanded');
+                            requestAnimationFrame(function() { repositionPopover(popover); });
+                        });
+                        frag.appendChild(span);
+                    } else {
+                        frag.appendChild(document.createTextNode(part));
+                    }
+                });
+                node.parentNode.replaceChild(frag, node);
+            });
         }
 
         // ── Load books ──
@@ -289,6 +432,10 @@
                 option.textContent = label;
                 select.appendChild(option);
             });
+            if (select.options.length > 0) {
+                select.selectedIndex = 0;
+                select.dispatchEvent(new Event('change'));
+            }
         }
 
         // ── Cascading dropdowns: Book → Chapter → Verse ──
@@ -301,6 +448,7 @@
 
             if (!this.value) {
                 chapterSel.disabled = true;
+                if (!initialLoad) fetchResults();
                 return;
             }
 
@@ -314,6 +462,12 @@
                         chapterSel.appendChild(opt);
                     });
                     chapterSel.disabled = false;
+                    if (initialLoad && chapterSel.options.length > 1) {
+                        chapterSel.selectedIndex = 1;
+                        chapterSel.dispatchEvent(new Event('change'));
+                    } else if (!initialLoad) {
+                        fetchResults();
+                    }
                 });
         });
 
@@ -324,6 +478,7 @@
             var book = document.getElementById('dss-book').value;
             if (!this.value || !book) {
                 verseSel.disabled = true;
+                if (!initialLoad) fetchResults();
                 return;
             }
 
@@ -337,12 +492,18 @@
                         verseSel.appendChild(opt);
                     });
                     verseSel.disabled = false;
+                    if (initialLoad) {
+                        initialLoad = false;
+                        fetchResults();
+                    } else {
+                        fetchResults();
+                    }
                 });
         });
 
-        // Auto-fetch when verse is selected
+        // Auto-fetch when verse is selected (including "All")
         document.getElementById('dss-verse').addEventListener('change', function() {
-            if (this.value) fetchResults();
+            fetchResults();
         });
 
         // ── Fetch and display results ──
@@ -460,6 +621,9 @@
                 cols.appendChild(colHe);
                 card.appendChild(cols);
                 resultsDiv.appendChild(card);
+
+                // Apply word definition popovers to Hebrew column
+                if (!isYT) applyWordPopovers(colHe);
             });
         }
 
@@ -502,7 +666,17 @@
             });
         });
 
+        // Close expanded popovers when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dss-word-def')) {
+                document.querySelectorAll('.dss-word-popover.expanded').forEach(function(p) {
+                    p.classList.remove('expanded');
+                });
+            }
+        });
+
         // ── Init ──
+        loadWordDefinitions();
         loadBooks();
     </script>
 </body>

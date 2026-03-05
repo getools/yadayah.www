@@ -30,7 +30,7 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
     box-shadow: 0 4px 16px rgba(0,0,0,0.15);
     padding: 32px;
     width: 100%;
-    max-width: 480px;
+    max-width: 380px;
 }
 .login-card h1 { font-size: 1.4rem; margin-bottom: 20px; }
 .pass-wrap { position: relative; }
@@ -325,6 +325,15 @@ select.col-filter {
     color: #666;
 }
 
+.word-popup .word-pos-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-top: 6px;
+}
+.word-popup .word-pos-label:first-child {
+    margin-top: 0;
+}
 .word-popup .word-definition {
     font-size: 0.875rem;
     color: #444;

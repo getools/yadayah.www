@@ -188,7 +188,6 @@
         <div class="filter-group">
             <label for="cite">Book</label>
             <select id="cite">
-                <option value="">All</option>
             </select>
         </div>
 
@@ -208,11 +207,10 @@
             </div>
         </div>
 
-        <button onclick="fetchResults()">Go</button>
     </div>
     <div id="result-count" style="font-size: 0.85rem; color: #555; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
 
-    <div id="initial-prompt" style="text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select Translation Filters and Hit 'Go'</div>
+    <div id="initial-prompt" style="display:none; text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select Translation Filters and Hit 'Go'</div>
     <div id="word-link-status" style="font-size: 0.8rem; color: #888; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
     <div id="results" class="results"></div>
 
@@ -232,6 +230,7 @@
 
         // ── Cite book data with scroll key mapping ──
         var citeBookScrollMap = {};
+        var initialLoad = true;
 
         // ── Load cite books ──
         async function loadCiteBooks() {
@@ -247,6 +246,10 @@
                     citeBookScrollMap[book.cite_book_key] = book.yah_scroll_key;
                 }
             });
+            if (select.options.length > 0) {
+                select.selectedIndex = 0;
+                select.dispatchEvent(new Event('change'));
+            }
         }
 
         // ── Cascading dropdowns: Book → Chapter → Verse ──
@@ -260,6 +263,7 @@
             var scrollKey = citeBookScrollMap[this.value];
             if (!scrollKey) {
                 chapterSel.disabled = true;
+                if (!initialLoad) fetchResults();
                 return;
             }
 
@@ -274,6 +278,12 @@
                         chapterSel.appendChild(opt);
                     });
                     chapterSel.disabled = false;
+                    if (initialLoad && chapterSel.options.length > 1) {
+                        chapterSel.selectedIndex = 1;
+                        chapterSel.dispatchEvent(new Event('change'));
+                    } else if (!initialLoad) {
+                        fetchResults();
+                    }
                 });
         });
 
@@ -298,7 +308,17 @@
                         verseSel.appendChild(opt);
                     });
                     verseSel.disabled = false;
+                    if (initialLoad) {
+                        initialLoad = false;
+                        fetchResults();
+                    } else {
+                        fetchResults();
+                    }
                 });
+        });
+
+        document.getElementById('verse').addEventListener('change', function() {
+            if (!initialLoad) fetchResults();
         });
 
         // ── Fetch and display results ──

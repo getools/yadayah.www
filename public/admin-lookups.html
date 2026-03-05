@@ -20,6 +20,24 @@
         textarea { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; resize: vertical; }
         .row-count { font-size: 0.85rem; color: #777; }
         .pk-display { font-size: 0.85rem; color: #999; background: #f5f5f5; padding: 8px 10px; border: 1px solid #e0e0e0; border-radius: 4px; }
+        .hebrew-kb { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; max-width: 492px; }
+        .hebrew-kb button { width: 32px; height: 32px; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; transition: background 0.15s; }
+        .hebrew-kb button:hover { background: #eef6fc; border-color: #3498db; }
+        .hebrew-kb button:active { background: #d4eaf7; }
+        .hebrew-kb button.kb-special { font-size: 0.7rem; color: #666; width: auto; padding: 0 8px; }
+        .col-hebrew { direction: rtl; font-size: 1.1rem; }
+        #edit-fields input[type="text"], #edit-fields input[type="number"] { max-width: 250px; }
+        .dirty-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center; }
+        .dirty-overlay.active { display:flex; }
+        .dirty-dialog { background:#fff; border-radius:8px; padding:28px 32px; max-width:440px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.25); }
+        .dirty-dialog h3 { margin:0 0 12px; font-size:1.1rem; }
+        .dirty-dialog p { margin:0 0 20px; color:#555; font-size:0.95rem; line-height:1.5; }
+        .dirty-dialog .btn-group { display:flex; flex-direction:column; gap:8px; }
+        .dirty-dialog .btn-group .btn { text-align:center; }
+        .btn-sort { background: none; border: none; cursor: pointer; font-size: 1rem; padding: 2px 6px; color: #777; line-height: 1; }
+        .btn-sort:hover { color: #3498db; }
+        .btn-sort.hidden { visibility: hidden; }
+        .col-sort-arrow { width: 30px; text-align: center; padding: 4px 2px !important; }
     </style>
 </head>
 <body>
@@ -77,6 +95,10 @@
                     <option value="yy_series">yy_series</option>
                     <option value="yy_user">yy_user</option>
                     <option value="yy_volume">yy_volume</option>
+                    <option value="yy_word_pos">yy_word_pos</option>
+                    <option value="yy_word_source">yy_word_source</option>
+                    <option value="yy_word_gender">yy_word_gender</option>
+
                 </select>
             </div>
             <span id="row-count" class="row-count"></span>
@@ -119,6 +141,19 @@
     </div>
 </div>
 
+<!-- Unsaved Changes Dialog -->
+<div id="dirty-overlay" class="dirty-overlay">
+    <div class="dirty-dialog">
+        <h3>Unsaved Changes</h3>
+        <p>You have changes that have not been saved.</p>
+        <div class="btn-group">
+            <button id="dirty-save" class="btn btn-primary">Save Changes and then Proceed</button>
+            <button id="dirty-lose" class="btn btn-secondary">Lose Changes and then Proceed</button>
+            <button id="dirty-cancel" class="btn btn-secondary">Cancel Request</button>
+        </div>
+    </div>
+</div>
+
 <script>
 var API = 'api';
 var currentTable = '';
@@ -126,6 +161,8 @@ var currentMeta = null;
 var currentRows = [];
 var editingKey = null;
 var fkCache = {};
+var formSnapshot = {};
+var pendingAction = null;
 
 // ── Auth ──
 function checkAuth() {
@@ -176,16 +213,37 @@ document.getElementById('btn-logout').addEventListener('click', function() {
 
 // ── Table selection ──
 document.getElementById('table-select').addEventListener('change', function() {
-    var table = this.value;
-    currentTable = table;
-    editingKey = null;
-    hideEdit();
-    if (!table) {
+    var sel = this;
+    var prevValue = currentTable || '';
+    var newValue = sel.value;
+    if (!hasUnsavedChanges()) {
+        currentTable = newValue;
+        editingKey = null;
+        formSnapshot = {};
+        document.getElementById('edit-panel').classList.remove('active');
         document.getElementById('list-panel').style.display = 'none';
-        document.getElementById('row-count').textContent = '';
+        if (!newValue) {
+            document.getElementById('row-count').textContent = '';
+            return;
+        }
+        loadTable(newValue);
         return;
     }
-    loadTable(table);
+    // Revert dropdown until user decides
+    sel.value = prevValue;
+    checkDirtyAndProceed(function() {
+        sel.value = newValue;
+        currentTable = newValue;
+        editingKey = null;
+        formSnapshot = {};
+        document.getElementById('edit-panel').classList.remove('active');
+        document.getElementById('list-panel').style.display = 'none';
+        if (!newValue) {
+            document.getElementById('row-count').textContent = '';
+            return;
+        }
+        loadTable(newValue);
+    });
 });
 
 function loadTable(table) {
@@ -234,12 +292,16 @@ function renderList() {
 
 function doRenderList() {
     var cols = currentMeta.columns;
+    var sortable = currentMeta.sortable;
     var thead = document.getElementById('lookup-thead');
     var html = '<tr>';
+    // Skip the sort column from normal column rendering when sortable
     for (var i = 0; i < cols.length; i++) {
         if (cols[i].type === 'password') continue;
+        if (sortable && cols[i].name === sortable) continue;
         html += '<th>' + esc(cols[i].label) + '</th>';
     }
+    if (sortable) html += '<th colspan="2" style="text-align:center">Sort</th>';
     html += '<th>Actions</th></tr>';
     thead.innerHTML = html;
 
@@ -248,18 +310,29 @@ function doRenderList() {
     for (var r = 0; r < currentRows.length; r++) {
         var row = currentRows[r];
         var pk = row[currentMeta.pk];
-        html += '<tr onclick="editRow(' + esc(String(pk)) + ')">';
+        html += '<tr data-pk="' + esc(String(pk)) + '" onclick="editRow(' + esc(String(pk)) + ')">';
         for (var i = 0; i < cols.length; i++) {
             var col = cols[i];
             if (col.type === 'password') continue;
+            if (sortable && col.name === sortable) continue;
             var val = row[col.name];
             if (col.type === 'fk' && fkCache[col.fk_table]) {
                 val = fkLabel(col.fk_table, val);
             }
+            if (col.type === 'bool') {
+                val = (val === true || val === 't' || val === '1' || val === 1) ? 'Yes' : 'No';
+            }
             if (col.type === 'textarea' && val && val.length > 60) {
                 val = val.substring(0, 60) + '...';
             }
-            html += '<td>' + esc(val != null ? String(val) : '') + '</td>';
+            var tdClass = col.type === 'hebrew' ? ' class="col-hebrew"' : '';
+            html += '<td' + tdClass + '>' + esc(val != null ? String(val) : '') + '</td>';
+        }
+        if (sortable) {
+            var upHidden = r === 0 ? ' hidden' : '';
+            var downHidden = r === currentRows.length - 1 ? ' hidden' : '';
+            html += '<td class="col-sort-arrow"><button type="button" class="btn-sort' + upHidden + '" onclick="event.stopPropagation(); moveSortUp(' + esc(String(pk)) + ')" title="Move up">&#9650;</button></td>';
+            html += '<td class="col-sort-arrow"><button type="button" class="btn-sort' + downHidden + '" onclick="event.stopPropagation(); moveSortDown(' + esc(String(pk)) + ')" title="Move down">&#9660;</button></td>';
         }
         html += '<td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); editRow(' + esc(String(pk)) + ')">Edit</button></td>';
         html += '</tr>';
@@ -298,18 +371,25 @@ function hideEdit() {
     document.getElementById('edit-panel').classList.remove('active');
     document.getElementById('list-panel').style.display = '';
     editingKey = null;
+    formSnapshot = {};
 }
 
 document.getElementById('btn-add').addEventListener('click', function() {
-    editingKey = null;
-    document.getElementById('edit-title').textContent = 'New ' + currentTable;
-    document.getElementById('btn-delete').style.display = 'none';
-    buildForm(null);
-    showEdit();
+    checkDirtyAndProceed(function() {
+        editingKey = null;
+        document.getElementById('edit-title').textContent = 'New ' + currentTable;
+        document.getElementById('btn-delete').style.display = 'none';
+        buildForm(null);
+        showEdit();
+    });
 });
 
-document.getElementById('btn-back').addEventListener('click', hideEdit);
-document.getElementById('btn-cancel').addEventListener('click', hideEdit);
+document.getElementById('btn-back').addEventListener('click', function() {
+    checkDirtyAndProceed(hideEdit);
+});
+document.getElementById('btn-cancel').addEventListener('click', function() {
+    checkDirtyAndProceed(hideEdit);
+});
 
 function editRow(pk) {
     fetch(API + '/lookups.php?action=get&table=' + currentTable + '&key=' + pk, {credentials:'include'})
@@ -336,49 +416,120 @@ function buildForm(row) {
     }
 
     var pending = fkCols.length;
+
+    // Build a column map for quick lookup
+    var colMap = {};
+    for (var i = 0; i < cols.length; i++) colMap[cols[i].name] = cols[i];
+
+    function renderField(col) {
+        var val = row ? (row[col.name] != null ? row[col.name] : '') : '';
+        var fieldId = 'f-' + col.name;
+        var html = '';
+
+        if (col.type === 'pk') {
+            if (row) {
+                html += '<div class="field" style="flex:0 0 120px;min-width:100px">';
+                html += '<label>' + esc(col.label) + '</label>';
+                html += '<div class="pk-display">' + esc(String(val)) + '</div>';
+                html += '<input type="hidden" id="' + fieldId + '" value="' + esc(String(val)) + '">';
+                html += '</div>';
+            }
+            return html;
+        }
+
+        if (col.type === 'readonly') return '';
+
+        html += '<div class="field" style="flex:1;min-width:0">';
+        html += '<label for="' + fieldId + '">' + esc(col.label) + '</label>';
+
+        if (col.type === 'fk') {
+            html += '<select id="' + fieldId + '">';
+            html += '<option value="">-- Select --</option>';
+            var opts = fkCache[col.fk_table] || [];
+            for (var j = 0; j < opts.length; j++) {
+                var sel = String(val) === String(opts[j].value) ? ' selected' : '';
+                html += '<option value="' + esc(String(opts[j].value)) + '"' + sel + '>' + esc(opts[j].label) + '</option>';
+            }
+            html += '</select>';
+        } else if (col.type === 'hebrew') {
+            html += '<input type="text" id="' + fieldId + '" dir="rtl" style="font-size:1.2rem" value="' + esc(String(val)) + '">';
+            html += '<div class="hebrew-kb" id="kb-' + col.name + '"></div>';
+        } else if (col.type === 'textarea') {
+            html += '<textarea id="' + fieldId + '" rows="3">' + esc(String(val)) + '</textarea>';
+        } else if (col.type === 'password') {
+            html += '<input type="password" id="' + fieldId + '" value="" placeholder="' + (row ? 'Leave blank to keep current' : '') + '">';
+        } else if (col.type === 'bool') {
+            var checked = (val === true || val === 't' || val === '1' || val === 1) ? ' checked' : '';
+            html += '<input type="checkbox" id="' + fieldId + '"' + checked + ' style="width:20px;height:20px;margin-top:4px">';
+        } else if (col.type === 'int') {
+            html += '<input type="number" id="' + fieldId + '" value="' + esc(String(val)) + '">';
+        } else {
+            var wideStyle = col.wide ? ' style="max-width:500px"' : '';
+            html += '<input type="text" id="' + fieldId + '"' + wideStyle + ' value="' + esc(String(val)) + '">';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
     var doRender = function() {
         var html = '';
-        for (var i = 0; i < cols.length; i++) {
-            var col = cols[i];
-            var val = row ? (row[col.name] != null ? row[col.name] : '') : '';
-            var fieldId = 'f-' + col.name;
+        var layout = currentMeta.edit_layout;
 
-            if (col.type === 'pk') {
-                if (row) {
-                    html += '<div class="field" style="flex:0 0 120px;min-width:100px">';
-                    html += '<label>' + esc(col.label) + '</label>';
-                    html += '<div class="pk-display">' + esc(String(val)) + '</div>';
-                    html += '<input type="hidden" id="' + fieldId + '" value="' + esc(String(val)) + '">';
+        if (layout) {
+            for (var r = 0; r < layout.length; r++) {
+                var rowItems = layout[r];
+                if (rowItems.length > 1) {
+                    html += '<div style="display:flex;gap:16px;align-items:flex-start">';
+                    for (var c = 0; c < rowItems.length; c++) {
+                        var item = rowItems[c];
+                        if (Array.isArray(item)) {
+                            // Stacked fields in one column
+                            html += '<div style="flex:1;min-width:0">';
+                            for (var s = 0; s < item.length; s++) {
+                                var sub = item[s];
+                                if (Array.isArray(sub)) {
+                                    // Sub-row: fields side-by-side within the column
+                                    html += '<div style="display:flex;gap:16px;align-items:flex-end">';
+                                    for (var k = 0; k < sub.length; k++) {
+                                        var col = colMap[sub[k]];
+                                        if (col) html += renderField(col);
+                                    }
+                                    html += '</div>';
+                                } else {
+                                    var col = colMap[sub];
+                                    if (col) html += renderField(col);
+                                }
+                            }
+                            html += '</div>';
+                        } else {
+                            var col = colMap[item];
+                            if (col) html += renderField(col);
+                        }
+                    }
                     html += '</div>';
+                } else {
+                    var item = rowItems[0];
+                    if (Array.isArray(item)) {
+                        for (var s = 0; s < item.length; s++) {
+                            var col = colMap[item[s]];
+                            if (col) html += renderField(col);
+                        }
+                    } else {
+                        var col = colMap[item];
+                        if (col) html += renderField(col);
+                    }
                 }
-                continue;
             }
-
-            html += '<div class="field">';
-            html += '<label for="' + fieldId + '">' + esc(col.label) + '</label>';
-
-            if (col.type === 'fk') {
-                html += '<select id="' + fieldId + '">';
-                html += '<option value="">-- Select --</option>';
-                var opts = fkCache[col.fk_table] || [];
-                for (var j = 0; j < opts.length; j++) {
-                    var sel = String(val) === String(opts[j].value) ? ' selected' : '';
-                    html += '<option value="' + esc(String(opts[j].value)) + '"' + sel + '>' + esc(opts[j].label) + '</option>';
-                }
-                html += '</select>';
-            } else if (col.type === 'textarea') {
-                html += '<textarea id="' + fieldId + '" rows="3">' + esc(String(val)) + '</textarea>';
-            } else if (col.type === 'password') {
-                html += '<input type="password" id="' + fieldId + '" value="" placeholder="' + (row ? 'Leave blank to keep current' : '') + '">';
-            } else if (col.type === 'int') {
-                html += '<input type="number" id="' + fieldId + '" value="' + esc(String(val)) + '">';
-            } else {
-                html += '<input type="text" id="' + fieldId + '" value="' + esc(String(val)) + '">';
+        } else {
+            for (var i = 0; i < cols.length; i++) {
+                html += renderField(cols[i]);
             }
-
-            html += '</div>';
         }
+
         container.innerHTML = html;
+        initHebrewKeyboards();
+        takeSnapshot();
     };
 
     if (pending === 0) { doRender(); return; }
@@ -404,7 +555,11 @@ document.getElementById('btn-save').addEventListener('click', function() {
             if (el.value) data[col.name] = el.value;
             continue;
         }
-        data[col.name] = el.value;
+        if (col.type === 'bool') {
+            data[col.name] = el.checked;
+        } else {
+            data[col.name] = el.value;
+        }
     }
 
     fetch(API + '/lookups.php?action=save&table=' + currentTable, {
@@ -433,13 +588,20 @@ document.getElementById('btn-delete').addEventListener('click', function() {
     if (!confirm('Delete this record from ' + currentTable + '?')) return;
     fetch(API + '/lookups.php?action=delete&table=' + currentTable + '&key=' + editingKey, {
         method: 'DELETE', credentials: 'include'
-    }).then(function(r){return r.json();}).then(function(resp) {
+    }).then(function(r){
+        if (!r.ok) {
+            return r.json().catch(function() { return {error: 'Delete failed (server error)'}; });
+        }
+        return r.json();
+    }).then(function(resp) {
         if (resp.error) {
             alert(resp.error);
             return;
         }
         hideEdit();
         loadRows(currentTable);
+    }).catch(function() {
+        alert('Delete failed: unexpected error');
     });
 });
 
@@ -453,12 +615,216 @@ function showErrors(errs) {
     el.scrollIntoView({behavior:'smooth'});
 }
 
+// ── Hebrew keyboard ──
+var HEBREW_LETTERS = [
+    {ch:'\u05D0', name:'Aleph'},  {ch:'\u05D1', name:'Bet'},    {ch:'\u05D2', name:'Gimel'},
+    {ch:'\u05D3', name:'Dalet'},  {ch:'\u05D4', name:'He'},     {ch:'\u05D5', name:'Vav'},
+    {ch:'\u05D6', name:'Zayin'},  {ch:'\u05D7', name:'Chet'},   {ch:'\u05D8', name:'Tet'},
+    {ch:'\u05D9', name:'Yod'},    {ch:'\u05DB', name:'Kaf'},    {ch:'\u05DC', name:'Lamed'},
+    {ch:'\u05DE', name:'Mem'},    {ch:'\u05E0', name:'Nun'},    {ch:'\u05E1', name:'Samekh'},
+    {ch:'\u05E2', name:'Ayin'},   {ch:'\u05E4', name:'Pe'},     {ch:'\u05E6', name:'Tsade'},
+    {ch:'\u05E7', name:'Qof'},    {ch:'\u05E8', name:'Resh'},   {ch:'\u05E9', name:'Shin'},
+    {ch:'\u05EA', name:'Tav'},
+    {ch:'\u05DA', name:'Kaf\u00B7f'}, {ch:'\u05DD', name:'Mem\u00B7f'}, {ch:'\u05DF', name:'Nun\u00B7f'},
+    {ch:'\u05E3', name:'Pe\u00B7f'},  {ch:'\u05E5', name:'Tsade\u00B7f'}
+];
+
+function buildHebrewKb(containerEl, inputId) {
+    var html = '';
+    for (var i = 0; i < HEBREW_LETTERS.length; i++) {
+        var lt = HEBREW_LETTERS[i];
+        html += '<button type="button" title="' + lt.name + '" onmousedown="insertHebrewChar(\'' + inputId + '\',\'' + lt.ch + '\'); event.preventDefault();">' + lt.ch + '</button>';
+    }
+    html += '<button type="button" class="kb-special" onmousedown="hebrewBackspace(\'' + inputId + '\'); event.preventDefault();" title="Remove last character">\u232B</button>';
+    containerEl.innerHTML = html;
+}
+
+function initHebrewKeyboards() {
+    if (!currentMeta) return;
+    var cols = currentMeta.columns;
+    for (var i = 0; i < cols.length; i++) {
+        if (cols[i].type === 'hebrew') {
+            var kb = document.getElementById('kb-' + cols[i].name);
+            if (kb) buildHebrewKb(kb, 'f-' + cols[i].name);
+        }
+    }
+}
+
+function insertHebrewChar(inputId, ch) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var start = input.selectionStart;
+    var end = input.selectionEnd;
+    var val = input.value;
+    input.value = val.substring(0, start) + ch + val.substring(end);
+    input.selectionStart = input.selectionEnd = start + ch.length;
+    input.focus();
+}
+
+function hebrewBackspace(inputId) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var pos = input.selectionStart;
+    var val = input.value;
+    if (pos > 0) {
+        input.value = val.substring(0, pos - 1) + val.substring(pos);
+        input.selectionStart = input.selectionEnd = pos - 1;
+    } else if (val.length > 0) {
+        input.value = val.substring(0, val.length - 1);
+    }
+    input.focus();
+}
+
+// ── Dirty-check ──
+function takeSnapshot() {
+    formSnapshot = {};
+    if (!currentMeta) return;
+    var cols = currentMeta.columns;
+    for (var i = 0; i < cols.length; i++) {
+        var el = document.getElementById('f-' + cols[i].name);
+        if (!el) continue;
+        formSnapshot[cols[i].name] = cols[i].type === 'bool' ? el.checked : el.value;
+    }
+}
+
+function hasUnsavedChanges() {
+    if (!currentMeta || !document.getElementById('edit-panel').classList.contains('active')) return false;
+    var cols = currentMeta.columns;
+    for (var i = 0; i < cols.length; i++) {
+        var el = document.getElementById('f-' + cols[i].name);
+        if (!el) continue;
+        var cur = cols[i].type === 'bool' ? el.checked : el.value;
+        var snap = formSnapshot[cols[i].name];
+        if (cols[i].type === 'bool') {
+            if (snap !== cur) return true;
+        } else {
+            if ((snap || '') !== cur) return true;
+        }
+    }
+    return false;
+}
+
+function checkDirtyAndProceed(action) {
+    if (!hasUnsavedChanges()) { action(); return; }
+    pendingAction = action;
+    document.getElementById('dirty-overlay').classList.add('active');
+}
+
+document.getElementById('dirty-save').addEventListener('click', function() {
+    document.getElementById('dirty-overlay').classList.remove('active');
+    var action = pendingAction;
+    pendingAction = null;
+    // Reuse save logic
+    var cols = currentMeta.columns;
+    var data = {};
+    for (var i = 0; i < cols.length; i++) {
+        var col = cols[i];
+        var el = document.getElementById('f-' + col.name);
+        if (!el) continue;
+        if (col.type === 'pk') {
+            if (el.value) data[col.name] = el.value;
+            continue;
+        }
+        if (col.type === 'bool') {
+            data[col.name] = el.checked;
+        } else {
+            data[col.name] = el.value;
+        }
+    }
+    fetch(API + '/lookups.php?action=save&table=' + currentTable, {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r){return r.json();}).then(function(resp) {
+        if (resp.error) { showErrors([resp.error]); return; }
+        if (resp.errors) { showErrors(resp.errors); return; }
+        formSnapshot = {};
+        if (action) action();
+    });
+});
+
+document.getElementById('dirty-lose').addEventListener('click', function() {
+    document.getElementById('dirty-overlay').classList.remove('active');
+    var action = pendingAction;
+    pendingAction = null;
+    formSnapshot = {};
+    if (action) action();
+});
+
+document.getElementById('dirty-cancel').addEventListener('click', function() {
+    document.getElementById('dirty-overlay').classList.remove('active');
+    pendingAction = null;
+});
+
+window.addEventListener('beforeunload', function(e) {
+    if (hasUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+// ── Sort arrows ──
+function moveSortUp(pk) {
+    var idx = -1;
+    for (var i = 0; i < currentRows.length; i++) {
+        if (currentRows[i][currentMeta.pk] == pk) { idx = i; break; }
+    }
+    if (idx <= 0) return;
+    var tmp = currentRows[idx];
+    currentRows[idx] = currentRows[idx - 1];
+    currentRows[idx - 1] = tmp;
+    saveSortOrder();
+    doRenderList();
+}
+
+function moveSortDown(pk) {
+    var idx = -1;
+    for (var i = 0; i < currentRows.length; i++) {
+        if (currentRows[i][currentMeta.pk] == pk) { idx = i; break; }
+    }
+    if (idx < 0 || idx >= currentRows.length - 1) return;
+    var tmp = currentRows[idx];
+    currentRows[idx] = currentRows[idx + 1];
+    currentRows[idx + 1] = tmp;
+    saveSortOrder();
+    doRenderList();
+}
+
+function saveSortOrder() {
+    if (!currentMeta.sortable) return;
+    var order = [];
+    for (var i = 0; i < currentRows.length; i++) {
+        order.push(currentRows[i][currentMeta.pk]);
+    }
+    fetch(API + '/lookups.php?action=reorder&table=' + currentTable, {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ order: order })
+    });
+}
+
 // ── Util ──
 function esc(s) {
     if (!s) return '';
     var d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+}
+
+// ── Nav tab interception ──
+var navTabs = document.querySelectorAll('.nav-tabs a.nav-tab');
+for (var i = 0; i < navTabs.length; i++) {
+    (function(tab) {
+        tab.addEventListener('click', function(e) {
+            if (hasUnsavedChanges()) {
+                e.preventDefault();
+                var href = tab.href;
+                checkDirtyAndProceed(function() {
+                    window.location.href = href;
+                });
+            }
+        });
+    })(navTabs[i]);
 }
 
 // ── Init ──

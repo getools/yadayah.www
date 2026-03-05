@@ -23,7 +23,7 @@ $TABLES = [
     ],
     'yah_chapter' => [
         'pk' => 'yah_chapter_key',
-        'order' => 'yah_scroll_key ASC, yah_chapter_sort ASC',
+        'order' => '(SELECT s.yah_scroll_sort FROM yah_scroll s WHERE s.yah_scroll_key = yah_chapter.yah_scroll_key) ASC, (SELECT s.yah_scroll_label_yy FROM yah_scroll s WHERE s.yah_scroll_key = yah_chapter.yah_scroll_key) ASC, yah_chapter_sort ASC, yah_chapter_number ASC',
         'columns' => [
             ['name' => 'yah_chapter_key',    'label' => 'Key',     'type' => 'pk'],
             ['name' => 'yah_scroll_key',     'label' => 'Scroll',  'type' => 'fk', 'fk_table' => 'yah_scroll'],
@@ -33,11 +33,13 @@ $TABLES = [
     ],
     'yah_verse' => [
         'pk' => 'yah_verse_key',
-        'order' => 'yah_chapter_key ASC, yah_verse_sort ASC',
+        'select' => "yah_verse.*, (SELECT s.yah_scroll_label_yy || ' / ' || s.yah_scroll_label_common FROM yah_scroll s JOIN yah_chapter c ON c.yah_scroll_key = s.yah_scroll_key WHERE c.yah_chapter_key = yah_verse.yah_chapter_key) AS scroll_label, (SELECT c.yah_chapter_number FROM yah_chapter c WHERE c.yah_chapter_key = yah_verse.yah_chapter_key) AS chapter_number",
+        'order' => '(SELECT s.yah_scroll_sort FROM yah_scroll s JOIN yah_chapter c ON c.yah_scroll_key = s.yah_scroll_key WHERE c.yah_chapter_key = yah_verse.yah_chapter_key) ASC, (SELECT s.yah_scroll_label_yy FROM yah_scroll s JOIN yah_chapter c ON c.yah_scroll_key = s.yah_scroll_key WHERE c.yah_chapter_key = yah_verse.yah_chapter_key) ASC, (SELECT c.yah_chapter_sort FROM yah_chapter c WHERE c.yah_chapter_key = yah_verse.yah_chapter_key) ASC, (SELECT c.yah_chapter_number FROM yah_chapter c WHERE c.yah_chapter_key = yah_verse.yah_chapter_key) ASC, yah_verse_sort ASC, yah_verse_number ASC',
         'columns' => [
             ['name' => 'yah_verse_key',     'label' => 'Key',     'type' => 'pk'],
-            ['name' => 'yah_chapter_key',   'label' => 'Chapter', 'type' => 'fk', 'fk_table' => 'yah_chapter'],
-            ['name' => 'yah_verse_number',  'label' => 'Number',  'type' => 'int'],
+            ['name' => 'scroll_label',      'label' => 'Scroll',  'type' => 'readonly'],
+            ['name' => 'chapter_number',    'label' => 'Chapter', 'type' => 'readonly'],
+            ['name' => 'yah_verse_number',  'label' => 'Verse',   'type' => 'int'],
             ['name' => 'yah_verse_sort',    'label' => 'Sort',    'type' => 'int'],
         ],
     ],
@@ -59,14 +61,20 @@ $TABLES = [
         'order' => 'letter_sort ASC, letter_key ASC',
         'columns' => [
             ['name' => 'letter_key',      'label' => 'Key',      'type' => 'pk'],
-            ['name' => 'letter_yt',       'label' => 'YT',       'type' => 'text'],
-            ['name' => 'letter_hebrew',   'label' => 'Hebrew',   'type' => 'text'],
             ['name' => 'letter_label',    'label' => 'Label',    'type' => 'text'],
+            ['name' => 'letter_yt',       'label' => 'YT',       'type' => 'text'],
+            ['name' => 'letter_hebrew',   'label' => 'Hebrew',   'type' => 'hebrew'],
             ['name' => 'letter_overview',      'label' => 'Overview',       'type' => 'textarea'],
             ['name' => 'letter_numeric_value', 'label' => 'Numeric Value', 'type' => 'int'],
             ['name' => 'letter_sort',          'label' => 'Sort',          'type' => 'int'],
         ],
         'display' => "letter_yt || ' - ' || COALESCE(letter_label, '')",
+        'edit_layout' => [
+            ['letter_key'],
+            [['letter_label', 'letter_yt'], 'letter_hebrew'],
+            ['letter_overview'],
+            ['letter_numeric_value', 'letter_sort'],
+        ],
     ],
     'yy_cite' => [
         'pk' => 'id',
@@ -84,7 +92,7 @@ $TABLES = [
         'columns' => [
             ['name' => 'cite_book_key',            'label' => 'ID',             'type' => 'pk'],
             ['name' => 'yah_scroll_key',          'label' => 'Scroll',         'type' => 'fk', 'fk_table' => 'yah_scroll'],
-            ['name' => 'cite_book_hebrew',        'label' => 'Hebrew Name',    'type' => 'text'],
+            ['name' => 'cite_book_hebrew',        'label' => 'Hebrew Name',    'type' => 'hebrew'],
             ['name' => 'cite_book_common',        'label' => 'Common Name',    'type' => 'text'],
             ['name' => 'cite_book_definition',    'label' => 'Definition',     'type' => 'textarea'],
             ['name' => 'cite_book_chapter_count', 'label' => 'Chapter Count',  'type' => 'int'],
@@ -98,7 +106,7 @@ $TABLES = [
         'columns' => [
             ['name' => 'cite_book_map_key',      'label' => 'ID',           'type' => 'pk'],
             ['name' => 'cite_book_key',           'label' => 'Cite Book',   'type' => 'fk', 'fk_table' => 'yy_cite_book'],
-            ['name' => 'cite_book_map_hebrew',   'label' => 'Hebrew Map',  'type' => 'text'],
+            ['name' => 'cite_book_map_hebrew',   'label' => 'Hebrew Map',  'type' => 'hebrew'],
         ],
     ],
     'yy_series' => [
@@ -133,15 +141,17 @@ $TABLES = [
     ],
     'yy_volume' => [
         'pk' => 'yy_volume_key',
-        'order' => 'yy_volume_sort ASC, yy_volume_key ASC',
+        'order' => '(SELECT s.yy_series_number FROM yy_series s WHERE s.yy_series_key = yy_volume.yy_series_key) ASC, (SELECT s.yy_series_label FROM yy_series s WHERE s.yy_series_key = yy_volume.yy_series_key) ASC, yy_volume_number ASC',
+        'select' => "yy_volume.*, (SELECT s.yy_series_number FROM yy_series s WHERE s.yy_series_key = yy_volume.yy_series_key) AS series_number",
         'columns' => [
             ['name' => 'yy_volume_key',             'label' => 'Key',             'type' => 'pk'],
+            ['name' => 'series_number',              'label' => 'Series #',        'type' => 'readonly'],
             ['name' => 'yy_series_key',             'label' => 'Series',          'type' => 'fk', 'fk_table' => 'yy_series'],
             ['name' => 'yy_volume_number',          'label' => 'Number',          'type' => 'int'],
-            ['name' => 'yy_volume_label',           'label' => 'Label',           'type' => 'text'],
+            ['name' => 'yy_volume_label',           'label' => 'Label',           'type' => 'text', 'wide' => true],
             ['name' => 'yy_volume_flip_code',       'label' => 'Flip Code',       'type' => 'text'],
-            ['name' => 'yy_volume_pdf',             'label' => 'PDF',             'type' => 'text'],
-            ['name' => 'yy_volume_file',            'label' => 'File',            'type' => 'text'],
+            ['name' => 'yy_volume_pdf',             'label' => 'PDF',             'type' => 'text', 'wide' => true],
+            ['name' => 'yy_volume_file',            'label' => 'File',            'type' => 'text', 'wide' => true],
             ['name' => 'yy_volume_name',            'label' => 'Name',            'type' => 'text'],
             ['name' => 'yy_volume_page_count',      'label' => 'Page Count',      'type' => 'int'],
             ['name' => 'yy_volume_paragraph_count', 'label' => 'Paragraph Count', 'type' => 'int'],
@@ -149,6 +159,42 @@ $TABLES = [
             ['name' => 'volume_active_flag',        'label' => 'Active',          'type' => 'bool'],
         ],
         'display' => 'yy_volume_label',
+        'edit_layout' => [
+            ['yy_volume_key'],
+            [['yy_series_key', 'yy_volume_number', 'yy_volume_label', 'yy_volume_pdf', 'yy_volume_file'], ['yy_volume_flip_code', 'yy_volume_page_count', 'yy_volume_paragraph_count', 'yy_volume_sort', 'volume_active_flag']],
+        ],
+    ],
+    'yy_word_pos' => [
+        'pk' => 'word_pos_key',
+        'order' => 'word_pos_key ASC',
+        'columns' => [
+            ['name' => 'word_pos_key',   'label' => 'Key',   'type' => 'pk'],
+            ['name' => 'word_pos_code',  'label' => 'Code',  'type' => 'text'],
+            ['name' => 'word_pos_label', 'label' => 'Label', 'type' => 'text'],
+        ],
+        'display' => "word_pos_code || ' - ' || word_pos_label",
+    ],
+    'yy_word_source' => [
+        'pk' => 'word_source_key',
+        'order' => 'word_source_sort ASC, word_source_key ASC',
+        'columns' => [
+            ['name' => 'word_source_key',   'label' => 'Key',   'type' => 'pk'],
+            ['name' => 'word_source_code',  'label' => 'Code',  'type' => 'text'],
+            ['name' => 'word_source_label', 'label' => 'Label', 'type' => 'text'],
+            ['name' => 'word_source_sort',  'label' => 'Sort',  'type' => 'int'],
+        ],
+        'display' => "word_source_code || ' - ' || word_source_label",
+        'sortable' => 'word_source_sort',
+    ],
+    'yy_word_gender' => [
+        'pk' => 'word_gender_key',
+        'order' => 'word_gender_key ASC',
+        'columns' => [
+            ['name' => 'word_gender_key',   'label' => 'Key',   'type' => 'pk'],
+            ['name' => 'word_gender_code',  'label' => 'Code',  'type' => 'text'],
+            ['name' => 'word_gender_label', 'label' => 'Label', 'type' => 'text'],
+        ],
+        'display' => "word_gender_code || ' - ' || word_gender_label",
     ],
 ];
 
@@ -162,12 +208,16 @@ switch ($action) {
     case 'meta':
         if (!$table) errorResponse('table is required');
         $meta = $TABLES[$table];
-        jsonResponse(['table' => $table, 'pk' => $meta['pk'], 'columns' => $meta['columns']]);
+        $resp = ['table' => $table, 'pk' => $meta['pk'], 'columns' => $meta['columns']];
+        if (isset($meta['edit_layout'])) $resp['edit_layout'] = $meta['edit_layout'];
+        if (isset($meta['sortable'])) $resp['sortable'] = $meta['sortable'];
+        jsonResponse($resp);
 
     case 'list':
         if (!$table) errorResponse('table is required');
         $meta = $TABLES[$table];
-        $stmt = $pdo->query("SELECT * FROM $table ORDER BY {$meta['order']}");
+        $select = $meta['select'] ?? '*';
+        $stmt = $pdo->query("SELECT $select FROM $table ORDER BY {$meta['order']}");
         jsonResponse($stmt->fetchAll());
 
     case 'get':
@@ -201,7 +251,7 @@ switch ($action) {
         $cols = [];
         $vals = [];
         foreach ($meta['columns'] as $col) {
-            if ($col['type'] === 'pk') continue;
+            if ($col['type'] === 'pk' || $col['type'] === 'readonly') continue;
             if (!array_key_exists($col['name'], $input)) continue;
             $v = $input[$col['name']];
             if ($v === '' && in_array($col['type'], ['int', 'fk'])) $v = null;
@@ -244,11 +294,34 @@ switch ($action) {
         $key = $_GET['key'] ?? null;
         if ($key === null) errorResponse('key is required');
         $meta = $TABLES[$table];
-        $stmt = $pdo->prepare("DELETE FROM $table WHERE {$meta['pk']} = ?");
-        $stmt->execute([$key]);
+        try {
+            $stmt = $pdo->prepare("DELETE FROM $table WHERE {$meta['pk']} = ?");
+            $stmt->execute([$key]);
+        } catch (PDOException $e) {
+            if (strpos($e->getMessage(), 'foreign key') !== false || strpos($e->getMessage(), '23503') !== false) {
+                errorResponse('Cannot delete: this record is referenced by other records');
+            }
+            errorResponse('Delete failed: ' . $e->getMessage());
+        }
         if ($stmt->rowCount() === 0) errorResponse('Record not found', 404);
         jsonResponse(['success' => true]);
 
+    case 'reorder':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+        if (!$table) errorResponse('table is required');
+        $meta = $TABLES[$table];
+        if (!isset($meta['sortable'])) errorResponse('Table does not support reorder');
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!$input || !isset($input['order']) || !is_array($input['order'])) {
+            errorResponse('order array is required');
+        }
+        $sortCol = $meta['sortable'];
+        $stmt = $pdo->prepare("UPDATE $table SET $sortCol = ? WHERE {$meta['pk']} = ?");
+        foreach ($input['order'] as $sort => $pk) {
+            $stmt->execute([$sort, (int)$pk]);
+        }
+        jsonResponse(['success' => true]);
+
     default:
-        errorResponse('Invalid action. Use: meta, list, get, fk_options, save, delete');
+        errorResponse('Invalid action. Use: meta, list, get, fk_options, save, delete, reorder');
 }

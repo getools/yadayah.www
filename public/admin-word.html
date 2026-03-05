@@ -288,11 +288,11 @@
                     </div>
                     <div class="field field-medium">
                         <label for="f-hebrew">Hebrew</label>
-                        <input type="text" id="f-hebrew" dir="rtl" style="font-size:1.2rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" oninput="updateYtPreview(); autoSaveWordField('word_hebrew', this.value); autoSaveWordField('word_yt', document.getElementById('f-yt').value)" onfocus="switchKbMode('hebrew')">
+                        <input type="text" id="f-hebrew" dir="rtl" style="font-size:1.2rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" oninput="updateYtPreview(); autoSaveWordField('word_hebrew', this.value)" onfocus="switchKbMode('hebrew')">
                     </div>
                     <div class="field" style="flex:0 0 200px; min-width:150px">
                         <label for="f-yt">YT</label>
-                        <input type="text" id="f-yt" dir="rtl" style="font-family:'Yada Towrah',serif; font-size:1.1rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" class="kb-inactive" onfocus="switchKbMode('yt')" oninput="updateHebrewPreview(); autoSaveWordField('word_yt', this.value); autoSaveWordField('word_hebrew', document.getElementById('f-hebrew').value)">
+                        <input type="text" id="f-yt" dir="rtl" style="font-family:'Yada Towrah',serif; font-size:1.1rem; unicode-bidi:bidi-override; text-align:right; direction:rtl" class="kb-inactive" onfocus="switchKbMode('yt')" oninput="updateHebrewPreview(); autoSaveWordField('word_hebrew', document.getElementById('f-hebrew').value)">
                     </div>
                     <div class="field field-narrow" style="justify-content:flex-end">
                         <label style="display:flex;align-items:center;gap:6px;font-size:0.875rem;font-weight:500">
@@ -1044,8 +1044,7 @@ function autoSaveWordField(field, value, immediate) {
             for (var i = 0; i < allWords.length; i++) {
                 if (allWords[i].word_key == editingWordId) {
                     if (field === 'word_strongs') allWords[i].word_strongs = resp.word_strongs;
-                    if (field === 'word_hebrew') allWords[i].word_hebrew = resp.word_hebrew;
-                    if (field === 'word_yt') allWords[i].word_yt = resp.word_yt;
+                    if (field === 'word_hebrew') { allWords[i].word_hebrew = resp.word_hebrew; allWords[i].word_yt = resp.word_yt; }
                     if (field === 'word_active_flag') allWords[i].word_active_flag = resp.word_active_flag;
                     break;
                 }
@@ -1065,7 +1064,6 @@ function saveWord() {
     var data = {
         word_strongs: document.getElementById('f-strongs').value,
         word_hebrew: document.getElementById('f-hebrew').value,
-        word_yt: document.getElementById('f-yt').value,
         word_active_flag: document.getElementById('f-active').checked,
         translits: getTranslits()
     };

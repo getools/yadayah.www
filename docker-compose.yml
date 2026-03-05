@@ -8,6 +8,7 @@ services:
       - ./api:/var/www/html/api
     environment:
       PG_HOST: postgres
+      PG_PORT: 5432
       PG_DB: yada
       PG_USER: postgres
       PG_PASS: yada_password

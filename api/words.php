@@ -136,13 +136,12 @@ function handlePost(PDO $db, array $user): void {
     $db->beginTransaction();
     try {
         $stmt = $db->prepare("
-            INSERT INTO yy_word (word_strongs, word_hebrew, word_yt, word_active_flag)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO yy_word (word_strongs, word_hebrew, word_active_flag)
+            VALUES (?, ?, ?)
         ");
         $stmt->execute([
             str_pad(trim($data['word_strongs']), 4, '0', STR_PAD_LEFT),
             trim($data['word_hebrew']),
-            emptyToNull($data, 'word_yt'),
             !empty($data['word_active_flag']) ? 't' : 'f',
         ]);
         $wordId = (int)$db->lastInsertId('yy_word_word_key_seq');
@@ -185,14 +184,13 @@ function handlePut(PDO $db, array $user): void {
     try {
         $stmt = $db->prepare("
             UPDATE yy_word SET
-                word_strongs = ?, word_hebrew = ?, word_yt = ?,
+                word_strongs = ?, word_hebrew = ?,
                 word_active_flag = ?
             WHERE word_key = ?
         ");
         $stmt->execute([
             str_pad(trim($data['word_strongs']), 4, '0', STR_PAD_LEFT),
             trim($data['word_hebrew']),
-            emptyToNull($data, 'word_yt'),
             !empty($data['word_active_flag']) ? 't' : 'f',
             $wordId,
         ]);
@@ -263,7 +261,7 @@ function handlePatch(PDO $db, array $user): void {
         $wordKey = (int)($data['word_key'] ?? 0);
         if (!$wordKey) errorResponse('word_key is required');
 
-        $allowed = ['word_strongs', 'word_hebrew', 'word_yt', 'word_active_flag'];
+        $allowed = ['word_strongs', 'word_hebrew', 'word_active_flag'];
         $sets = [];
         $params = [];
         foreach ($data['fields'] as $col => $val) {
@@ -274,9 +272,6 @@ function handlePatch(PDO $db, array $user): void {
             } elseif ($col === 'word_active_flag') {
                 $sets[] = "$col = ?";
                 $params[] = $val ? 't' : 'f';
-            } elseif ($col === 'word_yt') {
-                $sets[] = "$col = ?";
-                $params[] = ($val !== null && $val !== '') ? $val : null;
             } else {
                 $sets[] = "$col = ?";
                 $params[] = trim($val);

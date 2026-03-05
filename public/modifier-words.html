@@ -104,7 +104,21 @@
 
     <h1>Modifier Words</h1>
 
-    <div id="status" class="status">Loading...</div>
+    <div class="status">
+        <span id="status-text">Loading...</span>
+        <span id="status-limit" style="display:none">
+            &nbsp;Show
+            <select id="page-size" style="font-size:0.85rem;padding:2px 4px;">
+                <option value="20">20</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="2000">2000</option>
+                <option value="5000" selected>5000</option>
+            </select>
+        </span>
+    </div>
 
     <div class="results">
         <table>
@@ -113,7 +127,7 @@
                     <th data-col="translit">Word<span class="sort-arrow"></span></th>
                     <th data-col="filename">Volume<span class="sort-arrow"></span></th>
                     <th data-col="page" style="width:120px">Page<span class="sort-arrow"></span></th>
-                    <th data-col="status" style="text-align:center">Valid<span class="sort-arrow"></span></th>
+                    <th data-col="status" style="text-align:center"><input type="checkbox" id="bulk-valid" title="Set all visible to Valid"> Valid<span class="sort-arrow"></span></th>
                 </tr>
                 <tr class="filter-row">
                     <th><input type="text" id="filter-word" placeholder="Search..."></th>
@@ -139,6 +153,7 @@ var sortCol = null;
 var sortDir = 1; // 1=asc, -1=desc
 var rowById = {};
 var pageDir = 'gt'; // 'gt' or 'lt'
+var maxRows = 5000;
 
 function checkAuth() {
     fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
@@ -185,17 +200,30 @@ function togglePassword() {
 }
 
 function load() {
-    fetch(API + '/modifier-words.php')
+    // Load page-size preference, then load data
+    fetch(API + '/preferences.php?name=modifier_words_page_size', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(pref) {
+            if (pref.value) {
+                maxRows = parseInt(pref.value, 10) || 5000;
+                document.getElementById('page-size').value = maxRows;
+            }
+        })
+        .catch(function() {})
+        .then(function() {
+            return fetch(API + '/modifier-words.php');
+        })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             allRows = data;
             rowById = {};
             data.forEach(function(r) { rowById[r.id] = r; });
             buildVolumeFilter(data);
+            document.getElementById('status-limit').style.display = '';
             render(data);
         })
         .catch(function(err) {
-            document.getElementById('status').textContent = 'Error loading data: ' + err.message;
+            document.getElementById('status-text').textContent = 'Error loading data: ' + err.message;
         });
 }
 
@@ -275,14 +303,13 @@ function sortData(data) {
 
 function render(data) {
     var tbody = document.getElementById('table-body');
-    var statusEl = document.getElementById('status');
+    var statusEl = document.getElementById('status-text');
 
     if (!data) data = getFiltered();
     data = sortData(data);
 
-    var MAX_ROWS = 5000;
-    var truncated = data.length > MAX_ROWS;
-    var displayData = truncated ? data.slice(0, MAX_ROWS) : data;
+    var truncated = data.length > maxRows;
+    var displayData = truncated ? data.slice(0, maxRows) : data;
 
     var html = '';
     displayData.forEach(function(r) {
@@ -322,7 +349,7 @@ function render(data) {
     tbody.innerHTML = html;
 
     var msg = data.length.toLocaleString() + ' records';
-    if (truncated) msg += ' (showing first ' + MAX_ROWS.toLocaleString() + ')';
+    if (truncated) msg += ' (showing first ' + maxRows.toLocaleString() + ')';
     statusEl.textContent = msg;
 
     updateSortArrows();
@@ -412,6 +439,45 @@ document.getElementById('page-dir-btn').addEventListener('click', function() {
     pageDir = pageDir === 'gt' ? 'lt' : 'gt';
     this.textContent = pageDir === 'gt' ? '>' : '<';
     render();
+});
+
+document.getElementById('page-size').addEventListener('change', function() {
+    maxRows = parseInt(this.value, 10);
+    render();
+    fetch(API + '/preferences.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name: 'modifier_words_page_size', value: String(maxRows)})
+    }).catch(function(err) { console.error('Failed to save preference:', err); });
+});
+
+document.getElementById('bulk-valid').addEventListener('click', function(e) {
+    e.stopPropagation(); // prevent column sort
+    var filtered = sortData(getFiltered());
+    var displayed = filtered.slice(0, maxRows);
+    if (!displayed.length) return;
+
+    var newStatus = 'T';
+    var updates = [];
+    displayed.forEach(function(r) {
+        if (r.status !== newStatus) {
+            r.status = newStatus;
+            updates.push(r.id);
+        }
+    });
+
+    if (!updates.length) { this.checked = false; return; }
+
+    render();
+    this.checked = false;
+
+    // Send updates in batches
+    var batch = updates.map(function(id) { return {id: id, status: newStatus}; });
+    fetch(API + '/modifier-words.php', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({bulk: batch})
+    }).catch(function(err) { console.error('Bulk update failed:', err); });
 });
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {
