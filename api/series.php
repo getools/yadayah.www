@@ -7,5 +7,5 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $db = getDb();
-$stmt = $db->query('SELECT yy_series_key, yy_series_name, yy_series_label, yy_series_sort FROM yy_series ORDER BY yy_series_sort');
+$stmt = $db->query('SELECT series_key, series_name, series_label, series_sort FROM yy_series ORDER BY series_sort');
 jsonResponse($stmt->fetchAll());

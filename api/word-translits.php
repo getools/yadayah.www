@@ -80,11 +80,11 @@ switch ($method) {
 }
 
 function countTranslitInTranslations(PDO $db, string $translit): int {
-    $stmt = $db->query("SELECT yy_translation_copy FROM yy_translation WHERE yy_translation_copy IS NOT NULL");
+    $stmt = $db->query("SELECT translation_copy FROM yy_translation WHERE translation_copy IS NOT NULL");
     $pattern = '/(?<![a-zA-Z\'])' . preg_quote(strtolower($translit), '/') . '(?![a-zA-Z\'])/i';
     $count = 0;
     while ($row = $stmt->fetch()) {
-        $copy = $row['yy_translation_copy'];
+        $copy = $row['translation_copy'];
         if (preg_match_all('/<i[^>]*>(.*?)<\/i>/si', $copy, $matches)) {
             foreach ($matches[1] as $italic) {
                 $clean = strip_tags($italic);

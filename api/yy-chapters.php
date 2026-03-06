@@ -12,6 +12,6 @@ if (!$volumeKey || !ctype_digit($volumeKey)) {
 }
 
 $db = getDb();
-$stmt = $db->prepare('SELECT yy_chapter_key, yy_volume_key, yy_chapter_number, yy_chapter_name, yy_chapter_label, yy_chapter_sort FROM yy_chapter WHERE yy_volume_key = ? ORDER BY yy_chapter_sort');
+$stmt = $db->prepare('SELECT chapter_key, volume_key, chapter_number, chapter_name, chapter_label, chapter_sort FROM yy_chapter WHERE volume_key = ? ORDER BY chapter_sort');
 $stmt->execute([(int)$volumeKey]);
 jsonResponse($stmt->fetchAll());

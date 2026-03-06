@@ -24,22 +24,22 @@ switch ($method) {
         }
 
         $db = getDb();
-        $stmt = $db->prepare('SELECT yy_user_key, yy_user_code, yy_user_pass, yy_user_name_full FROM yy_user WHERE LOWER(yy_user_code) = LOWER(?)');
+        $stmt = $db->prepare('SELECT user_key, user_code, user_pass, user_name_full FROM yy_user WHERE LOWER(user_code) = LOWER(?)');
         $stmt->execute([$data['login']]);
         $user = $stmt->fetch();
 
-        if (!$user || !$user['yy_user_pass'] || !password_verify($data['password'], $user['yy_user_pass'])) {
+        if (!$user || !$user['user_pass'] || !password_verify($data['password'], $user['user_pass'])) {
             errorResponse('Invalid login or password', 401);
         }
 
-        $_SESSION['user_key'] = $user['yy_user_key'];
-        $_SESSION['user_code'] = $user['yy_user_code'];
-        $_SESSION['user_name'] = $user['yy_user_name_full'] ?: $user['yy_user_code'];
+        $_SESSION['user_key'] = $user['user_key'];
+        $_SESSION['user_code'] = $user['user_code'];
+        $_SESSION['user_name'] = $user['user_name_full'] ?: $user['user_code'];
 
         jsonResponse([
             'authenticated' => true,
-            'user_key' => $user['yy_user_key'],
-            'user_code' => $user['yy_user_code'],
+            'user_key' => $user['user_key'],
+            'user_code' => $user['user_code'],
             'user_name' => $_SESSION['user_name'],
         ]);
         break;

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Yada Yah-Search</title>
+    <link rel="preload" href="fonts/YadaTowrah-Times.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: "Yada Towrah";
+            src: url('fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('fonts/YadaTowrah-Times.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            margin: -20px -20px 0 -20px;
+            position: relative;
+            overflow: hidden;
+        }
+        header .header-video {
+            position: absolute;
+            top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover;
+            z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 35px; padding: 15px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.2em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 1024px) { header nav a.hide-narrow { display: none; } }
+        @media (max-width: 767px) { header nav a.hide-narrower { display: none; } }
+
+        /* Page tabs */
+        .page-tabs {
+            display: flex; justify-content: center; gap: 0;
+            margin: 0 -20px 20px -20px;
+            background: #f0f0f0; border-bottom: 2px solid #ddd;
+        }
+        .page-tabs a {
+            padding: 12px 32px; text-decoration: none;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1rem; font-weight: 700; color: #666;
+            border-bottom: 3px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .page-tabs a:hover { color: #31345A; }
+        .page-tabs a.active { color: #31345A; border-bottom-color: #31345A; }
+
+        /* Search form */
+        .search-container {
+            max-width: 900px; margin: 0 auto;
+        }
+        .search-bar {
+            display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+        }
+        .search-bar input[type="text"] {
+            flex: 1; min-width: 250px; padding: 10px 14px;
+            font-size: 1rem; border: 2px solid #ccc; border-radius: 6px;
+            outline: none; transition: border-color 0.2s;
+        }
+        .search-bar input[type="text"]:focus { border-color: #31345A; }
+        button, .btn {
+            padding: 9px 22px; background-color: #31345A; color: white; border: none; cursor: pointer;
+            border-radius: 6px; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.3px;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        button:hover { background-color: #4a4e7a; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+        .search-options {
+            display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .search-options label {
+            font-size: 0.875rem; color: #555; cursor: pointer;
+            display: flex; align-items: center; gap: 4px;
+        }
+        .search-options input[type="radio"] { margin: 0; }
+        .filter-group { display: flex; align-items: center; gap: 6px; }
+        .filter-group label { font-weight: 600; font-size: 0.875rem; color: #555; }
+        .filter-group select {
+            padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.875rem;
+        }
+
+        /* Results */
+        .results-info {
+            font-size: 0.9rem; color: #555; margin-bottom: 16px; padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .results-info strong { color: #31345A; }
+        .result-card {
+            padding: 16px; margin-bottom: 12px;
+            border: 1px solid #e0e0e0; border-radius: 8px;
+            background: #fff; transition: box-shadow 0.2s;
+        }
+        .result-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .result-meta {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 8px; flex-wrap: wrap; gap: 4px;
+        }
+        .result-meta a {
+            text-decoration: underline; color: #2563eb; font-size: 0.9rem;
+        }
+        .result-meta a:hover { color: #1d4ed8; }
+        .result-meta a:visited { color: #7c3aed; }
+        .result-meta .volume { font-weight: 700; }
+        .result-meta .sep { color: #999; margin: 0 4px; }
+        .result-meta .series { font-style: italic; }
+        .result-meta .location-right {
+            font-size: 0.8rem; color: #666; text-align: right;
+        }
+        .result-snippet {
+            font-size: 0.9rem; color: #333; line-height: 1.6; margin-bottom: 4px;
+            max-height: 7.8em; overflow: hidden; position: relative;
+        }
+        .result-snippet.expanded { max-height: none; }
+        .result-snippet.overflowing::after {
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+            height: 2em; background: linear-gradient(to bottom, rgba(255,255,255,0), #fff);
+            pointer-events: none;
+        }
+        .result-snippet.expanded::after { display: none; }
+        .result-snippet mark {
+            background: #fff3cd; padding: 1px 2px; border-radius: 2px; font-weight: 600;
+        }
+        .result-snippet p { margin: 0; }
+        .yy-font-yadatowrah-times { font-family: "Yada Towrah", serif; color: #1a5276; }
+        .toggle-snippet {
+            font-size: 0.8rem; color: #3498db; cursor: pointer;
+            background: none; border: none; padding: 0; font-weight: 600;
+            box-shadow: none; margin-bottom: 8px; display: none;
+        }
+        .toggle-snippet:hover { text-decoration: underline; color: #2980b9; background: none; box-shadow: none; }
+
+        /* Pagination */
+        .pagination {
+            display: flex; justify-content: center; align-items: center;
+            gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee;
+        }
+        .pagination button {
+            padding: 8px 16px; font-size: 0.875rem;
+        }
+        .pagination button:disabled {
+            background: #ccc; cursor: not-allowed; box-shadow: none;
+        }
+        .pagination .page-info { font-size: 0.875rem; color: #666; }
+
+        /* Loading */
+        .loading { text-align: center; padding: 40px; color: #888; font-size: 1rem; }
+        .no-results { text-align: center; padding: 40px; color: #888; }
+
+        @media (max-width: 600px) {
+            .search-bar input[type="text"] { min-width: 100%; }
+            .search-options { gap: 8px; }
+            .result-meta { flex-direction: column; }
+            .page-tabs a { padding: 10px 16px; font-size: 0.95rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+            </div>
+            <nav>
+                <a href="books.html">Books</a>
+                <a href="https://yadayah.com/blog">Blog</a>
+                <a href="https://yadayah.com/timeline">Timeline</a>
+                <a href="https://yadayah.com/media" class="hide-narrower">Media</a>
+                <a href="https://yadayah.com/Craig_Winn" class="hide-narrow">Craig&nbsp;Winn</a>
+                <a href="https://yadayah.com/music" class="hide-narrow">Music</a>
+                <a href="https://t.yadayah.com" class="active">Translations</a>
+                <a href="https://yadayah.com/resources" class="hide-narrow">Resources</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="page-tabs">
+        <a href="/">Translations</a>
+        <a href="/glossary.html">Glossary</a>
+        <a href="/dss.html">Dead Sea Scrolls</a>
+        <a href="/search.html" class="active">Search</a>
+    </div>
+
+    <div class="search-container">
+        <form id="search-form" onsubmit="doSearch(1); return false;">
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="Search across all books..." autofocus>
+                <button type="submit">Search</button>
+            </div>
+            <div class="search-options">
+                <label><input type="radio" name="mode" value="all" checked> All words</label>
+                <label><input type="radio" name="mode" value="phrase"> Exact phrase</label>
+                <label><input type="radio" name="mode" value="any"> Any word</label>
+                <span style="color:#ddd; margin: 0 4px;">|</span>
+                <div class="filter-group">
+                    <label for="filter-series">Series:</label>
+                    <select id="filter-series" onchange="onSeriesChange()">
+                        <option value="">All</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filter-volume">Volume:</label>
+                    <select id="filter-volume">
+                        <option value="">All</option>
+                    </select>
+                </div>
+            </div>
+        </form>
+
+        <div id="results-area"></div>
+    </div>
+
+    <script>
+        var allSeries = [];
+        var allVolumes = [];
+        var currentPage = 1;
+
+        // Load series and volumes for filter dropdowns
+        function loadFilters() {
+            fetch('/api/search-filters.php')
+                .then(r => r.json())
+                .then(data => {
+                    allSeries = data.series || [];
+                    allVolumes = data.volumes || [];
+                    var sel = document.getElementById('filter-series');
+                    allSeries.forEach(function(s) {
+                        var opt = document.createElement('option');
+                        opt.value = s.series_key;
+                        opt.textContent = s.series_label;
+                        sel.appendChild(opt);
+                    });
+                    populateVolumeDropdown();
+                    // Re-apply URL params after filters load
+                    var params = new URLSearchParams(window.location.search);
+                    if (params.get('series')) document.getElementById('filter-series').value = params.get('series');
+                    if (params.get('series')) populateVolumeDropdown(params.get('series'));
+                    if (params.get('volume')) document.getElementById('filter-volume').value = params.get('volume');
+                })
+                .catch(function() {});
+        }
+
+        function populateVolumeDropdown(seriesKey) {
+            var sel = document.getElementById('filter-volume');
+            sel.innerHTML = '<option value="">All</option>';
+            var filtered = seriesKey
+                ? allVolumes.filter(function(v) { return String(v.series_key) === String(seriesKey); })
+                : allVolumes;
+            filtered.forEach(function(v) {
+                if (v.volume_active_flag === false) return;
+                var opt = document.createElement('option');
+                opt.value = v.volume_key;
+                opt.textContent = v.volume_label || v.volume_name;
+                sel.appendChild(opt);
+            });
+        }
+
+        function onSeriesChange() {
+            var sk = document.getElementById('filter-series').value;
+            populateVolumeDropdown(sk || null);
+        }
+
+        function getMode() {
+            var radios = document.querySelectorAll('input[name="mode"]');
+            for (var i = 0; i < radios.length; i++) {
+                if (radios[i].checked) return radios[i].value;
+            }
+            return 'all';
+        }
+
+        function doSearch(page) {
+            var q = document.getElementById('search-input').value.trim();
+            if (!q) return;
+
+            currentPage = page || 1;
+            var mode = getMode();
+            var series = document.getElementById('filter-series').value;
+            var volume = document.getElementById('filter-volume').value;
+
+            var url = '/api/search.php?q=' + encodeURIComponent(q)
+                + '&mode=' + mode
+                + '&page=' + currentPage
+                + '&limit=25';
+            if (series) url += '&series=' + series;
+            if (volume) url += '&volume=' + volume;
+
+            var area = document.getElementById('results-area');
+            area.innerHTML = '<div class="loading">Searching...</div>';
+
+            fetch(url)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        area.innerHTML = '<div class="no-results">' + escHtml(data.error) + '</div>';
+                        return;
+                    }
+                    renderResults(data, q);
+                })
+                .catch(function(err) {
+                    area.innerHTML = '<div class="no-results">Search failed. Please try again.</div>';
+                });
+
+            // Update URL without reload
+            var params = new URLSearchParams({ q: q, mode: mode, page: currentPage });
+            if (series) params.set('series', series);
+            if (volume) params.set('volume', volume);
+            history.replaceState(null, '', '?' + params.toString());
+        }
+
+        function renderResults(data, query) {
+            var area = document.getElementById('results-area');
+            if (!data.results || data.results.length === 0) {
+                area.innerHTML = '<div class="no-results">No results found for "<strong>' + escHtml(query) + '</strong>"</div>';
+                return;
+            }
+
+            var html = '';
+            if (data.fuzzy) {
+                html += '<div class="results-info" style="color:#996600; font-style:italic;">No exact matches found. Showing similar results for "<strong>' + escHtml(query) + '</strong>"</div>';
+            }
+            html += '<div class="results-info"><strong>' + data.total.toLocaleString()
+                + '</strong> results for "<strong>' + escHtml(query) + '</strong>"'
+                + ' &mdash; page ' + data.page + ' of ' + data.pages + '</div>';
+
+            data.results.forEach(function(r) {
+                html += '<div class="result-card">';
+                html += '<div class="result-meta">';
+                var linkParts = '<span class="volume">' + escHtml(r.volume_label) + '</span>';
+                linkParts += '<span class="sep">&mdash;</span>';
+                linkParts += '<span class="series">' + escHtml(r.series_label) + '</span>';
+                if (r.flip_url) {
+                    html += '<div><a href="' + escAttr(r.flip_url) + '" target="_blank">' + linkParts + '</a></div>';
+                } else {
+                    html += '<div>' + linkParts + '</div>';
+                }
+                var locParts = [];
+                if (r.chapter_name) locParts.push('Ch. ' + r.chapter_number + ': ' + r.chapter_name);
+                if (r.page) locParts.push('Page ' + r.page);
+                if (locParts.length) html += '<div class="location-right">' + escHtml(locParts.join(' · ')) + '</div>';
+                html += '</div>';
+                if (r.html) {
+                    html += '<div class="result-snippet">' + r.html + '</div>';
+                } else {
+                    html += '<div class="result-snippet">' + (r.snippet || '') + '</div>';
+                }
+                html += '<button class="toggle-snippet" onclick="toggleSnippet(this)">Show more</button>';
+                html += '</div>';
+            });
+
+            // Pagination
+            html += '<div class="pagination">';
+            html += '<button ' + (data.page <= 1 ? 'disabled' : 'onclick="doSearch(' + (data.page - 1) + ')"') + '>&laquo; Previous</button>';
+            html += '<span class="page-info">Page ' + data.page + ' of ' + data.pages + '</span>';
+            html += '<button ' + (data.page >= data.pages ? 'disabled' : 'onclick="doSearch(' + (data.page + 1) + ')"') + '>Next &raquo;</button>';
+            html += '</div>';
+
+            area.innerHTML = html;
+            highlightSnippets(query);
+            detectOverflow();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function highlightSnippets(query) {
+            var words = query.split(/\s+/).filter(function(w) { return w.length > 0; });
+            if (words.length === 0) return;
+            var pattern = words.map(function(w) {
+                return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }).join('|');
+            var regex = new RegExp('(' + pattern + ')', 'gi');
+            var snippets = document.querySelectorAll('.result-snippet');
+            snippets.forEach(function(el) {
+                var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                var textNodes = [];
+                while (walker.nextNode()) textNodes.push(walker.currentNode);
+                textNodes.forEach(function(node) {
+                    if (!regex.test(node.nodeValue)) return;
+                    regex.lastIndex = 0;
+                    var frag = document.createDocumentFragment();
+                    var text = node.nodeValue;
+                    var lastIdx = 0;
+                    var match;
+                    while ((match = regex.exec(text)) !== null) {
+                        if (match.index > lastIdx) {
+                            frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+                        }
+                        var mark = document.createElement('mark');
+                        mark.textContent = match[1];
+                        frag.appendChild(mark);
+                        lastIdx = regex.lastIndex;
+                    }
+                    if (lastIdx < text.length) {
+                        frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+                    }
+                    node.parentNode.replaceChild(frag, node);
+                });
+            });
+        }
+
+        function detectOverflow() {
+            document.querySelectorAll('.result-snippet').forEach(function(el) {
+                if (el.scrollHeight > el.clientHeight + 2) {
+                    el.classList.add('overflowing');
+                    var btn = el.nextElementSibling;
+                    if (btn && btn.classList.contains('toggle-snippet')) {
+                        btn.style.display = 'inline';
+                    }
+                }
+            });
+        }
+
+        function toggleSnippet(btn) {
+            var snippet = btn.previousElementSibling;
+            if (snippet.classList.contains('expanded')) {
+                snippet.classList.remove('expanded');
+                snippet.classList.add('overflowing');
+                btn.textContent = 'Show more';
+            } else {
+                snippet.classList.add('expanded');
+                snippet.classList.remove('overflowing');
+                btn.textContent = 'Show less';
+            }
+        }
+
+        function escHtml(s) {
+            if (!s) return '';
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function escAttr(s) {
+            return escHtml(s);
+        }
+
+        // Load from URL params on page load
+        function initFromUrl() {
+            var params = new URLSearchParams(window.location.search);
+            var q = params.get('q');
+            if (q) {
+                document.getElementById('search-input').value = q;
+                var mode = params.get('mode') || 'all';
+                var radios = document.querySelectorAll('input[name="mode"]');
+                radios.forEach(function(r) { r.checked = (r.value === mode); });
+                var series = params.get('series');
+                var volume = params.get('volume');
+                if (series) document.getElementById('filter-series').value = series;
+                if (volume) document.getElementById('filter-volume').value = volume;
+                doSearch(parseInt(params.get('page')) || 1);
+            }
+        }
+
+        loadFilters();
+        initFromUrl();
+    </script>
+</body>
+</html>

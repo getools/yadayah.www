@@ -7,12 +7,12 @@ $pg = getDb();
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sql = "
         SELECT m.id, m.translit, m.filename, m.series, m.volume, m.page, m.status,
-               v.yy_volume_flip_code, v.yy_volume_name,
-               s.yy_series_name
+               v.volume_flip_code, v.volume_name,
+               s.series_name
         FROM _translit_modifier_map m
-        LEFT JOIN yy_volume v ON v.yy_series_key = m.series
-            AND v.yy_volume_number = m.volume
-        LEFT JOIN yy_series s ON s.yy_series_key = m.series
+        LEFT JOIN yy_volume v ON v.series_key = m.series
+            AND v.volume_number = m.volume
+        LEFT JOIN yy_series s ON s.series_key = m.series
         ORDER BY m.series, m.volume, m.page, m.translit
     ";
     $stmt = $pg->query($sql);

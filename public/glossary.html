@@ -10,7 +10,8 @@
     <style>
         @font-face {
             font-family: "Yada Towrah";
-            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
+            src: url('fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('fonts/YadaTowrah-Times.ttf') format('truetype');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -225,10 +226,12 @@
             color: #1a5276;
             direction: rtl;
             unicode-bidi: bidi-override;
+            text-align: right;
         }
         #word-table .col-hebrew {
             font-size: 1.1rem;
             direction: rtl;
+            text-align: right;
         }
         #word-table .col-strongs a {
             color: #3498db;
@@ -310,7 +313,7 @@
                 <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
             </div>
             <nav>
-                <a href="https://yadayah.com/books">Books</a>
+                <a href="books.html">Books</a>
                 <a href="https://yadayah.com/blog">Blog</a>
                 <a href="https://yadayah.com/timeline">Timeline</a>
                 <a href="https://yadayah.com/media" class="hide-narrower">Media</a>
@@ -346,8 +349,8 @@
                 <thead>
                     <tr>
                         <th>Translit</th>
-                        <th>Ancient</th>
-                        <th>Modern</th>
+                        <th style="text-align:right">Ancient</th>
+                        <th style="text-align:right">Modern</th>
                         <th>Strong's</th>
                         <th>Grammar</th>
                         <th>Definition</th>
@@ -684,12 +687,12 @@
 
             records.forEach(function(record) {
                 // Section break when series or volume changes
-                if (lastVolumeKey !== record.yy_volume_key) {
+                if (lastVolumeKey !== record.volume_key) {
                     var breakDiv = document.createElement('div');
                     breakDiv.className = 'section-break';
                     var bookLabel = record.translation_book.replace(/^YY-/i, '');
-                    if (record.yy_volume_flip_code) {
-                        var hdrUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(record.yy_volume_flip_code) + '/';
+                    if (record.volume_flip_code) {
+                        var hdrUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(record.volume_flip_code) + '/';
                         var hdrLink = document.createElement('a');
                         hdrLink.href = hdrUrl;
                         hdrLink.target = '_blank';
@@ -699,14 +702,14 @@
                         breakDiv.textContent = bookLabel;
                     }
                     container.appendChild(breakDiv);
-                    lastVolumeKey = record.yy_volume_key;
+                    lastVolumeKey = record.volume_key;
                 }
 
                 var recordDiv = document.createElement('div');
                 recordDiv.className = 'record';
-                var flipCode = record.yy_volume_flip_code;
+                var flipCode = record.volume_flip_code;
                 var page = record.translation_page;
-                var chapterName = record.yy_chapter_name || '';
+                var chapterName = record.chapter_name || '';
                 var lineLabel;
                 if (flipCode) {
                     var url = 'https://book.yadayah.com/books/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');

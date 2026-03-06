@@ -255,8 +255,8 @@ $(function () {
         });
         // Load series
         apiCall('series.php').done(function (data) {
-            populateSelect($('#series'), data, 'yy_series_key', function (s) {
-                return s.yy_series_name;
+            populateSelect($('#series'), data, 'series_key', function (s) {
+                return s.series_name;
             });
         });
         // Load list preferences then load list tab (default)
@@ -329,7 +329,7 @@ $(function () {
     // ════════════════════════════════════════════
     function loadVolumesForSeries(seriesKey, cb) {
         apiCall('volumes.php?series_key=' + seriesKey).done(function (data) {
-            populateSelect($('#volume'), data, 'yy_volume_key', function (v) {
+            populateSelect($('#volume'), data, 'volume_key', function (v) {
                 return v.display_text;
             });
             if (cb) cb();
@@ -338,9 +338,9 @@ $(function () {
 
     function loadYYChaptersForVolume(volumeKey, cb) {
         apiCall('yy-chapters.php?volume_key=' + volumeKey).done(function (data) {
-            populateSelect($('#yy-chapter'), data, 'yy_chapter_key', function (c) {
-                var text = String(c.yy_chapter_number);
-                if (c.yy_chapter_name) text += ' - ' + c.yy_chapter_name;
+            populateSelect($('#yy-chapter'), data, 'chapter_key', function (c) {
+                var text = String(c.chapter_number);
+                if (c.chapter_name) text += ' - ' + c.chapter_name;
                 return text;
             });
             if (cb) cb();
@@ -398,7 +398,7 @@ $(function () {
                 var key = pendingEdit;
                 pendingEdit = null;
                 var t = null;
-                $.each(data, function (_, d) { if (d.yy_translation_key == key) { t = d; return false; } });
+                $.each(data, function (_, d) { if (d.translation_key == key) { t = d; return false; } });
                 if (t) showForm(t);
             }
         });
@@ -532,15 +532,15 @@ $(function () {
             return;
         }
         $.each(translations, function (_, t) {
-            var meta = '<span><strong>Series:</strong> ' + escHtml(t.yy_series_name) + '</span>' +
-                '<span><strong>Volume:</strong> ' + escHtml(t.yy_volume_number + ' - ' + t.yy_volume_name) + '</span>' +
+            var meta = '<span><strong>Series:</strong> ' + escHtml(t.series_name) + '</span>' +
+                '<span><strong>Volume:</strong> ' + escHtml(t.volume_number + ' - ' + t.volume_name) + '</span>' +
                 '<span><strong>Ch:</strong> ' + escHtml(t.yy_ch_number + (t.yy_ch_name ? ' - ' + t.yy_ch_name : '')) + '</span>';
-            if (t.yy_translation_page) meta += '<span><strong>Pg:</strong> ' + escHtml(t.yy_translation_page) + '</span>';
-            if (t.yy_translation_paragraph) meta += '<span><strong>Par:</strong> ' + escHtml(t.yy_translation_paragraph) + '</span>';
-            if (t.yy_translation_date) meta += '<span><strong>Date:</strong> ' + escHtml(t.yy_translation_date) + '</span>';
-            var card = '<div class="translation-card" data-key="' + t.yy_translation_key + '">' +
+            if (t.translation_page) meta += '<span><strong>Pg:</strong> ' + escHtml(t.translation_page) + '</span>';
+            if (t.translation_paragraph) meta += '<span><strong>Par:</strong> ' + escHtml(t.translation_paragraph) + '</span>';
+            if (t.translation_date) meta += '<span><strong>Date:</strong> ' + escHtml(t.translation_date) + '</span>';
+            var card = '<div class="translation-card" data-key="' + t.translation_key + '">' +
                 '<div class="translation-meta">' + meta + '</div>' +
-                '<div class="translation-preview">' + (t.yy_translation_copy || '') + '<span style="font-size:2pt;color:white"> ' + t.yy_translation_key + '</span></div>' +
+                '<div class="translation-preview">' + (t.translation_copy || '') + '<span style="font-size:2pt;color:white"> ' + t.translation_key + '</span></div>' +
                 '<div class="translation-actions">' +
                 '<button class="btn btn-primary btn-sm btn-edit">Edit</button>' +
                 '<button class="btn btn-danger btn-sm btn-delete">Delete</button>' +
@@ -688,24 +688,24 @@ $(function () {
     // TRANSLATION FORM
     // ════════════════════════════════════════════
     function showForm(translation) {
-        editingTranslationKey = translation ? translation.yy_translation_key : null;
+        editingTranslationKey = translation ? translation.translation_key : null;
         $('#editing-key').val(editingTranslationKey || '');
         $('#form-title').text(editingTranslationKey ? 'Edit Translation' : 'New Translation');
         hideErrors();
 
         if (translation) {
-            $('#series').val(translation.yy_series_key);
-            loadVolumesForSeries(translation.yy_series_key, function () {
-                $('#volume').val(translation.yy_volume_key);
-                loadYYChaptersForVolume(translation.yy_volume_key, function () {
-                    $('#yy-chapter').val(translation.yy_chapter_key);
+            $('#series').val(translation.series_key);
+            loadVolumesForSeries(translation.series_key, function () {
+                $('#volume').val(translation.volume_key);
+                loadYYChaptersForVolume(translation.volume_key, function () {
+                    $('#yy-chapter').val(translation.chapter_key);
                 });
             });
-            $('#page').val(translation.yy_translation_page || '');
-            $('#paragraph').val(translation.yy_translation_paragraph || '');
-            $('#translation-date').val(translation.yy_translation_date || '');
-            $('#sort').val(translation.yy_translation_sort != null ? translation.yy_translation_sort : 0);
-            setEditorContent(translation.yy_translation_copy || '');
+            $('#page').val(translation.translation_page || '');
+            $('#paragraph').val(translation.translation_paragraph || '');
+            $('#translation-date').val(translation.translation_date || '');
+            $('#sort').val(translation.translation_sort != null ? translation.translation_sort : 0);
+            setEditorContent(translation.translation_copy || '');
         } else {
             $('#series').val('');
             resetSelect($('#volume'));
@@ -777,14 +777,14 @@ $(function () {
             yah_scroll_key: parseInt(currentScrollKey),
             yah_chapter_key: parseInt(currentChapterKey),
             yah_verse_key: parseInt(currentVerseKey),
-            yy_series_key: parseInt($('#series').val()),
-            yy_volume_key: parseInt($('#volume').val()),
-            yy_chapter_key: parseInt($('#yy-chapter').val()),
-            yy_translation_page: $('#page').val() || null,
-            yy_translation_paragraph: $('#paragraph').val() || null,
-            yy_translation_copy: getEditorContent(),
-            yy_translation_date: $('#translation-date').val() || null,
-            yy_translation_sort: $('#sort').val() !== '' ? parseInt($('#sort').val()) : 0
+            series_key: parseInt($('#series').val()),
+            volume_key: parseInt($('#volume').val()),
+            chapter_key: parseInt($('#yy-chapter').val()),
+            translation_page: $('#page').val() || null,
+            translation_paragraph: $('#paragraph').val() || null,
+            translation_copy: getEditorContent(),
+            translation_date: $('#translation-date').val() || null,
+            translation_sort: $('#sort').val() !== '' ? parseInt($('#sort').val()) : 0
         };
 
         if (editingTranslationKey) {
@@ -814,7 +814,7 @@ $(function () {
         var key = $(this).closest('.translation-card').data('key');
         apiCall('translations.php?verse_key=' + currentVerseKey).done(function (data) {
             var t = null;
-            $.each(data, function (_, d) { if (d.yy_translation_key == key) { t = d; return false; } });
+            $.each(data, function (_, d) { if (d.translation_key == key) { t = d; return false; } });
             if (t) showForm(t);
         });
     });
@@ -878,14 +878,14 @@ $(function () {
         }
         $('#list-empty').hide();
         $.each(sorted, function (_, t) {
-            var row = '<tr data-key="' + t.yy_translation_key + '">' +
+            var row = '<tr data-key="' + t.translation_key + '">' +
                 '<td>' + escHtml(t.yah_scroll_label_yy) + '</td>' +
                 '<td>' + escHtml(t.yah_scroll_label_common) + '</td>' +
                 '<td>' + escHtml(t.yah_chapter_number) + '</td>' +
                 '<td>' + escHtml(t.yah_verse_number) + '</td>' +
                 '<td>' + escHtml(t.series_display) + '</td>' +
                 '<td>' + escHtml(t.volume_display) + '</td>' +
-                '<td>' + escHtml(t.yy_translation_page || '') + '</td>' +
+                '<td>' + escHtml(t.translation_page || '') + '</td>' +
                 '<td>' + escHtml(t.yy_ch_number) + '</td>' +
                 '<td><button class="btn btn-primary btn-sm btn-list-edit">Edit</button> ' +
                 '<button class="btn btn-danger btn-sm btn-list-delete">Delete</button></td></tr>';
@@ -1025,7 +1025,7 @@ $(function () {
             currentScrollKey = t.yah_scroll_key;
             currentChapterKey = t.yah_chapter_key;
             currentVerseKey = t.yah_verse_key;
-            pendingEdit = t.yy_translation_key;
+            pendingEdit = t.translation_key;
 
             $('#scroll').val(t.yah_scroll_key);
             loadChaptersForScroll(t.yah_scroll_key, function () {

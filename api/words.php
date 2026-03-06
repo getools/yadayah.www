@@ -47,7 +47,7 @@ function handleGet(PDO $db): void {
         $chapterKey = isset($_GET['filter_chapter']) && ctype_digit($_GET['filter_chapter']) ? (int)$_GET['filter_chapter'] : null;
         $verseKey = isset($_GET['filter_verse']) && ctype_digit($_GET['filter_verse']) ? (int)$_GET['filter_verse'] : null;
 
-        $sql = "SELECT yy_translation_copy FROM yy_translation WHERE yah_scroll_key = ?";
+        $sql = "SELECT translation_copy FROM yy_translation WHERE yah_scroll_key = ?";
         $params = [$scrollKey];
         if ($chapterKey) { $sql .= " AND yah_chapter_key = ?"; $params[] = $chapterKey; }
         if ($verseKey) { $sql .= " AND yah_verse_key = ?"; $params[] = $verseKey; }
@@ -57,7 +57,7 @@ function handleGet(PDO $db): void {
 
         $translits = [];
         while ($row = $stmt->fetch()) {
-            $copy = $row['yy_translation_copy'];
+            $copy = $row['translation_copy'];
             if ($copy && preg_match_all('/<span\s+class="word"[^>]*>(.*?)<\/span>/si', $copy, $m)) {
                 foreach ($m[1] as $w) {
                     $clean = strtolower(trim(strip_tags($w)));
@@ -309,11 +309,11 @@ function insertTranslits(PDO $db, int $wordId, array $translits): void {
 
 function countTranslitInTranslations(PDO $db, string $translit): int {
     // Extract italicized text from all translations and count occurrences
-    $stmt = $db->query("SELECT yy_translation_copy FROM yy_translation WHERE yy_translation_copy IS NOT NULL");
+    $stmt = $db->query("SELECT translation_copy FROM yy_translation WHERE translation_copy IS NOT NULL");
     $pattern = '/(?<![a-zA-Z\'])' . preg_quote(strtolower($translit), '/') . '(?![a-zA-Z\'])/i';
     $count = 0;
     while ($row = $stmt->fetch()) {
-        $copy = $row['yy_translation_copy'];
+        $copy = $row['translation_copy'];
         // Extract text from <i>...</i> tags
         if (preg_match_all('/<i[^>]*>(.*?)<\/i>/si', $copy, $matches)) {
             foreach ($matches[1] as $italic) {

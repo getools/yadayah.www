@@ -13,7 +13,8 @@
     <style>
         @font-face {
             font-family: "Yada Towrah";
-            src: url('https://yadayah.com/resource/YadaTowrah-Times.woff2') format('woff2');
+            src: url('fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('fonts/YadaTowrah-Times.ttf') format('truetype');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -166,7 +167,7 @@
                 <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
             </div>
             <nav>
-                <a href="https://yadayah.com/books">Books</a>
+                <a href="books.html">Books</a>
                 <a href="https://yadayah.com/blog">Blog</a>
                 <a href="https://yadayah.com/timeline">Timeline</a>
                 <a href="https://yadayah.com/media" class="hide-narrower">Media</a>
@@ -443,8 +444,8 @@
                             }
                         }
                     }
-                    if (record.yy_volume_flip_code) {
-                        var hdrUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(record.yy_volume_flip_code) + '/' + (record.translation_page ? '#p=' + (record.translation_page + 6) : '');
+                    if (record.volume_flip_code) {
+                        var hdrUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(record.volume_flip_code) + '/' + (record.translation_page ? '#p=' + (record.translation_page + 6) : '');
                         var hdrLink = document.createElement('a');
                         hdrLink.href = hdrUrl;
                         hdrLink.target = '_blank';
@@ -464,10 +465,10 @@
                 var recordDiv = document.createElement('div');
                 recordDiv.className = 'record';
                 var bookName = record.translation_book.replace(/^YY-/i, '');
-                var flipCode = record.yy_volume_flip_code;
+                var flipCode = record.volume_flip_code;
                 var page = record.translation_page;
                 var bookPage;
-                var chapterName = record.yy_chapter_name || '';
+                var chapterName = record.chapter_name || '';
                 if (flipCode) {
                     var url = 'https://book.yadayah.com/books/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
                     bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?') + '</a>';

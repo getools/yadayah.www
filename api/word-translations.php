@@ -47,27 +47,27 @@ foreach ($spellings as $sp) {
 $regexPattern = '(' . implode('|', $patterns) . ')';
 
 $stmt = $pdo->prepare("
-    SELECT t.yy_translation_key AS translation_id,
-           vol.yy_volume_file AS translation_book,
-           t.yy_translation_page AS translation_page,
-           t.yy_translation_copy AS translation_text_word,
-           vol.yy_volume_flip_code,
-           ser.yy_series_sort,
-           vol.yy_volume_sort,
-           vol.yy_volume_key,
-           (SELECT 'Chapter ' || ch.yy_chapter_number || ':' || ch.yy_chapter_name
+    SELECT t.translation_key AS translation_id,
+           vol.volume_file AS translation_book,
+           t.translation_page AS translation_page,
+           t.translation_copy AS translation_text_word,
+           vol.volume_flip_code,
+           ser.series_sort,
+           vol.volume_sort,
+           vol.volume_key,
+           (SELECT 'Chapter ' || ch.chapter_number || ':' || ch.chapter_name
             FROM yy_chapter ch
-            WHERE ch.yy_volume_key = t.yy_volume_key
-              AND ch.yy_chapter_page <= t.yy_translation_page
-            ORDER BY ch.yy_chapter_page DESC LIMIT 1) AS yy_chapter_name
+            WHERE ch.volume_key = t.volume_key
+              AND ch.chapter_page <= t.translation_page
+            ORDER BY ch.chapter_page DESC LIMIT 1) AS chapter_name
     FROM yy_translation t
-    JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key AND vol.volume_active_flag = TRUE
-    JOIN yy_series ser ON ser.yy_series_key = vol.yy_series_key
+    JOIN yy_volume vol ON vol.volume_key = t.volume_key AND vol.volume_active_flag = TRUE
+    JOIN yy_series ser ON ser.series_key = vol.series_key
     JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
     JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
     JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-    WHERE t.yy_translation_copy ~* ?
-    ORDER BY ser.yy_series_sort ASC, vol.yy_volume_sort ASC, t.yy_translation_page ASC
+    WHERE t.translation_copy ~* ?
+    ORDER BY ser.series_sort ASC, vol.volume_sort ASC, t.translation_page ASC
 ");
 $stmt->execute([$regexPattern]);
 

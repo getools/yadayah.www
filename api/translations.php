@@ -27,25 +27,25 @@ function handleGet(PDO $db, array $user): void {
     if (isset($_GET['list']) && $_GET['list'] === 'all') {
         $stmt = $db->query("
             SELECT
-                t.yy_translation_key,
+                t.translation_key,
                 t.yah_scroll_key, t.yah_chapter_key, t.yah_verse_key,
-                t.yy_series_key, t.yy_volume_key, t.yy_chapter_key,
+                t.series_key, t.volume_key, t.chapter_key,
                 s.yah_scroll_label_yy, s.yah_scroll_label_common,
                 c.yah_chapter_number, v.yah_verse_number,
-                COALESCE(ser.yy_series_label, ser.yy_series_name) AS series_display,
-                COALESCE(vol.yy_volume_label, vol.yy_volume_name) AS volume_display,
-                t.yy_translation_page,
-                ych.yy_chapter_number AS yy_ch_number,
-                s.yah_scroll_sort, ser.yy_series_sort, vol.yy_volume_number, ych.yy_chapter_sort
+                COALESCE(ser.series_label, ser.series_name) AS series_display,
+                COALESCE(vol.volume_label, vol.volume_name) AS volume_display,
+                t.translation_page,
+                ych.chapter_number AS yy_ch_number,
+                s.yah_scroll_sort, ser.series_sort, vol.volume_number, ych.chapter_sort
             FROM yy_translation t
             JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
             JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
             JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-            JOIN yy_series ser ON ser.yy_series_key = t.yy_series_key
-            JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
-            LEFT JOIN yy_chapter ych ON ych.yy_chapter_key = t.yy_chapter_key
+            JOIN yy_series ser ON ser.series_key = t.series_key
+            JOIN yy_volume vol ON vol.volume_key = t.volume_key
+            LEFT JOIN yy_chapter ych ON ych.chapter_key = t.chapter_key
             ORDER BY s.yah_scroll_sort, c.yah_chapter_number, v.yah_verse_number,
-                     ser.yy_series_sort, vol.yy_volume_number, ych.yy_chapter_sort, t.yy_translation_page
+                     ser.series_sort, vol.volume_number, ych.chapter_sort, t.translation_page
         ");
         jsonResponse($stmt->fetchAll());
     }
@@ -56,16 +56,16 @@ function handleGet(PDO $db, array $user): void {
             SELECT t.*,
                 s.yah_scroll_label_yy, s.yah_scroll_label_common,
                 c.yah_chapter_number, v.yah_verse_number,
-                ser.yy_series_name, vol.yy_volume_name, vol.yy_volume_number,
-                ych.yy_chapter_number AS yy_ch_number, ych.yy_chapter_name AS yy_ch_name
+                ser.series_name, vol.volume_name, vol.volume_number,
+                ych.chapter_number AS yy_ch_number, ych.chapter_name AS yy_ch_name
             FROM yy_translation t
             JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
             JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
             JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-            JOIN yy_series ser ON ser.yy_series_key = t.yy_series_key
-            JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
-            LEFT JOIN yy_chapter ych ON ych.yy_chapter_key = t.yy_chapter_key
-            WHERE t.yy_translation_key = ?
+            JOIN yy_series ser ON ser.series_key = t.series_key
+            JOIN yy_volume vol ON vol.volume_key = t.volume_key
+            LEFT JOIN yy_chapter ych ON ych.chapter_key = t.chapter_key
+            WHERE t.translation_key = ?
         ");
         $stmt->execute([(int)$_GET['translation_key']]);
         $row = $stmt->fetch();
@@ -109,38 +109,38 @@ function handleGet(PDO $db, array $user): void {
 
     $stmt = $db->prepare("
         SELECT
-            t.yy_translation_key,
+            t.translation_key,
             t.yah_scroll_key,
             t.yah_chapter_key,
             t.yah_verse_key,
-            t.yy_series_key,
-            t.yy_volume_key,
-            t.yy_chapter_key,
-            t.yy_translation_page,
-            t.yy_translation_paragraph,
-            t.yy_translation_copy,
-            t.yy_translation_date,
-            t.yy_translation_sort,
-            t.yy_translation_dtime,
+            t.series_key,
+            t.volume_key,
+            t.chapter_key,
+            t.translation_page,
+            t.translation_paragraph,
+            t.translation_copy,
+            t.translation_date,
+            t.translation_sort,
+            t.translation_dtime,
             s.yah_scroll_label_yy,
             s.yah_scroll_label_common,
             c.yah_chapter_number,
             v.yah_verse_number,
-            ser.yy_series_name,
-            vol.yy_volume_name,
-            vol.yy_volume_number,
-            ych.yy_chapter_number AS yy_ch_number,
-            ych.yy_chapter_name AS yy_ch_name
+            ser.series_name,
+            vol.volume_name,
+            vol.volume_number,
+            ych.chapter_number AS yy_ch_number,
+            ych.chapter_name AS yy_ch_name
         FROM yy_translation t
         JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
         JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
         JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-        JOIN yy_series ser ON ser.yy_series_key = t.yy_series_key
-        JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
-        LEFT JOIN yy_chapter ych ON ych.yy_chapter_key = t.yy_chapter_key
+        JOIN yy_series ser ON ser.series_key = t.series_key
+        JOIN yy_volume vol ON vol.volume_key = t.volume_key
+        LEFT JOIN yy_chapter ych ON ych.chapter_key = t.chapter_key
         $whereClause
         ORDER BY s.yah_scroll_sort, c.yah_chapter_number, v.yah_verse_number,
-                 t.yy_translation_sort DESC, t.yy_translation_dtime DESC
+                 t.translation_sort DESC, t.translation_dtime DESC
     ");
     $stmt->execute($params);
     jsonResponse($stmt->fetchAll());
@@ -161,39 +161,39 @@ function handlePost(PDO $db, array $user): void {
 
     $stmt = $db->prepare("
         INSERT INTO yy_translation
-            (yah_scroll_key, yah_chapter_key, yah_verse_key, yy_series_key, yy_volume_key, yy_chapter_key,
-             yy_translation_page, yy_translation_paragraph, yy_translation_copy, yy_translation_date, yy_translation_sort)
+            (yah_scroll_key, yah_chapter_key, yah_verse_key, series_key, volume_key, chapter_key,
+             translation_page, translation_paragraph, translation_copy, translation_date, translation_sort)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         (int)$data['yah_scroll_key'],
         (int)$data['yah_chapter_key'],
         (int)$data['yah_verse_key'],
-        (int)$data['yy_series_key'],
-        (int)$data['yy_volume_key'],
-        (int)$data['yy_chapter_key'],
-        isset($data['yy_translation_page']) && $data['yy_translation_page'] !== '' ? (int)$data['yy_translation_page'] : null,
-        isset($data['yy_translation_paragraph']) && $data['yy_translation_paragraph'] !== '' ? (int)$data['yy_translation_paragraph'] : null,
-        $data['yy_translation_copy'],
-        isset($data['yy_translation_date']) && $data['yy_translation_date'] !== '' ? $data['yy_translation_date'] : null,
-        isset($data['yy_translation_sort']) && $data['yy_translation_sort'] !== '' ? (int)$data['yy_translation_sort'] : 0,
+        (int)$data['series_key'],
+        (int)$data['volume_key'],
+        (int)$data['chapter_key'],
+        isset($data['translation_page']) && $data['translation_page'] !== '' ? (int)$data['translation_page'] : null,
+        isset($data['translation_paragraph']) && $data['translation_paragraph'] !== '' ? (int)$data['translation_paragraph'] : null,
+        $data['translation_copy'],
+        isset($data['translation_date']) && $data['translation_date'] !== '' ? $data['translation_date'] : null,
+        isset($data['translation_sort']) && $data['translation_sort'] !== '' ? (int)$data['translation_sort'] : 0,
     ]);
 
-    $newKey = $db->lastInsertId('yy_translation_yy_translation_key_seq');
+    $newKey = $db->lastInsertId('yy_translation_translation_key_seq');
 
     $stmt = $db->prepare("
         SELECT t.*, s.yah_scroll_label_yy, s.yah_scroll_label_common,
                c.yah_chapter_number, v.yah_verse_number,
-               ser.yy_series_name, vol.yy_volume_name, vol.yy_volume_number,
-               ych.yy_chapter_number AS yy_ch_number, ych.yy_chapter_name AS yy_ch_name
+               ser.series_name, vol.volume_name, vol.volume_number,
+               ych.chapter_number AS yy_ch_number, ych.chapter_name AS yy_ch_name
         FROM yy_translation t
         JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
         JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
         JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-        JOIN yy_series ser ON ser.yy_series_key = t.yy_series_key
-        JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
-        LEFT JOIN yy_chapter ych ON ych.yy_chapter_key = t.yy_chapter_key
-        WHERE t.yy_translation_key = ?
+        JOIN yy_series ser ON ser.series_key = t.series_key
+        JOIN yy_volume vol ON vol.volume_key = t.volume_key
+        LEFT JOIN yy_chapter ych ON ych.chapter_key = t.chapter_key
+        WHERE t.translation_key = ?
     ");
     $stmt->execute([(int)$newKey]);
     jsonResponse($stmt->fetch(), 201);
@@ -212,7 +212,7 @@ function handlePut(PDO $db, array $user): void {
         errorResponse('Invalid JSON body');
     }
 
-    $check = $db->prepare('SELECT yy_translation_key FROM yy_translation WHERE yy_translation_key = ?');
+    $check = $db->prepare('SELECT translation_key FROM yy_translation WHERE translation_key = ?');
     $check->execute([(int)$key]);
     if (!$check->fetch()) {
         errorResponse('Translation not found', 404);
@@ -228,44 +228,44 @@ function handlePut(PDO $db, array $user): void {
             yah_scroll_key = ?,
             yah_chapter_key = ?,
             yah_verse_key = ?,
-            yy_series_key = ?,
-            yy_volume_key = ?,
-            yy_chapter_key = ?,
-            yy_translation_page = ?,
-            yy_translation_paragraph = ?,
-            yy_translation_copy = ?,
-            yy_translation_date = ?,
-            yy_translation_sort = ?
-        WHERE yy_translation_key = ?
+            series_key = ?,
+            volume_key = ?,
+            chapter_key = ?,
+            translation_page = ?,
+            translation_paragraph = ?,
+            translation_copy = ?,
+            translation_date = ?,
+            translation_sort = ?
+        WHERE translation_key = ?
     ");
     $stmt->execute([
         (int)$data['yah_scroll_key'],
         (int)$data['yah_chapter_key'],
         (int)$data['yah_verse_key'],
-        (int)$data['yy_series_key'],
-        (int)$data['yy_volume_key'],
-        (int)$data['yy_chapter_key'],
-        isset($data['yy_translation_page']) && $data['yy_translation_page'] !== '' ? (int)$data['yy_translation_page'] : null,
-        isset($data['yy_translation_paragraph']) && $data['yy_translation_paragraph'] !== '' ? (int)$data['yy_translation_paragraph'] : null,
-        $data['yy_translation_copy'],
-        isset($data['yy_translation_date']) && $data['yy_translation_date'] !== '' ? $data['yy_translation_date'] : null,
-        isset($data['yy_translation_sort']) && $data['yy_translation_sort'] !== '' ? (int)$data['yy_translation_sort'] : 0,
+        (int)$data['series_key'],
+        (int)$data['volume_key'],
+        (int)$data['chapter_key'],
+        isset($data['translation_page']) && $data['translation_page'] !== '' ? (int)$data['translation_page'] : null,
+        isset($data['translation_paragraph']) && $data['translation_paragraph'] !== '' ? (int)$data['translation_paragraph'] : null,
+        $data['translation_copy'],
+        isset($data['translation_date']) && $data['translation_date'] !== '' ? $data['translation_date'] : null,
+        isset($data['translation_sort']) && $data['translation_sort'] !== '' ? (int)$data['translation_sort'] : 0,
         (int)$key,
     ]);
 
     $stmt = $db->prepare("
         SELECT t.*, s.yah_scroll_label_yy, s.yah_scroll_label_common,
                c.yah_chapter_number, v.yah_verse_number,
-               ser.yy_series_name, vol.yy_volume_name, vol.yy_volume_number,
-               ych.yy_chapter_number AS yy_ch_number, ych.yy_chapter_name AS yy_ch_name
+               ser.series_name, vol.volume_name, vol.volume_number,
+               ych.chapter_number AS yy_ch_number, ych.chapter_name AS yy_ch_name
         FROM yy_translation t
         JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
         JOIN yah_chapter c ON c.yah_chapter_key = t.yah_chapter_key
         JOIN yah_verse v ON v.yah_verse_key = t.yah_verse_key
-        JOIN yy_series ser ON ser.yy_series_key = t.yy_series_key
-        JOIN yy_volume vol ON vol.yy_volume_key = t.yy_volume_key
-        LEFT JOIN yy_chapter ych ON ych.yy_chapter_key = t.yy_chapter_key
-        WHERE t.yy_translation_key = ?
+        JOIN yy_series ser ON ser.series_key = t.series_key
+        JOIN yy_volume vol ON vol.volume_key = t.volume_key
+        LEFT JOIN yy_chapter ych ON ych.chapter_key = t.chapter_key
+        WHERE t.translation_key = ?
     ");
     $stmt->execute([(int)$key]);
     jsonResponse($stmt->fetch());
@@ -279,13 +279,13 @@ function handleDelete(PDO $db, array $user): void {
         errorResponse('key is required and must be an integer');
     }
 
-    $check = $db->prepare('SELECT yy_translation_key FROM yy_translation WHERE yy_translation_key = ?');
+    $check = $db->prepare('SELECT translation_key FROM yy_translation WHERE translation_key = ?');
     $check->execute([(int)$key]);
     if (!$check->fetch()) {
         errorResponse('Translation not found', 404);
     }
 
-    $stmt = $db->prepare('DELETE FROM yy_translation WHERE yy_translation_key = ?');
+    $stmt = $db->prepare('DELETE FROM yy_translation WHERE translation_key = ?');
     $stmt->execute([(int)$key]);
     jsonResponse(['deleted' => true]);
 }
@@ -297,9 +297,9 @@ function validateTranslation(array $data, PDO $db): array {
         'yah_scroll_key' => ['table' => 'yah_scroll', 'pk' => 'yah_scroll_key', 'label' => 'Scroll'],
         'yah_chapter_key' => ['table' => 'yah_chapter', 'pk' => 'yah_chapter_key', 'label' => 'Chapter'],
         'yah_verse_key' => ['table' => 'yah_verse', 'pk' => 'yah_verse_key', 'label' => 'Verse'],
-        'yy_series_key' => ['table' => 'yy_series', 'pk' => 'yy_series_key', 'label' => 'Series'],
-        'yy_volume_key' => ['table' => 'yy_volume', 'pk' => 'yy_volume_key', 'label' => 'Volume'],
-        'yy_chapter_key' => ['table' => 'yy_chapter', 'pk' => 'yy_chapter_key', 'label' => 'YY Chapter'],
+        'series_key' => ['table' => 'yy_series', 'pk' => 'series_key', 'label' => 'Series'],
+        'volume_key' => ['table' => 'yy_volume', 'pk' => 'volume_key', 'label' => 'Volume'],
+        'chapter_key' => ['table' => 'yy_chapter', 'pk' => 'chapter_key', 'label' => 'YY Chapter'],
     ];
 
     foreach ($fkFields as $field => $info) {
@@ -314,31 +314,31 @@ function validateTranslation(array $data, PDO $db): array {
         }
     }
 
-    if (empty($data['yy_translation_copy']) || trim(strip_tags($data['yy_translation_copy'])) === '') {
+    if (empty($data['translation_copy']) || trim(strip_tags($data['translation_copy'])) === '') {
         $errors[] = 'Translation text is required.';
     }
 
-    if (isset($data['yy_translation_page']) && $data['yy_translation_page'] !== '' && $data['yy_translation_page'] !== null) {
-        if (!is_numeric($data['yy_translation_page']) || (int)$data['yy_translation_page'] < 1) {
+    if (isset($data['translation_page']) && $data['translation_page'] !== '' && $data['translation_page'] !== null) {
+        if (!is_numeric($data['translation_page']) || (int)$data['translation_page'] < 1) {
             $errors[] = 'Page must be a positive integer.';
         }
     }
 
-    if (isset($data['yy_translation_paragraph']) && $data['yy_translation_paragraph'] !== '' && $data['yy_translation_paragraph'] !== null) {
-        if (!is_numeric($data['yy_translation_paragraph']) || (int)$data['yy_translation_paragraph'] < 1) {
+    if (isset($data['translation_paragraph']) && $data['translation_paragraph'] !== '' && $data['translation_paragraph'] !== null) {
+        if (!is_numeric($data['translation_paragraph']) || (int)$data['translation_paragraph'] < 1) {
             $errors[] = 'Paragraph must be a positive integer.';
         }
     }
 
-    if (isset($data['yy_translation_date']) && $data['yy_translation_date'] !== '' && $data['yy_translation_date'] !== null) {
-        $d = DateTime::createFromFormat('Y-m-d', $data['yy_translation_date']);
-        if (!$d || $d->format('Y-m-d') !== $data['yy_translation_date']) {
+    if (isset($data['translation_date']) && $data['translation_date'] !== '' && $data['translation_date'] !== null) {
+        $d = DateTime::createFromFormat('Y-m-d', $data['translation_date']);
+        if (!$d || $d->format('Y-m-d') !== $data['translation_date']) {
             $errors[] = 'Date must be in YYYY-MM-DD format.';
         }
     }
 
-    if (isset($data['yy_translation_sort']) && $data['yy_translation_sort'] !== '' && $data['yy_translation_sort'] !== null) {
-        if (!is_numeric($data['yy_translation_sort']) || (int)$data['yy_translation_sort'] < 0) {
+    if (isset($data['translation_sort']) && $data['translation_sort'] !== '' && $data['translation_sort'] !== null) {
+        if (!is_numeric($data['translation_sort']) || (int)$data['translation_sort'] < 0) {
             $errors[] = 'Sort must be a non-negative integer.';
         }
     }

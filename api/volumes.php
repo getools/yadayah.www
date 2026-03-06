@@ -12,6 +12,6 @@ if (!$seriesKey || !ctype_digit($seriesKey)) {
 }
 
 $db = getDb();
-$stmt = $db->prepare("SELECT yy_volume_key, yy_series_key, yy_volume_number, yy_volume_name, yy_volume_label, yy_volume_sort, CONCAT(yy_volume_number, ' - ', COALESCE(yy_volume_label, yy_volume_name)) AS display_text FROM yy_volume WHERE yy_series_key = ? ORDER BY yy_volume_sort");
+$stmt = $db->prepare("SELECT volume_key, series_key, volume_number, volume_name, volume_label, volume_sort, CONCAT(volume_number, ' - ', COALESCE(volume_label, volume_name)) AS display_text FROM yy_volume WHERE series_key = ? ORDER BY volume_sort");
 $stmt->execute([(int)$seriesKey]);
 jsonResponse($stmt->fetchAll());

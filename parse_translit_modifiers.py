@@ -43,7 +43,27 @@ def extract_modifier_words(text):
     return words
 
 
-def parse_document(doc_path, verbose=False):
+def get_db_page_map(conn, series, volume):
+    """Get paragraph_number -> paragraph_page from yy_paragraph (COM-based pages)."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT p.paragraph_number, p.paragraph_page
+        FROM yy_paragraph p
+        JOIN yy_volume v ON v.yy_volume_key = p.yy_volume_key
+        WHERE v.yy_series_key = %s AND v.yy_volume_number = %s
+        AND p.paragraph_page IS NOT NULL
+    """, (series, volume))
+    page_map = {}
+    min_para = None
+    for para_num, page in cur.fetchall():
+        page_map[para_num] = page
+        if min_para is None or para_num < min_para:
+            min_para = para_num
+    cur.close()
+    return page_map, min_para
+
+
+def parse_document(doc_path, conn, verbose=False):
     """Parse a single document for modifier words with page numbers."""
     filename = doc_path.name
     m = FILENAME_PATTERN.search(filename)
@@ -57,8 +77,20 @@ def parse_document(doc_path, verbose=False):
     if verbose:
         print(f"  Parsing {filename} (s{series:02d}v{volume:02d})...")
 
-    # Get page map
-    page_map, content_start_idx, last_page = build_footer_page_map(doc_path)
+    # Try COM-based page map from yy_paragraph (more accurate)
+    db_page_map, content_start_idx = get_db_page_map(conn, series, volume)
+    if db_page_map:
+        page_map = db_page_map
+        if verbose:
+            print(f"    Using COM-based pages from yy_paragraph ({len(page_map)} entries)")
+    else:
+        # Fall back to XML-based page map
+        page_map, content_start_idx, _ = build_footer_page_map(doc_path)
+        if verbose:
+            print(f"    Falling back to XML-based pages ({len(page_map)} entries)")
+
+    if content_start_idx is None:
+        content_start_idx = 0
 
     # Open document and iterate paragraphs
     doc = Document(str(doc_path))
@@ -74,7 +106,7 @@ def parse_document(doc_path, verbose=False):
             continue
 
         # TOC and front matter (before content start) = page 0
-        # Content pages use footer page number
+        # Content pages use page number from map
         if idx < content_start_idx:
             page = 0
         else:
@@ -110,7 +142,7 @@ def main():
 
     total = 0
     for doc_path in doc_files:
-        results = parse_document(doc_path, verbose=verbose)
+        results = parse_document(doc_path, conn, verbose=verbose)
         if results:
             args = [(r['translit'], r['filename'], r['series'], r['volume'], r['page'])
                     for r in results]
