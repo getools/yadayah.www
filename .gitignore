@@ -11,3 +11,4 @@ strongs_matches.sql
 unlinked_words.txt
 sql/yada_full_dump.sql
 sql/yada_full_dump.custom
+sql/yada_deploy.sql
