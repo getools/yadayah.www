@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Ask Yada – Yada Yah</title>
+    <link rel="icon" href="https://yadayah.com/wp-content/uploads/2026/01/cropped-YY.logo_.manowrah.00512x00512-32x32.png" sizes="32x32" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Roboto:wght@400;600&family=Nunito+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            font-family: "Nunito Sans", Arial, sans-serif;
+            margin: 0; padding: 0; background: #f5f5f5; color: #000;
+            display: flex; flex-direction: column;
+            min-height: 100vh; min-height: 100dvh;
+        }
+        a { text-decoration: none; }
+
+        /* ── Header ── */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden; flex-shrink: 0;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 0; padding: 10px 0;
+        }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 767px) {
+            header nav a.hide-narrow { display: none; }
+        }
+
+        /* ── Chat Container ── */
+        .chat-wrapper {
+            flex: 1; display: flex; flex-direction: column;
+            max-width: 900px; width: 100%; margin: 0 auto;
+            min-height: 0;
+        }
+        .chat-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 20px; border-bottom: 1px solid #e0e0e0;
+            background: #fff; flex-shrink: 0;
+        }
+        .chat-header h1 {
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.2rem; font-weight: 700; color: #2F2F29; margin: 0;
+        }
+        .chat-header button {
+            padding: 6px 14px; background: #fff; color: #31345A;
+            border: 1px solid #31345A; border-radius: 6px;
+            font-size: 0.8rem; font-weight: 600; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .chat-header button:hover { background: #f0f0f5; }
+
+        /* ── Messages Area ── */
+        .messages {
+            flex: 1; overflow-y: auto; padding: 20px;
+            display: flex; flex-direction: column; gap: 16px;
+            background: #f9f9f9;
+        }
+        .msg {
+            max-width: 80%; padding: 12px 16px;
+            border-radius: 12px; line-height: 1.6;
+            font-size: 0.95rem; word-wrap: break-word;
+        }
+        .msg p { margin: 0 0 8px; }
+        .msg p:last-child { margin-bottom: 0; }
+        .msg-user {
+            align-self: flex-end;
+            background: #31345A; color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+        .msg-yada {
+            align-self: flex-start;
+            background: #fff; color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 4px;
+        }
+        .msg-yada .msg-label {
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 0.75rem; color: #31345A;
+            margin-bottom: 6px; font-weight: 700;
+        }
+        .msg-system {
+            align-self: center; text-align: center;
+            color: #888; font-size: 0.85rem; font-style: italic;
+            max-width: 100%; background: none; padding: 8px;
+        }
+        .typing-indicator {
+            display: inline-flex; gap: 4px; padding: 4px 0;
+        }
+        .typing-indicator span {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #999; animation: bounce 1.4s infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-6px); }
+        }
+
+        /* ── Input Area ── */
+        .chat-input {
+            display: flex; gap: 10px; padding: 16px 20px;
+            padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            background: #fff; border-top: 1px solid #e0e0e0;
+            flex-shrink: 0;
+        }
+        .chat-input textarea {
+            flex: 1; padding: 10px 14px;
+            font-family: "Nunito Sans", Arial, sans-serif;
+            font-size: 1rem; border: 2px solid #ccc; border-radius: 8px;
+            outline: none; resize: none; min-height: 44px; max-height: 120px;
+            transition: border-color 0.2s; line-height: 1.4;
+        }
+        .chat-input textarea:focus { border-color: #31345A; }
+        .chat-input button {
+            padding: 10px 24px; background-color: #31345A; color: white;
+            border: none; cursor: pointer; border-radius: 8px;
+            font-size: 0.95rem; font-weight: 600;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            align-self: flex-end;
+        }
+        .chat-input button:hover { background-color: #4a4e7a; }
+        .chat-input button:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
+
+        /* ── Welcome ── */
+        .welcome {
+            text-align: center; padding: 40px 20px; color: #666;
+        }
+        .welcome h2 {
+            font-family: "Julius Sans One", sans-serif;
+            color: #2F2F29; margin-bottom: 8px;
+        }
+        .welcome p { max-width: 500px; margin: 8px auto; line-height: 1.6; font-size: 0.95rem; }
+        .welcome .topics {
+            display: flex; flex-wrap: wrap; justify-content: center;
+            gap: 8px; margin-top: 20px;
+        }
+        .welcome .topic-tag {
+            padding: 6px 14px; background: #fff; border: 1px solid #ddd;
+            border-radius: 20px; font-size: 0.85rem; color: #555;
+            cursor: pointer; transition: background 0.2s, border-color 0.2s;
+        }
+        .welcome .topic-tag:hover { background: #f0f0f5; border-color: #31345A; color: #31345A; }
+
+        .rate-limit-msg {
+            color: #c0392b; font-size: 0.85rem; text-align: center;
+            padding: 8px; display: none;
+        }
+
+        /* ── Error Toast ── */
+        .error-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4); z-index: 1000;
+            justify-content: center; align-items: center;
+        }
+        .error-overlay.visible { display: flex; }
+        .error-dialog {
+            background: #fff; border-radius: 12px; padding: 24px 28px;
+            max-width: 440px; width: 90%; box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+            text-align: center;
+        }
+        .error-dialog h3 {
+            margin: 0 0 12px; font-family: "Julius Sans One", sans-serif;
+            color: #c0392b; font-size: 1.1rem;
+        }
+        .error-dialog p {
+            margin: 0 0 18px; color: #555; font-size: 0.9rem; line-height: 1.5;
+        }
+        .error-dialog button {
+            padding: 8px 24px; background: #31345A; color: #fff;
+            border: none; border-radius: 6px; font-size: 0.9rem;
+            font-weight: 600; cursor: pointer;
+        }
+        .error-dialog button:hover { background: #4a4e7a; }
+
+        /* ── Responsive ── */
+        @media (max-width: 1024px) {
+            .hide-narrow { display: none !important; }
+        }
+        @media (max-width: 767px) {
+            .hide-narrower { display: none !important; }
+            .msg { max-width: 90%; }
+            .chat-wrapper { max-width: 100%; min-height: 0; }
+            footer { display: none; }
+        }
+
+        /* Footer */
+        footer {
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        footer .footer-col { min-width: 200px; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-3col {
+            grid-template-columns: auto auto auto;
+        }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <video class="header-video" autoplay muted loop playsinline>
+        <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+    </video>
+    <div class="header-inner">
+        <div class="header-logos">
+            <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah"></a>
+        </div>
+        <nav>
+            <div class="nav-row">
+                <a href="books">Books</a>
+                <a href="vlog">Vlog</a>
+                <a href="blog">Blog</a>
+                <a href="/media" class="hide-narrow">Media</a>
+                <a href="/music" class="hide-narrow">Music</a>
+                <a href="invite" class="hide-narrow">Invite</a>
+            </div>
+            <div class="nav-row">
+                <a href="/">Translations</a>
+                <a href="resources">Resources</a>
+                <a href="/Craig_Winn" class="hide-narrow">Winn</a>
+                <a href="/timeline" class="hide-narrow">Timeline</a>
+                <a href="ask" class="active">Ask</a>
+            </div>
+        </nav>
+    </div>
+</header>
+
+<div class="chat-wrapper">
+    <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+            <h2>Ask Yada</h2>
+            <p>Ask questions about scripture, prophecy, history, the Towrah, the Covenant, Hebrew translations, and more — drawing from nearly 40 books of research and translation.</p>
+            <div class="topics">
+                <span class="topic-tag" onclick="askSuggested(this)">What is the Towrah?</span>
+                <span class="topic-tag" onclick="askSuggested(this)">Who is Dowd?</span>
+                <span class="topic-tag" onclick="askSuggested(this)">What are the Mow'ed Miqra'ey?</span>
+                <span class="topic-tag" onclick="askSuggested(this)">What is the Covenant?</span>
+                <span class="topic-tag" onclick="askSuggested(this)">What's wrong with Christianity?</span>
+                <span class="topic-tag" onclick="askSuggested(this)">Who was Sha'uwl / Paul?</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="rate-limit-msg" id="rate-limit-msg">You're asking too quickly. Please wait a moment.</div>
+
+    <div class="error-overlay" id="error-overlay" onclick="dismissError(event)">
+        <div class="error-dialog">
+            <h3>Something went wrong</h3>
+            <p id="error-text"></p>
+            <button onclick="dismissError()">OK</button>
+        </div>
+    </div>
+
+    <div class="chat-input">
+        <textarea id="input" placeholder="Ask Yada a question..." rows="1" onkeydown="handleKey(event)"></textarea>
+        <button id="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+</div>
+
+<script>
+var history = [];
+var isStreaming = false;
+
+function showError(msg) {
+    document.getElementById('error-text').textContent = msg;
+    document.getElementById('error-overlay').classList.add('visible');
+}
+function dismissError(e) {
+    if (e && e.target !== document.getElementById('error-overlay') && e.target.tagName !== 'BUTTON') return;
+    document.getElementById('error-overlay').classList.remove('visible');
+}
+
+function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+// Auto-resize textarea
+var input = document.getElementById('input');
+input.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+function askSuggested(el) {
+    input.value = el.textContent;
+    sendMessage();
+}
+
+function newConversation() {
+    history = [];
+    var msgs = document.getElementById('messages');
+    msgs.innerHTML = '';
+    var welcome = document.createElement('div');
+    welcome.className = 'welcome';
+    welcome.id = 'welcome';
+    welcome.innerHTML = '<h2>Ask Yada</h2>'
+        + '<p>Ask questions about scripture, prophecy, history, the Towrah, the Covenant, Hebrew translations, and more.</p>'
+        + '<div class="topics">'
+        + '<span class="topic-tag" onclick="askSuggested(this)">What is the Towrah?</span>'
+        + '<span class="topic-tag" onclick="askSuggested(this)">Who is Dowd?</span>'
+        + '<span class="topic-tag" onclick="askSuggested(this)">What are the Mow\'ed Miqra\'ey?</span>'
+        + '<span class="topic-tag" onclick="askSuggested(this)">What is the Covenant?</span>'
+        + '<span class="topic-tag" onclick="askSuggested(this)">What\'s wrong with Christianity?</span>'
+        + '<span class="topic-tag" onclick="askSuggested(this)">Who was Sha\'uwl / Paul?</span>'
+        + '</div>';
+    msgs.appendChild(welcome);
+    document.getElementById('rate-limit-msg').style.display = 'none';
+}
+
+function appendMessage(role, content) {
+    var msgs = document.getElementById('messages');
+    var welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+
+    var div = document.createElement('div');
+    div.className = 'msg ' + (role === 'user' ? 'msg-user' : 'msg-yada');
+    if (role === 'assistant') {
+        div.innerHTML = '<div class="msg-label">Yada</div><div class="msg-content"></div>';
+    } else {
+        div.textContent = content;
+    }
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+}
+
+function formatMarkdown(text) {
+    // Simple markdown: bold, italic, paragraphs
+    var html = text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code>$1</code>');
+    // Split into paragraphs
+    var paragraphs = html.split(/\n{2,}/);
+    if (paragraphs.length > 1) {
+        html = paragraphs.map(function(p) { return '<p>' + p.replace(/\n/g, '<br>') + '</p>'; }).join('');
+    } else {
+        html = html.replace(/\n/g, '<br>');
+    }
+    return html;
+}
+
+function sendMessage() {
+    if (isStreaming) return;
+    var text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('rate-limit-msg').style.display = 'none';
+
+    appendMessage('user', text);
+
+    // Show typing indicator
+    var yadaDiv = appendMessage('assistant', '');
+    var contentEl = yadaDiv.querySelector('.msg-content');
+    contentEl.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+
+    isStreaming = true;
+    document.getElementById('send-btn').disabled = true;
+
+    var fullText = '';
+
+    // Timeout: if no response after 60 seconds, show error
+    var streamTimeout = setTimeout(function() {
+        if (isStreaming && !fullText) {
+            yadaDiv.remove();
+            showError('Request timed out. Please try again.');
+            isStreaming = false;
+            document.getElementById('send-btn').disabled = false;
+        }
+    }, 60000);
+
+    fetch('/api/ask.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: text, history: history })
+    }).then(function(response) {
+        if (response.status === 429) {
+            contentEl.innerHTML = '';
+            yadaDiv.remove();
+            document.getElementById('rate-limit-msg').style.display = 'block';
+            isStreaming = false;
+            document.getElementById('send-btn').disabled = false;
+            return;
+        }
+        if (!response.ok && response.headers.get('content-type')?.includes('application/json')) {
+            return response.json().then(function(d) {
+                yadaDiv.remove();
+                showError(d.error || 'Something went wrong.');
+                isStreaming = false;
+                document.getElementById('send-btn').disabled = false;
+            });
+        }
+
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var started = false;
+
+        function processStream() {
+            reader.read().then(function(result) {
+                if (result.done) {
+                    finishStream();
+                    return;
+                }
+                buffer += decoder.decode(result.value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop(); // keep incomplete line
+
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (line.indexOf('data: ') !== 0) continue;
+                    var payload = line.substring(6);
+                    if (payload === '[DONE]') {
+                        finishStream();
+                        return;
+                    }
+                    try {
+                        var data = JSON.parse(payload);
+                        if (data.error) {
+                            if (!fullText) yadaDiv.remove();
+                            showError(data.error);
+                            finishStream();
+                            return;
+                        }
+                        if (data.text) {
+                            if (!started) {
+                                contentEl.innerHTML = '';
+                                started = true;
+                            }
+                            fullText += data.text;
+                            contentEl.innerHTML = formatMarkdown(fullText);
+                            var msgs = document.getElementById('messages');
+                            msgs.scrollTop = msgs.scrollHeight;
+                        }
+                    } catch(e) {}
+                }
+                processStream();
+            }).catch(function(err) {
+                // If we already got text, the stream completed — just finish cleanly
+                if (fullText) {
+                    finishStream();
+                    return;
+                }
+                yadaDiv.remove();
+                showError('Connection error. Please try again.');
+                finishStream();
+            });
+        }
+
+        function finishStream() {
+            clearTimeout(streamTimeout);
+            isStreaming = false;
+            document.getElementById('send-btn').disabled = false;
+            if (fullText) {
+                history.push({ role: 'user', content: text });
+                history.push({ role: 'assistant', content: fullText });
+                // Keep history manageable
+                if (history.length > 20) history = history.slice(-20);
+            }
+            input.focus();
+        }
+
+        processStream();
+    }).catch(function(err) {
+        clearTimeout(streamTimeout);
+        if (fullText) {
+            // Stream completed successfully, connection just closed
+            isStreaming = false;
+            document.getElementById('send-btn').disabled = false;
+            history.push({ role: 'user', content: text });
+            history.push({ role: 'assistant', content: fullText });
+            if (history.length > 20) history = history.slice(-20);
+            return;
+        }
+        yadaDiv.remove();
+        showError('Connection error. Please try again.');
+        isStreaming = false;
+        document.getElementById('send-btn').disabled = false;
+    });
+}
+</script>
+
+    <footer>
+        <video class="footer-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Books</h4>
+                <div class="footer-links">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Links</h4>
+                <div class="footer-links footer-links-3col">
+                    <a href="ask">Ask</a>
+                    <a href="/">Translations</a>
+                    <a href="invite">Invite</a>
+                    <a href="blog">Blog</a>
+                    <a href="glossary">Glossary</a>
+                    <a href="/music">Music</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="dss">Dead Sea Scrolls</a>
+                    <a href="timeline">Timeline</a>
+                    <a href="/media">Media</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
+
+</body>
+</html>

@@ -15,7 +15,7 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
 
 /* ── Login ── */
 .login-screen {
-    display: flex;
+    display: none;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
@@ -24,6 +24,7 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
     background: #f0f2f5;
     width: 100vw;
 }
+.login-screen.visible { display: flex; }
 .login-card {
     background: #fff;
     border-radius: 8px;

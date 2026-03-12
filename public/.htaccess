@@ -1,8 +1,33 @@
 RewriteEngine On
 
-# If the request is for an existing file or directory, serve it directly
+# Strip trailing slashes (301 redirect to canonical URL without slash)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} (.+)/$
+RewriteRule ^(.+)/$ /$1 [R=301,L]
+
+# Redirect old .html URLs to clean paths (301 permanent)
+RewriteCond %{THE_REQUEST} \s/+(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media)\.html[\s?] [NC]
+RewriteRule ^(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media)\.html$ /$1 [R=301,L]
+
+# Canonical redirect for Craig_Winn (mixed case filename)
+RewriteCond %{REQUEST_URI} !^/Craig_Winn$
+RewriteRule ^craig_winn$ /Craig_Winn [R=301,L,NC]
+
+# Case-insensitive URL matching: try lowercase .html file
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} [A-Z]
+RewriteCond %{REQUEST_URI} !^/api/
+RewriteCond %{REQUEST_URI} !^/Craig_Winn$ [NC]
+RewriteRule ^(.+)$ /case-redirect.php [L,QSA]
+
+# Serve clean URLs from .html files
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{DOCUMENT_ROOT}/%{REQUEST_URI}.html -f
+RewriteRule ^(.+)$ $1.html [L]
 
 # Route API requests to the api directory
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^api/(.*)$ /api/$1 [L]

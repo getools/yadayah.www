@@ -10,6 +10,11 @@ if ($q === '') {
     errorResponse('Search query is required', 400);
 }
 
+// Strip half-rings, modifiers, apostrophes, and single quotes from search input
+$stripChars = "\u{02BF}\u{02BE}\u{02BC}\u{02BB}\u{02B9}\u{02BA}\u{2018}\u{2019}\u{201C}\u{201D}\u{2013}\u{2014}'";
+$q = str_replace(str_split($stripChars), '', $q);
+$q = preg_replace('/\s{2,}/', ' ', trim($q));
+
 $mode   = $_GET['mode'] ?? 'all';
 $series = isset($_GET['series']) && $_GET['series'] !== '' ? (int)$_GET['series'] : null;
 $volume = isset($_GET['volume']) && $_GET['volume'] !== '' ? (int)$_GET['volume'] : null;
@@ -32,7 +37,7 @@ foreach ($queryWords as $w) {
 }
 
 // Build filter conditions (shared between all tiers)
-$filterConditions = ["p.paragraph_active_flag = true"];
+$filterConditions = ["p.paragraph_active_flag = true", "v.volume_active_flag = true"];
 $filterParams = [];
 if ($series !== null) {
     $filterConditions[] = "p.series_key = ?";
@@ -74,7 +79,7 @@ $allConditions = array_merge(['(' . implode(' OR ', $ftsMatchConditions) . ')'],
 $ftsWhere = 'WHERE ' . implode(' AND ', $allConditions);
 $allParams = array_merge($ftsMatchParams, $filterParams);
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p $ftsWhere");
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $ftsWhere");
 $countStmt->execute($allParams);
 $total = (int)$countStmt->fetchColumn();
 
@@ -130,10 +135,10 @@ if ($total > 0) {
     // --- TIER 2: ILIKE substring search ---
     $fuzzy = true;
     $likePattern = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
-    $fuzzyConditions = array_merge(["p.paragraph_text_plain ILIKE ?"], $filterConditions);
+    $fuzzyConditions = array_merge(["normalize_search_text(p.paragraph_text_plain) ILIKE ?"], $filterConditions);
     $fuzzyWhere = 'WHERE ' . implode(' AND ', $fuzzyConditions);
 
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p $fuzzyWhere");
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $fuzzyWhere");
     $countStmt->execute(array_merge([$likePattern], $filterParams));
     $total = (int)$countStmt->fetchColumn();
 
@@ -146,9 +151,9 @@ if ($total > 0) {
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
                    p.paragraph_page AS page,
-                   similarity(p.paragraph_text_plain, ?) AS rank,
+                   similarity(normalize_search_text(p.paragraph_text_plain), ?) AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
-                        THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(p.paragraph_text_plain)) - 100) FOR 300)
+                        THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - 100) FOR 300)
                         ELSE p.paragraph_text_plain
                    END AS snippet,
                    p.paragraph_text_html AS html
@@ -179,7 +184,7 @@ if ($total > 0) {
         $simConditions = [];
         $simParams = [];
         foreach ($queryWords as $w) {
-            $simConditions[] = "? %> p.paragraph_text_plain";
+            $simConditions[] = "? %> normalize_search_text(p.paragraph_text_plain)";
             $simParams[] = $w;
         }
         $simWhere = 'WHERE (' . implode(' OR ', $simConditions) . ')';
@@ -187,7 +192,7 @@ if ($total > 0) {
             $simWhere .= ' AND ' . implode(' AND ', $filterConditions);
         }
 
-        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p $simWhere");
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $simWhere");
         $countStmt->execute(array_merge($simParams, $filterParams));
         $total = (int)$countStmt->fetchColumn();
 
@@ -199,7 +204,7 @@ if ($total > 0) {
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
                    p.paragraph_page AS page,
-                   greatest(" . implode(', ', array_fill(0, count($queryWords), 'word_similarity(?, p.paragraph_text_plain)')) . ") AS rank,
+                   greatest(" . implode(', ', array_fill(0, count($queryWords), 'word_similarity(?, normalize_search_text(p.paragraph_text_plain))')) . ") AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
                         THEN substring(p.paragraph_text_plain FROM 1 FOR 300)
                         ELSE p.paragraph_text_plain

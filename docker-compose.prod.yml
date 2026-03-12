@@ -10,6 +10,7 @@ services:
       PG_DB: yada
       PG_USER: postgres
       PG_PASS: yada_password
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy

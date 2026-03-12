@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog - Yada Yah</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Maven Pro', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #fff;
+            color: #333;
+        }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 0; }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 767px) { header nav a.hide-narrow { display: none; } }
+
+        /* Content */
+        .content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 24px 60px;
+        }
+        .content h1 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #333;
+            text-align: center;
+            margin: 0 0 30px;
+        }
+
+        /* Post masonry - 3 columns with natural heights */
+        .post-grid {
+            column-count: 3;
+            column-gap: 16px;
+        }
+        @media (max-width: 900px) {
+            .post-grid { column-count: 2; }
+        }
+        @media (max-width: 580px) {
+            .post-grid { column-count: 1; }
+        }
+
+        /* Post card */
+        .post-card {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            break-inside: avoid;
+            margin-bottom: 16px;
+        }
+        .post-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 14px 0;
+        }
+        .post-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .post-author-info { flex: 1; }
+        .post-author {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #141B38;
+        }
+        .post-author a {
+            color: #141B38;
+            text-decoration: none;
+        }
+        .post-author a:hover { text-decoration: underline; }
+        .post-time {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .post-message {
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            line-height: 1.45;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .post-message.truncated {
+            max-height: 7.5em;
+            overflow: hidden;
+            position: relative;
+        }
+        .post-message.truncated::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 2.5em;
+            background: linear-gradient(transparent, #fff);
+            pointer-events: none;
+        }
+        .read-more-btn {
+            display: block;
+            background: none;
+            border: none;
+            color: #141B38;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0 14px 8px;
+            font-family: inherit;
+        }
+        .read-more-btn:hover { color: #0d47a1; }
+        .post-image {
+            width: 100%;
+            display: block;
+        }
+        .post-video-wrap {
+            width: 100%;
+            height: 680px;
+            overflow: hidden;
+        }
+        .post-video {
+            width: 100%; height: 100%;
+            border: none;
+        }
+        .post-footer {
+            padding: 8px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #eee;
+        }
+        .post-fb-link {
+            color: #141B38;
+            text-decoration: none;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .post-fb-link:hover { text-decoration: underline; }
+        .post-share-btn {
+            color: #888;
+            text-decoration: none;
+            font-size: 0.75rem;
+        }
+        .post-share-btn:hover { color: #141B38; }
+
+        /* Loading / status */
+        .grid-status {
+            text-align: center;
+            padding: 40px 20px;
+            font-size: 1rem;
+            color: #888;
+        }
+        .grid-status.error { color: #e57373; }
+        .spinner {
+            display: inline-block;
+            width: 32px; height: 32px;
+            border: 3px solid #ddd;
+            border-top-color: #141B38;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Footer */
+        footer {
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        footer .footer-col { min-width: 200px; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-3col {
+            grid-template-columns: auto auto auto;
+        }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+            </div>
+            <nav>
+                <div class="nav-row">
+                    <a href="books">Books</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="blog" class="active">Blog</a>
+                    <a href="/media" class="hide-narrow">Media</a>
+                    <a href="/music" class="hide-narrow">Music</a>
+                    <a href="invite" class="hide-narrow">Invite</a>
+                </div>
+                <div class="nav-row">
+                    <a href="/">Translations</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn" class="hide-narrow">Winn</a>
+                    <a href="/timeline" class="hide-narrow">Timeline</a>
+                    <a href="ask">Ask</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <div class="content">
+        <h1>Blog</h1>
+        <div id="post-grid" class="post-grid"></div>
+        <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
+        <div id="scroll-sentinel" style="height:1px;"></div>
+    </div>
+
+    <footer>
+        <video class="footer-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Books</h4>
+                <div class="footer-links">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Links</h4>
+                <div class="footer-links footer-links-3col">
+                    <a href="ask">Ask</a>
+                    <a href="/">Translations</a>
+                    <a href="invite">Invite</a>
+                    <a href="blog">Blog</a>
+                    <a href="glossary">Glossary</a>
+                    <a href="/music">Music</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="dss">Dead Sea Scrolls</a>
+                    <a href="timeline">Timeline</a>
+                    <a href="/media">Media</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
+
+<script>
+var allPosts = [];
+var currentPage = 0;
+var totalPages = 1;
+var loading = false;
+
+var AVATAR_URL = 'https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png';
+
+function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function timeAgo(dateStr) {
+    var now = new Date();
+    var then = new Date(dateStr);
+    var diff = Math.floor((now - then) / 1000);
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return Math.floor(diff / 60) + ' minutes ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' hours ago';
+    if (diff < 2592000) return Math.floor(diff / 86400) + ' days ago';
+    if (diff < 31536000) return Math.floor(diff / 2592000) + ' months ago';
+    return Math.floor(diff / 31536000) + ' years ago';
+}
+
+function fbPostUrl(postId) {
+    var parts = postId.split('_');
+    if (parts.length === 2) {
+        return 'https://www.facebook.com/' + parts[0] + '/posts/' + parts[1];
+    }
+    return 'https://www.facebook.com/' + postId;
+}
+
+function renderPost(p, idx) {
+    var message = escHtml(p.blog_message || '');
+    var needsTruncate = (p.blog_message || '').length > 300;
+    var cardId = 'post-' + idx;
+
+    var html = '<div class="post-card" id="' + cardId + '">'
+        + '<div class="post-header">'
+        + '<img class="post-avatar" src="' + AVATAR_URL + '" alt="">'
+        + '<div class="post-author-info"><div class="post-author"><a href="https://www.facebook.com/profile.php?id=100067968232160" target="_blank" rel="noopener">Yada Yah</a></div>'
+        + '<div class="post-time">' + timeAgo(p.blog_create_dtime) + '</div></div>'
+        + '</div>'
+        + '<div class="post-message' + (needsTruncate ? ' truncated' : '') + '" id="msg-' + idx + '">'
+        + message + '</div>';
+
+    if (needsTruncate) {
+        html += '<button class="read-more-btn" onclick="expandPost(' + idx + ')">... See More</button>';
+    }
+
+    if (p.blog_video_id) {
+        var videoUrl = encodeURIComponent('https://www.facebook.com/reel/' + p.blog_video_id + '/');
+        html += '<div class="post-video-wrap">'
+            + '<iframe class="post-video" src="https://www.facebook.com/plugins/video.php?href=' + videoUrl + '&width=500&show_text=false" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>'
+            + '</div>';
+    } else if (p.blog_image) {
+        html += '<img class="post-image" src="' + escHtml(p.blog_image) + '" alt="" loading="lazy">';
+    }
+
+    html += '<div class="post-footer">'
+        + '<a class="post-fb-link" href="' + fbPostUrl(p.blog_post_id) + '" target="_blank" rel="noopener">View on Facebook</a>'
+        + '</div></div>';
+
+    return html;
+}
+
+function expandPost(idx) {
+    var msg = document.getElementById('msg-' + idx);
+    if (msg) {
+        msg.classList.remove('truncated');
+        var btn = msg.nextElementSibling;
+        if (btn && btn.classList.contains('read-more-btn')) {
+            btn.remove();
+        }
+    }
+}
+
+function loadPage() {
+    if (loading || currentPage >= totalPages) return;
+    loading = true;
+    var nextPage = currentPage + 1;
+    var status = document.getElementById('grid-status');
+    status.innerHTML = '<div class="spinner"></div>';
+    status.className = 'grid-status';
+
+    fetch('/api/blog-posts.php?page=' + nextPage)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var grid = document.getElementById('post-grid');
+            var html = '';
+            for (var i = 0; i < data.posts.length; i++) {
+                var globalIdx = allPosts.length;
+                allPosts.push(data.posts[i]);
+                html += renderPost(data.posts[i], globalIdx);
+            }
+            grid.insertAdjacentHTML('beforeend', html);
+            currentPage = data.page;
+            totalPages = data.total_pages;
+            loading = false;
+
+            if (currentPage >= totalPages) {
+                status.textContent = data.total === 0 ? 'No posts found.' : '';
+            } else {
+                status.innerHTML = '';
+            }
+        })
+        .catch(function(err) {
+            document.getElementById('grid-status').textContent = 'Error loading posts.';
+            document.getElementById('grid-status').className = 'grid-status error';
+            loading = false;
+        });
+}
+
+// Infinite scroll
+var sentinel = document.getElementById('scroll-sentinel');
+var observer = new IntersectionObserver(function(entries) {
+    if (entries[0].isIntersecting && !loading) {
+        loadPage();
+    }
+}, { rootMargin: '200px' });
+observer.observe(sentinel);
+
+// Initial load
+loadPage();
+</script>
+</body>
+</html>

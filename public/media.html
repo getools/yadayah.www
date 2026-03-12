@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media - Yada Yah</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Maven Pro', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #373737;
+            color: #fff;
+        }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 0; }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 767px) { header nav a.hide-narrow { display: none; } }
+
+        /* Content */
+        .content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 24px 60px;
+        }
+        .content h1 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #E5C86C;
+            text-align: center;
+            margin: 0 0 30px;
+        }
+
+        /* Media grid */
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 24px;
+        }
+        .media-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: #fff;
+            padding: 28px 16px 22px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.06);
+            transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .media-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            background: rgba(255,255,255,0.10);
+        }
+        .media-icon {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .media-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+        .media-name {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #E5C86C;
+            margin-bottom: 4px;
+        }
+        .media-code {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.7);
+        }
+        .media-card:hover .media-code { color: #fff; }
+
+        /* Loading / status */
+        .grid-status {
+            text-align: center;
+            padding: 40px 20px;
+            font-size: 1rem;
+            color: rgba(255,255,255,0.5);
+        }
+        .grid-status.error { color: #e57373; }
+        .spinner {
+            display: inline-block;
+            width: 32px; height: 32px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #E5C86C;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Footer */
+        footer {
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        footer .footer-col { min-width: 200px; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-3col {
+            grid-template-columns: auto auto auto;
+        }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+            </div>
+            <nav>
+                <div class="nav-row">
+                    <a href="books">Books</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="blog">Blog</a>
+                    <a href="/media" class="active hide-narrow">Media</a>
+                    <a href="/music" class="hide-narrow">Music</a>
+                    <a href="invite" class="hide-narrow">Invite</a>
+                </div>
+                <div class="nav-row">
+                    <a href="/">Translations</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn" class="hide-narrow">Winn</a>
+                    <a href="/timeline" class="hide-narrow">Timeline</a>
+                    <a href="ask">Ask</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <div class="content">
+        <h1>Media</h1>
+        <div id="media-grid" class="media-grid"></div>
+        <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
+    </div>
+
+    <footer>
+        <video class="footer-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Books</h4>
+                <div class="footer-links">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Links</h4>
+                <div class="footer-links footer-links-3col">
+                    <a href="ask">Ask</a>
+                    <a href="/">Translations</a>
+                    <a href="invite">Invite</a>
+                    <a href="blog">Blog</a>
+                    <a href="glossary">Glossary</a>
+                    <a href="/music">Music</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="dss">Dead Sea Scrolls</a>
+                    <a href="timeline">Timeline</a>
+                    <a href="/media">Media</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
+
+<script>
+function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function renderCard(m) {
+    return '<a class="media-card" href="' + escHtml(m.media_link) + '" target="_blank" rel="noopener">'
+        + '<div class="media-icon">' + (m.icon_svg || '') + '</div>'
+        + '<div class="media-name">' + escHtml(m.icon_name) + '</div>'
+        + '<div class="media-code">' + escHtml(m.media_code) + '</div>'
+        + '</a>';
+}
+
+fetch('/api/media-links.php')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var grid = document.getElementById('media-grid');
+        var html = '';
+        for (var i = 0; i < data.length; i++) {
+            html += renderCard(data[i]);
+        }
+        grid.innerHTML = html;
+        document.getElementById('grid-status').textContent = data.length === 0 ? 'No media links found.' : '';
+    })
+    .catch(function() {
+        document.getElementById('grid-status').textContent = 'Error loading media links.';
+        document.getElementById('grid-status').className = 'grid-status error';
+    });
+</script>
+</body>
+</html>

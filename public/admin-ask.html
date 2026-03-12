@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ask Sessions - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .sessions-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .sessions-table th, .sessions-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .sessions-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; }
+        .sessions-table tr { cursor: pointer; }
+        .sessions-table tr:hover { background: #f0f4ff; }
+        .sessions-table tr.selected { background: #e8edff; }
+        .sessions-table .ua { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sessions-table .num { text-align: right; }
+
+        /* Popover overlay */
+        .popover-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
+        .popover-overlay.open { display: flex; }
+        .popover-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 800px; max-height: calc(100vh - 80px); overflow-y: auto; position: relative; }
+        .popover-close { position: sticky; top: 0; z-index: 1; display: flex; justify-content: flex-end; padding: 8px 12px; background: #f8f8f8; border-radius: 10px 10px 0 0; }
+        .popover-close button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .popover-close button:hover { background: #eee; color: #333; }
+
+        .session-detail { }
+        .session-meta { padding: 12px 20px; background: #f8f8f8; border-bottom: 1px solid #ddd; display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 0.85rem; color: #555; }
+        .session-meta strong { color: #333; }
+
+        .qa-list { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+        .qa-item { border: 1px solid #e8e8e8; border-radius: 8px; overflow: hidden; }
+        .qa-question { padding: 10px 14px; background: #31345A; color: #fff; font-weight: 600; font-size: 0.9rem; }
+        .qa-response { padding: 10px 14px; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
+        .qa-meta { padding: 6px 14px; background: #f9f9f9; border-top: 1px solid #eee; font-size: 0.78rem; color: #888; display: flex; gap: 16px; flex-wrap: wrap; }
+        .qa-error { color: #c0392b; font-weight: 600; }
+
+        .pagination { display: flex; justify-content: center; gap: 4px; padding: 16px 0; }
+        .pagination button { padding: 6px 12px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .pagination button:hover { background: #f0f0f0; }
+        .pagination button.active { background: #31345A; color: #fff; border-color: #31345A; }
+        .pagination button:disabled { opacity: 0.4; cursor: default; }
+
+        .model-selector { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #f8f8f8; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 16px; }
+        .model-selector label { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+        .model-selector select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        .model-status { font-size: 0.85rem; color: #27ae60; }
+
+        .stats-bar { display: flex; gap: 24px; padding: 12px 0; font-size: 0.85rem; color: #666; }
+        .stats-bar strong { color: #333; }
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+        .loading { text-align: center; padding: 20px; color: #888; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab active">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Ask Yada Sessions</h1>
+
+    <div class="model-selector">
+        <label>AI Model:</label>
+        <select id="model-select">
+            <option value="gemini-flash">Gemini 2.0 Flash (~$0.0006/q)</option>
+            <option value="gpt-4o-mini">GPT-4o mini (~$0.001/q)</option>
+            <option value="claude-haiku">Claude Haiku 4.5 (~$0.005/q)</option>
+            <option value="claude-sonnet">Claude Sonnet 4 (~$0.020/q)</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="saveModel()">Save</button>
+        <span class="model-status" id="model-status"></span>
+    </div>
+
+    <div class="stats-bar" id="stats-bar"></div>
+
+    <div id="sessions-container">
+        <div class="loading">Loading sessions...</div>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+
+    <div id="detail-overlay" class="popover-overlay" onclick="if(event.target===this)closeDetail()">
+        <div class="popover-panel">
+            <div class="popover-close"><button onclick="closeDetail()" title="Close">&times;</button></div>
+            <div id="detail-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var currentPage = 1;
+var selectedKey = null;
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadModel();
+            loadSessions(1);
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function loadModel() {
+    fetch(API + '/ask-settings.php', {credentials:'include'})
+        .then(r => r.json())
+        .then(function(d) {
+            if (d.model) document.getElementById('model-select').value = d.model;
+        });
+}
+
+function saveModel() {
+    var model = document.getElementById('model-select').value;
+    fetch(API + '/ask-settings.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({model: model})
+    }).then(r => r.json()).then(function(d) {
+        if (d.saved) {
+            var el = document.getElementById('model-status');
+            el.textContent = 'Saved!';
+            setTimeout(function() { el.textContent = ''; }, 2000);
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadModel();
+            loadSessions(1);
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadSessions(page) {
+    currentPage = page;
+    document.getElementById('sessions-container').innerHTML = '<div class="loading">Loading sessions...</div>';
+    closeDetail();
+
+    fetch(API + '/ask-sessions.php?page=' + page + '&limit=50', {credentials:'include'})
+        .then(r => r.json())
+        .then(function(d) {
+            if (d.error) { document.getElementById('sessions-container').innerHTML = '<div class="empty-state">' + d.error + '</div>'; return; }
+            renderStats(d);
+            renderSessions(d.sessions);
+            renderPagination(d.page, d.total_pages);
+        });
+}
+
+function renderStats(d) {
+    document.getElementById('stats-bar').innerHTML =
+        '<span><strong>' + d.total + '</strong> total sessions</span>' +
+        '<span>Page <strong>' + d.page + '</strong> of <strong>' + d.total_pages + '</strong></span>';
+}
+
+function renderSessions(sessions) {
+    if (!sessions.length) {
+        document.getElementById('sessions-container').innerHTML = '<div class="empty-state">No sessions found.</div>';
+        return;
+    }
+    var html = '<table class="sessions-table"><thead><tr>' +
+        '<th>Date/Time</th><th>IP</th><th>Location</th><th>Model</th><th class="num">Questions</th>' +
+        '<th class="num">Tokens</th><th class="num">Duration</th><th class="ua">User Agent</th>' +
+        '</tr></thead><tbody>';
+
+    for (var i = 0; i < sessions.length; i++) {
+        var s = sessions[i];
+        var dt = formatDate(s.ask_session_dtime);
+        var tokens = (parseInt(s.total_prompt_tokens)||0) + (parseInt(s.total_completion_tokens)||0);
+        var dur = formatDuration(parseInt(s.total_duration_ms)||0);
+        var ua = (s.user_agent || '').substring(0, 80);
+        var loc = [s.ip_city, s.ip_region, s.ip_country].filter(Boolean).join(', ');
+        html += '<tr onclick="loadDetail(' + s.ask_session_key + ', this)" data-key="' + s.ask_session_key + '">' +
+            '<td>' + dt + '</td>' +
+            '<td>' + esc(s.ip_address || '') + '</td>' +
+            '<td>' + esc(loc) + '</td>' +
+            '<td>' + esc(s.model || '') + '</td>' +
+            '<td class="num">' + (s.ask_session_question_count || 0) + '</td>' +
+            '<td class="num">' + tokens.toLocaleString() + '</td>' +
+            '<td class="num">' + dur + '</td>' +
+            '<td class="ua" title="' + esc(s.user_agent || '') + '">' + esc(ua) + '</td>' +
+            '</tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('sessions-container').innerHTML = html;
+}
+
+function renderPagination(page, totalPages) {
+    if (totalPages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+    var html = '<button ' + (page <= 1 ? 'disabled' : 'onclick="loadSessions(' + (page-1) + ')"') + '>&laquo;</button>';
+    var pages = getPaginationRange(page, totalPages);
+    for (var i = 0; i < pages.length; i++) {
+        if (pages[i] === '...') {
+            html += '<button disabled>...</button>';
+        } else {
+            html += '<button class="' + (pages[i] === page ? 'active' : '') + '" onclick="loadSessions(' + pages[i] + ')">' + pages[i] + '</button>';
+        }
+    }
+    html += '<button ' + (page >= totalPages ? 'disabled' : 'onclick="loadSessions(' + (page+1) + ')"') + '>&raquo;</button>';
+    document.getElementById('pagination').innerHTML = html;
+}
+
+function getPaginationRange(page, total) {
+    if (total <= 7) { var r = []; for (var i=1;i<=total;i++) r.push(i); return r; }
+    var pages = [1];
+    if (page > 3) pages.push('...');
+    for (var i = Math.max(2, page-1); i <= Math.min(total-1, page+1); i++) pages.push(i);
+    if (page < total-2) pages.push('...');
+    pages.push(total);
+    return pages;
+}
+
+function loadDetail(key, row) {
+    selectedKey = key;
+    var rows = document.querySelectorAll('.sessions-table tr');
+    for (var i = 0; i < rows.length; i++) rows[i].classList.remove('selected');
+    if (row) row.classList.add('selected');
+
+    document.getElementById('detail-container').innerHTML = '<div class="loading">Loading session...</div>';
+    document.getElementById('detail-overlay').classList.add('open');
+
+    fetch(API + '/ask-sessions.php?session=' + key, {credentials:'include'})
+        .then(r => r.json())
+        .then(function(d) {
+            if (d.error) { document.getElementById('detail-container').innerHTML = '<div class="empty-state">' + d.error + '</div>'; return; }
+            renderDetail(d.session, d.logs);
+        });
+}
+
+function closeDetail() {
+    document.getElementById('detail-overlay').classList.remove('open');
+    var rows = document.querySelectorAll('.sessions-table tr');
+    for (var i = 0; i < rows.length; i++) rows[i].classList.remove('selected');
+    selectedKey = null;
+}
+
+function renderDetail(session, logs) {
+    var html = '<div class="session-detail">';
+    html += '<div class="session-meta">';
+    html += '<span><strong>Session:</strong> #' + session.ask_session_key + '</span>';
+    html += '<span><strong>IP:</strong> ' + esc(session.ip_address || '') + '</span>';
+    var detailLoc = [session.ip_city, session.ip_region, session.ip_country].filter(Boolean).join(', ');
+    if (detailLoc) html += '<span><strong>Location:</strong> ' + esc(detailLoc) + '</span>';
+    html += '<span><strong>Started:</strong> ' + formatDate(session.ask_session_dtime) + '</span>';
+    if (session.ask_session_end_dtime) html += '<span><strong>Ended:</strong> ' + formatDate(session.ask_session_end_dtime) + '</span>';
+    html += '<span><strong>Questions:</strong> ' + (session.ask_session_question_count || 0) + '</span>';
+    if (session.accept_language) html += '<span><strong>Lang:</strong> ' + esc(session.accept_language.substring(0, 30)) + '</span>';
+    html += '</div>';
+
+    html += '<div class="qa-list">';
+    if (!logs.length) {
+        html += '<div class="empty-state">No questions in this session.</div>';
+    }
+    for (var i = 0; i < logs.length; i++) {
+        var log = logs[i];
+        html += '<div class="qa-item">';
+        html += '<div class="qa-question">' + esc(log.ask_log_question || '') + '</div>';
+        if (log.ask_log_error) {
+            html += '<div class="qa-response qa-error">' + esc(log.ask_log_error) + '</div>';
+        } else {
+            html += '<div class="qa-response">' + esc(log.ask_log_response || '(no response)') + '</div>';
+        }
+        html += '<div class="qa-meta">';
+        html += '<span>' + formatDate(log.ask_log_dtime) + '</span>';
+        if (log.ask_log_model) html += '<span>' + esc(log.ask_log_model) + '</span>';
+        html += '<span>Context: ' + (log.ask_log_context_count || 0) + ' paragraphs</span>';
+        var pt = parseInt(log.ask_log_prompt_tokens) || 0;
+        var ct = parseInt(log.ask_log_completion_tokens) || 0;
+        if (pt || ct) html += '<span>Tokens: ' + pt.toLocaleString() + ' in / ' + ct.toLocaleString() + ' out</span>';
+        if (log.ask_log_duration_ms) html += '<span>' + formatDuration(parseInt(log.ask_log_duration_ms)) + '</span>';
+        html += '</div></div>';
+    }
+    html += '</div></div>';
+    document.getElementById('detail-container').innerHTML = html;
+}
+
+function formatDate(s) {
+    if (!s) return '';
+    var d = new Date(s);
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) +
+        ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+}
+
+function formatDuration(ms) {
+    if (!ms) return '0s';
+    if (ms < 1000) return ms + 'ms';
+    return (ms / 1000).toFixed(1) + 's';
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeDetail();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

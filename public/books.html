@@ -41,19 +41,26 @@
         header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         header .header-logos img { width: auto; height: auto; }
         header nav {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 0; padding: 10px 0;
+        }
+        header nav .nav-row {
             display: flex; flex-direction: row; justify-content: center;
-            gap: 0 35px; padding: 15px 0; flex-wrap: wrap;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
         }
         header nav a {
             text-decoration: none; color: #E5C86C;
             font-family: "Julius Sans One", sans-serif;
-            font-size: 1.2em; font-weight: 700;
+            font-size: 1.1em; font-weight: 700;
         }
         header nav a:hover { color: #fff; }
         header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 767px) {
+            header nav a.hide-narrow { display: none; }
+        }
 
         /* ── Main Content ── */
-        .content { max-width: 1200px; margin: 0 auto; padding: 0 20px 40px; }
+        .content { max-width: 1024px; margin: 0 auto; padding: 0 20px 40px; }
 
         /* ── Section heading ── */
         .section-anchor { scroll-margin-top: 20px; }
@@ -74,13 +81,13 @@
         .book-card {
             display: flex; flex-direction: column; align-items: center;
         }
-        .book-card .cover-link { display: block; transition: transform 4s; }
+        .book-card .cover-link { display: block; transition: transform 0.5s; transform-origin: center bottom; }
         .book-card .cover-link:hover { transform: scale(1.2); }
         .book-card .cover-link img { width: 245px; height: 300px; display: block; }
         .book-card.itc .cover-link img { width: 300px; height: 264px; }
         .book-icons {
-            display: flex; flex-direction: row; justify-content: center;
-            gap: 12px; margin-top: 4px;
+            display: flex; flex-direction: row; align-items: center;
+            gap: 12px; margin-top: 4px; margin-left: 30px;
         }
         .book-icons a { display: inline-flex; align-items: center; }
         .book-icons a svg { width: 33px; height: 33px; fill: #2F2F29; transition: fill 0.2s; }
@@ -118,6 +125,7 @@
             color: #E6C66C; font-size: 0.9em; font-weight: 400;
         }
         .footer-links a:hover { text-decoration: underline; }
+        .footer-links-3col { grid-template-columns: auto auto auto; }
         .footer-center {
             display: flex; flex-direction: column; align-items: center;
             justify-content: center; gap: 6px; min-width: 120px;
@@ -136,7 +144,7 @@
 
         /* ── Search ── */
         .search-container {
-            max-width: 1200px; margin: 20px auto 0; padding: 0 20px;
+            max-width: 1024px; margin: 20px auto 0; padding: 0 20px;
         }
         .search-row {
             display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -245,17 +253,24 @@
     </video>
     <div class="header-inner">
         <div class="header-logos">
-            <a href="https://yadayah.com/"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah"></a>
+            <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah"></a>
         </div>
         <nav>
-            <a href="books.html" class="active">Books</a>
-            <a href="https://yadayah.com/blog">Blog</a>
-            <a href="https://yadayah.com/timeline">Timeline</a>
-            <a href="https://yadayah.com/media" class="hide-narrower">Media</a>
-            <a href="https://yadayah.com/Craig_Winn" class="hide-narrow">Craig&nbsp;Winn</a>
-            <a href="https://yadayah.com/music" class="hide-narrow">Music</a>
-            <a href="/">Translations</a>
-            <a href="https://yadayah.com/resources" class="hide-narrow">Resources</a>
+            <div class="nav-row">
+                <a href="books" class="active">Books</a>
+                <a href="vlog">Vlog</a>
+                <a href="blog">Blog</a>
+                <a href="/media" class="hide-narrow">Media</a>
+                <a href="/music" class="hide-narrow">Music</a>
+                <a href="invite" class="hide-narrow">Invite</a>
+            </div>
+            <div class="nav-row">
+                <a href="/">Translations</a>
+                <a href="resources">Resources</a>
+                <a href="/Craig_Winn" class="hide-narrow">Winn</a>
+                <a href="/timeline" class="hide-narrow">Timeline</a>
+                <a href="ask">Ask</a>
+            </div>
         </nav>
     </div>
 </header>
@@ -409,20 +424,26 @@
             </div>
         </div>
         <div class="footer-center">
-            <a href="https://yadayah.com"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah" loading="lazy"></a>
+            <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah" loading="lazy"></a>
             <div class="footer-copyright">
                 <span>Copyright 2001 - </span><span class="year">2026</span>
             </div>
         </div>
         <div class="footer-section">
             <div class="footer-divider-title"><hr><h4>Links</h4><hr></div>
-            <div class="footer-links">
-                <a href="https://yadayah.com/blog">Blog</a>
-                <a href="https://yadayah.com/Craig_Winn">Craig&nbsp;Winn</a>
-                <a href="https://yadayah.com/timeline">Timeline</a>
-                <a href="https://yadayah.com/music">Music</a>
-                <a href="https://yadayah.com/media">Media</a>
-                <a href="https://yadayah.com/resources">Resources</a>
+            <div class="footer-links footer-links-3col">
+                <a href="ask">Ask</a>
+                <a href="/">Translations</a>
+                <a href="invite">Invite</a>
+                <a href="blog">Blog</a>
+                <a href="glossary">Glossary</a>
+                <a href="/music">Music</a>
+                <a href="vlog">Vlog</a>
+                <a href="dss">Dead&nbsp;Sea&nbsp;Scrolls</a>
+                <a href="timeline">Timeline</a>
+                <a href="/media">Media</a>
+                <a href="resources">Resources</a>
+                <a href="Craig_Winn">Craig&nbsp;Winn</a>
             </div>
         </div>
     </div>
@@ -707,7 +728,7 @@ document.getElementById('babel-grid').innerHTML =
 
 // Twistianity
 document.getElementById('twist-grid').innerHTML =
-    bookCard('s06v01', 'Appalling', 'https://online.fliphtml5.com/mwyni/mfyp/', 'B0DC5ZVZ1C', 'YY-s06v01-Twistianity-Appalling.pdf') +
+    bookCard('s06v01', 'Appalling', 'https://book.yadayah.com/books/mfyp/', 'B0DC5ZVZ1C', 'YY-s06v01-Twistianity-Appalling.pdf') +
     bookCard('s06v02', 'Towrahless', 'https://book.yadayah.com/books/eqqf/', 'B0DDXYN75Q', 'YY-s06v02-Twistianity-Towrahless.pdf') +
     bookCard('s06v03', 'Devils Advocate', 'https://book.yadayah.com/books/ghul/', 'B0DFH17V4R', 'YY-s06v03-Twistianity-Devils%20Advocate.pdf') +
     bookCard('s06v04', 'Incredible', 'https://book.yadayah.com/books/lfqo/', 'B0DH4PCZ5S', 'YY-s06v04-Twistianity-Incredible.pdf') +

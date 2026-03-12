@@ -13,7 +13,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 
-$CHANNEL_BASE  = 'https://rumble.com/user/Stevens';
+$CHANNEL_BASE  = 'https://rumble.com/c/YadaYahowah7';
 $STATIC_CACHE  = __DIR__ . '/../rumble-all-videos.json';
 $CACHE_DIR     = sys_get_temp_dir() . '/rumble_stevens';
 $CACHE_TTL     = 900; // 15 minutes
@@ -131,6 +131,8 @@ function parseVideos(string $html): array {
         $html, $blocks, PREG_SET_ORDER
     );
 
+    $seenTitles = [];
+
     foreach ($blocks as $block) {
         $videoId = $block[1]; $content = $block[2];
         if (isset($seen[$videoId])) continue;
@@ -156,6 +158,8 @@ function parseVideos(string $html): array {
         }
 
         if (!$title || !$url) continue;
+        if (isset($seenTitles[$title])) continue;
+        $seenTitles[$title] = true;
         $videos[] = ['title'=>$title, 'url'=>$url, 'thumbnail'=>$thumbnail, 'date'=>$date, 'date_ago'=>$dateAgo, 'embed_id'=>$embedId];
     }
 

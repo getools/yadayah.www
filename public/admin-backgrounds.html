@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backgrounds - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .bg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .bg-table th, .bg-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .bg-table thead th { background: #f8f9fa; font-weight: 600; color: #555; }
+        .bg-table tbody tr:hover { background: #eef6fc; }
+        .bg-thumb { max-height: 40px; border-radius: 3px; }
+        .bg-thumb-video { max-height: 40px; border-radius: 3px; }
+        .badge-active { background: #27ae60; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
+        .badge-inactive { background: #95a5a6; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
+        .form-card { max-width: 500px; }
+        .file-preview { margin-top: 8px; }
+        .file-preview img, .file-preview video { max-height: 80px; border-radius: 4px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-backgrounds.html" class="nav-tab active">Backgrounds</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Backgrounds</h1>
+
+    <div id="list-view">
+        <div style="margin-bottom:16px;">
+            <button class="btn btn-primary" onclick="showForm()">New Background</button>
+        </div>
+        <div class="card">
+            <table class="bg-table">
+                <thead>
+                    <tr><th>Preview</th><th>Name</th><th>File</th><th>Active</th><th></th></tr>
+                </thead>
+                <tbody id="bg-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="form-view" style="display:none">
+        <div class="card form-card">
+            <h2 id="form-title">New Background</h2>
+            <div id="form-error" class="error-messages" style="display:none"></div>
+            <div class="field">
+                <label for="f-name">Name</label>
+                <input type="text" id="f-name">
+            </div>
+            <div class="field">
+                <label for="f-file">Image / Video File</label>
+                <input type="file" id="f-file" accept="image/*,video/*">
+                <div id="f-preview" class="file-preview"></div>
+            </div>
+            <div class="field">
+                <label>
+                    <input type="checkbox" id="f-active" checked> Active
+                </label>
+            </div>
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="saveRecord()">Save</button>
+                <button class="btn btn-secondary" onclick="cancelForm()">Cancel</button>
+                <button class="btn btn-danger" id="btn-delete" style="display:none;margin-left:auto" onclick="deleteRecord()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var editingKey = null;
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadList();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadList();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadList() {
+    fetch(API + '/backgrounds.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
+        var tbody = document.getElementById('bg-list');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;font-style:italic">No backgrounds yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(function(r) {
+            var thumb = '';
+            if (r.asset_file) {
+                if (r.asset_file.match(/\.(webm|mp4)$/i)) {
+                    thumb = '<video src="/' + r.asset_file + '" class="bg-thumb-video" muted loop onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0"></video>';
+                } else {
+                    thumb = '<img src="/' + r.asset_file + '" class="bg-thumb">';
+                }
+            }
+            var badge = r.asset_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';
+            var fname = r.asset_file ? r.asset_file.split('/').pop() : '';
+            return '<tr onclick="editRecord(' + r.asset_key + ')" style="cursor:pointer">'
+                + '<td>' + thumb + '</td>'
+                + '<td>' + esc(r.asset_name) + '</td>'
+                + '<td>' + esc(fname) + '</td>'
+                + '<td>' + badge + '</td>'
+                + '<td><button class="btn btn-sm btn-primary">Edit</button></td>'
+                + '</tr>';
+        }).join('');
+    });
+}
+
+function showForm(record) {
+    editingKey = record ? record.asset_key : null;
+    document.getElementById('form-title').textContent = editingKey ? 'Edit Background' : 'New Background';
+    document.getElementById('f-name').value = record ? record.asset_name : '';
+    document.getElementById('f-file').value = '';
+    document.getElementById('f-active').checked = record ? record.asset_active_flag : true;
+    document.getElementById('btn-delete').style.display = editingKey ? '' : 'none';
+    document.getElementById('form-error').style.display = 'none';
+
+    var preview = document.getElementById('f-preview');
+    if (record && record.asset_file) {
+        if (record.asset_file.match(/\.(webm|mp4)$/i)) {
+            preview.innerHTML = '<video src="/' + record.asset_file + '" style="max-height:80px" muted autoplay loop></video>';
+        } else {
+            preview.innerHTML = '<img src="/' + record.asset_file + '">';
+        }
+    } else {
+        preview.innerHTML = '';
+    }
+
+    document.getElementById('list-view').style.display = 'none';
+    document.getElementById('form-view').style.display = '';
+}
+
+function cancelForm() {
+    document.getElementById('form-view').style.display = 'none';
+    document.getElementById('list-view').style.display = '';
+}
+
+function editRecord(key) {
+    fetch(API + '/backgrounds.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
+        var rec = rows.find(function(r){ return r.asset_key == key; });
+        if (rec) showForm(rec);
+    });
+}
+
+function saveRecord() {
+    var name = document.getElementById('f-name').value.trim();
+    var errEl = document.getElementById('form-error');
+    if (!name) {
+        errEl.textContent = 'Name is required';
+        errEl.style.display = '';
+        return;
+    }
+
+    var fd = new FormData();
+    fd.append('asset_name', name);
+    fd.append('asset_active_flag', document.getElementById('f-active').checked ? '1' : '0');
+    var fileInput = document.getElementById('f-file');
+    if (fileInput.files.length) fd.append('file', fileInput.files[0]);
+
+    var url = API + '/backgrounds.php';
+    var method = 'POST';
+    if (editingKey) {
+        url += '?key=' + editingKey;
+        method = 'PUT';
+    }
+
+    fetch(url, {method: method, credentials: 'include', body: fd}).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) {
+            errEl.textContent = d.error;
+            errEl.style.display = '';
+        } else {
+            cancelForm();
+            loadList();
+        }
+    });
+}
+
+function deleteRecord() {
+    if (!editingKey || !confirm('Delete this background?')) return;
+    fetch(API + '/backgrounds.php?key=' + editingKey, {method:'DELETE', credentials:'include'}).then(function(r){return r.json();}).then(function() {
+        cancelForm();
+        loadList();
+    });
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+document.getElementById('f-file').addEventListener('change', function() {
+    var preview = document.getElementById('f-preview');
+    if (this.files.length) {
+        var file = this.files[0];
+        var url = URL.createObjectURL(file);
+        if (file.type.startsWith('video/')) {
+            preview.innerHTML = '<video src="' + url + '" style="max-height:80px" muted autoplay loop></video>';
+        } else {
+            preview.innerHTML = '<img src="' + url + '">';
+        }
+    }
+});
+
+checkAuth();
+</script>
+</body>
+</html>

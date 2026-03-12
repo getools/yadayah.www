@@ -28,10 +28,10 @@
         #words-table tbody tr:hover { background: #eef6fc; cursor: pointer; }
         #words-table .col-active { width: 65px; text-align: center; }
         #words-table .col-strongs { width: 80px; }
-        #words-table .col-hebrew { width: 90px; }
-        #words-table td.col-hebrew { direction: rtl; font-size: 1.1rem; }
-        #words-table .col-yt { width: 80px; }
-        #words-table td.col-yt { font-family: "Yada Towrah", serif; font-size: 1rem; direction: rtl; unicode-bidi: bidi-override; }
+        #words-table .col-hebrew { width: 90px; text-align: right; }
+        #words-table td.col-hebrew { direction: rtl; font-size: 1.1rem; text-align: right; }
+        #words-table .col-yt { width: 80px; text-align: right; }
+        #words-table td.col-yt { font-family: "Yada Towrah", serif; font-size: 1rem; direction: rtl; unicode-bidi: bidi-override; text-align: right; }
         #words-table .col-count { width: 90px; text-align: right; }
         #words-table thead th.sortable { white-space: nowrap; }
         #words-table .col-def { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -204,7 +204,11 @@
             <a href="admin-translation.html" class="nav-tab">Translation</a>
             <a href="admin-word.html" class="nav-tab active">Word</a>
             <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
             <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
         </nav>
         <div class="user-info">
             <span id="user-display"></span>
@@ -364,11 +368,12 @@ function toggleCountMode() {
 function checkAuth() {
     fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
         if (d.authenticated) {
-            document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
             loadWords();
             loadDefLookups();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
         }
     });
 }
@@ -384,7 +389,7 @@ function doLogin() {
         body: JSON.stringify({login: user, password: pass})
     }).then(r=>r.json()).then(function(d) {
         if (d.authenticated) {
-            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
             loadWords();

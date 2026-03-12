@@ -19,13 +19,13 @@ $pass = getenv("PG_PASS") ?: "yada_password";
 try {
     $pdo = new PDO("pgsql:host=$host;dbname=$name", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $stmt = $pdo->query("SELECT yy_user_key FROM yy_user WHERE yy_user_pass IS NULL");
+    $stmt = $pdo->query("SELECT user_key FROM yy_user WHERE user_pass IS NULL");
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if (count($users) > 0) {
-        $up = $pdo->prepare("UPDATE yy_user SET yy_user_pass = ? WHERE yy_user_key = ?");
+        $up = $pdo->prepare("UPDATE yy_user SET user_pass = ? WHERE user_key = ?");
         foreach ($users as $u) {
             $hash = password_hash("7#Yada.Yah#7", PASSWORD_DEFAULT);
-            $up->execute([$hash, $u["yy_user_key"]]);
+            $up->execute([$hash, $u["user_key"]]);
         }
         echo "User passwords initialized for " . count($users) . " account(s).\n";
     } else {

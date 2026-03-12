@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Craig Winn - Yada Yah</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Maven Pro', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #373737;
+            color: #fff;
+        }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 0; }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 767px) { header nav a.hide-narrow { display: none; } }
+
+        /* Hero section with background photo */
+        .bio-hero {
+            position: relative;
+            background: url('u/Craig_750w1.jpg') top center / cover no-repeat;
+            min-height: 100vh;
+        }
+        .bio-hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: #373737;
+            opacity: 0.69;
+            mix-blend-mode: multiply;
+        }
+
+        /* Content area */
+        .bio-content {
+            position: relative;
+            max-width: 608px;
+            margin: 0 auto;
+            padding: 350px 24px 60px;
+        }
+        .bio-content h1 {
+            font-family: "Times New Roman", serif;
+            font-size: 2.8em;
+            font-weight: 900;
+            color: #fff;
+            text-align: center;
+            margin: 0 0 24px;
+        }
+        .bio-content p {
+            font-family: "Times New Roman", serif;
+            font-size: 1em;
+            font-weight: 500;
+            line-height: 1.2em;
+            color: #fff;
+            margin: 0 0 1em;
+        }
+        .bio-content p:first-of-type::first-letter {
+            float: left;
+            font-family: "Times New Roman", serif;
+            font-size: 66px;
+            line-height: 0.8;
+            color: #fff;
+            margin-right: 5px;
+            padding-top: 4px;
+        }
+        .bio-content i { font-style: italic; }
+
+        @media (max-width: 767px) {
+            .bio-content { padding-top: 200px; }
+        }
+
+        /* Footer */
+        footer {
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        footer .footer-col { min-width: 200px; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-3col {
+            grid-template-columns: auto auto auto;
+        }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+            </div>
+            <nav>
+                <div class="nav-row">
+                    <a href="books">Books</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="blog">Blog</a>
+                    <a href="/media" class="hide-narrow">Media</a>
+                    <a href="/music" class="hide-narrow">Music</a>
+                    <a href="invite" class="hide-narrow">Invite</a>
+                </div>
+                <div class="nav-row">
+                    <a href="/">Translations</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn" class="active hide-narrow">Winn</a>
+                    <a href="/timeline" class="hide-narrow">Timeline</a>
+                    <a href="ask">Ask</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <div class="bio-hero">
+        <div class="bio-content">
+            <h1>Craig Winn</h1>
+
+            <p>At the turn of the century, Craig Winn was an entrepreneur. The turbulent story of his last adventure is shared in his first book, <i>In The Company</i>. It is an entertaining read, providing an eyewitness account into the culture of a private and then public company.</p>
+
+            <p>After the Islamic suicide bombings of 9.11.01, Craig met with al Qaeda and wrote <i>Tea with Terrorists</i> to explain &#8211; <i>Who they are, Why they kill, and What will stop them</i>. His most widely read book, <i>Prophet of Doom &#8211; Islam&#8217;s Terrorist Dogma in Muhammad&#8217;s Own Words</i> has now been updated and substantially expanded, becoming <i>God Damn Religion</i> after witnessing the sadistic savagery of Muslims on 10.07.23 in Israel. The resulting assessment of Islam is irrefutable because the deplorable nature of this death cult was revealed by reordering the <i>Quran</i> chronologically and setting it into the context of Muhammad&#8217;s life using the earliest and most credible <i>Hadith</i>, notably Al-Tabari&#8217;s <i>Tarikh</i> | History and Ibn Ishaq&#8217;s <i>Sirat Rasul Allah</i> | Life of Allah&#8217;s Messenger. Also, by citing the Torah and Prophets, he has conclusively demonstrated that Allah was invented in the 6<sup>th</sup> century CE and is not God, much less, Yahowah, the God of Abraham and Moses. If you want to know why fundamentalist Muslims commit 90% of the world&#8217;s most heinous terrorist acts, these 5 volumes will answer your questions.</p>
+
+            <p>In his quest to resolve a puzzling prophetic anomaly, Craig began translating the text of the Dead Sea Scrolls. That endeavor led to the 3-volume series providing <i>An Introduction to God</i>, the 8 volumes of <i>Yada Yahowah</i>, the 5 books encouraging <i>Observations</i>, 3 exploring <i>Babel</i>, 5 for <i>Questioning Paul</i>, now <i>Twistianity</i>, and then to the 3 volumes devoted to <i>Coming Home</i>. Throughout, Mr. Winn has been committed to providing amplified translations, which are not only more accurate and complete, they are readily verified. As a result, he has been afforded thousands of unique insights into the words Yahowah inspired, many of which are unheralded and profound.</p>
+
+            <p>Beyond his books, Craig Winn has been interviewed as an expert on religion, politics, and current events on over 5,000 talk radio programs and has hosted 5,000 more, leaving a vast quantity of archived shows from Shattering Myths to Yada Yah Radio. He currently produces a live podcast every Friday evening, where he discusses insights gleaned from his translations.</p>
+
+            <p>Mr. Winn is not a theologian, nor is he associated with any religious or political institution. He does not accept donations or receive financial backing from anyone. Everything he has written is shared freely online. Even his 35 printed books are offered without royalty.</p>
+
+            <p>Craig has devoted his life to exploring Yahowah&#8217;s revelations. He enjoys God&#8217;s company and is enriched by the experience. If you have an open mind and a desire to learn, you will enjoy his translations and insights.</p>
+
+            <p>He encourages readers to share his translations and resulting conclusions, albeit with two important caveats: 1) You may not use them to promote any religious, political, or conspiratorial agenda. And 2) You may not use them to incite or engage in a violent act. When it comes to exposing errant and counterproductive ideas, wield words wisely.</p>
+
+            <p>You may contact Craig at YadaYah.com. He enjoys constructive criticism and will engage with readers. But be forewarned: he is immune to religious idiocy and will not respond to threats or taunts. The YadaYah.com site provides links to his books, to Yada Yah Radio, to many of his audio archives, as well as to friends and forums.</p>
+
+            <p>Lastly, Craig has a bias and an agenda. He knows and respects Yahowah, and he has devoted his life to advancing God&#8217;s primary objective: which is to call His people home.</p>
+        </div>
+    </div>
+
+    <footer>
+        <video class="footer-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Books</h4>
+                <div class="footer-links">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Links</h4>
+                <div class="footer-links footer-links-3col">
+                    <a href="ask">Ask</a>
+                    <a href="/">Translations</a>
+                    <a href="invite">Invite</a>
+                    <a href="blog">Blog</a>
+                    <a href="glossary">Glossary</a>
+                    <a href="/music">Music</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="dss">Dead Sea Scrolls</a>
+                    <a href="timeline">Timeline</a>
+                    <a href="/media">Media</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
+</body>
+</html>

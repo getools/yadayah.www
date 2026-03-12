@@ -31,12 +31,12 @@ $(function () {
 
     function showLogin() {
         $('#app').hide();
-        $('#login-screen').show();
+        document.getElementById('login-screen').classList.add('visible');
         $('#login-user').focus();
     }
 
     function showApp(user) {
-        $('#login-screen').hide();
+        document.getElementById('login-screen').classList.remove('visible');
         $('#user-display').text(user.user_name || user.user_code);
         $('#app').show();
         initApp();

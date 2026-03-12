@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline - Yada Yah</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Maven Pro', Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 5px;
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            margin: -20px -20px 0 -20px;
+            position: relative; overflow: hidden;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 0; }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        @media (max-width: 767px) { header nav a.hide-narrow { display: none; } }
+
+        /* Timeline container */
+        .timeline-wrap {
+            max-width: 1100px;
+            margin: 20px auto;
+            position: relative;
+            padding: 10px 0;
+        }
+
+        /* Vertical center line */
+        .timeline-wrap::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #000;
+            transform: translateX(-50%);
+        }
+
+        /* Single event */
+        .tl-event {
+            display: flex;
+            width: 100%;
+            position: absolute;
+            left: 0;
+        }
+
+        /* Circle on the center line – color set per card */
+        .tl-event::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 28px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+        }
+        .tl-event.tl-gold::before { background: #e5a800; border: 3px solid #c48f00; }
+        .tl-event.tl-blue::before { background: #283dd8; border: 3px solid #1a2a9e; }
+
+        /* Left-side events */
+        .tl-event.tl-left .tl-card {
+            margin-right: auto;
+            margin-left: 0;
+            width: 45%;
+        }
+        .tl-event.tl-left .tl-spacer { width: 55%; }
+
+        /* Right-side events */
+        .tl-event.tl-right .tl-spacer { width: 55%; order: -1; }
+        .tl-event.tl-right .tl-card {
+            margin-left: auto;
+            margin-right: 0;
+            width: 45%;
+        }
+
+        /* Card styling */
+        .tl-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+            overflow: hidden;
+            transition: box-shadow 0.2s;
+        }
+        .tl-card:hover {
+            box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+        }
+
+        .tl-card-header {
+            padding: 10px 16px;
+        }
+        .tl-event.tl-gold .tl-card-header { background: #e5a800; }
+        .tl-event.tl-blue .tl-card-header { background: #283dd8; }
+        .tl-headline {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #fff;
+            margin: 0;
+            line-height: 1.3;
+        }
+        .tl-date-yah {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            margin-top: 3px;
+        }
+        .tl-date-ce {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.7);
+            margin-top: 1px;
+        }
+
+        .tl-card-body {
+            padding: 15px 16px;
+        }
+        .tl-image {
+            width: 100%;
+            height: auto;
+            display: block;
+            margin-top: 0;
+            margin-bottom: 0;
+            border-radius: 5px;
+        }
+        .tl-image + .tl-summary { margin-top: 10px; }
+        .tl-summary {
+            font-size: 0.9rem;
+            line-height: 1.28;
+            color: #555;
+            margin: 0;
+        }
+        .tl-summary p { margin: 0 0 8px 0; }
+        .tl-summary p:last-child { margin-bottom: 0; }
+
+        .tl-loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+            font-size: 1rem;
+        }
+        .tl-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        /* Triangle connectors – between card and circle, pointing toward card */
+        .tl-event.tl-left .tl-card::after {
+            content: '';
+            position: absolute;
+            top: 27px;
+            right: calc(50% + 10px);
+            width: 0;
+            height: 0;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+        .tl-event.tl-gold.tl-left .tl-card::after { border-right: 14px solid #e5a800; }
+        .tl-event.tl-blue.tl-left .tl-card::after { border-right: 14px solid #283dd8; }
+
+        .tl-event.tl-right .tl-card::before {
+            content: '';
+            position: absolute;
+            top: 27px;
+            left: calc(50% + 10px);
+            width: 0;
+            height: 0;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+        .tl-event.tl-gold.tl-right .tl-card::before { border-left: 14px solid #e5a800; }
+        .tl-event.tl-blue.tl-right .tl-card::before { border-left: 14px solid #283dd8; }
+
+        /* Mobile: single column */
+        @media (max-width: 768px) {
+            .timeline-wrap::before {
+                left: 20px;
+            }
+            .tl-event {
+                position: relative !important;
+                top: auto !important;
+            }
+            .tl-event::before {
+                left: 20px;
+                top: 20px;
+            }
+            .tl-event.tl-left .tl-card,
+            .tl-event.tl-right .tl-card {
+                width: calc(100% - 50px);
+                margin-left: 50px;
+                margin-right: 0;
+            }
+            .tl-event .tl-spacer { display: none; }
+            .tl-event.tl-left .tl-card::after,
+            .tl-event.tl-right .tl-card::before {
+                display: none;
+            }
+            .timeline-wrap {
+                height: auto !important;
+            }
+        }
+
+        .page-title {
+            text-align: center;
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 2rem;
+            color: #025149;
+            margin: 15px 0 0;
+            letter-spacing: 1px;
+        }
+
+        .countdown-bar {
+            text-align: center;
+            padding: 18px 16px 14px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #e5c86c;
+            margin: 0 -20px;
+        }
+        .countdown-label {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: rgba(255,255,255,0.85);
+        }
+        .countdown-timer {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .countdown-unit {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 70px;
+        }
+        .countdown-value {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .countdown-name {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.6);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        @media (max-width: 480px) {
+            .countdown-timer { gap: 12px; }
+            .countdown-value { font-size: 1.6rem; }
+            .countdown-unit { min-width: 55px; }
+        }
+
+        /* Footer */
+        footer {
+            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        footer .footer-col { min-width: 200px; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-3col {
+            grid-template-columns: auto auto auto;
+        }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+            </div>
+            <nav>
+                <div class="nav-row">
+                    <a href="books">Books</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="blog">Blog</a>
+                    <a href="/media" class="hide-narrow">Media</a>
+                    <a href="/music" class="hide-narrow">Music</a>
+                    <a href="invite" class="hide-narrow">Invite</a>
+                </div>
+                <div class="nav-row">
+                    <a href="/">Translations</a>
+                    <a href="resources">Resources</a>
+                    <a href="/Craig_Winn" class="hide-narrow">Winn</a>
+                    <a href="timeline" class="active">Timeline</a>
+                    <a href="ask">Ask</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <div class="countdown-bar">
+        <div class="countdown-label">Yacob&#x2019;s Troubles &#x2013; Shabuw&#x2019;ah 5992 Yah</div>
+        <div class="countdown-timer" id="countdown">
+            <div class="countdown-unit"><span class="countdown-value" id="cd-days">--</span><span class="countdown-name">Days</span></div>
+            <div class="countdown-unit"><span class="countdown-value" id="cd-hours">--</span><span class="countdown-name">Hours</span></div>
+            <div class="countdown-unit"><span class="countdown-value" id="cd-mins">--</span><span class="countdown-name">Minutes</span></div>
+            <div class="countdown-unit"><span class="countdown-value" id="cd-secs">--</span><span class="countdown-name">Seconds</span></div>
+        </div>
+    </div>
+
+    <h1 class="page-title">Timeline</h1>
+
+    <div class="timeline-wrap" id="timeline">
+        <div class="tl-loading">Loading timeline...</div>
+    </div>
+
+<script>
+var API = 'api';
+
+function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function renderTimeline(events) {
+    var container = document.getElementById('timeline');
+    if (!events.length) {
+        container.innerHTML = '<div class="tl-empty">No timeline events found.</div>';
+        return;
+    }
+
+    var html = '';
+    for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var side = (i % 2 === 0) ? 'tl-left' : 'tl-right';
+        var color = (i % 2 === 0) ? 'tl-gold' : 'tl-blue';
+
+        html += '<div class="tl-event ' + side + ' ' + color + '">';
+        html += '<div class="tl-card">';
+
+        // Header with headline and dates
+        html += '<div class="tl-card-header">';
+        html += '<div class="tl-headline">' + esc(ev.timeline_headline) + '</div>';
+        if (ev.timeline_date_yah) {
+            html += '<div class="tl-date-yah">' + esc(ev.timeline_date_yah) + '</div>';
+        }
+        if (ev.timeline_date_ce) {
+            html += '<div class="tl-date-ce">' + esc(ev.timeline_date_ce) + '</div>';
+        }
+        html += '</div>';
+
+        // Body with image and summary
+        html += '<div class="tl-card-body">';
+        if (ev.timeline_image) {
+            html += '<img class="tl-image" src="' + esc(ev.timeline_image) + '" alt="" loading="lazy">';
+        }
+        if (ev.timeline_summary) {
+            html += '<div class="tl-summary">' + ev.timeline_summary + '</div>';
+        }
+        html += '</div>';
+
+        html += '</div>';
+        html += '<div class="tl-spacer"></div>';
+        html += '</div>';
+    }
+    container.innerHTML = html;
+    positionTimeline();
+    // Reposition after images load (affects container height)
+    var imgs = container.querySelectorAll('img');
+    for (var j = 0; j < imgs.length; j++) {
+        imgs[j].addEventListener('load', positionTimeline);
+    }
+}
+
+function positionTimeline() {
+    if (window.innerWidth <= 768) return;
+    var events = document.querySelectorAll('.tl-event');
+    if (!events.length) return;
+
+    var leftBottom = -30, rightBottom = -30;
+    var lastTop = -30; // top of the most recently placed item
+
+    for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var color = (i % 2 === 0) ? 'tl-gold' : 'tl-blue';
+
+        // Remove old classes
+        ev.classList.remove('tl-left', 'tl-right', 'tl-gold', 'tl-blue');
+
+        // Place on side with most available space (lowest bottom)
+        var side, top;
+        if (leftBottom <= rightBottom) {
+            side = 'tl-left';
+            top = leftBottom + 30;
+        } else {
+            side = 'tl-right';
+            top = rightBottom + 30;
+        }
+
+        // Must also be at least 30px below the previous item's top
+        var minTop = lastTop + 30;
+        if (top < minTop) top = minTop;
+
+        ev.classList.add(side, color);
+        ev.style.top = top + 'px';
+
+        // Measure card height after class assignment
+        var cardH = ev.querySelector('.tl-card').offsetHeight;
+        if (side === 'tl-left') {
+            leftBottom = top + cardH;
+        } else {
+            rightBottom = top + cardH;
+        }
+        lastTop = top;
+    }
+
+    document.getElementById('timeline').style.height =
+        Math.max(leftBottom, rightBottom) + 'px';
+}
+window.addEventListener('resize', positionTimeline);
+
+// Countdown to Yacob's Troubles – May 22, 2026 sunset Jerusalem (UTC+3 ~19:30)
+(function() {
+    var target = new Date('2026-05-22T19:30:00+03:00').getTime();
+    function tick() {
+        var diff = target - Date.now();
+        if (diff <= 0) {
+            document.getElementById('cd-days').textContent = '0';
+            document.getElementById('cd-hours').textContent = '0';
+            document.getElementById('cd-mins').textContent = '0';
+            document.getElementById('cd-secs').textContent = '0';
+            return;
+        }
+        var d = Math.floor(diff / 86400000);
+        var h = Math.floor((diff % 86400000) / 3600000);
+        var m = Math.floor((diff % 3600000) / 60000);
+        var s = Math.floor((diff % 60000) / 1000);
+        document.getElementById('cd-days').textContent = d;
+        document.getElementById('cd-hours').textContent = h;
+        document.getElementById('cd-mins').textContent = m;
+        document.getElementById('cd-secs').textContent = s;
+    }
+    tick();
+    setInterval(tick, 1000);
+})();
+
+// Load timeline data
+fetch(API + '/timeline.php')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.error) {
+            document.getElementById('timeline').innerHTML = '<div class="tl-empty">' + esc(d.error) + '</div>';
+            return;
+        }
+        renderTimeline(d.events);
+    })
+    .catch(function(err) {
+        document.getElementById('timeline').innerHTML = '<div class="tl-empty">Error loading timeline.</div>';
+    });
+</script>
+
+    <footer>
+        <video class="footer-video" autoplay muted loop playsinline>
+            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Books</h4>
+                <div class="footer-links">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Links</h4>
+                <div class="footer-links footer-links-3col">
+                    <a href="ask">Ask</a>
+                    <a href="/">Translations</a>
+                    <a href="invite">Invite</a>
+                    <a href="blog">Blog</a>
+                    <a href="glossary">Glossary</a>
+                    <a href="/music">Music</a>
+                    <a href="vlog">Vlog</a>
+                    <a href="dss">Dead Sea Scrolls</a>
+                    <a href="timeline">Timeline</a>
+                    <a href="/media">Media</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
+</body>
+</html>

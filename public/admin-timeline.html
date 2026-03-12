@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .events-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .events-table th, .events-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .events-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; cursor: pointer; }
+        .events-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .events-table tr.selected { background: #e8edff; }
+        .events-table .num { text-align: right; }
+        .events-table .icon-cell { text-align: center; width: 40px; }
+
+        .form-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 20px; }
+        .form-card h2 { margin: 0 0 16px; font-size: 1.2rem; color: #31345A; }
+        .form-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+        .form-field { display: flex; flex-direction: column; flex: 1; min-width: 180px; }
+        .form-field label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #555; }
+        .form-field input, .form-field textarea, .form-field select { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; }
+        .form-field textarea { resize: vertical; min-height: 80px; }
+        .form-field.narrow { max-width: 120px; flex: 0 0 120px; }
+
+        .media-section { margin-bottom: 12px; }
+        .media-section label { font-size: 0.85rem; font-weight: 600; color: #555; display: block; margin-bottom: 4px; }
+        .media-preview { margin-bottom: 8px; }
+        .media-preview img { max-width: 200px; max-height: 150px; border-radius: 4px; }
+        .media-inputs { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .media-inputs input[type="text"] { flex: 1; min-width: 200px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        .media-inputs input[type="file"] { font-size: 0.85rem; }
+        .media-inputs .or-label { font-size: 0.8rem; color: #999; }
+
+        .button-row { display: flex; gap: 8px; margin-top: 16px; }
+        .stats-bar { display: flex; gap: 24px; padding: 12px 0; font-size: 0.85rem; color: #666; }
+        .stats-bar strong { color: #333; }
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+        .loading { text-align: center; padding: 20px; color: #888; }
+        .error-box { background: #fde8e8; color: #c0392b; padding: 12px; border-radius: 4px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab active">Timeline</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Timeline</h1>
+
+    <div id="form-container" style="display:none"></div>
+
+    <div style="margin-bottom: 12px;">
+        <button class="btn btn-primary btn-sm" onclick="showForm(null)">New Event</button>
+    </div>
+
+    <div class="stats-bar" id="stats-bar"></div>
+
+    <div id="list-container">
+        <div class="loading">Loading timeline...</div>
+    </div>
+</div>
+
+<script>
+var API = 'api';
+var allEvents = [];
+var editingKey = null;
+
+function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// Auth
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadEvents();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadEvents();
+        } else {
+            var el = document.getElementById('login-error');
+            el.textContent = d.error || 'Login failed';
+            el.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var inp = document.getElementById('login-pass');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// List
+function loadEvents() {
+    document.getElementById('list-container').innerHTML = '<div class="loading">Loading timeline...</div>';
+    fetch(API + '/admin-timeline.php', {credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(d) {
+            if (d.error) { document.getElementById('list-container').innerHTML = '<div class="empty-state">' + esc(d.error) + '</div>'; return; }
+            allEvents = d.events || [];
+            document.getElementById('stats-bar').innerHTML = '<span><strong>' + allEvents.length + '</strong> timeline events</span>';
+            renderList();
+        });
+}
+
+function renderList() {
+    if (!allEvents.length) {
+        document.getElementById('list-container').innerHTML = '<div class="empty-state">No timeline events.</div>';
+        return;
+    }
+    var html = '<table class="events-table"><thead><tr>' +
+        '<th class="num" style="width:80px">Sort</th>' +
+        '<th>Headline</th>' +
+        '<th style="width:140px">Date Yah</th>' +
+        '<th style="width:140px">Date CE</th>' +
+        '<th class="icon-cell">Img</th>' +
+        '<th class="icon-cell">Vid</th>' +
+        '</tr></thead><tbody>';
+    for (var i = 0; i < allEvents.length; i++) {
+        var ev = allEvents[i];
+        html += '<tr onclick="editEvent(' + ev.timeline_key + ')" data-key="' + ev.timeline_key + '">';
+        html += '<td class="num">' + esc(String(ev.timeline_sort)) + '</td>';
+        html += '<td>' + esc(ev.timeline_headline) + '</td>';
+        html += '<td>' + esc(ev.timeline_date_yah) + '</td>';
+        html += '<td>' + esc(ev.timeline_date_ce) + '</td>';
+        html += '<td class="icon-cell">' + (ev.timeline_image ? '&#128247;' : '') + '</td>';
+        html += '<td class="icon-cell">' + (ev.timeline_video ? '&#127909;' : '') + '</td>';
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('list-container').innerHTML = html;
+}
+
+// Form
+function showForm(ev) {
+    editingKey = ev ? ev.timeline_key : null;
+    var title = editingKey ? 'Edit Event' : 'New Event';
+
+    var html = '<div class="form-card">';
+    html += '<h2>' + title + '</h2>';
+    html += '<div id="form-errors"></div>';
+
+    html += '<div class="form-row">';
+    html += '<div class="form-field narrow"><label>Sort</label><input type="number" id="f-sort" value="' + esc(ev ? String(ev.timeline_sort) : '') + '"></div>';
+    html += '<div class="form-field"><label>Headline</label><input type="text" id="f-headline" value="' + esc(ev ? ev.timeline_headline : '') + '"></div>';
+    html += '<div class="form-field narrow"><label>Priority</label><input type="number" id="f-priority" value="' + (ev ? ev.timeline_priority : '0') + '"></div>';
+    html += '</div>';
+
+    html += '<div class="form-row">';
+    html += '<div class="form-field"><label>Date Yah</label><input type="text" id="f-date-yah" value="' + esc(ev ? ev.timeline_date_yah : '') + '"></div>';
+    html += '<div class="form-field"><label>Date CE</label><input type="text" id="f-date-ce" value="' + esc(ev ? ev.timeline_date_ce : '') + '"></div>';
+    html += '</div>';
+
+    html += '<div class="form-row">';
+    html += '<div class="form-field" style="flex:1 1 100%"><label>Summary</label><textarea id="f-summary" rows="3">' + esc(ev ? ev.timeline_summary : '') + '</textarea></div>';
+    html += '</div>';
+
+    // Image
+    html += '<div class="media-section"><label>Image</label>';
+    if (ev && ev.timeline_image) {
+        html += '<div class="media-preview"><img src="' + esc(ev.timeline_image) + '" alt=""></div>';
+    }
+    html += '<div class="media-inputs">';
+    html += '<input type="text" id="f-image-url" placeholder="Image URL" value="' + esc(ev ? ev.timeline_image : '') + '">';
+    html += '<span class="or-label">or upload:</span>';
+    html += '<input type="file" id="f-image-file" accept="image/*">';
+    html += '</div></div>';
+
+    // Video
+    html += '<div class="media-section"><label>Video</label>';
+    html += '<div class="media-inputs">';
+    html += '<input type="text" id="f-video-url" placeholder="Video URL" value="' + esc(ev ? ev.timeline_video : '') + '">';
+    html += '<span class="or-label">or upload:</span>';
+    html += '<input type="file" id="f-video-file" accept="video/*">';
+    html += '</div></div>';
+
+    html += '<div class="button-row">';
+    html += '<button class="btn btn-primary" onclick="saveEvent()">Save</button>';
+    html += '<button class="btn btn-secondary" onclick="hideForm()">Cancel</button>';
+    if (editingKey) {
+        html += '<button class="btn btn-danger" style="margin-left:auto" onclick="deleteEvent(' + editingKey + ')">Delete</button>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    document.getElementById('form-container').innerHTML = html;
+    document.getElementById('form-container').style.display = '';
+    document.getElementById('form-container').scrollIntoView({behavior: 'smooth'});
+}
+
+function hideForm() {
+    document.getElementById('form-container').style.display = 'none';
+    document.getElementById('form-container').innerHTML = '';
+    editingKey = null;
+}
+
+function editEvent(key) {
+    fetch(API + '/admin-timeline.php?key=' + key, {credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(d) {
+            if (d.error) { alert(d.error); return; }
+            showForm(d);
+        });
+}
+
+function saveEvent() {
+    var fd = new FormData();
+    fd.append('timeline_sort', document.getElementById('f-sort').value);
+    fd.append('timeline_headline', document.getElementById('f-headline').value);
+    fd.append('timeline_priority', document.getElementById('f-priority').value);
+    fd.append('timeline_date_yah', document.getElementById('f-date-yah').value);
+    fd.append('timeline_date_ce', document.getElementById('f-date-ce').value);
+    fd.append('timeline_summary', document.getElementById('f-summary').value);
+
+    // Image: file upload takes priority over URL
+    var imgFile = document.getElementById('f-image-file').files[0];
+    if (imgFile) {
+        fd.append('image_file', imgFile);
+    } else {
+        fd.append('timeline_image', document.getElementById('f-image-url').value);
+    }
+
+    // Video: file upload takes priority over URL
+    var vidFile = document.getElementById('f-video-file').files[0];
+    if (vidFile) {
+        fd.append('video_file', vidFile);
+    } else {
+        fd.append('timeline_video', document.getElementById('f-video-url').value);
+    }
+
+    var url = API + '/admin-timeline.php';
+    var method = 'POST';
+    if (editingKey) {
+        url += '?key=' + editingKey;
+        method = 'PUT';
+    }
+
+    // PUT with FormData: PHP doesn't parse multipart for PUT, use POST with _method override
+    if (method === 'PUT') {
+        fd.append('_method', 'PUT');
+        method = 'POST';
+        // We'll handle this server-side
+    }
+
+    fetch(url, {method: method, credentials: 'include', body: fd})
+        .then(function(r){return r.json();})
+        .then(function(d) {
+            if (d.errors) {
+                document.getElementById('form-errors').innerHTML = '<div class="error-box">' + d.errors.join('<br>') + '</div>';
+                return;
+            }
+            if (d.error) {
+                document.getElementById('form-errors').innerHTML = '<div class="error-box">' + esc(d.error) + '</div>';
+                return;
+            }
+            hideForm();
+            loadEvents();
+        })
+        .catch(function(err) {
+            document.getElementById('form-errors').innerHTML = '<div class="error-box">Error: ' + esc(err.message) + '</div>';
+        });
+}
+
+function deleteEvent(key) {
+    if (!confirm('Delete this timeline event?')) return;
+    fetch(API + '/admin-timeline.php?key=' + key, {method:'DELETE', credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(d) {
+            if (d.error) { alert(d.error); return; }
+            hideForm();
+            loadEvents();
+        });
+}
+
+// Enter key triggers login
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>
