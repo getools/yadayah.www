@@ -7,10 +7,12 @@ services:
       - ./api:/var/www/html/api
     environment:
       PG_HOST: postgres
+      PG_PORT: 5432
       PG_DB: yada
       PG_USER: postgres
       PG_PASS: yada_password
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy

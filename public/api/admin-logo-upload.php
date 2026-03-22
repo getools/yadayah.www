@@ -1,0 +1,53 @@
+<?php
+require_once __DIR__ . '/config.php';
+requireAuth();
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('Method not allowed', 405);
+
+$UPLOAD_DIR  = __DIR__ . '/../u/logo';
+$CONFIG_CACHE = sys_get_temp_dir() . '/yada_site_config.json';
+$NAV_CACHE    = sys_get_temp_dir() . '/yada_page_nav.json';
+
+if (empty($_FILES['logo_file']) || $_FILES['logo_file']['error'] !== UPLOAD_ERR_OK) {
+    errorResponse('No file uploaded');
+}
+
+$file = $_FILES['logo_file'];
+$ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+$allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+if (!in_array($ext, $allowed)) {
+    errorResponse('Image must be: ' . implode(', ', $allowed));
+}
+
+if (!is_dir($UPLOAD_DIR)) {
+    mkdir($UPLOAD_DIR, 0777, true);
+    chmod($UPLOAD_DIR, 0777);
+}
+
+$safeName = time() . '.' . $ext;
+$dest = "$UPLOAD_DIR/$safeName";
+if (!move_uploaded_file($file['tmp_name'], $dest)) {
+    errorResponse('Failed to save image');
+}
+
+$path = '/u/logo/' . $safeName;
+
+$db = getDb();
+// Check if the logo setting already exists
+$stmt = $db->prepare("SELECT setting_key FROM yy_setting WHERE setting_scope_code = 'config' AND setting_code = 'logo'");
+$stmt->execute();
+$existing = $stmt->fetchColumn();
+
+if ($existing) {
+    $stmt = $db->prepare("UPDATE yy_setting SET setting_value = ? WHERE setting_key = ?");
+    $stmt->execute([$path, $existing]);
+} else {
+    $stmt = $db->prepare("INSERT INTO yy_setting (setting_scope_code, setting_group_code, setting_code, setting_label, setting_value_code, setting_sort, setting_value) VALUES ('config', '', 'logo', 'Logo', 'image', 10, ?)");
+    $stmt->execute([$path]);
+}
+
+// Bust caches
+if (file_exists($CONFIG_CACHE)) @unlink($CONFIG_CACHE);
+if (file_exists($NAV_CACHE))    @unlink($NAV_CACHE);
+
+jsonResponse(['path' => $path]);

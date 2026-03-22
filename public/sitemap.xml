@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://yadayah.com/</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://yadayah.com/books</loc><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/translations</loc><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/search</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/dss</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/glossary</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/blog</loc><priority>0.7</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://yadayah.com/vlog</loc><priority>0.7</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://yadayah.com/ask</loc><priority>0.7</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://yadayah.com/timeline</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/media</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/music</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/invite</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/resources</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://yadayah.com/Craig_Winn</loc><priority>0.5</priority><changefreq>yearly</changefreq></url>
+  <url><loc>https://yadayah.com/10-7-memorial</loc><priority>0.5</priority><changefreq>yearly</changefreq></url>
+</urlset>

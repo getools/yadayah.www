@@ -22,7 +22,8 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
     margin: -20px;
     padding: 20px;
     background: #f0f2f5;
-    width: 100vw;
+    position: relative;
+    z-index: 10;
 }
 .login-screen.visible { display: flex; }
 .login-card {
@@ -49,14 +50,17 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
 }
 .app-header .nav-tabs {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 0;
     margin: 0;
     padding: 0;
     list-style: none;
+    flex: 1;
 }
 .app-header .nav-tab {
-    padding: 10px 24px;
-    font-size: 0.95rem;
+    padding: 8px 18px;
+    font-size: 0.9rem;
     font-weight: 600;
     color: #777;
     text-decoration: none;
@@ -68,12 +72,14 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
 .app-header .nav-tab.active { color: #3498db; border-bottom-color: #3498db; }
 .user-info {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 4px;
     font-size: 0.875rem;
     color: #666;
     margin-left: auto;
     padding-bottom: 8px;
+    flex-shrink: 0;
 }
 
 /* ── Tabs ── */
@@ -150,12 +156,16 @@ select:focus, input:focus {
 }
 .btn-primary { background: #3498db; color: #fff; }
 .btn-primary:hover { background: #2980b9; }
+.btn-primary:disabled { background: #a8cce8; color: #fff; cursor: not-allowed; opacity: 0.7; }
+.btn-primary:disabled:hover { background: #a8cce8; }
 .btn-secondary { background: #95a5a6; color: #fff; }
 .btn-secondary:hover { background: #7f8c8d; }
 .btn-danger { background: #e74c3c; color: #fff; }
 .btn-danger:hover { background: #c0392b; }
 .btn-sm { padding: 4px 12px; font-size: 0.8rem; }
-.button-row { display: flex; gap: 12px; margin-top: 16px; }
+.button-row { display: flex; gap: 12px; margin-top: 16px; align-items: center; }
+.button-row .btn-danger { margin-left: auto; }
+.form-actions .btn-danger { margin-left: auto; }
 
 /* ── Translations header ── */
 .translations-header {

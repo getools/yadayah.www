@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Header - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .section-box { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 20px; }
+        .section-box h2 { margin: 0 0 20px; font-size: 1.1rem; color: #31345A; border-bottom: 1px solid #e8e8e8; padding-bottom: 10px; }
+        .setting-row { display: flex; align-items: baseline; gap: 16px; margin-bottom: 14px; }
+        .setting-row label { flex: 0 0 160px; font-weight: 600; font-size: 0.875rem; color: #555; text-align: right; }
+        .setting-row .setting-input { flex: 1; }
+        .setting-row input[type=text],
+        .setting-row input[type=number] {
+            width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.9rem; box-sizing: border-box;
+        }
+        .setting-row input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.2); }
+        .rgb-wrap { display: flex; gap: 8px; align-items: center; }
+        .rgb-wrap input[type=text] { flex: 1; font-family: monospace; }
+        .rgb-swatch { width: 32px; height: 32px; border-radius: 4px; border: 1px solid #ccc; flex-shrink: 0; }
+        .px-wrap, .em-wrap { display: flex; align-items: center; gap: 8px; }
+        .px-wrap input, .em-wrap input { width: 120px; }
+        .unit-label { font-size: 0.85rem; color: #888; }
+        #save-status { font-size: 0.875rem; color: #27ae60; }
+        #save-error  { font-size: 0.875rem; color: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-header.html" class="nav-tab active">Header</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Header</h1>
+
+    <div class="section-box">
+        <h2>Logo</h2>
+        <div id="logo-fields"></div>
+    </div>
+
+    <div class="section-box">
+        <h2>Toolbar - Main</h2>
+        <div id="main-fields"></div>
+    </div>
+
+    <div class="section-box">
+        <h2>Toolbar - Sub</h2>
+        <div id="sub-fields"></div>
+    </div>
+
+    <div class="button-row" style="margin-top:20px">
+        <button class="btn btn-primary" onclick="saveAll()">Save</button>
+        <span id="save-status" style="display:none">Saved!</span>
+        <span id="save-error" style="display:none"></span>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var _settings = {};
+
+// Setting codes grouped by section
+var LOGO_FIELDS = [
+    { code: 'logo',                        label: 'Logo',          type: 'image' },
+    { code: 'logo-margin-top',             label: 'Margin-Top',    type: 'px' },
+    { code: 'logo-margin-bottom',          label: 'Margin-Bottom', type: 'px' },
+];
+
+var MAIN_FIELDS = [
+    { code: 'toolbar-main-text-color',     label: 'Text Color',    type: 'rgb' },
+    { code: 'toolbar-main-text-size',      label: 'Text Size',     type: 'em' },
+    { code: 'toolbar-main-margin-top',     label: 'Margin-Top',    type: 'px' },
+    { code: 'toolbar-main-margin-bottom',  label: 'Margin-Bottom', type: 'px' },
+];
+
+var SUB_FIELDS = [
+    { code: 'toolbar-sub-bg-color',        label: 'Background Color', type: 'rgb' },
+    { code: 'toolbar-sub-text-color',      label: 'Text Color',       type: 'rgb' },
+    { code: 'toolbar-sub-text-size',       label: 'Text Size',        type: 'em' },
+    { code: 'toolbar-sub-margin-top',      label: 'Margin-Top',       type: 'px' },
+    { code: 'toolbar-sub-margin-bottom',   label: 'Margin-Bottom',    type: 'px' },
+];
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadSettings();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadSettings();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadSettings() {
+    fetch(API + '/admin-config-settings.php', {credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(rows) {
+            _settings = {};
+            rows.forEach(function(r) { _settings[r.setting_code] = r; });
+            renderSection('logo-fields', LOGO_FIELDS);
+            renderSection('main-fields', MAIN_FIELDS);
+            renderSection('sub-fields', SUB_FIELDS);
+        });
+}
+
+function renderSection(containerId, fields) {
+    var container = document.getElementById(containerId);
+    var html = '';
+    fields.forEach(function(f) {
+        var s = _settings[f.code];
+        var val = s ? (s.setting_value || '') : '';
+        var key = s ? s.setting_key : '';
+        html += '<div class="setting-row">';
+        html += '<label>' + esc(f.label) + '</label>';
+        html += '<div class="setting-input">' + renderInput(f, key, val) + '</div>';
+        html += '</div>';
+    });
+    container.innerHTML = html;
+    // Init swatches
+    fields.forEach(function(f) {
+        if (f.type === 'rgb') syncSwatch(f.code);
+    });
+}
+
+function renderInput(f, key, val) {
+    var id = 'input-' + f.code;
+    if (f.type === 'image') {
+        var imgHtml = val
+            ? '<img src="' + escAttr(val) + '?v=' + Date.now() + '" alt="' + escAttr(f.label) + '">'
+            : '<span style="color:#999;font-size:0.82rem;font-style:italic">No image set</span>';
+        return '<div class="img-preview-wrap" id="img-preview-' + f.code + '">' + imgHtml + '</div>'
+            + '<div class="img-upload-row">'
+            + '<input type="file" id="img-file-' + f.code + '" accept="image/*" style="font-size:0.85rem" onchange="uploadImage(\'' + f.code + '\')">'
+            + '<span class="img-status" id="img-status-' + f.code + '" style="display:none">Saved!</span>'
+            + '<span class="img-error" id="img-error-' + f.code + '" style="display:none"></span>'
+            + '</div>';
+    }
+    if (f.type === 'rgb') {
+        return '<div class="rgb-wrap">'
+            + '<input type="text" id="' + id + '" data-key="' + key + '" value="' + escAttr(val) + '" maxlength="6" oninput="syncSwatch(\'' + f.code + '\')">'
+            + '<div class="rgb-swatch" id="swatch-' + f.code + '"></div>'
+            + '</div>';
+    }
+    if (f.type === 'px') {
+        return '<div class="px-wrap">'
+            + '<input type="number" id="' + id + '" data-key="' + key + '" value="' + escAttr(val) + '" step="1" min="0">'
+            + '<span class="unit-label">px</span>'
+            + '</div>';
+    }
+    if (f.type === 'em') {
+        return '<div class="em-wrap">'
+            + '<input type="number" id="' + id + '" data-key="' + key + '" value="' + escAttr(val) + '" step="0.05" min="0">'
+            + '<span class="unit-label">em</span>'
+            + '</div>';
+    }
+    return '<input type="text" id="' + id + '" data-key="' + key + '" value="' + escAttr(val) + '">';
+}
+
+function syncSwatch(code) {
+    var input = document.getElementById('input-' + code);
+    var swatch = document.getElementById('swatch-' + code);
+    if (!input || !swatch) return;
+    var hex = input.value.replace(/^#/, '');
+    swatch.style.background = hex.length >= 3 ? '#' + hex : 'transparent';
+}
+
+function saveAll() {
+    var statusEl = document.getElementById('save-status');
+    var errorEl  = document.getElementById('save-error');
+    statusEl.style.display = 'none';
+    errorEl.style.display  = 'none';
+
+    var allFields = LOGO_FIELDS.concat(MAIN_FIELDS).concat(SUB_FIELDS);
+    var promises = allFields.filter(function(f) { return f.type !== 'image'; }).map(function(f) {
+        var input = document.getElementById('input-' + f.code);
+        if (!input) return Promise.resolve(null);
+        var key = input.getAttribute('data-key');
+        if (!key) return Promise.resolve(null);
+        var s = _settings[f.code];
+        var body = {
+            setting_group_code: s.setting_group_code,
+            setting_label:      s.setting_label,
+            setting_code:       s.setting_code,
+            setting_value_code: s.setting_value_code,
+            setting_sort:       s.setting_sort,
+            setting_value:      input.value
+        };
+        return fetch(API + '/admin-config-settings.php?key=' + key, {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+        }).then(function(res){return res.json();});
+    });
+
+    Promise.all(promises).then(function(results) {
+        var err = results.filter(Boolean).map(function(d){return d.error;}).filter(Boolean)[0];
+        if (err) {
+            errorEl.textContent = err;
+            errorEl.style.display = '';
+        } else {
+            statusEl.style.display = '';
+            setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+            loadSettings();
+        }
+    });
+}
+
+function uploadImage(code) {
+    var input    = document.getElementById('img-file-'   + code);
+    var statusEl = document.getElementById('img-status-' + code);
+    var errorEl  = document.getElementById('img-error-'  + code);
+    statusEl.style.display = 'none';
+    errorEl.style.display  = 'none';
+    if (!input || !input.files[0]) return;
+    var fd = new FormData();
+    fd.append('logo_file', input.files[0]);
+    fetch(API + '/admin-logo-upload.php', {method:'POST', credentials:'include', body:fd})
+        .then(function(r){return r.json();}).then(function(d) {
+            if (d.error) { errorEl.textContent = d.error; errorEl.style.display = ''; return; }
+            input.value = '';
+            var prev = document.getElementById('img-preview-' + code);
+            if (prev) prev.innerHTML = '<img src="' + escAttr(d.path) + '?v=' + Date.now() + '" alt="Logo">';
+            statusEl.style.display = '';
+            setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+        });
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function escAttr(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

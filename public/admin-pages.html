@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pages - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .pages-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .pages-table th, .pages-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .pages-table thead th { background: #f8f9fa; font-weight: 600; color: #555; user-select: none; }
+        .pages-table thead th.sortable { cursor: pointer; }
+        .pages-table thead th.sortable:hover { background: #e8edf5; }
+        .pages-table thead th .sort-indicator { margin-left: 5px; font-size: 0.72rem; color: #aaa; white-space: nowrap; }
+        .pages-table thead th .sort-indicator:empty::before { content: '⇅'; }
+        .pages-table tbody tr:hover { background: #eef6fc; }
+        .badge-active { background: #27ae60; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
+        .badge-inactive { background: #95a5a6; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
+        .form-card { }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab active">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Pages</h1>
+
+    <div id="list-view">
+        <div style="margin-bottom:16px;">
+            <button class="btn btn-primary" onclick="showPageForm()">New Page</button>
+        </div>
+        <div class="card">
+            <table class="pages-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-col="page_code" onclick="setSort('page_code')">Code<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_title" onclick="setSort('page_title')">Title<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_toolbar" onclick="setSort('page_toolbar')">Header<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_header_sort" onclick="setSort('page_header_sort')">Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_active_flag" onclick="setSort('page_active_flag')">Active<span class="sort-indicator"></span></th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="pages-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="form-view" style="display:none">
+        <div class="card form-card">
+            <h2 id="form-title">New Page</h2>
+            <div id="form-error" class="error-messages" style="display:none"></div>
+            <div class="form-row">
+                <div class="field">
+                    <label for="f-code">Code</label>
+                    <input type="text" id="f-code" placeholder="e.g. home, books">
+                </div>
+                <div class="field">
+                    <label for="f-url">URL</label>
+                    <input type="text" id="f-url" placeholder="e.g. /books, /Craig_Winn">
+                </div>
+            </div>
+            <div class="field">
+                <label for="f-title">Title</label>
+                <input type="text" id="f-title">
+            </div>
+            <div class="field">
+                <label><input type="checkbox" id="f-active" checked> Active</label>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label for="f-toolbar">Header</label>
+                    <select id="f-toolbar">
+                        <option value="0">0 - None</option>
+                        <option value="1" selected>1 - Main</option>
+                        <option value="2">2 - Sub</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="f-header-sort">Header Sort</label>
+                    <input type="number" id="f-header-sort" value="0" style="width:80px">
+                </div>
+            </div>
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="savePage()">Save Page</button>
+                <button class="btn btn-secondary" onclick="cancelForm()">Cancel</button>
+                <button class="btn btn-danger" id="btn-delete" style="display:none" onclick="deletePage()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var editingPageKey = null;
+var currentPageKey = null;
+var deletedSections = [];
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadList();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadList();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+// ── List ──
+var allPages = [];
+// sortStack: array of {col, dir} — index 0 = primary, 1 = secondary, etc.
+var sortStack = [{col:'page_toolbar', dir:1}, {col:'page_header_sort', dir:1}];
+
+var HEADER_LABELS = {0: 'None', 1: 'Main', 2: 'Sub'};
+
+function loadList() {
+    fetch(API + '/pages.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
+        allPages = rows;
+        renderList();
+    });
+}
+
+function setSort(col) {
+    var idx = sortStack.findIndex(function(s) { return s.col === col; });
+    if (idx === 0) {
+        // Already primary — toggle direction
+        sortStack[0].dir = -sortStack[0].dir;
+    } else if (idx > 0) {
+        // Already secondary — move to primary, toggle direction
+        var entry = sortStack.splice(idx, 1)[0];
+        entry.dir = -entry.dir;
+        sortStack.unshift(entry);
+    } else {
+        // New column — prepend as primary, keep others as secondary
+        sortStack.unshift({col: col, dir: 1});
+    }
+    renderList();
+}
+
+function renderList() {
+    var tbody = document.getElementById('pages-list');
+    if (!allPages.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic">No pages yet</td></tr>';
+        return;
+    }
+
+    // Update sort indicators on headers
+    document.querySelectorAll('.pages-table thead th[data-col]').forEach(function(th) {
+        var col = th.getAttribute('data-col');
+        var span = th.querySelector('.sort-indicator');
+        var rank = sortStack.findIndex(function(s) { return s.col === col; });
+        if (rank >= 0) {
+            var arrow = sortStack[rank].dir === 1 ? '▲' : '▼';
+            span.textContent = sortStack.length > 1 ? (rank + 1) + arrow : arrow;
+            span.style.color = rank === 0 ? '#3498db' : '#aaa';
+        } else {
+            span.textContent = '';
+            span.style.color = '';
+        }
+    });
+
+    var sorted = allPages.slice().sort(function(a, b) {
+        for (var i = 0; i < sortStack.length; i++) {
+            var col = sortStack[i].col, dir = sortStack[i].dir;
+            var av = a[col], bv = b[col];
+            if (av == null) av = typeof bv === 'number' ? 0 : '';
+            if (bv == null) bv = typeof av === 'number' ? 0 : '';
+            if (typeof av === 'boolean') av = av ? 1 : 0;
+            if (typeof bv === 'boolean') bv = bv ? 1 : 0;
+            if (av < bv) return -dir;
+            if (av > bv) return dir;
+        }
+        return 0;
+    });
+
+    tbody.innerHTML = sorted.map(function(r) {
+        var badge = r.page_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';
+        var headerLabel = HEADER_LABELS[r.page_toolbar != null ? r.page_toolbar : ''] || r.page_toolbar;
+        return '<tr>'
+            + '<td>' + esc(r.page_code) + '</td>'
+            + '<td>' + esc(r.page_title) + '</td>'
+            + '<td>' + headerLabel + '</td>'
+            + '<td>' + (r.page_header_sort || 0) + '</td>'
+            + '<td>' + badge + '</td>'
+            + '<td>'
+            + '<button class="btn btn-sm btn-secondary" onclick="editPage(' + r.page_key + ')">Edit</button>'
+            + '</td>'
+            + '</tr>';
+    }).join('');
+}
+
+// ── Page Form ──
+function showPageForm(record) {
+    editingPageKey = record ? record.page_key : null;
+    document.getElementById('form-title').textContent = editingPageKey ? 'Edit Page' : 'New Page';
+    document.getElementById('f-code').value = record ? record.page_code : '';
+    document.getElementById('f-url').value = record ? (record.page_url || '') : '';
+    document.getElementById('f-title').value = record ? (record.page_title || '') : '';
+    document.getElementById('f-active').checked = record ? record.page_active_flag : true;
+    document.getElementById('f-toolbar').value = record ? (record.page_toolbar || 0) : 1;
+    document.getElementById('f-header-sort').value = record ? (record.page_header_sort || 0) : 0;
+    document.getElementById('btn-delete').style.display = editingPageKey ? '' : 'none';
+    document.getElementById('form-error').style.display = 'none';
+    showView('form-view');
+}
+
+function editPage(key) {
+    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+        showPageForm(data);
+    });
+}
+
+function savePage() {
+    var code = document.getElementById('f-code').value.trim();
+    var title = document.getElementById('f-title').value.trim();
+    var active = document.getElementById('f-active').checked;
+    var errEl = document.getElementById('form-error');
+    errEl.style.display = 'none';
+
+    if (!code) { errEl.textContent = 'Code is required'; errEl.style.display = ''; return; }
+
+    var toolbar = parseInt(document.getElementById('f-toolbar').value) || 0;
+    var headerSort = parseInt(document.getElementById('f-header-sort').value) || 0;
+    var url = document.getElementById('f-url').value.trim();
+    var body = {page_code: code, page_title: title, page_active_flag: active, page_toolbar: toolbar, page_header_sort: headerSort, page_url: url};
+    var url = API + '/pages.php';
+    var method = 'POST';
+
+    if (editingPageKey) {
+        url += '?key=' + editingPageKey;
+        method = 'PUT';
+    }
+
+    fetch(url, {
+        method: method, credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        cancelForm();
+        loadList();
+    });
+}
+
+function deletePage() {
+    if (!editingPageKey || !confirm('Delete this page and all its sections?')) return;
+    fetch(API + '/pages.php?key=' + editingPageKey, {method:'DELETE', credentials:'include'}).then(function(r){return r.json();}).then(function() {
+        cancelForm();
+        loadList();
+    });
+}
+
+function cancelForm() {
+    showView('list-view');
+    renderList();
+}
+
+// ── Sections ──
+function editSections(key) {
+    currentPageKey = key;
+    deletedSections = [];
+    document.getElementById('sections-error').style.display = 'none';
+
+    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+        document.getElementById('sections-title').textContent = 'Sections: ' + (data.page_title || data.page_code);
+        renderSections(data.sections || []);
+        showView('sections-view');
+    });
+}
+
+function renderSections(sections) {
+    var container = document.getElementById('sections-list');
+    if (!sections.length) {
+        container.innerHTML = '<p style="color:#999;font-style:italic">No sections yet. Click "Add Section" to create one.</p>';
+        return;
+    }
+    container.innerHTML = sections.map(function(s, i) {
+        var inactive = !s.page_section_active_flag ? ' inactive' : '';
+        return '<div class="section-item' + inactive + '" data-key="' + (s.page_section_key || '') + '">'
+            + '<div class="section-header-row">'
+            + '<span class="drag-handle" title="Drag to reorder">&#9776;</span>'
+            + '<input type="text" class="s-code" value="' + escAttr(s.page_section_code) + '" placeholder="Section code">'
+            + '<label style="white-space:nowrap;margin:0"><input type="checkbox" class="s-active"' + (s.page_section_active_flag ? ' checked' : '') + '> Active</label>'
+            + '<input type="number" class="s-sort" value="' + (s.page_section_sort || 0) + '" title="Sort order" style="width:60px">'
+            + '<button class="btn btn-danger btn-sm" onclick="removeSection(this)">Remove</button>'
+            + '</div>'
+            + '<div class="section-value-wrap">'
+            + '<textarea class="s-value" placeholder="Section content (HTML, text, JSON, etc.)">' + escHtml(s.page_section_value || '') + '</textarea>'
+            + '</div>'
+            + '</div>';
+    }).join('');
+}
+
+function addSection() {
+    var container = document.getElementById('sections-list');
+    // Remove "no sections" message if present
+    var p = container.querySelector('p');
+    if (p) p.remove();
+
+    var div = document.createElement('div');
+    div.className = 'section-item';
+    div.setAttribute('data-key', '');
+    div.innerHTML = '<div class="section-header-row">'
+        + '<span class="drag-handle" title="Drag to reorder">&#9776;</span>'
+        + '<input type="text" class="s-code" value="" placeholder="Section code">'
+        + '<label style="white-space:nowrap;margin:0"><input type="checkbox" class="s-active" checked> Active</label>'
+        + '<input type="number" class="s-sort" value="0" title="Sort order" style="width:60px">'
+        + '<button class="btn btn-danger btn-sm" onclick="removeSection(this)">Remove</button>'
+        + '</div>'
+        + '<div class="section-value-wrap">'
+        + '<textarea class="s-value" placeholder="Section content (HTML, text, JSON, etc.)"></textarea>'
+        + '</div>';
+    container.appendChild(div);
+}
+
+function removeSection(btn) {
+    var item = btn.closest('.section-item');
+    var key = item.getAttribute('data-key');
+    if (key) deletedSections.push(parseInt(key));
+    item.remove();
+}
+
+function saveSections() {
+    var errEl = document.getElementById('sections-error');
+    errEl.style.display = 'none';
+
+    var items = document.querySelectorAll('#sections-list .section-item');
+    var sections = [];
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var key = item.getAttribute('data-key');
+        sections.push({
+            page_section_key: key ? parseInt(key) : null,
+            page_section_code: item.querySelector('.s-code').value.trim(),
+            page_section_value: item.querySelector('.s-value').value,
+            page_section_active_flag: item.querySelector('.s-active').checked,
+            page_section_sort: parseInt(item.querySelector('.s-sort').value) || 0,
+        });
+    }
+
+    fetch(API + '/pages.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            page_key: currentPageKey,
+            sections: sections,
+            deleted_sections: deletedSections,
+        })
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        deletedSections = [];
+        // Reload to show saved state
+        editSections(currentPageKey);
+    });
+}
+
+function backToList() {
+    showView('list-view');
+    loadList();
+}
+
+// ── Helpers ──
+function showView(id) {
+    ['list-view', 'form-view'].forEach(function(v) {
+        document.getElementById(v).style.display = v === id ? '' : 'none';
+    });
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function escAttr(s) {
+    return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escHtml(s) {
+    return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

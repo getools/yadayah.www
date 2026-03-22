@@ -39,6 +39,7 @@ $(function () {
         document.getElementById('login-screen').classList.remove('visible');
         $('#user-display').text(user.user_name || user.user_code);
         $('#app').show();
+        if (typeof applyPagePermissions === 'function') applyPagePermissions(user.pages);
         initApp();
     }
 

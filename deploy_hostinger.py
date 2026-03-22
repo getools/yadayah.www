@@ -1,7 +1,7 @@
 """
-Deploy web app files to t.yadayah.com production server via SSH/SCP.
+Deploy web app files to yadayah.com production server via SSH/SCP.
 
-Uploads public/ and api/ to /opt/yada-translations/ on 187.77.13.242.
+Uploads public/ and api/ to /opt/yada-www/ on 187.77.13.242.
 Docker maps ./public -> /var/www/html and ./api -> /var/www/html/api.
 
 Usage:
@@ -16,7 +16,7 @@ import argparse
 # --- Configuration ---
 SSH_HOST = '187.77.13.242'
 SSH_USER = 'root'
-REMOTE_BASE = '/opt/yada-translations'
+REMOTE_BASE = '/opt/yada-www'
 LOCAL_BASE = os.path.dirname(os.path.abspath(__file__))
 
 # Directories to sync: (local_subdir, remote_subdir)
@@ -72,7 +72,7 @@ def get_local_files(local_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Deploy web app to t.yadayah.com via SSH')
+    parser = argparse.ArgumentParser(description='Deploy web app to yadayah.com via SSH')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be uploaded')
     parser.add_argument('--force', action='store_true', help='Upload all files regardless')
     args = parser.parse_args()

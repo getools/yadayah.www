@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirects Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .redir-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .redir-table th, .redir-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .redir-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .redir-table tr:hover { background: #f0f4ff; }
+        .redir-table .actions { white-space: nowrap; }
+        .redir-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .redir-table .actions button:hover { background: #f0f0f0; }
+        .redir-table td.url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.8rem; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #f8d7da; color: #721c24; }
+        .badge-queue { background: #fff3cd; color: #856404; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .form-header button:hover { background: #eee; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 12px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 3px; color: #333; }
+        .form-body input[type=text] { width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: monospace; box-sizing: border-box; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .form-body .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .form-body .checkbox-row input[type=checkbox] { width: 16px; height: 16px; }
+        .form-body .checkbox-row label { margin: 0; font-weight: normal; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .toolbar-left { display: flex; gap: 8px; align-items: center; }
+        .filter-tabs { display: flex; gap: 0; }
+        .filter-tabs button { padding: 5px 14px; font-size: 0.82rem; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+        .filter-tabs button:first-child { border-radius: 4px 0 0 4px; }
+        .filter-tabs button:last-child { border-radius: 0 4px 4px 0; }
+        .filter-tabs button + button { border-left: none; }
+        .filter-tabs button.active { background: #31345A; color: #fff; border-color: #31345A; }
+        .redir-count { font-size: 0.85rem; color: #666; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab active">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <div class="filter-tabs">
+                <button class="active" onclick="setFilter('all')">All</button>
+                <button onclick="setFilter('queue')">Queue</button>
+                <button onclick="setFilter('active')">Active</button>
+                <button onclick="setFilter('inactive')">Inactive</button>
+            </div>
+            <span id="redir-count" class="redir-count"></span>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openForm()">+ Add Redirect</button>
+    </div>
+
+    <table class="redir-table">
+        <thead>
+            <tr>
+                <th>Request URL</th>
+                <th>Target URL</th>
+                <th>Hits</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="redir-body"></tbody>
+    </table>
+</div>
+
+<!-- Edit Form -->
+<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Add Redirect</h3>
+            <button onclick="closeForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="field">
+                <label>Request URL</label>
+                <input type="text" id="f-request" placeholder="/old-path">
+            </div>
+            <div class="field">
+                <label>Target URL</label>
+                <input type="text" id="f-target" placeholder="/new-path or https://...">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="f-queue">
+                <label for="f-queue">Queue (awaiting target)</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="f-active">
+                <label for="f-active">Active (redirect enabled)</label>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveForm()">Save</button>
+                <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var redirects = [];
+var currentFilter = 'all';
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadRedirects();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadRedirects();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadRedirects() {
+    fetch(API + '/redirects.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            redirects = data;
+            renderRedirects();
+        });
+}
+
+function setFilter(f) {
+    currentFilter = f;
+    document.querySelectorAll('.filter-tabs button').forEach(function(btn) {
+        btn.classList.toggle('active', btn.textContent.toLowerCase() === f);
+    });
+    renderRedirects();
+}
+
+function renderRedirects() {
+    var filtered = redirects.filter(function(r) {
+        if (currentFilter === 'queue') return r.redirect_queue_flag;
+        if (currentFilter === 'active') return r.redirect_active_flag;
+        if (currentFilter === 'inactive') return !r.redirect_active_flag && !r.redirect_queue_flag;
+        return true;
+    });
+
+    document.getElementById('redir-count').textContent = filtered.length + ' redirect' + (filtered.length !== 1 ? 's' : '');
+
+    var html = '';
+    filtered.forEach(function(r) {
+        var status = '';
+        if (r.redirect_queue_flag) status = '<span class="badge badge-queue">Queue</span>';
+        else if (r.redirect_active_flag) status = '<span class="badge badge-active">Active</span>';
+        else status = '<span class="badge badge-inactive">Inactive</span>';
+
+        var created = r.redirect_dtime ? new Date(r.redirect_dtime).toLocaleDateString() : '';
+
+        html += '<tr>'
+            + '<td class="url-cell" title="' + esc(r.redirect_request) + '">' + esc(r.redirect_request) + '</td>'
+            + '<td class="url-cell" title="' + esc(r.redirect_target || '') + '">' + esc(r.redirect_target || '-') + '</td>'
+            + '<td>' + (r.redirect_hit_count || 0) + '</td>'
+            + '<td>' + status + '</td>'
+            + '<td>' + created + '</td>'
+            + '<td class="actions">'
+            + '<button onclick="editRedirect(' + r.redirect_key + ')">Edit</button>'
+            + '<button onclick="deleteRedirect(' + r.redirect_key + ', \'' + esc(r.redirect_request) + '\')">Del</button>'
+            + '</td>'
+            + '</tr>';
+    });
+
+    document.getElementById('redir-body').innerHTML = html;
+}
+
+function esc(s) {
+    if (s == null) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function openForm(data) {
+    document.getElementById('f-key').value = data ? data.redirect_key : '';
+    document.getElementById('f-request').value = data ? data.redirect_request : '';
+    document.getElementById('f-target').value = data ? (data.redirect_target || '') : '';
+    document.getElementById('f-queue').checked = data ? data.redirect_queue_flag : false;
+    document.getElementById('f-active').checked = data ? data.redirect_active_flag : false;
+    document.getElementById('form-title').textContent = data ? 'Edit Redirect' : 'Add Redirect';
+    document.getElementById('form-overlay').classList.add('open');
+}
+
+function closeForm() {
+    document.getElementById('form-overlay').classList.remove('open');
+}
+
+function saveForm() {
+    var key = document.getElementById('f-key').value;
+    var payload = {
+        redirect_request: document.getElementById('f-request').value,
+        redirect_target: document.getElementById('f-target').value || null,
+        redirect_queue_flag: document.getElementById('f-queue').checked,
+        redirect_active_flag: document.getElementById('f-active').checked,
+    };
+
+    if (key) {
+        payload.redirect_key = parseInt(key);
+        fetch(API + '/redirects.php', {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function() { closeForm(); loadRedirects(); });
+    } else {
+        fetch(API + '/redirects.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function() { closeForm(); loadRedirects(); });
+    }
+}
+
+function editRedirect(key) {
+    var r = redirects.find(function(x) { return x.redirect_key === key; });
+    if (r) openForm(r);
+}
+
+function deleteRedirect(key, url) {
+    if (!confirm('Delete redirect for "' + url + '"?')) return;
+    fetch(API + '/redirects.php', {
+        method: 'DELETE', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({redirect_key: key})
+    }).then(function() { loadRedirects(); });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

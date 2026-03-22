@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .media-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .media-count { font-size: 0.85rem; color: #666; }
+
+        .media-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .media-table th, .media-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .media-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .media-table tr:hover { background: #f0f4ff; }
+        .media-table tr.inactive { opacity: 0.5; }
+        .media-table .icon-cell { width: 40px; }
+        .media-table .icon-cell svg { width: 28px; height: 28px; }
+        .media-table .link-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .media-table .link-cell a { color: #31345A; text-decoration: none; }
+        .media-table .link-cell a:hover { text-decoration: underline; }
+        .media-table .actions { white-space: nowrap; }
+        .media-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .media-table .actions button:hover { background: #f0f0f0; }
+        .media-table .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+        .media-table .actions button.del:hover { background: #fde8e8; }
+        .sort-arrows { white-space: nowrap; }
+        .sort-arrows button { background: none; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; padding: 1px 5px; font-size: 0.75rem; line-height: 1; margin: 0 1px; color: #555; }
+        .sort-arrows button:hover { background: #e8edff; border-color: #31345A; color: #31345A; }
+        .sort-arrows button:disabled { opacity: 0.25; cursor: default; background: none; border-color: #ccc; }
+
+        /* Form overlay */
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 550px; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .form-header button:hover { background: #eee; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 14px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .form-body input[type=text], .form-body input[type=number], .form-body select {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body input[type=number] { width: 120px; }
+        .form-body .form-row { display: flex; gap: 12px; }
+        .form-body .form-row .field { flex: 1; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .form-body .checkbox-row { display: flex; align-items: center; gap: 8px; }
+        .form-body .checkbox-row label { margin-bottom: 0; }
+        .icon-preview { display: inline-block; vertical-align: middle; width: 32px; height: 32px; margin-left: 8px; }
+        .icon-preview svg { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab active">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Media Links</h1>
+
+    <div class="media-toolbar">
+        <span class="media-count" id="media-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="addRecord()">Add Link</button>
+    </div>
+
+    <div id="table-container">
+        <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+    </div>
+
+    <!-- Form Overlay -->
+    <div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+        <div class="form-panel">
+            <div class="form-header">
+                <h3 id="form-title">Add Media Link</h3>
+                <button onclick="closeForm()" title="Close">&times;</button>
+            </div>
+            <div class="form-body">
+                <input type="hidden" id="f-key">
+                <div class="field">
+                    <label>Icon / Platform</label>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <select id="f-icon" style="flex:1" onchange="updateIconPreview()"></select>
+                        <span id="icon-preview" class="icon-preview"></span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Display Code / Handle</label>
+                    <input type="text" id="f-code" placeholder="e.g. @YadaYah">
+                </div>
+                <div class="field">
+                    <label>Link URL</label>
+                    <input type="text" id="f-link" placeholder="https://...">
+                </div>
+                <div class="form-row">
+                    <div class="field" style="flex:0 0 120px">
+                        <label>Sort Order</label>
+                        <input type="number" id="f-sort" value="0">
+                    </div>
+                    <div class="field">
+                        <div class="checkbox-row" style="margin-top:20px">
+                            <input type="checkbox" id="f-active" checked>
+                            <label for="f-active">Active</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary btn-sm" onclick="saveRecord()">Save</button>
+                    <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var allRecords = [];
+var allIcons = [];
+
+// ── Auth ──
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadRecords();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadRecords();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+// ── Records ──
+function loadRecords() {
+    fetch(API + '/admin-media.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            allRecords = d.items || [];
+            allIcons = d.icons || [];
+            document.getElementById('media-count').textContent = allRecords.length + ' links';
+            renderTable();
+        });
+}
+
+function renderTable() {
+    if (!allRecords.length) {
+        document.getElementById('table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No media links found.</div>';
+        return;
+    }
+    var html = '<table class="media-table"><thead><tr>'
+        + '<th class="icon-cell"></th><th>Platform</th><th>Code / Handle</th>'
+        + '<th class="link-cell">Link</th><th>Sort</th><th>Active</th><th>Actions</th>'
+        + '</tr></thead><tbody>';
+    for (var i = 0; i < allRecords.length; i++) {
+        var r = allRecords[i];
+        var active = r.media_active_flag === true || r.media_active_flag === 't' || r.media_active_flag === '1';
+        html += '<tr class="' + (active ? '' : 'inactive') + '">'
+            + '<td class="icon-cell">' + (r.icon_svg || '') + '</td>'
+            + '<td>' + esc(r.icon_name || '—') + '</td>'
+            + '<td>' + esc(r.media_code) + '</td>'
+            + '<td class="link-cell"><a href="' + esc(r.media_link) + '" target="_blank">' + esc(r.media_link) + '</a></td>'
+            + '<td>' + (r.media_sort || 0) + ' <span class="sort-arrows">'
+            + '<button title="Move up" onclick="event.stopPropagation();moveSort(' + i + ',-1)" ' + (i === 0 ? 'disabled' : '') + '>&#9650;</button>'
+            + '<button title="Move down" onclick="event.stopPropagation();moveSort(' + i + ',1)" ' + (i === allRecords.length - 1 ? 'disabled' : '') + '>&#9660;</button>'
+            + '</span></td>'
+            + '<td>' + (active ? 'Yes' : 'No') + '</td>'
+            + '<td class="actions">'
+            + '<button onclick="editRecord(' + r.media_key + ')">Edit</button>'
+            + '<button class="del" onclick="deleteRecord(' + r.media_key + ', \'' + esc(r.media_code).replace(/'/g, "\\'") + '\')">Del</button>'
+            + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('table-container').innerHTML = html;
+}
+
+function moveSort(idx, dir) {
+    var other = idx + dir;
+    if (other < 0 || other >= allRecords.length) return;
+    var a = allRecords[idx], b = allRecords[other];
+    var tmp = a.media_sort; a.media_sort = b.media_sort; b.media_sort = tmp;
+    allRecords.sort(function(x,y){return (x.media_sort||0) - (y.media_sort||0);});
+    renderTable();
+    fetch(API + '/admin-sort-swap.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({table:'media', key_col:'media_key', sort_col:'media_sort', key1:a.media_key, key2:b.media_key})
+    });
+}
+
+function addRecord() {
+    showForm(null);
+}
+
+function showForm(record) {
+    document.getElementById('form-title').textContent = record ? 'Edit Media Link' : 'Add Media Link';
+    document.getElementById('f-key').value = record ? record.media_key : '';
+    document.getElementById('f-code').value = record ? record.media_code || '' : '';
+    document.getElementById('f-link').value = record ? record.media_link || '' : '';
+    document.getElementById('f-sort').value = record ? record.media_sort || 0 : allRecords.length + 1;
+    var active = record ? (record.media_active_flag === true || record.media_active_flag === 't' || record.media_active_flag === '1') : true;
+    document.getElementById('f-active').checked = active;
+
+    // Build icon dropdown
+    var sel = document.getElementById('f-icon');
+    var iconKey = record ? record.icon_key : (allIcons.length ? allIcons[0].icon_key : '');
+    sel.innerHTML = '<option value="">— None —</option>';
+    for (var i = 0; i < allIcons.length; i++) {
+        var ic = allIcons[i];
+        sel.innerHTML += '<option value="' + ic.icon_key + '"' + (ic.icon_key == iconKey ? ' selected' : '') + '>' + esc(ic.icon_name) + '</option>';
+    }
+    updateIconPreview();
+
+    document.getElementById('form-overlay').classList.add('open');
+    document.getElementById('f-code').focus();
+}
+
+function updateIconPreview() {
+    var iconKey = document.getElementById('f-icon').value;
+    var preview = document.getElementById('icon-preview');
+    if (!iconKey) { preview.innerHTML = ''; return; }
+    var rec = allRecords.find(function(r) { return r.icon_key == iconKey; });
+    if (rec && rec.icon_svg) {
+        preview.innerHTML = rec.icon_svg;
+    } else {
+        preview.innerHTML = '';
+    }
+}
+
+function closeForm() {
+    document.getElementById('form-overlay').classList.remove('open');
+}
+
+function editRecord(key) {
+    var record = allRecords.find(function(r) { return r.media_key == key; });
+    if (record) showForm(record);
+}
+
+function saveRecord() {
+    var key = document.getElementById('f-key').value;
+    var payload = {
+        icon_key: document.getElementById('f-icon').value || null,
+        media_code: document.getElementById('f-code').value,
+        media_link: document.getElementById('f-link').value,
+        sort: parseInt(document.getElementById('f-sort').value) || 0,
+        active: document.getElementById('f-active').checked,
+    };
+    if (!payload.media_code.trim() && !payload.media_link.trim()) {
+        alert('Code or link is required');
+        return;
+    }
+    if (key) payload.key = parseInt(key);
+
+    fetch(API + '/admin-media.php', {
+        method: key ? 'PUT' : 'POST',
+        credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) {
+            closeForm();
+            loadRecords();
+        } else {
+            alert(d.error || 'Save failed');
+        }
+    });
+}
+
+function deleteRecord(key, code) {
+    if (!confirm('Delete media link "' + code + '"?')) return;
+    fetch(API + '/admin-media.php', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({key: key})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.deleted) loadRecords();
+    });
+}
+
+// ── Helpers ──
+function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// ── Init ──
+checkAuth();
+document.getElementById('login-pass').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

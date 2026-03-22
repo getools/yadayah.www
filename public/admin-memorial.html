@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memorial Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .sub-tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px; }
+        .sub-tab { padding: 10px 24px; font-size: 0.95rem; font-weight: 600; color: #666; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+        .sub-tab:hover { color: #31345A; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #31345A; }
+        .sub-panel { display: none; }
+        .sub-panel.active { display: block; }
+
+        /* Settings */
+        .settings-section { }
+        .settings-section .field { margin-bottom: 16px; }
+        .settings-section label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .settings-section input[type=text], .settings-section input[type=number] {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .settings-section input[type=number] { width: 120px; }
+        .settings-section .hint { font-size: 0.78rem; color: #888; margin-top: 2px; }
+        .save-status { font-size: 0.85rem; color: #27ae60; margin-left: 8px; }
+
+        /* Memorial list */
+        .mem-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .mem-toolbar .search-box { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; width: 250px; }
+        .mem-count { font-size: 0.85rem; color: #666; }
+
+        .mem-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .mem-table th, .mem-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .mem-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .mem-table tr:hover { background: #f0f4ff; }
+        .mem-table tr.inactive { opacity: 0.5; }
+        .mem-table .thumb-cell { width: 50px; }
+        .mem-table .thumb-cell img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+        .mem-table .actions { white-space: nowrap; }
+        .mem-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .mem-table .actions button:hover { background: #f0f0f0; }
+        .mem-table .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+        .mem-table .actions button.del:hover { background: #fde8e8; }
+        .mem-table .summary-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sort-arrows { white-space: nowrap; }
+        .sort-arrows button { background: none; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; padding: 1px 5px; font-size: 0.75rem; line-height: 1; margin: 0 1px; color: #555; }
+        .sort-arrows button:hover { background: #e8edff; border-color: #31345A; color: #31345A; }
+        .sort-arrows button:disabled { opacity: 0.25; cursor: default; background: none; border-color: #ccc; }
+
+        /* Form */
+        .mem-form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
+        .mem-form-overlay.open { display: flex; }
+        .mem-form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-height: calc(100vh - 80px); overflow-y: auto; }
+        .mem-form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .mem-form-header h3 { margin: 0; font-size: 1rem; }
+        .mem-form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .mem-form-header button:hover { background: #eee; }
+        .mem-form-body { padding: 20px; }
+        .mem-form-body .field { margin-bottom: 14px; }
+        .mem-form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .mem-form-body input[type=text], .mem-form-body input[type=number], .mem-form-body textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .mem-form-body textarea { min-height: 120px; resize: vertical; }
+        .mem-form-body .form-row { display: flex; gap: 12px; }
+        .mem-form-body .form-row .field { flex: 1; }
+        .mem-form-body .form-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .mem-form-body .checkbox-row { display: flex; align-items: center; gap: 8px; }
+        .mem-form-body .checkbox-row label { margin-bottom: 0; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab active">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>October 7 Memorial</h1>
+
+    <div class="sub-tabs">
+        <button class="sub-tab active" onclick="switchSubTab('records')">Records</button>
+        <button class="sub-tab" onclick="switchSubTab('settings')">Settings</button>
+    </div>
+
+    <!-- ── Records Panel ── -->
+    <div id="panel-records" class="sub-panel active">
+        <div class="mem-toolbar">
+            <div style="display:flex;gap:12px;align-items:center;">
+                <span class="mem-count" id="mem-count"></span>
+                <input type="text" class="search-box" id="mem-search" placeholder="Search by name..." oninput="filterRecords()">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addRecord()">Add Record</button>
+        </div>
+        <div id="mem-table-container">
+            <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+        </div>
+    </div>
+
+    <!-- ── Settings Panel ── -->
+    <div id="panel-settings" class="sub-panel">
+        <div class="settings-section">
+            <div class="field">
+                <label>Page Title</label>
+                <input type="text" id="set-title" placeholder="October 7 Memorial">
+                <div class="hint">Main heading on the memorial page</div>
+            </div>
+            <div class="field">
+                <label>Page Subtitle</label>
+                <input type="text" id="set-subtitle" placeholder="Remembering the 527 lives lost on October 7, 2023">
+                <div class="hint">Displayed below the title</div>
+            </div>
+            <div class="field">
+                <label>Grid Columns</label>
+                <input type="number" id="set-columns" min="2" max="12" placeholder="8">
+                <div class="hint">Number of image columns in the grid (default: 8)</div>
+            </div>
+            <div class="field">
+                <label>Auto-Scroll Interval (seconds)</label>
+                <input type="number" id="set-autoscroll" min="3" max="120" placeholder="15">
+                <div class="hint">Seconds between auto-advance in carousel (default: 15)</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+                <span class="save-status" id="settings-status"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Form Overlay ── -->
+    <div id="mem-form-overlay" class="mem-form-overlay" onclick="if(event.target===this)closeForm()">
+        <div class="mem-form-panel">
+            <div class="mem-form-header">
+                <h3 id="form-title">Add Memorial</h3>
+                <button onclick="closeForm()" title="Close">&times;</button>
+            </div>
+            <div class="mem-form-body">
+                <input type="hidden" id="f-key">
+                <div class="form-row">
+                    <div class="field">
+                        <label>Full Name *</label>
+                        <input type="text" id="f-name-full">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="field">
+                        <label>First Name</label>
+                        <input type="text" id="f-name-first">
+                    </div>
+                    <div class="field">
+                        <label>Last Name</label>
+                        <input type="text" id="f-name-last">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Summary</label>
+                    <textarea id="f-summary"></textarea>
+                </div>
+                <div class="field">
+                    <label>Image</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                        <input type="text" id="f-image-file" placeholder="e.g. photo.webp" style="flex:1" readonly>
+                        <label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0">
+                            Upload
+                            <input type="file" id="f-image-upload" accept="image/*" style="display:none" onchange="uploadImage(this)">
+                        </label>
+                        <span id="upload-status" style="font-size:0.8rem;color:#27ae60"></span>
+                    </div>
+                    <div id="f-image-preview" style="margin-top:4px"></div>
+                </div>
+                <div class="field">
+                    <label>Photo Source URL</label>
+                    <input type="text" id="f-image-url" placeholder="https://...">
+                </div>
+                <div class="field">
+                    <label>Biography URL</label>
+                    <input type="text" id="f-bio-url" placeholder="https://...">
+                </div>
+                <div class="form-row">
+                    <div class="field" style="flex:0 0 100px">
+                        <label>Sort</label>
+                        <input type="number" id="f-sort" value="0">
+                    </div>
+                    <div class="field">
+                        <div class="checkbox-row" style="margin-top:20px">
+                            <input type="checkbox" id="f-active" checked>
+                            <label for="f-active">Active</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary btn-sm" onclick="saveRecord()">Save</button>
+                    <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var allRecords = [];
+var currentDisplayRecords = [];
+var settingsLoaded = false;
+
+function switchSubTab(tab) {
+    var tabs = document.querySelectorAll('.sub-tab');
+    var panels = document.querySelectorAll('.sub-panel');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+    document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'settings' && !settingsLoaded) {
+        settingsLoaded = true;
+        loadSettings();
+    }
+}
+
+// ── Auth ──
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadRecords();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadRecords();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+// ── Records ──
+function loadRecords() {
+    fetch(API + '/admin-memorial.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            allRecords = d.items || [];
+            document.getElementById('mem-count').textContent = allRecords.length + ' records';
+            filterRecords();
+        });
+}
+
+function filterRecords() {
+    var q = (document.getElementById('mem-search').value || '').toLowerCase();
+    var filtered = q ? allRecords.filter(function(r) {
+        return (r.memorial_name_full || '').toLowerCase().indexOf(q) >= 0;
+    }) : allRecords;
+    renderTable(filtered);
+}
+
+function renderTable(records) {
+    currentDisplayRecords = records;
+    if (!records.length) {
+        document.getElementById('mem-table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No records found.</div>';
+        return;
+    }
+    var html = '<table class="mem-table"><thead><tr>'
+        + '<th class="thumb-cell"></th><th>Name</th><th class="summary-cell">Summary</th>'
+        + '<th>Sort</th><th>Active</th><th>Actions</th>'
+        + '</tr></thead><tbody>';
+    for (var i = 0; i < records.length; i++) {
+        var r = records[i];
+        var img = r.memorial_image_file ? '<img src="/u/10-7-memorial/' + esc(r.memorial_image_file) + '" loading="lazy">' : '';
+        var summary = (r.memorial_summary || '').substring(0, 80);
+        var active = r.memorial_active_flag === true || r.memorial_active_flag === 't' || r.memorial_active_flag === '1';
+        html += '<tr class="' + (active ? '' : 'inactive') + '">'
+            + '<td class="thumb-cell">' + img + '</td>'
+            + '<td>' + esc(r.memorial_name_full) + '</td>'
+            + '<td class="summary-cell" title="' + esc(r.memorial_summary || '') + '">' + esc(summary) + '</td>'
+            + '<td>' + (r.memorial_sort || 0) + ' <span class="sort-arrows">'
+            + '<button title="Move up" onclick="event.stopPropagation();moveSort(' + i + ',-1)" ' + (i === 0 ? 'disabled' : '') + '>&#9650;</button>'
+            + '<button title="Move down" onclick="event.stopPropagation();moveSort(' + i + ',1)" ' + (i === records.length - 1 ? 'disabled' : '') + '>&#9660;</button>'
+            + '</span></td>'
+            + '<td>' + (active ? 'Yes' : 'No') + '</td>'
+            + '<td class="actions">'
+            + '<button onclick="editRecord(' + r.memorial_key + ')">Edit</button>'
+            + '<button class="del" onclick="deleteRecord(' + r.memorial_key + ', \'' + esc(r.memorial_name_full).replace(/'/g, "\\'") + '\')">Del</button>'
+            + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('mem-table-container').innerHTML = html;
+}
+
+function moveSort(idx, dir) {
+    var other = idx + dir;
+    if (other < 0 || other >= currentDisplayRecords.length) return;
+    var a = currentDisplayRecords[idx], b = currentDisplayRecords[other];
+    var tmp = a.memorial_sort; a.memorial_sort = b.memorial_sort; b.memorial_sort = tmp;
+    allRecords.sort(function(x,y){return (x.memorial_sort||0) - (y.memorial_sort||0);});
+    filterRecords();
+    fetch(API + '/admin-sort-swap.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({table:'memorial', key_col:'memorial_key', sort_col:'memorial_sort', key1:a.memorial_key, key2:b.memorial_key})
+    });
+}
+
+function addRecord() {
+    fetch(API + '/admin-memorial.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name_full: 'New Memorial', summary: '', sort: 0, active: true})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved && d.key) {
+            loadRecords();
+            // Fetch the new record and open it
+            var newRec = {
+                memorial_key: d.key, memorial_name_full: 'New Memorial',
+                memorial_name_first: '', memorial_name_last: '',
+                memorial_summary: '', memorial_image_file: '',
+                memorial_image_url: '', memorial_bio_url: '',
+                memorial_sort: 0, memorial_active_flag: true
+            };
+            showForm(newRec);
+        }
+    });
+}
+
+function showForm(record) {
+    document.getElementById('form-title').textContent = record ? 'Edit Record' : 'Add Record';
+    document.getElementById('f-key').value = record ? record.memorial_key : '';
+    document.getElementById('f-name-full').value = record ? record.memorial_name_full || '' : '';
+    document.getElementById('f-name-first').value = record ? record.memorial_name_first || '' : '';
+    document.getElementById('f-name-last').value = record ? record.memorial_name_last || '' : '';
+    document.getElementById('f-summary').value = record ? record.memorial_summary || '' : '';
+    var imgFile = record ? record.memorial_image_file || '' : '';
+    document.getElementById('f-image-file').value = imgFile;
+    document.getElementById('f-image-url').value = record ? record.memorial_image_url || '' : '';
+    document.getElementById('f-bio-url').value = record ? record.memorial_bio_url || '' : '';
+    document.getElementById('f-sort').value = record ? record.memorial_sort || 0 : 0;
+    var active = record ? (record.memorial_active_flag === true || record.memorial_active_flag === 't' || record.memorial_active_flag === '1') : true;
+    document.getElementById('f-active').checked = active;
+    document.getElementById('upload-status').textContent = '';
+    document.getElementById('f-image-upload').value = '';
+    document.getElementById('f-image-preview').innerHTML = imgFile
+        ? '<img src="/u/10-7-memorial/' + esc(imgFile) + '" style="max-width:200px;max-height:150px;border-radius:6px;">'
+        : '';
+    document.getElementById('mem-form-overlay').classList.add('open');
+    document.getElementById('f-name-full').focus();
+}
+
+function closeForm() {
+    document.getElementById('mem-form-overlay').classList.remove('open');
+}
+
+function editRecord(key) {
+    var record = allRecords.find(function(r) { return r.memorial_key == key; });
+    if (record) showForm(record);
+}
+
+function saveRecord() {
+    var key = document.getElementById('f-key').value;
+    var payload = {
+        name_full: document.getElementById('f-name-full').value,
+        name_first: document.getElementById('f-name-first').value,
+        name_last: document.getElementById('f-name-last').value,
+        summary: document.getElementById('f-summary').value,
+        image_file: document.getElementById('f-image-file').value,
+        image_url: document.getElementById('f-image-url').value,
+        bio_url: document.getElementById('f-bio-url').value,
+        sort: parseInt(document.getElementById('f-sort').value) || 0,
+        active: document.getElementById('f-active').checked,
+    };
+    if (!payload.name_full.trim()) { alert('Name is required'); return; }
+
+    if (key) payload.key = parseInt(key);
+
+    fetch(API + '/admin-memorial.php', {
+        method: key ? 'PUT' : 'POST',
+        credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) {
+            closeForm();
+            loadRecords();
+        } else {
+            alert(d.error || 'Save failed');
+        }
+    });
+}
+
+function deleteRecord(key, name) {
+    if (!confirm('Delete memorial for "' + name + '"?')) return;
+    fetch(API + '/admin-memorial.php', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({key: key})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.deleted) loadRecords();
+    });
+}
+
+// ── Upload ──
+function uploadImage(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var key = document.getElementById('f-key').value;
+    var statusEl = document.getElementById('upload-status');
+    statusEl.textContent = 'Uploading...';
+    statusEl.style.color = '#888';
+
+    var fd = new FormData();
+    fd.append('image', file);
+    fd.append('key', key);
+
+    fetch(API + '/admin-memorial-upload.php', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) {
+            document.getElementById('f-image-file').value = d.filename;
+            document.getElementById('f-image-preview').innerHTML =
+                '<img src="/u/10-7-memorial/' + esc(d.filename) + '?t=' + Date.now() + '" style="max-width:200px;max-height:150px;border-radius:6px;">';
+            statusEl.textContent = 'Uploaded!';
+            statusEl.style.color = '#27ae60';
+            setTimeout(function() { statusEl.textContent = ''; }, 3000);
+            // Update local record
+            var rec = allRecords.find(function(r) { return r.memorial_key == key; });
+            if (rec) rec.memorial_image_file = d.filename;
+        } else {
+            statusEl.textContent = d.error || 'Upload failed';
+            statusEl.style.color = '#c0392b';
+        }
+    }).catch(function() {
+        statusEl.textContent = 'Upload failed';
+        statusEl.style.color = '#c0392b';
+    });
+    input.value = '';
+}
+
+// ── Settings ──
+function loadSettings() {
+    fetch(API + '/admin-memorial-settings.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            document.getElementById('set-title').value = d.memorial_title || '';
+            document.getElementById('set-subtitle').value = d.memorial_subtitle || '';
+            document.getElementById('set-columns').value = d.memorial_columns || '';
+            document.getElementById('set-autoscroll').value = d.memorial_auto_scroll || '';
+        });
+}
+
+function saveSettings() {
+    fetch(API + '/admin-memorial-settings.php', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            memorial_title: document.getElementById('set-title').value,
+            memorial_subtitle: document.getElementById('set-subtitle').value,
+            memorial_columns: document.getElementById('set-columns').value,
+            memorial_auto_scroll: document.getElementById('set-autoscroll').value,
+        })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) {
+            var el = document.getElementById('settings-status');
+            el.textContent = 'Saved!';
+            setTimeout(function() { el.textContent = ''; }, 2000);
+        }
+    });
+}
+
+// ── Helpers ──
+function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// ── Init ──
+checkAuth();
+document.getElementById('login-pass').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

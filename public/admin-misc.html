@@ -30,14 +30,25 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
             <a href="admin-translation.html" class="nav-tab">Translation</a>
             <a href="admin-word.html" class="nav-tab">Word</a>
             <a href="admin-lookups.html" class="nav-tab">Lookups</a>
             <a href="admin-ask.html" class="nav-tab">Ask</a>
             <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
             <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-misc.html" class="nav-tab active">Misc</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
             <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab active">Misc</a>
         </nav>
         <div class="user-info">
             <span id="user-display"></span>
@@ -51,6 +62,7 @@
     </div>
 </div>
 
+<script src="js/admin-pages.js?v=2"></script>
 <script>
 var API = '/api';
 
@@ -59,6 +71,7 @@ function checkAuth() {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
         } else {
             document.getElementById('login-screen').classList.add('visible');
         }
@@ -79,6 +92,7 @@ function doLogin() {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
         } else {
             errEl.textContent = d.error || 'Login failed';
             errEl.style.display = '';

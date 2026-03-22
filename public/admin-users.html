@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Users Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .users-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .users-table th, .users-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .users-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .users-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .users-table .actions { white-space: nowrap; }
+        .users-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .users-table .actions button:hover { background: #f0f0f0; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 550px; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .form-header button:hover { background: #eee; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 14px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .form-body input[type=text], .form-body input[type=password], .form-body input[type=email] {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+        .page-perms { margin-top: 4px; }
+        .page-perms label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 0.85rem; margin-right: 16px; margin-bottom: 6px; cursor: pointer; }
+        .page-perms input[type=checkbox] { margin: 0; cursor: pointer; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .user-count { font-size: 0.85rem; color: #666; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab active">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Users</h1>
+
+    <div class="toolbar">
+        <span class="user-count" id="user-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="showForm(null)">+ Add User</button>
+    </div>
+
+    <div id="table-container">
+        <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+    </div>
+</div>
+
+<div class="form-overlay" id="form-overlay">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Edit User</h3>
+            <button onclick="closeForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="field">
+                <label>Login Code</label>
+                <input type="text" id="f-code">
+            </div>
+            <div class="field">
+                <label>Full Name</label>
+                <input type="text" id="f-name">
+            </div>
+            <div class="field">
+                <label>Email</label>
+                <input type="email" id="f-email">
+            </div>
+            <div class="field">
+                <label>New Password <span style="font-weight:400;color:#999">(leave blank to keep current)</span></label>
+                <input type="password" id="f-password" autocomplete="new-password">
+            </div>
+            <div class="field">
+                <label>Admin Page Access</label>
+                <div class="page-perms" id="f-page-perms"></div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveUser()">Save</button>
+                <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var allUsers = [];
+var allSettings = [];
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadUsers();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadUsers();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadUsers() {
+    fetch(API + '/admin-users.php', {credentials:'include'})
+        .then(r => r.json())
+        .then(function(d) {
+            if (d.error) { document.getElementById('table-container').innerHTML = '<div style="color:#c00;padding:20px">' + esc(d.error) + '</div>'; return; }
+            allUsers = d.users || [];
+            allSettings = d.settings || [];
+            document.getElementById('user-count').textContent = allUsers.length + ' user' + (allUsers.length !== 1 ? 's' : '');
+            renderTable();
+        });
+}
+
+function renderTable() {
+    if (!allUsers.length) {
+        document.getElementById('table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No users.</div>';
+        return;
+    }
+    var html = '<table class="users-table"><thead><tr>'
+        + '<th>Login</th><th>Name</th><th>Email</th><th>Pages</th><th>Actions</th>'
+        + '</tr></thead><tbody>';
+    for (var i = 0; i < allUsers.length; i++) {
+        var u = allUsers[i];
+        var pages = (u.page_settings || []).filter(function(p) { return p.enabled; }).map(function(p) {
+            return p.setting_code.charAt(0).toUpperCase() + p.setting_code.slice(1);
+        }).join(', ');
+        var allEnabled = (u.page_settings || []).every(function(p) { return p.enabled; });
+        var pagesDisplay = allEnabled ? '<span style="color:#27ae60">All</span>' : (pages || '<span style="color:#c00">None</span>');
+        html += '<tr onclick="editUser(' + u.user_key + ')">'
+            + '<td>' + esc(u.user_code) + '</td>'
+            + '<td>' + esc(u.user_name_full) + '</td>'
+            + '<td>' + esc(u.user_email || '') + '</td>'
+            + '<td style="font-size:0.8rem">' + pagesDisplay + '</td>'
+            + '<td class="actions"><button onclick="event.stopPropagation();editUser(' + u.user_key + ')">Edit</button></td>'
+            + '</tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('table-container').innerHTML = html;
+}
+
+function editUser(key) {
+    var user = allUsers.find(function(u) { return u.user_key == key; });
+    if (user) showForm(user);
+}
+
+function showForm(user) {
+    document.getElementById('form-title').textContent = user ? 'Edit User' : 'Add User';
+    document.getElementById('f-key').value = user ? user.user_key : '';
+    document.getElementById('f-code').value = user ? user.user_code : '';
+    document.getElementById('f-name').value = user ? user.user_name_full || '' : '';
+    document.getElementById('f-email').value = user ? user.user_email || '' : '';
+    document.getElementById('f-password').value = '';
+
+    // Render page permission checkboxes
+    var permsHtml = '';
+    var settings = user ? user.page_settings : allSettings.map(function(s) {
+        return { setting_key: s.setting_key, setting_code: s.setting_code, enabled: true };
+    });
+    for (var i = 0; i < settings.length; i++) {
+        var s = settings[i];
+        var label = s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1);
+        permsHtml += '<label><input type="checkbox" data-sk="' + s.setting_key + '"'
+            + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>';
+    }
+    document.getElementById('f-page-perms').innerHTML = permsHtml;
+    document.getElementById('form-overlay').classList.add('open');
+}
+
+function closeForm() {
+    document.getElementById('form-overlay').classList.remove('open');
+}
+
+function saveUser() {
+    var key = document.getElementById('f-key').value;
+    var data = {
+        user_code: document.getElementById('f-code').value.trim(),
+        user_name_full: document.getElementById('f-name').value.trim(),
+        user_email: document.getElementById('f-email').value.trim(),
+        new_password: document.getElementById('f-password').value,
+    };
+
+    if (!data.user_code) { alert('Login code is required.'); return; }
+
+    // Collect page settings
+    var checks = document.querySelectorAll('#f-page-perms input[type=checkbox]');
+    var pageSettings = [];
+    for (var i = 0; i < checks.length; i++) {
+        pageSettings.push({
+            setting_key: parseInt(checks[i].getAttribute('data-sk')),
+            enabled: checks[i].checked,
+        });
+    }
+    data.page_settings = pageSettings;
+
+    if (key) {
+        data.user_key = parseInt(key);
+        fetch(API + '/admin-users.php', {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(function(d) {
+            if (d.saved) { closeForm(); loadUsers(); }
+            else if (d.error) alert(d.error);
+        });
+    } else {
+        fetch(API + '/admin-users.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(function(d) {
+            if (d.saved) { closeForm(); loadUsers(); }
+            else if (d.error) alert(d.error);
+        });
+    }
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

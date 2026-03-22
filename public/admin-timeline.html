@@ -32,12 +32,46 @@
         .media-inputs input[type="file"] { font-size: 0.85rem; }
         .media-inputs .or-label { font-size: 0.8rem; color: #999; }
 
+        .upload-progress { margin-top: 8px; display: none; }
+        .upload-progress.active { display: block; }
+        .upload-progress-bar { width: 100%; height: 22px; background: #e0e0e0; border-radius: 4px; overflow: hidden; }
+        .upload-progress-fill { height: 100%; background: #31345A; border-radius: 4px; transition: width 0.2s; width: 0%; }
+        .upload-progress-fill.converting {
+            width: 100% !important;
+            background: repeating-linear-gradient(
+                -45deg,
+                #31345A,
+                #31345A 10px,
+                #4a4e8a 10px,
+                #4a4e8a 20px
+            );
+            background-size: 28.28px 100%;
+            animation: converting-stripe 0.8s linear infinite;
+        }
+        @keyframes converting-stripe {
+            0% { background-position: 0 0; }
+            100% { background-position: 28.28px 0; }
+        }
+        .upload-progress-text { font-size: 0.8rem; color: #555; margin-top: 4px; }
+
         .button-row { display: flex; gap: 8px; margin-top: 16px; }
         .stats-bar { display: flex; gap: 24px; padding: 12px 0; font-size: 0.85rem; color: #666; }
         .stats-bar strong { color: #333; }
         .empty-state { text-align: center; padding: 40px; color: #999; }
         .loading { text-align: center; padding: 20px; color: #888; }
         .error-box { background: #fde8e8; color: #c0392b; padding: 12px; border-radius: 4px; margin-bottom: 12px; }
+
+        .sub-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #dde3f0; }
+        .sub-tab { background: none; border: none; padding: 8px 20px; font-size: 0.95rem; font-weight: 600; color: #888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #31345A; }
+        .sub-tab:hover:not(.active) { color: #555; }
+
+        .cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px; }
+        .cfg-field { display: flex; flex-direction: column; }
+        .cfg-field label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #555; }
+        .cfg-field input[type="text"], .cfg-field input[type="number"], .cfg-field input[type="date"], .cfg-field input[type="time"] { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; }
+        .cfg-field input[type="color"] { height: 40px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; width: 100%; }
+        .cfg-success { color: #27ae60; font-size: 0.9rem; margin-left: 12px; display: none; }
     </style>
 </head>
 <body>
@@ -64,14 +98,25 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
             <a href="admin-translation.html" class="nav-tab">Translation</a>
             <a href="admin-word.html" class="nav-tab">Word</a>
             <a href="admin-lookups.html" class="nav-tab">Lookups</a>
             <a href="admin-ask.html" class="nav-tab">Ask</a>
             <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
             <a href="admin-timeline.html" class="nav-tab active">Timeline</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
             <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
         </nav>
         <div class="user-info">
             <span id="user-display"></span>
@@ -81,19 +126,95 @@
 
     <h1>Timeline</h1>
 
-    <div id="form-container" style="display:none"></div>
-
-    <div style="margin-bottom: 12px;">
-        <button class="btn btn-primary btn-sm" onclick="showForm(null)">New Event</button>
+    <div class="sub-tabs">
+        <button class="sub-tab active" id="tab-dates" onclick="showTab('dates')">Dates</button>
+        <button class="sub-tab" id="tab-config" onclick="showTab('config')">Config</button>
     </div>
 
-    <div class="stats-bar" id="stats-bar"></div>
+    <!-- Dates section -->
+    <div id="section-dates">
+        <div id="form-container" style="display:none"></div>
+        <div style="margin-bottom: 12px;">
+            <button class="btn btn-primary btn-sm" onclick="showForm(null)">New Event</button>
+        </div>
+        <div class="stats-bar" id="stats-bar"></div>
+        <div id="list-container">
+            <div class="loading">Loading timeline...</div>
+        </div>
+    </div>
 
-    <div id="list-container">
-        <div class="loading">Loading timeline...</div>
+    <!-- Config section -->
+    <div id="section-config" style="display:none">
+        <div class="form-card">
+            <h2>Config</h2>
+            <div id="cfg-error" class="error-box" style="display:none"></div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field" style="grid-column: 1 / -1">
+                    <label>Heading</label>
+                    <input type="text" id="cfg-heading">
+                </div>
+            </div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field" style="grid-column: 1 / -1">
+                    <label>Ticker Heading</label>
+                    <input type="text" id="cfg-ticker-primary-heading">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Background</label>
+                    <input type="color" id="cfg-ticker-primary-background">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Color-Heading</label>
+                    <input type="color" id="cfg-ticker-color-heading">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Color-Countdown</label>
+                    <input type="color" id="cfg-ticker-color-countdown">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Color-Description</label>
+                    <input type="color" id="cfg-ticker-color-description">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Target — Date</label>
+                    <input type="date" id="cfg-ticker-dtime-date">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Target — Time</label>
+                    <input type="time" id="cfg-ticker-dtime-time">
+                </div>
+                <div class="cfg-field">
+                    <label>Ticker Target — Timezone offset (e.g. +03:00)</label>
+                    <input type="text" id="cfg-ticker-dtime-tz" placeholder="+03:00">
+                </div>
+            </div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field">
+                    <label>Color A</label>
+                    <input type="color" id="cfg-color-row-a">
+                </div>
+                <div class="cfg-field">
+                    <label>Color B</label>
+                    <input type="color" id="cfg-color-row-b">
+                </div>
+                <div class="cfg-field">
+                    <label>Spacing (px)</label>
+                    <input type="number" id="cfg-spacing-vertical" min="0" max="300">
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="saveConfig()">Save Config</button>
+                <span class="cfg-success" id="cfg-success">Saved!</span>
+            </div>
+        </div>
     </div>
 </div>
 
+<script src="js/admin-pages.js?v=2"></script>
 <script>
 var API = 'api';
 var allEvents = [];
@@ -112,6 +233,7 @@ function checkAuth() {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadEvents();
         } else {
             document.getElementById('login-screen').classList.add('visible');
@@ -131,6 +253,7 @@ function doLogin() {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadEvents();
         } else {
             var el = document.getElementById('login-error');
@@ -202,24 +325,27 @@ function showForm(ev) {
     html += '<div id="form-errors"></div>';
 
     html += '<div class="form-row">';
-    html += '<div class="form-field narrow"><label>Sort</label><input type="number" id="f-sort" value="' + esc(ev ? String(ev.timeline_sort) : '') + '"></div>';
-    html += '<div class="form-field"><label>Headline</label><input type="text" id="f-headline" value="' + esc(ev ? ev.timeline_headline : '') + '"></div>';
-    html += '<div class="form-field narrow"><label>Priority</label><input type="number" id="f-priority" value="' + (ev ? ev.timeline_priority : '0') + '"></div>';
+    html += '<div class="form-field" style="flex:1 1 100%"><label>Headline</label><input type="text" id="f-headline" value="' + esc(ev ? ev.timeline_headline : '') + '"></div>';
     html += '</div>';
 
     html += '<div class="form-row">';
+    html += '<div class="form-field narrow"><label>Sort</label><input type="number" step="0.01" id="f-sort" value="' + esc(ev ? String(ev.timeline_sort) : '') + '"></div>';
     html += '<div class="form-field"><label>Date Yah</label><input type="text" id="f-date-yah" value="' + esc(ev ? ev.timeline_date_yah : '') + '"></div>';
     html += '<div class="form-field"><label>Date CE</label><input type="text" id="f-date-ce" value="' + esc(ev ? ev.timeline_date_ce : '') + '"></div>';
+    html += '<div class="form-field narrow"><label>Priority</label><select id="f-priority"><option value="0"' + ((!ev || ev.timeline_priority == 0) ? ' selected' : '') + '>0</option><option value="1"' + (ev && ev.timeline_priority == 1 ? ' selected' : '') + '>1</option></select></div>';
+    html += '<div class="form-field"><label>Jump</label><input type="text" id="f-jump" placeholder="e.g. creation" value="' + esc(ev ? ev.timeline_jump : '') + '"></div>';
     html += '</div>';
 
     html += '<div class="form-row">';
-    html += '<div class="form-field" style="flex:1 1 100%"><label>Summary</label><textarea id="f-summary" rows="3">' + esc(ev ? ev.timeline_summary : '') + '</textarea></div>';
+    html += '<div class="form-field" style="flex:1 1 100%"><label>Summary</label><textarea id="f-summary" rows="6">' + esc(ev ? ev.timeline_summary : '') + '</textarea></div>';
     html += '</div>';
 
     // Image
     html += '<div class="media-section"><label>Image</label>';
     if (ev && ev.timeline_image) {
-        html += '<div class="media-preview"><img src="' + esc(ev.timeline_image) + '" alt=""></div>';
+        html += '<div class="media-preview" id="img-preview"><img src="' + esc(ev.timeline_image) + '" alt="">';
+        html += ' <button type="button" style="vertical-align:top;font-size:0.75rem;padding:2px 6px;cursor:pointer;color:#c0392b;border:1px solid #e0c0c0;border-radius:3px;background:#fff" onclick="removeImage()">Remove</button>';
+        html += '</div>';
     }
     html += '<div class="media-inputs">';
     html += '<input type="text" id="f-image-url" placeholder="Image URL" value="' + esc(ev ? ev.timeline_image : '') + '">';
@@ -229,13 +355,28 @@ function showForm(ev) {
 
     // Video
     html += '<div class="media-section"><label>Video</label>';
+    if (ev && ev.timeline_video) {
+        html += '<div id="vid-current" style="font-size:0.8rem;color:#555;margin-bottom:4px">';
+        html += esc(ev.timeline_video);
+        html += ' <button type="button" style="font-size:0.75rem;padding:2px 6px;cursor:pointer;color:#c0392b;border:1px solid #e0c0c0;border-radius:3px;background:#fff" onclick="removeVideo()">Remove</button>';
+        html += '</div>';
+    }
     html += '<div class="media-inputs">';
     html += '<input type="text" id="f-video-url" placeholder="Video URL" value="' + esc(ev ? ev.timeline_video : '') + '">';
     html += '<span class="or-label">or upload:</span>';
-    html += '<input type="file" id="f-video-file" accept="video/*">';
-    html += '</div></div>';
+    html += '<input type="file" id="f-video-file" accept="video/*" onchange="promptVideoUpload(this)">';
+    html += '</div>';
+    html += '<div id="vid-crop-prompt" style="display:none;margin-top:6px;font-size:0.85rem;background:#f0f4ff;padding:8px 12px;border-radius:4px;border:1px solid #ccd">';
+    html += '<label style="cursor:pointer"><input type="checkbox" id="f-video-crop" style="margin-right:6px">Auto-crop black bars from video</label>';
+    html += ' <button class="btn btn-primary btn-sm" style="margin-left:12px" onclick="startVideoUpload()">Upload</button>';
+    html += '</div>';
+    html += '<div class="upload-progress" id="vid-progress">';
+    html += '<div class="upload-progress-bar"><div class="upload-progress-fill" id="vid-progress-fill"></div></div>';
+    html += '<div class="upload-progress-text" id="vid-progress-text"></div>';
+    html += '</div>';
+    html += '</div>';
 
-    html += '<div class="button-row">';
+    html += '<div class="button-row" id="form-buttons">';
     html += '<button class="btn btn-primary" onclick="saveEvent()">Save</button>';
     html += '<button class="btn btn-secondary" onclick="hideForm()">Cancel</button>';
     if (editingKey) {
@@ -264,7 +405,133 @@ function editEvent(key) {
         });
 }
 
+var videoUploading = false;
+var pendingVideoFile = null;
+
+function promptVideoUpload(input) {
+    var file = input.files[0];
+    if (!file) return;
+    pendingVideoFile = file;
+    document.getElementById('vid-crop-prompt').style.display = '';
+}
+
+function startVideoUpload() {
+    var file = pendingVideoFile;
+    if (!file) return;
+    pendingVideoFile = null;
+    document.getElementById('vid-crop-prompt').style.display = 'none';
+    var crop = document.getElementById('f-video-crop').checked;
+
+    var progressEl = document.getElementById('vid-progress');
+    var fillEl = document.getElementById('vid-progress-fill');
+    var textEl = document.getElementById('vid-progress-text');
+    var buttonsEl = document.getElementById('form-buttons');
+
+    progressEl.classList.add('active');
+    fillEl.style.width = '0%';
+    textEl.textContent = 'Uploading...';
+    textEl.style.color = '#555';
+    buttonsEl.style.pointerEvents = 'none';
+    buttonsEl.style.opacity = '0.5';
+    videoUploading = true;
+
+    var fd = new FormData();
+    fd.append('video_file', file);
+    if (crop) fd.append('crop', '1');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/admin-timeline-upload-video.php', true);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var pct = Math.round((e.loaded / e.total) * 100);
+            fillEl.style.width = pct + '%';
+            var mb = (e.loaded / 1048576).toFixed(1);
+            var totalMb = (e.total / 1048576).toFixed(1);
+            textEl.textContent = 'Uploading ' + mb + ' / ' + totalMb + ' MB (' + pct + '%)';
+            if (pct >= 100) {
+                fillEl.style.width = '100%';
+                fillEl.classList.add('converting');
+                textEl.textContent = 'Converting video...';
+            }
+        }
+    };
+
+    xhr.onload = function() {
+        videoUploading = false;
+        fillEl.classList.remove('converting');
+        buttonsEl.style.pointerEvents = '';
+        buttonsEl.style.opacity = '';
+        try {
+            var d = JSON.parse(xhr.responseText);
+            if (d.error) {
+                textEl.textContent = d.error;
+                textEl.style.color = '#c0392b';
+                return;
+            }
+            if (d.saved) {
+                document.getElementById('f-video-url').value = d.video_path;
+                var finalMb = (d.final_size / 1048576).toFixed(1);
+                var msg = 'Video saved (' + finalMb + ' MB)';
+                if (d.converted || d.cropped) {
+                    var origMb = (d.original_size / 1048576).toFixed(1);
+                    var details = [];
+                    if (d.converted) details.push('converted');
+                    if (d.cropped) details.push('cropped');
+                    msg += ' — ' + details.join(' + ') + ' from ' + origMb + ' MB';
+                }
+                textEl.textContent = msg;
+                textEl.style.color = '#27ae60';
+                // Auto-fill image if none set and thumb was generated
+                if (d.thumb_path) {
+                    var imgUrl = document.getElementById('f-image-url');
+                    if (!imgUrl.value) {
+                        imgUrl.value = d.thumb_path;
+                    }
+                }
+            }
+        } catch(e) {
+            textEl.textContent = 'Server error: ' + (xhr.responseText || '').substring(0, 200);
+            textEl.style.color = '#c0392b';
+        }
+    };
+
+    xhr.onerror = function() {
+        videoUploading = false;
+        fillEl.classList.remove('converting');
+        buttonsEl.style.pointerEvents = '';
+        buttonsEl.style.opacity = '';
+        textEl.textContent = 'Upload failed';
+        textEl.style.color = '#c0392b';
+    };
+
+    xhr.send(fd);
+    input.value = '';
+}
+
+function removeImage() {
+    document.getElementById('f-image-url').value = '';
+    document.getElementById('f-image-file').value = '';
+    var preview = document.getElementById('img-preview');
+    if (preview) preview.remove();
+}
+
+function removeVideo() {
+    document.getElementById('f-video-url').value = '';
+    document.getElementById('f-video-file').value = '';
+    var cur = document.getElementById('vid-current');
+    if (cur) cur.remove();
+    var prog = document.getElementById('vid-progress');
+    if (prog) prog.classList.remove('active');
+}
+
 function saveEvent() {
+    if (videoUploading) {
+        alert('Please wait for the video upload to finish.');
+        return;
+    }
+
     var fd = new FormData();
     fd.append('timeline_sort', document.getElementById('f-sort').value);
     fd.append('timeline_headline', document.getElementById('f-headline').value);
@@ -272,6 +539,7 @@ function saveEvent() {
     fd.append('timeline_date_yah', document.getElementById('f-date-yah').value);
     fd.append('timeline_date_ce', document.getElementById('f-date-ce').value);
     fd.append('timeline_summary', document.getElementById('f-summary').value);
+    fd.append('timeline_jump', document.getElementById('f-jump').value);
 
     // Image: file upload takes priority over URL
     var imgFile = document.getElementById('f-image-file').files[0];
@@ -281,31 +549,32 @@ function saveEvent() {
         fd.append('timeline_image', document.getElementById('f-image-url').value);
     }
 
-    // Video: file upload takes priority over URL
-    var vidFile = document.getElementById('f-video-file').files[0];
-    if (vidFile) {
-        fd.append('video_file', vidFile);
-    } else {
-        fd.append('timeline_video', document.getElementById('f-video-url').value);
-    }
+    // Video: always use URL (upload already happened)
+    fd.append('timeline_video', document.getElementById('f-video-url').value);
 
     var url = API + '/admin-timeline.php';
-    var method = 'POST';
     if (editingKey) {
         url += '?key=' + editingKey;
-        method = 'PUT';
-    }
-
-    // PUT with FormData: PHP doesn't parse multipart for PUT, use POST with _method override
-    if (method === 'PUT') {
         fd.append('_method', 'PUT');
-        method = 'POST';
-        // We'll handle this server-side
     }
 
-    fetch(url, {method: method, credentials: 'include', body: fd})
-        .then(function(r){return r.json();})
-        .then(function(d) {
+    var hasImage = !!imgFile;
+    var buttonsEl = document.getElementById('form-buttons');
+
+    if (hasImage) {
+        buttonsEl.style.pointerEvents = 'none';
+        buttonsEl.style.opacity = '0.5';
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.withCredentials = true;
+
+    xhr.onload = function() {
+        buttonsEl.style.pointerEvents = '';
+        buttonsEl.style.opacity = '';
+        try {
+            var d = JSON.parse(xhr.responseText);
             if (d.errors) {
                 document.getElementById('form-errors').innerHTML = '<div class="error-box">' + d.errors.join('<br>') + '</div>';
                 return;
@@ -316,10 +585,18 @@ function saveEvent() {
             }
             hideForm();
             loadEvents();
-        })
-        .catch(function(err) {
-            document.getElementById('form-errors').innerHTML = '<div class="error-box">Error: ' + esc(err.message) + '</div>';
-        });
+        } catch(e) {
+            document.getElementById('form-errors').innerHTML = '<div class="error-box">Server error</div>';
+        }
+    };
+
+    xhr.onerror = function() {
+        buttonsEl.style.pointerEvents = '';
+        buttonsEl.style.opacity = '';
+        document.getElementById('form-errors').innerHTML = '<div class="error-box">Save failed</div>';
+    };
+
+    xhr.send(fd);
 }
 
 function deleteEvent(key) {
@@ -331,6 +608,87 @@ function deleteEvent(key) {
             hideForm();
             loadEvents();
         });
+}
+
+// ── Sub-tabs ──
+function showTab(tab) {
+    document.getElementById('section-dates').style.display  = tab === 'dates'  ? '' : 'none';
+    document.getElementById('section-config').style.display = tab === 'config' ? '' : 'none';
+    document.getElementById('tab-dates').classList.toggle('active',  tab === 'dates');
+    document.getElementById('tab-config').classList.toggle('active', tab === 'config');
+    if (tab === 'config') loadConfig();
+}
+
+// ── Config ──
+function loadConfig() {
+    fetch(API + '/admin-timeline-config.php', {credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(cfg) {
+            document.getElementById('cfg-heading').value                  = cfg['heading'] || '';
+            document.getElementById('cfg-ticker-primary-heading').value   = cfg['ticker-primary-heading'] || '';
+            document.getElementById('cfg-ticker-primary-background').value = toHex(cfg['ticker-primary-background'], '#1a1a2e');
+            document.getElementById('cfg-ticker-color-heading').value     = toHex(cfg['ticker-color-heading'], '#ffffff');
+            document.getElementById('cfg-ticker-color-countdown').value   = toHex(cfg['ticker-color-countdown'], '#e5c86c');
+            document.getElementById('cfg-ticker-color-description').value = toHex(cfg['ticker-color-description'], '#ffffff');
+            var dtime = cfg['ticker-primary-dtime'] || '';
+            var dtMatch = dtime.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?(([+-]\d{2}:\d{2}|Z))?/);
+            if (dtMatch) {
+                document.getElementById('cfg-ticker-dtime-date').value = dtMatch[1];
+                document.getElementById('cfg-ticker-dtime-time').value = dtMatch[2];
+                document.getElementById('cfg-ticker-dtime-tz').value   = dtMatch[4] || '+00:00';
+            } else {
+                document.getElementById('cfg-ticker-dtime-date').value = dtime.substring(0, 10);
+                document.getElementById('cfg-ticker-dtime-time').value = '';
+                document.getElementById('cfg-ticker-dtime-tz').value   = '+00:00';
+            }
+            document.getElementById('cfg-color-row-a').value      = toHex(cfg['color-row-a'], '#e5a800');
+            document.getElementById('cfg-color-row-b').value      = toHex(cfg['color-row-b'], '#283dd8');
+            document.getElementById('cfg-spacing-vertical').value  = cfg['spacing-vertical'] || '30';
+        });
+}
+
+function toHex(val, fallback) {
+    if (!val) return fallback;
+    val = val.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) return val;
+    if (/^#[0-9a-fA-F]{3}$/.test(val)) {
+        var r=val[1]+val[1], g=val[2]+val[2], b=val[3]+val[3];
+        return '#'+r+g+b;
+    }
+    return fallback;
+}
+
+function saveConfig() {
+    var date = document.getElementById('cfg-ticker-dtime-date').value;
+    var time = document.getElementById('cfg-ticker-dtime-time').value;
+    var tz   = document.getElementById('cfg-ticker-dtime-tz').value.trim() || '+00:00';
+    var dtime = (date && time) ? (date + 'T' + time + ':00' + tz) : '';
+
+    var payload = {
+        'heading':                  document.getElementById('cfg-heading').value,
+        'ticker-primary-heading':   document.getElementById('cfg-ticker-primary-heading').value,
+        'ticker-primary-background':document.getElementById('cfg-ticker-primary-background').value,
+        'ticker-color-heading':     document.getElementById('cfg-ticker-color-heading').value,
+        'ticker-color-countdown':   document.getElementById('cfg-ticker-color-countdown').value,
+        'ticker-color-description': document.getElementById('cfg-ticker-color-description').value,
+        'ticker-primary-dtime':     dtime,
+        'color-row-a':              document.getElementById('cfg-color-row-a').value,
+        'color-row-b':              document.getElementById('cfg-color-row-b').value,
+        'spacing-vertical':         document.getElementById('cfg-spacing-vertical').value,
+    };
+
+    var errEl = document.getElementById('cfg-error');
+    errEl.style.display = 'none';
+    fetch(API + '/admin-timeline-config.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        var s = document.getElementById('cfg-success');
+        s.style.display = '';
+        setTimeout(function(){ s.style.display = 'none'; }, 2000);
+    });
 }
 
 // Enter key triggers login

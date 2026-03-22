@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feeds Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .feeds-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .feeds-table th, .feeds-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .feeds-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .feeds-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .feeds-table .actions { white-space: nowrap; }
+        .feeds-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .feeds-table .actions button:hover { background: #f0f0f0; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #f8d7da; color: #721c24; }
+        .badge-site { background: #e2e3f1; color: #383d6e; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .form-header button:hover { background: #eee; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 12px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 3px; color: #333; }
+        .form-body input[type=text], .form-body input[type=number], .form-body input[type=time], .form-body select, .form-body textarea {
+            width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body textarea { min-height: 60px; resize: vertical; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .field { flex: 1; }
+
+        .schedule-section { margin-top: 16px; border-top: 1px solid #ddd; padding-top: 12px; }
+        .schedule-section h4 { margin: 0 0 8px; font-size: 0.9rem; }
+        .schedule-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 0.85rem; }
+        .schedule-row select, .schedule-row input { padding: 5px 8px; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; }
+        .schedule-row .remove-sched { background: none; border: none; color: #c00; cursor: pointer; font-size: 1.1rem; padding: 0 4px; }
+        .add-sched-btn { font-size: 0.82rem; color: #3498db; cursor: pointer; background: none; border: none; padding: 4px 0; }
+        .add-sched-btn:hover { text-decoration: underline; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .feed-count { font-size: 0.85rem; color: #666; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab active">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <span id="feed-count" class="feed-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="openForm()">+ Add Feed</button>
+    </div>
+
+    <table class="feeds-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Site</th>
+                <th>Type</th>
+                <th>Page</th>
+                <th>Filters (+)</th>
+                <th>Per Load</th>
+                <th>Paging</th>
+                <th>Schedule</th>
+                <th>Last Run</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="feeds-body"></tbody>
+    </table>
+</div>
+
+<!-- Edit Form -->
+<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Add Feed</h3>
+            <button onclick="closeForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="form-row">
+                <div class="field"><label>Name</label><input type="text" id="f-name"></div>
+                <div class="field"><label>Sort</label><input type="number" id="f-sort" style="width:80px"></div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>Site</label>
+                    <select id="f-site-code">
+                        <option value="YouTube">YouTube</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="Rumble">Rumble</option>
+                        <option value="Instagram">Instagram</option>
+                        <option value="TikTok">TikTok</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="field"><label>Type</label>
+                    <select id="f-type-code">
+                        <option value="channel">Channel</option>
+                        <option value="playlist">Playlist</option>
+                        <option value="shorts">Shorts</option>
+                        <option value="video">Video</option>
+                        <option value="post">Post</option>
+                        <option value="reel">Reel</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field"><label>Site ID (channel, playlist, page ID)</label><input type="text" id="f-site-id"></div>
+            <div class="field"><label>API Key Env Var</label><input type="text" id="f-site-api" placeholder="e.g. YOUTUBE_API_KEY"></div>
+            <div class="form-row">
+                <div class="field"><label>API Endpoint</label><input type="text" id="f-api-endpoint"></div>
+                <div class="field"><label>Page URL</label><input type="text" id="f-page-url"></div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>DB Table</label><input type="text" id="f-db-table"></div>
+                <div class="field"><label>Thumb Dir</label><input type="text" id="f-thumb-dir"></div>
+            </div>
+            <div class="field"><label>Include Filters (+)</label><textarea id="f-filter-pos" placeholder="Comma-separated: #Invite, #YadaYah"></textarea></div>
+            <div class="field"><label>Exclude Filters (-)</label><textarea id="f-filter-neg" placeholder="Comma-separated: Private, Deleted video"></textarea></div>
+            <div class="form-row">
+                <div class="field"><label>Items Per Load</label><input type="number" id="f-per-page" placeholder="0 = unlimited"></div>
+                <div class="field"><label>Paging Style</label>
+                    <select id="f-paging-code">
+                        <option value="none">None</option>
+                        <option value="auto">Auto (infinite scroll)</option>
+                        <option value="load_more">Load More (button)</option>
+                        <option value="page_numbers">Page Numbers</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label><input type="checkbox" id="f-active" checked> Active</label>
+            </div>
+
+            <div class="schedule-section">
+                <h4>Schedule</h4>
+                <div id="schedules-container"></div>
+                <button class="add-sched-btn" onclick="addScheduleRow()">+ Add Schedule</button>
+            </div>
+
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveFeed()">Save</button>
+                <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var feeds = [];
+var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadFeeds();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadFeeds();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadFeeds() {
+    fetch(API + '/admin-feeds.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            feeds = data;
+            renderFeeds();
+        });
+}
+
+function renderFeeds() {
+    var body = document.getElementById('feeds-body');
+    var html = '';
+    for (var i = 0; i < feeds.length; i++) {
+        var f = feeds[i];
+        var statusBadge = f.feed_active_flag ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>';
+        var schedText = f.schedule_count > 0 ? f.schedule_count + ' rule(s)' : '<span style="color:#999">None</span>';
+        var lastRun = f.last_run ? new Date(f.last_run).toLocaleDateString() + ' ' + new Date(f.last_run).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '-';
+        html += '<tr onclick="editFeed(' + f.feed_key + ')">'
+            + '<td><strong>' + esc(f.feed_name) + '</strong></td>'
+            + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
+            + '<td>' + esc(f.feed_type_code || '') + '</td>'
+            + '<td>' + esc(f.feed_page_url || '') + '</td>'
+            + '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.feed_filter_positive || '') + '</td>'
+            + '<td>' + (f.feed_per_page || 'All') + '</td>'
+            + '<td>' + esc(f.feed_paging_code || 'none') + '</td>'
+            + '<td>' + schedText + '</td>'
+            + '<td style="font-size:0.8rem">' + lastRun + '</td>'
+            + '<td>' + statusBadge + '</td>'
+            + '<td class="actions" onclick="event.stopPropagation()">'
+            + '<button onclick="editFeed(' + f.feed_key + ')">Edit</button>'
+            + '<button onclick="syncFeed(' + f.feed_key + ')" style="background:#e8f4fd">Sync</button>'
+            + '<button onclick="deleteFeed(' + f.feed_key + ',\'' + esc(f.feed_name) + '\')">Del</button>'
+            + '</td></tr>';
+    }
+    body.innerHTML = html;
+    document.getElementById('feed-count').textContent = feeds.length + ' feed(s)';
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function openForm(data) {
+    var d = data || {};
+    document.getElementById('form-title').textContent = d.feed_key ? 'Edit Feed' : 'Add Feed';
+    document.getElementById('f-key').value = d.feed_key || '';
+    document.getElementById('f-name').value = d.feed_name || '';
+    document.getElementById('f-sort').value = d.feed_sort || 0;
+    document.getElementById('f-site-code').value = d.feed_site_code || 'YouTube';
+    document.getElementById('f-type-code').value = d.feed_type_code || 'channel';
+    document.getElementById('f-site-id').value = d.feed_site_id || '';
+    document.getElementById('f-site-api').value = d.feed_site_api || '';
+    document.getElementById('f-api-endpoint').value = d.feed_api_endpoint || '';
+    document.getElementById('f-page-url').value = d.feed_page_url || '';
+    document.getElementById('f-db-table').value = d.feed_db_table || '';
+    document.getElementById('f-thumb-dir').value = d.feed_thumb_dir || '';
+    document.getElementById('f-filter-pos').value = d.feed_filter_positive || '';
+    document.getElementById('f-filter-neg').value = d.feed_filter_negative || '';
+    document.getElementById('f-per-page').value = d.feed_per_page || 0;
+    document.getElementById('f-paging-code').value = d.feed_paging_code || 'none';
+    document.getElementById('f-active').checked = d.feed_active_flag !== false;
+
+    var container = document.getElementById('schedules-container');
+    container.innerHTML = '';
+    if (d.schedules && d.schedules.length) {
+        for (var i = 0; i < d.schedules.length; i++) {
+            addScheduleRow(d.schedules[i]);
+        }
+    }
+
+    document.getElementById('form-overlay').classList.add('open');
+}
+
+function closeForm() {
+    document.getElementById('form-overlay').classList.remove('open');
+}
+
+function addScheduleRow(data) {
+    var d = data || {};
+    var container = document.getElementById('schedules-container');
+    var row = document.createElement('div');
+    row.className = 'schedule-row';
+
+    var daySelect = '<select class="sched-day"><option value="">Every day</option>';
+    for (var i = 0; i < 7; i++) {
+        daySelect += '<option value="' + i + '"' + (d.schedule_day_of_week == i ? ' selected' : '') + '>' + DAYS[i] + '</option>';
+    }
+    daySelect += '</select>';
+
+    row.innerHTML = daySelect
+        + ' <input type="time" class="sched-time" value="' + (d.schedule_time || '').substring(0,5) + '" style="width:110px" placeholder="Time">'
+        + ' or every <input type="number" class="sched-interval" value="' + (d.schedule_interval_minutes || '') + '" style="width:70px" placeholder="min"> min'
+        + ' <label style="font-size:0.8rem"><input type="checkbox" class="sched-active"' + (d.schedule_active_flag !== false ? ' checked' : '') + '> On</label>'
+        + ' <button class="remove-sched" onclick="this.parentElement.remove()">&times;</button>';
+
+    container.appendChild(row);
+}
+
+function collectSchedules() {
+    var rows = document.querySelectorAll('#schedules-container .schedule-row');
+    var schedules = [];
+    for (var i = 0; i < rows.length; i++) {
+        var day = rows[i].querySelector('.sched-day').value;
+        var time = rows[i].querySelector('.sched-time').value;
+        var interval = rows[i].querySelector('.sched-interval').value;
+        var active = rows[i].querySelector('.sched-active').checked;
+        schedules.push({
+            schedule_day_of_week: day === '' ? null : parseInt(day),
+            schedule_time: time || null,
+            schedule_interval_minutes: interval ? parseInt(interval) : null,
+            schedule_active_flag: active
+        });
+    }
+    return schedules;
+}
+
+function saveFeed() {
+    var payload = {
+        feed_key: document.getElementById('f-key').value || null,
+        feed_name: document.getElementById('f-name').value,
+        feed_site_code: document.getElementById('f-site-code').value,
+        feed_type_code: document.getElementById('f-type-code').value,
+        feed_site_id: document.getElementById('f-site-id').value,
+        feed_site_api: document.getElementById('f-site-api').value,
+        feed_api_endpoint: document.getElementById('f-api-endpoint').value,
+        feed_page_url: document.getElementById('f-page-url').value,
+        feed_db_table: document.getElementById('f-db-table').value,
+        feed_thumb_dir: document.getElementById('f-thumb-dir').value,
+        feed_filter_positive: document.getElementById('f-filter-pos').value,
+        feed_filter_negative: document.getElementById('f-filter-neg').value,
+        feed_per_page: parseInt(document.getElementById('f-per-page').value) || 0,
+        feed_paging_code: document.getElementById('f-paging-code').value,
+        feed_active_flag: document.getElementById('f-active').checked,
+        feed_sort: parseInt(document.getElementById('f-sort').value) || 0,
+        schedules: collectSchedules()
+    };
+
+    fetch(API + '/admin-feeds.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function() { closeForm(); loadFeeds(); });
+}
+
+function editFeed(key) {
+    fetch(API + '/admin-feeds.php?feed_key=' + key, {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) { openForm(data); });
+}
+
+function deleteFeed(key, name) {
+    if (!confirm('Delete feed "' + name + '"?')) return;
+    fetch(API + '/admin-feeds.php', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({feed_key: key})
+    })
+    .then(function() { loadFeeds(); });
+}
+
+function syncFeed(key) {
+    if (!confirm('Force sync this feed now?')) return;
+    fetch(API + '/admin-feeds.php', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({feed_key: key})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var msg = 'Sync: ' + (data.feed || '');
+        if (data.sync_result) {
+            if (data.sync_result.inserted !== undefined) msg += '\nInserted: ' + data.sync_result.inserted;
+            if (data.sync_result.updated !== undefined) msg += '\nUpdated: ' + data.sync_result.updated;
+        }
+        if (data.cache_cleared !== undefined) msg += '\nCache files cleared: ' + data.cache_cleared;
+        if (data.error) msg += '\nError: ' + data.error;
+        alert(msg);
+        loadFeeds();
+    })
+    .catch(function(err) { alert('Sync failed: ' + err.message); });
+}
+
+// Init
+checkAuth();
+</script>
+</body>
+</html>

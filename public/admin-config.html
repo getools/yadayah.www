@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Config - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .config-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .config-table th, .config-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .config-table thead th { background: #f8f9fa; font-weight: 600; color: #555; }
+        .config-table tbody tr:hover { background: #eef6fc; }
+        .config-table td.val-cell { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #555; font-family: monospace; font-size: 0.8rem; }
+        .group-header td { background: #f0f4f8; font-weight: 700; font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 10px; }
+        .form-card { }
+        .field textarea { width: 100%; min-height: 120px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: monospace; resize: vertical; box-sizing: border-box; }
+        .field textarea:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.2); }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Config</h1>
+
+    <div id="list-view">
+        <div style="margin-bottom:16px;">
+            <button class="btn btn-primary" onclick="showForm()">New Setting</button>
+        </div>
+        <div class="card">
+            <table class="config-table">
+                <thead>
+                    <tr><th>Group</th><th>Code</th><th>Type</th><th>Sort</th><th>Value</th><th></th></tr>
+                </thead>
+                <tbody id="settings-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="form-view" style="display:none">
+        <div class="card form-card">
+            <h2 id="form-title">New Setting</h2>
+            <div id="form-error" class="error-messages" style="display:none"></div>
+            <div class="field">
+                <label for="f-group">Group</label>
+                <input type="text" id="f-group" placeholder="e.g. site, feature, api">
+            </div>
+            <div class="field">
+                <label for="f-code">Code</label>
+                <input type="text" id="f-code" placeholder="e.g. site_title, enable_comments">
+            </div>
+            <div class="field">
+                <label for="f-vcode">Type</label>
+                <input type="text" id="f-vcode" placeholder="text, boolean, number, json" value="text">
+            </div>
+            <div class="field">
+                <label for="f-sort">Sort</label>
+                <input type="number" id="f-sort" value="0" style="width:100px">
+            </div>
+            <div class="field">
+                <label for="f-value">Value</label>
+                <textarea id="f-value" placeholder="Setting value"></textarea>
+            </div>
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="saveSetting()">Save</button>
+                <button class="btn btn-secondary" onclick="cancelForm()">Cancel</button>
+                <button class="btn btn-danger" id="btn-delete" style="display:none;margin-left:auto" onclick="deleteSetting()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var editingKey = null;
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadList();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadList();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
+        location.reload();
+    });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadList() {
+    fetch(API + '/admin-config-settings.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
+        var tbody = document.getElementById('settings-list');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic">No config settings yet</td></tr>';
+            return;
+        }
+        var html = '';
+        var lastGroup = null;
+        rows.forEach(function(r) {
+            if (r.setting_group_code !== lastGroup) {
+                lastGroup = r.setting_group_code;
+                html += '<tr class="group-header"><td colspan="6">' + esc(r.setting_group_code || '(no group)') + '</td></tr>';
+            }
+            var shortVal = (r.setting_value || '').substring(0, 80).replace(/\n/g, ' ');
+            html += '<tr>'
+                + '<td>' + esc(r.setting_group_code) + '</td>'
+                + '<td><strong>' + esc(r.setting_code) + '</strong></td>'
+                + '<td>' + esc(r.setting_value_code) + '</td>'
+                + '<td>' + r.setting_sort + '</td>'
+                + '<td class="val-cell" title="' + escAttr(r.setting_value || '') + '">' + esc(shortVal) + '</td>'
+                + '<td><button class="btn btn-sm btn-secondary" onclick="editSetting(' + r.setting_key + ')">Edit</button></td>'
+                + '</tr>';
+        });
+        tbody.innerHTML = html;
+    });
+}
+
+function showForm(record) {
+    editingKey = record ? record.setting_key : null;
+    document.getElementById('form-title').textContent = editingKey ? 'Edit Setting' : 'New Setting';
+    document.getElementById('f-group').value = record ? (record.setting_group_code || '') : '';
+    document.getElementById('f-code').value = record ? record.setting_code : '';
+    document.getElementById('f-vcode').value = record ? record.setting_value_code : 'text';
+    document.getElementById('f-sort').value = record ? record.setting_sort : 0;
+    document.getElementById('f-value').value = record ? (record.setting_value || '') : '';
+    document.getElementById('btn-delete').style.display = editingKey ? '' : 'none';
+    document.getElementById('form-error').style.display = 'none';
+    document.getElementById('list-view').style.display = 'none';
+    document.getElementById('form-view').style.display = '';
+}
+
+function editSetting(key) {
+    fetch(API + '/admin-config-settings.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        showForm(d);
+    });
+}
+
+function saveSetting() {
+    var errEl = document.getElementById('form-error');
+    errEl.style.display = 'none';
+    var body = {
+        setting_group_code: document.getElementById('f-group').value.trim(),
+        setting_code: document.getElementById('f-code').value.trim(),
+        setting_value_code: document.getElementById('f-vcode').value.trim() || 'text',
+        setting_sort: parseInt(document.getElementById('f-sort').value) || 0,
+        setting_value: document.getElementById('f-value').value,
+    };
+    if (!body.setting_code) { errEl.textContent = 'Code is required'; errEl.style.display = ''; return; }
+    var url = API + '/admin-config-settings.php';
+    var method = 'POST';
+    if (editingKey) { url += '?key=' + editingKey; method = 'PUT'; }
+    fetch(url, {method:method, credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+        .then(function(r){return r.json();}).then(function(d) {
+            if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+            cancelForm();
+        });
+}
+
+function deleteSetting() {
+    if (!editingKey || !confirm('Delete this setting?')) return;
+    fetch(API + '/admin-config-settings.php?key=' + editingKey, {method:'DELETE', credentials:'include'})
+        .then(function(r){return r.json();}).then(function() { cancelForm(); });
+}
+
+function cancelForm() {
+    document.getElementById('form-view').style.display = 'none';
+    document.getElementById('list-view').style.display = '';
+    loadList();
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function escAttr(s) {
+    return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

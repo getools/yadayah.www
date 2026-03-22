@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Do You Yada?</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Maven Pro', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: var(--doyou-bg, #373737);
+            color: #fff;
+        }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 0;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+
+        /* ── Sub-toolbar ── */
+        .sub-toolbar {
+            display: flex; justify-content: center; align-items: center;
+            gap: 30px; padding: 8px 0;
+            background: var(--toolbar-bg, #0A333A);
+        }
+        .sub-toolbar a {
+            text-decoration: none; color: var(--toolbar-text, #8ED0EC);
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 0.95em; font-weight: 700;
+        }
+        .sub-toolbar a:hover { color: #fff; }
+        .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+
+        /* Content */
+        .content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 24px 60px;
+        }
+        .content h1 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: var(--heading-color, #E5C86C);
+            text-align: center;
+            margin: 0 0 30px;
+        }
+
+        /* Video grid */
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(var(--grid-cols, 3), 1fr);
+            column-gap: var(--grid-gap-h, 16px);
+            row-gap: var(--grid-gap-v, 16px);
+        }
+        .video-card {
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.07);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .video-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .video-thumb {
+            position: relative;
+            width: 100%;
+            background: #000;
+        }
+        .video-thumb img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .play-btn {
+            position: absolute;
+            bottom: 8px; right: 8px;
+            width: 39px; height: 39px;
+            background: rgba(0,0,0,0.35);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            transition: background 0.2s;
+        }
+        .video-card:hover .play-btn { background: rgba(20,27,56,0.5); }
+        .play-btn svg {
+            width: 24px; height: 24px;
+            fill: #fff;
+        }
+        .video-title {
+            padding: 10px 12px 2px;
+            font-size: var(--label-size, 0.85rem);
+            font-weight: 500;
+            color: var(--label-color, rgba(255,255,255,0.85));
+            line-height: 1.3;
+            max-height: 4rem;
+            overflow: hidden;
+        }
+        .video-date {
+            padding: 0 12px 10px;
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.45);
+        }
+
+        /* Loading / status */
+        .grid-status {
+            text-align: center;
+            padding: 40px 20px;
+            font-size: 1rem;
+            color: rgba(255,255,255,0.5);
+        }
+        .grid-status.error { color: #e57373; }
+        .spinner {
+            display: inline-block;
+            width: 32px; height: 32px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #E5C86C;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Lightbox */
+        .lightbox-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.92);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        .lightbox-overlay.active { display: flex; }
+        .lightbox-container {
+            position: relative;
+            width: 90%;
+            max-width: 800px;
+        }
+        .lightbox-video {
+            width: 100%;
+            aspect-ratio: 9/16;
+            background: #000;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .lightbox-video iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .lightbox-close {
+            position: absolute;
+            top: -40px; right: 0;
+            color: #fff;
+            font-size: 2rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 4px 10px;
+            line-height: 1;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        .lightbox-close:hover { opacity: 1; color: #E5C86C; }
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #fff;
+            font-size: 2.5rem;
+            cursor: pointer;
+            background: rgba(0,0,0,0.5);
+            border: none;
+            border-radius: 50%;
+            width: 48px; height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.2s, background 0.2s;
+        }
+        .lightbox-nav:hover { opacity: 1; background: rgba(0,0,0,0.8); }
+        .lightbox-prev { left: -60px; }
+        .lightbox-next { right: -60px; }
+        .lightbox-caption {
+            text-align: center;
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+            margin-top: 12px;
+            line-height: 1.4;
+        }
+        @media (max-width: 1024px) {
+            .lightbox-prev { left: 8px; }
+            .lightbox-next { right: 8px; }
+        }
+
+        /* Footer */
+        footer {
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        footer .footer-col { min-width: auto; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
+        .footer-links-3col {
+            grid-template-columns: auto auto auto;
+        }
+        footer .footer-links-1col {
+            grid-template-columns: 1fr;
+        }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+<script src="/js/site-nav.js"></script>
+</head>
+<body>
+    <header>
+        <video class="header-video" autoplay muted loop playsinline>
+        </video>
+        <div class="header-inner">
+            <div class="header-logos">
+                <a href="/"><img src="/images/yy-logo-80x90.png" alt=""></a>
+            </div>
+            <nav>
+                <div class="nav-row">
+                    <a href="books">Books</a>
+                    <a href="blog">Blog</a>
+                    <a href="/media">Media</a>
+                </div>
+                <div class="nav-row">
+                    <a href="/translations">Translations</a>
+                    <a href="resources">Resources</a>
+                    <a href="Craig_Winn">Winn</a>
+                    <a href="/timeline">Timeline</a>
+                    <a href="ask">Ask</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <div class="sub-toolbar">
+    <a href="vlog">Vlog</a>
+    <a href="/music">Music</a>
+    <a href="invite">Invite</a>
+    <a href="/DoYouYada" class="active">DoYou?</a>
+    <a href="shorts">Shorts</a>
+</div>
+
+    <div class="content">
+        <h1 id="doyou-heading">Do You Yada?</h1>
+        <div id="video-grid" class="video-grid"></div>
+        <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
+        <div id="scroll-sentinel" style="height:1px;"></div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox-overlay" onclick="if(event.target===this)closeLightbox()">
+        <div class="lightbox-container">
+            <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+            <button class="lightbox-nav lightbox-prev" onclick="navLightbox(-1)">&#8249;</button>
+            <button class="lightbox-nav lightbox-next" onclick="navLightbox(1)">&#8250;</button>
+            <div class="lightbox-video">
+                <iframe id="lb-iframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+            </div>
+            <div id="lb-caption" class="lightbox-caption"></div>
+        </div>
+    </div>
+
+    <footer>
+        <video class="footer-video" autoplay muted loop playsinline>
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4 data-config="footer-text-books">Books</h4>
+                <div class="footer-links footer-links-2col">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
+            </div>
+            <div class="footer-col">
+            <h4 data-config="footer-text-links">Links</h4>
+            <div style="display:flex;gap:40px;">
+                <div class="footer-links footer-links-1col">
+                    <a href="/ask">Ask</a>
+                    <a href="/blog">Blog</a>
+                    <a href="/vlog">Vlog</a>
+                    <a href="/media">Media</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/timeline">Timeline</a>
+                    <a href="/translations">Translations</a>
+                    <a href="/glossary">Glossary</a>
+                    <a href="/dss">Dead Sea Scrolls</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/music">Music</a>
+                    <a href="/invite">Invite</a>
+                    <a href="/shorts">Shorts</a>
+                    <a href="/Craig_Winn">Craig Winn</a>
+                </div>
+            </div>
+        </div>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
+
+<script>
+var allVideos = [];
+var currentPage = 0;
+var totalPages = 1;
+var loading = false;
+var lbIndex = -1;
+var DOYOU_RECORDS = 0;
+
+function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function formatDate(d) {
+    if (!d) return '';
+    var dt = new Date(d);
+    if (isNaN(dt)) return '';
+    return dt.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+
+function renderCard(v, idx) {
+    var thumb = v.feed_thumbnail || '';
+    var title = v.feed_title || 'Do You Yada?';
+    var date = formatDate(v.feed_create);
+    var postId = v.feed_video_id || '';
+    var fbUrl = 'https://www.facebook.com/' + postId.replace('_', '/posts/');
+    return '<a class="video-card" href="' + escHtml(fbUrl) + '" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">'
+        + '<div class="video-thumb">'
+        + '<img src="' + escHtml(thumb) + '" alt="' + escHtml(title) + '" loading="lazy">'
+        + '</div>'
+        + '<div class="video-title">' + escHtml(title) + '</div>'
+        + (date ? '<div class="video-date">' + date + '</div>' : '')
+        + '</a>';
+}
+
+function loadPage() {
+    if (loading || currentPage >= totalPages) return;
+    loading = true;
+    var nextPage = currentPage + 1;
+    var status = document.getElementById('grid-status');
+    status.innerHTML = '<div class="spinner"></div>';
+    status.className = 'grid-status';
+
+    var url = DOYOU_RECORDS > 0 ? '/api/doyouyada-videos.php?limit=' + DOYOU_RECORDS : '/api/doyouyada-videos.php?page=' + nextPage;
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var grid = document.getElementById('video-grid');
+            var html = '';
+            for (var i = 0; i < data.videos.length; i++) {
+                var globalIdx = allVideos.length;
+                allVideos.push(data.videos[i]);
+                html += renderCard(data.videos[i], globalIdx);
+            }
+            grid.insertAdjacentHTML('beforeend', html);
+            currentPage = data.page;
+            totalPages = data.total_pages;
+            loading = false;
+
+            if (currentPage >= totalPages) {
+                status.textContent = data.total === 0 ? 'No videos found.' : '';
+            } else {
+                status.innerHTML = '';
+            }
+        })
+        .catch(function(err) {
+            document.getElementById('grid-status').textContent = 'Error loading videos.';
+            document.getElementById('grid-status').className = 'grid-status error';
+            loading = false;
+        });
+}
+
+// Infinite scroll via IntersectionObserver
+var sentinel = document.getElementById('scroll-sentinel');
+var observer = new IntersectionObserver(function(entries) {
+    if (entries[0].isIntersecting && !loading) {
+        loadPage();
+    }
+}, { rootMargin: '200px' });
+observer.observe(sentinel);
+
+// Lightbox - show full image for photo posts
+function openLightbox(idx) {
+    lbIndex = idx;
+    var v = allVideos[idx];
+    if (!v) return;
+    var iframe = document.getElementById('lb-iframe');
+    iframe.style.display = 'none';
+    var lbImg = document.getElementById('lb-image');
+    if (!lbImg) {
+        lbImg = document.createElement('img');
+        lbImg.id = 'lb-image';
+        lbImg.style.cssText = 'max-width:100%;max-height:80vh;border-radius:8px;';
+        iframe.parentNode.insertBefore(lbImg, iframe);
+    }
+    lbImg.src = '/' + (v.feed_thumbnail || '');
+    lbImg.style.display = '';
+    document.getElementById('lb-caption').textContent = v.feed_title || '';
+    document.getElementById('lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+    var lbImg = document.getElementById('lb-image');
+    if (lbImg) lbImg.src = '';
+    document.getElementById('lb-iframe').src = '';
+    document.body.style.overflow = '';
+}
+
+function navLightbox(dir) {
+    var next = lbIndex + dir;
+    if (next < 0 || next >= allVideos.length) return;
+    openLightbox(next);
+}
+
+document.addEventListener('keydown', function(e) {
+    if (!document.getElementById('lightbox').classList.contains('active')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') navLightbox(-1);
+    if (e.key === 'ArrowRight') navLightbox(1);
+});
+
+// Swipe support
+(function() {
+    var lb = document.getElementById('lightbox');
+    var startX = 0;
+    lb.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; });
+    lb.addEventListener('touchend', function(e) {
+        var diff = e.changedTouches[0].clientX - startX;
+        if (Math.abs(diff) > 50) {
+            navLightbox(diff > 0 ? -1 : 1);
+        }
+    });
+})();
+
+// Load doyouyada config then start
+(function(){fetch('/api/page-doyouyada-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['background'])r.style.setProperty('--doyou-bg',cfg['background']);
+    if(cfg['heading-color'])r.style.setProperty('--heading-color',cfg['heading-color']);
+    if(cfg['label-color'])r.style.setProperty('--label-color',cfg['label-color']);
+    if(cfg['label-size'])r.style.setProperty('--label-size',cfg['label-size']+'em');
+    if(cfg['columns'])r.style.setProperty('--grid-cols',cfg['columns']);
+    if(cfg['spacing-horizontal'])r.style.setProperty('--grid-gap-h',cfg['spacing-horizontal']+'px');
+    if(cfg['spacing-vertical'])r.style.setProperty('--grid-gap-v',cfg['spacing-vertical']+'px');
+    if(cfg['heading'])document.getElementById('doyou-heading').textContent=cfg['heading'];
+    DOYOU_RECORDS=parseInt(cfg['records'])||0;
+    loadPage();
+}).catch(function(){loadPage();});})();
+</script>
+<script src="/js/bg-video.js"></script>
+<script>
+(function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
+    if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
+    document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+});})();
+</script>
+</body>
+</html>

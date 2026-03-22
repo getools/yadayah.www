@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Books – Yada Yah</title>
-    <link rel="icon" href="https://yadayah.com/wp-content/uploads/2026/01/cropped-YY.logo_.manowrah.00512x00512-32x32.png" sizes="32x32" />
+    <title>Books</title>
+    <link rel="icon" href="/images/favicon-32x32.png" sizes="32x32" />
     <link rel="preload" href="fonts/YadaTowrah-Times.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,8 +23,8 @@
         /* ── Header ── */
         header {
             display: flex; flex-direction: column; align-items: center;
-            padding: 10px 0 5px;
-            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            padding: 0;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
             position: relative; overflow: hidden;
         }
         header .header-video {
@@ -42,7 +42,7 @@
         header .header-logos img { width: auto; height: auto; }
         header nav {
             display: flex; flex-direction: column; align-items: center;
-            gap: 0; padding: 10px 0;
+            gap: 0; padding: 0;
         }
         header nav .nav-row {
             display: flex; flex-direction: row; justify-content: center;
@@ -55,10 +55,22 @@
         }
         header nav a:hover { color: #fff; }
         header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
-        @media (max-width: 767px) {
-            header nav a.hide-narrow { display: none; }
-        }
 
+
+
+        /* ── Sub-toolbar ── */
+        .sub-toolbar {
+            display: flex; justify-content: center; align-items: center;
+            gap: 30px; padding: 8px 0;
+            background: var(--toolbar-bg, #0A333A);
+        }
+        .sub-toolbar a {
+            text-decoration: none; color: var(--toolbar-text, #8ED0EC);
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 0.95em; font-weight: 700;
+        }
+        .sub-toolbar a:hover { color: #fff; }
+        .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
         /* ── Main Content ── */
         .content { max-width: 1024px; margin: 0 auto; padding: 0 20px 40px; }
 
@@ -95,8 +107,10 @@
 
         /* ── Footer ── */
         footer {
-            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
-            position: relative; overflow: hidden; padding: 20px;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
         }
         footer .footer-video {
             position: absolute; top: 50%; left: 50%;
@@ -106,40 +120,44 @@
         }
         footer .footer-inner {
             position: relative; z-index: 1;
-            max-width: 1140px; margin: 0 auto;
-            display: flex; justify-content: space-evenly; flex-wrap: wrap; gap: 20px;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
         }
-        .footer-section { flex: 1; min-width: 200px; }
-        .footer-divider-title {
-            display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+        footer .footer-col { min-width: auto; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
         }
-        .footer-divider-title hr { flex: 1; border: none; border-top: 1px solid #E6C66C; }
-        .footer-divider-title h4 {
-            font-family: "Roboto Slab", serif; font-weight: 400;
-            color: #E6C66C; font-size: 1em; margin: 0; white-space: nowrap;
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
         }
-        .footer-links {
-            display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 20px;
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
         }
-        .footer-links a {
-            color: #E6C66C; font-size: 0.9em; font-weight: 400;
+        footer .footer-links-1col {
+            grid-template-columns: 1fr;
         }
-        .footer-links a:hover { text-decoration: underline; }
-        .footer-links-3col { grid-template-columns: auto auto auto; }
-        .footer-center {
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center; gap: 6px; min-width: 120px;
+        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
+        .footer-links-3col {
+            grid-template-columns: auto auto auto;
         }
-        .footer-center img { width: auto; height: auto; }
-        .footer-copyright {
-            display: flex; gap: 4px; align-items: baseline;
-        }
-        .footer-copyright span {
-            font-family: "Julius Sans One", sans-serif;
-            font-size: 0.4em; font-weight: 700; color: #E6C66C;
-        }
-        .footer-copyright span.year {
-            font-family: "Nunito Sans", sans-serif; font-weight: 400;
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
         }
 
         /* ── Search ── */
@@ -233,47 +251,50 @@
 
         /* ── Responsive ── */
         @media (max-width: 1024px) {
-            .hide-narrow { display: none !important; }
+
         }
         @media (max-width: 767px) {
             .hide-narrower { display: none !important; }
             .book-grid { grid-template-columns: 1fr; }
-            .footer-center { display: none; }
             .search-row input[type="text"] { min-width: 100%; }
             .search-row { gap: 8px; }
             .result-meta { flex-direction: column; }
         }
     </style>
+<script src="/js/site-nav.js"></script>
 </head>
 <body>
 
 <header>
     <video class="header-video" autoplay muted loop playsinline>
-        <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
     </video>
     <div class="header-inner">
         <div class="header-logos">
-            <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah"></a>
+            <a href="/"><img src="/images/yy-logo-80x90.png" alt="Yada Yah"></a>
         </div>
         <nav>
             <div class="nav-row">
-                <a href="books" class="active">Books</a>
-                <a href="vlog">Vlog</a>
-                <a href="blog">Blog</a>
-                <a href="/media" class="hide-narrow">Media</a>
-                <a href="/music" class="hide-narrow">Music</a>
-                <a href="invite" class="hide-narrow">Invite</a>
-            </div>
+                <a href="books" class="active">Books</a>                <a href="blog">Blog</a>
+                <a href="/media">Media</a>            </div>
             <div class="nav-row">
-                <a href="/">Translations</a>
+                <a href="/translations">Translations</a>
                 <a href="resources">Resources</a>
-                <a href="/Craig_Winn" class="hide-narrow">Winn</a>
-                <a href="/timeline" class="hide-narrow">Timeline</a>
+                <a href="/Craig_Winn">Winn</a>
+                <a href="/timeline">Timeline</a>
                 <a href="ask">Ask</a>
             </div>
         </nav>
     </div>
 </header>
+
+<div class="sub-toolbar">
+    <a href="vlog">Vlog</a>
+    <a href="/music">Music</a>
+    <a href="invite">Invite</a>
+    <a href="/DoYouYada">DoYou?</a>
+    <a href="shorts">Shorts</a>
+</div>
+
 
 <div class="search-container">
     <form id="search-form" onsubmit="doSearch(1); return false;">
@@ -315,7 +336,7 @@
 </div>
 <div class="book-grid">
     <div class="book-card">
-        <a class="cover-link" href="https://book.yadayah.com/books/iuef/" target="_blank"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s01v01-245x300.jpg" alt="Dabarym - Words" loading="lazy"></a>
+        <a class="cover-link" href="https://book.yadayah.com/books/iuef/" target="_blank"><img src="/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s01v01-245x300.jpg" alt="Dabarym - Words" loading="lazy"></a>
         <div class="book-icons">
             <a href="https://book.yadayah.com/books/iuef/" target="_blank" title="Read Online"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.13 20"><path d="M26.9,5.11l-11.09,6.38s-.54.33-.75.33c-.32.11-.75,0-1.29-.22l-8.58-2.86c-.11,0-2.15-.44-2.9,1.32-.54,1.87.86,2.53,1.29,2.75v2.31c-.97-.33-1.72-.88-2.15-1.1-.54-.33-1.07-.99-1.29-1.98-.43-1.65.11-3.52,1.29-4.73.54-.55.97-.88,1.4-1.1C5.19,4.78,12.38.27,12.38.27c.64-.44,1.61-.22,1.72-.22l12.7,3.96c.43.22.43.88.11,1.1Z"/><path d="M5,11.55v7.63c0,.33.43.55.75.33l1.21-1.51c.21-.11.43-.11.54,0l1.75,1.84c.32.33.75.11.75-.33v-6.71c0-.22-.11-.33-.32-.44l-4.03-1.36c-.32,0-.64.22-.64.55Z"/><path d="M15.71,18.08l10.41-6.16c.5-.3.68-.93.43-1.44-.29-.58-1.02-.79-1.57-.45l-9.21,5.69c-.49.3-1.08.38-1.63.21l-3.14-.94v2.5l3.2.8c.51.13,1.05.05,1.5-.22Z"/></svg></a>
             <a href="https://www.amazon.com/dp/B09KFCQKCY" target="_blank" title="Amazon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 435.2 435.2"><path d="M244.6,148.6c-62,2-121,19-121,81,0,43,26,64,61,64,31,0,51-12,68-30,8,11,10,16,24,27,3,2,8,2,10-1l31-27c4-3,2-8,0-10-7-11-15-19-15-39v-64c0-27,2-52-18-70-17-16-38-20-62-21-53-1-88,28-93,62-1,6,4,9,7,9l37,5c6,1,9-4,10-8,6-22,29-28,43-23,20,6,18,29,18,45ZM208.6,253.6c-15,0-25-13-25-30,1-36,29-42,61-42v18c0,32-17,54-36,54ZM376.6,359.6c13-11,26-38,25-57,0-7-1-8-8-10-13-4-46-5-62,10-3,3-2,5,1,5,11-2,45-6,50,2,4,7-8,35-12,47-2,5,2,6,6,3ZM19.6,303.6c96,91,247,94,345,25,7-4,0-12-6-9-108.77,46-232.83,38.22-335-21-4-3-8,2-4,5Z"/></svg></a>
@@ -323,7 +344,7 @@
         </div>
     </div>
     <div class="book-card">
-        <a class="cover-link" href="https://book.yadayah.com/books/xvpn/" target="_blank"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s01v02-245x300.jpg" alt="Mitswah - Instructions" loading="lazy"></a>
+        <a class="cover-link" href="https://book.yadayah.com/books/xvpn/" target="_blank"><img src="/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s01v02-245x300.jpg" alt="Mitswah - Instructions" loading="lazy"></a>
         <div class="book-icons">
             <a href="https://book.yadayah.com/books/xvpn/" target="_blank" title="Read Online"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.13 20"><path d="M26.9,5.11l-11.09,6.38s-.54.33-.75.33c-.32.11-.75,0-1.29-.22l-8.58-2.86c-.11,0-2.15-.44-2.9,1.32-.54,1.87.86,2.53,1.29,2.75v2.31c-.97-.33-1.72-.88-2.15-1.1-.54-.33-1.07-.99-1.29-1.98-.43-1.65.11-3.52,1.29-4.73.54-.55.97-.88,1.4-1.1C5.19,4.78,12.38.27,12.38.27c.64-.44,1.61-.22,1.72-.22l12.7,3.96c.43.22.43.88.11,1.1Z"/><path d="M5,11.55v7.63c0,.33.43.55.75.33l1.21-1.51c.21-.11.43-.11.54,0l1.75,1.84c.32.33.75.11.75-.33v-6.71c0-.22-.11-.33-.32-.44l-4.03-1.36c-.32,0-.64.22-.64.55Z"/><path d="M15.71,18.08l10.41-6.16c.5-.3.68-.93.43-1.44-.29-.58-1.02-.79-1.57-.45l-9.21,5.69c-.49.3-1.08.38-1.63.21l-3.14-.94v2.5l3.2.8c.51.13,1.05.05,1.5-.22Z"/></svg></a>
             <a href="https://www.amazon.com/dp/B09PHH8GGZ" target="_blank" title="Amazon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 435.2 435.2"><path d="M244.6,148.6c-62,2-121,19-121,81,0,43,26,64,61,64,31,0,51-12,68-30,8,11,10,16,24,27,3,2,8,2,10-1l31-27c4-3,2-8,0-10-7-11-15-19-15-39v-64c0-27,2-52-18-70-17-16-38-20-62-21-53-1-88,28-93,62-1,6,4,9,7,9l37,5c6,1,9-4,10-8,6-22,29-28,43-23,20,6,18,29,18,45ZM208.6,253.6c-15,0-25-13-25-30,1-36,29-42,61-42v18c0,32-17,54-36,54ZM376.6,359.6c13-11,26-38,25-57,0-7-1-8-8-10-13-4-46-5-62,10-3,3-2,5,1,5,11-2,45-6,50,2,4,7-8,35-12,47-2,5,2,6,6,3ZM19.6,303.6c96,91,247,94,345,25,7-4,0-12-6-9-108.77,46-232.83,38.22-335-21-4-3-8,2-4,5Z"/></svg></a>
@@ -331,7 +352,7 @@
         </div>
     </div>
     <div class="book-card">
-        <a class="cover-link" href="https://book.yadayah.com/books/abzs/" target="_blank"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s01v03-245x300.jpg" alt="Towrah Mizmowr" loading="lazy"></a>
+        <a class="cover-link" href="https://book.yadayah.com/books/abzs/" target="_blank"><img src="/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s01v03-245x300.jpg" alt="Towrah Mizmowr" loading="lazy"></a>
         <div class="book-icons">
             <a href="https://book.yadayah.com/books/abzs/" target="_blank" title="Read Online"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.13 20"><path d="M26.9,5.11l-11.09,6.38s-.54.33-.75.33c-.32.11-.75,0-1.29-.22l-8.58-2.86c-.11,0-2.15-.44-2.9,1.32-.54,1.87.86,2.53,1.29,2.75v2.31c-.97-.33-1.72-.88-2.15-1.1-.54-.33-1.07-.99-1.29-1.98-.43-1.65.11-3.52,1.29-4.73.54-.55.97-.88,1.4-1.1C5.19,4.78,12.38.27,12.38.27c.64-.44,1.61-.22,1.72-.22l12.7,3.96c.43.22.43.88.11,1.1Z"/><path d="M5,11.55v7.63c0,.33.43.55.75.33l1.21-1.51c.21-.11.43-.11.54,0l1.75,1.84c.32.33.75.11.75-.33v-6.71c0-.22-.11-.33-.32-.44l-4.03-1.36c-.32,0-.64.22-.64.55Z"/><path d="M15.71,18.08l10.41-6.16c.5-.3.68-.93.43-1.44-.29-.58-1.02-.79-1.57-.45l-9.21,5.69c-.49.3-1.08.38-1.63.21l-3.14-.94v2.5l3.2.8c.51.13,1.05.05,1.5-.22Z"/></svg></a>
             <a href="https://www.amazon.com/dp/B09VWMGGGT" target="_blank" title="Amazon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 435.2 435.2"><path d="M244.6,148.6c-62,2-121,19-121,81,0,43,26,64,61,64,31,0,51-12,68-30,8,11,10,16,24,27,3,2,8,2,10-1l31-27c4-3,2-8,0-10-7-11-15-19-15-39v-64c0-27,2-52-18-70-17-16-38-20-62-21-53-1-88,28-93,62-1,6,4,9,7,9l37,5c6,1,9-4,10-8,6-22,29-28,43-23,20,6,18,29,18,45ZM208.6,253.6c-15,0-25-13-25-30,1-36,29-42,61-42v18c0,32-17,54-36,54ZM376.6,359.6c13-11,26-38,25-57,0-7-1-8-8-10-13-4-46-5-62,10-3,3-2,5,1,5,11-2,45-6,50,2,4,7-8,35-12,47-2,5,2,6,6,3ZM19.6,303.6c96,91,247,94,345,25,7-4,0-12-6-9-108.77,46-232.83,38.22-335-21-4-3-8,2-4,5Z"/></svg></a>
@@ -407,46 +428,46 @@
 
 <footer>
     <video class="footer-video" autoplay muted loop playsinline>
-        <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
     </video>
     <div class="footer-inner">
-        <div class="footer-section">
-            <div class="footer-divider-title"><hr><h4>Books</h4><hr></div>
-            <div class="footer-links">
-                <a href="#An_Introduction_To_God">An&nbsp;Intro&nbsp;to&nbsp;God</a>
-                <a href="#Babel">Babel</a>
-                <a href="#Yada_Yahowah">Yada&nbsp;Yahowah</a>
-                <a href="#Twistianity">Twistianity</a>
-                <a href="#Observations">Observations</a>
-                <a href="#God_Damn_Religion">God&nbsp;Damn&nbsp;Religion</a>
-                <a href="#Coming_Home">Coming&nbsp;Home</a>
-                <a href="#In_the_Company">In&nbsp;the&nbsp;Company</a>
+        <div class="footer-col">
+            <h4 data-config="footer-text-books">Books</h4>
+            <div class="footer-links footer-links-2col">
+                <a href="books#An_Intro_to_God">An Intro to God</a>
+                <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                <a href="books#Observations">Observations</a>
+                <a href="books#Coming_Home">Coming Home</a>
+                <a href="books#Babel">Babel</a>
+                <a href="books#Twistianity">Twistianity</a>
+                <a href="books#God_Damn_Religion">God Damn Religion</a>
+                <a href="books#In_the_Company">In the Company</a>
             </div>
         </div>
-        <div class="footer-center">
-            <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt="Yada Yah" loading="lazy"></a>
-            <div class="footer-copyright">
-                <span>Copyright 2001 - </span><span class="year">2026</span>
-            </div>
-        </div>
-        <div class="footer-section">
-            <div class="footer-divider-title"><hr><h4>Links</h4><hr></div>
-            <div class="footer-links footer-links-3col">
-                <a href="ask">Ask</a>
-                <a href="/">Translations</a>
-                <a href="invite">Invite</a>
-                <a href="blog">Blog</a>
-                <a href="glossary">Glossary</a>
-                <a href="/music">Music</a>
-                <a href="vlog">Vlog</a>
-                <a href="dss">Dead&nbsp;Sea&nbsp;Scrolls</a>
-                <a href="timeline">Timeline</a>
-                <a href="/media">Media</a>
-                <a href="resources">Resources</a>
-                <a href="Craig_Winn">Craig&nbsp;Winn</a>
+        <div class="footer-col">
+            <h4 data-config="footer-text-links">Links</h4>
+            <div style="display:flex;gap:40px;">
+                <div class="footer-links footer-links-1col">
+                    <a href="/ask">Ask</a>
+                    <a href="/blog">Blog</a>
+                    <a href="/vlog">Vlog</a>
+                    <a href="/media">Media</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/timeline">Timeline</a>
+                    <a href="/translations">Translations</a>
+                    <a href="/glossary">Glossary</a>
+                    <a href="/dss">Dead Sea Scrolls</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/music">Music</a>
+                    <a href="/invite">Invite</a>
+                    <a href="/shorts">Shorts</a>
+                    <a href="/Craig_Winn">Craig Winn</a>
+                </div>
             </div>
         </div>
     </div>
+    <div class="footer-bottom">Copyright 2001 - 2026</div>
 </footer>
 
 <script>
@@ -679,12 +700,12 @@ var SVG_READ = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.13 20"><
 var SVG_AMAZON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 435.2 435.2"><path d="M244.6,148.6c-62,2-121,19-121,81,0,43,26,64,61,64,31,0,51-12,68-30,8,11,10,16,24,27,3,2,8,2,10-1l31-27c4-3,2-8,0-10-7-11-15-19-15-39v-64c0-27,2-52-18-70-17-16-38-20-62-21-53-1-88,28-93,62-1,6,4,9,7,9l37,5c6,1,9-4,10-8,6-22,29-28,43-23,20,6,18,29,18,45ZM208.6,253.6c-15,0-25-13-25-30,1-36,29-42,61-42v18c0,32-17,54-36,54ZM376.6,359.6c13-11,26-38,25-57,0-7-1-8-8-10-13-4-46-5-62,10-3,3-2,5,1,5,11-2,45-6,50,2,4,7-8,35-12,47-2,5,2,6,6,3ZM19.6,303.6c96,91,247,94,345,25,7-4,0-12-6-9-108.77,46-232.83,38.22-335-21-4-3-8,2-4,5Z"/></svg>';
 var SVG_PDF = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37.26 36.12"><path d="M36.46,22.6c-1.2-1.3-3.5-1.9-6.8-1.9-1.8,0-3.7.2-5.5.5-1.2-1.1-2.2-2.4-3.2-3.7-.7-1-1.4-2-2-3.1,1-2.8,1.6-5.8,1.8-8.8,0-2.7-1.1-5.6-4.1-5.6-1,0-2,.6-2.5,1.5-1.3,2.2-.8,6.7,1.3,11.4-.7,2.1-1.5,4.2-2.4,6.5-.8,2-1.7,3.9-2.8,5.7C7.16,26.3.66,29.3.06,32.6c-.2,1,.1,2,.9,2.6.7.6,1.7,1,2.7.9,3.9,0,7.8-5.4,10.5-10.1,1.5-.5,3-1,4.6-1.4,1.7-.4,3.3-.8,4.8-1.1,4.2,3.6,7.9,4.2,9.7,4.2,2.5,0,3.5-1.1,3.8-2,.4-1.1.2-2.3-.6-3.1ZM33.76,24.5c-.1.7-.9,1.2-1.9,1.2-.3,0-.6,0-.9-.1-2-.5-3.9-1.5-5.5-2.8,1.3-.2,2.7-.3,4-.3.9,0,1.8.1,2.7.2.9.2,1.9.6,1.6,1.8ZM15.86,2.4c.2-.3.5-.5.9-.6,1,0,1.2,1.1,1.2,2.1-.1,2.3-.5,4.5-1.2,6.7-1.7-4.3-1.5-7.2-.9-8.2ZM21.46,21.6c-1.1.2-2.2.5-3.3.8-.8.2-1.6.5-2.5.7.4-.9.8-1.8,1.2-2.6.5-1.1.9-2.2,1.3-3.3.4.6.7,1.1,1.1,1.6.7,1,1.5,1.9,2.2,2.8ZM9.36,27.4c-2.5,4-5,6.6-6.4,6.6-.2,0-.5-.1-.6-.2-.3-.2-.4-.6-.3-.9.2-1.5,3.1-3.6,7.3-5.5Z"/></svg>';
 
-var IMG = 'https://yadayah.com/wp-content/uploads/2026/01/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.';
+var IMG = '/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.';
 var PDF = 'https://yadayah.com/pdf/';
 
 function bookCard(code, alt, readUrl, amazonId, pdfPath, cls) {
     var imgSrc = IMG + code + '-245x300.jpg';
-    if (cls === 'itc') imgSrc = 'https://yadayah.com/wp-content/uploads/2026/01/covers-3d-pages-front-cw40-tilt70-closed.00341x00300.itc_-300x264.png';
+    if (cls === 'itc') imgSrc = '/images/covers/itc-300x264.png';
     return '<div class="book-card' + (cls ? ' ' + cls : '') + '">' +
         '<a class="cover-link" href="' + readUrl + '" target="_blank"><img src="' + imgSrc + '" alt="' + alt + '" loading="lazy"></a>' +
         '<div class="book-icons">' +
@@ -723,29 +744,38 @@ document.getElementById('ch-grid').innerHTML =
 // Babel
 document.getElementById('babel-grid').innerHTML =
     bookCard('s05v01', 'Chywah - Beast', 'https://book.yadayah.com/books/jmdn/', 'B0BRM2QLZ2', 'YY-s05v01-Babel-Chywah-Beast.pdf') +
-    bookCard('s05v02', "Tow'ebah - Abominable", 'https://book.yadayah.com/books/hbyu/', 'B0BTRFGQBM', "YY-s05v02-Babel-Tow'ebah-Abominable.pdf") +
-    bookCard('s05v03', 'Chemah - Venemous', 'https://book.yadayah.com/books/tavl/', 'B0BZB6BMZ9', 'YY-s05v03-Babel-Chemah-Venemous.pdf');
+    bookCard('s05v02', "Tow'ebah - Abominable", 'https://book.yadayah.com/books/wpqi/', 'B0BTRFGQBM', "YY-s05v02-Babel-Tow'ebah-Abominable.pdf") +
+    bookCard('s05v03', 'Chemah - Venomous', 'https://book.yadayah.com/books/YY-s05v03-Babel-Chemah-Venomous/', 'B0BZB6BMZ9', 'YY-s05v03-Babel-Chemah-Venomous.pdf');
 
 // Twistianity
 document.getElementById('twist-grid').innerHTML =
-    bookCard('s06v01', 'Appalling', 'https://book.yadayah.com/books/mfyp/', 'B0DC5ZVZ1C', 'YY-s06v01-Twistianity-Appalling.pdf') +
-    bookCard('s06v02', 'Towrahless', 'https://book.yadayah.com/books/eqqf/', 'B0DDXYN75Q', 'YY-s06v02-Twistianity-Towrahless.pdf') +
+    bookCard('s06v01', 'Appalling', 'https://book.yadayah.com/books/YY-s06v01-Twistianity-Appalling/', 'B0DC5ZVZ1C', 'YY-s06v01-Twistianity-Appalling.pdf') +
+    bookCard('s06v02', 'Towrahless', 'https://book.yadayah.com/books/YY-s06v02-Twistianity-Towrahless/', 'B0DDXYN75Q', 'YY-s06v02-Twistianity-Towrahless.pdf') +
     bookCard('s06v03', 'Devils Advocate', 'https://book.yadayah.com/books/ghul/', 'B0DFH17V4R', 'YY-s06v03-Twistianity-Devils%20Advocate.pdf') +
     bookCard('s06v04', 'Incredible', 'https://book.yadayah.com/books/lfqo/', 'B0DH4PCZ5S', 'YY-s06v04-Twistianity-Incredible.pdf') +
-    bookCard('s06v05', 'Foolology', 'https://book.yadayah.com/books/nrpf/', 'B0DHVRH8XF', 'YY-s06v05-Twistianity-Foolology.pdf');
+    bookCard('s06v05', 'Foolology', 'https://book.yadayah.com/books/YY-s06v05-Twistianity-Foolology/', 'B0DHVRH8XF', 'YY-s06v05-Twistianity-Foolology.pdf');
 
 // God Damn Religion
 document.getElementById('gdr-grid').innerHTML =
-    bookCard('s07v01', 'Snake', 'https://book.yadayah.com/books/dtzo/', 'B0D3XY7L5W', 'YY-s07v01-God%20Damn%20Religion-Snake.pdf') +
-    bookCard('s07v02', 'Satanic', 'https://book.yadayah.com/books/mafx/', 'B0CT8XX98H', 'YY-s07v02-God%20Damn%20Religion-Satanic.pdf') +
-    bookCard('s07v03', 'Submission', 'https://book.yadayah.com/books/qdcz/', 'B0D3XJXLBY', 'YY-s07v03-God%20Damn%20Religion-Submission.pdf') +
-    bookCard('s07v04', 'Slaughter', 'https://book.yadayah.com/books/vxmy/', 'B0D4762YZ3', 'YY-s07v04-God%20Damn%20Religion-Slaughter.pdf') +
-    bookCard('s07v05', 'Sunnah &amp; Suratun', 'https://book.yadayah.com/books/tbcn/', 'B0DB1D14FN', 'YY-s07v05-God%20Damn%20Religion-Sunnah%20and%20Suratun.pdf');
+    bookCard('s07v01', 'Snake', 'https://book.yadayah.com/books/YY-s07v01-God-Damn-Religion-Snake/', 'B0D3XY7L5W', 'YY-s07v01-God%20Damn%20Religion-Snake.pdf') +
+    bookCard('s07v02', 'Satanic', 'https://book.yadayah.com/books/YY-s07v02-God-Damn-Religion-Satanic/', 'B0CT8XX98H', 'YY-s07v02-God%20Damn%20Religion-Satanic.pdf') +
+    bookCard('s07v03', 'Submission', 'https://book.yadayah.com/books/YY-s07v03-God-Damn-Religion-Submission/', 'B0D3XJXLBY', 'YY-s07v03-God%20Damn%20Religion-Submission.pdf') +
+    bookCard('s07v04', 'Slaughter', 'https://book.yadayah.com/books/YY-s07v04-God-Damn-Religion-Slaughter/', 'B0D4762YZ3', 'YY-s07v04-God%20Damn%20Religion-Slaughter.pdf') +
+    bookCard('s07v05', 'Sunnah &amp; Suratun', 'https://book.yadayah.com/books/iltx/', 'B0DB1D14FN', 'YY-s07v05-God%20Damn%20Religion-Sunnah%20and%20Suratun.pdf');
 
 // In the Company of Good and Evil
 document.getElementById('itc-grid').innerHTML =
     bookCard('itc', 'In the Company of Good and Evil', 'https://InTheCompanyOfGoodAndEvil.com', '0971448108', 'In%20the%20Company%20of%20Good%20and%20Evil.pdf', 'itc');
 </script>
 
+<script src="/js/bg-video.js"></script>
+<script>
+(function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
+    if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
+    document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+});})();
+</script>
 </body>
 </html>

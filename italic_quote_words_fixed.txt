@@ -1,0 +1,693 @@
+Fixed Word                               Original Word                  File                                                              Page   Method
+---------------------------------------- ------------------------------ ----------------------------------------------------------------- ------ --------------------
+ʾanah                                    'anah                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       21     blb
+ʾesheh                                   'esheh                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾhuwʾ                                    'huwʾ                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   277    hebrew-pattern
+ʾRuwach                                  'Ruwach                        YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   277    heuristic
+alʾ                                      al’                            YY-s03v04-Observations-Teaching.docx                              237    hebrew-pattern
+anypokritosʿ                             anypokritos’                   YY-s06v02-Twistianity-Towrahless.docx                             1      heuristic
+arowʿer                                  arow’er                        YY-s03v05-Observations-Understanding.docx                         278    heuristic
+Arowʿer                                  Arow’er                        YY-s03v05-Observations-Understanding.docx                         279    heuristic
+auliyaʾ                                  auliya’                        YY-s03v05-Observations-Understanding.docx                         107    heuristic
+bʿmitzvotav                              b'mitzvotav                    YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     388    heuristic
+ba-areʿsyth                              ba-are’syth                    YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+ba-baʿal                                 ba-ba’al                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           6      blb
+ba-huwʾ                                  ba-huw’                        YY-s04v04-Coming Home-Basar-Herald.docx                           133    hebrew-pattern
+Ba-reʾshyth                              Ba-re’shyth                    YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+Balaʿam                                  Bala’am                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           148    hebrew-pattern
+balaʿdey                                 bala’dey                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+balʿady                                  bal’ady                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+Bar-Iesousʾ                              Bar-Iesous’                    YY-s03v05-Observations-Understanding.docx                         270    heuristic
+baraʾ                                    bara’                          YY-s02v07-Yada Yahowah-Shanah-Years.docx                          291    blb
+Bath-Shebaʿ                              Bath-Sheba’                    YY-s04v04-Coming Home-Basar-Herald.docx                           425    hebrew-pattern
+Bathshebaʿ                               Bathsheba’                     YY-s04v04-Coming Home-Basar-Herald.docx                           411    hebrew-pattern
+baʿad                                    ba’ad                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+baʿal                                    ba’al                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     503    blb
+baʿalthy                                 ba’althy                       YY-s05v03-Babel-Chemah-Venomous.docx                              184    heuristic
+baʿyr                                    ba’yr                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+belaʿ                                    bela’                          YY-s06v02-Twistianity-Towrahless.docx                             1      blb
+Ben-ʿOwny                                Ben-‘Owny                      YY-s06v02-Twistianity-Towrahless.docx                             1      heuristic
+Benʿowny                                 Ben’owny                       YY-s06v02-Twistianity-Towrahless.docx                             1      heuristic
+betsaʿ                                   betsa’                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+Beyth-ʾAown                              Beyth-‘Aown                    YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      302    hebrew-pattern
+be ʿisharown                             be ‘isharown                   YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    heuristic
+biʿuwth                                  bi’uwth                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          325    heuristic
+bowʾ                                     bow’                           YY-s04v04-Coming Home-Basar-Herald.docx                           38     hebrew-pattern
+Bowʾ                                     Bow’                           YY-s04v04-Coming Home-Basar-Herald.docx                           170    hebrew-pattern
+Boʿaz                                    Bo’az                          YY-s04v04-Coming Home-Basar-Herald.docx                           348    blb
+BʿAv                                     B’Av                           YY-s05v01-Babel-Chywah-Beast.docx                                 135    hebrew-pattern
+chataʾ                                   chata’                         YY-s02v07-Yada Yahowah-Shanah-Years.docx                          159    hebrew-pattern
+chataʾah                                 chata’ah                       YY-s04v04-Coming Home-Basar-Herald.docx                           110    hebrew-pattern
+chataʾh                                  chata’h                        YY-s05v03-Babel-Chemah-Venomous.docx                              46     hebrew-pattern
+chataʾt                                  chata’t                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  123    hebrew-pattern
+chataʿym                                 chata’ym                       YY-s04v04-Coming Home-Basar-Herald.docx                           448    heuristic
+chatʾah                                  chat’ah                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          152    hebrew-pattern
+chavaʾ                                   chava’                         YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   304    hebrew-pattern
+chelaʾah                                 chela’ah                       YY-s05v02-Babel-Tow'ebah-Abominable.docx                          399    hebrew-pattern
+Choryʾ                                   Chory’                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           427    heuristic
+dʿêtre                                   d'être                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                173    heuristic
+damaʿah                                  dama’ah                        YY-s05v02-Babel-Tow'ebah-Abominable.docx                          405    hebrew-pattern
+daʾag                                    da’ag                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+daʿath                                   da’ath                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                90     hebrew-pattern
+Daʿath                                   Da’ath                         YY-s04v04-Coming Home-Basar-Herald.docx                           24     hebrew-pattern
+dimaʿah                                  dima’ah                        YY-s04v04-Coming Home-Basar-Herald.docx                           456    hebrew-pattern
+gabyaʿ                                   gabya’                         YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   374    hebrew-pattern
+garyʾ                                    gary’                          YY-s02v07-Yada Yahowah-Shanah-Years.docx                          281    heuristic
+gaʾaown                                  ga’aown                        YY-s03v01-Observations-Perspective.docx                           574    hebrew-pattern
+gaʾaul                                   ga’aul                         YY-s04v04-Coming Home-Basar-Herald.docx                           280    hebrew-pattern
+gaʾawah                                  ga’awah                        YY-s03v04-Observations-Teaching.docx                              273    hebrew-pattern
+gaʿuwlym                                 ga’uwlym                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+Gaʾuwʾel                                 Ga’uwʾel                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           428    hebrew-pattern
+gebeʾ                                    gebe’                          YY-s05v03-Babel-Chemah-Venomous.docx                              455    blb
+Geseniusʾ                                Gesenius’                      YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+geʾuwth                                  ge’uwth                        YY-s04v04-Coming Home-Basar-Herald.docx                           507    hebrew-pattern
+Gibaʿtah                                 Giba’tah                       YY-s03v05-Observations-Understanding.docx                         193    heuristic
+Gidiʿown                                 Gidi’own                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           149    hebrew-pattern
+haʿolam                                  ha'olam                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     388    heuristic
+HaShemʿs                                 HaShem’s                       YY-s04v02-Coming Home-Mashyach-Messiah.docx                       135    heuristic
+Haʿerets                                 Ha‘erets                       YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                284    heuristic
+haʿerets                                 ha‘erets                       YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                285    heuristic
+heʾach!                                  he’ach!                        YY-s05v03-Babel-Chemah-Venomous.docx                              208    hebrew-pattern
+huwʾ                                     huw’                           YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  19     hebrew-pattern
+Huwʾ                                     Huw’                           YY-s04v04-Coming Home-Basar-Herald.docx                           141    hebrew-pattern
+huwʾ                                     huw’                           YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  29     hebrew-pattern
+huwʿʾ                                    huw’’                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  88     heuristic
+huʿw                                     hu’w                           YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           482    heuristic
+hyʾ                                      hy’                            YY-s04v04-Coming Home-Basar-Herald.docx                           30     hebrew-pattern
+hyʿʾ                                     hy’’                           YY-s04v04-Coming Home-Basar-Herald.docx                           108    heuristic
+Ithobaʿal                                Ithoba’al                      YY-s05v03-Babel-Chemah-Venomous.docx                              46     heuristic
+Kanaʿnite                                Kana’nite                      YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  392    heuristic
+kaʾ                                      ka’                            YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   52     heuristic
+Kephasʾ                                  Kephas’                        YY-s06v01-Twistianity-Appalling.docx                              323    heuristic
+kidʿshanu                                kid'shanu                      YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     388    heuristic
+kiseʾ                                    kise’                          YY-s04v04-Coming Home-Basar-Herald.docx                           561    hebrew-pattern
+kiseʿowthm                               kise’owthm                     YY-s05v03-Babel-Chemah-Venomous.docx                              14     heuristic
+koʾah                                    ko’ah                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           451    hebrew-pattern
+kyʾ                                      ky’                            YY-s06v03-Twistianity-Devils Advocate.docx                        1      heuristic
+lʿhadlik                                 l'hadlik                       YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     388    heuristic
+Lamaʿan                                  Lama’an                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+lamaʿan                                  lama’an                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           626    heuristic
+laʾah                                    la’ah                          YY-s03v03-Observations-Growing.docx                               407    hebrew-pattern
+laʿaz                                    la’az                          YY-s04v03-Coming Home-Dowd-Beloved.docx                           327    blb
+Laʿllanot                                La’llanot                      YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+Loʾ-‘Ammi                                Loʾ-‘Ammi                      YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     349    blb
+Loʾ                                      Lo’                            YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    blb
+loʾ                                      lo’                            YY-s04v04-Coming Home-Basar-Herald.docx                           11     blb
+loʿʾ                                     lo’’                           YY-s04v04-Coming Home-Basar-Herald.docx                           234    heuristic
+LʿChayim                                 L’Chayim                       YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     387    heuristic
+Maʿaseyah                                Ma'aseyah                      YY-s04v02-Coming Home-Mashyach-Messiah.docx                       424    heuristic
+mah-raʾah                                mah-ra’ah                      YY-s05v02-Babel-Tow'ebah-Abominable.docx                          12     hebrew-pattern
+makoʾb                                   mako’b                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           623    hebrew-pattern
+malaʾ                                    mala’                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     491    blb
+Malaʾakah                                Mala’akah                      YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   275    hebrew-pattern
+Malaʾkah                                 Mala’kah                       YY-s01v02-An Intro to God-Mitswah-Instructions.docx               46     hebrew-pattern
+malaʾkah                                 mala’kah                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+maleʾ                                    male’                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     306    blb
+Malʾak                                   Mal’ak                         YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      172    blb
+malʾak                                   mal’ak                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           514    blb
+Malʾakah                                 Mal’akah                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           537    hebrew-pattern
+malʾek                                   mal’ek                         YY-s05v02-Babel-Tow'ebah-Abominable.docx                          17     hebrew-pattern
+Maraʾah                                  Mara’ah                        YY-s05v02-Babel-Tow'ebah-Abominable.docx                          97     hebrew-pattern
+marpehʾ                                  marpeh’                        YY-s03v05-Observations-Understanding.docx                         529    heuristic
+marpeʾ                                   marpe’                         YY-s03v01-Observations-Perspective.docx                           68     blb
+maryʾa                                   mary’a                         YY-s03v04-Observations-Teaching.docx                              321    hebrew-pattern
+masaʾ                                    masa’                          YY-s04v04-Coming Home-Basar-Herald.docx                           125    blb
+Masaʾ                                    Masa’                          YY-s04v04-Coming Home-Basar-Herald.docx                           125    blb
+matsaʾ                                   matsa’                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           371    hebrew-pattern
+maʿalahowth                              ma’alahowth                    YY-s05v03-Babel-Chemah-Venomous.docx                              328    heuristic
+maʿalal                                  ma’alal                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     496    blb
+maʿamasah                                ma’amasah                      YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   146    hebrew-pattern
+maʿan                                    ma’an                          YY-s06v03-Twistianity-Devils Advocate.docx                        1      blb
+maʾarab                                  ma’arab                        YY-s05v03-Babel-Chemah-Venomous.docx                              41     hebrew-pattern
+maʿaseh                                  ma’aseh                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    heuristic
+Maʿasehyah                               Ma’asehyah                     YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   426    heuristic
+Maʿaseyah                                Ma’aseyah                      YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+maʿat                                    ma’at                          YY-s03v04-Observations-Teaching.docx                              245    blb
+maʾerah                                  ma’erah                        YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   256    hebrew-pattern
+maʾod                                    ma’od                          YY-s04v04-Coming Home-Basar-Herald.docx                           230    hebrew-pattern
+maʿodʿ                                   ma’od’                         YY-s04v04-Coming Home-Basar-Herald.docx                           162    heuristic
+Maʿowoth                                 Ma’owoth                       YY-s04v04-Coming Home-Basar-Herald.docx                           5      heuristic
+Maʿowroth                                Ma’owroth                      YY-s04v04-Coming Home-Basar-Herald.docx                           5      heuristic
+maʿowz                                   ma’owz                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     389    hebrew-pattern
+maʾuwmah                                 ma’uwmah                       YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   323    hebrew-pattern
+maʿuwman                                 ma’uwman                       YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   323    heuristic
+meloʾ                                    melo’                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  111    hebrew-pattern
+Mereaʿ                                   Merea’                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                347    blb
+meryaʾ                                   merya’                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     293    hebrew-pattern
+meʾah                                    me’ah                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               169    hebrew-pattern
+meʿahym                                  me’ahym                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           75     heuristic
+meʿiym                                   me’iym                         YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   84     heuristic
+meʾod                                    me’od                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               445    hebrew-pattern
+meʿowah                                  me’owah                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           83     heuristic
+miphaʿal                                 mipha’al                       YY-s04v04-Coming Home-Basar-Herald.docx                           281    hebrew-pattern
+miqlaʿath                                miqla’ath                      YY-s01v02-An Intro to God-Mitswah-Instructions.docx               22     hebrew-pattern
+miqraʾ                                   miqra’                         YY-s03v05-Observations-Understanding.docx                         132    blb
+Miqraʿey                                 Miqra’ey                       YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                170    heuristic
+miqtsowaʿ                                miqtsowa’                      YY-s05v03-Babel-Chemah-Venomous.docx                              447    hebrew-pattern
+misheʿnet                                mishe’net                      YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           541    heuristic
+mishmaʿ                                  mishma’                        YY-s01v02-An Intro to God-Mitswah-Instructions.docx               514    hebrew-pattern
+Mishʿen                                  Mish’en                        YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                347    hebrew-pattern
+mishʿen                                  mish’en                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          195    hebrew-pattern
+mishʿenach                               mish’enach                     YY-s04v03-Coming Home-Dowd-Beloved.docx                           373    heuristic
+Mishʿiy                                  Mish’iy                        YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                347    hebrew-pattern
+Mishʿowl                                 Mish’owl                       YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                347    hebrew-pattern
+mitsraʾ                                  mitsra’                        YY-s01v02-An Intro to God-Mitswah-Instructions.docx               328    heuristic
+Mitsraʾ                                  Mitsra’                        YY-s03v01-Observations-Perspective.docx                           185    heuristic
+mizʿar                                   miz’ar                         YY-s03v04-Observations-Teaching.docx                              245    blb
+moraʾ                                    mora’                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   239    blb
+mowaʿday                                 mowa’day                       YY-s03v04-Observations-Teaching.docx                              496    heuristic
+Mowaʿday                                 Mowa’day                       YY-s03v04-Observations-Teaching.docx                              498    heuristic
+mowtsaʾah                                mowtsa’ah                      YY-s04v02-Coming Home-Mashyach-Messiah.docx                       88     hebrew-pattern
+Mowʾab                                   Mow’ab                         YY-s03v05-Observations-Understanding.docx                         196    hebrew-pattern
+Mowʿed                                   Mow’ed                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               179    hebrew-pattern
+Murabaʿat                                Muraba’at                      YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      461    heuristic
+mutaʾa                                   muta’a                         YY-s03v01-Observations-Perspective.docx                           111    hebrew-pattern
+muwʿaph                                  muw’aph                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          526    hebrew-pattern
+myʾ                                      my’                            YY-s02v07-Yada Yahowah-Shanah-Years.docx                          188    heuristic
+n-ʾanah-ythy                             n-‘anah-ythy                   YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     152    blb
+nabyʾ                                    naby’                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     469    hebrew-pattern
+Nabyʾ                                    Naby’                          YY-s04v04-Coming Home-Basar-Herald.docx                           269    hebrew-pattern
+nagaʿ                                    naga’                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           162    blb
+nasaʿ                                    nasa’                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    blb
+nataʿ                                    nata’                          YY-s03v05-Observations-Understanding.docx                         339    blb
+naʾ                                      na’                            YY-s01v02-An Intro to God-Mitswah-Instructions.docx               267    blb
+naʾaphuwphym                             na’aphuwphym                   YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                87     hebrew-pattern
+naʾar                                    na’ar                          YY-s04v04-Coming Home-Basar-Herald.docx                           396    blb
+naʿarah                                  na’arah                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  19     hebrew-pattern
+naʾqah                                   na’qah                         YY-s05v03-Babel-Chemah-Venomous.docx                              98     hebrew-pattern
+naʿurym                                  na’urym                        YY-s05v02-Babel-Tow'ebah-Abominable.docx                          368    heuristic
+negaʿ                                    nega’                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           623    blb
+neshamah-ʾadam                           neshamah-‘adam                 YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                186    blb
+Nesʿ                                     Nes’                           YY-s03v05-Observations-Understanding.docx                         478    hebrew-pattern
+Nevisʿ                                   Nevis’                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                281    heuristic
+nʾm                                      n’m                            YY-s03v05-Observations-Understanding.docx                         339    hebrew-pattern
+pagaʿ                                    paga’                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     blb
+Paluwʾ                                   Paluw’                         YY-s05v03-Babel-Chemah-Venomous.docx                              268    hebrew-pattern
+Paraʾ                                    Para’                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       35     blb
+paraʾ                                    para’                          YY-s03v05-Observations-Understanding.docx                         322    blb
+paʾ                                      pa’                            YY-s01v02-An Intro to God-Mitswah-Instructions.docx               222    heuristic
+paʾah                                    pa’ah                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               222    hebrew-pattern
+paʿal                                    pa’al                          YY-s04v03-Coming Home-Dowd-Beloved.docx                           44     blb
+paʾorah                                  pa’orah                        YY-s03v04-Observations-Teaching.docx                              262    hebrew-pattern
+Paʿowr                                   Pa’owr                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               221    hebrew-pattern
+Paʿowr                                   Pa’owr                         YY-s06v03-Twistianity-Devils Advocate.docx                        1      hebrew-pattern
+peʿoth                                   pe’oth                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     428    heuristic
+Pharʿoah                                 Phar’oah                       YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     390    hebrew-pattern
+Philaʾy                                  Phila’y                        YY-s04v04-Coming Home-Basar-Herald.docx                           397    hebrew-pattern
+phoʾrah                                  pho’rah                        YY-s05v03-Babel-Chemah-Venomous.docx                              111    hebrew-pattern
+pitoʾm                                   pito’m                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     400    hebrew-pattern
+qabaʿ                                    qaba’                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   295    blb
+Qaraʾ                                    Qara'                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       17     blb
+qaraʾ                                    qara’                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    blb
+Qaraʾ                                    Qara’                          YY-s04v04-Coming Home-Basar-Herald.docx                           78     blb
+qishuʿahym                               qishu’ahym                     YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           363    heuristic
+Quʿils                                   Qu’ils                         YY-s04v01-Coming Home-Qowl-A Voice.docx                           38     heuristic
+Rachabʿam                                Rachab’am                      YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ragaʿ                                    raga’                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     451    blb
+Rahyaʿym                                 Rahya’ym                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+Raphaʾym                                 Rapha’ym                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+raphqʿym                                 raphq’ym                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+Raphuwʾ                                  Raphuw’                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           428    hebrew-pattern
+rashaʿ                                   rasha’                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  24     hebrew-pattern
+rashʿachy                                rash’achy                      YY-s02v07-Yada Yahowah-Shanah-Years.docx                          196    heuristic
+raʾ                                      ra’                            YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     171    spelling
+raʾ                                      ra’                            YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   253    spelling
+raʾah                                    ra’ah                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               240    hebrew-pattern
+raʿahym                                  ra’ahym                        YY-s04v02-Coming Home-Mashyach-Messiah.docx                       91     heuristic
+raʿanan                                  ra’anan                        YY-s04v04-Coming Home-Basar-Herald.docx                           182    blb
+raʾawah                                  ra’awah                        YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                131    hebrew-pattern
+raʿaʿ                                    ra’a’                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     489    blb
+Raʾem                                    Ra’em                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  332    hebrew-pattern
+Raʾuwben                                 Ra’uwben                       YY-s05v03-Babel-Chemah-Venomous.docx                              474    hebrew-pattern
+raʿuwth                                  ra’uwth                        YY-s04v04-Coming Home-Basar-Herald.docx                           348    hebrew-pattern
+Raʾyah                                   Ra’yah                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               302    hebrew-pattern
+reaʿ                                     rea’                           YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     480    blb
+rebaʿ                                    reba’                          YY-s05v03-Babel-Chemah-Venomous.docx                              388    blb
+regaʿ                                    rega’                          YY-s05v03-Babel-Chemah-Venomous.docx                              122    blb
+reʾsh                                    re’sh                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           21     hebrew-pattern
+reʾsit                                   re’sit                         YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     blb
+reʿsith                                  re’sith                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+reʿsiyth                                 re’siyth                       YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+ribeaʿ                                   ribea’                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               18     blb
+ribeʿ                                    ribe’                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           451    hebrew-pattern
+riʾshown                                 ri’shown                       YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  74     hebrew-pattern
+roʾeh                                    ro’eh                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     394    hebrew-pattern
+roʾsh                                    ro’sh                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  306    hebrew-pattern
+roʾshah                                  ro’shah                        YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   115    hebrew-pattern
+roʾwh                                    ro’wh                          YY-s05v02-Babel-Tow'ebah-Abominable.docx                          29     hebrew-pattern
+roʾy                                     ro’y                           YY-s01v02-An Intro to God-Mitswah-Instructions.docx               302    hebrew-pattern
+ruʿba                                    ru’ba                          YY-s03v05-Observations-Understanding.docx                         104    hebrew-pattern
+sabaʾ                                    saba’                          YY-s04v04-Coming Home-Basar-Herald.docx                           162    blb
+Sabuwʿah                                 Sabuw’ah                       YY-s04v04-Coming Home-Basar-Herald.docx                           219    heuristic
+samaʿowl                                 sama’owl                       YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   151    heuristic
+saraʿphah                                sara’phah                      YY-s05v03-Babel-Chemah-Venomous.docx                              104    hebrew-pattern
+saʿaphah                                 sa’aphah                       YY-s05v03-Babel-Chemah-Venomous.docx                              107    hebrew-pattern
+saʿorah                                  sa’orah                        YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+saʿruwr                                  sa’ruwr                        YY-s03v03-Observations-Growing.docx                               211    heuristic
+selaʿ                                    sela’                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+selaʿ                                    sela’                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+semoʿl                                   semo’l                         YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   103    heuristic
+seʿor                                    se’or                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  400    hebrew-pattern
+shabaʾ                                   shaba’                         YY-s04v04-Coming Home-Basar-Herald.docx                           231    hebrew-pattern
+shabuwaʿ                                 shabuwa’                       YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+Shabuwaʿ                                 Shabuwa’                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+shabuwaʿym                               shabuwa’ym                     YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+Shabuwʿah                                Shabuw’ah                      YY-s03v01-Observations-Perspective.docx                           340    hebrew-pattern
+shamaʾ                                   shama’                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               72     hebrew-pattern
+Shamaʿyah                                Shama’yah                      YY-s05v03-Babel-Chemah-Venomous.docx                              268    hebrew-pattern
+Shamuwaʿ                                 Shamuwa’                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           427    hebrew-pattern
+shanaʿym                                 shana’ym                       YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   190    heuristic
+shashaʾ                                  shasha’                        YY-s05v03-Babel-Chemah-Venomous.docx                              295    hebrew-pattern
+shawaʾ                                   shawa’                         YY-s04v04-Coming Home-Basar-Herald.docx                           553    hebrew-pattern
+Shaʿa                                    Sha’a                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     108    heuristic
+shaʿa                                    sha’a                          YY-s06v01-Twistianity-Appalling.docx                              374    heuristic
+shaʾab                                   sha’ab                         YY-s03v04-Observations-Teaching.docx                              373    hebrew-pattern
+shaʿalowb                                sha’alowb                      YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   404    heuristic
+shaʾar                                   sha’ar                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     387    hebrew-pattern
+shaʿarym                                 sha’arym                       YY-s05v03-Babel-Chemah-Venomous.docx                              337    hebrew-pattern
+shaʾawah                                 sha’awah                       YY-s03v03-Observations-Growing.docx                               379    hebrew-pattern
+shaʾer                                   sha’er                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+shaʾeryth                                sha’eryth                      YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     181    hebrew-pattern
+shaʾgah                                  sha’gah                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  297    hebrew-pattern
+shaʾor                                   sha’or                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+shaʿowm                                  sha’owm                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          307    heuristic
+Shaʿowm                                  Sha’owm                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          307    heuristic
+shaʿshuwaʿym                             sha’shuwa’ym                   YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     119    hebrew-pattern
+Shebaʾ                                   Sheba’                         YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   277    hebrew-pattern
+shebaʾ                                   sheba’                         YY-s02v07-Yada Yahowah-Shanah-Years.docx                          177    hebrew-pattern
+Shebuwaʿah                               Shebuwa’ah                     YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                348    hebrew-pattern
+shewaʾ                                   shewa’                         YY-s04v02-Coming Home-Mashyach-Messiah.docx                       188    hebrew-pattern
+shibaʿah                                 shiba’ah                       YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+Shibʿah                                  Shib’ah                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+shibʿiym                                 shib’iym                       YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  269    hebrew-pattern
+Shimʿiy                                  Shim’iy                        YY-s05v03-Babel-Chemah-Venomous.docx                              268    hebrew-pattern
+Shimʿown                                 Shim’own                       YY-s05v03-Babel-Chemah-Venomous.docx                              474    hebrew-pattern
+showaʾ                                   showa’                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     59     hebrew-pattern
+showeʾ                                   showe’                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               37     hebrew-pattern
+shuwaʿah                                 shuwa’ah                       YY-s02v07-Yada Yahowah-Shanah-Years.docx                          195    hebrew-pattern
+shuweʾ                                   shuwe’                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               37     hebrew-pattern
+simoʿwl                                  simo’wl                        YY-s04v04-Coming Home-Basar-Herald.docx                           401    heuristic
+t-nabaʾ                                  t-naba’                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     240    blb
+t-ʾanah                                  t-‘anah                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     241    blb
+Tabaʿrah                                 Taba’rah                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           361    hebrew-pattern
+tabuwaʾah                                tabuwa’ah                      YY-s05v03-Babel-Chemah-Venomous.docx                              468    hebrew-pattern
+Tabʿerah                                 Tab’erah                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           358    hebrew-pattern
+tanuwaʾah                                tanuwa’ah                      YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           459    hebrew-pattern
+taraʿ                                    tara’                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+Taruwʿah                                 Taruw’ah                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           365    hebrew-pattern
+taʾabah                                  ta’abah                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     41     hebrew-pattern
+taʾowah                                  ta’owah                        YY-s04v02-Coming Home-Mashyach-Messiah.docx                       399    hebrew-pattern
+Tebuwʾah                                 Tebuw’ah                       YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                348    hebrew-pattern
+teʿteʾ                                   te’te’                         YY-s03v04-Observations-Teaching.docx                              485    heuristic
+thaʾar                                   tha’ar                         YY-s03v05-Observations-Understanding.docx                         179    hebrew-pattern
+theshaʿ                                  thesha’                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           75     hebrew-pattern
+theshaʿym                                thesha’ym                      YY-s05v03-Babel-Chemah-Venomous.docx                              360    hebrew-pattern
+tiphʾarah                                tiph’arah                      YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+towtsaʾowth                              towtsa’owth                    YY-s05v03-Babel-Chemah-Venomous.docx                              474    hebrew-pattern
+tsalaʿ                                   tsala’                         YY-s04v04-Coming Home-Basar-Herald.docx                           45     hebrew-pattern
+tsamaʾ                                   tsama’                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     423    hebrew-pattern
+tsameʾ                                   tsame’                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               355    hebrew-pattern
+tsaphardeaʿ                              tsaphardea’                    YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  107    hebrew-pattern
+tsawʾr                                   tsaw’r                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+tsaʿown                                  tsa’own                        YY-s03v03-Observations-Growing.docx                               472    heuristic
+tselaʿ                                   tsela’                         YY-s04v04-Coming Home-Basar-Herald.docx                           50     hebrew-pattern
+tseʿetsaʾ                                tse’etsa’                      YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+tseʾetsaʾym                              tse’etsa’ym                    YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     440    hebrew-pattern
+tseʾtsaʾym                               tse’tsa’ym                     YY-s02v07-Yada Yahowah-Shanah-Years.docx                          573    hebrew-pattern
+tsowneʾ                                  tsowne’                        YY-s03v01-Observations-Perspective.docx                           330    heuristic
+tsoʾn                                    tso’n                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+tsʿad                                    ts’ad                          YY-s02v07-Yada Yahowah-Shanah-Years.docx                          198    hebrew-pattern
+tumʾah                                   tum’ah                         YY-s04v04-Coming Home-Basar-Herald.docx                           412    hebrew-pattern
+vʿtzivanu                                v'tzivanu                      YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     388    heuristic
+wa-shaʾar                                wa-sha’ar                      YY-s04v04-Coming Home-Basar-Herald.docx                           133    hebrew-pattern
+wyqaraʾ                                  wyqara’                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+wʿshbʿty                                 w’shb’ty                       YY-s04v03-Coming Home-Dowd-Beloved.docx                           375    heuristic
+Yadaʿ                                    Yada’                          YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      172    blb
+yadaʿ                                    yada’                          YY-s04v04-Coming Home-Basar-Herald.docx                           13     blb
+Yahowaʾchaz                              Yahowa’chaz                    YY-s03v05-Observations-Understanding.docx                         173    hebrew-pattern
+Yahowyadaʿ                               Yahowyada’                     YY-s03v03-Observations-Growing.docx                               493    hebrew-pattern
+yareʾ                                    yare’                          YY-s04v04-Coming Home-Basar-Herald.docx                           78     blb
+yariʾah                                  yari’ah                        YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                104    hebrew-pattern
+yaryʿowth                                yary’owth                      YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+yarʾah                                   yar’ah                         YY-s04v03-Coming Home-Dowd-Beloved.docx                           298    hebrew-pattern
+Yashaʿyah                                Yasha’yah                      YY-s03v05-Observations-Understanding.docx                         382    hebrew-pattern
+yashuwaʿah                               yashuwa’ah                     YY-s04v04-Coming Home-Basar-Herald.docx                           532    hebrew-pattern
+Yashuwʿah                                Yashuw’ah                      YY-s04v04-Coming Home-Basar-Herald.docx                           150    hebrew-pattern
+yashuwʿah                                yashuw’ah                      YY-s06v04-Twistianity-Incredible.docx                             348    hebrew-pattern
+Yatsaʾ                                   Yatsa’                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               1      hebrew-pattern
+yatsaʾ                                   yatsa’                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+yatsuwaʿ                                 yatsuwa’                       YY-s01v02-An Intro to God-Mitswah-Instructions.docx               72     hebrew-pattern
+yaʾal                                    ya’al                          YY-s04v04-Coming Home-Basar-Herald.docx                           197    blb
+yaʿar                                    ya’ar                          YY-s06v04-Twistianity-Incredible.docx                             34     blb
+yaʿats                                   ya’ats                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     190    hebrew-pattern
+yaʾor                                    ya’or                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  106    hebrew-pattern
+Yigʾal                                   Yig’al                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           427    blb
+yiphaʿah                                 yipha’ah                       YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                131    hebrew-pattern
+yirmaʾ                                   yirma’                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                104    heuristic
+Yowchaʾ                                  Yowcha’                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          38     hebrew-pattern
+Yowʿed                                   Yow’ed                         YY-s02v07-Yada Yahowah-Shanah-Years.docx                          38     hebrew-pattern
+yowʿets                                  yow’ets                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     432    heuristic
+yoʿes                                    yo’es                          YY-s03v04-Observations-Teaching.docx                              145    heuristic
+yrʾah                                    yr’ah                          YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   263    hebrew-pattern
+Yshmaʿʾel                                Yshma’ʾel                      YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   279    hebrew-pattern
+Yzraʿʾel                                 Yzra’ʾel                       YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      47     hebrew-pattern
+yzraʿʾel                                 yzra’ʾel                       YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      49     hebrew-pattern
+yʾathown                                 y‘athown                       YY-s05v03-Babel-Chemah-Venomous.docx                              335    hebrew-pattern
+zaraʾ                                    zara’                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           377    blb
+Zarowaʿ                                  Zarowa’                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+zarowaʿ                                  zarowa’                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+Zarowʿa                                  Zarow’a                        YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   351    hebrew-pattern
+zaʿam                                    za’am                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           212    hebrew-pattern
+zeraʿ                                    zera’                          YY-s04v04-Coming Home-Basar-Herald.docx                           396    blb
+zeʿyet                                   ze’yet                         YY-s03v05-Observations-Understanding.docx                         255    heuristic
+zoʾth                                    zo’th                          YY-s04v04-Coming Home-Basar-Herald.docx                           50     hebrew-pattern
+zoʾth                                    zo’th                          YY-s04v04-Coming Home-Basar-Herald.docx                           478    hebrew-pattern
+ʾabaʿ                                    ʾaba’                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+ʾAbynoʿam                                ʾAbyno’am                      YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      65     hebrew-pattern
+ʾAchʾab                                  ʾAch‘ab                        YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      41     hebrew-pattern
+ʿalaʿ                                    ʾala’                          YY-s05v01-Babel-Chywah-Beast.docx                                 36     blb
+ʾanachnuwʾ                               ʾanachnuw’                     YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    heuristic
+ʾanaʾ                                    ʾana’                          YY-s04v03-Coming Home-Dowd-Beloved.docx                           361    blb
+ʾaphʿaph                                 ʾaph’aph                       YY-s03v01-Observations-Perspective.docx                           42     heuristic
+ʿaphʿaphym                               ʾaph’aphym                     YY-s01v02-An Intro to God-Mitswah-Instructions.docx               532    hebrew-pattern
+ʾarabaʿ                                  ʾaraba’                        YY-s03v02-Observations-Covenant.docx                              37     hebrew-pattern
+ʾarbaʿ                                   ʾarba’                         YY-s03v02-Observations-Covenant.docx                              80     blb
+ʾarbaʿah                                 ʾarba’ah                       YY-s05v02-Babel-Tow'ebah-Abominable.docx                          125    heuristic
+ʾArbeʿl                                  ʾArbe’l                        YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      311    heuristic
+ʿarowʿer                                 ʾarow’er                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾasherʿerets                             ʾasher‘erets                   YY-s03v05-Observations-Understanding.docx                         448    heuristic
+ʾelʿary                                  ʾel‘ary                        YY-s05v03-Babel-Chemah-Venomous.docx                              388    heuristic
+ʾelʿazar                                 ʾel‘azar                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+ʾElʿAzar                                 ʾEl‘Azar                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+ʾElʿaleh                                 ʾEl’aleh                       YY-s03v05-Observations-Understanding.docx                         205    heuristic
+ʾEsaʿow                                  ʾEsa’ow                        YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      339    heuristic
+ʾEthbaʿal                                ʾEthba’al                      YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      71     hebrew-pattern
+ʾeythanʿs                                ʾeythan’s                      YY-s04v04-Coming Home-Basar-Herald.docx                           473    heuristic
+ʾarbaʿʿ                                  ʿarbaʿ’                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           109    heuristic
+ʾabad                                    ‘abad                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   308    blb
+ʾabar                                    ‘abar                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               252    blb
+ʾabatyach                                ‘abatyach                      YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           363    heuristic
+ʾAbel-Machowlah                          ‘Abel-Machowlah                YY-s03v04-Observations-Teaching.docx                              136    blb
+ʾabnet                                   ‘abnet                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       30     blb
+ʾabodah                                  ‘abodah                        YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾabowth                                  ‘abowth                        YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   360    heuristic
+ʾAbraam                                  ‘Abraam                        YY-s06v02-Twistianity-Towrahless.docx                             1      hebrew-pattern
+ʾaby                                     ‘aby                           YY-s01v02-An Intro to God-Mitswah-Instructions.docx               410    spelling
+ʾabyb                                    ‘abyb                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  118    hebrew-pattern
+ʾAbygayl                                 ‘Abygayl                       YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʾAbyʿezer                                ‘Aby’ezer                      YY-s03v04-Observations-Teaching.docx                              121    hebrew-pattern
+ʾach                                     ‘ach                           YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       28     hebrew-pattern
+ʾachar                                   ‘achar                         YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      35     hebrew-pattern
+ʾachazath                                ‘achazath                      YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     82     hebrew-pattern
+ʾAchazʾ                                  ‘Achaz’                        YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   332    heuristic
+ʾachbar                                  ‘achbar                        YY-s03v05-Observations-Understanding.docx                         352    heuristic
+ʾacher                                   ‘acher                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                332    hebrew-pattern
+ʾachuzah                                 ‘achuzah                       YY-s05v03-Babel-Chemah-Venomous.docx                              446    hebrew-pattern
+ʾAchyman                                 ‘Achyman                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           435    hebrew-pattern
+ʾAchymelek                               ‘Achymelek                     YY-s03v04-Observations-Teaching.docx                              261    hebrew-pattern
+ʾAchʾab                                  ‘Ach‘ab                        YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾact-ch’ll’                              ‘act-ch’ll’                    YY-s06v03-Twistianity-Devils Advocate.docx                        1      hebrew-pattern
+ʾadad                                    ‘adad                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   162    blb
+ʿadah                                    ‘adah                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           105    hebrew-pattern
+ʾadam                                    ‘adam                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               258    blb
+ʾadamah                                  ‘adamah                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     470    hebrew-pattern
+ʾadar                                    ‘adar                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     blb
+ʾadem                                    ‘adem                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʾaderth                                  ‘aderth                        YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   181    hebrew-pattern
+ʾadon                                    ‘adon                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               211    blb
+ʾAdon                                    ‘Adon                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     blb
+ʾadonay                                  ‘adonay                        YY-s01v02-An Intro to God-Mitswah-Instructions.docx               211    blb
+ʾAdony                                   ‘Adony                         YY-s05v02-Babel-Tow'ebah-Abominable.docx                          147    hebrew-pattern
+ʾadony                                   ‘adony                         YY-s05v03-Babel-Chemah-Venomous.docx                              138    hebrew-pattern
+ʾadowm                                   ‘adowm                         YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   236    heuristic
+ʾadown                                   ‘adown                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  186    hebrew-pattern
+ʾadownyʾ                                 ‘adowny’                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           513    heuristic
+ʾahab                                    ‘ahab                          YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   218    blb
+ʾahal                                    ‘ahal                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           142    blb
+ʾahaz                                    ‘ahaz                          YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   332    blb
+ʾakal                                    ‘akal                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  42     blb
+ʿAkowr                                   ‘Akowr                         YY-s04v02-Coming Home-Mashyach-Messiah.docx                       125    hebrew-pattern
+ʾakylah                                  ‘akylah                        YY-s03v04-Observations-Teaching.docx                              39     hebrew-pattern
+ʾal                                      ‘al                            YY-s04v04-Coming Home-Basar-Herald.docx                           110    spelling
+ʾalah                                    ‘alah                          YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      299    blb
+ʾalam                                    ‘alam                          YY-s04v03-Coming Home-Dowd-Beloved.docx                           8      blb
+ʾalmanah                                 ‘almanah                       YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   290    hebrew-pattern
+ʾalmanuwth                               ‘almanuwth                     YY-s04v04-Coming Home-Basar-Herald.docx                           404    hebrew-pattern
+ʾalyl                                    ‘alyl                          YY-s03v01-Observations-Perspective.docx                           576    hebrew-pattern
+ʾam                                      ‘am                            YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      36     spelling
+ʿamad                                    ‘amad                          YY-s03v01-Observations-Perspective.docx                           171    blb
+ʾamahowth                                ‘amahowth                      YY-s05v03-Babel-Chemah-Venomous.docx                              353    heuristic
+ʾaman                                    ‘aman                          YY-s03v01-Observations-Perspective.docx                           536    blb
+ʾAmanah                                  ‘Amanah                        YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                350    hebrew-pattern
+ʾamar                                    ‘amar                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  86     blb
+ʿamas                                    ‘amas                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   146    blb
+ʾAmelek                                  ‘Amelek                        YY-s03v03-Observations-Growing.docx                               359    heuristic
+ʿAmleq                                   ‘Amleq                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           149    hebrew-pattern
+ʾamnah                                   ‘amnah                         YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   264    hebrew-pattern
+ʾamyr                                    ‘amyr                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾAmyr                                    ‘Amyr                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʿamyth                                   ‘amyth                         YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   187    hebrew-pattern
+ʿAmyʾel                                  ‘Amyʾel                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           428    hebrew-pattern
+ʾanah                                    ‘anah                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     125    blb
+ʾanahnu                                  ‘anahnu                        YY-s03v04-Observations-Teaching.docx                              450    blb
+ʿanan                                    ‘anan                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   331    spelling
+ʾananuw                                  ‘ananuw                        YY-s03v05-Observations-Understanding.docx                         57     heuristic
+ʾAnan~Zanah~Sheqer                       ‘Anan~Zanah~Sheqer             YY-s04v04-Coming Home-Basar-Herald.docx                           211    heuristic
+ʾanaph                                   ‘anaph                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     532    hebrew-pattern
+ʾanaʾ                                    ‘anaʿ                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   430    blb
+ʾanoky                                   ‘anoky                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                156    hebrew-pattern
+ʾanowky                                  ‘anowky                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           371    heuristic
+ʾanowsh                                  ‘anowsh                        YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʾaph                                     ‘aph                           YY-s04v04-Coming Home-Basar-Herald.docx                           311    hebrew-pattern
+ʾaphaph                                  ‘aphaph                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          195    hebrew-pattern
+ʾaphaq                                   ‘aphaq                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾaphar                                   ‘aphar                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           61     hebrew-pattern
+ʿaphaʿphym                               ‘apha’phym                     YY-s04v02-Coming Home-Mashyach-Messiah.docx                       42     hebrew-pattern
+ʿaqab                                    ‘aqab                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     480    blb
+ʾarabaʿ                                  ‘araba’                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          56     hebrew-pattern
+ʾAraby                                   ‘Araby                         YY-s03v04-Observations-Teaching.docx                              416    hebrew-pattern
+ʾarach                                   ‘arach                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               214    hebrew-pattern
+ʾaras                                    ‘aras                          YY-s04v02-Coming Home-Mashyach-Messiah.docx                       131    blb
+ʾarayeh                                  ‘arayeh                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  330    hebrew-pattern
+ʾarbaʿ                                   ‘arbaʾ                         YY-s05v01-Babel-Chywah-Beast.docx                                 265    blb
+ʿareb                                    ‘areb                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           661    blb
+ʾarowd                                   ‘arowd                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾArown                                   ‘Arown                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           609    hebrew-pattern
+ʾArownyah                                ‘Arownyah                      YY-s01v02-An Intro to God-Mitswah-Instructions.docx               214    heuristic
+ʿArowʿer                                 ‘Arow’er                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʿarowʿer                                 ‘arow’er                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾaruwmah                                 ‘aruwmah                       YY-s01v02-An Intro to God-Mitswah-Instructions.docx               214    hebrew-pattern
+ʿaruwts                                  ‘aruwts                        YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾArydathaʾ                               ‘Arydatha’                     YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  330    hebrew-pattern
+ʿarysah                                  ‘arysah                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           472    hebrew-pattern
+ʿasab                                    ‘asab                          YY-s04v04-Coming Home-Basar-Herald.docx                           28     blb
+ʾasah                                    ‘asah                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     481    heuristic
+ʾasam                                    ‘asam                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               494    blb
+ʿasan                                    ‘asan                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     blb
+ʾasar                                    ‘asar                          YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                301    blb
+ʾasephah                                 ‘asephah                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           137    hebrew-pattern
+ʾasereh                                  ‘asereh                        YY-s05v03-Babel-Chemah-Venomous.docx                              315    heuristic
+ʾash                                     ‘ash                           YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾasham                                   ‘asham                         YY-s04v04-Coming Home-Basar-Herald.docx                           112    hebrew-pattern
+ʿashaq                                   ‘ashaq                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     185    hebrew-pattern
+ʾasher                                   ‘asher                         YY-s05v02-Babel-Tow'ebah-Abominable.docx                          34     hebrew-pattern
+ʾAsherahs                                ‘Asherahs                      YY-s03v05-Observations-Understanding.docx                         341    heuristic
+ʾashmah                                  ‘ashmah                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          160    hebrew-pattern
+ʾashphah                                 ‘ashphah                       YY-s06v04-Twistianity-Incredible.docx                             372    hebrew-pattern
+ʾAshtarts                                ‘Ashtarts                      YY-s03v01-Observations-Perspective.docx                           205    heuristic
+ʿAshtoreth                               ‘Ashtoreth                     YY-s03v02-Observations-Covenant.docx                              60     hebrew-pattern
+ʿashyr                                   ‘ashyr                         YY-s04v04-Coming Home-Basar-Herald.docx                           305    hebrew-pattern
+ʾashyshah                                ‘ashyshah                      YY-s04v02-Coming Home-Mashyach-Messiah.docx                       137    hebrew-pattern
+ʿasluwth                                 ‘asluwth                       YY-s04v04-Coming Home-Basar-Herald.docx                           379    heuristic
+ʾasuwq                                   ‘asuwq                         YY-s03v01-Observations-Perspective.docx                           258    heuristic
+ʿasys                                    ‘asys                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾat                                      ‘at                            YY-s03v04-Observations-Teaching.docx                              496    blb
+ʾatah                                    ‘atah                          YY-s04v04-Coming Home-Basar-Herald.docx                           336    hebrew-pattern
+ʾAtah                                    ‘Atah                          YY-s04v04-Coming Home-Basar-Herald.docx                           347    hebrew-pattern
+ʿataq                                    ‘ataq                          YY-s04v02-Coming Home-Mashyach-Messiah.docx                       110    blb
+ʿatarah                                  ‘atarah                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           522    hebrew-pattern
+ʾath                                     ‘ath                           YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʿAthalyah                                ‘Athalyah                      YY-s03v05-Observations-Understanding.docx                         146    hebrew-pattern
+ʿathuwd                                  ‘athuwd                        YY-s05v03-Babel-Chemah-Venomous.docx                              308    hebrew-pattern
+ʿatseh                                   ‘atseh                         YY-s04v04-Coming Home-Basar-Herald.docx                           28     hebrew-pattern
+ʾaw                                      ‘aw                            YY-s01v02-An Intro to God-Mitswah-Instructions.docx               214    hebrew-pattern
+ʾawah                                    ‘awah                          YY-s02v07-Yada Yahowah-Shanah-Years.docx                          83     hebrew-pattern
+ʾAwan                                    ‘Awan                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾawel                                    ‘awel                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʾawlash                                  ‘awlash                        YY-s06v04-Twistianity-Incredible.docx                             102    heuristic
+ʾawʿah                                   ‘aw’ah                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               29     heuristic
+ʾay                                      ‘ay                            YY-s03v01-Observations-Perspective.docx                           412    blb
+ʿayam                                    ‘ayam                          YY-s03v04-Observations-Teaching.docx                              349    blb
+ʿayeph                                   ‘ayeph                         YY-s03v03-Observations-Growing.docx                               346    hebrew-pattern
+ʾayil                                    ‘ayil                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  326    hebrew-pattern
+ʾayilth                                  ‘ayilth                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  295    hebrew-pattern
+ʾayin                                    ‘ayin                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               233    blb
+ʾayn                                     ‘ayn                           YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      223    hebrew-pattern
+ʿaynym                                   ‘aynym                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾAyom                                    ‘Ayom                          YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      468    blb
+ʾayom                                    ‘ayom                          YY-s06v04-Twistianity-Incredible.docx                             30     blb
+ʾazakarah                                ‘azakarah                      YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   379    hebrew-pattern
+ʿazaq                                    ‘azaq                          YY-s03v03-Observations-Growing.docx                               281    blb
+ʿazary                                   ‘azary                         YY-s05v03-Babel-Chemah-Venomous.docx                              140    hebrew-pattern
+ʾazkarah                                 ‘azkarah                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾAzkarah                                 ‘Azkarah                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾAzkarah…                                ‘Azkarah…                      YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾe-hayah                                 ‘e-hayah                       YY-s02v07-Yada Yahowah-Shanah-Years.docx                          547    hebrew-pattern
+ʾe-hayahʾ                                ‘e-hayah’                      YY-s02v07-Yada Yahowah-Shanah-Years.docx                          547    heuristic
+ʾe-l                                     ‘e-l                           YY-s03v05-Observations-Understanding.docx                         583    hebrew-pattern
+ʿebed                                    ‘ebed                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  117    blb
+ʾebeduw                                  ‘ebeduw                        YY-s03v01-Observations-Perspective.docx                           260    heuristic
+ʾebedym                                  ‘ebedym                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           615    heuristic
+ʾeben                                    ‘eben                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               286    blb
+ʾEbown                                   ‘Ebown                         YY-s06v03-Twistianity-Devils Advocate.docx                        1      heuristic
+ʾEbownym                                 ‘Ebownym                       YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    heuristic
+ʾeboyown                                 ‘eboyown                       YY-s04v02-Coming Home-Mashyach-Messiah.docx                       192    hebrew-pattern
+ʿEdah                                    ‘Edah                          YY-s02v07-Yada Yahowah-Shanah-Years.docx                          498    hebrew-pattern
+ʿedah                                    ‘edah                          YY-s02v08-Yada Yahowah-'Azab-Separation.docx                      256    hebrew-pattern
+ʾedeny                                   ‘edeny                         YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   213    hebrew-pattern
+ʾeder                                    ‘eder                          YY-s03v02-Observations-Covenant.docx                              497    blb
+ʿednah                                   ‘ednah                         YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   231    hebrew-pattern
+ʾedon                                    ‘edon                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʾedonay                                  ‘edonay                        YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   83     hebrew-pattern
+ʾedowny                                  ‘edowny                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           677    heuristic
+ʿegabah                                  ‘egabah                        YY-s05v03-Babel-Chemah-Venomous.docx                              165    hebrew-pattern
+ʿegeb                                    ‘egeb                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               302    hebrew-pattern
+ʾehem                                    ‘ehem                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   118    heuristic
+ʾeith                                    ‘eith                          YY-s03v02-Observations-Covenant.docx                              249    hebrew-pattern
+ʾEldod                                   ‘Eldod                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           382    hebrew-pattern
+ʾElQanah                                 ‘ElQanah                       YY-s04v04-Coming Home-Basar-Herald.docx                           397    hebrew-pattern
+ʾElyaqym                                 ‘Elyaqym                       YY-s03v05-Observations-Understanding.docx                         174    hebrew-pattern
+ʾElym                                    ‘Elym                          YY-s03v05-Observations-Understanding.docx                         213    heuristic
+ʾElyowm                                  ‘Elyowm                        YY-s06v01-Twistianity-Appalling.docx                              222    heuristic
+ʿElyown                                  ‘Elyown                        YY-s03v04-Observations-Teaching.docx                              147    hebrew-pattern
+ʾElyʿam                                  ‘Ely’am                        YY-s04v04-Coming Home-Basar-Herald.docx                           411    hebrew-pattern
+ʾElʿaleh                                 ‘El’aleh                       YY-s03v05-Observations-Understanding.docx                         205    heuristic
+ʾemer                                    ‘emer                          YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   111    blb
+ʾemerym                                  ‘emerym                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     431    heuristic
+ʾemeth                                   ‘emeth                         YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                90     hebrew-pattern
+ʾemory                                   ‘emory                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+ʾEmowry                                  ‘Emowry                        YY-s03v04-Observations-Teaching.docx                              253    heuristic
+ʿenab                                    ‘enab                          YY-s04v02-Coming Home-Mashyach-Messiah.docx                       137    blb
+ʾenash                                   ‘enash                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           57     hebrew-pattern
+ʾenosh                                   ‘enosh                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               72     hebrew-pattern
+ʾenowsh                                  ‘enowsh                        YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     387    hebrew-pattern
+ʿenuwth                                  ‘enuwth                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  337    hebrew-pattern
+ʾepes                                    ‘epes                          YY-s04v04-Coming Home-Basar-Herald.docx                           310    blb
+ʾephes                                   ‘ephes                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+ʾephowd                                  ‘ephowd                        YY-s04v02-Coming Home-Mashyach-Messiah.docx                       139    hebrew-pattern
+ʾephowʾ                                  ‘ephow’                        YY-s06v04-Twistianity-Incredible.docx                             35     heuristic
+ʾEphraym                                 ‘Ephraym                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾepowʾ                                   ‘epow’                         YY-s03v01-Observations-Perspective.docx                           38     heuristic
+ʾereb                                    ‘ereb                          YY-s03v05-Observations-Understanding.docx                         361    blb
+ʾeresh                                   ‘eresh                         YY-s04v02-Coming Home-Mashyach-Messiah.docx                       189    hebrew-pattern
+ʾerets                                   ‘erets                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  48     hebrew-pattern
+ʾEsaʿow                                  ‘Esaʾow                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          177    heuristic
+ʾEsaʿow                                  ‘Esa’ow                        YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  392    heuristic
+ʿeseb                                    ‘eseb                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     blb
+ʾeserym                                  ‘eserym                        YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   122    heuristic
+ʾesh                                     ‘esh                           YY-s04v04-Coming Home-Basar-Herald.docx                           266    hebrew-pattern
+ʾeshar                                   ‘eshar                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+ʾesheh                                   ‘esheh                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾEshkowl                                 ‘Eshkowl                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           435    hebrew-pattern
+ʾeshkowl                                 ‘eshkowl                       YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           435    hebrew-pattern
+ʾeshnab                                  ‘eshnab                        YY-s03v01-Observations-Perspective.docx                           385    hebrew-pattern
+ʾeshym                                   ‘eshym                         YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+ʾEshym                                   ‘Eshym                         YY-s04v04-Coming Home-Basar-Herald.docx                           471    heuristic
+ʾesreh                                   ‘esreh                         YY-s05v03-Babel-Chemah-Venomous.docx                              97     heuristic
+ʾesrym                                   ‘esrym                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               390    heuristic
+ʾesrymym                                 ‘esrymym                       YY-s05v03-Babel-Chemah-Venomous.docx                              464    heuristic
+ʾestem                                   ‘estem                         YY-s05v03-Babel-Chemah-Venomous.docx                              234    heuristic
+ʾeth                                     ‘eth                           YY-s05v02-Babel-Tow'ebah-Abominable.docx                          115    hebrew-pattern
+ʾEthanym                                 ‘Ethanym                       YY-s02v07-Yada Yahowah-Shanah-Years.docx                          6      heuristic
+ʾethmowl                                 ‘ethmowl                       YY-s03v05-Observations-Understanding.docx                         194    hebrew-pattern
+ʾethnah                                  ‘ethnah                        YY-s02v03-Yada Yahowah-Beyth-In the Family.docx                   220    hebrew-pattern
+ʿets                                     ‘ets                           YY-s04v04-Coming Home-Basar-Herald.docx                           150    hebrew-pattern
+ʾetsbaʿ                                  ‘etsba’                        YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾetsel                                   ‘etsel                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           165    hebrew-pattern
+ʾetsem                                   ‘etsem                         YY-s05v03-Babel-Chemah-Venomous.docx                              234    hebrew-pattern
+ʾEtsyown                                 ‘Etsyown                       YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  20     heuristic
+ʾewmuwn                                  ‘ewmuwn                        YY-s01v02-An Intro to God-Mitswah-Instructions.docx               214    heuristic
+ʾeyal                                    ‘eyal                          YY-s02v07-Yada Yahowah-Shanah-Years.docx                          308    blb
+ʾEyalowth                                ‘Eyalowth                      YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  326    hebrew-pattern
+ʾeyk                                     ‘eyk                           YY-s04v02-Coming Home-Mashyach-Messiah.docx                       37     hebrew-pattern
+ʾEylat                                   ‘Eylat                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  20     hebrew-pattern
+ʾeynʿaglym                               ‘eyn’aglym                     YY-s05v03-Babel-Chemah-Venomous.docx                              454    heuristic
+ʾeyphah                                  ‘eyphah                        YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾeyphoh                                  ‘eyphoh                        YY-s03v03-Observations-Growing.docx                               299    hebrew-pattern
+ʿeyrm                                    ‘eyrm                          YY-s04v04-Coming Home-Basar-Herald.docx                           78     hebrew-pattern
+ʿez                                      ‘ez                            YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       31     blb
+ʾezrach                                  ‘ezrach                        YY-s04v04-Coming Home-Basar-Herald.docx                           243    hebrew-pattern
+ʾEzrachy                                 ‘Ezrachy                       YY-s04v04-Coming Home-Basar-Herald.docx                           472    hebrew-pattern
+ʾEzrachy                                 ‘Ezrachy                       YY-s04v04-Coming Home-Basar-Herald.docx                           472    hebrew-pattern
+ʾezrowaʿ                                 ‘ezrowa’                       YY-s02v07-Yada Yahowah-Shanah-Years.docx                          275    hebrew-pattern
+ʾHaShemʿ                                 ‘HaShemʾ                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     heuristic
+ʾhuwʾ                                    ‘huwʾ                          YY-s04v02-Coming Home-Mashyach-Messiah.docx                       136    hebrew-pattern
+ʿIbry                                    ‘Ibry                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  24     hebrew-pattern
+ʾIdowaʾ                                  ‘Idowa’                        YY-s03v03-Observations-Growing.docx                               492    heuristic
+ʾIerousalem                              ‘Ierousalem                    YY-s06v03-Twistianity-Devils Advocate.docx                        1      heuristic
+ʾIesa                                    ‘Iesa                          YY-s03v05-Observations-Understanding.docx                         110    heuristic
+ʾilah                                    ‘ilah                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           550    hebrew-pattern
+ʾilem                                    ‘ilem                          YY-s06v01-Twistianity-Appalling.docx                              498    hebrew-pattern
+ʾim                                      ‘im                            YY-s01v02-An Intro to God-Mitswah-Instructions.docx               417    hebrew-pattern
+ʿimad                                    ‘imad                          YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                158    hebrew-pattern
+ʾiower                                   ‘iower                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               137    hebrew-pattern
+ʿiqesh                                   ‘iqesh                         YY-s02v07-Yada Yahowah-Shanah-Years.docx                          197    hebrew-pattern
+ʾisah                                    ‘isah                          YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           420    heuristic
+ʾIsh                                     ‘Ish                           YY-s03v03-Observations-Growing.docx                               140    hebrew-pattern
+ʾisha                                    ‘isha                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   15     hebrew-pattern
+ʾishah                                   ‘ishah                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           508    hebrew-pattern
+ʿIsharown                                ‘Isharown                      YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+ʿisharown                                ‘isharown                      YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  411    hebrew-pattern
+ʿIshath                                  ‘Ishath                        YY-s03v03-Observations-Growing.docx                               538    hebrew-pattern
+ʾishe                                    ‘ishe                          YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   15     hebrew-pattern
+ʾIsrael                                  ‘Israel                        YY-s06v03-Twistianity-Devils Advocate.docx                        1      heuristic
+ʾiwer                                    ‘iwer                          YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     441    hebrew-pattern
+ʾiwer                                    ‘iwer                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  77     hebrew-pattern
+ʿiyr                                     ‘iyr                           YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   138    hebrew-pattern
+ʾiysh                                    ‘iysh                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               532    hebrew-pattern
+ʾiyshym                                  ‘iyshym                        YY-s02v07-Yada Yahowah-Shanah-Years.docx                          288    heuristic
+ʾlh                                      ‘lh                            YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                9      hebrew-pattern
+ʾlo                                      ‘lo                            YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern
+ʾnabat                                   ‘nabat                         YY-s03v05-Observations-Understanding.docx                         155    heuristic
+ʾnophingʾ                                ‘nophing’                      YY-s05v03-Babel-Chemah-Venomous.docx                              95     heuristic
+ʿObadyah                                 ‘Obadyah                       YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾObed                                    ‘Obed                          YY-s04v04-Coming Home-Basar-Herald.docx                           16     blb
+ʾohab                                    ‘ohab                          YY-s01v02-An Intro to God-Mitswah-Instructions.docx               301    blb
+ʾohel                                    ‘ohel                          YY-s05v01-Babel-Chywah-Beast.docx                                 615    blb
+ʾOholybah                                ‘Oholybah                      YY-s05v02-Babel-Tow'ebah-Abominable.docx                          360    hebrew-pattern
+ʾolah                                    ‘olah                          YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                335    hebrew-pattern
+ʾOlelah                                  ‘Olelah                        YY-s03v05-Observations-Understanding.docx                         310    heuristic
+ʿomeq                                    ‘omeq                          YY-s03v04-Observations-Teaching.docx                              123    blb
+ʾorach                                   ‘orach                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     145    hebrew-pattern
+ʾorek                                    ‘orek                          YY-s05v03-Babel-Chemah-Venomous.docx                              388    blb
+ʿoreph                                   ‘oreph                         YY-s01v02-An Intro to God-Mitswah-Instructions.docx               420    hebrew-pattern
+ʿOreph                                   ‘Oreph                         YY-s04v02-Coming Home-Mashyach-Messiah.docx                       291    hebrew-pattern
+ʾoseph                                   ‘oseph                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           137    hebrew-pattern
+ʿosheq                                   ‘osheq                         YY-s01v03-An Intro to God-Towrah Mizmowr.docx                     196    hebrew-pattern
+ʾow                                      ‘ow                            YY-s01v02-An Intro to God-Mitswah-Instructions.docx               332    hebrew-pattern
+ʾowaʾ                                    ‘owa’                          YY-s03v02-Observations-Covenant.docx                              237    heuristic
+ʾowb                                     ‘owb                           YY-s02v06-Yada Yahowah-Mow'ed-Appointments.docx                   404    hebrew-pattern
+ʿowlal                                   ‘owlal                         YY-s06v04-Twistianity-Incredible.docx                             462    hebrew-pattern
+ʾowlam                                   ‘owlam                         YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  96     hebrew-pattern
+ʾOwlam                                   ‘Owlam                         YY-s04v04-Coming Home-Basar-Herald.docx                           563    hebrew-pattern
+ʿowph                                    ‘owph                          YY-s04v04-Coming Home-Basar-Herald.docx                           38     hebrew-pattern
+ʾowphan                                  ‘owphan                        YY-s05v02-Babel-Tow'ebah-Abominable.docx                          26     hebrew-pattern
+ʾowr                                     ‘owr                           YY-s05v03-Babel-Chemah-Venomous.docx                              133    hebrew-pattern
+ʾowth                                    ‘owth                          YY-s02v04-Yada Yahowah-Miqra'ey-Invitations.docx                  51     hebrew-pattern
+ʾowts                                    ‘owts                          YY-s03v02-Observations-Covenant.docx                              237    hebrew-pattern
+ʾowyah                                   ‘owyah                         YY-s04v02-Coming Home-Mashyach-Messiah.docx                       463    hebrew-pattern
+ʾoyab                                    ‘oyab                          YY-s02v05-Yada Yahowah-Qatsyr-Harvests.docx                       36     hebrew-pattern
+ʾsatisfact-chʿilʾ                        ‘satisfact-ch’il’              YY-s06v03-Twistianity-Devils Advocate.docx                        1      heuristic
+ʿshaba                                   ‘shaba                         YY-s03v02-Observations-Covenant.docx                              544    hebrew-pattern
+ʾtsam                                    ‘tsam                          YY-s06v04-Twistianity-Incredible.docx                             34     hebrew-pattern
+ʿugah                                    ‘ugah                          YY-s04v04-Coming Home-Basar-Herald.docx                           230    hebrew-pattern
+ʾumlal                                   ‘umlal                         YY-s06v05-Twistianity-Foolology.docx                              90     hebrew-pattern
+ʾuwbal                                   ‘uwbal                         YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           159    hebrew-pattern
+ʾUzal                                    ‘Uzal                          YY-s05v03-Babel-Chemah-Venomous.docx                              38     blb
+ʾwa                                      ‘wa                            YY-s06v05-Twistianity-Foolology.docx                              73     hebrew-pattern
+ʾwl                                      ‘wl                            YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                9      hebrew-pattern
+ʾy                                       ‘y                             YY-s06v04-Twistianity-Incredible.docx                             370    hebrew-pattern
+ʾYashuwʿah                               ‘Yashuw’ah                     YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     heuristic
+ʿYrad                                    ‘Yrad                          YY-s02v02-Yada Yahowah-'Adam-The Story of Man.docx                214    hebrew-pattern
+ʾʿEldod                                  ‘‘Eldod                        YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble.docx           384    heuristic
+ʾchay                                    ’chay                          YY-s02v01-Yada Yahowah-Bare'syth-Beginning.docx                   11     hebrew-pattern

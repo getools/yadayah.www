@@ -9,8 +9,10 @@
         .upload-area { display: flex; gap: 12px; align-items: center; padding: 16px; background: #f8f8f8; border: 2px dashed #ccc; border-radius: 8px; margin-bottom: 20px; }
         .upload-area.dragover { border-color: #31345A; background: #f0f4ff; }
         .upload-area input[type="file"] { flex: 1; }
-        .upload-status { font-size: 0.85rem; color: #27ae60; margin-left: 8px; }
-        .upload-error { color: #c0392b; }
+        .upload-status { font-size: 0.85rem; margin-left: 8px; }
+        .upload-status.success { color: #27ae60; }
+        .upload-status.error { color: #c0392b; }
+        .upload-status.info { color: #2980b9; }
 
         .files-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .files-table th, .files-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
@@ -25,13 +27,33 @@
         .transcript-body { padding: 20px; font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; word-wrap: break-word; max-height: 600px; overflow-y: auto; }
         .files-table .num { text-align: right; }
         .files-table .actions { text-align: center; width: 80px; }
+        .files-table .status { text-align: center; width: 100px; }
         .delete-btn { background: none; border: none; color: #c0392b; cursor: pointer; font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; }
         .delete-btn:hover { background: #fde8e8; }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .badge-parsed { background: #d4edda; color: #155724; }
+        .badge-new { background: #fff3cd; color: #856404; }
 
         .stats-bar { display: flex; gap: 24px; padding: 12px 0; font-size: 0.85rem; color: #666; }
         .stats-bar strong { color: #333; }
         .empty-state { text-align: center; padding: 40px; color: #999; }
         .loading { text-align: center; padding: 20px; color: #888; }
+
+        .progress-bar { height: 4px; background: #e0e0e0; border-radius: 2px; margin-top: 8px; overflow: hidden; display: none; }
+        .progress-bar .fill { height: 100%; background: #27ae60; transition: width 0.3s; width: 0%; }
+
+        .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center; }
+        .modal-overlay.visible { display:flex; }
+        .modal-box { background:#fff; border-radius:8px; padding:24px; max-width:480px; width:90%; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+        .modal-box h3 { margin:0 0 12px; font-size:1rem; }
+        .modal-box .file-list { font-size:0.85rem; color:#555; margin:8px 0 16px; max-height:200px; overflow-y:auto; white-space:pre-wrap; }
+        .modal-box .modal-buttons { display:flex; gap:10px; justify-content:flex-end; }
+        .modal-box .modal-buttons button { padding:8px 20px; border-radius:4px; border:1px solid #ccc; cursor:pointer; font-size:0.9rem; font-weight:600; }
+        .modal-box .btn-update { background:#31345A; color:#fff; border-color:#31345A; }
+        .modal-box .btn-update:hover { background:#252850; }
+        .modal-box .btn-skip { background:#f8f8f8; }
+        .modal-box .btn-skip:hover { background:#e8e8e8; }
     </style>
 </head>
 <body>
@@ -58,14 +80,25 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
             <a href="admin-translation.html" class="nav-tab">Translation</a>
             <a href="admin-word.html" class="nav-tab">Word</a>
             <a href="admin-lookups.html" class="nav-tab">Lookups</a>
             <a href="admin-ask.html" class="nav-tab">Ask</a>
             <a href="admin-transcripts.html" class="nav-tab active">Transcripts</a>
             <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
             <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
         </nav>
         <div class="user-info">
             <span id="user-display"></span>
@@ -77,8 +110,22 @@
 
     <div class="upload-area" id="upload-area">
         <input type="file" id="file-input" accept=".vtt" multiple>
-        <button class="btn btn-primary btn-sm" onclick="uploadFiles()">Upload</button>
+        <input type="file" id="folder-input" webkitdirectory style="display:none">
+        <button class="btn btn-primary btn-sm" onclick="uploadFiles()">Upload &amp; Process</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('folder-input').click()">Select Folder</button>
         <span class="upload-status" id="upload-status"></span>
+    </div>
+    <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
+
+    <div class="modal-overlay" id="existing-modal">
+        <div class="modal-box">
+            <h3>Existing files detected</h3>
+            <div class="file-list" id="existing-file-list"></div>
+            <div class="modal-buttons">
+                <button class="btn-skip" id="modal-skip">Skip</button>
+                <button class="btn-update" id="modal-update">Update</button>
+            </div>
+        </div>
     </div>
 
     <div class="stats-bar" id="stats-bar"></div>
@@ -90,6 +137,7 @@
     </div>
 </div>
 
+<script src="js/admin-pages.js?v=2"></script>
 <script>
 var API = '/api';
 
@@ -98,6 +146,7 @@ function checkAuth() {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadFiles();
         } else {
             document.getElementById('login-screen').classList.add('visible');
@@ -111,7 +160,14 @@ function loadFiles() {
         .then(r => r.json())
         .then(function(d) {
             if (d.error) { document.getElementById('files-container').innerHTML = '<div class="empty-state">' + esc(d.error) + '</div>'; return; }
-            document.getElementById('stats-bar').innerHTML = '<span><strong>' + d.count + '</strong> transcript files</span>';
+            var parsed = 0, unparsed = 0;
+            for (var i = 0; i < d.files.length; i++) {
+                if (d.files[i].in_database) parsed++; else unparsed++;
+            }
+            var stats = '<span><strong>' + d.count + '</strong> files</span>';
+            stats += '<span><strong>' + parsed + '</strong> in database</span>';
+            if (unparsed > 0) stats += '<span style="color:#856404"><strong>' + unparsed + '</strong> not yet processed</span>';
+            document.getElementById('stats-bar').innerHTML = stats;
             renderFiles(d.files);
         });
 }
@@ -122,14 +178,18 @@ function renderFiles(files) {
         return;
     }
     var html = '<table class="files-table"><thead><tr>' +
-        '<th>Filename</th><th class="num">Size</th><th>Modified</th><th class="actions">Actions</th>' +
+        '<th>Filename</th><th class="status">Status</th><th class="num">Size</th><th>Modified</th><th class="actions">Actions</th>' +
         '</tr></thead><tbody>';
     for (var i = 0; i < files.length; i++) {
         var f = files[i];
         var size = formatSize(f.size);
         var safeName = f.name.replace(/'/g, "\\'");
+        var badge = f.in_database
+            ? '<span class="badge badge-parsed">Parsed</span>'
+            : '<span class="badge badge-new">New</span>';
         html += '<tr onclick="viewFile(\'' + safeName + '\', this)">' +
             '<td>' + esc(f.name) + '</td>' +
+            '<td class="status">' + badge + '</td>' +
             '<td class="num">' + size + '</td>' +
             '<td>' + f.modified + '</td>' +
             '<td class="actions"><button class="delete-btn" onclick="event.stopPropagation(); deleteFile(\'' + safeName + '\')">Delete</button></td>' +
@@ -140,7 +200,6 @@ function renderFiles(files) {
 }
 
 function viewFile(name, row) {
-    // Highlight selected row
     var rows = document.querySelectorAll('.files-table tr');
     for (var i = 0; i < rows.length; i++) rows[i].classList.remove('selected');
     if (row) row.classList.add('selected');
@@ -164,43 +223,225 @@ function viewFile(name, row) {
         });
 }
 
-function uploadFiles() {
+// Collect .vtt files from a list of FileSystemEntry items (handles directories recursively)
+function collectVttFiles(entries) {
+    return new Promise(function(resolve) {
+        var files = [];
+        var pending = entries.length;
+        if (pending === 0) { resolve(files); return; }
+        function checkDone() { if (--pending === 0) resolve(files); }
+        entries.forEach(function(entry) {
+            if (entry.isFile) {
+                entry.file(function(f) {
+                    if (f.name.toLowerCase().endsWith('.vtt')) files.push(f);
+                    checkDone();
+                });
+            } else if (entry.isDirectory) {
+                var reader = entry.createReader();
+                var allEntries = [];
+                (function readAll() {
+                    reader.readEntries(function(batch) {
+                        if (batch.length === 0) {
+                            collectVttFiles(allEntries).then(function(subFiles) {
+                                files = files.concat(subFiles);
+                                checkDone();
+                            });
+                        } else {
+                            allEntries = allEntries.concat(Array.from(batch));
+                            readAll();
+                        }
+                    });
+                })();
+            } else {
+                checkDone();
+            }
+        });
+    });
+}
+
+function uploadFiles(fileList) {
     var input = document.getElementById('file-input');
-    if (!input.files.length) return;
+    var filesToUpload = fileList || null;
+    if (!filesToUpload) {
+        if (!input.files.length) return;
+        // Filter to .vtt only (in case of folder input)
+        filesToUpload = [];
+        for (var i = 0; i < input.files.length; i++) {
+            if (input.files[i].name.toLowerCase().endsWith('.vtt')) filesToUpload.push(input.files[i]);
+        }
+    }
+    if (!filesToUpload.length) {
+        document.getElementById('upload-status').textContent = 'No .vtt files found.';
+        document.getElementById('upload-status').className = 'upload-status info';
+        return;
+    }
+
+    // First, check which files already exist on the server
     var statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading...';
-    statusEl.className = 'upload-status';
-    var total = input.files.length;
+    statusEl.textContent = 'Checking for existing files...';
+    statusEl.className = 'upload-status info';
+
+    fetch(API + '/transcripts.php', {credentials:'include'})
+        .then(r => r.json())
+        .then(function(d) {
+            var existingFiles = {};
+            for (var i = 0; i < d.files.length; i++) {
+                existingFiles[d.files[i].name] = d.files[i].in_database;
+            }
+
+            // Check which selected files already exist
+            var newFiles = [];
+            var existingSelected = [];
+            for (var i = 0; i < filesToUpload.length; i++) {
+                var name = filesToUpload[i].name;
+                // Apply same yyyyMM- prefix logic as server
+                if (!/^\d{6}-/.test(name)) {
+                    var now = new Date();
+                    var prefix = String(now.getFullYear()) + String(now.getMonth() + 1).padStart(2, '0');
+                    name = prefix + '-' + name;
+                }
+                if (existingFiles.hasOwnProperty(name)) {
+                    existingSelected.push({file: filesToUpload[i], serverName: name, inDb: existingFiles[name]});
+                } else {
+                    newFiles.push(filesToUpload[i]);
+                }
+            }
+
+            if (existingSelected.length > 0) {
+                var names = existingSelected.map(function(e) { return e.serverName; }).join('\n');
+                document.getElementById('existing-file-list').textContent = existingSelected.length + ' file(s) already exist:\n' + names;
+                var modal = document.getElementById('existing-modal');
+                modal.classList.add('visible');
+                statusEl.textContent = '';
+
+                document.getElementById('modal-update').onclick = function() {
+                    modal.classList.remove('visible');
+                    var reuploadFiles = existingSelected.map(function(e) { return e.file; });
+                    doUpload(newFiles.concat(reuploadFiles), true, 0);
+                };
+                document.getElementById('modal-skip').onclick = function() {
+                    modal.classList.remove('visible');
+                    if (newFiles.length === 0) {
+                        statusEl.textContent = 'No new files to upload. Existing files skipped.';
+                        statusEl.className = 'upload-status info';
+                        return;
+                    }
+                    doUpload(newFiles, false, existingSelected.length);
+                };
+                input.value = '';
+                return;
+            }
+
+            if (newFiles.length === 0) {
+                statusEl.textContent = 'No new files to upload. All selected files already exist.';
+                statusEl.className = 'upload-status info';
+                input.value = '';
+                return;
+            }
+
+            doUpload(newFiles, false, 0);
+            input.value = '';
+        });
+}
+
+function doUpload(files, reprocess, skippedCount) {
+    var statusEl = document.getElementById('upload-status');
+    var progressBar = document.getElementById('progress-bar');
+    var progressFill = document.getElementById('progress-fill');
+
+    statusEl.textContent = 'Uploading ' + files.length + ' file(s)...';
+    statusEl.className = 'upload-status info';
+    progressBar.style.display = 'block';
+    progressFill.style.width = '0%';
+
+    var total = files.length;
     var done = 0;
+    var uploaded = [];
+    var skipped = skippedCount || 0;
     var errors = [];
 
     for (var i = 0; i < total; i++) {
         (function(file) {
             var fd = new FormData();
             fd.append('file', file);
-            fetch(API + '/transcripts.php', {
+            var uploadUrl = API + '/transcripts.php' + (reprocess ? '?overwrite=1' : '');
+            fetch(uploadUrl, {
                 method: 'POST', credentials: 'include', body: fd
             }).then(r => r.json()).then(function(d) {
                 done++;
-                if (d.error) errors.push(file.name + ': ' + d.error);
+                progressFill.style.width = Math.round((done / total) * 50) + '%';
+                if (d.error) {
+                    errors.push(file.name + ': ' + d.error);
+                } else if (d.skipped) {
+                    // File existed on disk but user didn't choose to reprocess
+                    skipped++;
+                } else if (d.saved) {
+                    uploaded.push(d.name);
+                }
                 if (done === total) {
-                    if (errors.length) {
-                        statusEl.textContent = errors.join('; ');
-                        statusEl.className = 'upload-status upload-error';
-                    } else {
-                        statusEl.textContent = done + ' file(s) uploaded!';
-                        setTimeout(function() { statusEl.textContent = ''; }, 3000);
-                    }
-                    input.value = '';
-                    loadFiles();
+                    finishUpload(uploaded, skipped, errors, statusEl, progressFill, reprocess);
+                }
+            }).catch(function(err) {
+                done++;
+                errors.push(file.name + ': ' + err.message);
+                if (done === total) {
+                    finishUpload(uploaded, skipped, errors, statusEl, progressFill, reprocess);
                 }
             });
-        })(input.files[i]);
+        })(files[i]);
     }
 }
 
+function finishUpload(uploaded, skipped, errors, statusEl, progressFill, reprocess) {
+    if (uploaded.length === 0) {
+        var msg = [];
+        if (skipped > 0) msg.push(skipped + ' already existed (skipped)');
+        if (errors.length > 0) msg.push(errors.join('; '));
+        statusEl.textContent = msg.join('. ') || 'No new files to upload.';
+        statusEl.className = 'upload-status ' + (errors.length ? 'error' : 'info');
+        progressFill.style.width = '100%';
+        setTimeout(function() { document.getElementById('progress-bar').style.display = 'none'; }, 1500);
+        loadFiles();
+        return;
+    }
+
+    // Process newly uploaded files
+    statusEl.textContent = 'Processing ' + uploaded.length + ' file(s)...';
+    statusEl.className = 'upload-status info';
+    progressFill.style.width = '60%';
+
+    fetch(API + '/transcripts.php?action=process', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({files: uploaded, reprocess: !!reprocess})
+    }).then(r => r.json()).then(function(d) {
+        progressFill.style.width = '100%';
+        if (d.error) {
+            statusEl.textContent = 'Process error: ' + d.error;
+            statusEl.className = 'upload-status error';
+        } else {
+            var processed = 0, chunks = 0;
+            for (var i = 0; i < d.results.length; i++) {
+                if (d.results[i].processed) { processed++; chunks += d.results[i].chunks; }
+            }
+            var msg = processed + ' file(s) processed (' + chunks + ' chunks)';
+            if (skipped > 0) msg += ', ' + skipped + ' skipped (already existed)';
+            if (errors.length > 0) msg += ', ' + errors.length + ' error(s)';
+            statusEl.textContent = msg;
+            statusEl.className = 'upload-status success';
+        }
+        setTimeout(function() { document.getElementById('progress-bar').style.display = 'none'; }, 2000);
+        loadFiles();
+    }).catch(function(err) {
+        statusEl.textContent = 'Process error: ' + err.message;
+        statusEl.className = 'upload-status error';
+        document.getElementById('progress-bar').style.display = 'none';
+        loadFiles();
+    });
+}
+
 function deleteFile(name) {
-    if (!confirm('Delete ' + name + '?')) return;
+    if (!confirm('Delete ' + name + '?\nThis will also remove it from the database.')) return;
     fetch(API + '/transcripts.php', {
         method: 'DELETE', credentials: 'include',
         headers: {'Content-Type': 'application/json'},
@@ -231,6 +472,7 @@ function doLogin() {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadFiles();
         } else {
             errEl.textContent = d.error || 'Login failed';
@@ -254,7 +496,21 @@ function esc(s) {
     return d.innerHTML;
 }
 
-// Drag and drop
+// Folder input handler
+document.getElementById('folder-input').addEventListener('change', function() {
+    var files = [];
+    for (var i = 0; i < this.files.length; i++) {
+        if (this.files[i].name.toLowerCase().endsWith('.vtt')) files.push(this.files[i]);
+    }
+    this.value = '';
+    if (files.length) uploadFiles(files);
+    else {
+        document.getElementById('upload-status').textContent = 'No .vtt files found in folder.';
+        document.getElementById('upload-status').className = 'upload-status info';
+    }
+});
+
+// Drag and drop (supports files and folders)
 var dropArea = document.getElementById('upload-area');
 ['dragenter', 'dragover'].forEach(function(ev) {
     dropArea.addEventListener(ev, function(e) { e.preventDefault(); dropArea.classList.add('dragover'); });
@@ -263,8 +519,30 @@ var dropArea = document.getElementById('upload-area');
     dropArea.addEventListener(ev, function(e) { e.preventDefault(); dropArea.classList.remove('dragover'); });
 });
 dropArea.addEventListener('drop', function(e) {
-    document.getElementById('file-input').files = e.dataTransfer.files;
-    uploadFiles();
+    var items = e.dataTransfer.items;
+    if (items && items.length > 0) {
+        var entries = [];
+        for (var i = 0; i < items.length; i++) {
+            var entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+            if (entry) entries.push(entry);
+        }
+        if (entries.length > 0) {
+            collectVttFiles(entries).then(function(files) {
+                if (files.length) uploadFiles(files);
+                else {
+                    document.getElementById('upload-status').textContent = 'No .vtt files found.';
+                    document.getElementById('upload-status').className = 'upload-status info';
+                }
+            });
+            return;
+        }
+    }
+    // Fallback: plain file drop
+    var files = [];
+    for (var i = 0; i < e.dataTransfer.files.length; i++) {
+        if (e.dataTransfer.files[i].name.toLowerCase().endsWith('.vtt')) files.push(e.dataTransfer.files[i]);
+    }
+    if (files.length) uploadFiles(files);
 });
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {

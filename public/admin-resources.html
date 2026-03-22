@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resources Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .res-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .res-table th, .res-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .res-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .res-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .res-table .actions { white-space: nowrap; }
+        .res-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .res-table .actions button:hover { background: #f0f0f0; }
+        .res-table .icon-cell { width: 40px; text-align: center; }
+        .res-table .icon-cell img { width: 32px; height: 32px; object-fit: contain; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #f8d7da; color: #721c24; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .form-header button:hover { background: #eee; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 12px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 3px; color: #333; }
+        .form-body input[type=text], .form-body input[type=number], .form-body textarea {
+            width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body textarea { min-height: 100px; resize: vertical; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .field { flex: 1; }
+        .form-body .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .form-body .checkbox-row input[type=checkbox] { width: 16px; height: 16px; }
+        .form-body .checkbox-row label { margin: 0; font-weight: normal; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .res-count { font-size: 0.85rem; color: #666; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab active">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <span id="res-count" class="res-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="openForm()">+ Add Resource</button>
+    </div>
+
+    <table class="res-table">
+        <thead>
+            <tr>
+                <th class="icon-cell">Img</th>
+                <th>Title</th>
+                <th>Subtitle</th>
+                <th>Link</th>
+                <th>Sort</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="res-body"></tbody>
+    </table>
+</div>
+
+<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Add Resource</h3>
+            <button onclick="closeForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="field">
+                <label>Title</label>
+                <input type="text" id="f-title">
+            </div>
+            <div class="form-row">
+                <div class="field"><label>Subtitle</label><input type="text" id="f-subtitle"></div>
+                <div class="field" style="max-width:80px"><label>Sort</label><input type="number" id="f-sort"></div>
+            </div>
+            <div class="field">
+                <label>Image</label>
+                <div id="f-image-preview" style="margin-bottom:6px"></div>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                    <input type="text" id="f-image" placeholder="/u/icon.png" style="flex:1;min-width:200px">
+                    <span style="font-size:0.8rem;color:#999">or upload:</span>
+                    <input type="file" id="f-image-file" accept="image/*" style="font-size:0.85rem" onchange="uploadImage(this)">
+                </div>
+                <div id="img-upload-progress" style="display:none;margin-top:6px">
+                    <div style="width:100%;height:20px;background:#e0e0e0;border-radius:4px;overflow:hidden">
+                        <div id="img-upload-fill" style="height:100%;background:#3498db;border-radius:4px;transition:width 0.2s;width:0%"></div>
+                    </div>
+                    <div id="img-upload-text" style="font-size:0.8rem;color:#555;margin-top:3px"></div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>Link URL</label><input type="text" id="f-link-url"></div>
+                <div class="field" style="max-width:150px"><label>Link Title</label><input type="text" id="f-link-title" placeholder="Download"></div>
+            </div>
+            <div class="field">
+                <label>Summary (HTML allowed)</label>
+                <textarea id="f-summary" rows="6"></textarea>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="f-active" checked>
+                <label for="f-active">Active</label>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveForm()">Save</button>
+                <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+                <button class="btn btn-danger" id="btn-delete" style="margin-left:auto;display:none" onclick="deleteResource()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-pages.js?v=2"></script>
+<script>
+var API = '/api';
+var resources = [];
+
+function esc(s) {
+    if (s == null) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadResources();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadResources();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadResources() {
+    fetch(API + '/admin-resources.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            resources = data.resources || [];
+            renderResources();
+        });
+}
+
+function renderResources() {
+    document.getElementById('res-count').textContent = resources.length + ' resource' + (resources.length !== 1 ? 's' : '');
+    var html = '';
+    for (var i = 0; i < resources.length; i++) {
+        var r = resources[i];
+        var status = r.resource_active_flag
+            ? '<span class="badge badge-active">Active</span>'
+            : '<span class="badge badge-inactive">Inactive</span>';
+        html += '<tr onclick="editResource(' + r.resource_key + ')">';
+        html += '<td class="icon-cell">' + (r.resource_image ? '<img src="' + esc(r.resource_image) + '">' : '') + '</td>';
+        html += '<td>' + esc(r.resource_title) + '</td>';
+        html += '<td>' + esc(r.resource_subtitle) + '</td>';
+        html += '<td>' + esc(r.resource_link_title) + '</td>';
+        html += '<td>' + (r.resource_sort || 0) + '</td>';
+        html += '<td>' + status + '</td>';
+        html += '<td class="actions"><button onclick="event.stopPropagation();editResource(' + r.resource_key + ')">Edit</button></td>';
+        html += '</tr>';
+    }
+    document.getElementById('res-body').innerHTML = html;
+}
+
+function openForm(data) {
+    document.getElementById('f-key').value = data ? data.resource_key : '';
+    document.getElementById('f-title').value = data ? (data.resource_title || '') : '';
+    document.getElementById('f-subtitle').value = data ? (data.resource_subtitle || '') : '';
+    document.getElementById('f-image').value = data ? (data.resource_image || '') : '';
+    document.getElementById('f-image-file').value = '';
+    document.getElementById('f-link-url').value = data ? (data.resource_link_url || '') : '';
+    document.getElementById('f-link-title').value = data ? (data.resource_link_title || '') : '';
+    document.getElementById('f-summary').value = data ? (data.resource_summary || '') : '';
+    document.getElementById('f-sort').value = data ? (data.resource_sort || 0) : 0;
+    document.getElementById('f-active').checked = data ? data.resource_active_flag : true;
+    document.getElementById('form-title').textContent = data ? 'Edit Resource' : 'Add Resource';
+    document.getElementById('btn-delete').style.display = data ? '' : 'none';
+    var preview = document.getElementById('f-image-preview');
+    if (data && data.resource_image) {
+        preview.innerHTML = '<img src="' + esc(data.resource_image) + '" style="max-width:64px;max-height:64px;border-radius:4px">';
+    } else {
+        preview.innerHTML = '';
+    }
+    document.getElementById('form-overlay').classList.add('open');
+}
+
+function closeForm() {
+    document.getElementById('form-overlay').classList.remove('open');
+    document.getElementById('img-upload-progress').style.display = 'none';
+}
+
+function uploadImage(input) {
+    var file = input.files[0];
+    if (!file) return;
+
+    var progressEl = document.getElementById('img-upload-progress');
+    var fillEl = document.getElementById('img-upload-fill');
+    var textEl = document.getElementById('img-upload-text');
+
+    progressEl.style.display = '';
+    fillEl.style.width = '0%';
+    textEl.textContent = 'Uploading...';
+    textEl.style.color = '#555';
+
+    var fd = new FormData();
+    fd.append('image_file', file);
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/admin-resource-upload.php', true);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var pct = Math.round((e.loaded / e.total) * 100);
+            fillEl.style.width = pct + '%';
+            textEl.textContent = 'Uploading ' + pct + '%';
+        }
+    };
+
+    xhr.onload = function() {
+        try {
+            var d = JSON.parse(xhr.responseText);
+            if (d.error) {
+                textEl.textContent = d.error;
+                textEl.style.color = '#c0392b';
+                return;
+            }
+            if (d.path) {
+                document.getElementById('f-image').value = d.path;
+                fillEl.style.width = '100%';
+                textEl.textContent = 'Uploaded';
+                textEl.style.color = '#27ae60';
+                document.getElementById('f-image-preview').innerHTML = '<img src="/' + esc(d.path) + '" style="max-width:64px;max-height:64px;border-radius:4px">';
+            }
+        } catch(e) {
+            textEl.textContent = 'Upload failed';
+            textEl.style.color = '#c0392b';
+        }
+        input.value = '';
+    };
+
+    xhr.onerror = function() {
+        textEl.textContent = 'Upload failed';
+        textEl.style.color = '#c0392b';
+        input.value = '';
+    };
+
+    xhr.send(fd);
+}
+
+function saveForm() {
+    var key = document.getElementById('f-key').value;
+
+    var fd = new FormData();
+    fd.append('resource_title', document.getElementById('f-title').value);
+    fd.append('resource_subtitle', document.getElementById('f-subtitle').value);
+    fd.append('resource_link_url', document.getElementById('f-link-url').value);
+    fd.append('resource_link_title', document.getElementById('f-link-title').value);
+    fd.append('resource_summary', document.getElementById('f-summary').value);
+    fd.append('resource_sort', document.getElementById('f-sort').value || '0');
+    fd.append('resource_active_flag', document.getElementById('f-active').checked ? '1' : '0');
+    fd.append('resource_image', document.getElementById('f-image').value);
+
+    if (key) {
+        fd.append('resource_key', key);
+        fd.append('_method', 'PUT');
+    }
+
+    fetch(API + '/admin-resources.php', {
+        method: 'POST', credentials: 'include',
+        body: fd
+    }).then(function() { closeForm(); loadResources(); });
+}
+
+function editResource(key) {
+    var r = resources.find(function(x) { return x.resource_key === key; });
+    if (r) openForm(r);
+}
+
+function deleteResource() {
+    var key = document.getElementById('f-key').value;
+    if (!key || !confirm('Delete this resource?')) return;
+    fetch(API + '/admin-resources.php', {
+        method: 'DELETE', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({resource_key: parseInt(key)})
+    }).then(function() { closeForm(); loadResources(); });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

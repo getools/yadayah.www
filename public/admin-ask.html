@@ -49,6 +49,44 @@
         .stats-bar strong { color: #333; }
         .empty-state { text-align: center; padding: 40px; color: #999; }
         .loading { text-align: center; padding: 20px; color: #888; }
+
+        .sub-tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px; }
+        .sub-tab { padding: 10px 24px; font-size: 0.95rem; font-weight: 600; color: #666; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+        .sub-tab:hover { color: #31345A; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #31345A; }
+        .sub-panel { display: none; }
+        .sub-panel.active { display: block; }
+
+        .config-section { }
+        .config-section h3 { margin: 0 0 12px 0; font-size: 1rem; color: #333; }
+
+        .qanda-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .qanda-list { display: flex; flex-direction: column; gap: 12px; }
+        .qanda-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; }
+        .qanda-card.inactive { opacity: 0.5; }
+        .qanda-card-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f5f5f5; border-bottom: 1px solid #e8e8e8; }
+        .qanda-card-header .sort-badge { font-size: 0.75rem; color: #888; background: #e8e8e8; padding: 2px 8px; border-radius: 10px; }
+        .qanda-card-header .card-actions { display: flex; gap: 6px; }
+        .qanda-card-header .card-actions button { padding: 4px 10px; font-size: 0.8rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; }
+        .qanda-card-header .card-actions button:hover { background: #f0f0f0; }
+        .qanda-card-header .card-actions button.del { color: #c0392b; border-color: #e0c0c0; }
+        .qanda-card-header .card-actions button.del:hover { background: #fde8e8; }
+        .qanda-card-q { padding: 10px 14px; font-weight: 600; font-size: 0.9rem; }
+        .qanda-card-a { padding: 6px 14px 12px; font-size: 0.85rem; color: #444; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+
+        .qanda-form { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 16px; background: #fafafa; }
+        .qanda-form .field { margin-bottom: 12px; }
+        .qanda-form label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .qanda-form input[type=text], .qanda-form textarea { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
+        .qanda-form textarea { min-height: 120px; resize: vertical; }
+        .qanda-form .form-row { display: flex; gap: 12px; align-items: center; }
+        .qanda-form .form-row .field { flex: 0 0 80px; margin-bottom: 0; }
+        .qanda-form .form-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .sort-arrows { white-space: nowrap; display: inline-block; margin-left: 6px; }
+        .sort-arrows button { background: none; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; padding: 1px 5px; font-size: 0.75rem; line-height: 1; margin: 0 1px; color: #555; }
+        .sort-arrows button:hover { background: #e8edff; border-color: #31345A; color: #31345A; }
+        .sort-arrows button:disabled { opacity: 0.25; cursor: default; background: none; border-color: #ccc; }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -75,14 +113,25 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
             <a href="admin-translation.html" class="nav-tab">Translation</a>
             <a href="admin-word.html" class="nav-tab">Word</a>
             <a href="admin-lookups.html" class="nav-tab">Lookups</a>
             <a href="admin-ask.html" class="nav-tab active">Ask</a>
             <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
             <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
             <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
         </nav>
         <div class="user-info">
             <span id="user-display"></span>
@@ -90,27 +139,61 @@
         </div>
     </div>
 
-    <h1>Ask Yada Sessions</h1>
+    <h1>Ask Yada</h1>
 
-    <div class="model-selector">
-        <label>AI Model:</label>
-        <select id="model-select">
-            <option value="gemini-flash">Gemini 2.0 Flash (~$0.0006/q)</option>
-            <option value="gpt-4o-mini">GPT-4o mini (~$0.001/q)</option>
-            <option value="claude-haiku">Claude Haiku 4.5 (~$0.005/q)</option>
-            <option value="claude-sonnet">Claude Sonnet 4 (~$0.020/q)</option>
-        </select>
-        <button class="btn btn-primary btn-sm" onclick="saveModel()">Save</button>
-        <span class="model-status" id="model-status"></span>
+    <div class="sub-tabs">
+        <button class="sub-tab active" onclick="switchSubTab('config')">Config</button>
+        <button class="sub-tab" onclick="switchSubTab('log')">Log</button>
+        <button class="sub-tab" onclick="switchSubTab('qanda')">Q&amp;A</button>
     </div>
 
-    <div class="stats-bar" id="stats-bar"></div>
+    <div id="panel-config" class="sub-panel active">
+        <div class="config-section">
+            <h3>AI Model</h3>
+            <div class="model-selector">
+                <label>Model:</label>
+                <select id="model-select">
+                    <option value="gemini-flash">Gemini 2.0 Flash (~$0.0006/q)</option>
+                    <option value="gpt-4o-mini">GPT-4o mini (~$0.001/q)</option>
+                    <option value="claude-haiku">Claude Haiku 4.5 (~$0.005/q)</option>
+                    <option value="claude-sonnet">Claude Sonnet 4 (~$0.020/q)</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="saveModel()">Save</button>
+                <span class="model-status" id="model-status"></span>
+            </div>
+        </div>
 
-    <div id="sessions-container">
-        <div class="loading">Loading sessions...</div>
+        <div style="max-width:1100px; margin-top:24px;">
+            <h3 style="margin:0 0 8px 0; font-size:1rem; color:#333;">Response Guidelines</h3>
+            <p style="margin:0 0 10px 0; font-size:0.82rem; color:#888;">Additional prompt instructions and guidelines appended to the system prompt. Use this to shape how Ask Yada responds — tone, topics to emphasize, things to avoid, etc.</p>
+            <textarea id="custom-prompt" style="width:100%; min-height:500px; padding:10px; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; font-family:inherit; box-sizing:border-box; resize:vertical;" oninput="checkPromptDirty()"></textarea>
+            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+                <button class="btn btn-primary btn-sm" id="btn-save-prompt" onclick="saveCustomPrompt()" disabled>Save Guidelines</button>
+                <span class="model-status" id="prompt-status"></span>
+            </div>
+        </div>
     </div>
 
-    <div class="pagination" id="pagination"></div>
+    <div id="panel-log" class="sub-panel">
+        <div class="stats-bar" id="stats-bar"></div>
+
+        <div id="sessions-container">
+            <div class="loading">Loading sessions...</div>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <div id="panel-qanda" class="sub-panel">
+        <div class="qanda-toolbar">
+            <span id="qanda-count" style="font-size:0.85rem;color:#666"></span>
+            <button class="btn btn-primary btn-sm" onclick="showQandaForm()">Add Q&amp;A</button>
+        </div>
+        <div id="qanda-form-container"></div>
+        <div id="qanda-list-container">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
 
     <div id="detail-overlay" class="popover-overlay" onclick="if(event.target===this)closeDetail()">
         <div class="popover-panel">
@@ -120,30 +203,64 @@
     </div>
 </div>
 
+<script src="js/admin-pages.js?v=2"></script>
 <script>
 var API = '/api';
 var currentPage = 1;
 var selectedKey = null;
+var sessionsLoaded = false;
+var qandaLoaded = false;
+var qandaItems = [];
+var editingQandaKey = null;
+
+function switchSubTab(tab) {
+    var tabs = document.querySelectorAll('.sub-tab');
+    var panels = document.querySelectorAll('.sub-panel');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+    document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'log' && !sessionsLoaded) {
+        sessionsLoaded = true;
+        loadSessions(1);
+    }
+    if (tab === 'qanda' && !qandaLoaded) {
+        qandaLoaded = true;
+        loadQanda();
+    }
+}
 
 function checkAuth() {
     fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadModel();
-            loadSessions(1);
         } else {
             document.getElementById('login-screen').classList.add('visible');
         }
     });
 }
 
+var savedPromptValue = '';
+
 function loadModel() {
     fetch(API + '/ask-settings.php', {credentials:'include'})
         .then(r => r.json())
         .then(function(d) {
             if (d.model) document.getElementById('model-select').value = d.model;
+            if (d.custom_prompt !== undefined) {
+                document.getElementById('custom-prompt').value = d.custom_prompt;
+                savedPromptValue = d.custom_prompt;
+            }
+            checkPromptDirty();
         });
+}
+
+function checkPromptDirty() {
+    var btn = document.getElementById('btn-save-prompt');
+    btn.disabled = (document.getElementById('custom-prompt').value === savedPromptValue);
 }
 
 function saveModel() {
@@ -155,6 +272,23 @@ function saveModel() {
     }).then(r => r.json()).then(function(d) {
         if (d.saved) {
             var el = document.getElementById('model-status');
+            el.textContent = 'Saved!';
+            setTimeout(function() { el.textContent = ''; }, 2000);
+        }
+    });
+}
+
+function saveCustomPrompt() {
+    var prompt = document.getElementById('custom-prompt').value;
+    fetch(API + '/ask-settings.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({custom_prompt: prompt})
+    }).then(r => r.json()).then(function(d) {
+        if (d.saved) {
+            savedPromptValue = prompt;
+            checkPromptDirty();
+            var el = document.getElementById('prompt-status');
             el.textContent = 'Saved!';
             setTimeout(function() { el.textContent = ''; }, 2000);
         }
@@ -175,6 +309,7 @@ function doLogin() {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadModel();
             loadSessions(1);
         } else {
@@ -363,6 +498,133 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeDetail();
 });
+
+// --- Q&A CRUD ---
+function loadQanda() {
+    document.getElementById('qanda-list-container').innerHTML = '<div class="loading">Loading...</div>';
+    fetch(API + '/ask-qanda.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.error) { document.getElementById('qanda-list-container').innerHTML = '<div class="empty-state">' + esc(d.error) + '</div>'; return; }
+            qandaItems = d.items || [];
+            renderQandaList();
+        });
+}
+
+function renderQandaList() {
+    document.getElementById('qanda-count').textContent = qandaItems.length + ' item' + (qandaItems.length !== 1 ? 's' : '');
+    if (!qandaItems.length) {
+        document.getElementById('qanda-list-container').innerHTML = '<div class="empty-state">No Q&amp;A items yet.</div>';
+        return;
+    }
+    var html = '<div class="qanda-list">';
+    for (var i = 0; i < qandaItems.length; i++) {
+        var item = qandaItems[i];
+        var active = item.ask_qanda_active_flag === true || item.ask_qanda_active_flag === 't' || item.ask_qanda_active_flag === '1';
+        html += '<div class="qanda-card' + (active ? '' : ' inactive') + '">';
+        html += '<div class="qanda-card-header">';
+        html += '<span class="sort-badge">Sort: ' + (item.ask_qanda_sort || 0) + (active ? '' : ' &middot; Inactive') + '</span>'
+            + '<span class="sort-arrows">'
+            + '<button title="Move up" onclick="event.stopPropagation();moveQandaSort(' + i + ',-1)" ' + (i === 0 ? 'disabled' : '') + '>&#9650;</button>'
+            + '<button title="Move down" onclick="event.stopPropagation();moveQandaSort(' + i + ',1)" ' + (i === qandaItems.length - 1 ? 'disabled' : '') + '>&#9660;</button>'
+            + '</span>';
+        html += '<div class="card-actions">';
+        html += '<button onclick="editQanda(' + item.ask_qanda_key + ')">Edit</button>';
+        html += '<button class="del" onclick="deleteQanda(' + item.ask_qanda_key + ')">Delete</button>';
+        html += '</div></div>';
+        html += '<div class="qanda-card-q">' + esc(item.ask_qanda_question) + '</div>';
+        html += '<div class="qanda-card-a">' + esc(item.ask_qanda_answer) + '</div>';
+        html += '</div>';
+    }
+    html += '</div>';
+    document.getElementById('qanda-list-container').innerHTML = html;
+}
+
+function moveQandaSort(idx, dir) {
+    var other = idx + dir;
+    if (other < 0 || other >= qandaItems.length) return;
+    var a = qandaItems[idx], b = qandaItems[other];
+    var tmp = a.ask_qanda_sort; a.ask_qanda_sort = b.ask_qanda_sort; b.ask_qanda_sort = tmp;
+    qandaItems.sort(function(x,y){return (x.ask_qanda_sort||0) - (y.ask_qanda_sort||0);});
+    renderQandaList();
+    fetch(API + '/admin-sort-swap.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({table:'ask_qanda', key_col:'ask_qanda_key', sort_col:'ask_qanda_sort', key1:a.ask_qanda_key, key2:b.ask_qanda_key})
+    });
+}
+
+function showQandaForm(item) {
+    editingQandaKey = item ? item.ask_qanda_key : null;
+    var active = item ? (item.ask_qanda_active_flag === true || item.ask_qanda_active_flag === 't' || item.ask_qanda_active_flag === '1') : true;
+    var html = '<div class="qanda-form">';
+    html += '<div class="field"><label>Question</label><input type="text" id="qf-question" maxlength="1000" value="' + (item ? esc(item.ask_qanda_question) : '') + '"></div>';
+    html += '<div class="field"><label>Answer</label><textarea id="qf-answer">' + (item ? esc(item.ask_qanda_answer) : '') + '</textarea></div>';
+    html += '<div class="form-row">';
+    html += '<div class="field"><label>Sort</label><input type="text" id="qf-sort" value="' + (item ? item.ask_qanda_sort || 0 : 0) + '" style="width:60px"></div>';
+    html += '<div class="field"><label style="display:inline"><input type="checkbox" id="qf-active"' + (active ? ' checked' : '') + '> Active</label></div>';
+    html += '</div>';
+    html += '<div class="form-actions">';
+    html += '<button class="btn btn-primary btn-sm" onclick="saveQanda()">' + (item ? 'Update' : 'Create') + '</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="cancelQandaForm()">Cancel</button>';
+    html += '</div></div>';
+    document.getElementById('qanda-form-container').innerHTML = html;
+    document.getElementById('qf-question').focus();
+}
+
+function cancelQandaForm() {
+    document.getElementById('qanda-form-container').innerHTML = '';
+    editingQandaKey = null;
+}
+
+function saveQanda() {
+    var q = document.getElementById('qf-question').value.trim();
+    var a = document.getElementById('qf-answer').value.trim();
+    var sort = parseInt(document.getElementById('qf-sort').value) || 0;
+    var active = document.getElementById('qf-active').checked;
+    if (!q || !a) { alert('Question and answer are required.'); return; }
+
+    var payload = {question: q, answer: a, sort: sort, active: active};
+    var method = 'POST';
+    if (editingQandaKey) {
+        payload.key = editingQandaKey;
+        method = 'PUT';
+    }
+    fetch(API + '/ask-qanda.php', {
+        method: method, credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) {
+            cancelQandaForm();
+            loadQanda();
+        } else {
+            alert(d.error || 'Save failed');
+        }
+    });
+}
+
+function editQanda(key) {
+    for (var i = 0; i < qandaItems.length; i++) {
+        if (parseInt(qandaItems[i].ask_qanda_key) === key) {
+            showQandaForm(qandaItems[i]);
+            window.scrollTo({top: document.getElementById('qanda-form-container').offsetTop - 80, behavior: 'smooth'});
+            return;
+        }
+    }
+}
+
+function deleteQanda(key) {
+    if (!confirm('Delete this Q&A item?')) return;
+    fetch(API + '/ask-qanda.php', {
+        method: 'DELETE', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({key: key})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.deleted) loadQanda();
+        else alert(d.error || 'Delete failed');
+    });
+}
 
 checkAuth();
 </script>

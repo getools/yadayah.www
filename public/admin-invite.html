@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invite Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        .cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px; }
+        .cfg-field { display: flex; flex-direction: column; }
+        .cfg-field label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #555; }
+        .cfg-field input[type="text"], .cfg-field input[type="number"], .cfg-field select { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; }
+        .cfg-field input[type="color"] { height: 40px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; width: 100%; }
+        .cfg-success { color: #27ae60; font-size: 0.9rem; margin-left: 12px; display: none; }
+        .form-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 20px; }
+        .form-card h2 { margin: 0 0 20px; font-size: 1.2rem; color: #31345A; }
+        .button-row { display: flex; gap: 8px; margin-top: 20px; align-items: center; }
+
+        .sub-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #dde3f0; }
+        .sub-tab { background: none; border: none; padding: 8px 20px; font-size: 0.95rem; font-weight: 600; color: #888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #31345A; }
+        .sub-tab:hover:not(.active) { color: #555; }
+
+        .feed-item { border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 12px; background: #fafafa; }
+        .feed-item-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+        .feed-item-header strong { font-size: 0.95rem; color: #31345A; flex: 1; }
+        .feed-item-header .feed-meta { font-size: 0.8rem; color: #888; }
+        .feed-item-fields { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+        .feed-item-fields label { font-size: 0.8rem; font-weight: 600; color: #555; display: block; margin-bottom: 3px; }
+        .feed-item-fields input[type="text"] { width: 100%; padding: 7px 9px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; box-sizing: border-box; }
+        .feed-item-fields .sort-field { display: flex; flex-direction: column; min-width: 70px; }
+        .feed-item-fields input[type="number"] { width: 70px; padding: 7px 9px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; }
+        .add-feed-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+        .add-feed-row select { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; flex: 1; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
+            <a href="admin-translation.html" class="nav-tab">Translation</a>
+            <a href="admin-word.html" class="nav-tab">Word</a>
+            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
+            <a href="admin-ask.html" class="nav-tab">Ask</a>
+            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
+            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab active">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
+            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
+        </nav>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Invite</h1>
+
+    <div class="form-card">
+        <div class="sub-tabs">
+            <button class="sub-tab active" onclick="showTab('config')">Config</button>
+            <button class="sub-tab" onclick="showTab('feeds')">Feeds</button>
+        </div>
+
+        <!-- Config section -->
+        <div id="section-config">
+            <div id="cfg-error" class="error-messages" style="display:none"></div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field" style="grid-column: 1 / -1">
+                    <label>Heading</label>
+                    <input type="text" id="cfg-heading">
+                </div>
+                <div class="cfg-field">
+                    <label>Heading Color</label>
+                    <input type="color" id="cfg-heading-color">
+                </div>
+                <div class="cfg-field">
+                    <label>Background</label>
+                    <input type="color" id="cfg-background">
+                </div>
+            </div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field">
+                    <label>Columns</label>
+                    <select id="cfg-columns">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+                <div class="cfg-field">
+                    <label>Records</label>
+                    <select id="cfg-records">
+                        <option value="0">All</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field">
+                    <label>Label Size (em)</label>
+                    <input type="number" id="cfg-label-size" step="0.1" min="0.5" max="3">
+                </div>
+                <div class="cfg-field">
+                    <label>Label Color</label>
+                    <input type="color" id="cfg-label-color">
+                </div>
+            </div>
+
+            <div class="cfg-grid">
+                <div class="cfg-field">
+                    <label>Spacing-Horizontal (px)</label>
+                    <input type="number" id="cfg-spacing-horizontal" min="0" max="100">
+                </div>
+                <div class="cfg-field">
+                    <label>Spacing-Vertical (px)</label>
+                    <input type="number" id="cfg-spacing-vertical" min="0" max="100">
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+                <span class="cfg-success" id="cfg-success">Saved!</span>
+            </div>
+        </div>
+
+        <!-- Feeds section -->
+        <div id="section-feeds" style="display:none">
+            <div id="feeds-error" class="error-messages" style="display:none"></div>
+            <div id="feeds-list"></div>
+            <div class="add-feed-row">
+                <select id="add-feed-select"><option value="">— Add a feed —</option></select>
+                <button class="btn btn-secondary" onclick="addFeed()">Add</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var allFeeds = [];
+
+// Populate Records dropdown 1-50
+(function() {
+    var sel = document.getElementById('cfg-records');
+    for (var i = 1; i <= 50; i++) {
+        var opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i;
+        sel.appendChild(opt);
+    }
+})();
+
+function showTab(tab) {
+    document.getElementById('section-config').style.display = tab === 'config' ? '' : 'none';
+    document.getElementById('section-feeds').style.display  = tab === 'feeds'  ? '' : 'none';
+    document.querySelectorAll('.sub-tab').forEach(function(btn) {
+        btn.classList.toggle('active', btn.textContent.toLowerCase() === tab);
+    });
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadConfig();
+            loadFeeds();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadConfig();
+            loadFeeds();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+// ── Config ──
+
+function loadConfig() {
+    fetch(API + '/admin-invite-config.php', {credentials:'include'})
+        .then(function(r){return r.json();}).then(function(cfg) {
+            document.getElementById('cfg-heading').value            = cfg['heading'] || '';
+            document.getElementById('cfg-heading-color').value      = toHex(cfg['heading-color'], '#E5C86C');
+            document.getElementById('cfg-background').value         = toHex(cfg['background'], '#373737');
+            document.getElementById('cfg-columns').value            = cfg['columns'] || '4';
+            document.getElementById('cfg-records').value            = cfg['records'] || '0';
+            document.getElementById('cfg-label-size').value         = cfg['label-size'] || '0.85';
+            document.getElementById('cfg-label-color').value        = toHex(cfg['label-color'], '#ffffff');
+            document.getElementById('cfg-spacing-horizontal').value = cfg['spacing-horizontal'] || '16';
+            document.getElementById('cfg-spacing-vertical').value   = cfg['spacing-vertical'] || '16';
+        });
+}
+
+function toHex(val, fallback) {
+    if (!val) return fallback;
+    val = val.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) return val;
+    if (/^#[0-9a-fA-F]{3}$/.test(val)) return '#' + val[1]+val[1]+val[2]+val[2]+val[3]+val[3];
+    return fallback;
+}
+
+function saveConfig() {
+    var errEl = document.getElementById('cfg-error');
+    errEl.style.display = 'none';
+    var payload = {
+        'heading':            document.getElementById('cfg-heading').value,
+        'heading-color':      document.getElementById('cfg-heading-color').value,
+        'background':         document.getElementById('cfg-background').value,
+        'columns':            document.getElementById('cfg-columns').value,
+        'records':            document.getElementById('cfg-records').value,
+        'label-size':         document.getElementById('cfg-label-size').value,
+        'label-color':        document.getElementById('cfg-label-color').value,
+        'spacing-horizontal': document.getElementById('cfg-spacing-horizontal').value,
+        'spacing-vertical':   document.getElementById('cfg-spacing-vertical').value,
+    };
+    fetch(API + '/admin-invite-config.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        var s = document.getElementById('cfg-success');
+        s.style.display = '';
+        setTimeout(function(){ s.style.display = 'none'; }, 2000);
+    });
+}
+
+// ── Feeds ──
+
+function loadFeeds() {
+    fetch(API + '/admin-page-feed.php?page=invite', {credentials:'include'})
+        .then(function(r){return r.json();}).then(function(d) {
+            allFeeds = d.feeds || [];
+            renderAddSelect();
+            renderFeeds(d.assigned || []);
+        });
+}
+
+function renderAddSelect() {
+    var sel = document.getElementById('add-feed-select');
+    sel.innerHTML = '<option value="">— Add a feed —</option>';
+    allFeeds.forEach(function(f) {
+        var opt = document.createElement('option');
+        opt.value = f.feed_key;
+        opt.textContent = f.feed_name + (f.feed_site_code ? ' [' + f.feed_site_code + ']' : '') + (f.feed_type_code ? ' (' + f.feed_type_code + ')' : '');
+        sel.appendChild(opt);
+    });
+}
+
+function feedSelectHtml(selectedKey) {
+    var html = '<select class="fi-feed-key">';
+    allFeeds.forEach(function(f) {
+        var label = esc(f.feed_name) + (f.feed_site_code ? ' [' + esc(f.feed_site_code) + ']' : '') + (f.feed_type_code ? ' (' + esc(f.feed_type_code) + ')' : '');
+        var sel = f.feed_key == selectedKey ? ' selected' : '';
+        html += '<option value="' + f.feed_key + '"' + sel + '>' + label + '</option>';
+    });
+    html += '</select>';
+    return html;
+}
+
+function renderFeeds(assigned) {
+    var list = document.getElementById('feeds-list');
+    if (!assigned.length) {
+        list.innerHTML = '<p style="color:#888;font-size:0.9rem;">No feeds assigned.</p>';
+        return;
+    }
+    list.innerHTML = '';
+    assigned.forEach(function(row) {
+        var item = document.createElement('div');
+        item.className = 'feed-item';
+        item.dataset.key = row.page_feed_key;
+        item.innerHTML =
+            '<div class="feed-item-header">' +
+                feedSelectHtml(row.feed_key) +
+            '</div>' +
+            '<div class="feed-item-fields">' +
+                '<div><label>Include</label><input type="text" class="fi-include" value="' + esc(row.page_feed_filter_include || '') + '" placeholder="keywords to include"></div>' +
+                '<div><label>Exclude</label><input type="text" class="fi-exclude" value="' + esc(row.page_feed_filter_exclude || '') + '" placeholder="keywords to exclude"></div>' +
+                '<div class="sort-field" style="display:none"><label>Sort</label><input type="number" class="fi-sort" value="' + (row.page_feed_sort || 0) + '" min="0"></div>' +
+            '</div>' +
+            '<div class="button-row">' +
+                '<button class="btn btn-primary btn-sm" onclick="saveFeedRow(this)">Save</button>' +
+                '<span class="cfg-success feed-saved">Saved!</span>' +
+                '<button class="btn btn-danger btn-sm" onclick="deleteFeedRow(this)">Delete</button>' +
+            '</div>';
+        list.appendChild(item);
+    });
+}
+
+function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addFeed() {
+    var sel = document.getElementById('add-feed-select');
+    var feedKey = parseInt(sel.value);
+    if (!feedKey) return;
+    var errEl = document.getElementById('feeds-error');
+    errEl.style.display = 'none';
+    fetch(API + '/admin-page-feed.php?page=invite', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({feed_key: feedKey, page_feed_filter_include: '', page_feed_filter_exclude: '', page_feed_sort: 0})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        sel.value = '';
+        loadFeeds();
+    });
+}
+
+function saveFeedRow(btn) {
+    var item = btn.closest('.feed-item');
+    var pfKey = item.dataset.key;
+    var payload = {
+        feed_key: parseInt(item.querySelector('.fi-feed-key').value) || 0,
+        page_feed_filter_include: item.querySelector('.fi-include').value,
+        page_feed_filter_exclude: item.querySelector('.fi-exclude').value,
+        page_feed_sort: parseInt(item.querySelector('.fi-sort').value) || 0
+    };
+    fetch(API + '/admin-page-feed.php?page=invite&key=' + pfKey, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        var s = item.querySelector('.feed-saved');
+        s.style.display = '';
+        setTimeout(function(){ s.style.display = 'none'; }, 2000);
+    });
+}
+
+function deleteFeedRow(btn) {
+    var item = btn.closest('.feed-item');
+    var pfKey = item.dataset.key;
+    if (!confirm('Remove this feed association?')) return;
+    fetch(API + '/admin-page-feed.php?page=invite&key=' + pfKey, {
+        method: 'DELETE', credentials: 'include'
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        loadFeeds();
+    });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+</body>
+</html>

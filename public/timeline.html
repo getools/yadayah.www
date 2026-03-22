@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Timeline - Yada Yah</title>
+    <title>Timeline</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
@@ -18,8 +18,8 @@
         /* Site header */
         header {
             display: flex; flex-direction: column; align-items: center;
-            padding: 10px 0 5px;
-            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            padding: 0;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
             margin: -20px -20px 0 -20px;
             position: relative; overflow: hidden;
         }
@@ -36,7 +36,7 @@
         }
         header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         header .header-logos img { width: auto; height: auto; }
-        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 0; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
         header nav .nav-row {
             display: flex; flex-direction: row; justify-content: center;
             gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
@@ -48,8 +48,23 @@
         }
         header nav a:hover { color: #fff; }
         header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
-        @media (max-width: 767px) { header nav a.hide-narrow { display: none; } }
 
+
+
+        /* ── Sub-toolbar ── */
+        .sub-toolbar {
+            display: flex; justify-content: center; align-items: center;
+            gap: 30px; padding: 8px 0;
+            background: var(--toolbar-bg, #0A333A);
+            margin: 0 -20px;
+        }
+        .sub-toolbar a {
+            text-decoration: none; color: var(--toolbar-text, #8ED0EC);
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 0.95em; font-weight: 700;
+        }
+        .sub-toolbar a:hover { color: #fff; }
+        .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
         /* Timeline container */
         .timeline-wrap {
             max-width: 1100px;
@@ -90,8 +105,8 @@
             transform: translateX(-50%);
             z-index: 2;
         }
-        .tl-event.tl-gold::before { background: #e5a800; border: 3px solid #c48f00; }
-        .tl-event.tl-blue::before { background: #283dd8; border: 3px solid #1a2a9e; }
+        .tl-event.tl-gold::before { background: var(--color-row-a, #e5a800); border: 3px solid color-mix(in srgb, var(--color-row-a, #e5a800) 70%, #000); }
+        .tl-event.tl-blue::before { background: var(--color-row-b, #283dd8); border: 3px solid color-mix(in srgb, var(--color-row-b, #283dd8) 70%, #000); }
 
         /* Left-side events */
         .tl-event.tl-left .tl-card {
@@ -114,8 +129,9 @@
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 3px 12px rgba(0,0,0,0.12);
-            overflow: hidden;
             transition: box-shadow 0.2s;
+            position: relative;
+            z-index: 1;
         }
         .tl-card:hover {
             box-shadow: 0 6px 20px rgba(0,0,0,0.18);
@@ -123,9 +139,10 @@
 
         .tl-card-header {
             padding: 10px 16px;
+            border-radius: 8px 8px 0 0;
         }
-        .tl-event.tl-gold .tl-card-header { background: #e5a800; }
-        .tl-event.tl-blue .tl-card-header { background: #283dd8; }
+        .tl-event.tl-gold .tl-card-header { background: var(--color-row-a, #e5a800); }
+        .tl-event.tl-blue .tl-card-header { background: var(--color-row-b, #283dd8); }
         .tl-headline {
             font-family: 'Maven Pro', sans-serif;
             font-size: 1.15rem;
@@ -158,6 +175,11 @@
             margin-bottom: 0;
             border-radius: 5px;
         }
+        .tl-image.has-video { cursor: pointer; }
+        .tl-image.has-video:hover { opacity: 0.85; }
+        .tl-media-wrap { position: relative; }
+        .tl-video { width: 100%; border-radius: 5px; display: block; }
+        .tl-media-wrap + .tl-summary { margin-top: 10px; }
         .tl-image + .tl-summary { margin-top: 10px; }
         .tl-summary {
             font-size: 0.9rem;
@@ -180,32 +202,32 @@
             color: #999;
         }
 
-        /* Triangle connectors – between card and circle, pointing toward card */
+        /* Triangle connectors – arrow from center line pointing into card */
         .tl-event.tl-left .tl-card::after {
             content: '';
             position: absolute;
             top: 27px;
-            right: calc(50% + 10px);
+            right: -14px;
             width: 0;
             height: 0;
             border-top: 10px solid transparent;
             border-bottom: 10px solid transparent;
         }
-        .tl-event.tl-gold.tl-left .tl-card::after { border-right: 14px solid #e5a800; }
-        .tl-event.tl-blue.tl-left .tl-card::after { border-right: 14px solid #283dd8; }
+        .tl-event.tl-gold.tl-left .tl-card::after { border-left: 14px solid var(--color-row-a, #e5a800); }
+        .tl-event.tl-blue.tl-left .tl-card::after { border-left: 14px solid var(--color-row-b, #283dd8); }
 
         .tl-event.tl-right .tl-card::before {
             content: '';
             position: absolute;
             top: 27px;
-            left: calc(50% + 10px);
+            left: -14px;
             width: 0;
             height: 0;
             border-top: 10px solid transparent;
             border-bottom: 10px solid transparent;
         }
-        .tl-event.tl-gold.tl-right .tl-card::before { border-left: 14px solid #e5a800; }
-        .tl-event.tl-blue.tl-right .tl-card::before { border-left: 14px solid #283dd8; }
+        .tl-event.tl-gold.tl-right .tl-card::before { border-right: 14px solid var(--color-row-a, #e5a800); }
+        .tl-event.tl-blue.tl-right .tl-card::before { border-right: 14px solid var(--color-row-b, #283dd8); }
 
         /* Mobile: single column */
         @media (max-width: 768px) {
@@ -248,8 +270,8 @@
         .countdown-bar {
             text-align: center;
             padding: 18px 16px 14px;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            color: #e5c86c;
+            background: var(--ticker-bg, #1a1a2e);
+            color: var(--ticker-countdown-color, #e5c86c);
             margin: 0 -20px;
         }
         .countdown-label {
@@ -257,7 +279,7 @@
             font-size: 1.1rem;
             letter-spacing: 1px;
             margin-bottom: 8px;
-            color: rgba(255,255,255,0.85);
+            color: var(--ticker-heading-color, rgba(255,255,255,0.85));
         }
         .countdown-timer {
             display: flex;
@@ -279,7 +301,7 @@
         }
         .countdown-name {
             font-size: 0.75rem;
-            color: rgba(255,255,255,0.6);
+            color: var(--ticker-desc-color, rgba(255,255,255,0.6));
             margin-top: 4px;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -292,9 +314,10 @@
 
         /* Footer */
         footer {
-            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
             position: relative; overflow: hidden;
             padding: 30px 20px 20px;
+            margin: 0 -20px;
             color: #E5C86C;
         }
         footer .footer-video {
@@ -308,7 +331,7 @@
             max-width: 1000px; margin: 0 auto;
             display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
         }
-        footer .footer-col { min-width: 200px; }
+        footer .footer-col { min-width: auto; }
         footer .footer-col h4 {
             font-family: 'Julius Sans One', sans-serif;
             font-size: 1rem;
@@ -329,8 +352,12 @@
             grid-template-columns: repeat(2, 1fr);
             gap: 4px 20px;
         }
-        footer .footer-links-3col {
+        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
+        .footer-links-3col {
             grid-template-columns: auto auto auto;
+        }
+        footer .footer-links-1col {
+            grid-template-columns: 1fr;
         }
         footer .footer-col a:hover { color: #fff; }
         footer .footer-bottom {
@@ -341,29 +368,24 @@
             color: rgba(255,255,255,0.5);
         }
     </style>
+<script src="/js/site-nav.js"></script>
 </head>
 <body>
     <header>
         <video class="header-video" autoplay muted loop playsinline>
-            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
         </video>
         <div class="header-inner">
             <div class="header-logos">
-                <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
+                <a href="/"><img src="/images/yy-logo-80x90.png" alt=""></a>
             </div>
             <nav>
                 <div class="nav-row">
-                    <a href="books">Books</a>
-                    <a href="vlog">Vlog</a>
-                    <a href="blog">Blog</a>
-                    <a href="/media" class="hide-narrow">Media</a>
-                    <a href="/music" class="hide-narrow">Music</a>
-                    <a href="invite" class="hide-narrow">Invite</a>
-                </div>
+                    <a href="books">Books</a>                    <a href="blog">Blog</a>
+                    <a href="/media">Media</a>                </div>
                 <div class="nav-row">
-                    <a href="/">Translations</a>
+                    <a href="/translations">Translations</a>
                     <a href="resources">Resources</a>
-                    <a href="/Craig_Winn" class="hide-narrow">Winn</a>
+                    <a href="/Craig_Winn">Winn</a>
                     <a href="timeline" class="active">Timeline</a>
                     <a href="ask">Ask</a>
                 </div>
@@ -371,8 +393,17 @@
         </div>
     </header>
 
+<div class="sub-toolbar">
+    <a href="vlog">Vlog</a>
+    <a href="/music">Music</a>
+    <a href="invite">Invite</a>
+    <a href="/DoYouYada">DoYou?</a>
+    <a href="shorts">Shorts</a>
+</div>
+
+
     <div class="countdown-bar">
-        <div class="countdown-label">Yacob&#x2019;s Troubles &#x2013; Shabuw&#x2019;ah 5992 Yah</div>
+        <div class="countdown-label" id="countdown-label">Yacob&#x2019;s Troubles &#x2013; Shabuw&#x2019;ah 5992 Yah</div>
         <div class="countdown-timer" id="countdown">
             <div class="countdown-unit"><span class="countdown-value" id="cd-days">--</span><span class="countdown-name">Days</span></div>
             <div class="countdown-unit"><span class="countdown-value" id="cd-hours">--</span><span class="countdown-name">Hours</span></div>
@@ -381,7 +412,7 @@
         </div>
     </div>
 
-    <h1 class="page-title">Timeline</h1>
+    <h1 class="page-title" id="page-heading">Timeline</h1>
 
     <div class="timeline-wrap" id="timeline">
         <div class="tl-loading">Loading timeline...</div>
@@ -389,6 +420,8 @@
 
 <script>
 var API = 'api';
+var TL_SPACING = 30;
+var countdownTarget = new Date('2026-05-22T19:30:00+03:00').getTime();
 
 function esc(s) {
     if (!s) return '';
@@ -410,7 +443,8 @@ function renderTimeline(events) {
         var side = (i % 2 === 0) ? 'tl-left' : 'tl-right';
         var color = (i % 2 === 0) ? 'tl-gold' : 'tl-blue';
 
-        html += '<div class="tl-event ' + side + ' ' + color + '">';
+        var anchorId = ev.timeline_jump ? ev.timeline_jump : '';
+        html += '<div class="tl-event ' + side + ' ' + color + '"' + (anchorId ? ' id="' + esc(anchorId) + '"' : '') + '>';
         html += '<div class="tl-card">';
 
         // Header with headline and dates
@@ -424,10 +458,20 @@ function renderTimeline(events) {
         }
         html += '</div>';
 
-        // Body with image and summary
+        // Body with image/video and summary
         html += '<div class="tl-card-body">';
         if (ev.timeline_image) {
-            html += '<img class="tl-image" src="' + esc(ev.timeline_image) + '" alt="" loading="lazy">';
+            var imgSrc = ev.timeline_image;
+            if (imgSrc && imgSrc.charAt(0) !== '/' && imgSrc.indexOf('://') === -1) imgSrc = '/' + imgSrc;
+            if (ev.timeline_video) {
+                var vidSrc = ev.timeline_video;
+                if (vidSrc && vidSrc.charAt(0) !== '/' && vidSrc.indexOf('://') === -1) vidSrc = '/' + vidSrc;
+                html += '<div class="tl-media-wrap" data-video="' + esc(vidSrc) + '">';
+                html += '<img class="tl-image has-video" src="' + esc(imgSrc) + '" alt="" loading="lazy">';
+                html += '</div>';
+            } else {
+                html += '<img class="tl-image" src="' + esc(imgSrc) + '" alt="" loading="lazy">';
+            }
         }
         if (ev.timeline_summary) {
             html += '<div class="tl-summary">' + ev.timeline_summary + '</div>';
@@ -445,6 +489,25 @@ function renderTimeline(events) {
     for (var j = 0; j < imgs.length; j++) {
         imgs[j].addEventListener('load', positionTimeline);
     }
+    // Attach video click handlers
+    var videoImgs = container.querySelectorAll('.tl-image.has-video');
+    for (var k = 0; k < videoImgs.length; k++) {
+        (function(img) {
+            img.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var wrap = img.parentElement;
+                var src = wrap.getAttribute('data-video');
+                var video = document.createElement('video');
+                video.className = 'tl-video';
+                video.controls = true;
+                video.src = src;
+                wrap.replaceChild(video, img);
+                video.play();
+                setTimeout(positionTimeline, 300);
+            });
+        })(videoImgs[k]);
+    }
 }
 
 function positionTimeline() {
@@ -452,8 +515,8 @@ function positionTimeline() {
     var events = document.querySelectorAll('.tl-event');
     if (!events.length) return;
 
-    var leftBottom = -30, rightBottom = -30;
-    var lastTop = -30; // top of the most recently placed item
+    var leftBottom = -TL_SPACING, rightBottom = -TL_SPACING;
+    var lastTop = -TL_SPACING;
 
     for (var i = 0; i < events.length; i++) {
         var ev = events[i];
@@ -466,14 +529,14 @@ function positionTimeline() {
         var side, top;
         if (leftBottom <= rightBottom) {
             side = 'tl-left';
-            top = leftBottom + 30;
+            top = leftBottom + TL_SPACING;
         } else {
             side = 'tl-right';
-            top = rightBottom + 30;
+            top = rightBottom + TL_SPACING;
         }
 
-        // Must also be at least 30px below the previous item's top
-        var minTop = lastTop + 30;
+        // Must also be at least TL_SPACING below the previous item's top
+        var minTop = lastTop + TL_SPACING;
         if (top < minTop) top = minTop;
 
         ev.classList.add(side, color);
@@ -494,11 +557,10 @@ function positionTimeline() {
 }
 window.addEventListener('resize', positionTimeline);
 
-// Countdown to Yacob's Troubles – May 22, 2026 sunset Jerusalem (UTC+3 ~19:30)
+// Countdown timer
 (function() {
-    var target = new Date('2026-05-22T19:30:00+03:00').getTime();
     function tick() {
-        var diff = target - Date.now();
+        var diff = countdownTarget - Date.now();
         if (diff <= 0) {
             document.getElementById('cd-days').textContent = '0';
             document.getElementById('cd-hours').textContent = '0';
@@ -519,6 +581,23 @@ window.addEventListener('resize', positionTimeline);
     setInterval(tick, 1000);
 })();
 
+// Load page config from DB (cached 24h, busted on admin save)
+fetch(API + '/page-timeline-config.php')
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) {
+        var root = document.documentElement;
+        if (cfg['ticker-primary-background']) root.style.setProperty('--ticker-bg',              cfg['ticker-primary-background']);
+        if (cfg['ticker-color-heading'])      root.style.setProperty('--ticker-heading-color',   cfg['ticker-color-heading']);
+        if (cfg['ticker-color-countdown'])    root.style.setProperty('--ticker-countdown-color', cfg['ticker-color-countdown']);
+        if (cfg['ticker-color-description'])  root.style.setProperty('--ticker-desc-color',      cfg['ticker-color-description']);
+        if (cfg['color-row-a'])               root.style.setProperty('--color-row-a',            cfg['color-row-a']);
+        if (cfg['color-row-b'])               root.style.setProperty('--color-row-b',            cfg['color-row-b']);
+        if (cfg['ticker-primary-heading'])    document.getElementById('countdown-label').textContent = cfg['ticker-primary-heading'];
+        if (cfg['heading'])                   document.getElementById('page-heading').textContent    = cfg['heading'];
+        if (cfg['ticker-primary-dtime'])      countdownTarget = new Date(cfg['ticker-primary-dtime']).getTime();
+        if (cfg['spacing-vertical'])          { TL_SPACING = parseInt(cfg['spacing-vertical']) || TL_SPACING; positionTimeline(); }
+    });
+
 // Load timeline data
 fetch(API + '/timeline.php')
     .then(function(r) { return r.json(); })
@@ -528,6 +607,13 @@ fetch(API + '/timeline.php')
             return;
         }
         renderTimeline(d.events);
+        // Scroll to hash anchor after layout settles
+        if (window.location.hash) {
+            setTimeout(function() {
+                var el = document.getElementById(window.location.hash.substring(1));
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 500);
+        }
     })
     .catch(function(err) {
         document.getElementById('timeline').innerHTML = '<div class="tl-empty">Error loading timeline.</div>';
@@ -536,12 +622,11 @@ fetch(API + '/timeline.php')
 
     <footer>
         <video class="footer-video" autoplay muted loop playsinline>
-            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
         </video>
         <div class="footer-inner">
             <div class="footer-col">
-                <h4>Books</h4>
-                <div class="footer-links">
+                <h4 data-config="footer-text-books">Books</h4>
+                <div class="footer-links footer-links-2col">
                     <a href="books#An_Intro_to_God">An Intro to God</a>
                     <a href="books#Yada_Yahowah">Yada Yahowah</a>
                     <a href="books#Observations">Observations</a>
@@ -553,24 +638,39 @@ fetch(API + '/timeline.php')
                 </div>
             </div>
             <div class="footer-col">
-                <h4>Links</h4>
-                <div class="footer-links footer-links-3col">
-                    <a href="ask">Ask</a>
-                    <a href="/">Translations</a>
-                    <a href="invite">Invite</a>
-                    <a href="blog">Blog</a>
-                    <a href="glossary">Glossary</a>
-                    <a href="/music">Music</a>
-                    <a href="vlog">Vlog</a>
-                    <a href="dss">Dead Sea Scrolls</a>
-                    <a href="timeline">Timeline</a>
+            <h4 data-config="footer-text-links">Links</h4>
+            <div style="display:flex;gap:40px;">
+                <div class="footer-links footer-links-1col">
+                    <a href="/ask">Ask</a>
+                    <a href="/blog">Blog</a>
+                    <a href="/vlog">Vlog</a>
                     <a href="/media">Media</a>
-                    <a href="resources">Resources</a>
-                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/timeline">Timeline</a>
+                    <a href="/translations">Translations</a>
+                    <a href="/glossary">Glossary</a>
+                    <a href="/dss">Dead Sea Scrolls</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/music">Music</a>
+                    <a href="/invite">Invite</a>
+                    <a href="/shorts">Shorts</a>
+                    <a href="/Craig_Winn">Craig Winn</a>
                 </div>
             </div>
         </div>
+        </div>
         <div class="footer-bottom">Copyright 2001 - 2026</div>
     </footer>
+<script src="/js/bg-video.js"></script>
+<script>
+(function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
+    if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
+    document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+});})();
+</script>
 </body>
 </html>

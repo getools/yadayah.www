@@ -14,9 +14,22 @@
         .bg-thumb-video { max-height: 40px; border-radius: 3px; }
         .badge-active { background: #27ae60; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
         .badge-inactive { background: #95a5a6; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
-        .form-card { max-width: 500px; }
+        .badge-converting { background: #e67e22; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; animation: pulse 1.5s ease-in-out infinite; }
+        .bg-processing { display: inline-flex; align-items: center; justify-content: center; width: 60px; height: 40px; background: #f0f0f0; border-radius: 3px; border: 1px solid #ddd; }
+        .bg-processing .spinner { width: 18px; height: 18px; border: 2px solid #ddd; border-top-color: #e67e22; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .form-card { }
+        .form-card select, .form-card input[type=number] { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
         .file-preview { margin-top: 8px; }
         .file-preview img, .file-preview video { max-height: 80px; border-radius: 4px; border: 1px solid #ddd; }
+        .processing-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .processing-card { background: #fff; border-radius: 8px; padding: 32px 40px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
+        .processing-card h3 { margin: 0 0 16px; color: #2c3e50; }
+        .progress-bar { width: 260px; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+        .progress-fill { height: 100%; background: #3498db; border-radius: 4px; transition: width 0.2s; width: 0%; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .progress-fill.pulsing { width: 100% !important; animation: pulse 1.5s ease-in-out infinite; }
+        .progress-text { font-size: 0.85rem; color: #666; }
     </style>
 </head>
 <body>
@@ -43,14 +56,25 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs">
+            <a href="admin-site.html" class="nav-tab">Site</a>
             <a href="admin-translation.html" class="nav-tab">Translation</a>
             <a href="admin-word.html" class="nav-tab">Word</a>
             <a href="admin-lookups.html" class="nav-tab">Lookups</a>
             <a href="admin-ask.html" class="nav-tab">Ask</a>
             <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
             <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
+            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
+            <a href="admin-media.html" class="nav-tab">Media</a>
+            <a href="admin-music.html" class="nav-tab">Music</a>
+            <a href="admin-invite.html" class="nav-tab">Invite</a>
+            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
             <a href="admin-backgrounds.html" class="nav-tab active">Backgrounds</a>
+            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
+            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
+            <a href="admin-pages.html" class="nav-tab">Pages</a>
+            <a href="admin-resources.html" class="nav-tab">Resources</a>
+            <a href="admin-users.html" class="nav-tab">Users</a>
+            <a href="admin-misc.html" class="nav-tab">Misc</a>
         </nav>
         <div class="user-info">
             <span id="user-display"></span>
@@ -87,6 +111,30 @@
                 <input type="file" id="f-file" accept="image/*,video/*">
                 <div id="f-preview" class="file-preview"></div>
             </div>
+            <div id="video-settings" style="display:none">
+                <div class="field" style="display:flex;gap:12px;">
+                    <div style="flex:1">
+                        <label for="f-vwidth">Width (px)</label>
+                        <input type="number" id="f-vwidth" min="1" placeholder="auto">
+                    </div>
+                    <div style="flex:1">
+                        <label for="f-vheight">Height (px)</label>
+                        <input type="number" id="f-vheight" min="1" placeholder="auto">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="f-vspeed">Playback Speed</label>
+                    <select id="f-vspeed">
+                        <option value="0.25">0.25x</option>
+                        <option value="0.5">0.5x</option>
+                        <option value="0.75">0.75x</option>
+                        <option value="1" selected>1x (normal)</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2x</option>
+                    </select>
+                </div>
+            </div>
             <div class="field">
                 <label>
                     <input type="checkbox" id="f-active" checked> Active
@@ -101,6 +149,7 @@
     </div>
 </div>
 
+<script src="js/admin-pages.js?v=2"></script>
 <script>
 var API = '/api';
 var editingKey = null;
@@ -110,6 +159,7 @@ function checkAuth() {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadList();
         } else {
             document.getElementById('login-screen').classList.add('visible');
@@ -131,6 +181,7 @@ function doLogin() {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
             loadList();
         } else {
             errEl.textContent = d.error || 'Login failed';
@@ -159,14 +210,21 @@ function loadList() {
         }
         tbody.innerHTML = rows.map(function(r) {
             var thumb = '';
-            if (r.asset_file) {
+            if (r.converting) {
+                thumb = '<div class="bg-processing"><div class="spinner"></div></div>';
+            } else if (r.asset_file) {
                 if (r.asset_file.match(/\.(webm|mp4)$/i)) {
                     thumb = '<video src="/' + r.asset_file + '" class="bg-thumb-video" muted loop onmouseover="this.play()" onmouseout="this.pause();this.currentTime=0"></video>';
                 } else {
                     thumb = '<img src="/' + r.asset_file + '" class="bg-thumb">';
                 }
             }
-            var badge = r.asset_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';
+            var badge;
+            if (r.converting) {
+                badge = '<span class="badge-converting">Converting</span>';
+            } else {
+                badge = r.asset_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';
+            }
             var fname = r.asset_file ? r.asset_file.split('/').pop() : '';
             return '<tr onclick="editRecord(' + r.asset_key + ')" style="cursor:pointer">'
                 + '<td>' + thumb + '</td>'
@@ -187,6 +245,10 @@ function showForm(record) {
     document.getElementById('f-active').checked = record ? record.asset_active_flag : true;
     document.getElementById('btn-delete').style.display = editingKey ? '' : 'none';
     document.getElementById('form-error').style.display = 'none';
+    document.getElementById('f-vwidth').value = '';
+    document.getElementById('f-vheight').value = '';
+    document.getElementById('f-vspeed').value = '1';
+    document.getElementById('video-settings').style.display = 'none';
 
     var preview = document.getElementById('f-preview');
     if (record && record.asset_file) {
@@ -218,34 +280,100 @@ function editRecord(key) {
 function saveRecord() {
     var name = document.getElementById('f-name').value.trim();
     var errEl = document.getElementById('form-error');
-    if (!name) {
-        errEl.textContent = 'Name is required';
-        errEl.style.display = '';
-        return;
-    }
+    errEl.style.display = 'none';
 
     var fd = new FormData();
     fd.append('asset_name', name);
     fd.append('asset_active_flag', document.getElementById('f-active').checked ? '1' : '0');
     var fileInput = document.getElementById('f-file');
-    if (fileInput.files.length) fd.append('file', fileInput.files[0]);
-
-    var url = API + '/backgrounds.php';
-    var method = 'POST';
-    if (editingKey) {
-        url += '?key=' + editingKey;
-        method = 'PUT';
+    if (fileInput.files.length) {
+        fd.append('file', fileInput.files[0]);
+        if (fileInput.files[0].type.startsWith('video/')) {
+            var vw = document.getElementById('f-vwidth').value;
+            var vh = document.getElementById('f-vheight').value;
+            var vs = document.getElementById('f-vspeed').value;
+            if (vw) fd.append('video_width', vw);
+            if (vh) fd.append('video_height', vh);
+            if (vs && vs !== '1') fd.append('video_speed', vs);
+        }
     }
 
-    fetch(url, {method: method, credentials: 'include', body: fd}).then(function(r){return r.json();}).then(function(d) {
+    var url = API + '/backgrounds.php';
+    if (editingKey) {
+        url += '?key=' + editingKey;
+        fd.append('_method', 'PUT');
+    }
+
+    var hasFile = fileInput.files.length > 0;
+    var isVideo = hasFile && fileInput.files[0].type.startsWith('video/');
+    var overlay = showProcessing(hasFile ? 'Uploading...' : 'Saving...');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var pct = Math.round(e.loaded / e.total * 100);
+            overlay.fill.style.width = pct + '%';
+            overlay.text.textContent = pct < 100 ? 'Uploading... ' + pct + '%' : (isVideo ? 'Converting video...' : 'Saving...');
+            if (pct >= 100 && isVideo) overlay.title.textContent = 'Processing';
+        }
+    };
+
+    xhr.onload = function() {
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch(e) { d = {error: 'Server: ' + xhr.responseText.substring(0, 500)}; }
         if (d.error) {
+            hideProcessing(overlay);
             errEl.textContent = d.error;
             errEl.style.display = '';
+        } else if (d.job) {
+            overlay.title.textContent = 'Converting Video';
+            overlay.text.textContent = 'This may take a few minutes...';
+            overlay.fill.className = 'progress-fill pulsing';
+            pollJob(d.job, overlay, errEl);
         } else {
+            hideProcessing(overlay);
             cancelForm();
             loadList();
         }
-    });
+    };
+
+    xhr.onerror = function() {
+        hideProcessing(overlay);
+        errEl.textContent = 'Network error';
+        errEl.style.display = '';
+    };
+
+    xhr.send(fd);
+}
+
+function pollJob(jobId, overlay, errEl) {
+    var start = Date.now();
+    var timer = setInterval(function() {
+        var elapsed = Math.round((Date.now() - start) / 1000);
+        var mins = Math.floor(elapsed / 60);
+        var secs = elapsed % 60;
+        overlay.text.textContent = 'Converting... ' + (mins > 0 ? mins + 'm ' : '') + secs + 's';
+
+        fetch(API + '/backgrounds.php?job=' + jobId, {credentials:'include'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.status === 'done') {
+                    clearInterval(timer);
+                    hideProcessing(overlay);
+                    cancelForm();
+                    loadList();
+                } else if (d.status === 'error') {
+                    clearInterval(timer);
+                    hideProcessing(overlay);
+                    errEl.textContent = 'Video conversion failed';
+                    errEl.style.display = '';
+                }
+            })
+            .catch(function() {});
+    }, 3000);
 }
 
 function deleteRecord() {
@@ -254,6 +382,23 @@ function deleteRecord() {
         cancelForm();
         loadList();
     });
+}
+
+function showProcessing(msg) {
+    var el = document.createElement('div');
+    el.className = 'processing-overlay';
+    el.innerHTML = '<div class="processing-card"><h3 class="proc-title">Saving</h3><div class="progress-bar"><div class="progress-fill"></div></div><div class="progress-text"></div></div>';
+    document.body.appendChild(el);
+    var title = el.querySelector('.proc-title');
+    var fill = el.querySelector('.progress-fill');
+    var text = el.querySelector('.progress-text');
+    title.textContent = 'Saving';
+    text.textContent = msg;
+    return {el: el, title: title, fill: fill, text: text};
+}
+
+function hideProcessing(overlay) {
+    if (overlay && overlay.el && overlay.el.parentNode) overlay.el.parentNode.removeChild(overlay.el);
 }
 
 function esc(s) {
@@ -268,14 +413,19 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 document.getElementById('f-file').addEventListener('change', function() {
     var preview = document.getElementById('f-preview');
+    var videoSettings = document.getElementById('video-settings');
     if (this.files.length) {
         var file = this.files[0];
         var url = URL.createObjectURL(file);
         if (file.type.startsWith('video/')) {
             preview.innerHTML = '<video src="' + url + '" style="max-height:80px" muted autoplay loop></video>';
+            videoSettings.style.display = '';
         } else {
             preview.innerHTML = '<img src="' + url + '">';
+            videoSettings.style.display = 'none';
         }
+    } else {
+        videoSettings.style.display = 'none';
     }
 });
 

@@ -11,4 +11,15 @@ strongs_matches.sql
 unlinked_words.txt
 sql/yada_full_dump.sql
 sql/yada_full_dump.custom
+sql/yada_full_dump_clean.sql
 sql/yada_deploy.sql
+sql/yada_pre_rebuild_backup.sql
+sql/yada_pre_rebuild_backup_20260226.sql
+node_modules/
+.kdp_browser/
+_*.png
+fliphtml5_state.json
+_upload_plan.json
+_upload_results.json
+_pw_upload.js
+yada.translations.markup/

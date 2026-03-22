@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-APP_DIR=/opt/yada-translations
+APP_DIR=/opt/yada-www
 
 echo "=== Setting up Yada Translations ==="
 
@@ -23,7 +23,7 @@ mkdir -p certbot/conf certbot/www
 cat > nginx/default.conf <<'NGINX'
 server {
     listen 80;
-    server_name t.yadayah.com;
+    server_name yadayah.com;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -63,7 +63,7 @@ echo "=== Now requesting SSL certificate ==="
 # Request SSL certificate
 docker compose run --rm certbot certonly \
     --webroot -w /var/www/certbot \
-    -d t.yadayah.com \
+    -d yadayah.com \
     --email admin@yadayah.com \
     --agree-tos \
     --no-eff-email
@@ -72,7 +72,7 @@ docker compose run --rm certbot certonly \
 cat > nginx/default.conf <<'NGINX'
 server {
     listen 80;
-    server_name t.yadayah.com;
+    server_name yadayah.com;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -85,10 +85,10 @@ server {
 
 server {
     listen 443 ssl;
-    server_name t.yadayah.com;
+    server_name yadayah.com;
 
-    ssl_certificate /etc/letsencrypt/live/t.yadayah.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/t.yadayah.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/yadayah.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yadayah.com/privkey.pem;
 
     location / {
         proxy_pass http://web:80;
@@ -104,4 +104,4 @@ NGINX
 docker compose exec nginx nginx -s reload
 
 echo "=== Deployment complete! ==="
-echo "Site available at https://t.yadayah.com"
+echo "Site available at https://yadayah.com"

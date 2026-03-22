@@ -1,0 +1,1865 @@
+Original, Converted (Definition-Refined)
+--------------------------------------------------------------------------------
+'a'lah, ʾaʿlah
+'ab, ʾab
+'ab'atem, ʾabʾatem
+'aba'bu'oth, ʾabaʿbuʿoth
+'abad, ʾabad
+'abadown, ʾabadown
+'abah, ʾabah
+'abak, ʾabak
+'abal, ʾabal
+'abaq, ʾabaq
+'abar, ʾabar
+'abarakah, ʾabarakah
+'abat, ʾabat
+'abed, ʾabed
+'abel, ʾabel
+'aben, ʾaben
+'abodah, ʾabodah
+'aboth, ʾaboth
+'abowth, ʾabowth
+'abowthym, ʾabowthym
+'abraham, ʾabraham
+'abraham's, ʾabrahamʾs
+'abram, ʾabram
+'abshalowm, ʾabshalowm
+'abtyt, ʾabtyt
+'abuwr, ʾabuwr
+'aby, ʾaby
+'aby'el, ʾabyʿel
+'abyah, ʾabyah
+'abyb, ʾabyb
+'abydah, ʾabydah
+'abyhuw', ʾabyhuwʿ
+'abym, ʾabym
+'abymelek, ʾabymelek
+'abynadab, ʾabynadab
+'abyno'am, ʾabynoʿam
+'abyr, ʾabyr
+'abyram, ʾabyram
+'ach, ʾach
+'ach'ab, ʾachʿab
+'achaaryth, ʾachaaryth
+'achab, ʾachab
+'achad, ʾachad
+'achalay, ʾachalay
+'achar, ʾachar
+'acharown, ʾacharown
+'achary, ʾachary
+'acharyth, ʾacharyth
+'achashwerowsh, ʾachashwerowsh
+'achawah, ʾachawah
+'achaz, ʾachaz
+'achazyah, ʾachazyah
+'acher, ʾacher
+'achoran, ʾachoran
+'achoranyth, ʾachoranyth
+'achowr, ʾachowr
+'achowth, ʾachowth
+'achuwz, ʾachuwz
+'achuzah, ʾachuzah
+'achy, ʾachy
+'ad, ʾad
+'ada', ʾadaʿ
+'adah, ʾadah
+'adam, ʾadam
+'adamah, ʾadamah
+'adamym, ʾadamym
+'adan, ʾadan
+'adar, ʾadar
+'adash, ʾadash
+'adashym, ʾadashym
+'adayn, ʾadayn
+'adayr, ʾadayr
+'adereth, ʾadereth
+'admah, ʾadmah
+'admowny, ʾadmowny
+'adom, ʾadom
+'adonai, ʾadonai
+'adony, ʾadony
+'adonym, ʾadonym
+'adown, ʾadown
+'adowny, ʾadowny
+'ady, ʾady
+'adyr, ʾadyr
+'agab, ʾagab
+'agalah, ʾagalah
+'agam, ʾagam
+'agaph, ʾagaph
+'agar, ʾagar
+'agmown, ʾagmown
+'agol, ʾagol
+'agudah, ʾagudah
+'aguwr, ʾaguwr
+'ah, ʾah
+'ahab, ʾahab
+'ahabah, ʾahabah
+'ahabym, ʾahabym
+'ahah, ʾahah
+'ahal, ʾahal
+'ahalym, ʾahalym
+'aharown, ʾaharown
+'aharown's, ʾaharownʿs
+'ahem, ʾahem
+'aher, ʾaher
+'ahsan, ʾahsan
+'ak, ʾak
+'akabysh, ʾakabysh
+'akad, ʾakad
+'akal, ʾakal
+'akar, ʾakar
+'akas, ʾakas
+'akbar, ʾakbar
+'akel, ʾakel
+'aken, ʾaken
+'aklah, ʾaklah
+'akzary, ʾakzary
+'al, ʾal
+'ala, ʾala
+'ala', ʾalaʿ
+'alah, ʾalah
+'alal, ʾalal
+'alam, ʾalam
+'alap, ʾalap
+'alaph, ʾalaph
+'alaphym, ʾalaphym
+'alapym, ʾalapym
+'alas, ʾalas
+'alatah, ʾalatah
+'alats, ʾalats
+'alaz, ʾalaz
+'aleh, ʾaleh
+'aleph, ʾaleph
+'alez, ʾalez
+'alken, ʾalken
+'allah, ʾallah
+'almah, ʾalmah
+'alman, ʾalman
+'almanah, ʾalmanah
+'alown, ʾalown
+'alownym, ʾalownym
+'alph, ʾalph
+'aluw, ʾaluw
+'aluwl, ʾaluwl
+'aluwmym, ʾaluwmym
+'aluwph, ʾaluwph
+'aluwqah, ʾaluwqah
+'alwah, ʾalwah
+'aly, ʾaly
+'alyah, ʾalyah
+'alyl, ʾalyl
+'alylah, ʾalylah
+'alylym, ʾalylym
+'alyz, ʾalyz
+'am, ʾam
+'amad, ʾamad
+'amah, ʾamah
+'amahowth, ʾamahowth
+'amahuwth, ʾamahuwth
+'amahym, ʾamahym
+'amal, ʾamal
+'amaleq, ʾamaleq
+'amam, ʾamam
+'aman, ʾaman
+'amaq, ʾamaq
+'amar, ʾamar
+'amats, ʾamats
+'amel, ʾamel
+'amen, ʾamen
+'ameq, ʾameq
+'amets, ʾamets
+'amoq, ʾamoq
+'amora, ʾamora
+'amorah, ʾamorah
+'amory, ʾamory
+'amots, ʾamots
+'amown, ʾamown
+'amows, ʾamows
+'amowts, ʾamowts
+'amtsah, ʾamtsah
+'amuwd, ʾamuwd
+'amuwdym, ʾamuwdym
+'amuwnah, ʾamuwnah
+'amy, ʾamy
+'amym, ʾamym
+'amyr, ʾamyr
+'amyts, ʾamyts
+'an, ʾan
+'ana', ʾanaʿ
+'anach, ʾanach
+'anachah, ʾanachah
+'anachnuw, ʾanachnuw
+'anachnuw', ʾanachnuwʿ
+'anad, ʾanad
+'anag, ʾanag
+'anah, ʾanah
+'anan, ʾanan
+'anaph, ʾanaph
+'anaq, ʾanaq
+'anaqah, ʾanaqah
+'anash, ʾanash
+'anathowth, ʾanathowth
+'anaw, ʾanaw
+'anawah, ʾanawah
+'aneph, ʾaneph
+'aniy, ʾaniy
+'anky, ʾanky
+'anoky, ʾanoky
+'anuwsh, ʾanuwsh
+'any, ʾany
+'anyah, ʾanyah
+'aowen, ʾaowen
+'aown, ʾaown
+'ap, ʾap
+'apal, ʾapal
+'apar, ʾapar
+'apelah, ʾapelah
+'aph, ʾaph
+'aphah, ʾaphah
+'aphal, ʾaphal
+'aphar, ʾaphar
+'aphden, ʾaphden
+'aphelah, ʾaphelah
+'apher, ʾapher
+'aphes, ʾaphes
+'aphyach, ʾaphyach
+'aphyq, ʾaphyq
+'aphyqym, ʾaphyqym
+'apyq, ʾapyq
+'apyqym, ʾapyqym
+'aqab, ʾaqab
+'aqad, ʾaqad
+'aqal, ʾaqal
+'aqalathown, ʾaqalathown
+'aqar, ʾaqar
+'aqash, ʾaqash
+'aqeb, ʾaqeb
+'aqob, ʾaqob
+'aqrab, ʾaqrab
+'ar, ʾar
+'ara', ʾaraʿ
+'arab, ʾarab
+'araba, ʾaraba
+'araba', ʾarabaʿ
+'araba'ym, ʾarabaʿym
+'araba'yowm, ʾarabaʿyowm
+'arabah, ʾarabah
+'arag, ʾarag
+'arah, ʾarah
+'arak, ʾarak
+'aralah, ʾaralah
+'aram, ʾaram
+'aramy, ʾaramy
+'araph, ʾaraph
+'araphel, ʾaraphel
+'arar, ʾarar
+'ararat, ʾararat
+'arats, ʾarats
+'arawnah, ʾarawnah
+'araz, ʾaraz
+'arba, ʾarba
+'arba', ʾarbaʿ
+'arba'ah, ʾarbaʿah
+'arba'iym, ʾarbaʿiym
+'arba'ym, ʾarbaʿym
+'arbe'l, ʾarbeʿl
+'arbeh, ʾarbeh
+'arek, ʾarek
+'arel, ʾarel
+'aresheth, ʾaresheth
+'arez, ʾarez
+'argaman, ʾargaman
+'arkah, ʾarkah
+'arlah, ʾarlah
+'armown, ʾarmown
+'arnown, ʾarnown
+'arok, ʾarok
+'arow'er, ʾarowʿer
+'arowm, ʾarowm
+'arown, ʾarown
+'arpad, ʾarpad
+'arphah, ʾarphah
+'arubah, ʾarubah
+'arukah, ʾarukah
+'aruw, ʾaruw
+'aruw'el, ʾaruwʿel
+'aruwgah, ʾaruwgah
+'aruwkah, ʾaruwkah
+'aruwm, ʾaruwm
+'arwad, ʾarwad
+'ary, ʾary
+'ary'el, ʾaryʿel
+'aryah, ʾaryah
+'aryeh, ʾaryeh
+'aryph, ʾaryph
+'aryry, ʾaryry
+'arysah, ʾarysah
+'aryts, ʾaryts
+'as, ʾas
+'asah, ʾasah
+'asap, ʾasap
+'asaph, ʾasaph
+'asaphsuph, ʾasaphsuph
+'asaq, ʾasaq
+'asar, ʾasar
+'asarah, ʾasarah
+'asas, ʾasas
+'asel, ʾasel
+'asen, ʾasen
+'asereh, ʾasereh
+'aseret, ʾaseret
+'asereth, ʾasereth
+'asham, ʾasham
+'ashamuwrah, ʾashamuwrah
+'ashan, ʾashan
+'ashaq, ʾashaq
+'ashar, ʾashar
+'ashash, ʾashash
+'ashdowd, ʾashdowd
+'asher, ʾasher
+'asherah, ʾasherah
+'asherahym, ʾasherahym
+'ashery, ʾashery
+'ashmuwrah, ʾashmuwrah
+'ashowth, ʾashowth
+'ashphoth, ʾashphoth
+'ashpoth, ʾashpoth
+'ashqalown, ʾashqalown
+'ashrahym, ʾashrahym
+'ashreth, ʾashreth
+'ashry, ʾashry
+'ashshuwr, ʾashshuwr
+'ashtarah, ʾashtarah
+'ashtart, ʾashtart
+'ashtey, ʾashtey
+'ashur, ʾashur
+'ashurym, ʾashurym
+'ashuwr, ʾashuwr
+'ashysh, ʾashysh
+'ashyshah, ʾashyshah
+'asowr, ʾasowr
+'asry, ʾasry
+'asyph, ʾasyph
+'asyr, ʾasyr
+'asyry, ʾasyry
+'at, ʾat
+'ata, ʾata
+'atah, ʾatah
+'atahnuw, ʾatahnuw
+'ataleph, ʾataleph
+'atam, ʾatam
+'ataph, ʾataph
+'ataq, ʾataq
+'atar, ʾatar
+'atarah, ʾatarah
+'atem, ʾatem
+'aten, ʾaten
+'ath, ʾath
+'athah, ʾathah
+'athaq, ʾathaq
+'athar, ʾathar
+'athuwd, ʾathuwd
+'athuwn, ʾathuwn
+'athyd, ʾathyd
+'athyq, ʾathyq
+'atown, ʾatown
+'atsab, ʾatsab
+'atsah, ʾatsah
+'atsal, ʾatsal
+'atsam, ʾatsam
+'atsar, ʾatsar
+'atsarah, ʾatsarah
+'atsebeth, ʾatsebeth
+'atsumowth, ʾatsumowth
+'atsuwm, ʾatsuwm
+'atsyl, ʾatsyl
+'attah, ʾattah
+'atuwd, ʾatuwd
+'atuwq, ʾatuwq
+'atyd, ʾatyd
+'atyq, ʾatyq
+'aven, ʾaven
+'avon, ʾavon
+'awah, ʾawah
+'awal, ʾawal
+'awar, ʾawar
+'awat, ʾawat
+'awel, ʾawel
+'awen, ʾawen
+'awlah, ʾawlah
+'awon, ʾawon
+'awyl, ʾawyl
+'ay, ʾay
+'ayab, ʾayab
+'ayah, ʾayah
+'ayal, ʾayal
+'ayalah, ʾayalah
+'ayath, ʾayath
+'ayeh, ʾayeh
+'ayeph, ʾayeph
+'ayil, ʾayil
+'ayil-th, ʾayil-th
+'ayin, ʾayin
+'ayl, ʾayl
+'aym, ʾaym
+'ayn, ʾayn
+'aynym, ʾaynym
+'ayt, ʾayt
+'ayth, ʾayth
+'az, ʾaz
+'azab, ʾazab
+'azabown, ʾazabown
+'azabownym, ʾazabownym
+'azah, ʾazah
+'azal, ʾazal
+'azan, ʾazan
+'azar, ʾazar
+'azarah, ʾazarah
+'azaz, ʾazaz
+'azen, ʾazen
+'azur, ʾazur
+'azuwz, ʾazuwz
+'e, ʾe
+'ebah, ʾebah
+'ebal, ʾebal
+'ebed, ʾebed
+'ebel, ʾebel
+'eben, ʾeben
+'ebenym, ʾebenym
+'eber, ʾeber
+'ebrah, ʾebrah
+'ebuws, ʾebuws
+'ebyown, ʾebyown
+'ebyownym, ʾebyownym
+'echad, ʾechad
+'ed, ʾed
+'edah, ʾedah
+'edayn, ʾedayn
+'eden, ʾeden
+'edeny, ʾedeny
+'eder, ʾeder
+'edon, ʾedon
+'edony, ʾedony
+'edowm, ʾedowm
+'edown, ʾedown
+'edownay, ʾedownay
+'edowny, ʾedowny
+'eduwth, ʾeduwth
+'egabym, ʾegabym
+'egel, ʾegel
+'egelym, ʾegelym
+'eglah, ʾeglah
+'eglath, ʾeglath
+'eh, ʾeh
+'ehayah, ʾehayah
+'ehuwd, ʾehuwd
+'ehy, ʾehy
+'ek, ʾek
+'ekah, ʾekah
+'ekeh, ʾekeh
+'ekes, ʾekes
+'el, ʾel
+'el-eh, ʾel-eh
+'elah, ʾelah
+'elam, ʾelam
+'elamowth, ʾelamowth
+'elamy, ʾelamy
+'eldod, ʾeldod
+'eleh, ʾeleh
+'elehym, ʾelehym
+'eleph, ʾeleph
+'elephym, ʾelephym
+'elgabys, ʾelgabys
+'elgabysh, ʾelgabysh
+'elleh, ʾelleh
+'elm, ʾelm
+'elohay, ʾelohay
+'elohy, ʾelohy
+'elohym, ʾelohym
+'elowah, ʾelowah
+'elowha, ʾelowha
+'elown, ʾelown
+'eloym, ʾeloym
+'ely, ʾely
+'ely'ab, ʾelyʿab
+'ely'ezar, ʾelyʿezar
+'elyah, ʾelyah
+'elyahama', ʾelyahamaʿ
+'elyl, ʾelyl
+'elym, ʾelym
+'elyon, ʾelyon
+'elyown, ʾelyown
+'elysha, ʾelysha
+'elysha', ʾelyshaʿ
+'elyshah, ʾelyshah
+'em, ʾem
+'emah, ʾemah
+'emeq, ʾemeq
+'emer, ʾemer
+'emery, ʾemery
+'emesh, ʾemesh
+'emeth, ʾemeth
+'emory, ʾemory
+'emrah, ʾemrah
+'emuwn, ʾemuwn
+'emuwnah, ʾemuwnah
+'enab, ʾenab
+'enash, ʾenash
+'enowsh, ʾenowsh
+'eowlah, ʾeowlah
+'epesh, ʾepesh
+'eph'eh, ʾephʿeh
+'epha', ʾephaʿ
+'ephah, ʾephah
+'ephaph, ʾephaph
+'epheh, ʾepheh
+'epher, ʾepher
+'ephes, ʾephes
+'ephowd, ʾephowd
+'ephrath, ʾephrath
+'ephrathah, ʾephrathah
+'ephraym, ʾephraym
+'eqeb, ʾeqeb
+'eqrown, ʾeqrown
+'er, ʾer
+'erab, ʾerab
+'ereb, ʾereb
+'eres, ʾeres
+'erets, ʾerets
+'eretsowth, ʾeretsowth
+'erez, ʾerez
+'ermown, ʾermown
+'erom, ʾerom
+'erowm, ʾerowm
+'erown, ʾerown
+'erwah, ʾerwah
+'eryah, ʾeryah
+'es, ʾes
+'esa'ow, ʾesaʿow
+'esah, ʾesah
+'esauw, ʾesauw
+'esaw, ʾesaw
+'eseb, ʾeseb
+'eser, ʾeser
+'eserah, ʾeserah
+'esh, ʾesh
+'esha', ʾeshaʿ
+'eshah, ʾeshah
+'eshdath, ʾeshdath
+'esher, ʾesher
+'eshkar, ʾeshkar
+'eshkowl, ʾeshkowl
+'eshnab, ʾeshnab
+'esrah, ʾesrah
+'esreh, ʾesreh
+'esrym, ʾesrym
+'esrymym, ʾesrymym
+'et, ʾet
+'eth, ʾeth
+'etham, ʾetham
+'ethba'al, ʾethbaʿal
+'ethnan, ʾethnan
+'ethow, ʾethow
+'etnan, ʾetnan
+'ets, ʾets
+'etsah, ʾetsah
+'etsba', ʾetsbaʿ
+'etseb, ʾetseb
+'etsel, ʾetsel
+'etsem, ʾetsem
+'etsemowth, ʾetsemowth
+'etser, ʾetser
+'etsy, ʾetsy
+'etsym, ʾetsym
+'etuwn, ʾetuwn
+'evel, ʾevel
+'ewel, ʾewel
+'ewyl, ʾewyl
+'ey, ʾey
+'eyal, ʾeyal
+'eybah, ʾeybah
+'eyd, ʾeyd
+'eykah, ʾeykah
+'eylam, ʾeylam
+'eymah, ʾeymah
+'eymatan, ʾeymatan
+'eyn, ʾeyn
+'eyn-dowr, ʾeyn-dowr
+'eyngedy, ʾeyngedy
+'eynown, ʾeynown
+'eyphah, ʾeyphah
+'eyrom, ʾeyrom
+'eyrowm, ʾeyrowm
+'eythan, ʾeythan
+'ez, ʾez
+'ezer, ʾezer
+'ezowb, ʾezowb
+'ezowr, ʾezowr
+'ezrach, ʾezrach
+'ezrachy, ʾezrachy
+'ezrah, ʾezrah
+'ha, ʾha
+'ibchah, ʾibchah
+'ibry, ʾibry
+'ibryym, ʾibryym
+'idan, ʾidan
+'idow, ʾidow
+'igarah, ʾigarah
+'igereth, ʾigereth
+'ikar, ʾikar
+'ilay, ʾilay
+'ilem, ʾilem
+'ilyn, ʾilyn
+'im, ʾim
+'imanuw'el, ʾimanuwʿel
+'imrah, ʾimrah
+'inuwn, ʾinuwn
+'iower, ʾiower
+'iph, ʾiph
+'iqashowth, ʾiqashowth
+'iqesh, ʾiqesh
+'iry, ʾiry
+'isah, ʾisah
+'isarown, ʾisarown
+'ishah, ʾishah
+'ishahym, ʾishahym
+'isheh, ʾisheh
+'ishown, ʾishown
+'ishsah, ʾishsah
+'ishym, ʾishym
+'itsabown, ʾitsabown
+'iweleth, ʾiweleth
+'iwer, ʾiwer
+'iwrown, ʾiwrown
+'iy, ʾiy
+'iyezebel, ʾiyezebel
+'iyowb, ʾiyowb
+'iyr, ʾiyr
+'iyry, ʾiyry
+'iyrym, ʾiyrym
+'iysh, ʾiysh
+'iyshown, ʾiyshown
+'iyshum, ʾiyshum
+'iyshy, ʾiyshy
+'iyshym, ʾiyshym
+'iythy'el, ʾiythyʿel
+'iyym, ʾiyym
+'iyzebel, ʾiyzebel
+'izbownym, ʾizbownym
+'izuwz, ʾizuwz
+'la, ʾla
+'o, ʾo
+'oach, ʾoach
+'obadyahuw, ʾobadyahuw
+'od, ʾod
+'odem, ʾodem
+'odowth, ʾodowth
+'oheb, ʾoheb
+'ohel, ʾohel
+'oholah, ʾoholah
+'oholybah, ʾoholybah
+'ol, ʾol
+'olah, ʾolah
+'olam, ʾolam
+'olelah, ʾolelah
+'omed, ʾomed
+'omer, ʾomer
+'oneg, ʾoneg
+'oniyah, ʾoniyah
+'ony, ʾony
+'onyah, ʾonyah
+'opel, ʾopel
+'opereth, ʾopereth
+'oph, ʾoph
+'ophan, ʾophan
+'opheh, ʾopheh
+'ophel, ʾophel
+'ophesym, ʾophesym
+'ophreth, ʾophreth
+'or, ʾor
+'orach, ʾorach
+'orah, ʾorah
+'oreb, ʾoreb
+'orek, ʾorek
+'osheq, ʾosheq
+'osher, ʾosher
+'otseb, ʾotseb
+'otser, ʾotser
+'ow, ʾow
+'owb, ʾowb
+'owd, ʾowd
+'owdowth, ʾowdowth
+'owen, ʾowen
+'owg, ʾowg
+'owlah, ʾowlah
+'owlal, ʾowlal
+'owlam, ʾowlam
+'owlel, ʾowlel
+'own, ʾown
+'ownah, ʾownah
+'owny, ʾowny
+'owph, ʾowph
+'owphan, ʾowphan
+'owphanym, ʾowphanym
+'owphereth, ʾowphereth
+'owphyr, ʾowphyr
+'owr, ʾowr
+'owrah, ʾowrah
+'owryah, ʾowryah
+'owth, ʾowth
+'owtsar, ʾowtsar
+'owtsarowth, ʾowtsarowth
+'owy, ʾowy
+'owzen, ʾowzen
+'oyeb, ʾoyeb
+'oz, ʾoz
+'ozen, ʾozen
+'qidah, ʾqidah
+'rets, ʾrets
+'ri'shown, ʾriʿshown
+'rysah, ʾrysah
+'shagal, ʾshagal
+'tayd, ʾtayd
+'ugah, ʾugah
+'ukal, ʾukal
+'ulam, ʾulam
+'ulpheh, ʾulpheh
+'umah, ʾumah
+'umnam, ʾumnam
+'urym, ʾurym
+'uw, ʾuw
+'uw'ah, ʾuwʿah
+'uwbal, ʾuwbal
+'uwd, ʾuwd
+'uwl, ʾuwl
+'uwlam, ʾuwlam
+'uwlay, ʾuwlay
+'uwly, ʾuwly
+'uwpaz, ʾuwpaz
+'uwph, ʾuwph
+'uwr, ʾuwr
+'uwryah, ʾuwryah
+'uwsh, ʾuwsh
+'uwth, ʾuwth
+'uwts, ʾuwts
+'uwz, ʾuwz
+'uwzal, ʾuwzal
+'uzyah, ʾuzyah
+'uzyahuw, ʾuzyahuw
+'y, ʾy
+'ym, ʾym
+'yphah, ʾyphah
+'yr, ʾyr
+'ysh, ʾysh
+'yshy, ʾyshy
+al', alʿ
+aruw'el, aruwʿel
+b'atah, bʿatah
+ba'a', baʿaʿ
+ba'ad, baʿad
+ba'ah, baʿah
+ba'al, baʿal
+ba'al's, baʿalʿs
+ba'al-peor, baʿal-peor
+ba'al-zebub, baʿal-zebub
+ba'al-zebuwb, baʿal-zebuwb
+ba'alah, baʿalah
+ba'althy, baʿalthy
+ba'aly, baʿaly
+ba'alym, baʿalym
+ba'alzebub, baʿalzebub
+ba'ar, baʾar
+ba'ash, baʿash
+ba'ath, baʿath
+ba'er, baʿer
+ba'ery, baʿery
+ba'osh, baʿosh
+ba'r, baʿr
+ba'rsheba', baʿrshebaʿ
+ba'ulah, baʿulah
+ba'yr, baʿyr
+bala', balaʿ
+balya'al, balyaʿal
+baq'ah, baqʿah
+baqa', baqaʿ
+baqya', baqyaʿ
+bara', baraʿ
+bare'syth, bareʿsyth
+bary', baryʿ
+barya', baryaʿ
+barya'ah, baryaʾah
+bathuw'el, bathuwʿel
+batsa', batsaʿ
+baza', bazaʿ
+be'er, beʿer
+be'ry, beʿry
+bel'sha'tsar, belʿshaʿtsar
+belsha'tsar, belshaʿtsar
+beltasha'tsar, beltashaʿtsar
+ben-'amy, ben-ʿamy
+besa', besaʿ
+betsa', betsaʾ
+beyth'el, beythʿel
+bi'ah, biʿah
+biq'ah, biqʿah
+biqa'ah, biqaʿah
+bo'ser, boʿser
+chaba', chabaʾ
+chanan'el, chananʿel
+chata', chataʿ
+chata'ach, chataʿach
+chata'ah, chataʿah
+chata'ath, chataʿath
+chata'ch, chataʿch
+chata'owth, chataʿowth
+chata'th, chataʿth
+chaya', chayaʿ
+chem'ah, chemʿah
+chema', chemaʿ
+chema'ah, chemaʿah
+cheta', chetaʿ
+cheta'ah, chetaʿah
+chete', cheteʿ
+da', daʿ
+da'ab, daʿab
+da'agah, daʿagah
+da'ah, daʿah
+da'ak, daʿak
+da'at, daʿat
+da'ath, daʿath
+daka', dakaʿ
+dama', damaʿ
+dan'el, danʿel
+dany'el, danyʿel
+dar'yawesh, darʿyawesh
+dasha', dashaʿ
+dashe', dasheʿ
+de'ah, deʿah
+dera'own, deraʿown
+deshe', desheʿ
+dim'ah, dimʿah
+dima'ah, dimaʿah
+dobe', dobeʿ
+ga'al, gaʿal
+ga'ar, gaʿar
+ga'arah, gaʿarah
+ga'ash, gaʿash
+ga'awah, gaʿawah
+ga'on, gaʿon
+ga'owah, gaʿowah
+ga'own, gaʿown
+ga'ulah, gaʿulah
+gabry'el, gabryʿel
+gaby'a, gabyʿa
+gada', gadaʾ
+gala', galaʿ
+gama', gamaʿ
+gara', garaʾ
+gawa', gawaʿ
+gay', gayʿ
+ge', geʿ
+ge'eh, geʿeh
+geba', gebaʿ
+geza', gezaʿ
+gib'ah, gibʿah
+gib'ol, gibʾol
+gib'own, gibʿown
+giba'ah, gibaʿah
+gibo'l, giboʿl
+gil'ad, gilʿad
+gilbo'a, gilboʿa
+gile'ad, gileʿad
+go'al, goʿal
+gome', gomeʿ
+ha'abar, haʿabar
+hal'ah, halʿah
+hala'ah, halaʿah
+halo', haloʿ
+har'el, harʾel
+hashma'uwth, hashmaʿuwth
+hat-ta'awah, hat-taʿawah
+hata', hataʿ
+he', heʿ
+he'ach, heʿach
+he'ah, heʿah
+howsha', howshaʿ
+hu', huʿ
+huw', huwʿ
+hy'm, hyʿm
+ka'ab, kaʿab
+ka'ah, kaʿah
+ka'aruw, kaʿaruw
+ka'ary, kaʿary
+ka'as, kaʿas
+ka'asher, kaʾasher
+ka'eb, kaʾeb
+kala', kalaʿ
+kaluwa', kaluwaʿ
+kaly', kalyʿ
+kan'an, kanʿan
+kan'aow, kanʿaow
+kana', kanaʿ
+kana'an, kanaʿan
+kara', karaʿ
+karse', karseʿ
+kele', keleʿ
+kese', keseʿ
+kina'ah, kinaʿah
+kise', kiseʿ
+kowba', kowbaʿ
+ky', kyʿ
+la', laʿ
+la'ag, laʿag
+la'ah, laʿah
+la'anah, laʿanah
+la'om, laʿom
+la'omym, laʿomym
+la'owm, laʿowm
+la-ma'an, la-maʿan
+lab'u, labʿu
+labow', labowʿ
+laby', labyʿ
+labya', labyaʿ
+lama'an, lamaʿan
+le'ma'an, leʿmaʿan
+le'om, leʿom
+lebowa', lebowaʿ
+lowt's, lowtʿs
+luwle', luwleʿ
+m'ayn, mʿayn
+ma', maʿ
+ma'ad, maʿad
+ma'ah, maʿah
+ma'akal, maʾakal
+ma'akeleth, maʿakeleth
+ma'akoleth, maʾakoleth
+ma'al, maʿal
+ma'alah, maʿalah
+ma'alal, maʿalal
+ma'am, maʿam
+ma'amaq, maʿamaq
+ma'amasah, maʿamasah
+ma'an, maʿan
+ma'anah, maʿanah
+ma'aowr, maʿaowr
+ma'ar, maʿar
+ma'arab, maʿarab
+ma'arah, maʿarah
+ma'arakah, maʿarakah
+ma'aratsah, maʿaratsah
+ma'as, maʿas
+ma'asah, maʿasah
+ma'aseh, maʿaseh
+ma'asehy, maʿasehy
+ma'aser, maʿaser
+ma'at, maʿat
+ma'ataphet, maʿataphet
+ma'ateh, maʾateh
+ma'ayn, maʿayn
+ma'barah, maʿbarah
+ma'der, maʿder
+ma'en, maʿen
+ma'gal, maʿgal
+ma'iy, maʿiy
+ma'onah, maʿonah
+ma'own, maʿown
+ma'owr, maʿowr
+ma'owz, maʿowz
+ma'oz, maʿoz
+ma'utah, maʿutah
+ma'uwph, maʿuwph
+ma'uwrah, maʿuwrah
+ma'yan, maʿyan
+ma'yl, maʿyl
+mabow', mabowʿ
+mabowa', mabowaʿ
+mabuwa', mabuwaʿ
+mach'azah, machʿazah
+macha', machaʿ
+mada', madaʿ
+maduwa', maduwaʿ
+mah'an, mahʿan
+mahalal'el, mahalalʿel
+mak'ob, makʿob
+mal'ak, malʿak
+mal'aky, malʿaky
+mal'akym, malʿakym
+mala'kah, malaʾkah
+mala'lal, malaʿlal
+male', maleʿ
+malkyshuwa', malkyshuwaʿ
+malo', maloʿ
+mamre', mamreʿ
+mana', manaʾ
+mar'ah, marʿah
+mar'eh, marʿeh
+mar'iyth, marʿiyth
+mara', maraʿ
+mara'ah, maraʿah
+mara'showth, maraʿshowth
+mare', mareʿ
+mare'ah, mareʿah
+margowa', margowaʿ
+marpe', marpeʿ
+marphe', marpheʿ
+mary', maryʿ
+mas'eth, masʿeth
+mash'en, mashʿen
+mashe'nah, masheʿnah
+mata', mataʿ
+mata'te', mataʿteʿ
+matsa', matsaʿ
+matsora', matsoraʿ
+me'ah, meʿah
+me'ahowth, meʿahowth
+me'ahym, meʿahym
+me'at, meʿat
+me'eh, meʿeh
+me'od, meʿod
+me'owah, meʿowah
+melo', meloʿ
+mera', meraʿ
+metash'el, metashʿel
+metsora', metsoraʿ
+meysha', meyshaʿ
+mibtsa'r, mibtsaʿr
+mikla', miklaʿ
+milow', milowʿ
+miqra', miqraʿ
+miqra'ey, miqraʿey
+miqtsowa', miqtsowaʿ
+mire'ah, mireʿah
+mish'an, mishʿan
+mish'eneth, mishʿeneth
+mish'ereth, mishʿereth
+mish'y, mishʿy
+misha'lah, mishaʿlah
+mishma'ath, mishmaʿath
+mishqa', mishqaʿ
+mithnase', mithnaseʿ
+mits'ad, mitsʿad
+mitsa'd, mitsaʿd
+miz'ar, mizʾar
+miza'r, mizaʿr
+mizra', mizraʿ
+mo'zanaym, moʿzanaym
+mo'zanym, moʿzanym
+mora', moraʿ
+mosheh's, moshehʿs
+mow', mowʿ
+mow'ab, mowʿab
+mow'abite, mowʿabite
+mow'al, mowʿal
+mow'ed, mowʿed
+mow'edym, mowʿedym
+mow'etsah, mowʿetsah
+mowba', mowbaʿ
+mowda', mowdaʿ
+mowe'tsah, moweʿtsah
+mowra', mowraʿ
+mowshya', mowshyaʿ
+mowtsa', mowtsaʿ
+mydaba', mydabaʿ
+myka'el, mykaʿel
+na', naʿ
+na'ah, naʿah
+na'al, naʿal
+na'am, naʿam
+na'amanym, naʾamanym
+na'ap, naʿap
+na'aph, naʿaph
+na'aq, naʿaq
+na'aqah, naʿaqah
+na'ar, naʿar
+na'as, naʿas
+na'ats, naʿats
+na'atsah, naʿatsah
+na'atsuwts, naʿatsuwts
+na'em, naʿem
+na'qah, naʿqah
+na'um, naʾum
+na'uwrym, naʿuwrym
+na'ym, naʿym
+nab'ym, nabʿym
+naba', nabaʿ
+naba'ym, nabaʿym
+nabuw'ah, nabuwʿah
+nabuwkadne'tsar, nabuwkadneʿtsar
+nabuwkadne'tstsar, nabuwkadneʿtstsar
+nabuwkadre'tsar, nabuwkadreʿtsar
+naby', nabyʾ
+naby'ah, nabyʿah
+naby'y, nabyʿy
+naby'ym, nabyʾym
+naga', nagaʿ
+naka', nakaʿ
+naqa', naqaʾ
+naqe', naqeʿ
+nasa', nasaʾ
+nasha', nashaʾ
+nashya', nashyaʿ
+nasy', nasyʿ
+nasy'y, nasyʾy
+nasya', nasyaʿ
+nasyi', nasyiʿ
+nata', nataʿ
+ne'um, neʿum
+nebuwkadne'tstsar, nebuwkadneʿtstsar
+nega', negaʿ
+neta', netaʿ
+ni'uphym, niʿuphym
+no', noʿ
+no'am, noʾam
+no'ar, noʾar
+no'd, noʾd
+noach's, noachʾs
+nua', nuaʿ
+nuwa', nuwaʿ
+pa'al, paʿal
+pa'am, paʾam
+pa'amym, paʿamym
+pa'ar, paʿar
+pa'er, paʿer
+pa'ery, paʿery
+pa'orah, paʿorah
+pa'owr, paʿowr
+pa'ran, paʿran
+pa'ruwr, paʿruwr
+pa'ulah, paʿulah
+pacha', pachaʿ
+padan-'aram, padan-ʿaram
+paga', pagaʿ
+pala', palaʿ
+pany'el, panyʿel
+para', paraʿ
+pasa', pasaʿ
+pasha', pashaʿ
+pathuw'el, pathuwʿel
+patsa', patsaʿ
+pe'ah, peʿah
+pe'ulah, peʿulah
+pela', pelaʿ
+pele', peleʿ
+pere', pereʿ
+pesha', peshaʿ
+peta', petaʿ
+petha', pethaʿ
+phadn'aram, phadnʿaram
+phar'aoh, pharʾaoh
+phar'oah, pharʿoah
+phar'oah's, pharʿoahʿs
+phar'os, pharʿos
+pharo'ah, pharoʿah
+phe'ah, pheʿah
+phera', pheraʿ
+pith'om, pithʾom
+pith'owm, pithʿowm
+po'al, poʿal
+po'rah, poʿrah
+qala', qalaʿ
+qana', qanaʿ
+qapha', qaphaʿ
+qara', qaraʿ
+qarqa', qarqaʿ
+qary', qaryʿ
+qary'ah, qaryʿah
+qatsa', qatsaʿ
+qin'ach, qinʿach
+qin'ah, qinʿah
+qina'ah, qinaʿah
+qipa'own, qipaʿown
+qish'ah, qishʿah
+qow', qowʿ
+qowa', qowaʿ
+qowba', qowbaʿ
+ra', raʿ
+ra'a, raʿa
+ra'a', raʾaʾ
+ra'ab, raʿab
+ra'ad, raʿad
+ra'ah, raʿah
+ra'ahwah, raʿahwah
+ra'ahy, raʿahy
+ra'ahym, raʿahym
+ra'al, raʿal
+ra'alah, raʿalah
+ra'am, raʾam
+ra'ameses, raʿameses
+ra'anan, raʾanan
+ra'as, raʿas
+ra'ash, raʿash
+ra'ats, raʿats
+ra'eb, raʾeb
+ra'mah, raʿmah
+ra'mases, raʿmases
+ra'mowth, raʿmowth
+ra'uw, raʿuw
+ra'uwben, raʿuwben
+ra'y, raʿy
+ra'ym, raʿym
+raba', rabaʿ
+raby'ay, rabyʿay
+raby'iy, rabyʿiy
+raby'y, rabyʿy
+rabya'y, rabyaʿy
+rabyi'y, rabyiʿy
+raga', ragaʿ
+rapha', raphaʾ
+rapha'ym, raphaʾym
+raphuwa'ah, raphuwaʿah
+raqa', raqaʿ
+raqya', raqyaʿ
+rasa', rasaʿ
+rasa'ym, rasaʿym
+rasha', rashaʿ
+rasha'ah, rashaʾah
+ratsa', ratsaʿ
+re'sh, reʿsh
+re'shown, reʿshown
+re'shyth, reʿshyth
+re'syth, reʿsyth
+rea', reaʾ
+reba', rebaʿ
+rega', regaʿ
+repha'ym, rephaʿym
+resha', reshaʿ
+ri'shah, riʿshah
+ri'shown, riʿshown
+ribow', ribowʿ
+ribowa', ribowaʿ
+riph'uwth, riphʿuwth
+risha'ah, rishaʿah
+ro'sh, roʾsh
+ro'shy, roʿshy
+roa', roaʿ
+ruwa', ruwaʿ
+ry'ach, ryʿach
+sa'ad, saʿad
+sa'ahym, saʿahym
+sa'an, saʿan
+sa'aph, saʿaph
+sa'ar, saʾar
+sa'arah, saʿarah
+sa'eth, saʿeth
+sa'or, saʿor
+sa'orah, saʿorah
+sa'own, saʿown
+sa'yph, saʿyph
+sa'yr, saʿyr
+sab'ah, sabʿah
+saba', sabaʾ
+saba'ah, sabaʿah
+sagyi', sagyiʿ
+sai'phym, saiʿphym
+sama'l, samaʿl
+sama'ly, samaʿly
+same', sameʿ
+samo'l, samoʿl
+samow'el, samowʿel
+samow'l, samowʿl
+sana', sanaʿ
+sane', saneʾ
+se'ah, seʿah
+se'ar, seʿar
+se'eph, seʿeph
+se'er, seʿer
+se'iyr, seʿiyr
+se'or, seʾor
+se'yr, seʿyr
+sela', selaʿ
+sh'at, shʿat
+sha', shaʿ
+sha'a', shaʿaʿ
+sha'ag, shaʿag
+sha'agah, shaʿagah
+sha'ah, shaʿah
+sha'al, shaʿal
+sha'al'owb, shaʿalʿowb
+sha'alty'el, shaʿaltyʿel
+sha'an, shaʿan
+sha'aph, shaʿaph
+sha'ar, shaʿar
+sha'aruwr, shaʿaruwr
+sha'aruwrah, shaʿaruwrah
+sha'ary, shaʿary
+sha'arym, shaʿarym
+sha'at, shaʿat
+sha'eryth, shaʿeryth
+sha'own, shaʿown
+sha'r, shaʿr
+sha'ryth, shaʿryth
+sha'sha', shaʿshaʿ
+sha'sha'ym, shaʿshaʿym
+sha'shuwa', shaʿshuwaʿ
+sha'uwl, shaʿuwl
+sha'uwl's, shaʿuwlʿs
+shaba', shabaʿ
+shabi'ym, shabiʿym
+shabiy'iy, shabiyʿiy
+shabuw'ah, shabuwʿah
+shabuwa', shabuwaʿ
+shabuwa'ym, shabuwaʿym
+shaby'iy, shabyʿiy
+shaby'y, shabyʿy
+shabyi'y, shabyiʿy
+shaga', shagaʾ
+shagya'ah, shagyaʿah
+shakal'ath, shakalʿath
+shama', shamaʿ
+shamuw'ah, shamuwʿah
+shamuw'el, shamuwʿel
+shamuwa'ah, shamuwaʿah
+shana', shanaʿ
+shaqa', shaqaʿ
+shar'ar, sharʿar
+shatha', shathaʿ
+shav', shavʾ
+shaw'ah, shawʿah
+shawa', shawaʾ
+she'owl, sheʿowl
+she'own, sheʿown
+sheba', shebaʿ
+sheba'ah, shebaʿah
+sheba'athym, shebaʿathym
+sheby'iy, shebyʿiy
+shema', shemaʿ
+shemuwa'ah, shemuwaʿah
+shena', shenaʿ
+shib'ath, shibʿath
+shib'athaym, shibʿathaym
+shib'athym, shibʿathym
+shib'iym, shibʿiym
+shiba'ah, shibaʿah
+shibi'ym, shibiʿym
+shiga'own, shigaʾown
+shim'own, shimʿown
+shimi'y, shimiʿy
+shin'ar, shinʿar
+shipha'ah, shiphaʿah
+sho'al, shoʿal
+show', showʿ
+show'a, showʿa
+showa', showaʾ
+showa'ah, showaʿah
+shuwa', shuwaʿ
+shuwa'al, shuwaʿal
+siba'ah, sibaʿah
+sina'ah, sinaʿah
+sisera', siseraʿ
+soba', sobaʿ
+sobe', sobeʿ
+sow'er, sowʿer
+sowpha', sowphaʿ
+strong's, strongʿs
+sysara', sysaraʿ
+ta', taʿ
+ta'ab, taʿab
+ta'ah, taʿah
+ta'alah, taʿalah
+ta'aluwl, taʿaluwl
+ta'am, taʿam
+ta'an, taʿan
+ta'ar, taʿar
+ta'ashar, taʿashar
+ta'awah, taʿawah
+ta'enah, taʿenah
+ta'nyah, taʿnyah
+ta'owth, taʿowth
+ta'unym, taʿunym
+ta'uwah, taʿuwah
+ta'uwdah, taʿuwdah
+ta'ym, taʿym
+taba', tabaʿ
+taba'ath, tabaʿath
+taba'el, tabaʿel
+tabuw'ah, tabuwʿah
+tachalu'ym, tachaluʿym
+tal'ubowt, talʿubowt
+tala', talaʿ
+tala'ym, talaʿym
+tame', tameʿ
+taqa', taqaʿ
+taqowa', taqowaʿ
+tar'elah, tarʿelah
+taruw'ah, taruwʿah
+taruwa'ah, taruwaʿah
+tashu'ah, tashuʿah
+tashuw'ah, tashuwʿah
+tashuwa'ah, tashuwaʿah
+tashy'iy, tashyʿiy
+tesha', teshaʿ
+tesha'ym, teshaʿym
+thesha', theshaʿ
+tiba'el, tibaʿel
+tip'eret, tipʿeret
+tiph'arah, tiphʿarah
+tiph'areth, tiphʿareth
+tiph'arth, tiphʿarth
+tiph'ereth, tiphʿereth
+tiph'erth, tiphʿerth
+tipha'rath, tiphaʿrath
+tiphe'reth, tipheʿreth
+tish'iym, tishʿiym
+to'ar, toʿar
+tow'ah, towʿah
+tow'eah, towʿeah
+tow'ebah, towʾebah
+towe'bah, toweʿbah
+towla'ah, towlaʿah
+towla'ch, towlaʿch
+towle'ah, towleʾah
+towrah's, towrahʿs
+towta'photh, towtaʿphoth
+towtsa'owth, towtsaʿowth
+ts'ayr, tsʿayr
+ts'on, tsʿon
+tsa'ad, tsaʿad
+tsa'ah, tsaʿah
+tsa'aq, tsaʾaq
+tsa'aqah, tsaʿaqah
+tsa'ar, tsaʿar
+tsa'dah, tsaʿdah
+tsa'yr, tsaʿyr
+tsaba', tsabaʿ
+tsabo'ym, tsaboʿym
+tsalmuna', tsalmunaʿ
+tsama', tsamaʿ
+tsame', tsameʿ
+tsapha', tsaphaʿ
+tsara', tsaraʿ
+tsara'ath, tsaraʿath
+tsawa'r, tsawaʿr
+tse'ah, tseʿah
+tse'aqah, tseʿaqah
+tseba', tsebaʿ
+tsela', tselaʿ
+tsela'owth, tselaʿowth
+tsepha', tsephaʿ
+tsiph'ony, tsiphʿony
+tsira', tsiraʿ
+tso'ah, tsoʾah
+tso'an, tsoʿan
+tso'ar, tsoʿar
+tso'n, tsoʿn
+tsow'iym, tsowʿiym
+tsuw'ar, tsuwʿar
+tuma'ah, tumaʿah
+wa'eth, waʿeth
+y'athuwn, yʿathuwn
+ya'ab, yaʿab
+ya'ad, yaʿad
+ya'an, yaʿan
+ya'anah, yaʿanah
+ya'aph, yaʿaph
+ya'aqob, yaʿaqob
+ya'ar, yaʿar
+ya'arym, yaʿarym
+ya'as, yaʿas
+ya'ath, yaʿath
+ya'ats, yaʿats
+ya'ay, yaʿay
+ya'az, yaʿaz
+ya'azanyah, yaʿazanyah
+ya'azyr, yaʿazyr
+ya'el, yaʿel
+ya'ep, yaʿep
+ya'eph, yaʾeph
+ya'or, yaʿor
+ya'ory, yaʿory
+ya'orym, yaʿorym
+yachezq'el, yachezqʿel
+yada'ony, yadaʿony
+yada's, yadaʿs
+yada'yah, yadaʿyah
+yaga', yagaʿ
+yagya', yagyaʿ
+yahow'ash, yahowʿash
+yahowsha', yahowshaʿ
+yahowshuwa', yahowshuwaʿ
+yahuw', yahuwʿ
+yahuw'ash, yahuwʿash
+yala', yalaʿ
+yaqa', yaqaʿ
+yar'ah, yarʿah
+yara', yaraʿ
+yarab'am, yarabʿam
+yarob'am, yarobʿam
+yarya'ah, yaryaʿah
+yasha', yashaʿ
+yasha'yah, yashaʿyah
+yasha'yahuw, yashaʿyahuw
+yashuw'ah, yashuwʿah
+yashuwa'ah, yashuwaʿah
+yasta', yastaʿ
+yatsa', yatsaʾ
+ya}howsha', ya}howshaʿ
+yba'al, ybaʿal
+ye'or, yeʿor
+yegya', yegyaʿ
+yesha', yeshaʿ
+yeshuwa'ah, yeshuwaʿah
+yeza', yezaʿ
+yida'ony, yidaʿony
+yir'ah, yirʿah
+yira'ah, yiraʿah
+yira'th, yiraʿth
+yirma'yah, yirmaʿyah
+yirma'yahuw, yirmaʿyahuw
+yisra'el, yisraʿel
+yo'shyah, yoʿshyah
+yophya', yophyaʿ
+yow'ab, yowʿab
+yow'ash, yowʿash
+yow'el, yowʿel
+yow'ets, yowʿets
+yowe'ts, yoweʿts
+yr'ah, yrʿah
+yshma''el, yshmaʿʿel
+yshma''elym, yshmaʿʿelym
+yzra''el, yzraʿʿel
+z'oth, zʿoth
+za'am, zaʿam
+za'aq, zaʿaq
+za'aqah, zaʿaqah
+za'awah, zaʿawah
+za'eb, zaʿeb
+za'ed, zaʿed
+za'eyr, zaʿeyr
+za'q, zaʿq
+zal'aphah, zalʿaphah
+zara', zaraʿ
+zarowa', zarowaʿ
+zarowa'owth, zarowaʿowth
+ze'ah, zeʿah
+ze'aqah, zeʿaqah
+ze'eb, zeʿeb
+ze'th, zeʿth
+zera', zeraʿ
+zuwa', zuwaʿ
+
+================================================================================
+REFINEMENT ANALYSIS
+================================================================================
+
+Total words analyzed: 1539
+Words with definition-based corrections: 57
+
+Corrections from simple rule:
+--------------------------------------------------------------------------------
+
+'ab'atem
+  Simple:  ʾabʿatem
+  Refined: ʾabʾatem
+  Scores:  Ayin=0, Aleph=1
+
+'abraham's
+  Simple:  ʾabrahamʿs
+  Refined: ʾabrahamʾs
+  Scores:  Ayin=0, Aleph=1
+
+ba'ar
+  Simple:  baʿar
+  Refined: baʾar
+  Scores:  Ayin=0, Aleph=1
+  YY: as an expression of freewill, you can purge that which should no longer exist (scribed in the piel s...
+
+barya'ah
+  Simple:  baryaʿah
+  Refined: baryaʾah
+  Scores:  Ayin=0, Aleph=1
+  YY: is recently created and synthesized, fabricated and novel, comprised of circumstances and conditions...
+
+betsa'
+  Simple:  betsaʿ
+  Refined: betsaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: being wrong, immorality and injustice, covetousness separating others from God and their possessions...
+
+chaba'
+  Simple:  chabaʿ
+  Refined: chabaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: I moved away and hid, I retreated so as not to be discovered because I had withdrawn from someone I ...
+
+gada'
+  Simple:  gadaʿ
+  Refined: gadaʾ
+  Scores:  Ayin=1, Aleph=2
+  YY: for having estranged many, you have been felled and have fallen, severed for what has been done, and...
+
+gara'
+  Simple:  garaʿ
+  Refined: garaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: I will no longer exist in your presence, I will be restrained, will be lessened, reduced, and dimini...
+
+gib'ol
+  Simple:  gibʿol
+  Refined: gibʾol
+  Scores:  Ayin=1, Aleph=2
+  YY: blossoming and flowering; from the verbal root, gabar, and the noun, geber, which means “a strong ma...
+
+har'el
+  Simple:  harʿel
+  Refined: harʾel
+  Scores:  Ayin=0, Aleph=1
+  YY: ?, used only in Ezekiel; from har – mountain and ʾel – god...
+
+ka'asher
+  Simple:  kaʿasher
+  Refined: kaʾasher
+  Scores:  Ayin=0, Aleph=1
+  YY: in the same manner and for the point of comparison regarding the narrow path to walk to get the most...
+
+ka'eb
+  Simple:  kaʿeb
+  Refined: kaʾeb
+  Scores:  Ayin=0, Aleph=1
+  YY: emotional sorrow and mental suffering, disappointment and disaster...
+
+ma'akal
+  Simple:  maʿakal
+  Refined: maʾakal
+  Scores:  Ayin=0, Aleph=1
+  YY: to be butchered and destroyed; from mah – to question and ‘akal – to consume...
+
+ma'akoleth
+  Simple:  maʿakoleth
+  Refined: maʾakoleth
+  Scores:  Ayin=0, Aleph=1
+  YY: that which is consumed and destroyed; from ‘akal – to be devoured, eaten up and devastated...
+
+ma'ateh
+  Simple:  maʿateh
+  Refined: maʾateh
+  Scores:  Ayin=0, Aleph=1
+
+mala'kah
+  Simple:  malaʿkah
+  Refined: malaʾkah
+  Scores:  Ayin=1, Aleph=2
+  YY: of His Maternal message as conveyed through the prescribed work of the Spirit, His expenditure of en...
+
+mana'
+  Simple:  manaʿ
+  Refined: manaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: are denied and deprived...
+
+miz'ar
+  Simple:  mizʿar
+  Refined: mizʾar
+  Scores:  Ayin=0, Aleph=1
+  YY: notably lowly and little (a synonym for Pauline Christians based upon the Latin name Sha’uwl chose f...
+
+na'amanym
+  Simple:  naʿamanym
+  Refined: naʾamanym
+  Scores:  Ayin=1, Aleph=2
+  YY: a deliberately distorted epithet for Adonis, meaning Lord (from ‘adony); a pleasant appearing and de...
+
+na'um
+  Simple:  naʿum
+  Refined: naʾum
+  Scores:  Ayin=0, Aleph=2
+  YY: of the prophetic declaration of; from na’am – to speak under Divine inspiration and influence as a p...
+
+naby'
+  Simple:  nabyʿ
+  Refined: nabyʾ
+  Scores:  Ayin=1, Aleph=2
+  YY: a person who is inspired by Yahowah, who communicates and records the testimony of God, and who is a...
+
+naby'ym
+  Simple:  nabyʿym
+  Refined: nabyʾym
+  Scores:  Ayin=0, Aleph=1
+  YY: were inspired by God...
+
+naqa'
+  Simple:  naqaʿ
+  Refined: naqaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: she severed the relationship (qal perfect third-person feminine singular)...
+
+nasa'
+  Simple:  nasaʿ
+  Refined: nasaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: he consistently promotes and carries forward, advancing and lifting up (qal imperfect third-person m...
+
+nasha'
+  Simple:  nashaʿ
+  Refined: nashaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: he consistently promotes and carries forward, advancing and lifting up (qal imperfect third-person m...
+
+nasy'y
+  Simple:  nasyʿy
+  Refined: nasyʾy
+  Scores:  Ayin=0, Aleph=3
+  YY: exalted sons of sovereigns, heirs to a throne, the lifted up and carried among tribal chieftains, no...
+
+no'am
+  Simple:  noʿam
+  Refined: noʾam
+  Scores:  Ayin=0, Aleph=1
+  YY: the enjoyable nature, beloved character, splendorous beauty, and overall pleasantness...
+
+no'ar
+  Simple:  noʿar
+  Refined: noʾar
+  Scores:  Ayin=0, Aleph=1
+
+no'd
+  Simple:  noʿd
+  Refined: noʾd
+  Scores:  Ayin=0, Aleph=1
+  YY: a parchment prepared for writing...
+
+noach's
+  Simple:  noachʿs
+  Refined: noachʾs
+  Scores:  Ayin=0, Aleph=1
+
+pa'am
+  Simple:  paʿam
+  Refined: paʾam
+  Scores:  Ayin=0, Aleph=2
+  YY: now influencing the conduct of life by constructing a foundation and raising an edifice to endow mis...
+
+phar'aoh
+  Simple:  pharʿaoh
+  Refined: pharʾaoh
+  Scores:  Ayin=0, Aleph=1
+  YY: Pharaoh (this is the earliest and most accurate transliteration of the title Egyptian kings chose fo...
+
+pith'om
+  Simple:  pithʿom
+  Refined: pithʾom
+  Scores:  Ayin=0, Aleph=1
+  YY: in an instant and straight away, surprising many...
+
+ra'a'
+  Simple:  raʿaʿ
+  Refined: raʾaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: you are rotten and worthless, misleading frauds (hifil imperfect second-person plural – you are cons...
+
+ra'am
+  Simple:  raʿam
+  Refined: raʾam
+  Scores:  Ayin=0, Aleph=1
+  YY: with a loudly spoken declaration...
+
+ra'anan
+  Simple:  raʿanan
+  Refined: raʾanan
+  Scores:  Ayin=0, Aleph=1
+  YY: large, notable, verdant, and luxuriant...
+
+ra'eb
+  Simple:  raʿeb
+  Refined: raʾeb
+  Scores:  Ayin=0, Aleph=1
+  YY: He decided you would benefit if He developed your appetite (in the hifil stem God brought about thei...
+
+rapha'
+  Simple:  raphaʿ
+  Refined: raphaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: should You choose to cure, mend, repair, or provide recovery (qal imperative second-person masculine...
+
+rapha'ym
+  Simple:  raphaʿym
+  Refined: raphaʾym
+  Scores:  Ayin=0, Aleph=1
+  YY: the deceased were mended; from rapha’ – the healed and reconciled...
+
+rasha'ah
+  Simple:  rashaʿah
+  Refined: rashaʾah
+  Scores:  Ayin=0, Aleph=2
+  YY: being incongruent with the God’s guidance, guilty of violating God’s directions, invalidated by bein...
+
+rea'
+  Simple:  reaʿ
+  Refined: reaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: your dishonest and decadent country, and those who comprise your troubling social, geographical, rac...
+
+ro'sh
+  Simple:  roʿsh
+  Refined: roʾsh
+  Scores:  Ayin=0, Aleph=1
+  YY: their leaders and uttermost objects ruling over them, the foremost things in their lives and in thei...
+
+sa'ar
+  Simple:  saʿar
+  Refined: saʾar
+  Scores:  Ayin=0, Aleph=1
+  YY: of blowing wind, of a storm, of being vehemently inflamed, of bristling wrath [from 1QIsa, in the MT...
+
+saba'
+  Simple:  sabaʿ
+  Refined: sabaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: you will be met with an abundance of (the qal perfect indicates that this is completely reliable whi...
+
+sane'
+  Simple:  saneʿ
+  Refined: saneʾ
+  Scores:  Ayin=1, Aleph=2
+  YY: those who dislike, showing enmity toward, who detest the mention of, who oppose and do not appreciat...
+
+se'or
+  Simple:  seʿor
+  Refined: seʾor
+  Scores:  Ayin=0, Aleph=1
+  YY: the fungus culture in food and drink and fermenting agent which leavens...
+
+shaga'
+  Simple:  shagaʿ
+  Refined: shagaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: is erratic and easily panicked, crazy and delusional, preoccupied with frivolous madness, and driven...
+
+shav'
+  Simple:  shavʿ
+  Refined: shavʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: vain, idolatrous, and ruinous, invalid and deliberately dishonest, illusory and misleading, wasteful...
+
+shawa'
+  Simple:  shawaʿ
+  Refined: shawaʾ
+  Scores:  Ayin=0, Aleph=1
+  YY: vain, idolatrous, and ruinous, invalid and deliberately dishonest, illusory and misleading, wasteful...
+
+shiga'own
+  Simple:  shigaʿown
+  Refined: shigaʾown
+  Scores:  Ayin=0, Aleph=1
+  YY: causing them to be unreliable maniacs who are out of their minds, so furious they are rendered incom...
+
+
+Score distribution (ayin_score, aleph_score): count
+  (0, 0): 1171
+  (0, 1): 96
+  (0, 2): 14
+  (0, 3): 2
+  (1, 0): 148
+  (1, 1): 39
+  (1, 2): 10
+  (2, 0): 27
+  (2, 1): 11
+  (2, 2): 5
+  (2, 4): 1
+  (2, 5): 1
+  (3, 0): 6
+  (3, 1): 3
+  (3, 2): 1
+  (3, 3): 2
+  (4, 1): 1
+  (5, 0): 1

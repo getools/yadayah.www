@@ -3,120 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <title>Yada Yah-Translations</title>
+    <title></title>
+    <link rel="icon" href="/images/favicon-32x32.png" sizes="32x32" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Roboto+Slab:wght@400&family=Nunito+Sans:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        @font-face {
-            font-family: "Yada Towrah";
-            src: url('fonts/YadaTowrah-Times.woff2') format('woff2'),
-                 url('fonts/YadaTowrah-Times.ttf') format('truetype');
-            font-weight: normal;
-            font-style: normal;
-            font-display: swap;
-        }
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        span.Yada.Towrah { font-family: "Yada Towrah", serif; color: #1a5276; }
-        .filters { margin-bottom: 20px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 1024px; margin-left: auto; margin-right: auto; }
-        .filter-group { margin-bottom: 0; }
-        .filter-group > label { font-weight: bold; display: block; margin-bottom: 5px; padding-left: 2px; }
-        select { padding: 5px; width: 250px; }
-        select:disabled { background: #e9ecef; cursor: not-allowed; color: #999; }
-        #chapter, #verse { width: 100px; }
-        button, .btn-link {
-            padding: 9px 22px; background-color: #31345A; color: white; border: none; cursor: pointer;
-            border-radius: 6px; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.3px;
-            transition: background-color 0.2s, box-shadow 0.2s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-        }
-        button:hover, .btn-link:hover { background-color: #4a4e7a; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
-        .btn-link { text-decoration: none; display: inline-block; margin-left: auto; }
-        .results { margin-top: 20px; max-width: 1024px; margin-left: auto; margin-right: auto; }
-        .section-break { margin-top: 15px; padding: 10px 0; border-top: 3px solid #999; border-bottom: 2px solid #ccc; font-weight: bold; }
-        .section-break a:hover { text-decoration: underline; }
-        .record { margin: 5px 0; padding: 5px; }
-        .record p { margin: 0.4em 0; padding: 0 10px; text-indent: 2em; }
-        #chapter-verse-filters { display: flex; gap: 16px; }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: "Nunito Sans", Arial, sans-serif; margin: 0; padding: 0; background: #fff; color: #2c3e50; }
+        a { text-decoration: none; color: inherit; }
 
-        /* Word popup */
-        .word-link {
-            cursor: pointer;
-            text-decoration: underline;
-            text-decoration-style: dotted;
-            text-decoration-color: #3498db;
-            color: #2c3e50;
-        }
-        .word-link:hover {
-            text-decoration-style: solid;
-            text-decoration-color: #2980b9;
-            background: rgba(52,152,219,0.08);
-        }
-        .word-popup-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            z-index: 999;
-        }
-        .word-popup {
-            position: fixed;
-            width: 380px;
-            max-height: 60vh;
-            overflow-y: auto;
-            background: #fff;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-            padding: 16px;
-            z-index: 1000;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-        .word-popup .wp-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
-        .word-popup .wp-top-left { }
-        .word-popup .wp-top-right { text-align: right; }
-        .word-popup .wp-yt { font-family: "Yada Towrah", serif; font-size: 1.1rem; color: #1a5276; }
-        .word-popup .wp-spellings { font-size: 0.85rem; color: #555; }
-        .word-popup .wp-hebrew { font-size: 1.2rem; direction: rtl; color: #333; }
-        .word-popup .wp-strongs a { color: #3498db; text-decoration: none; }
-        .word-popup .wp-strongs a:hover { text-decoration: underline; }
-        .word-popup .wp-grammar { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
-        .word-popup .wp-pos-label { font-size: 0.8rem; font-weight: 600; color: #2c3e50; margin-top: 6px; }
-        .word-popup .wp-pos-label:first-child { margin-top: 0; }
-        .word-popup .wp-definition { font-size: 0.875rem; color: #444; word-wrap: break-word; margin-bottom: 6px; }
-        .word-popup .wp-definition:last-child { margin-bottom: 0; }
-        .word-popup hr { border: none; border-top: 1px solid #eee; margin: 8px 0; }
-
-        /* Site header - matching yadayah.com Elementor header */
+        /* ── Header ── */
         header {
             display: flex; flex-direction: column; align-items: center;
-            padding: 10px 0 5px;
-            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
-            margin: -20px -20px 0 -20px;
-            position: relative;
-            overflow: hidden;
+            padding: 0;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
         }
         header .header-video {
-            position: absolute;
-            top: 50%; left: 50%;
+            position: absolute; top: 50%; left: 50%;
             min-width: 100%; min-height: 100%;
             transform: translate(-50%, -50%);
-            object-fit: cover;
-            z-index: 0;
+            object-fit: cover; z-index: 0;
         }
         header .header-inner {
             display: flex; flex-direction: column; align-items: center;
             width: 100%; max-width: 1140px; margin: 0 auto;
-            position: relative;
-            z-index: 1;
+            position: relative; z-index: 1;
         }
         header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         header .header-logos img { width: auto; height: auto; }
         header nav {
             display: flex; flex-direction: column; align-items: center;
-            gap: 0; padding: 10px 0;
+            gap: 0; padding: 0;
         }
         header nav .nav-row {
             display: flex; flex-direction: row; justify-content: center;
@@ -129,41 +48,238 @@
         }
         header nav a:hover { color: #fff; }
         header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
-        @media (max-width: 767px) {
-            header nav a.hide-narrow { display: none; }
-        }
 
-        /* Page tabs */
-        .page-tabs {
-            display: flex;
-            justify-content: center;
-            gap: 0;
-            margin: 0 -20px 20px -20px;
-            background: #f0f0f0;
-            border-bottom: 2px solid #ddd;
+        /* ── Sub-toolbar ── */
+        .sub-toolbar {
+            display: flex; justify-content: center; align-items: center;
+            gap: 30px; padding: 8px 0;
+            background: var(--toolbar-bg, #0A333A);
         }
-        .page-tabs a {
-            padding: 12px 32px;
-            text-decoration: none;
+        .sub-toolbar .sub-toolbar-label {
+            color: #6db3d4; font-family: "Julius Sans One", sans-serif;
+            font-size: 0.95em; font-weight: 700; margin-right: -10px;
+        }
+        .sub-toolbar a {
+            text-decoration: none; color: var(--toolbar-text, #8ED0EC);
             font-family: "Julius Sans One", sans-serif;
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #666;
-            border-bottom: 3px solid transparent;
-            transition: color 0.2s, border-color 0.2s;
+            font-size: 0.95em; font-weight: 700;
         }
-        .page-tabs a:hover { color: #31345A; }
-        .page-tabs a.active {
-            color: #31345A;
-            border-bottom-color: #31345A;
+        .sub-toolbar a:hover { color: #fff; }
+        .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+
+        /* ── Carousel ── */
+        .carousel {
+            position: relative;
+            background: #f8f9fa; border-bottom: 1px solid #e0e0e0;
+        }
+        .carousel-track {
+            display: flex; transition: transform 0.6s ease;
+        }
+        .carousel-slide {
+            min-width: 100%; display: flex; flex-direction: column;
+            align-items: center; text-align: center;
+            padding: 30px 20px;
+            max-width: 1100px; margin: 0 auto;
+        }
+        .carousel-slide .slide-text {
+            margin-bottom: 20px;
+        }
+        .carousel-slide .slide-text h2 {
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.8rem; color: #2F2F29; margin: 0 0 10px;
+        }
+        .carousel-slide .slide-text p {
+            font-size: 0.95rem; line-height: 1.7; color: #555;
+            margin: 0 auto 16px; max-width: 840px;
+        }
+        .carousel-slide .slide-img {
+            text-align: center;
+        }
+        .carousel-slide .slide-img img {
+            max-width: 100%; width: auto; height: auto;
+            max-height: 400px;
+        }
+        .btn-explore {
+            display: inline-block; padding: 10px 24px;
+            background: #295DAF; color: #fff; border: none;
+            border-radius: 1.31em 0 1.31em 1.31em;
+            font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; letter-spacing: 0.3px;
+            transition: background-color 0.2s, box-shadow 0.2s;
+        }
+        .btn-explore:hover { background: #1e4a8f; }
+        .carousel-dots {
+            text-align: center; padding: 10px 0 14px;
+            background: #f8f9fa;
+        }
+        .carousel-dots .dot {
+            display: inline-block; width: 10px; height: 10px;
+            border-radius: 50%; background: #ccc; margin: 0 5px;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .carousel-dots .dot.active { background: #295DAF; }
+        .carousel-arrow {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(0,0,0,0.15); color: #333; border: none;
+            width: 36px; height: 36px; border-radius: 50%;
+            font-size: 1.1rem; cursor: pointer; z-index: 2;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+        }
+        .carousel-arrow:hover { background: rgba(0,0,0,0.3); }
+        .carousel-inner {
+            position: relative;
+            max-width: 1100px; margin: 0 auto;
+            overflow: hidden;
+        }
+        .carousel-arrow.prev { left: 8px; }
+        .carousel-arrow.next { right: 8px; }
+
+        /* ── Content ── */
+        .content { max-width: 1100px; margin: 0 auto; padding: 20px 20px 40px; }
+        .section-title {
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.5rem; color: #2F2F29; margin: 0 0 20px;
+            text-align: center;
         }
 
-        /* Footer */
+        /* ── Videos ── */
+        .video-hero { margin-bottom: 24px; }
+        .video-hero .thumb {
+            position: relative; padding-bottom: 56.25%; background: #000;
+            border-radius: 8px; overflow: hidden;
+        }
+        .video-hero .thumb iframe {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
+        }
+        .video-hero .vid-title {
+            font-size: 1.1rem; font-weight: 600; margin: 10px 0 0; color: #2c3e50;
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px; margin-bottom: 24px;
+        }
+        .video-card {
+            background: #f8f9fa; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: box-shadow 0.2s;
+        }
+        .video-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+        .video-card .thumb {
+            position: relative; padding-bottom: 56.25%; background: #000;
+        }
+        .video-card .thumb iframe, .video-card .thumb img {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            border: 0; object-fit: cover;
+        }
+        .video-card .thumb img { cursor: pointer; }
+        .video-card .vid-info { padding: 10px 12px; }
+        .video-card .vid-info h3 {
+            font-size: 0.875rem; margin: 0; color: #2c3e50; line-height: 1.4;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .btn-load-more {
+            display: block; margin: 0 auto 40px; padding: 12px 40px;
+            background: #31345A; color: #fff; border: none;
+            border-radius: 6px; font-size: 1rem; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .btn-load-more:hover { background: #4a4e7a; }
+        .btn-load-more:disabled { background: #999; cursor: not-allowed; }
+
+        /* ── Shorts ── */
+        .shorts-section { margin-bottom: 40px; }
+        .shorts-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+        }
+        .short-card {
+            border-radius: 12px; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .short-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+        .short-card a { display: block; }
+        .short-card img {
+            width: 100%; aspect-ratio: 9/16; object-fit: cover; display: block;
+        }
+        .short-card .short-title {
+            padding: 8px 10px; font-size: 0.8rem; color: #333;
+            line-height: 1.3; background: #f8f9fa;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* ── Social Icons ── */
+        .social-section {
+            text-align: center; padding: 30px 0;
+            border-top: 1px solid #e8e8e8;
+            border-bottom: 1px solid #e8e8e8;
+            margin-bottom: 30px;
+        }
+        .social-icons {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+        }
+        .social-icons a {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4px;
+        }
+        .social-icons a span {
+            font-size: 0.7rem; color: #999; transition: color 0.2s;
+        }
+        .social-icons a:hover span { color: #31345A; }
+        .social-icons a svg {
+            width: 32px; height: 32px; fill: #999;
+            transition: fill 0.2s;
+        }
+        .social-icons a:hover svg { fill: #31345A; }
+
+        /* ── Featured ── */
+        .featured-section { margin-bottom: 40px; }
+        .featured-grid {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+            align-items: start;
+        }
+        .featured-card {
+            background: #f8f9fa; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .featured-card .thumb {
+            position: relative; padding-bottom: 56.25%; background: #000;
+        }
+        .featured-card .thumb iframe {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
+        }
+        .featured-card .feat-info { padding: 12px 16px; }
+        .featured-card .feat-info h3 {
+            font-size: 0.9rem; margin: 0 0 4px; color: #2c3e50; line-height: 1.4;
+        }
+        .featured-card .feat-info p {
+            font-size: 0.8rem; color: #888; margin: 0;
+        }
+        .featured-book {
+            background: #f8f9fa; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; padding: 24px;
+            min-height: 250px;
+        }
+        .featured-book img {
+            max-height: 240px; width: auto;
+            transition: transform 0.4s;
+        }
+        .featured-book:hover img { transform: scale(1.08); }
+        .featured-book .book-label {
+            margin-top: 12px; font-size: 0.85rem; color: #555;
+            font-family: "Julius Sans One", sans-serif;
+        }
+
+        /* ── Footer ── */
         footer {
-            background: url('https://yadayah.com/wp-content/uploads/2026/01/yy_bg_bluewave.0004.jpg') center/cover no-repeat;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
             position: relative; overflow: hidden;
-            padding: 30px 20px 20px;
-            color: #E5C86C;
+            padding: 30px 20px 20px; color: #E5C86C;
         }
         footer .footer-video {
             position: absolute; top: 50%; left: 50%;
@@ -176,526 +292,447 @@
             max-width: 1000px; margin: 0 auto;
             display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
         }
-        footer .footer-col { min-width: 200px; }
+        footer .footer-col { min-width: auto; }
         footer .footer-col h4 {
             font-family: 'Julius Sans One', sans-serif;
-            font-size: 1rem;
-            color: #E5C86C;
+            font-size: 1rem; color: #E5C86C;
             border-bottom: 1px solid rgba(229,200,108,0.3);
-            padding-bottom: 6px;
-            margin: 0 0 10px;
+            padding-bottom: 6px; margin: 0 0 10px;
         }
         footer .footer-col a {
-            display: block;
-            font-size: 0.9rem;
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 3px 0;
-        }
-        footer .footer-links {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 4px 20px;
-        }
-        footer .footer-links-3col {
-            grid-template-columns: auto auto auto;
+            display: block; font-size: 0.9rem;
+            color: rgba(255,255,255,0.8); text-decoration: none; padding: 3px 0;
         }
         footer .footer-col a:hover { color: #fff; }
-        footer .footer-bottom {
+        .footer-links {
+            display: grid; grid-template-columns: 1fr; gap: 4px 20px;
+        }
+        .footer-links-2col { grid-template-columns: 1fr 1fr; }
+        .footer-links-3col { grid-template-columns: auto auto auto; }
+        .footer-bottom {
             position: relative; z-index: 1;
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.8rem;
-            color: rgba(255,255,255,0.5);
+            text-align: center; margin-top: 20px;
+            font-size: 0.8rem; color: rgba(255,255,255,0.5);
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 1024px) {
+            .featured-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 767px) {
+            .carousel-slide .slide-img img { max-height: 250px; }
+            .carousel-arrow { display: none; }
+            .video-grid { grid-template-columns: 1fr; }
+            .shorts-grid { grid-template-columns: 1fr; }
         }
     </style>
+<script src="/js/site-nav.js"></script>
 </head>
 <body>
-    <header>
-        <video class="header-video" autoplay muted loop playsinline>
-            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
-        </video>
-        <div class="header-inner">
-            <div class="header-logos">
-                <a href="/translations"><img src="https://yadayah.com/wp-content/uploads/2026/01/YY.logo_.manorah.0080x0090.png" alt=""></a>
-            </div>
-            <nav>
-                <div class="nav-row">
-                    <a href="books">Books</a>
-                    <a href="vlog">Vlog</a>
-                    <a href="blog">Blog</a>
-                    <a href="/media" class="hide-narrow">Media</a>
-                    <a href="/music" class="hide-narrow">Music</a>
-                    <a href="invite" class="hide-narrow">Invite</a>
-                </div>
-                <div class="nav-row">
-                    <a href="/" class="active">Translations</a>
-                    <a href="resources">Resources</a>
-                    <a href="/Craig_Winn" class="hide-narrow">Winn</a>
-                    <a href="/timeline" class="hide-narrow">Timeline</a>
-                    <a href="ask">Ask</a>
-                </div>
-            </nav>
-        </div>
-    </header>
 
-    <div class="page-tabs">
-        <a href="/" class="active">Translations</a>
-        <a href="/glossary">Glossary</a>
-        <a href="/dss">Dead Sea Scrolls</a>
+<header>
+    <video class="header-video" autoplay muted loop playsinline>
+    </video>
+    <div class="header-inner">
+        <div class="header-logos">
+            <a href="/"><img src="/images/yy-logo-80x90.png" alt="Yada Yah"></a>
+        </div>
+        <nav>
+            <div class="nav-row">
+                <a href="books">Books</a>
+                <a href="blog">Blog</a>
+                <a href="/media">Media</a>
+            </div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="resources">Resources</a>
+                <a href="/Craig_Winn">Winn</a>
+                <a href="/timeline">Timeline</a>
+                <a href="ask">Ask</a>
+            </div>
+        </nav>
+    </div>
+</header>
+
+<div class="sub-toolbar">
+    <a href="vlog">Vlog</a>
+    <a href="/music">Music</a>
+    <a href="invite">Invite</a>
+    <a href="/DoYouYada">DoYou?</a>
+    <a href="shorts">Shorts</a>
+</div>
+
+<!-- ── Carousel ── -->
+<div class="carousel">
+    <div class="carousel-inner">
+        <button class="carousel-arrow prev" onclick="carouselPrev()">&#10094;</button>
+        <button class="carousel-arrow next" onclick="carouselNext()">&#10095;</button>
+        <div class="carousel-track" id="carousel-track"></div>
+    </div>
+</div>
+<div class="carousel-dots" id="carousel-dots"></div>
+
+<div class="content">
+
+    <!-- ── Latest Videos ── -->
+    <h2 class="section-title">Latest Videos</h2>
+    <div id="video-hero"></div>
+    <div id="video-grid" class="video-grid"></div>
+    <button class="btn-load-more" id="btn-load-more" onclick="loadMoreVideos()">Load More</button>
+
+    <!-- ── Shorts ── -->
+    <div class="shorts-section" id="shorts-section" style="display:none">
+        <h2 class="section-title">Shorts</h2>
+        <div id="shorts-grid" class="shorts-grid"></div>
     </div>
 
-    <div class="filters">
-        <div class="filter-group">
-            <label for="cite">Book</label>
-            <select id="cite">
-            </select>
+    <!-- ── Social ── -->
+    <div class="social-section">
+        <div class="social-icons">
+            <a href="https://www.youtube.com/@YahowahsHerald" target="_blank" title="YahowahsHerald">
+                <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.5 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+                <span>YahowahsHerald</span>
+            </a>
+            <a href="https://www.youtube.com/@YadaYah" target="_blank" title="YadaYah">
+                <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.5 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+                <span>YadaYah</span>
+            </a>
+            <a href="https://www.youtube.com/@YahowahsBlog" target="_blank" title="YahowahsBlog">
+                <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.5 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+                <span>YahowahsBlog</span>
+            </a>
+            <a href="https://www.facebook.com/craig.winn.986" target="_blank" title="Facebook">
+                <svg viewBox="0 0 24 24"><path d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.854V15.47H7.078V12h3.047V9.356c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.875V12h3.328l-.532 3.47h-2.796v8.385C19.612 22.954 24 17.99 24 12z"/></svg>
+                <span>craig.winn.986</span>
+            </a>
+            <a href="https://x.com/YadaCraig" target="_blank" title="X / Twitter">
+                <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                <span>YadaCraig</span>
+            </a>
+            <a href="https://www.tiktok.com/@yadayahowah" target="_blank" title="TikTok">
+                <svg viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+                <span>YadaYahowah</span>
+            </a>
+            <a href="https://www.instagram.com/yadayah1" target="_blank" title="Instagram">
+                <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+                <span>YadaYah1</span>
+            </a>
         </div>
-
-        <div id="chapter-verse-filters">
-            <div class="filter-group">
-                <label for="chapter">Chapter</label>
-                <select id="chapter" disabled>
-                    <option value="">All</option>
-                </select>
-            </div>
-
-            <div class="filter-group">
-                <label for="verse">Verse</label>
-                <select id="verse" disabled>
-                    <option value="">All</option>
-                </select>
-            </div>
-        </div>
-
     </div>
-    <div id="result-count" style="font-size: 0.85rem; color: #555; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
 
-    <div id="initial-prompt" style="display:none; text-align: center; margin-top: 80px; font-size: 1.5rem; color: #666;">Select Translation Filters and Hit 'Go'</div>
-    <div id="word-link-status" style="font-size: 0.8rem; color: #888; margin-bottom: 5px; max-width: 1024px; margin-left: auto; margin-right: auto;"></div>
-    <div id="results" class="results"></div>
-
-    <script>
-        // ── Word info store ──
-        var wordInfoStore = {};
-        var wordInfoCounter = 0;
-
-        function normalizeWord(text) {
-            return text.replace(/[\u2018\u2019\u2032]/g, "'").replace(/[\u2013\u2014]/g, '-').trim();
-        }
-
-        function escHtml(str) {
-            if (str == null) return '';
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        // ── Cite book data with scroll key mapping ──
-        var citeBookScrollMap = {};
-        var initialLoad = true;
-
-        // ── Load cite books ──
-        async function loadCiteBooks() {
-            var response = await fetch('/api/cite-books.php');
-            var books = await response.json();
-            var select = document.getElementById('cite');
-            books.forEach(function(book) {
-                var option = document.createElement('option');
-                option.value = book.cite_book_key;
-                option.textContent = book.cite_book_hebrew + ' / ' + book.cite_book_common;
-                select.appendChild(option);
-                if (book.yah_scroll_key) {
-                    citeBookScrollMap[book.cite_book_key] = book.yah_scroll_key;
-                }
-            });
-            if (select.options.length > 0) {
-                select.selectedIndex = 0;
-                select.dispatchEvent(new Event('change'));
-            }
-        }
-
-        // ── Cascading dropdowns: Book → Chapter → Verse ──
-        document.getElementById('cite').addEventListener('change', function() {
-            var chapterSel = document.getElementById('chapter');
-            var verseSel = document.getElementById('verse');
-            chapterSel.innerHTML = '<option value="">All</option>';
-            verseSel.innerHTML = '<option value="">All</option>';
-            verseSel.disabled = true;
-
-            var scrollKey = citeBookScrollMap[this.value];
-            if (!scrollKey) {
-                chapterSel.disabled = true;
-                if (!initialLoad) fetchResults();
-                return;
-            }
-
-            fetch('/api/display-chapters.php?scroll_key=' + scrollKey)
-                .then(function(r) { return r.json(); })
-                .then(function(chapters) {
-                    chapters.forEach(function(ch) {
-                        var opt = document.createElement('option');
-                        opt.value = ch.yah_chapter_number;
-                        opt.setAttribute('data-key', ch.yah_chapter_key);
-                        opt.textContent = ch.yah_chapter_number;
-                        chapterSel.appendChild(opt);
-                    });
-                    chapterSel.disabled = false;
-                    if (initialLoad && chapterSel.options.length > 1) {
-                        chapterSel.selectedIndex = 1;
-                        chapterSel.dispatchEvent(new Event('change'));
-                    } else if (!initialLoad) {
-                        fetchResults();
-                    }
-                });
-        });
-
-        document.getElementById('chapter').addEventListener('change', function() {
-            var verseSel = document.getElementById('verse');
-            verseSel.innerHTML = '<option value="">All</option>';
-
-            var selected = this.options[this.selectedIndex];
-            var chapterKey = selected ? selected.getAttribute('data-key') : null;
-            if (!chapterKey) {
-                verseSel.disabled = true;
-                return;
-            }
-
-            fetch('/api/display-verses.php?chapter_key=' + chapterKey)
-                .then(function(r) { return r.json(); })
-                .then(function(verses) {
-                    verses.forEach(function(v) {
-                        var opt = document.createElement('option');
-                        opt.value = v.yah_verse_number;
-                        opt.textContent = v.yah_verse_number;
-                        verseSel.appendChild(opt);
-                    });
-                    verseSel.disabled = false;
-                    if (initialLoad) {
-                        initialLoad = false;
-                        fetchResults();
-                    } else {
-                        fetchResults();
-                    }
-                });
-        });
-
-        document.getElementById('verse').addEventListener('change', function() {
-            if (!initialLoad) fetchResults();
-        });
-
-        // ── Fetch and display results ──
-        async function fetchResults() {
-            var citeId = document.getElementById('cite').value;
-            var chapter = document.getElementById('chapter').value;
-            var verse = document.getElementById('verse').value;
-
-            var params = new URLSearchParams();
-            if (citeId) params.set('cite_book_key', citeId);
-            if (chapter) params.set('chapter', chapter);
-            if (verse) params.set('verse', verse);
-
-            try {
-                var response = await fetch('/api/display-translations.php?' + params);
-                var records = await response.json();
-                await displayResults(records);
-            } catch (err) {
-                console.error('[TranslationDisplay] fetchResults error:', err);
-            }
-        }
-
-        async function displayResults(records) {
-            var resultsDiv = document.getElementById('results');
-            var countDiv = document.getElementById('result-count');
-            resultsDiv.innerHTML = '';
-            wordInfoStore = {};
-            wordInfoCounter = 0;
-
-            var initialPrompt = document.getElementById('initial-prompt');
-            if (initialPrompt) initialPrompt.style.display = 'none';
-
-            countDiv.textContent = records.length + ' translation' + (records.length !== 1 ? 's' : '') + ' found';
-
-            if (records.length === 0) {
-                resultsDiv.textContent = 'No translations found.';
-                return;
-            }
-
-            // Step 1: Collect all italic words from all records
-            var wordsMap = {};
-            records.forEach(function(record) {
-                var html = record.translation_text_word || '';
-                var re = /<i[^>]*>([^<]+)<\/i>/gi;
-                var m;
-                while ((m = re.exec(html)) !== null) {
-                    var raw = m[1].trim();
-                    if (!raw) continue;
-                    var parts = normalizeWord(raw).split(/\s+/);
-                    for (var j = 0; j < parts.length; j++) {
-                        var w = parts[j].replace(/^[^a-zA-Z']+|[^a-zA-Z']+$/g, '');
-                        if (w.length > 1) wordsMap[w.toLowerCase()] = true;
-                    }
-                }
-            });
-
-            var wordList = Object.keys(wordsMap);
-            console.log('[TranslationDisplay] Extracted ' + wordList.length + ' unique italic words:', wordList.slice(0, 20));
-
-            // Step 2: Look up words, then render
-            var wordLookup = null;
-            if (wordList.length > 0) {
-                try {
-                    var lookupResp = await fetch('/api/word-lookup.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: wordList.join('|')
-                    });
-                    var lookupText = await lookupResp.text();
-                    console.log('[TranslationDisplay] word-lookup raw response (' + lookupText.length + ' chars):', lookupText.substring(0, 200));
-                    wordLookup = JSON.parse(lookupText);
-                    console.log('[TranslationDisplay] word-lookup returned ' + Object.keys(wordLookup).length + ' matches:', Object.keys(wordLookup));
-                } catch (err) {
-                    console.error('[TranslationDisplay] word-lookup failed:', err);
-                }
-            }
-
-            renderRecords(records, resultsDiv, wordLookup);
-
-            // After render: attach click handlers directly to each word-link element
-            var wordLinks = resultsDiv.querySelectorAll('.word-link');
-            console.log('[TranslationDisplay] Found ' + wordLinks.length + ' .word-link elements in DOM after render');
-            var statusEl = document.getElementById('word-link-status');
-            if (wordLinks.length > 0) {
-                statusEl.textContent = wordLinks.length + ' clickable word links found (click underlined italic words for details)';
-            } else {
-                statusEl.textContent = '';
-            }
-            wordLinks.forEach(function(el) {
-                el.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    var wid = this.getAttribute('data-wid');
-                    var info = wid ? wordInfoStore[wid] : null;
-                    console.log('[TranslationDisplay] word-link clicked, wid=' + wid + ', info=' + (info ? 'found' : 'null'));
-                    if (info) showWordPopup(info, this);
-                });
-            });
-        }
-
-        function renderRecords(records, resultsDiv, wordLookup) {
-            var lastCiteBookId = null, lastChapter = null, lastVerse = null;
-            var linkCount = 0;
-
-            records.forEach(function(record) {
-                // Show section header when cite_book_id, chapter, or verse changes
-                if (lastCiteBookId !== record.translation_cite_book_key ||
-                    lastChapter !== record.translation_cite_chapter ||
-                    lastVerse !== record.translation_cite_verse) {
-                    var breakDiv = document.createElement('div');
-                    breakDiv.className = 'section-break';
-                    var citeName = record.cite_book_hebrew
-                        ? record.cite_book_hebrew + ' / ' + record.cite_book_common
-                        : (record.translation_cite || 'Unknown');
-                    var ref = '';
-                    if (record.translation_cite_chapter != null) {
-                        ref += ' ' + record.translation_cite_chapter;
-                        if (record.translation_cite_verse != null) {
-                            ref += ':' + record.translation_cite_verse;
-                            if (record.translation_cite_verse_end != null) {
-                                ref += '-' + record.translation_cite_verse_end;
-                            }
-                        }
-                    }
-                    if (record.volume_flip_code) {
-                        var hdrUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(record.volume_flip_code) + '/' + (record.translation_page ? '#p=' + (record.translation_page + 6) : '');
-                        var hdrLink = document.createElement('a');
-                        hdrLink.href = hdrUrl;
-                        hdrLink.target = '_blank';
-                        hdrLink.textContent = citeName + ref;
-                        hdrLink.style.color = 'inherit';
-                        hdrLink.style.textDecoration = 'none';
-                        breakDiv.appendChild(hdrLink);
-                    } else {
-                        breakDiv.textContent = citeName + ref;
-                    }
-                    resultsDiv.appendChild(breakDiv);
-                    lastCiteBookId = record.translation_cite_book_key;
-                    lastChapter = record.translation_cite_chapter;
-                    lastVerse = record.translation_cite_verse;
-                }
-
-                var recordDiv = document.createElement('div');
-                recordDiv.className = 'record';
-                var bookName = record.translation_book.replace(/^YY-/i, '');
-                var flipCode = record.volume_flip_code;
-                var page = record.translation_page;
-                var bookPage;
-                var chapterName = record.chapter_name || '';
-                if (flipCode) {
-                    var url = 'https://book.yadayah.com/books/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
-                    bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?') + '</a>';
-                } else {
-                    bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?');
-                }
-
-                // Pre-embed word links into HTML before DOM insertion
-                var html = record.translation_text_word || '';
-                if (wordLookup && typeof wordLookup === 'object' && !Array.isArray(wordLookup)) {
-                    html = html.replace(/<i([^>]*)>([^<]+)<\/i>/gi, function(full, attrs, text) {
-                        var raw = text.trim();
-                        if (!raw) return full;
-                        // Split into tokens preserving whitespace/punctuation between words
-                        var tokens = text.split(/(\s+)/);
-                        var anyMatch = false;
-                        var result = tokens.map(function(token) {
-                            if (/^\s+$/.test(token)) return token; // whitespace separator
-                            var normalized = normalizeWord(token).toLowerCase();
-                            var w = normalized.replace(/^[^a-zA-Z']+|[^a-zA-Z']+$/g, '');
-                            if (w && wordLookup[w]) {
-                                var wid = 'w' + (++wordInfoCounter);
-                                wordInfoStore[wid] = wordLookup[w];
-                                linkCount++;
-                                anyMatch = true;
-                                return '<i' + attrs + ' class="word-link" data-wid="' + wid + '">' + token + '</i>';
-                            }
-                            return '<i' + attrs + '>' + token + '</i>';
-                        }).join('');
-                        if (anyMatch) return result;
-                        return full;
-                    });
-                }
-
-                // Convert <br> to <p> paragraph tags
-                var paragraphs = html.split(/<br\s*\/?>/gi);
-                if (paragraphs.length > 1) {
-                    html = paragraphs.map(function(p) {
-                        var trimmed = p.trim();
-                        return trimmed ? '<p>' + trimmed + '</p>' : '';
-                    }).join('');
-                } else {
-                    html = '<p>' + html + '</p>';
-                }
-
-                recordDiv.innerHTML = bookPage + ':' + html + '<span style="font-size:2pt;color:white"> ' + record.translation_id + '</span>';
-                resultsDiv.appendChild(recordDiv);
-            });
-
-            console.log('[TranslationDisplay] renderRecords: embedded ' + linkCount + ' word links, wordInfoStore has ' + Object.keys(wordInfoStore).length + ' entries');
-        }
-
-        // ── Show word popup ──
-        function showWordPopup(info, anchorEl) {
-            closeWordPopup();
-            var rect = anchorEl.getBoundingClientRect();
-
-            var html = '';
-            var hasLeft = info.word_spellings && info.word_spellings.length > 0;
-            var hasRight = info.word_yt || info.word_hebrew;
-            if (hasLeft || hasRight) {
-                html += '<div class="wp-top">';
-                html += '<div class="wp-top-left">';
-                if (hasLeft) {
-                    html += '<div class="wp-spellings">' + info.word_spellings.map(function(s) { return '<div>' + escHtml(s) + '</div>'; }).join('') + '</div>';
-                }
-                html += '</div>';
-                html += '<div class="wp-top-right">';
-                if (info.word_yt) {
-                    html += '<div class="wp-yt">' + escHtml(info.word_yt.split('').reverse().join('')) + '</div>';
-                }
-                if (info.word_hebrew) {
-                    html += '<div class="wp-hebrew">' + escHtml(info.word_hebrew) + '</div>';
-                }
-                html += '</div>';
-                html += '</div>';
-            }
-            if (info.word_strongs) {
-                html += '<div class="wp-strongs"><a href="http://lexiconcordance.com/hebrew/' + encodeURIComponent(info.word_strongs.trim()) + '.html" target="_blank">' + escHtml(info.word_strongs.trim()) + '</a></div>';
-            }
-            if (info.definitions && info.definitions.length > 0) {
-                html += '<hr>';
-                for (var di = 0; di < info.definitions.length; di++) {
-                    var d = info.definitions[di];
-                    if (d.pos_label) {
-                        var grammarNote = d.pos_label;
-                        if (d.gender_label) grammarNote += ' (' + d.gender_label + ')';
-                        if (d.plural_flag) grammarNote += ' (plural)';
-                        html += '<div class="wp-pos-label">' + escHtml(grammarNote) + '</div>';
-                    }
-                    if (d.text) {
-                        html += '<div class="wp-definition">' + escHtml(d.text) + '</div>';
-                    }
-                }
-            }
-
-            var overlay = document.createElement('div');
-            overlay.className = 'word-popup-overlay';
-            overlay.id = 'word-popup-overlay';
-            overlay.addEventListener('click', closeWordPopup);
-            document.body.appendChild(overlay);
-
-            var popup = document.createElement('div');
-            popup.className = 'word-popup';
-            popup.id = 'word-popup';
-            popup.innerHTML = html;
-            document.body.appendChild(popup);
-
-            var popupH = popup.offsetHeight;
-            var popupW = popup.offsetWidth;
-            var top = rect.bottom + 6;
-            var left = rect.left;
-            if (top + popupH > window.innerHeight) top = rect.top - popupH - 6;
-            if (left + popupW > window.innerWidth) left = window.innerWidth - popupW - 10;
-            if (left < 10) left = 10;
-            popup.style.top = top + 'px';
-            popup.style.left = left + 'px';
-        }
-
-        function closeWordPopup() {
-            var popup = document.getElementById('word-popup');
-            var overlay = document.getElementById('word-popup-overlay');
-            if (popup) popup.remove();
-            if (overlay) overlay.remove();
-        }
-
-        // ── Init ──
-        loadCiteBooks();
-    </script>
-
-    <footer>
-        <video class="footer-video" autoplay muted loop playsinline>
-            <source src="https://yadayah.com/resource/yy_bg_bluewave.0004-ezgif.1280x0768.webm" type="video/webm">
-        </video>
-        <div class="footer-inner">
-            <div class="footer-col">
-                <h4>Books</h4>
-                <div class="footer-links">
-                    <a href="books#An_Intro_to_God">An Intro to God</a>
-                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
-                    <a href="books#Observations">Observations</a>
-                    <a href="books#Coming_Home">Coming Home</a>
-                    <a href="books#Babel">Babel</a>
-                    <a href="books#Twistianity">Twistianity</a>
-                    <a href="books#God_Damn_Religion">God Damn Religion</a>
-                    <a href="books#In_the_Company">In the Company</a>
-                </div>
+    <!-- ── Featured ── -->
+    <div class="featured-section">
+        <h2 class="section-title">Featured</h2>
+        <div class="featured-grid">
+            <div id="featured-playlist1" class="featured-card">
+                <div class="thumb"><div style="padding:40px;text-align:center;color:#999">Loading...</div></div>
             </div>
-            <div class="footer-col">
-                <h4>Links</h4>
-                <div class="footer-links footer-links-3col">
-                    <a href="ask">Ask</a>
-                    <a href="/">Translations</a>
-                    <a href="invite">Invite</a>
-                    <a href="blog">Blog</a>
-                    <a href="glossary">Glossary</a>
-                    <a href="/music">Music</a>
-                    <a href="vlog">Vlog</a>
-                    <a href="dss">Dead Sea Scrolls</a>
-                    <a href="timeline">Timeline</a>
+            <div id="featured-book" class="featured-book">
+                <a href="/books#Yada_Yahowah">
+                    <img src="/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.s02v05-245x300.jpg" alt="Qatsyr - Harvests">
+                </a>
+                <div class="book-label">Qatsyr - Harvests</div>
+            </div>
+            <div id="featured-playlist2" class="featured-card">
+                <div class="thumb"><div style="padding:40px;text-align:center;color:#999">Loading...</div></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<footer>
+    <video class="footer-video" autoplay muted loop playsinline>
+    </video>
+    <div class="footer-inner">
+        <div class="footer-col">
+            <h4 data-config="footer-text-books">Books</h4>
+            <div class="footer-links footer-links-2col">
+                <a href="books#An_Intro_to_God">An Intro to God</a>
+                <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                <a href="books#Observations">Observations</a>
+                <a href="books#Coming_Home">Coming Home</a>
+                <a href="books#Babel">Babel</a>
+                <a href="books#Twistianity">Twistianity</a>
+                <a href="books#God_Damn_Religion">God Damn Religion</a>
+                <a href="books#In_the_Company">In the Company</a>
+            </div>
+        </div>
+        <div class="footer-col">
+            <h4 data-config="footer-text-links">Links</h4>
+            <div style="display:flex;gap:40px;">
+                <div class="footer-links footer-links-1col">
+                    <a href="/ask">Ask</a>
+                    <a href="/blog">Blog</a>
+                    <a href="/vlog">Vlog</a>
                     <a href="/media">Media</a>
-                    <a href="resources">Resources</a>
-                    <a href="Craig_Winn">Craig Winn</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/timeline">Timeline</a>
+                    <a href="/translations">Translations</a>
+                    <a href="/glossary">Glossary</a>
+                    <a href="/dss">Dead Sea Scrolls</a>
+                </div>
+                <div class="footer-links footer-links-1col">
+                    <a href="/music">Music</a>
+                    <a href="/invite">Invite</a>
+                    <a href="/shorts">Shorts</a>
+                    <a href="/Craig_Winn">Craig Winn</a>
                 </div>
             </div>
         </div>
-        <div class="footer-bottom">Copyright 2001 - 2026</div>
-    </footer>
+    </div>
+    <div class="footer-bottom">Copyright 2001 - 2026</div>
+</footer>
+
+<script>
+// ── Carousel Data ──
+var slides = [
+    {
+        title: 'An Introduction to God',
+        text: "Discover Yahowah's Name and Towrah Guidance translated and explained from the Dead Sea Scrolls with thousands of profoundly important insights shared for the time such that you come to know God.",
+        img: '/images/YY.book_.3d.6x9-vertical-softcover-pages.00716x00400.s01.png',
+        link: '/books#An_Introduction_to_God'
+    },
+    {
+        title: 'Yada Yahowah',
+        text: "The Creation account, life in the Garden, the nature of the Covenant, and all seven Invitations to Meet with Yahowah properly translated and described so that you know who God is, what He is offering, and what He is expecting in return.",
+        img: '/images/YY.covers-3d-pages-front-cw40-tilt70-closed.9books.01000x00400.png',
+        link: '/books#Yada_Yahowah',
+        imgStyle: 'max-width:500px'
+    },
+    {
+        title: 'Observations',
+        text: "Journey through the Mashal / Word Pictures Yahowah has painted for us and then venture into the revelations of Yasha'yah / Isaiah, so that you understand future history from the perspective of the most prolific and descriptive of the prophets.",
+        img: '/images/YY.book_.3d.6x9-vertical-softcover-pages.01092x00400.s03-1024x375.png',
+        link: '/books#Observations'
+    },
+    {
+        title: 'Coming Home',
+        text: "The Creation account, life in the Garden, the nature of the Covenant, and all seven Invitations to Meet with Yahowah properly translated and described so that you know who God is, what He is offering, and what He is expecting in return.",
+        img: '/images/YY.book_.3d.6x9-vertical-softcover-pages.00716x00400.s04.png',
+        link: '/books#Coming_Home'
+    },
+    {
+        title: 'Babel',
+        text: "The Creation account, life in the Garden, the nature of the Covenant, and all seven Invitations to Meet with Yahowah properly translated and described so that you know who God is, what He is offering, and what He is expecting in return.",
+        img: '/images/YY.book_.3d.6x9-vertical-softcover-pages.00716x00400.s05.png',
+        link: '/books#Babel'
+    },
+    {
+        title: 'Twistianity',
+        text: "The Creation account, life in the Garden, the nature of the Covenant, and all seven Invitations to Meet with Yahowah properly translated and described so that you know who God is, what He is offering, and what He is expecting in return.",
+        img: '/images/YY.book_.3d.6x9-vertical-softcover-pages.01092x00400.s06-1024x375.png',
+        link: '/books#Twistianity'
+    },
+    {
+        title: 'God Damn Religion',
+        text: "The Creation account, life in the Garden, the nature of the Covenant, and all seven Invitations to Meet with Yahowah properly translated and described so that you know who God is, what He is offering, and what He is expecting in return.",
+        img: '/images/YY.book_.3d.6x9-vertical-softcover-pages.01092x00400.s07-1024x375.png',
+        link: '/books#God_Damn_Religion'
+    }
+];
+
+var currentSlide = 0;
+var carouselTimer = null;
+
+function buildCarousel() {
+    var track = document.getElementById('carousel-track');
+    var dots = document.getElementById('carousel-dots');
+    track.innerHTML = slides.map(function(s) {
+        return '<div class="carousel-slide">'
+            + '<div class="slide-text">'
+            + '<h2>' + esc(s.title) + '</h2>'
+            + '<p>' + esc(s.text) + '</p>'
+            + '</div>'
+            + '<div class="slide-img"><a href="' + s.link + '"><img src="' + s.img + '" alt="' + esc(s.title) + '"></a></div>'
+            + '</div>';
+    }).join('');
+    dots.innerHTML = slides.map(function(_, i) {
+        return '<span class="dot' + (i === 0 ? ' active' : '') + '" onclick="goToSlide(' + i + ')"></span>';
+    }).join('');
+    startCarouselTimer();
+}
+
+function goToSlide(i) {
+    currentSlide = i;
+    document.getElementById('carousel-track').style.transform = 'translateX(-' + (i * 100) + '%)';
+    var dots = document.querySelectorAll('.carousel-dots .dot');
+    dots.forEach(function(d, j) { d.classList.toggle('active', j === i); });
+    startCarouselTimer();
+}
+
+function carouselNext() { goToSlide((currentSlide + 1) % slides.length); }
+function carouselPrev() { goToSlide((currentSlide - 1 + slides.length) % slides.length); }
+
+function startCarouselTimer() {
+    if (carouselTimer) clearInterval(carouselTimer);
+    carouselTimer = setInterval(function() { carouselNext(); }, 6000);
+}
+
+// ── Videos ──
+var allVideos = [];
+var videoOffset = 0;
+var nextPageToken = null;
+var INITIAL_COUNT = 7;
+var LOAD_MORE_COUNT = 9;
+
+function loadChannelVideos() {
+    var url = '/api/youtube-feed.php?type=channel&limit=15';
+    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.error) { console.error('YouTube feed error:', data.error); return; }
+        allVideos = data.videos || [];
+        nextPageToken = data.nextPageToken || null;
+        renderVideos();
+    }).catch(function(err) { console.error('Failed to load videos:', err); });
+}
+
+function renderVideos() {
+    var shown = allVideos.slice(0, INITIAL_COUNT + videoOffset);
+    if (shown.length === 0) return;
+
+    // Hero = first video (iframe)
+    var hero = shown[0];
+    document.getElementById('video-hero').innerHTML =
+        '<div class="video-hero"><div class="thumb">'
+        + '<iframe src="https://www.youtube.com/embed/' + hero.id + '" allowfullscreen loading="lazy"></iframe>'
+        + '</div><div class="vid-title">' + esc(hero.title) + '</div></div>';
+
+    // Grid = remaining videos (thumbnails that become iframes on click)
+    var grid = shown.slice(1);
+    document.getElementById('video-grid').innerHTML = grid.map(function(v) {
+        return '<div class="video-card">'
+            + '<div class="thumb">'
+            + '<img src="' + v.thumbnail + '" alt="' + esc(v.title) + '" onclick="playVideo(this,\'' + v.id + '\')" loading="lazy">'
+            + '</div>'
+            + '<div class="vid-info"><h3>' + esc(v.title) + '</h3></div></div>';
+    }).join('');
+
+    // Show/hide load more
+    var btn = document.getElementById('btn-load-more');
+    var totalShown = INITIAL_COUNT + videoOffset;
+    btn.style.display = (totalShown < allVideos.length || nextPageToken) ? '' : 'none';
+}
+
+function playVideo(img, videoId) {
+    var thumb = img.parentNode;
+    thumb.innerHTML = '<iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1" allowfullscreen></iframe>';
+}
+
+function loadMoreVideos() {
+    videoOffset += LOAD_MORE_COUNT;
+    var totalNeeded = INITIAL_COUNT + videoOffset;
+
+    if (totalNeeded <= allVideos.length) {
+        renderVideos();
+    } else if (nextPageToken) {
+        var btn = document.getElementById('btn-load-more');
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+        fetch('/api/youtube-feed.php?type=channel&limit=' + LOAD_MORE_COUNT + '&pageToken=' + encodeURIComponent(nextPageToken))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                allVideos = allVideos.concat(data.videos || []);
+                nextPageToken = data.nextPageToken || null;
+                btn.disabled = false;
+                btn.textContent = 'Load More';
+                renderVideos();
+            }).catch(function() {
+                btn.disabled = false;
+                btn.textContent = 'Load More';
+            });
+    } else {
+        renderVideos();
+    }
+}
+
+// ── Shorts ──
+function loadShorts() {
+    fetch('/api/youtube-feed.php?type=shorts&limit=4')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var vids = (data.videos || []).slice(0, 4);
+            if (vids.length === 0) return;
+            document.getElementById('shorts-section').style.display = '';
+            document.getElementById('shorts-grid').innerHTML = vids.map(function(v) {
+                return '<div class="short-card"><a href="https://www.youtube.com/shorts/' + v.id + '" target="_blank">'
+                    + '<img src="' + v.thumbnail + '" alt="' + esc(v.title) + '" loading="lazy">'
+                    + '<div class="short-title">' + esc(v.title) + '</div></a></div>';
+            }).join('');
+        }).catch(function() {});
+}
+
+// ── Featured Playlists ──
+function loadFeatured() {
+    var pl1VideoId = null;
+
+    function renderFeatured(elId, v) {
+        document.getElementById(elId).innerHTML =
+            '<div class="thumb"><iframe src="https://www.youtube.com/embed/' + v.id + '" allowfullscreen loading="lazy"></iframe></div>'
+            + '<div class="feat-info"><h3>' + esc(v.title) + '</h3></div>';
+    }
+
+    // Playlist 1 — load first, then playlist 2
+    fetch('/api/youtube-feed.php?type=playlist&id=PL2remztpK0uDrhUMrHaUF4gqMXFz9hzBf&limit=1')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var v = (data.videos || [])[0];
+            if (v) {
+                pl1VideoId = v.id;
+                renderFeatured('featured-playlist1', v);
+            }
+        }).catch(function() {})
+        .then(function() {
+            loadPlaylist2('PLW5gXgQ3YcPCy7jFNQ_4Q759SVdS0e035');
+        });
+
+    // Playlist 2 (with fallback, avoids duplicating playlist 1)
+    function loadPlaylist2(plId) {
+        fetch('/api/youtube-feed.php?type=playlist&id=' + plId + '&limit=5')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var videos = data.videos || [];
+                var v = null;
+                for (var i = 0; i < videos.length; i++) {
+                    if (videos[i].id !== pl1VideoId) { v = videos[i]; break; }
+                }
+                if (!v) {
+                    if (plId !== 'PLfuI5LuWvXsHM1YgqJ8tX2LnPmjwIPSwB') {
+                        loadPlaylist2('PLfuI5LuWvXsHM1YgqJ8tX2LnPmjwIPSwB');
+                    }
+                    return;
+                }
+                renderFeatured('featured-playlist2', v);
+            }).catch(function() {
+                if (plId !== 'PLfuI5LuWvXsHM1YgqJ8tX2LnPmjwIPSwB') {
+                    loadPlaylist2('PLfuI5LuWvXsHM1YgqJ8tX2LnPmjwIPSwB');
+                }
+            });
+    }
+}
+
+// ── Helpers ──
+function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// ── Init ──
+buildCarousel();
+loadChannelVideos();
+loadShorts();
+loadFeatured();
+</script>
+<script src="/js/bg-video.js"></script>
+<script>
+(function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
+    if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
+    document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+});})();
+</script>
 </body>
 </html>
