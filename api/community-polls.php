@@ -19,7 +19,7 @@ if ($method === 'GET') {
     $stmt = $db->prepare("SELECT poll_key, poll_question, poll_multi_vote, poll_dtime FROM yy_community_poll WHERE topic_key = ?");
     $stmt->execute([$topicKey]);
     $poll = $stmt->fetch();
-    if (!$poll) errorResponse('No poll found for this topic', 404);
+    if (!$poll) { jsonResponse(['poll' => null]); exit; }
 
     // Get options with vote counts
     $stmt = $db->prepare("

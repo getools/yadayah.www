@@ -1,4 +1,4 @@
-/* ── community-dm.js ── Direct messages: inbox, thread, compose ── */
+/* ── community-dm.js ── Direct messages: inbox, thread, compose, popover ── */
 (function() {
 'use strict';
 
@@ -6,10 +6,118 @@ window.CommunityDM = {};
 
 var _activeThreadKey = null;
 
+// ── Media upload helper (shared across all compose areas) ──
+function uploadMedia(file, callback) {
+    if (!file) return;
+    var isImage = file.type.startsWith('image/');
+    var isVideo = file.type.startsWith('video/');
+    if (!isImage && !isVideo) { alert('Only images and videos are supported'); return; }
+    if (file.size > 20 * 1024 * 1024) { alert('File too large (max 20MB)'); return; }
+
+    if (isImage) {
+        var fd = new FormData();
+        fd.append('image', file);
+        fetch('/api/community-image-upload.php', { method: 'POST', credentials: 'include', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.url) callback('![image](' + data.url + ')');
+                else alert(data.error || 'Upload failed');
+            });
+    } else {
+        // Video: upload as image endpoint (backend will need to handle, or use same path)
+        var fd = new FormData();
+        fd.append('video', file);
+        fetch('/api/community-image-upload.php', { method: 'POST', credentials: 'include', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.url) callback('[video](' + data.url + ')');
+                else alert(data.error || 'Upload failed');
+            });
+    }
+}
+
+// Wire up a compose area with media buttons, paste, and drag-drop
+function wireCompose(textareaId, sendFn) {
+    var ta = document.getElementById(textareaId);
+    if (!ta) return;
+
+    // Enter to send (Shift+Enter for newline)
+    ta.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendFn();
+        }
+    });
+
+    // Paste images/videos
+    ta.addEventListener('paste', function(e) {
+        var items = (e.clipboardData || {}).items || [];
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') === 0) {
+                e.preventDefault();
+                uploadMedia(items[i].getAsFile(), function(md) { insertAtCursor(ta, md); });
+                return;
+            }
+        }
+    });
+
+    // Drag and drop
+    ta.addEventListener('dragover', function(e) { e.preventDefault(); ta.style.borderColor = '#31345A'; });
+    ta.addEventListener('dragleave', function() { ta.style.borderColor = ''; });
+    ta.addEventListener('drop', function(e) {
+        e.preventDefault();
+        ta.style.borderColor = '';
+        var files = e.dataTransfer.files;
+        for (var i = 0; i < files.length; i++) {
+            uploadMedia(files[i], function(md) { insertAtCursor(ta, md); });
+        }
+    });
+
+    // Media button click
+    var btn = document.getElementById(textareaId + '-media-btn');
+    var fileInput = document.getElementById(textareaId + '-media-file');
+    if (btn && fileInput) {
+        btn.addEventListener('click', function() { fileInput.click(); });
+        fileInput.addEventListener('change', function() {
+            var files = this.files;
+            for (var i = 0; i < files.length; i++) {
+                uploadMedia(files[i], function(md) { insertAtCursor(ta, md); });
+            }
+            this.value = '';
+        });
+    }
+
+    ta.focus();
+}
+
+function insertAtCursor(ta, text) {
+    var start = ta.selectionStart;
+    var end = ta.selectionEnd;
+    var before = ta.value.substring(0, start);
+    var after = ta.value.substring(end);
+    // Add newline before if needed
+    if (before && !before.endsWith('\n')) before += '\n';
+    ta.value = before + text + '\n' + after;
+    ta.selectionStart = ta.selectionEnd = before.length + text.length + 1;
+    ta.focus();
+}
+
+// Build compose HTML with media button
+function composeHtml(textareaId, placeholder, rows, sendLabel, sendOnclick) {
+    return '<div class="dm-compose">'
+        + '<div class="dm-compose-row">'
+        + '<textarea id="' + textareaId + '" placeholder="' + (placeholder || 'Type a message...') + '" rows="' + (rows || 2) + '"></textarea>'
+        + '</div>'
+        + '<div class="dm-compose-actions">'
+        + '<button type="button" class="dm-media-btn" id="' + textareaId + '-media-btn" title="Attach image or video">&#128247;</button>'
+        + '<input type="file" id="' + textareaId + '-media-file" accept="image/*,video/*" multiple style="display:none">'
+        + '<button class="btn btn-primary" onclick="' + sendOnclick + '">' + sendLabel + '</button>'
+        + '</div></div>';
+}
+
 // ── Called by SSE when a new DM arrives ──
 CommunityDM.onNewMessage = function(msg) {
     if (!msg || !msg.thread_key) return;
-    // If viewing this thread, append the message bubble live
     if (_activeThreadKey === msg.thread_key) {
         var container = document.getElementById('dm-messages');
         if (!container) return;
@@ -19,12 +127,9 @@ CommunityDM.onNewMessage = function(msg) {
             + '<div class="dm-message-time">' + Community.timeAgo(msg.message_dtime) + '</div>';
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
-
-        // Mark as read since user is viewing; clear bell instantly
         CommunityNotifications.clearDmCount();
         Community.api('/api/community-dm.php?thread=' + msg.thread_key);
     }
-    // If viewing inbox, refresh it
     var inboxEl = document.getElementById('view-messages');
     if (inboxEl && inboxEl.style.display !== 'none' && !_activeThreadKey) {
         CommunityDM.loadInbox();
@@ -35,7 +140,6 @@ CommunityDM.onNewMessage = function(msg) {
 CommunityDM.updateUnreadBadge = function(count) {
     var nav = document.getElementById('nav-messages');
     if (!nav) return;
-    // Strip existing badge
     nav.innerHTML = nav.textContent.replace(/ \(\d+\)$/, '');
     if (count > 0) {
         nav.innerHTML = 'Messages <span class="dm-unread-badge">' + count + '</span>';
@@ -95,11 +199,9 @@ CommunityDM.loadThread = function(threadKey) {
     }
     el.innerHTML = '<div class="empty-state">Loading...</div>';
 
-    // Instantly clear bell badge — server marks read when API responds
     CommunityNotifications.clearDmCount();
 
     Community.api('/api/community-dm.php?thread=' + threadKey).then(function(data) {
-
         var messages = data.messages || [];
         var thread = data.thread || {};
         var otherUser = thread.other_user || {};
@@ -120,29 +222,13 @@ CommunityDM.loadThread = function(threadKey) {
         });
         html += '</div>';
 
-        // Reply form
-        html += '<div class="dm-compose">'
-            + '<textarea id="dm-reply-body" placeholder="Type a message..." rows="2"></textarea>'
-            + '<button class="btn btn-primary" onclick="CommunityDM.sendMessage(' + threadKey + ')">Send</button>'
-            + '</div>';
-
+        html += composeHtml('dm-reply-body', 'Type a message...', 2, 'Send', 'CommunityDM.sendMessage(' + threadKey + ')');
         el.innerHTML = html;
 
-        // Scroll to bottom
         var msgContainer = document.getElementById('dm-messages');
         if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
 
-        // Enter to send
-        var input = document.getElementById('dm-reply-body');
-        if (input) {
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    CommunityDM.sendMessage(threadKey);
-                }
-            });
-            input.focus();
-        }
+        wireCompose('dm-reply-body', function() { CommunityDM.sendMessage(threadKey); });
     });
 };
 
@@ -172,10 +258,11 @@ CommunityDM.showCompose = function(recipientKey) {
         + '<input id="dm-recipient" placeholder="Search for a user..." autocomplete="off"' + (recipientKey ? ' data-key="' + recipientKey + '"' : '') + '>'
         + '<div id="dm-recipient-results" class="mention-dropdown" style="display:none"></div>'
         + '</div>'
-        + '<textarea id="dm-new-body" placeholder="Your message..." rows="4"></textarea>'
-        + '<button class="btn btn-primary" onclick="CommunityDM.submitNew()">Send Message</button>'
+        + composeHtml('dm-new-body', 'Your message...', 4, 'Send Message', 'CommunityDM.submitNew()')
         + '</div>';
     el.innerHTML = html;
+
+    wireCompose('dm-new-body', CommunityDM.submitNew);
 
     // Recipient search
     var input = document.getElementById('dm-recipient');
@@ -211,7 +298,6 @@ CommunityDM.showCompose = function(recipientKey) {
         }, 200);
     });
 
-    // If recipientKey given, prefill
     if (recipientKey) {
         Community.api('/api/community-members.php?user_key=' + recipientKey).then(function(data) {
             var m = data.member || data;
@@ -223,7 +309,6 @@ CommunityDM.showCompose = function(recipientKey) {
     }
 };
 
-// ── Start new DM from profile card ──
 CommunityDM.startNew = function(userKey) {
     CommunityDM.showCompose(userKey);
 };
@@ -252,27 +337,20 @@ CommunityDM.submitNew = function() {
 // ── Chat Popover (Messenger-style floating widget) ──
 // ══════════════════════════════════════════════
 
-var _popThread = null; // thread_key of open conversation in popover
+var _popThread = null;
 
-// Show FAB when logged in
 CommunityDM.initPopover = function() {
     var fab = document.getElementById('chat-fab');
     if (fab && Community.currentUser) fab.style.display = '';
 };
 
-// Update FAB badge
 CommunityDM.updateFabBadge = function(count) {
     var badge = document.getElementById('chat-fab-badge');
     if (!badge) return;
-    if (count > 0) {
-        badge.textContent = count;
-        badge.style.display = '';
-    } else {
-        badge.style.display = 'none';
-    }
+    if (count > 0) { badge.textContent = count; badge.style.display = ''; }
+    else { badge.style.display = 'none'; }
 };
 
-// Toggle open/close
 CommunityDM.togglePopover = function() {
     var pop = document.getElementById('chat-popover');
     if (pop.classList.contains('open')) {
@@ -284,7 +362,6 @@ CommunityDM.togglePopover = function() {
     }
 };
 
-// Show inbox in popover
 CommunityDM.popInbox = function() {
     _popThread = null;
     document.getElementById('chat-pop-title').textContent = 'Messages';
@@ -315,7 +392,6 @@ CommunityDM.popInbox = function() {
     });
 };
 
-// Show thread in popover
 CommunityDM.popThread = function(threadKey) {
     _popThread = threadKey;
     document.getElementById('chat-pop-back').style.display = '';
@@ -341,30 +417,53 @@ CommunityDM.popThread = function(threadKey) {
         });
         html += '</div>';
         html += '<div class="chat-pop-compose">'
-            + '<input id="chat-pop-input" type="text" placeholder="Type a message..." autocomplete="off">'
-            + '<button onclick="CommunityDM.popSend(' + threadKey + ')">&#10148;</button>'
+            + '<textarea id="chat-pop-input" placeholder="Type a message..." rows="1"></textarea>'
+            + '<button type="button" class="dm-media-btn" id="chat-pop-input-media-btn" title="Attach image or video">&#128247;</button>'
+            + '<input type="file" id="chat-pop-input-media-file" accept="image/*,video/*" multiple style="display:none">'
+            + '<button class="chat-pop-send" onclick="CommunityDM.popSend(' + threadKey + ')">&#10148;</button>'
             + '</div>';
         body.innerHTML = html;
 
-        // Scroll to bottom
         var msgs = document.getElementById('chat-pop-msgs');
         if (msgs) msgs.scrollTop = msgs.scrollHeight;
 
-        // Enter to send
-        var input = document.getElementById('chat-pop-input');
-        if (input) {
-            input.focus();
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
+        // Wire up media button
+        var mediaBtn = document.getElementById('chat-pop-input-media-btn');
+        var mediaFile = document.getElementById('chat-pop-input-media-file');
+        var popTa = document.getElementById('chat-pop-input');
+        if (mediaBtn && mediaFile) {
+            mediaBtn.addEventListener('click', function() { mediaFile.click(); });
+            mediaFile.addEventListener('change', function() {
+                for (var i = 0; i < this.files.length; i++) {
+                    uploadMedia(this.files[i], function(md) { insertAtCursor(popTa, md); });
+                }
+                this.value = '';
+            });
+        }
+
+        // Paste support
+        if (popTa) {
+            popTa.focus();
+            popTa.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     CommunityDM.popSend(threadKey);
+                }
+            });
+            popTa.addEventListener('paste', function(e) {
+                var items = (e.clipboardData || {}).items || [];
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') === 0) {
+                        e.preventDefault();
+                        uploadMedia(items[i].getAsFile(), function(md) { insertAtCursor(popTa, md); });
+                        return;
+                    }
                 }
             });
         }
     });
 };
 
-// Send from popover
 CommunityDM.popSend = function(threadKey) {
     var input = document.getElementById('chat-pop-input');
     if (!input) return;
@@ -377,12 +476,11 @@ CommunityDM.popSend = function(threadKey) {
         body: { action: 'send', thread_key: threadKey, body: body }
     }).then(function(data) {
         if (data.error) return;
-        // Append sent message immediately
         var msgs = document.getElementById('chat-pop-msgs');
         if (msgs) {
             var div = document.createElement('div');
             div.className = 'dm-message mine';
-            div.innerHTML = '<div class="dm-message-bubble">' + Community.esc(body) + '</div>'
+            div.innerHTML = '<div class="dm-message-bubble">' + Community.formatBody(body) + '</div>'
                 + '<div class="dm-message-time">just now</div>';
             msgs.appendChild(div);
             msgs.scrollTop = msgs.scrollHeight;
@@ -393,16 +491,12 @@ CommunityDM.popSend = function(threadKey) {
 // Hook into SSE for live popover updates
 var _origOnNewMessage = CommunityDM.onNewMessage;
 CommunityDM.onNewMessage = function(msg) {
-    // Call original handler (updates full-page view)
     _origOnNewMessage(msg);
-
     if (!msg || !msg.thread_key) return;
 
-    // Update popover if open
     var pop = document.getElementById('chat-popover');
     if (pop && pop.classList.contains('open')) {
         if (_popThread === msg.thread_key) {
-            // Append to popover messages
             var msgs = document.getElementById('chat-pop-msgs');
             if (msgs) {
                 var div = document.createElement('div');
@@ -415,12 +509,9 @@ CommunityDM.onNewMessage = function(msg) {
             CommunityNotifications.clearDmCount();
             Community.api('/api/community-dm.php?thread=' + msg.thread_key);
         } else {
-            // Refresh inbox list
             if (!_popThread) CommunityDM.popInbox();
         }
     }
-
-    // Update FAB badge
     CommunityDM.updateFabBadge(CommunityNotifications.getUnreadDm ? CommunityNotifications.getUnreadDm() : 0);
 };
 

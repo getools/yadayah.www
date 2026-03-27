@@ -17,6 +17,9 @@ function sanitizeHtml(string $html): string {
         'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [],
         'pre' => ['class'], 'code' => ['class'],
         'table' => [], 'thead' => [], 'tbody' => [], 'tr' => [], 'td' => ['colspan', 'rowspan'], 'th' => ['colspan', 'rowspan'],
+        'video' => ['src', 'width', 'height', 'controls', 'poster', 'preload', 'style'],
+        'source' => ['src', 'type'],
+        'audio' => ['src', 'controls', 'preload'],
         'iframe' => ['src', 'width', 'height', 'frameborder', 'allowfullscreen', 'allow', 'style'],
         'figure' => [], 'figcaption' => [],
         'div' => ['style', 'class'],
@@ -93,13 +96,13 @@ function checkBanned(PDO $db, int $userKey): ?string {
  * Check text against word filter table. Returns error if blocked word found.
  */
 function checkWordFilter(PDO $db, string $text): void {
-    $stmt = $db->query("SELECT filter_word, filter_action FROM yy_community_word_filter WHERE filter_active_flag = TRUE");
+    $stmt = $db->query("SELECT filter_word, filter_type FROM yy_community_word_filter WHERE filter_active_flag = TRUE");
     $filters = $stmt->fetchAll();
     $lower = mb_strtolower($text);
     foreach ($filters as $f) {
         $word = mb_strtolower($f['filter_word']);
         if (mb_strpos($lower, $word) !== false) {
-            if ($f['filter_action'] === 'block') {
+            if ($f['filter_type'] === 'block') {
                 errorResponse('Your post contains a word that is not allowed.');
             }
         }

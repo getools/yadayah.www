@@ -137,6 +137,8 @@
         .topic-body td, .topic-body th, .reply-body td, .reply-body th { border: 1px solid #ddd; padding: 8px; }
         .topic-body th, .reply-body th { background: #f8f8f8; font-weight: 600; }
         .topic-body iframe, .reply-body iframe { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+        .topic-body video, .reply-body video { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+        .dm-message-bubble video { max-width: 100%; border-radius: 6px; margin: 4px 0; }
         .topic-body h2, .topic-body h3, .topic-body h4, .reply-body h3, .reply-body h4 { margin: 12px 0 6px; color: #31345A; }
         .topic-author { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #666; flex-wrap: wrap; }
         .topic-author img { width: 28px; height: 28px; border-radius: 50%; }
@@ -288,10 +290,13 @@
         .dm-message.mine { align-items: flex-end; }
         .dm-message.mine .dm-message-bubble { background: #31345A; color: #fff; border-radius: 16px 16px 4px 16px; }
         .dm-message-time { font-size: 0.68rem; color: #999; margin-top: 3px; padding: 0 4px; }
-        .dm-compose { display: flex; flex-direction: column; gap: 10px; }
+        .dm-compose { display: flex; flex-direction: column; gap: 8px; }
         .dm-compose textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 0.9rem; resize: vertical; min-height: 40px; box-sizing: border-box; }
         .dm-compose textarea:focus { outline: none; border-color: #31345A; }
-        .dm-compose .btn { align-self: flex-end; }
+        .dm-compose-actions { display: flex; align-items: center; gap: 8px; }
+        .dm-compose-actions .btn { margin-left: auto; }
+        .dm-media-btn { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 1.1rem; color: #666; transition: background 0.15s, border-color 0.15s; }
+        .dm-media-btn:hover { background: #f5f5f5; border-color: #31345A; color: #31345A; }
         .compose-form textarea { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem; }
         .compose-form input { font-family: inherit; font-size: 0.9rem; }
         .compose-form .btn { margin-top: 4px; }
@@ -320,11 +325,13 @@
         .chat-pop-msgs .dm-message.mine { align-items: flex-end; }
         .chat-pop-msgs .dm-message.mine .dm-message-bubble { background: #31345A; color: #fff; border-radius: 14px 14px 4px 14px; }
         .chat-pop-msgs .dm-message-time { font-size: 0.62rem; color: #bbb; margin-top: 2px; padding: 0 4px; }
-        .chat-pop-compose { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; flex-shrink: 0; }
-        .chat-pop-compose input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 0.85rem; font-family: inherit; outline: none; }
-        .chat-pop-compose input:focus { border-color: #31345A; }
-        .chat-pop-compose button { background: #31345A; color: #fff; border: none; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
-        .chat-pop-compose button:hover { background: #4a4e7a; }
+        .chat-pop-compose { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid #eee; flex-shrink: 0; align-items: flex-end; }
+        .chat-pop-compose textarea { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 16px; font-size: 0.85rem; font-family: inherit; outline: none; resize: none; min-height: 36px; max-height: 100px; box-sizing: border-box; }
+        .chat-pop-compose textarea:focus { border-color: #31345A; }
+        .chat-pop-compose .dm-media-btn { border: none; padding: 4px 6px; font-size: 1rem; color: #888; background: none; flex-shrink: 0; }
+        .chat-pop-compose .dm-media-btn:hover { color: #31345A; }
+        .chat-pop-compose .chat-pop-send { background: #31345A; color: #fff; border: none; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+        .chat-pop-compose .chat-pop-send:hover { background: #4a4e7a; }
         .chat-pop-empty { text-align: center; padding: 40px 20px; color: #999; font-size: 0.85rem; }
         @media (max-width: 480px) { .chat-popover { width: calc(100vw - 20px); right: 10px; bottom: 80px; max-height: 70vh; } .chat-fab { bottom: 16px; right: 16px; } }
 
@@ -455,7 +462,7 @@
 <header>
     <video class="header-video" autoplay muted loop playsinline></video>
     <div class="header-inner">
-        <a href="/" class="header-logos" style="display:block;"><img src="/images/yy-logo.png" alt="Yada Yahowah" style="height:80px;"></a>
+        <a href="/" class="header-logos" style="display:block;"><img src="/images/yy-logo-80x90.png" alt="Yada Yahowah" style="height:80px;"></a>
         <nav><div class="nav-row"></div><div class="nav-row"></div></nav>
     </div>
 </header>
@@ -596,10 +603,10 @@
 <script src="/js/bg-video.js"></script>
 <script src="/js/community.js?v=21"></script>
 <script src="/js/community-auth.js?v=10"></script>
-<script src="/js/community-topics.js?v=20"></script>
+<script src="/js/community-topics.js?v=27"></script>
 <script src="/js/community-notifications.js?v=21"></script>
 <script src="/js/community-profile.js?v=6"></script>
-<script src="/js/community-dm.js?v=21"></script>
+<script src="/js/community-dm.js?v=22"></script>
 <script src="/js/community-search.js?v=6"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>

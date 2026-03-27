@@ -29,7 +29,7 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
     tinymce.init({
         selector: '#' + textareaId,
         base_url: '/js/tinymce',
-        plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table blockquote autoresize charmap',
+        plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table autoresize charmap',
         toolbar: 'bold italic underline strikethrough | blocks | bullist numlist | blockquote codesample | link image media emoticons charmap | table | fullscreen',
         menubar: false,
         statusbar: true,
@@ -60,8 +60,52 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
             });
         },
         automatic_uploads: true,
-        file_picker_types: 'image',
+        file_picker_types: 'image media file',
         images_reuse_filename: true,
+
+        // File picker — handles image, video, and document uploads
+        file_picker_callback: function(callback, value, meta) {
+            var input = document.createElement('input');
+            input.type = 'file';
+            if (meta.filetype === 'image') {
+                input.accept = 'image/jpeg,image/png,image/gif,image/webp';
+            } else if (meta.filetype === 'media') {
+                input.accept = 'video/mp4,video/webm,video/quicktime,video/ogg,.mp4,.webm,.mov,.ogg,.avi,.mkv';
+            } else {
+                input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv,.zip';
+            }
+            input.onchange = function() {
+                var file = input.files[0];
+                if (!file) return;
+                var fd = new FormData();
+                if (meta.filetype === 'image') {
+                    fd.append('image', file, file.name);
+                    fetch('/api/community-image-upload.php', {
+                        method: 'POST', credentials: 'include', body: fd
+                    }).then(function(r) { return r.json(); }).then(function(data) {
+                        if (data.url) callback(data.url, { alt: file.name });
+                        else alert(data.error || 'Upload failed');
+                    }).catch(function() { alert('Upload failed'); });
+                } else if (meta.filetype === 'media') {
+                    fd.append('video', file, file.name);
+                    fetch('/api/community-video-upload.php', {
+                        method: 'POST', credentials: 'include', body: fd
+                    }).then(function(r) { return r.json(); }).then(function(data) {
+                        if (data.url) callback(data.url, { source2: '', poster: '' });
+                        else alert(data.error || 'Upload failed');
+                    }).catch(function() { alert('Upload failed'); });
+                } else {
+                    fd.append('file', file, file.name);
+                    fetch('/api/community-doc-upload.php', {
+                        method: 'POST', credentials: 'include', body: fd
+                    }).then(function(r) { return r.json(); }).then(function(data) {
+                        if (data.url) callback(data.url, { text: data.name || file.name, title: file.name });
+                        else alert(data.error || 'Upload failed');
+                    }).catch(function() { alert('Upload failed'); });
+                }
+            };
+            input.click();
+        },
 
         // Media embed — allow YouTube, Rumble, etc.
         media_live_embeds: true,
@@ -87,7 +131,7 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
 
 // Get editor HTML content
 CommunityTopics.getEditorHtml = function(textareaId) {
-    var editor = CommunityTopics._editors[textareaId];
+    var editor = (typeof tinymce !== 'undefined') ? tinymce.get(textareaId) : null;
     if (editor) return editor.getContent();
     var ta = document.getElementById(textareaId);
     return ta ? ta.value : '';
@@ -95,7 +139,7 @@ CommunityTopics.getEditorHtml = function(textareaId) {
 
 // Get plain text from editor
 CommunityTopics.getEditorText = function(textareaId) {
-    var editor = CommunityTopics._editors[textareaId];
+    var editor = (typeof tinymce !== 'undefined') ? tinymce.get(textareaId) : null;
     if (editor) return editor.getContent({ format: 'text' });
     var ta = document.getElementById(textareaId);
     return ta ? ta.value : '';
@@ -259,7 +303,7 @@ CommunityTopics.loadTopic = function(key) {
 
         // Load poll if present
         if (!data.poll) {
-            Community.api('/api/community-polls.php?topic_key=' + key).then(function(pollData) {
+            Community.api('/api/community-polls.php?topic=' + key).then(function(pollData) {
                 if (pollData && pollData.poll) {
                     var pollContainer = document.createElement('div');
                     pollContainer.innerHTML = CommunityTopics.renderPoll(pollData.poll, key);
@@ -496,10 +540,16 @@ CommunityTopics.submitTopic = function() {
 CommunityTopics.submitReply = function(topicKey) {
     var bodyHtml = CommunityTopics.getEditorHtml('reply-body');
     var body = CommunityTopics.getEditorText('reply-body');
-    if (!body.trim()) return;
+
+    // Check both plain text and HTML — media-only posts have no text
+    var htmlEmpty = !bodyHtml || bodyHtml.replace(/<[^>]*>/g, '').trim() === '' && bodyHtml.indexOf('<img') === -1 && bodyHtml.indexOf('<video') === -1 && bodyHtml.indexOf('<iframe') === -1;
+    if (!body.trim() && htmlEmpty) {
+        alert('Please enter a reply');
+        return;
+    }
     Community.api('/api/community-topics.php', {
         method: 'POST',
-        body: { action: 'reply', topic_key: topicKey, body: body, reply_body_html: bodyHtml }
+        body: { action: 'reply', topic_key: topicKey, body: body || '(media)', reply_body_html: bodyHtml }
     }).then(function(data) {
         if (data.saved) CommunityTopics.loadTopic(topicKey);
         else alert(data.error || 'Failed');
