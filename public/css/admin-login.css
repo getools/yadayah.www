@@ -1,0 +1,142 @@
+#admin-login-modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+#admin-login-modal.active {
+    display: flex;
+}
+#admin-login-modal .login-box {
+    background: #fff;
+    border-radius: 10px;
+    padding: 30px;
+    width: 90%;
+    max-width: 380px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    position: relative;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#admin-login-modal .login-box * {
+    box-sizing: border-box;
+}
+#admin-login-modal .login-box h2 {
+    margin: 0 0 20px;
+    color: #31345A;
+    font-size: 1.3rem;
+    text-align: center;
+    font-weight: 700;
+}
+#admin-login-modal .login-box input[type="email"],
+#admin-login-modal .login-box input[type="password"],
+#admin-login-modal .login-box input[type="text"] {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+    background: #fff;
+    color: #333;
+    outline: none;
+}
+#admin-login-modal .login-box input:focus {
+    border-color: #31345A;
+    box-shadow: none;
+}
+#admin-login-modal .login-error {
+    color: #c0392b;
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+    text-align: center;
+    transition: opacity 0.15s;
+}
+#admin-login-modal .login-error.flash {
+    animation: adminLoginFlash 0.3s;
+}
+@keyframes adminLoginFlash {
+    0%   { opacity: 0; transform: scale(0.97); }
+    50%  { opacity: 1; transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+#admin-login-modal .login-toggle {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 0.85rem;
+    color: #666;
+}
+#admin-login-modal .login-toggle a {
+    color: #31345A;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+}
+#admin-login-modal .login-or {
+    text-align: center;
+    color: #999;
+    font-size: 0.85rem;
+    margin: 16px 0;
+    position: relative;
+}
+#admin-login-modal .login-or::before,
+#admin-login-modal .login-or::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 35%;
+    height: 1px;
+    background: #ddd;
+}
+#admin-login-modal .login-or::before { left: 0; }
+#admin-login-modal .login-or::after  { right: 0; }
+#admin-login-modal .login-social {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+#admin-login-modal .login-social a,
+#admin-login-modal .login-social .abtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background 0.2s;
+    box-sizing: border-box;
+    background: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+#admin-login-modal .login-social a:hover { background: #f5f5f5; text-decoration: none; }
+#admin-login-modal .abtn-yahoo { color: #6001D2; font-weight: 700; }
+#admin-login-modal .abtn-x { color: #000; }
+#admin-login-modal .abtn-primary {
+    display: block;
+    width: 100%;
+    padding: 10px 20px;
+    background: #31345A;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-align: center;
+}
+#admin-login-modal .abtn-primary:hover { background: #4a4e7a; }

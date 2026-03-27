@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ask Sessions - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
     <style>
         .sessions-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .sessions-table th, .sessions-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
@@ -145,10 +146,29 @@
         <button class="sub-tab active" onclick="switchSubTab('config')">Config</button>
         <button class="sub-tab" onclick="switchSubTab('log')">Log</button>
         <button class="sub-tab" onclick="switchSubTab('qanda')">Q&amp;A</button>
+        <button class="sub-tab" onclick="switchSubTab('bans')">Bans</button>
     </div>
 
     <div id="panel-config" class="sub-panel active">
         <div class="config-section">
+            <h3>Page Settings</h3>
+            <div style="display:grid; grid-template-columns:120px 1fr; gap:10px 16px; align-items:baseline; max-width:700px;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading</label>
+                <input type="text" id="page-title" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Summary</label>
+                <textarea id="page-summary" rows="4" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;"></textarea>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Ban Title</label>
+                <input type="text" id="page-ban-title" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Ban Message</label>
+                <textarea id="page-ban-message" rows="2" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;"></textarea>
+            </div>
+            <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+                <button class="btn btn-primary btn-sm" onclick="savePageSettings()">Save Page Settings</button>
+                <span class="model-status" id="page-status"></span>
+            </div>
+        </div>
+
+        <div class="config-section" style="margin-top:24px;">
             <h3>AI Model</h3>
             <div class="model-selector">
                 <label>Model:</label>
@@ -195,6 +215,20 @@
         </div>
     </div>
 
+    <div id="panel-bans" class="sub-panel">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px;">
+            <input type="text" id="ban-ip-input" placeholder="IP address" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;width:200px;">
+            <input type="text" id="ban-reason-input" placeholder="Reason (optional)" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;flex:1;">
+            <button class="btn btn-primary btn-sm" onclick="addBan()">Ban IP</button>
+            <span class="model-status" id="ban-status"></span>
+        </div>
+        <div id="bans-count" style="font-size:0.85rem;color:#666;margin-bottom:8px;"></div>
+        <table class="sessions-table" id="bans-table">
+            <thead><tr><th>IP Address</th><th>Reason</th><th>Banned</th><th></th></tr></thead>
+            <tbody id="bans-tbody"></tbody>
+        </table>
+    </div>
+
     <div id="detail-overlay" class="popover-overlay" onclick="if(event.target===this)closeDetail()">
         <div class="popover-panel">
             <div class="popover-close"><button onclick="closeDetail()" title="Close">&times;</button></div>
@@ -210,6 +244,7 @@ var currentPage = 1;
 var selectedKey = null;
 var sessionsLoaded = false;
 var qandaLoaded = false;
+var bansLoaded = false;
 var qandaItems = [];
 var editingQandaKey = null;
 
@@ -227,6 +262,10 @@ function switchSubTab(tab) {
     if (tab === 'qanda' && !qandaLoaded) {
         qandaLoaded = true;
         loadQanda();
+    }
+    if (tab === 'bans' && !bansLoaded) {
+        bansLoaded = true;
+        loadBans();
     }
 }
 
@@ -254,8 +293,36 @@ function loadModel() {
                 document.getElementById('custom-prompt').value = d.custom_prompt;
                 savedPromptValue = d.custom_prompt;
             }
+            if (d.page) {
+                document.getElementById('page-title').value = d.page.title || '';
+                document.getElementById('page-summary').value = d.page.summary || '';
+                document.getElementById('page-ban-title').value = d.page['ban-title'] || '';
+                document.getElementById('page-ban-message').value = d.page['ban-message'] || '';
+            }
             checkPromptDirty();
         });
+}
+
+function savePageSettings() {
+    var data = {
+        page: {
+            'title': document.getElementById('page-title').value,
+            'summary': document.getElementById('page-summary').value,
+            'ban-title': document.getElementById('page-ban-title').value,
+            'ban-message': document.getElementById('page-ban-message').value
+        }
+    };
+    fetch(API + '/ask-settings.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(function(d) {
+        if (d.saved) {
+            var el = document.getElementById('page-status');
+            el.textContent = 'Saved!';
+            setTimeout(function() { el.textContent = ''; }, 2000);
+        }
+    });
 }
 
 function checkPromptDirty() {
@@ -436,7 +503,11 @@ function renderDetail(session, logs) {
     var html = '<div class="session-detail">';
     html += '<div class="session-meta">';
     html += '<span><strong>Session:</strong> #' + session.ask_session_key + '</span>';
-    html += '<span><strong>IP:</strong> ' + esc(session.ip_address || '') + '</span>';
+    html += '<span><strong>IP:</strong> ' + esc(session.ip_address || '');
+    if (session.ip_address) {
+        html += ' <button class="btn btn-danger btn-sm" id="ban-toggle-btn" style="margin-left:8px;" onclick="toggleBanFromDetail(\'' + esc(session.ip_address).replace(/'/g, "\\'") + '\')">Ban</button>';
+    }
+    html += '</span>';
     var detailLoc = [session.ip_city, session.ip_region, session.ip_country].filter(Boolean).join(', ');
     if (detailLoc) html += '<span><strong>Location:</strong> ' + esc(detailLoc) + '</span>';
     html += '<span><strong>Started:</strong> ' + formatDate(session.ask_session_dtime) + '</span>';
@@ -470,6 +541,22 @@ function renderDetail(session, logs) {
     }
     html += '</div></div>';
     document.getElementById('detail-container').innerHTML = html;
+    // Check ban status for this IP
+    if (session.ip_address) {
+        fetch(API + '/ask-ip-ban.php?check=' + encodeURIComponent(session.ip_address), {credentials:'include'})
+            .then(function(r){return r.json();})
+            .then(function(d) {
+                var btn = document.getElementById('ban-toggle-btn');
+                if (!btn) return;
+                if (d.banned) {
+                    btn.textContent = 'Unban';
+                    btn.className = 'btn btn-secondary btn-sm';
+                } else {
+                    btn.textContent = 'Ban';
+                    btn.className = 'btn btn-danger btn-sm';
+                }
+            });
+    }
 }
 
 function formatDate(s) {
@@ -626,7 +713,93 @@ function deleteQanda(key) {
     });
 }
 
+// ── IP Bans ──
+function loadBans() {
+    fetch(API + '/ask-ip-ban.php', {credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(d) {
+            var bans = d.bans || [];
+            document.getElementById('bans-count').textContent = bans.length + ' banned IP' + (bans.length !== 1 ? 's' : '');
+            var html = '';
+            for (var i = 0; i < bans.length; i++) {
+                var b = bans[i];
+                html += '<tr>'
+                    + '<td>' + esc(b.ip_address) + '</td>'
+                    + '<td>' + esc(b.ban_reason || '') + '</td>'
+                    + '<td>' + formatDate(b.ban_dtime) + '</td>'
+                    + '<td><button class="btn btn-danger btn-sm" onclick="removeBan(\'' + esc(b.ip_address).replace(/'/g, "\\'") + '\')">Unban</button></td>'
+                    + '</tr>';
+            }
+            document.getElementById('bans-tbody').innerHTML = html || '<tr><td colspan="4" style="text-align:center;color:#999;">No bans</td></tr>';
+        });
+}
+
+function addBan() {
+    var ip = document.getElementById('ban-ip-input').value.trim();
+    var reason = document.getElementById('ban-reason-input').value.trim();
+    if (!ip) return;
+    fetch(API + '/ask-ip-ban.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ip_address: ip, ban_reason: reason})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.saved) {
+            document.getElementById('ban-ip-input').value = '';
+            document.getElementById('ban-reason-input').value = '';
+            var el = document.getElementById('ban-status');
+            el.textContent = d.message || 'Banned!';
+            setTimeout(function(){ el.textContent = ''; }, 2000);
+            loadBans();
+        }
+    });
+}
+
+function removeBan(ip) {
+    if (!confirm('Unban ' + ip + '?')) return;
+    fetch(API + '/ask-ip-ban.php', {
+        method: 'DELETE', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ip_address: ip})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.deleted) loadBans();
+    });
+}
+
+function toggleBanFromDetail(ip) {
+    var btn = document.getElementById('ban-toggle-btn');
+    if (!btn) return;
+    fetch(API + '/ask-ip-ban.php?check=' + encodeURIComponent(ip), {credentials:'include'})
+        .then(function(r){return r.json();})
+        .then(function(d) {
+            if (d.banned) {
+                if (!confirm('Unban ' + ip + '?')) return;
+                fetch(API + '/ask-ip-ban.php', {
+                    method: 'DELETE', credentials: 'include',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ip_address: ip})
+                }).then(function(r){return r.json();}).then(function() {
+                    btn.textContent = 'Ban';
+                    btn.className = 'btn btn-danger btn-sm';
+                    bansLoaded = false;
+                });
+            } else {
+                var reason = prompt('Ban reason (optional):');
+                if (reason === null) return;
+                fetch(API + '/ask-ip-ban.php', {
+                    method: 'POST', credentials: 'include',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ip_address: ip, ban_reason: reason})
+                }).then(function(r){return r.json();}).then(function() {
+                    btn.textContent = 'Unban';
+                    btn.className = 'btn btn-secondary btn-sm';
+                    bansLoaded = false;
+                });
+            }
+        });
+}
+
 checkAuth();
 </script>
+<script src="/js/admin-login.js"></script>
 </body>
 </html>

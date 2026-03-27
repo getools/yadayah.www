@@ -15,7 +15,7 @@ switch ($method) {
     case 'GET':
         // List users with their page settings
         $users = $db->query("
-            SELECT user_key, user_code, user_name_full, user_email, user_dtime
+            SELECT user_key, user_code, user_name_full, user_display_name, user_email, user_oauth_provider, user_dtime
             FROM yy_user ORDER BY user_key
         ")->fetchAll();
 
@@ -32,13 +32,23 @@ switch ($method) {
             WHERE s.setting_scope_code = 'admin' AND s.setting_group_code = 'pages'
         ")->fetchAll();
 
+        // All roles
+        $roles = $db->query("SELECT role_key, role_code, role_label FROM yy_role WHERE role_active_flag = TRUE ORDER BY role_sort")->fetchAll();
+
+        // User roles
+        $userRoles = $db->query("SELECT user_key, role_key FROM yy_user_role")->fetchAll();
+        $userRolesMap = [];
+        foreach ($userRoles as $ur) {
+            $userRolesMap[$ur['user_key']][] = (int)$ur['role_key'];
+        }
+
         // Index user settings by user_key => setting_key => value
         $settingsMap = [];
         foreach ($userSettings as $us) {
             $settingsMap[$us['user_key']][$us['setting_key']] = $us['user_setting_value'];
         }
 
-        // Attach settings to each user
+        // Attach settings and roles to each user
         foreach ($users as &$u) {
             $u['page_settings'] = [];
             foreach ($settings as $s) {
@@ -49,10 +59,11 @@ switch ($method) {
                     'enabled' => $val === '1',
                 ];
             }
+            $u['role_keys'] = $userRolesMap[$u['user_key']] ?? [];
         }
         unset($u);
 
-        jsonResponse(['users' => $users, 'settings' => $settings]);
+        jsonResponse(['users' => $users, 'settings' => $settings, 'roles' => $roles]);
         break;
 
     case 'PUT':
@@ -79,6 +90,15 @@ switch ($method) {
             $hash = password_hash($input['new_password'], PASSWORD_DEFAULT);
             $db->prepare("UPDATE yy_user SET user_pass = :pass WHERE user_key = :key")
                ->execute(['pass' => $hash, 'key' => $key]);
+        }
+
+        // Update roles
+        if (isset($input['role_keys']) && is_array($input['role_keys'])) {
+            $db->prepare("DELETE FROM yy_user_role WHERE user_key = ?")->execute([$key]);
+            $insRole = $db->prepare("INSERT INTO yy_user_role (user_key, role_key) VALUES (?, ?) ON CONFLICT DO NOTHING");
+            foreach ($input['role_keys'] as $rk) {
+                $insRole->execute([$key, (int)$rk]);
+            }
         }
 
         // Update page settings
@@ -126,6 +146,18 @@ switch ($method) {
         }
 
         jsonResponse(['saved' => true, 'user_key' => (int)$newKey]);
+        break;
+
+    case 'DELETE':
+        $key = (int)($_GET['key'] ?? 0);
+        if (!$key) errorResponse('user_key required');
+        // Prevent deleting yourself
+        if ($key === (int)$user['user_key']) errorResponse('Cannot delete your own account');
+        // Delete related records first
+        $db->prepare("DELETE FROM yy_user_role WHERE user_key = ?")->execute([$key]);
+        $db->prepare("DELETE FROM yy_user_setting WHERE user_key = ?")->execute([$key]);
+        $db->prepare("DELETE FROM yy_user WHERE user_key = ?")->execute([$key]);
+        jsonResponse(['deleted' => true]);
         break;
 
     default:

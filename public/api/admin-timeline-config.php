@@ -19,9 +19,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     $input = json_decode(file_get_contents('php://input'), true);
-    $stmt = $db->prepare("UPDATE yy_setting SET setting_value = ? WHERE setting_scope_code = ? AND setting_group_code = ? AND setting_code = ?");
+    $upd = $db->prepare("UPDATE yy_setting SET setting_value = ? WHERE setting_scope_code = ? AND setting_group_code = ? AND setting_code = ?");
+    $ins = $db->prepare("INSERT INTO yy_setting (setting_scope_code, setting_group_code, setting_code, setting_value, setting_value_code) VALUES (?, ?, ?, ?, ?)");
     foreach ($input as $code => $value) {
-        $stmt->execute([$value, $SCOPE, $GROUP, $code]);
+        $upd->execute([$value, $SCOPE, $GROUP, $code]);
+        if ($upd->rowCount() === 0) {
+            $ins->execute([$SCOPE, $GROUP, $code, $value, $code]);
+        }
     }
     // Bust page config cache
     $cacheFile = sys_get_temp_dir() . '/yada_timeline_config.json';

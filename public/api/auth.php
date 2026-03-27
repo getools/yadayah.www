@@ -29,12 +29,23 @@ $method = $_SERVER['REQUEST_METHOD'];
 switch ($method) {
     case 'GET':
         if (!empty($_SESSION['user_key'])) {
+            // If user_code not in session (OAuth/community login), look up from DB
+            if (empty($_SESSION['user_code'])) {
+                $db = getDb();
+                $stmt = $db->prepare('SELECT user_code, user_name_full, user_display_name FROM yy_user WHERE user_key = ?');
+                $stmt->execute([$_SESSION['user_key']]);
+                $u = $stmt->fetch();
+                if ($u) {
+                    $_SESSION['user_code'] = $u['user_code'];
+                    $_SESSION['user_name'] = $u['user_name_full'] ?: $u['user_display_name'] ?: $u['user_code'];
+                }
+            }
             $pages = getUserPages($_SESSION['user_key']);
             jsonResponse([
                 'authenticated' => true,
                 'user_key' => $_SESSION['user_key'],
-                'user_code' => $_SESSION['user_code'],
-                'user_name' => $_SESSION['user_name'] ?? $_SESSION['user_code'],
+                'user_code' => $_SESSION['user_code'] ?? '',
+                'user_name' => $_SESSION['user_name'] ?? $_SESSION['user_display_name'] ?? $_SESSION['user_code'] ?? '',
                 'pages' => $pages,
             ]);
         } else {

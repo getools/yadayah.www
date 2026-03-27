@@ -37,6 +37,10 @@
             var headerLogos = document.querySelector('header .header-logos');
             if (logoImg) {
                 if (data.logo) logoImg.src = data.logo;
+                if (data.logo_height) {
+                    logoImg.style.height = data.logo_height + 'px';
+                    logoImg.style.width  = 'auto';
+                }
                 logoImg.style.padding = '0';
                 logoImg.style.margin  = '0';
                 logoImg.style.display = 'block'; // eliminate inline baseline gap
@@ -87,11 +91,16 @@
             if (subEl) {
                 if (data.toolbar_sub_bg_color)   document.documentElement.style.setProperty('--toolbar-bg',   '#' + data.toolbar_sub_bg_color);
                 if (data.toolbar_sub_text_color) document.documentElement.style.setProperty('--toolbar-text', '#' + data.toolbar_sub_text_color);
-                if (data.sub && data.sub.length) subEl.innerHTML = renderLinks(data.sub);
+                if (!subEl.hasAttribute('data-static') && data.sub && data.sub.length) subEl.innerHTML = renderLinks(data.sub);
                 if (data.toolbar_sub_text_size)  subEl.style.fontSize = data.toolbar_sub_text_size + 'em';
                 subEl.style.paddingTop    = (data.toolbar_sub_margin_top    || 0) + 'px';
                 subEl.style.paddingBottom = (data.toolbar_sub_margin_bottom || 0) + 'px';
             }
+
+            // Contact link obfuscation
+            document.querySelectorAll('[data-contact]').forEach(function (el) {
+                el.href = 'mailto:contact' + '\x40' + 'YadaYah.com';
+            });
 
             reveal();
         })

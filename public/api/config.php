@@ -61,3 +61,23 @@ function requireAuth(): array {
 function setCurrentUser(PDO $db, int $userKey): void {
     $db->exec("SET app.current_user_key = '" . intval($userKey) . "'");
 }
+
+function requireCommunityAuth(): array {
+    if (empty($_SESSION['account_key'])) {
+        jsonResponse(['error' => 'Sign in required'], 401);
+    }
+    return [
+        'account_key' => $_SESSION['account_key'],
+        'account_name' => $_SESSION['account_name'] ?? '',
+        'account_avatar' => $_SESSION['account_avatar'] ?? '',
+    ];
+}
+
+function getCommunitySession(): ?array {
+    if (empty($_SESSION['account_key'])) return null;
+    return [
+        'account_key' => $_SESSION['account_key'],
+        'account_name' => $_SESSION['account_name'] ?? '',
+        'account_avatar' => $_SESSION['account_avatar'] ?? '',
+    ];
+}

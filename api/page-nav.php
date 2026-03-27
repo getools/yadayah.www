@@ -36,7 +36,7 @@ foreach ($pages as $p) {
     }
 }
 
-$cfgStmt = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'config' AND setting_code IN ('logo','title-prefix','toolbar-main-text-size','toolbar-sub-text-size','logo-margin-top','logo-margin-bottom','toolbar-main-margin-top','toolbar-main-margin-bottom','toolbar-main-text-color','toolbar-sub-margin-top','toolbar-sub-margin-bottom','toolbar-sub-bg-color','toolbar-sub-text-color')");
+$cfgStmt = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'config' AND setting_code IN ('logo','logo-height','title-prefix','toolbar-main-text-size','toolbar-sub-text-size','logo-margin-top','logo-margin-bottom','toolbar-main-margin-top','toolbar-main-margin-bottom','toolbar-main-text-color','toolbar-sub-margin-top','toolbar-sub-margin-bottom','toolbar-sub-bg-color','toolbar-sub-text-color')");
 foreach ($cfgStmt->fetchAll() as $row) {
     $v = $row['setting_value'];
     if (!strlen((string)$v)) continue;
@@ -52,6 +52,7 @@ foreach ($cfgStmt->fetchAll() as $row) {
         case 'toolbar-sub-bg-color':         $result['toolbar_sub_bg_color']        = $v; break;
         case 'toolbar-sub-margin-top':       $result['toolbar_sub_margin_top']      = $v; break;
         case 'toolbar-sub-margin-bottom':    $result['toolbar_sub_margin_bottom']   = $v; break;
+        case 'logo-height':                  $result['logo_height']                 = $v; break;
         case 'logo-margin-top':              $result['logo_margin_top']             = $v; break;
         case 'logo-margin-bottom':           $result['logo_margin_bottom']          = $v; break;
     }

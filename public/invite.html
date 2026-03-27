@@ -8,12 +8,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        html { height: 100%; }
         body {
             font-family: 'Maven Pro', Arial, sans-serif;
             margin: 0;
             padding: 0;
             background: var(--invite-bg, #373737);
             color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Site header */
@@ -64,11 +68,36 @@
         }
         .sub-toolbar a:hover { color: #fff; }
         .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        /* Page tabs */
+        .page-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            margin: 0 -20px 20px -20px;
+            background: #f0f0f0;
+            border-bottom: 2px solid #ddd;
+        }
+        .page-tabs a {
+            padding: 12px 32px;
+            text-decoration: none;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .page-tabs a:hover { color: #31345A; }
+        .page-tabs a.active {
+            color: #31345A;
+            border-bottom-color: #31345A;
+        }
         /* Content */
         .content {
             max-width: 1200px;
             margin: 0 auto;
             padding: 30px 24px 60px;
+            flex: 1;
         }
         .content h1 {
             font-family: 'Julius Sans One', sans-serif;
@@ -250,7 +279,7 @@
         footer .footer-inner {
             position: relative; z-index: 1;
             max-width: 1000px; margin: 0 auto;
-            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
         }
         footer .footer-col { min-width: auto; }
         footer .footer-col h4 {
@@ -293,35 +322,35 @@
 </head>
 <body>
     <header>
-        <video class="header-video" autoplay muted loop playsinline>
-        </video>
-        <div class="header-inner">
-            <div class="header-logos">
-                <a href="/"><img src="/images/yy-logo-80x90.png" alt=""></a>
-            </div>
-            <nav>
-                <div class="nav-row">
-                    <a href="books">Books</a>                    <a href="blog">Blog</a>
-                    <a href="/media">Media</a>                </div>
-                <div class="nav-row">
-                    <a href="/translations">Translations</a>
-                    <a href="resources">Resources</a>
-                    <a href="Craig_Winn">Winn</a>
-                    <a href="/timeline">Timeline</a>
-                    <a href="ask">Ask</a>
-                </div>
-            </nav>
+    <video class="header-video" autoplay muted loop playsinline>
+    </video>
+    <div class="header-inner">
+        <div class="header-logos">
+            <a href="/"><img src="/images/yy-logo-80x90.png" alt="Yada Yah"></a>
         </div>
-    </header>
+        <nav>
+            <div class="nav-row">
+                <a href="books">Books</a>
+                <a href="blog">Blog</a>
+                <a href="resources">Resources</a>
+                <a href="/Craig_Winn">Winn</a>
+                <a href="/timeline">Timeline</a>
+            </div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="/media">Media</a>
+                <a href="/music">Music</a>
+                <a href="/ask">Ask</a>
+            </div>
+        </nav>
+    </div>
+</header>
 
-<div class="sub-toolbar">
-    <a href="vlog">Vlog</a>
-    <a href="/music">Music</a>
-    <a href="invite" class="active">Invite</a>
-    <a href="/DoYouYada">DoYou?</a>
-    <a href="shorts">Shorts</a>
-</div>
-
+    <div class="page-tabs">
+        <a href="/media">Media</a>
+        <a href="/invite" class="active">Invite</a>
+        <a href="/DoYouYada">Do You Yada?</a>
+    </div>
 
     <div class="content">
         <h1 id="invite-heading">Invitations</h1>
@@ -362,24 +391,27 @@
             </div>
             <div class="footer-col">
             <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;">
+            <div style="display:flex;gap:40px;align-items:flex-start;">
                 <div class="footer-links footer-links-1col">
                     <a href="/ask">Ask</a>
                     <a href="/blog">Blog</a>
                     <a href="/vlog">Vlog</a>
                     <a href="/media">Media</a>
+                    <a href="/books">Books</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/timeline">Timeline</a>
                     <a href="/translations">Translations</a>
                     <a href="/glossary">Glossary</a>
                     <a href="/dss">Dead Sea Scrolls</a>
+                    <a href="/10-7-memorial">10-7 Memorial</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/music">Music</a>
                     <a href="/invite">Invite</a>
                     <a href="/shorts">Shorts</a>
                     <a href="/Craig_Winn">Craig Winn</a>
+                    <a href="/resources">Resources</a>
                 </div>
             </div>
         </div>
@@ -412,10 +444,12 @@ function renderCard(v, idx) {
     var thumb = v.feed_thumbnail || '';
     var title = v.feed_title || 'Invitation';
     var date = formatDate(v.feed_create);
+    var isVideo = (v.feed_type === 'video' || v.feed_type === 'video_inline');
+    var playBtn = isVideo ? '<div class="play-btn"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>' : '';
     return '<div class="video-card" onclick="openLightbox(' + idx + ')">'
         + '<div class="video-thumb">'
         + '<img src="' + escHtml(thumb) + '" alt="' + escHtml(title) + '" loading="lazy">'
-        + '<div class="play-btn"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>'
+        + playBtn
         + '</div>'
         + '<div class="video-title">' + escHtml(title) + '</div>'
         + (date ? '<div class="video-date">' + date + '</div>' : '')

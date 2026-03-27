@@ -9,9 +9,16 @@ RewriteRule ^(.+)/$ /$1 [R=301,L]
 RewriteCond %{THE_REQUEST} \s/+(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media|translations|admin|admin-[a-z]+|10-7-memorial)\.html[\s?] [NC]
 RewriteRule ^(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media|translations|admin|admin-[a-z]+|10-7-memorial)\.html$ /$1 [R=301,L]
 
+# Redirect /time to /timeline
+RewriteRule ^time$ /timeline [R=301,L,NC]
+
 # Canonical redirect for Craig_Winn (mixed case filename)
 RewriteCond %{REQUEST_URI} !^/Craig_Winn$
 RewriteRule ^craig_winn$ /Craig_Winn [R=301,L,NC]
+
+# Canonical redirect for DoYouYada (mixed case filename)
+RewriteCond %{REQUEST_URI} !^/DoYouYada$
+RewriteRule ^doyouyada$ /DoYouYada [R=301,L,NC]
 
 # Case-insensitive URL matching: try lowercase .html file
 RewriteCond %{REQUEST_FILENAME} !-f
@@ -19,6 +26,7 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} [A-Z]
 RewriteCond %{REQUEST_URI} !^/api/
 RewriteCond %{REQUEST_URI} !^/Craig_Winn$ [NC]
+RewriteCond %{REQUEST_URI} !^/DoYouYada$ [NC]
 RewriteRule ^(.+)$ /case-redirect.php [L,QSA]
 
 # Serve clean URLs from .html files

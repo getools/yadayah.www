@@ -36,9 +36,11 @@ try {
 $lower = strtolower($path);
 
 if ($lower !== $path) {
-    // Special case: Craig_Winn keeps its casing
+    // Special cases: preserve mixed-case filenames
     if ($lower === '/craig_winn') {
         $lower = '/Craig_Winn';
+    } elseif ($lower === '/doyouyada') {
+        $lower = '/DoYouYada';
     }
 
     $docRoot = $_SERVER['DOCUMENT_ROOT'];

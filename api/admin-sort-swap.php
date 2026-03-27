@@ -23,6 +23,7 @@ $allowed = [
     'memorial'    => ['table' => 'yy_memorial',  'key' => 'memorial_key',     'sort' => 'memorial_sort'],
     'media'       => ['table' => 'yy_media',     'key' => 'media_key',        'sort' => 'media_sort'],
     'ask_qanda'   => ['table' => 'yy_ask_qanda', 'key' => 'ask_qanda_key',    'sort' => 'ask_qanda_sort'],
+    'ticker'      => ['table' => 'yy_ticker',    'key' => 'ticker_key',      'sort' => 'ticker_sort'],
 ];
 
 if (!isset($allowed[$table])) errorResponse('Invalid table');

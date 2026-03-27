@@ -108,11 +108,11 @@ if ($action === 'sync') {
             $existing->execute([$videoId]);
 
             if ($existing->fetch()) {
-                $stmt = $db->prepare("UPDATE yy_feed_invite SET feed_title = ?, feed_thumbnail = ?, feed_create = ? WHERE feed_video_id = ?");
+                $stmt = $db->prepare("UPDATE yy_feed_invite SET feed_title = ?, feed_thumbnail = ?, feed_create = ?, feed_type = 'video' WHERE feed_video_id = ?");
                 $stmt->execute([$title, $localThumb, $createdTime, $videoId]);
                 $updated++;
             } else {
-                $stmt = $db->prepare("INSERT INTO yy_feed_invite (feed_video_id, feed_title, feed_thumbnail, feed_create) VALUES (?, ?, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO yy_feed_invite (feed_video_id, feed_title, feed_thumbnail, feed_create, feed_type) VALUES (?, ?, ?, ?, 'video')");
                 $stmt->execute([$videoId, $title, $localThumb, $createdTime]);
                 $inserted++;
             }
@@ -133,7 +133,7 @@ $countStmt = $db->query("SELECT COUNT(*) FROM yy_feed_invite WHERE feed_active_f
 $total = (int)$countStmt->fetchColumn();
 
 if ($limit > 0) {
-    $stmt = $db->prepare("SELECT feed_key, feed_video_id, feed_title, feed_thumbnail, feed_create FROM yy_feed_invite WHERE feed_active_flag = TRUE ORDER BY feed_create DESC LIMIT ?");
+    $stmt = $db->prepare("SELECT feed_key, feed_video_id, feed_title, feed_thumbnail, feed_create, feed_type FROM yy_feed_invite WHERE feed_active_flag = TRUE ORDER BY feed_create DESC LIMIT ?");
     $stmt->execute([$limit]);
     jsonResponse(['videos' => $stmt->fetchAll(), 'page' => 1, 'total_pages' => 1, 'total' => $total]);
 }

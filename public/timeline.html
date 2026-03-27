@@ -8,11 +8,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        html { height: 100%; }
         body {
             font-family: 'Maven Pro', Arial, sans-serif;
-            margin: 20px;
+            margin: 0;
+            padding: 20px;
             background: #f5f5f5;
             color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Site header */
@@ -71,6 +76,7 @@
             margin: 20px auto;
             position: relative;
             padding: 10px 0;
+            flex: 1;
         }
 
         /* Vertical center line */
@@ -267,19 +273,45 @@
             letter-spacing: 1px;
         }
 
-        .countdown-bar {
-            text-align: center;
-            padding: 18px 16px 14px;
-            background: var(--ticker-bg, #1a1a2e);
-            color: var(--ticker-countdown-color, #e5c86c);
+        .tickers-container {
             margin: 0 -20px;
+        }
+        .tickers-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+        .tickers-grid.multi {
+            grid-template-columns: 1fr 1fr;
+        }
+        .tickers-grid.multi .countdown-bar:last-child:nth-child(odd) {
+            grid-column: 1 / -1;
+            max-width: 50%;
+            margin: 0 auto;
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+        }
+        .countdown-bar {
+            color: #e5c86c;
+        }
+        .ticker-content {
+            padding: 16px;
+            text-align: center;
+            width: 100%;
         }
         .countdown-label {
             font-family: 'Julius Sans One', sans-serif;
-            font-size: 1.1rem;
+            font-size: var(--ticker-heading-size, 1.1em);
             letter-spacing: 1px;
+            margin-bottom: 2px;
+            color: rgba(255,255,255,0.85);
+        }
+        .countdown-sublabel {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: var(--ticker-subheading-size, 0.85em);
+            color: var(--ticker-subheading-color, rgba(255,255,255,0.65));
             margin-bottom: 8px;
-            color: var(--ticker-heading-color, rgba(255,255,255,0.85));
         }
         .countdown-timer {
             display: flex;
@@ -301,15 +333,32 @@
         }
         .countdown-name {
             font-size: 0.75rem;
-            color: var(--ticker-desc-color, rgba(255,255,255,0.6));
+            color: rgba(255,255,255,0.6);
             margin-top: 4px;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+        /* Multi-ticker: each bar is a flex container; content pushed toward the center spine */
+        .tickers-grid.multi .countdown-bar { display: flex; }
+        .tickers-grid.multi .countdown-bar:nth-child(odd)  { justify-content: flex-end;  padding-right: 55px; }
+        .tickers-grid.multi .countdown-bar:nth-child(even) { justify-content: flex-start; padding-left:  55px; }
+        .tickers-grid.multi .ticker-content { max-width: 495px; width: 100%; text-align: center; }
+        /* Reduced sizes for multiple tickers */
+        .tickers-grid.multi .countdown-label { font-size: 0.715rem; }
+        .tickers-grid.multi .countdown-sublabel { font-size: 0.6rem; }
+        .tickers-grid.multi .countdown-value { font-size: 1.43rem; }
+        .tickers-grid.multi .countdown-name { font-size: 0.4875rem; }
+        .tickers-grid.multi .countdown-timer { gap: 14px; justify-content: center; }
+        .tickers-grid.multi .countdown-unit { min-width: 50px; }
+        .tickers-grid.multi .ticker-content { padding: 16px 10px; }
         @media (max-width: 480px) {
             .countdown-timer { gap: 12px; }
             .countdown-value { font-size: 1.6rem; }
             .countdown-unit { min-width: 55px; }
+            .tickers-grid.multi { grid-template-columns: 1fr; }
+            .tickers-grid.multi .countdown-bar:last-child:nth-child(odd) {
+                max-width: 100%;
+            }
         }
 
         /* Footer */
@@ -329,7 +378,7 @@
         footer .footer-inner {
             position: relative; z-index: 1;
             max-width: 1000px; margin: 0 auto;
-            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
         }
         footer .footer-col { min-width: auto; }
         footer .footer-col h4 {
@@ -372,44 +421,33 @@
 </head>
 <body>
     <header>
-        <video class="header-video" autoplay muted loop playsinline>
-        </video>
-        <div class="header-inner">
-            <div class="header-logos">
-                <a href="/"><img src="/images/yy-logo-80x90.png" alt=""></a>
+    <video class="header-video" autoplay muted loop playsinline>
+    </video>
+    <div class="header-inner">
+        <div class="header-logos">
+            <a href="/"><img src="/images/yy-logo-80x90.png" alt="Yada Yah"></a>
+        </div>
+        <nav>
+            <div class="nav-row">
+                <a href="books">Books</a>
+                <a href="blog">Blog</a>
+                <a href="resources">Resources</a>
+                <a href="/Craig_Winn">Winn</a>
+                <a href="/timeline">Timeline</a>
             </div>
-            <nav>
-                <div class="nav-row">
-                    <a href="books">Books</a>                    <a href="blog">Blog</a>
-                    <a href="/media">Media</a>                </div>
-                <div class="nav-row">
-                    <a href="/translations">Translations</a>
-                    <a href="resources">Resources</a>
-                    <a href="/Craig_Winn">Winn</a>
-                    <a href="timeline" class="active">Timeline</a>
-                    <a href="ask">Ask</a>
-                </div>
-            </nav>
-        </div>
-    </header>
-
-<div class="sub-toolbar">
-    <a href="vlog">Vlog</a>
-    <a href="/music">Music</a>
-    <a href="invite">Invite</a>
-    <a href="/DoYouYada">DoYou?</a>
-    <a href="shorts">Shorts</a>
-</div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="/media">Media</a>
+                <a href="/music">Music</a>
+                <a href="/ask">Ask</a>
+            </div>
+        </nav>
+    </div>
+</header>
 
 
-    <div class="countdown-bar">
-        <div class="countdown-label" id="countdown-label">Yacob&#x2019;s Troubles &#x2013; Shabuw&#x2019;ah 5992 Yah</div>
-        <div class="countdown-timer" id="countdown">
-            <div class="countdown-unit"><span class="countdown-value" id="cd-days">--</span><span class="countdown-name">Days</span></div>
-            <div class="countdown-unit"><span class="countdown-value" id="cd-hours">--</span><span class="countdown-name">Hours</span></div>
-            <div class="countdown-unit"><span class="countdown-value" id="cd-mins">--</span><span class="countdown-name">Minutes</span></div>
-            <div class="countdown-unit"><span class="countdown-value" id="cd-secs">--</span><span class="countdown-name">Seconds</span></div>
-        </div>
+    <div class="tickers-container">
+        <div class="tickers-grid" id="tickers-grid"></div>
     </div>
 
     <h1 class="page-title" id="page-heading">Timeline</h1>
@@ -421,7 +459,7 @@
 <script>
 var API = 'api';
 var TL_SPACING = 30;
-var countdownTarget = new Date('2026-05-22T19:30:00+03:00').getTime();
+var tickerTargets = [];
 
 function esc(s) {
     if (!s) return '';
@@ -557,45 +595,67 @@ function positionTimeline() {
 }
 window.addEventListener('resize', positionTimeline);
 
-// Countdown timer
+// Load tickers from database
+fetch(API + '/tickers.php')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var grid = document.getElementById('tickers-grid');
+        var tickers = data.tickers || [];
+        if (tickers.length === 0) return;
+        if (tickers.length > 1) grid.classList.add('multi');
+
+        var html = '';
+        for (var i = 0; i < tickers.length; i++) {
+            var t = tickers[i];
+            var id = 'ticker-' + t.ticker_key;
+            html += '<div class="countdown-bar" style="background:' + esc(t.ticker_bg) + ';color:' + esc(t.ticker_color_countdown) + '">'
+                + '<div class="ticker-content">'
+                + '<div class="countdown-label" style="color:' + esc(t.ticker_color_heading) + '">' + esc(t.ticker_heading) + '</div>'
+                + (t.ticker_subheading ? '<div class="countdown-sublabel">' + esc(t.ticker_subheading) + '</div>' : '')
+                + '<div class="countdown-timer">'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-days">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Days</span></div>'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-hours">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Hours</span></div>'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-mins">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Minutes</span></div>'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-secs">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Seconds</span></div>'
+                + '</div></div></div>';
+            tickerTargets.push({ id: id, target: new Date(t.ticker_target).getTime() });
+        }
+        grid.innerHTML = html;
+    });
+
+// Countdown timer - updates all tickers
 (function() {
     function tick() {
-        var diff = countdownTarget - Date.now();
-        if (diff <= 0) {
-            document.getElementById('cd-days').textContent = '0';
-            document.getElementById('cd-hours').textContent = '0';
-            document.getElementById('cd-mins').textContent = '0';
-            document.getElementById('cd-secs').textContent = '0';
-            return;
+        for (var i = 0; i < tickerTargets.length; i++) {
+            var t = tickerTargets[i];
+            var diff = t.target - Date.now();
+            if (diff <= 0) diff = 0;
+            var d = Math.floor(diff / 86400000);
+            var h = Math.floor((diff % 86400000) / 3600000);
+            var m = Math.floor((diff % 3600000) / 60000);
+            var s = Math.floor((diff % 60000) / 1000);
+            var el;
+            el = document.getElementById(t.id + '-days'); if (el) el.textContent = d;
+            el = document.getElementById(t.id + '-hours'); if (el) el.textContent = h;
+            el = document.getElementById(t.id + '-mins'); if (el) el.textContent = m;
+            el = document.getElementById(t.id + '-secs'); if (el) el.textContent = s;
         }
-        var d = Math.floor(diff / 86400000);
-        var h = Math.floor((diff % 86400000) / 3600000);
-        var m = Math.floor((diff % 3600000) / 60000);
-        var s = Math.floor((diff % 60000) / 1000);
-        document.getElementById('cd-days').textContent = d;
-        document.getElementById('cd-hours').textContent = h;
-        document.getElementById('cd-mins').textContent = m;
-        document.getElementById('cd-secs').textContent = s;
     }
-    tick();
     setInterval(tick, 1000);
 })();
 
-// Load page config from DB (cached 24h, busted on admin save)
+// Load page config from DB
 fetch(API + '/page-timeline-config.php')
     .then(function(r) { return r.json(); })
     .then(function(cfg) {
         var root = document.documentElement;
-        if (cfg['ticker-primary-background']) root.style.setProperty('--ticker-bg',              cfg['ticker-primary-background']);
-        if (cfg['ticker-color-heading'])      root.style.setProperty('--ticker-heading-color',   cfg['ticker-color-heading']);
-        if (cfg['ticker-color-countdown'])    root.style.setProperty('--ticker-countdown-color', cfg['ticker-color-countdown']);
-        if (cfg['ticker-color-description'])  root.style.setProperty('--ticker-desc-color',      cfg['ticker-color-description']);
-        if (cfg['color-row-a'])               root.style.setProperty('--color-row-a',            cfg['color-row-a']);
-        if (cfg['color-row-b'])               root.style.setProperty('--color-row-b',            cfg['color-row-b']);
-        if (cfg['ticker-primary-heading'])    document.getElementById('countdown-label').textContent = cfg['ticker-primary-heading'];
-        if (cfg['heading'])                   document.getElementById('page-heading').textContent    = cfg['heading'];
-        if (cfg['ticker-primary-dtime'])      countdownTarget = new Date(cfg['ticker-primary-dtime']).getTime();
-        if (cfg['spacing-vertical'])          { TL_SPACING = parseInt(cfg['spacing-vertical']) || TL_SPACING; positionTimeline(); }
+        if (cfg['color-row-a'])            root.style.setProperty('--color-row-a', cfg['color-row-a']);
+        if (cfg['color-row-b'])            root.style.setProperty('--color-row-b', cfg['color-row-b']);
+        if (cfg['heading'])                document.getElementById('page-heading').textContent = cfg['heading'];
+        if (cfg['spacing-vertical'])       { TL_SPACING = parseInt(cfg['spacing-vertical']) || TL_SPACING; positionTimeline(); }
+        if (cfg['ticker-heading-size'])    root.style.setProperty('--ticker-heading-size', cfg['ticker-heading-size'] + 'em');
+        if (cfg['ticker-subheading-color']) root.style.setProperty('--ticker-subheading-color', cfg['ticker-subheading-color']);
+        if (cfg['ticker-subheading-size']) root.style.setProperty('--ticker-subheading-size', cfg['ticker-subheading-size'] + 'em');
     });
 
 // Load timeline data
@@ -639,24 +699,27 @@ fetch(API + '/timeline.php')
             </div>
             <div class="footer-col">
             <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;">
+            <div style="display:flex;gap:40px;align-items:flex-start;">
                 <div class="footer-links footer-links-1col">
                     <a href="/ask">Ask</a>
                     <a href="/blog">Blog</a>
                     <a href="/vlog">Vlog</a>
                     <a href="/media">Media</a>
+                    <a href="/books">Books</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/timeline">Timeline</a>
                     <a href="/translations">Translations</a>
                     <a href="/glossary">Glossary</a>
                     <a href="/dss">Dead Sea Scrolls</a>
+                    <a href="/10-7-memorial">10-7 Memorial</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/music">Music</a>
                     <a href="/invite">Invite</a>
                     <a href="/shorts">Shorts</a>
                     <a href="/Craig_Winn">Craig Winn</a>
+                    <a href="/resources">Resources</a>
                 </div>
             </div>
         </div>

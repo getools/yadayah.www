@@ -33,6 +33,49 @@ if (!move_uploaded_file($file['tmp_name'], $dest)) {
 $path = '/u/logo/' . $safeName;
 
 $db = getDb();
+
+// Resize image to configured logo-height if set (skip SVG)
+if ($ext !== 'svg') {
+    $hStmt = $db->prepare("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'config' AND setting_code = 'logo-height'");
+    $hStmt->execute();
+    $targetH = (int) $hStmt->fetchColumn();
+    if ($targetH > 0) {
+        $info = @getimagesize($dest);
+        if ($info) {
+            $origW = $info[0]; $origH = $info[1]; $mime = $info['mime'];
+            if ($origH > $targetH) {
+                $targetW = (int) round($origW * ($targetH / $origH));
+                $src = null;
+                switch ($mime) {
+                    case 'image/jpeg': $src = imagecreatefromjpeg($dest); break;
+                    case 'image/png':  $src = imagecreatefrompng($dest);  break;
+                    case 'image/gif':  $src = imagecreatefromgif($dest);  break;
+                    case 'image/webp': $src = imagecreatefromwebp($dest); break;
+                }
+                if ($src) {
+                    $dst = imagecreatetruecolor($targetW, $targetH);
+                    // Preserve transparency for PNG/GIF/WebP
+                    if (in_array($mime, ['image/png', 'image/gif', 'image/webp'])) {
+                        imagealphablending($dst, false);
+                        imagesavealpha($dst, true);
+                        $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+                        imagefilledrectangle($dst, 0, 0, $targetW, $targetH, $transparent);
+                    }
+                    imagecopyresampled($dst, $src, 0, 0, 0, 0, $targetW, $targetH, $origW, $origH);
+                    switch ($mime) {
+                        case 'image/jpeg': imagejpeg($dst, $dest, 90); break;
+                        case 'image/png':  imagepng($dst, $dest);      break;
+                        case 'image/gif':  imagegif($dst, $dest);      break;
+                        case 'image/webp': imagewebp($dst, $dest, 90); break;
+                    }
+                    imagedestroy($src);
+                    imagedestroy($dst);
+                }
+            }
+        }
+    }
+}
+
 // Check if the logo setting already exists
 $stmt = $db->prepare("SELECT setting_key FROM yy_setting WHERE setting_scope_code = 'config' AND setting_code = 'logo'");
 $stmt->execute();

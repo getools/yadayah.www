@@ -244,7 +244,7 @@
         footer .footer-inner {
             position: relative; z-index: 1;
             max-width: 1000px; margin: 0 auto;
-            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
         }
         footer .footer-col { min-width: auto; }
         footer .footer-col h4 {
@@ -296,33 +296,28 @@
         </div>
         <nav>
             <div class="nav-row">
-                <a href="books">Books</a>                <a href="blog">Blog</a>
-                <a href="/media">Media</a>            </div>
-            <div class="nav-row">
-                <a href="/translations">Translations</a>
+                <a href="books">Books</a>
+                <a href="blog">Blog</a>
                 <a href="resources">Resources</a>
                 <a href="/Craig_Winn">Winn</a>
                 <a href="/timeline">Timeline</a>
-                <a href="ask" class="active">Ask</a>
+            </div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="/media">Media</a>
+                <a href="/music">Music</a>
+                <a href="/ask">Ask</a>
             </div>
         </nav>
     </div>
 </header>
 
-<div class="sub-toolbar">
-    <a href="vlog">Vlog</a>
-    <a href="/music">Music</a>
-    <a href="invite">Invite</a>
-    <a href="/DoYouYada">DoYou?</a>
-    <a href="shorts">Shorts</a>
-</div>
-
 
 <div class="chat-wrapper">
     <div class="messages" id="messages">
         <div class="welcome" id="welcome">
-            <h2>Ask Yada</h2>
-            <p>Ask questions about scripture, prophecy, history, the Towrah, the Covenant, Hebrew translations, and more — drawing from nearly 40 books of research and translation and transcripts from hundreds of hours of shows.</p>
+            <h2 id="ask-title">Ask Yada</h2>
+            <p id="ask-summary">Ask questions about scripture, prophecy, history, the Towrah, the Covenant, Hebrew translations, and more — drawing from nearly 40 books of research and translation and transcripts from hundreds of hours of shows.</p>
             <div class="topics" id="topics"></div>
         </div>
     </div>
@@ -331,7 +326,7 @@
 
     <div class="error-overlay" id="error-overlay" onclick="dismissError(event)">
         <div class="error-dialog">
-            <h3>Something went wrong</h3>
+            <h3 id="error-title">Something went wrong</h3>
             <p id="error-text"></p>
             <button onclick="dismissError()">OK</button>
         </div>
@@ -375,7 +370,8 @@ function renderTopicTags() {
 
 loadQandaItems();
 
-function showError(msg) {
+function showError(msg, title) {
+    document.getElementById('error-title').textContent = title || 'Something went wrong';
     document.getElementById('error-text').textContent = msg;
     document.getElementById('error-overlay').classList.add('visible');
 }
@@ -520,7 +516,13 @@ function sendMessage() {
         if (!response.ok && response.headers.get('content-type')?.includes('application/json')) {
             return response.json().then(function(d) {
                 yadaDiv.remove();
-                showError(d.error || 'Something went wrong.');
+                clearTimeout(streamTimeout);
+                if (d.error === 'banned') {
+                    showError(d.ban_message || 'You are not permitted to use this service.', d.ban_title || 'Access Denied');
+                    document.querySelector('.chat-input').style.display = 'none';
+                } else {
+                    showError(d.error || 'Something went wrong.');
+                }
                 isStreaming = false;
                 document.getElementById('send-btn').disabled = false;
             });
@@ -634,24 +636,27 @@ function sendMessage() {
             </div>
             <div class="footer-col">
             <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;">
+            <div style="display:flex;gap:40px;align-items:flex-start;">
                 <div class="footer-links footer-links-1col">
                     <a href="/ask">Ask</a>
                     <a href="/blog">Blog</a>
                     <a href="/vlog">Vlog</a>
                     <a href="/media">Media</a>
+                    <a href="/books">Books</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/timeline">Timeline</a>
                     <a href="/translations">Translations</a>
                     <a href="/glossary">Glossary</a>
                     <a href="/dss">Dead Sea Scrolls</a>
+                    <a href="/10-7-memorial">10-7 Memorial</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/music">Music</a>
                     <a href="/invite">Invite</a>
                     <a href="/shorts">Shorts</a>
                     <a href="/Craig_Winn">Craig Winn</a>
+                    <a href="/resources">Resources</a>
                 </div>
             </div>
         </div>
@@ -666,6 +671,10 @@ function sendMessage() {
     if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
     if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+});})();
+(function(){fetch('/api/page-ask-config.php').then(function(r){return r.json();}).then(function(cfg){
+    if(cfg.title){var t=document.getElementById('ask-title');if(t)t.textContent=cfg.title;}
+    if(cfg.summary){var s=document.getElementById('ask-summary');if(s)s.textContent=cfg.summary;}
 });})();
 </script>
 </body>

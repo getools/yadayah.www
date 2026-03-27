@@ -50,7 +50,7 @@ if ($action === 'sync') {
     $updated  = 0;
     $skipped  = 0;
     $url = "https://graph.facebook.com/v23.0/$FB_PAGE_ID/posts"
-         . "?fields=message,full_picture,created_time,parent_id,attachments%7Bmedia%7Bimage%7D%7D"
+         . "?fields=message,full_picture,created_time,parent_id,type,attachments%7Bmedia%7Bimage%7D%7D"
          . "&access_token=$FB_PAGE_TOKEN&limit=25";
 
     while ($url) {
@@ -123,18 +123,19 @@ if ($action === 'sync') {
             if (mb_strlen($title) > 300) $title = mb_substr($title, 0, 297) . '...';
 
             $createdTime = $post['created_time'] ?? null;
+            $postType = $post['type'] ?? 'photo';
 
             // Upsert using post ID
             $existing = $db->prepare("SELECT feed_key FROM yy_feed_doyou WHERE feed_video_id = ?");
             $existing->execute([$postId]);
 
             if ($existing->fetch()) {
-                $stmt = $db->prepare("UPDATE yy_feed_doyou SET feed_title = ?, feed_thumbnail = ?, feed_create = ? WHERE feed_video_id = ?");
-                $stmt->execute([$title, $localThumb, $createdTime, $postId]);
+                $stmt = $db->prepare("UPDATE yy_feed_doyou SET feed_title = ?, feed_thumbnail = ?, feed_create = ?, feed_type = ? WHERE feed_video_id = ?");
+                $stmt->execute([$title, $localThumb, $createdTime, $postType, $postId]);
                 $updated++;
             } else {
-                $stmt = $db->prepare("INSERT INTO yy_feed_doyou (feed_video_id, feed_title, feed_thumbnail, feed_create) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$postId, $title, $localThumb, $createdTime]);
+                $stmt = $db->prepare("INSERT INTO yy_feed_doyou (feed_video_id, feed_title, feed_thumbnail, feed_create, feed_type) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$postId, $title, $localThumb, $createdTime, $postType]);
                 $inserted++;
             }
         }
@@ -154,7 +155,7 @@ $countStmt = $db->query("SELECT COUNT(*) FROM yy_feed_doyou WHERE feed_active_fl
 $total = (int)$countStmt->fetchColumn();
 
 if ($limit > 0) {
-    $stmt = $db->prepare("SELECT feed_key, feed_video_id, feed_title, feed_thumbnail, feed_create FROM yy_feed_doyou WHERE feed_active_flag = TRUE ORDER BY feed_create DESC LIMIT ?");
+    $stmt = $db->prepare("SELECT feed_key, feed_video_id, feed_title, feed_thumbnail, feed_create, feed_type FROM yy_feed_doyou WHERE feed_active_flag = TRUE ORDER BY feed_create DESC LIMIT ?");
     $stmt->execute([$limit]);
     jsonResponse(['videos' => $stmt->fetchAll(), 'page' => 1, 'total_pages' => 1, 'total' => $total]);
 }

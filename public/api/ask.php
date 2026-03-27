@@ -30,6 +30,25 @@ if ($_SESSION['ask_daily_count'] >= 10) {
 }
 $_SESSION['ask_daily_count']++;
 
+// --- IP ban check ---
+$ipAddr = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')[0]) ?: ($_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
+$pdo = getDb();
+$banStmt = $pdo->prepare("SELECT 1 FROM yy_ask_ip_ban WHERE ip_address = ?");
+$banStmt->execute([$ipAddr]);
+if ($banStmt->fetchColumn()) {
+    // Fetch configurable ban message
+    $banMsgStmt = $pdo->prepare("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'page' AND setting_group_code = 'ask' AND setting_code IN ('ban-title', 'ban-message')");
+    $banMsgStmt->execute();
+    $banCfg = [];
+    foreach ($banMsgStmt->fetchAll() as $r) $banCfg[$r['setting_code']] = $r['setting_value'];
+    $banTitle = $banCfg['ban-title'] ?? 'Access Denied';
+    $banMessage = $banCfg['ban-message'] ?? 'You are not permitted to use this service.';
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code(403);
+    echo json_encode(['error' => 'banned', 'ban_title' => $banTitle, 'ban_message' => $banMessage]);
+    exit;
+}
+
 // --- Parse request ---
 $input = json_decode(file_get_contents('php://input'), true);
 if (!$input || empty($input['question'])) {
@@ -49,7 +68,6 @@ $stripChars = "\u{02BF}\u{02BE}\u{02BC}\u{02BB}\u{02B9}\u{02BA}\u{2018}\u{2019}\
 $cleanQ = str_replace(str_split($stripChars), '', $question);
 $cleanQ = preg_replace('/\s{2,}/', ' ', trim($cleanQ));
 
-$pdo = getDb();
 $EXCLUDE_SERIES = 8;
 
 // Build OR-based tsquery for broader matching (any word matches, ranked by relevance)
@@ -72,8 +90,6 @@ $orQuery = buildOrTsquery($cleanQ);
 
 // --- Session tracking ---
 if (empty($_SESSION['ask_session_key'])) {
-    $ipAddr = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')[0]) ?: ($_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
-
     $sessStmt = $pdo->prepare("
         INSERT INTO yy_ask_session (session_id, ip_address, user_agent, referer, accept_language)
         VALUES (?, ?, ?, ?, ?)
@@ -607,6 +623,70 @@ if (!empty($sendDoneAfter) && $fullResponse && !$streamError) {
     flush();
 }
 
+// --- Fallback on overloaded: retry with another active Claude model ---
+$didFallback = false;
+$isOverloaded = ($httpCode === 529 || stripos($streamError, 'overload') !== false);
+if ($isOverloaded && $fullResponse === '') {
+    // Determine fallback model (swap between sonnet and haiku)
+    $fallbackKey = ($modelSetting === 'claude-sonnet') ? 'claude-haiku' : 'claude-sonnet';
+    $fallbackInfo = $MODEL_MAP[$fallbackKey] ?? null;
+    $fallbackApiKey = $fallbackInfo ? readEnvKey($fallbackInfo['env']) : '';
+
+    if ($fallbackApiKey) {
+        // Reset state
+        $streamError = '';
+        $fullResponse = '';
+        $inputTokens = 0;
+        $outputTokens = 0;
+        $sseBuffer = '';
+        $modelName = $fallbackInfo['name'];
+        $didFallback = true;
+
+        $body = json_encode([
+            'model' => $modelName,
+            'max_tokens' => 2048,
+            'stream' => true,
+            'system' => $systemPrompt,
+            'messages' => $messages,
+        ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
+
+        $headers = [
+            'Content-Type: application/json',
+            'x-api-key: ' . $fallbackApiKey,
+            'anthropic-version: 2023-06-01',
+        ];
+
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_WRITEFUNCTION => function($ch, $data) use (&$sseBuffer, $parseEvent) {
+                $sseBuffer .= $data;
+                while (($pos = strpos($sseBuffer, "\n")) !== false) {
+                    $line = trim(substr($sseBuffer, 0, $pos));
+                    $sseBuffer = substr($sseBuffer, $pos + 1);
+                    if ($line === '' || strpos($line, 'data: ') !== 0) continue;
+                    $payload = substr($line, 6);
+                    if ($payload === '[DONE]') {
+                        echo "data: [DONE]\n\n";
+                        flush();
+                        continue;
+                    }
+                    $event = json_decode($payload, true);
+                    if ($event) $parseEvent($event);
+                }
+                return strlen($data);
+            },
+        ]);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+    }
+}
+
 if ($curlError) {
     $streamError = 'Connection error: ' . $curlError;
     echo 'data: ' . json_encode(['error' => $streamError]) . "\n\n";
@@ -626,16 +706,18 @@ if ($curlError) {
 // --- Update log and session ---
 try {
     $durationMs = (int)((microtime(true) - $startTime) * 1000);
+    $logModel = $didFallback ? ($modelName . ' (fallback)') : $modelName;
     $updateLog = $pdo->prepare("
         UPDATE yy_ask_session_log
         SET ask_log_response = ?,
             ask_log_prompt_tokens = ?,
             ask_log_completion_tokens = ?,
             ask_log_error = NULLIF(?, ''),
-            ask_log_duration_ms = ?
+            ask_log_duration_ms = ?,
+            ask_log_model = ?
         WHERE ask_session_log_key = ?
     ");
-    $updateLog->execute([$fullResponse, $inputTokens, $outputTokens, $streamError, $durationMs, $askLogKey]);
+    $updateLog->execute([$fullResponse, $inputTokens, $outputTokens, $streamError, $durationMs, $logModel, $askLogKey]);
 
     $updateSess = $pdo->prepare("
         UPDATE yy_ask_session

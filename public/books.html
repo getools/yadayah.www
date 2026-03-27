@@ -17,7 +17,8 @@
             font-weight: normal; font-style: normal; font-display: swap;
         }
         *, *::before, *::after { box-sizing: border-box; }
-        body { font-family: "Nunito Sans", Arial, sans-serif; margin: 0; padding: 0; background: #fff; color: #000; }
+        html { height: 100%; }
+        body { font-family: "Nunito Sans", Arial, sans-serif; margin: 0; padding: 0; background: #fff; color: #000; min-height: 100vh; display: flex; flex-direction: column; }
         a { text-decoration: none; }
 
         /* ── Header ── */
@@ -72,7 +73,7 @@
         .sub-toolbar a:hover { color: #fff; }
         .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
         /* ── Main Content ── */
-        .content { max-width: 1024px; margin: 0 auto; padding: 0 20px 40px; }
+        .content { max-width: 1024px; margin: 0 auto; padding: 0 20px 40px; flex: 1; }
 
         /* ── Section heading ── */
         .section-anchor { scroll-margin-top: 20px; }
@@ -121,7 +122,7 @@
         footer .footer-inner {
             position: relative; z-index: 1;
             max-width: 1000px; margin: 0 auto;
-            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
         }
         footer .footer-col { min-width: auto; }
         footer .footer-col h4 {
@@ -274,26 +275,21 @@
         </div>
         <nav>
             <div class="nav-row">
-                <a href="books" class="active">Books</a>                <a href="blog">Blog</a>
-                <a href="/media">Media</a>            </div>
-            <div class="nav-row">
-                <a href="/translations">Translations</a>
+                <a href="books">Books</a>
+                <a href="blog">Blog</a>
                 <a href="resources">Resources</a>
                 <a href="/Craig_Winn">Winn</a>
                 <a href="/timeline">Timeline</a>
-                <a href="ask">Ask</a>
+            </div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="/media">Media</a>
+                <a href="/music">Music</a>
+                <a href="/ask">Ask</a>
             </div>
         </nav>
     </div>
 </header>
-
-<div class="sub-toolbar">
-    <a href="vlog">Vlog</a>
-    <a href="/music">Music</a>
-    <a href="invite">Invite</a>
-    <a href="/DoYouYada">DoYou?</a>
-    <a href="shorts">Shorts</a>
-</div>
 
 
 <div class="search-container">
@@ -427,48 +423,51 @@
 </div><!-- .content -->
 
 <footer>
-    <video class="footer-video" autoplay muted loop playsinline>
-    </video>
-    <div class="footer-inner">
-        <div class="footer-col">
-            <h4 data-config="footer-text-books">Books</h4>
-            <div class="footer-links footer-links-2col">
-                <a href="books#An_Intro_to_God">An Intro to God</a>
-                <a href="books#Yada_Yahowah">Yada Yahowah</a>
-                <a href="books#Observations">Observations</a>
-                <a href="books#Coming_Home">Coming Home</a>
-                <a href="books#Babel">Babel</a>
-                <a href="books#Twistianity">Twistianity</a>
-                <a href="books#God_Damn_Religion">God Damn Religion</a>
-                <a href="books#In_the_Company">In the Company</a>
+        <video class="footer-video" autoplay muted loop playsinline>
+        </video>
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4 data-config="footer-text-books">Books</h4>
+                <div class="footer-links footer-links-2col">
+                    <a href="books#An_Intro_to_God">An Intro to God</a>
+                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
+                    <a href="books#Observations">Observations</a>
+                    <a href="books#Coming_Home">Coming Home</a>
+                    <a href="books#Babel">Babel</a>
+                    <a href="books#Twistianity">Twistianity</a>
+                    <a href="books#God_Damn_Religion">God Damn Religion</a>
+                    <a href="books#In_the_Company">In the Company</a>
+                </div>
             </div>
-        </div>
-        <div class="footer-col">
+            <div class="footer-col">
             <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;">
+            <div style="display:flex;gap:40px;align-items:flex-start;">
                 <div class="footer-links footer-links-1col">
                     <a href="/ask">Ask</a>
                     <a href="/blog">Blog</a>
                     <a href="/vlog">Vlog</a>
                     <a href="/media">Media</a>
+                    <a href="/books">Books</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/timeline">Timeline</a>
                     <a href="/translations">Translations</a>
                     <a href="/glossary">Glossary</a>
                     <a href="/dss">Dead Sea Scrolls</a>
+                    <a href="/10-7-memorial">10-7 Memorial</a>
                 </div>
                 <div class="footer-links footer-links-1col">
                     <a href="/music">Music</a>
                     <a href="/invite">Invite</a>
                     <a href="/shorts">Shorts</a>
                     <a href="/Craig_Winn">Craig Winn</a>
+                    <a href="/resources">Resources</a>
                 </div>
             </div>
         </div>
-    </div>
-    <div class="footer-bottom">Copyright 2001 - 2026</div>
-</footer>
+        </div>
+        <div class="footer-bottom">Copyright 2001 - 2026</div>
+    </footer>
 
 <script>
 // ── Search Logic ──
