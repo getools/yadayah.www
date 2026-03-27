@@ -157,6 +157,13 @@ if ($method === 'POST') {
         $bodyHtml = isset($data['topic_body_html']) ? sanitizeHtml($data['topic_body_html']) : null;
         $categoryKey = (int)($data['category_key'] ?? 0) ?: null;
 
+        // Resolve category slug to key if provided
+        if (!$categoryKey && !empty($data['category'])) {
+            $stmt = $db->prepare("SELECT category_key FROM yy_community_category WHERE category_slug = ? AND category_active_flag = TRUE");
+            $stmt->execute([trim($data['category'])]);
+            $categoryKey = (int)$stmt->fetchColumn() ?: null;
+        }
+
         if (!$title) errorResponse('Title is required');
 
         // Check word filter
@@ -195,7 +202,7 @@ if ($method === 'POST') {
     if ($action === 'reply') {
         $tk = (int)($data['topic_key'] ?? 0);
         $body = trim($data['body'] ?? '');
-        $bodyHtml = isset($data['topic_body_html']) ? sanitizeHtml($data['topic_body_html']) : null;
+        $bodyHtml = isset($data['reply_body_html']) ? sanitizeHtml($data['reply_body_html']) : (isset($data['topic_body_html']) ? sanitizeHtml($data['topic_body_html']) : null);
 
         if (!$tk) errorResponse('topic_key is required');
         if (!$body && !$bodyHtml) errorResponse('body is required');

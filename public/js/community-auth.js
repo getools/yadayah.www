@@ -21,13 +21,18 @@ CommunityAuth.renderAuth = function() {
         var avEl = av
             ? '<img class="avatar" src="' + Community.esc(av) + '" alt="" onclick="window.location.hash=\'#profile\'" onerror="this.outerHTML=\'<span class=&quot;avatar-circle&quot; onclick=&quot;window.location.hash=\\\'#profile\\\'&quot;>' + Community.esc(Community.initials(nm)) + '</span>\'">'
             : '<span class="avatar-circle" onclick="window.location.hash=\'#profile\'">' + Community.esc(Community.initials(nm)) + '</span>';
-        bar.innerHTML = '<span id="notification-bell" class="notification-bell" onclick="CommunityNotifications.toggleDropdown(event)"></span>'
+        bar.innerHTML = '<span id="notification-bell" class="notification-bell" onclick="window.location.hash=\'#messages\'" style="cursor:pointer"></span>'
             + avEl
             + '<span class="user-name" onclick="window.location.hash=\'#profile\'">' + Community.esc(nm) + '</span>'
             + '<button class="btn btn-outline btn-sm" onclick="CommunityAuth.logout()">Logout</button>';
         CommunityNotifications.renderBell();
     } else {
         bar.innerHTML = '<button class="btn btn-primary" onclick="CommunityAuth.openLoginModal(\'login\')">Sign In</button>';
+    }
+    var catNav = document.getElementById('nav-categories');
+    if (catNav) {
+        var isMod = user && (user.roles.indexOf('admin') >= 0 || user.roles.indexOf('moderator') >= 0);
+        catNav.style.display = isMod ? '' : 'none';
     }
 };
 

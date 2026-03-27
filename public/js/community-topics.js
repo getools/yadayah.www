@@ -14,147 +14,91 @@ var REACTIONS = [
     { code: 'sad', emoji: '\uD83D\uDE22' }
 ];
 
-// ── Rich text editor ──
+// ── Rich text editor (TinyMCE) ──
+CommunityTopics._editors = {};
+
 CommunityTopics.createEditor = function(containerId, textareaId) {
     var container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = '<div class="editor-toolbar">'
-        + '<button type="button" class="editor-btn" data-cmd="bold" title="Bold"><strong>B</strong></button>'
-        + '<button type="button" class="editor-btn" data-cmd="italic" title="Italic"><em>I</em></button>'
-        + '<button type="button" class="editor-btn" data-cmd="link" title="Insert Link">&#128279;</button>'
-        + '<button type="button" class="editor-btn" data-cmd="image" title="Upload Image">&#128247;</button>'
-        + '<button type="button" class="editor-btn" data-cmd="code" title="Code Block">&lt;/&gt;</button>'
-        + '</div>'
-        + '<textarea id="' + textareaId + '" class="editor-textarea" placeholder="Write your message..."></textarea>'
-        + '<input type="file" id="' + textareaId + '-file" accept="image/*" style="display:none">'
-        + '<div id="' + textareaId + '-mentions" class="mention-dropdown" style="display:none"></div>';
+    container.innerHTML = '<textarea id="' + textareaId + '"></textarea>';
 
-    // Toolbar actions
-    container.querySelectorAll('.editor-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            var cmd = this.getAttribute('data-cmd');
-            var ta = document.getElementById(textareaId);
-            var start = ta.selectionStart;
-            var end = ta.selectionEnd;
-            var sel = ta.value.substring(start, end);
+    // Remove existing instance if any
+    var existing = tinymce.get(textareaId);
+    if (existing) existing.remove();
 
-            if (cmd === 'bold') {
-                CommunityTopics.insertAtCursor(ta, '**' + (sel || 'bold text') + '**');
-            } else if (cmd === 'italic') {
-                CommunityTopics.insertAtCursor(ta, '*' + (sel || 'italic text') + '*');
-            } else if (cmd === 'link') {
-                var url = prompt('Enter URL:');
-                if (url) CommunityTopics.insertAtCursor(ta, '[' + (sel || 'link text') + '](' + url + ')');
-            } else if (cmd === 'image') {
-                document.getElementById(textareaId + '-file').click();
-            } else if (cmd === 'code') {
-                CommunityTopics.insertAtCursor(ta, '```\n' + (sel || 'code here') + '\n```');
-            }
-        });
-    });
+    tinymce.init({
+        selector: '#' + textareaId,
+        base_url: '/js/tinymce',
+        plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table blockquote autoresize charmap',
+        toolbar: 'bold italic underline strikethrough | blocks | bullist numlist | blockquote codesample | link image media emoticons charmap | table | fullscreen',
+        menubar: false,
+        statusbar: true,
+        branding: false,
+        promotion: false,
+        placeholder: 'Write your message...',
+        min_height: 220,
+        max_height: 600,
+        autoresize_bottom_margin: 10,
+        skin: 'oxide',
+        content_css: 'default',
+        body_class: 'community-editor-body',
+        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.95rem; line-height: 1.6; color: #333; padding: 8px; } img { max-width: 100%; height: auto; border-radius: 6px; } a { color: #31345A; } blockquote { border-left: 3px solid #E5C86C; margin: 8px 0; padding: 8px 16px; background: #fafafa; } pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 8px; }',
 
-    // Image upload handler
-    document.getElementById(textareaId + '-file').addEventListener('change', function() {
-        var file = this.files[0];
-        if (!file) return;
-        var fd = new FormData();
-        fd.append('image', file);
-        var ta = document.getElementById(textareaId);
-        CommunityTopics.insertAtCursor(ta, '[uploading image...]');
-        Community.api('/api/community-image-upload.php', {
-            method: 'POST',
-            body: fd
-        }).then(function(data) {
-            if (data.url) {
-                ta.value = ta.value.replace('[uploading image...]', '![image](' + data.url + ')');
-            } else {
-                ta.value = ta.value.replace('[uploading image...]', '[upload failed]');
-                alert(data.error || 'Upload failed');
-            }
-        });
-        this.value = '';
-    });
+        // Image upload
+        images_upload_handler: function(blobInfo) {
+            return new Promise(function(resolve, reject) {
+                var fd = new FormData();
+                fd.append('image', blobInfo.blob(), blobInfo.filename());
+                fetch('/api/community-image-upload.php', {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: fd
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.url) resolve(data.url);
+                    else reject(data.error || 'Upload failed');
+                }).catch(function() { reject('Upload failed'); });
+            });
+        },
+        automatic_uploads: true,
+        file_picker_types: 'image',
+        images_reuse_filename: true,
 
-    // @mention handler
-    var ta = document.getElementById(textareaId);
-    ta.addEventListener('input', function() {
-        CommunityTopics.handleMention(ta, textareaId + '-mentions');
-    });
-    ta.addEventListener('keydown', function(e) {
-        var dd = document.getElementById(textareaId + '-mentions');
-        if (dd.style.display === 'none') return;
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Tab') {
-            var items = dd.querySelectorAll('.mention-item');
-            var active = dd.querySelector('.mention-item.active');
-            if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                if (active) active.click();
-                return;
-            }
-            e.preventDefault();
-            var idx = -1;
-            for (var i = 0; i < items.length; i++) {
-                if (items[i] === active) { idx = i; break; }
-            }
-            if (active) active.classList.remove('active');
-            if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
-            else idx = idx <= 0 ? items.length - 1 : idx - 1;
-            items[idx].classList.add('active');
+        // Media embed — allow YouTube, Rumble, etc.
+        media_live_embeds: true,
+        media_alt_source: false,
+        media_poster: false,
+
+        // Link settings
+        link_default_target: '_blank',
+        link_assume_external_targets: true,
+
+        // Paste cleanup
+        paste_as_text: false,
+        paste_block_drop: false,
+
+        // Block formats
+        block_formats: 'Paragraph=p; Heading 3=h3; Heading 4=h4; Blockquote=blockquote; Code=pre',
+
+        setup: function(editor) {
+            CommunityTopics._editors[textareaId] = editor;
         }
     });
 };
 
-CommunityTopics.insertAtCursor = function(ta, text) {
-    var start = ta.selectionStart;
-    var end = ta.selectionEnd;
-    ta.value = ta.value.substring(0, start) + text + ta.value.substring(end);
-    ta.selectionStart = ta.selectionEnd = start + text.length;
-    ta.focus();
+// Get editor HTML content
+CommunityTopics.getEditorHtml = function(textareaId) {
+    var editor = CommunityTopics._editors[textareaId];
+    if (editor) return editor.getContent();
+    var ta = document.getElementById(textareaId);
+    return ta ? ta.value : '';
 };
 
-CommunityTopics._mentionTimeout = null;
-CommunityTopics.handleMention = function(ta, dropdownId) {
-    var val = ta.value;
-    var pos = ta.selectionStart;
-    // Find @ before cursor
-    var before = val.substring(0, pos);
-    var atMatch = before.match(/@(\w{1,20})$/);
-    var dd = document.getElementById(dropdownId);
-
-    if (!atMatch) {
-        dd.style.display = 'none';
-        return;
-    }
-
-    var query = atMatch[1];
-    clearTimeout(CommunityTopics._mentionTimeout);
-    CommunityTopics._mentionTimeout = setTimeout(function() {
-        Community.api('/api/community-members.php?q=' + encodeURIComponent(query) + '&limit=5').then(function(data) {
-            var members = data.members || [];
-            if (!members.length) { dd.style.display = 'none'; return; }
-            var html = '';
-            for (var i = 0; i < members.length; i++) {
-                var m = members[i];
-                html += '<div class="mention-item' + (i === 0 ? ' active' : '') + '" data-handle="' + Community.esc(m.user_handle || m.user_display_name) + '">'
-                    + Community.avatarHtml(m.user_avatar, m.user_display_name, 'mention-avatar', m.user_last_active_dtime)
-                    + '<span>' + Community.esc(m.user_display_name) + (m.user_handle ? ' <small>@' + Community.esc(m.user_handle) + '</small>' : '') + '</span></div>';
-            }
-            dd.innerHTML = html;
-            dd.style.display = '';
-
-            dd.querySelectorAll('.mention-item').forEach(function(item) {
-                item.addEventListener('click', function() {
-                    var handle = this.getAttribute('data-handle');
-                    var atStart = before.lastIndexOf('@');
-                    ta.value = ta.value.substring(0, atStart) + '@' + handle + ' ' + ta.value.substring(pos);
-                    ta.selectionStart = ta.selectionEnd = atStart + handle.length + 2;
-                    ta.focus();
-                    dd.style.display = 'none';
-                });
-            });
-        });
-    }, 200);
+// Get plain text from editor
+CommunityTopics.getEditorText = function(textareaId) {
+    var editor = CommunityTopics._editors[textareaId];
+    if (editor) return editor.getContent({ format: 'text' });
+    var ta = document.getElementById(textareaId);
+    return ta ? ta.value : '';
 };
 
 // ── Load topic list ──
@@ -245,8 +189,8 @@ CommunityTopics.loadTopic = function(key) {
             + Community.categoryBadge(t.category_slug)
             + '</div>';
 
-        if (t.topic_body) {
-            html += '<div class="topic-body">' + Community.formatBody(t.topic_body) + '</div>';
+        if (t.topic_body_html || t.topic_body) {
+            html += '<div class="topic-body">' + (t.topic_body_html || Community.formatBody(t.topic_body)) + '</div>';
         }
 
         // Poll
@@ -275,7 +219,7 @@ CommunityTopics.loadTopic = function(key) {
                     + Community.clickableAvatar(r.user_key, r.user_avatar, r.user_display_name, 'reply-avatar', r.user_last_active_dtime)
                     + '<span onclick="Community.showProfileCard(event,' + r.user_key + ')" style="cursor:pointer;">' + Community.esc(r.user_display_name || 'Anonymous') + '</span>'
                     + ' &middot; ' + Community.timeAgo(r.reply_dtime) + '</div>'
-                    + '<div class="reply-body">' + Community.formatBody(r.reply_body) + '</div>';
+                    + '<div class="reply-body">' + (r.reply_body_html || Community.formatBody(r.reply_body)) + '</div>';
 
                 // Reply like + reactions
                 html += CommunityTopics.renderLikeAndReactions('reply', r.reply_key, r);
@@ -505,11 +449,12 @@ CommunityTopics.addPollOption = function() {
 
 CommunityTopics.submitTopic = function() {
     var title = document.getElementById('new-title').value.trim();
-    var body = document.getElementById('new-body').value.trim();
+    var bodyHtml = CommunityTopics.getEditorHtml('new-body');
+    var body = CommunityTopics.getEditorText('new-body');
     var category = document.getElementById('new-category').value;
     if (!title) { alert('Title is required'); return; }
 
-    var payload = { action: 'create_topic', title: title, body: body, category: category };
+    var payload = { action: 'create_topic', title: title, body: body, topic_body_html: bodyHtml, category: category };
 
     // Poll data
     if (document.getElementById('add-poll') && document.getElementById('add-poll').checked) {
@@ -549,11 +494,12 @@ CommunityTopics.submitTopic = function() {
 
 // ── Submit reply ──
 CommunityTopics.submitReply = function(topicKey) {
-    var body = document.getElementById('reply-body').value.trim();
-    if (!body) return;
+    var bodyHtml = CommunityTopics.getEditorHtml('reply-body');
+    var body = CommunityTopics.getEditorText('reply-body');
+    if (!body.trim()) return;
     Community.api('/api/community-topics.php', {
         method: 'POST',
-        body: { action: 'reply', topic_key: topicKey, body: body }
+        body: { action: 'reply', topic_key: topicKey, body: body, reply_body_html: bodyHtml }
     }).then(function(data) {
         if (data.saved) CommunityTopics.loadTopic(topicKey);
         else alert(data.error || 'Failed');

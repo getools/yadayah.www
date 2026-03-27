@@ -4,8 +4,49 @@
 
 window.CommunityDM = {};
 
+var _activeThreadKey = null;
+
+// ── Called by SSE when a new DM arrives ──
+CommunityDM.onNewMessage = function(msg) {
+    if (!msg || !msg.thread_key) return;
+    // If viewing this thread, append the message bubble live
+    if (_activeThreadKey === msg.thread_key) {
+        var container = document.getElementById('dm-messages');
+        if (!container) return;
+        var div = document.createElement('div');
+        div.className = 'dm-message';
+        div.innerHTML = '<div class="dm-message-bubble">' + Community.formatBody(msg.message_body) + '</div>'
+            + '<div class="dm-message-time">' + Community.timeAgo(msg.message_dtime) + '</div>';
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+
+        // Mark as read since user is viewing; clear bell instantly
+        CommunityNotifications.clearDmCount();
+        Community.api('/api/community-dm.php?thread=' + msg.thread_key);
+    }
+    // If viewing inbox, refresh it
+    var inboxEl = document.getElementById('view-messages');
+    if (inboxEl && inboxEl.style.display !== 'none' && !_activeThreadKey) {
+        CommunityDM.loadInbox();
+    }
+};
+
+// ── Update DM badge in nav ──
+CommunityDM.updateUnreadBadge = function(count) {
+    var nav = document.getElementById('nav-messages');
+    if (!nav) return;
+    // Strip existing badge
+    nav.innerHTML = nav.textContent.replace(/ \(\d+\)$/, '');
+    if (count > 0) {
+        nav.innerHTML = 'Messages <span class="dm-unread-badge">' + count + '</span>';
+    } else {
+        nav.textContent = 'Messages';
+    }
+};
+
 // ── Load inbox ──
 CommunityDM.loadInbox = function() {
+    _activeThreadKey = null;
     Community.showView('view-messages');
     var el = document.getElementById('view-messages');
     if (!Community.currentUser) {
@@ -45,6 +86,7 @@ CommunityDM.loadInbox = function() {
 
 // ── Load thread ──
 CommunityDM.loadThread = function(threadKey) {
+    _activeThreadKey = threadKey;
     Community.showView('view-messages');
     var el = document.getElementById('view-messages');
     if (!Community.currentUser) {
@@ -53,7 +95,11 @@ CommunityDM.loadThread = function(threadKey) {
     }
     el.innerHTML = '<div class="empty-state">Loading...</div>';
 
+    // Instantly clear bell badge — server marks read when API responds
+    CommunityNotifications.clearDmCount();
+
     Community.api('/api/community-dm.php?thread=' + threadKey).then(function(data) {
+
         var messages = data.messages || [];
         var thread = data.thread || {};
         var otherUser = thread.other_user || {};
@@ -115,6 +161,7 @@ CommunityDM.sendMessage = function(threadKey) {
 
 // ── Show compose new message ──
 CommunityDM.showCompose = function(recipientKey) {
+    _activeThreadKey = null;
     Community.showView('view-messages');
     var el = document.getElementById('view-messages');
 

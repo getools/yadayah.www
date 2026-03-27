@@ -145,8 +145,8 @@ Community.showView = function(id) {
     Community.hideAllViews();
     var el = document.getElementById(id);
     if (el) el.style.display = '';
-    // Update nav tabs
-    document.querySelectorAll('.community-nav a').forEach(function(a) {
+    // Update nav tabs + mod bar
+    document.querySelectorAll('.community-nav a, .community-mod-bar a').forEach(function(a) {
         a.classList.remove('active');
     });
     var navMap = {
@@ -156,7 +156,8 @@ Community.showView = function(id) {
         'view-messages': 'nav-messages',
         'view-members': 'nav-members',
         'view-bookmarks': 'nav-bookmarks',
-        'view-notifications': 'nav-notifications'
+        'view-notifications': 'nav-notifications',
+        'view-categories': 'nav-categories'
     };
     var navId = navMap[id];
     if (navId) {
@@ -203,6 +204,8 @@ Community.route = function() {
         CommunityTopics.loadBookmarks();
     } else if (hash === '#notifications') {
         CommunityNotifications.showAll();
+    } else if (hash === '#categories') {
+        Community.showCategoryManager();
     } else {
         CommunityTopics.loadTopics();
     }
@@ -486,6 +489,12 @@ Community.init = function() {
         CommunityAuth.renderVerifyBanner();
         if (data.user) {
             CommunityNotifications.startPolling();
+            // Show moderator toolbar for admin/moderator users
+            var roles = data.user.roles || [];
+            if (roles.indexOf('admin') >= 0 || roles.indexOf('moderator') >= 0) {
+                var modBar = document.getElementById('community-mod-bar');
+                if (modBar) modBar.style.display = '';
+            }
         }
         Community.route();
     }).catch(function() {

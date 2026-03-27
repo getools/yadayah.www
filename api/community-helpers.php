@@ -9,13 +9,17 @@
 function sanitizeHtml(string $html): string {
     // Allowed tags and their allowed attributes
     $allowed = [
-        'b' => [], 'i' => [], 'em' => [], 'strong' => [],
-        'a' => ['href'], 'p' => [], 'br' => [],
-        'ul' => [], 'ol' => [], 'li' => [],
+        'b' => [], 'i' => [], 'em' => [], 'strong' => [], 'u' => [], 's' => [], 'del' => [], 'sub' => [], 'sup' => [],
+        'a' => ['href', 'target', 'rel'], 'p' => [], 'br' => [], 'hr' => [], 'span' => ['style'],
+        'ul' => [], 'ol' => ['start'], 'li' => [],
         'blockquote' => [],
-        'img' => ['src', 'alt', 'width'],
-        'h3' => [], 'h4' => [],
-        'pre' => [], 'code' => [],
+        'img' => ['src', 'alt', 'width', 'height', 'style'],
+        'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [],
+        'pre' => ['class'], 'code' => ['class'],
+        'table' => [], 'thead' => [], 'tbody' => [], 'tr' => [], 'td' => ['colspan', 'rowspan'], 'th' => ['colspan', 'rowspan'],
+        'iframe' => ['src', 'width', 'height', 'frameborder', 'allowfullscreen', 'allow', 'style'],
+        'figure' => [], 'figcaption' => [],
+        'div' => ['style', 'class'],
     ];
 
     // Strip all tags except allowed
@@ -43,6 +47,16 @@ function sanitizeHtml(string $html): string {
                 $cleaned = strtolower(trim(preg_replace('/\s+/', '', $val)));
                 if (preg_match('/^javascript:/i', $cleaned)) continue;
                 if (preg_match('/^data:/i', $cleaned) && $name === 'href') continue;
+                // Restrict iframe src to trusted embed domains
+                if ($tag === 'iframe' && $name === 'src') {
+                    $host = parse_url($val, PHP_URL_HOST) ?: '';
+                    $trustedDomains = ['youtube.com', 'www.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com', 'rumble.com', 'player.vimeo.com', 'open.spotify.com', 'w.soundcloud.com', 'embed.music.apple.com', 'bandcamp.com'];
+                    $ok = false;
+                    foreach ($trustedDomains as $d) {
+                        if ($host === $d || substr($host, -strlen('.' . $d)) === '.' . $d) { $ok = true; break; }
+                    }
+                    if (!$ok) continue;
+                }
             }
             $attrStr .= ' ' . $name . '="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"';
         }

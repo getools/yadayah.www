@@ -64,6 +64,10 @@
         .community-nav a { flex: 1; text-align: center; padding: 10px 12px; text-decoration: none; color: #666; font-weight: 600; font-size: 0.85rem; transition: background 0.15s, color 0.15s; border-bottom: 3px solid transparent; }
         .community-nav a:hover { background: #fafafa; color: #31345A; }
         .community-nav a.active { color: #31345A; border-bottom-color: #E5C86C; background: #fafafa; }
+        .community-mod-bar { display: flex; gap: 2px; margin: -16px 0 20px; background: #f0f0f5; border-radius: 0 0 8px 8px; overflow: hidden; padding: 0 8px; }
+        .community-mod-bar a { padding: 6px 14px; text-decoration: none; color: #888; font-weight: 600; font-size: 0.78rem; transition: background 0.15s, color 0.15s; border-bottom: 2px solid transparent; }
+        .community-mod-bar a:hover { color: #31345A; background: #e8e8f0; }
+        .community-mod-bar a.active { color: #31345A; border-bottom-color: #E5C86C; }
         @media (max-width: 600px) {
             .community-nav { flex-wrap: wrap; }
             .community-nav a { flex: 0 0 33.33%; font-size: 0.78rem; padding: 8px 6px; }
@@ -125,9 +129,15 @@
         .topic-detail h2 { margin: 0 0 8px; font-size: 1.3rem; color: #31345A; }
         .topic-actions-top { display: flex; gap: 8px; flex-shrink: 0; }
         .topic-detail .topic-body { line-height: 1.7; margin: 16px 0 0; word-wrap: break-word; }
-        .topic-body img.post-image { max-width: 100%; border-radius: 6px; margin: 8px 0; }
-        .topic-body pre.code-block { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 0.85rem; }
-        .topic-body code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 0.85rem; }
+        .topic-body img, .reply-body img { max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0; }
+        .topic-body pre, .reply-body pre { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 0.85rem; }
+        .topic-body code, .reply-body code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 0.85rem; }
+        .topic-body blockquote, .reply-body blockquote { border-left: 3px solid #E5C86C; margin: 8px 0; padding: 8px 16px; background: #fafafa; }
+        .topic-body table, .reply-body table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+        .topic-body td, .topic-body th, .reply-body td, .reply-body th { border: 1px solid #ddd; padding: 8px; }
+        .topic-body th, .reply-body th { background: #f8f8f8; font-weight: 600; }
+        .topic-body iframe, .reply-body iframe { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+        .topic-body h2, .topic-body h3, .topic-body h4, .reply-body h3, .reply-body h4 { margin: 12px 0 6px; color: #31345A; }
         .topic-author { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #666; flex-wrap: wrap; }
         .topic-author img { width: 28px; height: 28px; border-radius: 50%; }
         .back-link { display: inline-block; margin-bottom: 16px; color: #31345A; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
@@ -143,9 +153,6 @@
         .reply-author { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #666; margin-bottom: 8px; }
         .reply-author img { width: 24px; height: 24px; border-radius: 50%; }
         .reply-body { line-height: 1.6; word-wrap: break-word; }
-        .reply-body img.post-image { max-width: 100%; border-radius: 6px; margin: 6px 0; }
-        .reply-body pre.code-block { background: #f5f5f5; padding: 10px 14px; border-radius: 6px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 0.85rem; }
-        .reply-body code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 0.85rem; }
         .reply-actions { margin-top: 6px; text-align: right; }
 
         /* ── Like & Reaction Bar ── */
@@ -364,16 +371,54 @@
         .verify-banner a { color: #31345A; font-weight: 600; cursor: pointer; text-decoration: underline; }
 
         /* ── Footer ── */
-        footer { background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat; position: relative; overflow: hidden; padding: 30px 20px 20px; color: #E5C86C; }
-        footer .footer-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; transform: translate(-50%, -50%); object-fit: cover; z-index: 0; }
-        footer .footer-inner { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+        footer {
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+            padding: 30px 20px 20px;
+            color: #E5C86C;
+        }
+        footer .footer-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        footer .footer-inner {
+            position: relative; z-index: 1;
+            max-width: 1000px; margin: 0 auto;
+            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
+        }
         footer .footer-col { min-width: auto; }
-        footer .footer-col h4 { font-family: 'Julius Sans One', sans-serif; font-size: 1rem; color: #E5C86C; border-bottom: 1px solid rgba(229,200,108,0.3); padding-bottom: 6px; margin: 0 0 10px; }
-        footer .footer-col a { display: block; font-size: 0.9rem; color: rgba(255,255,255,0.8); text-decoration: none; padding: 3px 0; }
-        footer .footer-col a:hover { color: #fff; text-decoration: underline; }
-        footer .footer-links-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
-        footer .footer-links-1col { display: flex; flex-direction: column; }
-        footer .footer-bottom { text-align: center; margin-top: 20px; font-size: 0.8rem; color: rgba(255,255,255,0.4); position: relative; z-index: 1; }
+        footer .footer-col h4 {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 1rem;
+            color: #E5C86C;
+            border-bottom: 1px solid rgba(229,200,108,0.3);
+            padding-bottom: 6px;
+            margin: 0 0 10px;
+        }
+        footer .footer-col a {
+            display: block;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 3px 0;
+        }
+        footer .footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px 20px;
+        }
+        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
+        footer .footer-links-1col { grid-template-columns: 1fr; }
+        footer .footer-col a:hover { color: #fff; }
+        footer .footer-bottom {
+            position: relative; z-index: 1;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+        }
     </style>
 </head>
 <body>
@@ -399,7 +444,10 @@
         <a href="#messages" id="nav-messages">Messages</a>
         <a href="#members" id="nav-members">Members</a>
         <a href="#bookmarks" id="nav-bookmarks">Bookmarks</a>
-        <a href="#notifications" id="nav-notifications">Notifications</a>
+    </div>
+    <!-- Moderator Toolbar -->
+    <div class="community-mod-bar" id="community-mod-bar" style="display:none">
+        <a href="#categories" id="nav-categories">Categories</a>
     </div>
 
     <!-- Topics View -->
@@ -452,7 +500,8 @@
 <div id="notification-dropdown"></div>
 
 <footer>
-    <video class="footer-video" autoplay muted loop playsinline></video>
+    <video class="footer-video" autoplay muted loop playsinline>
+    </video>
     <div class="footer-inner">
         <div class="footer-col">
             <h4 data-config="footer-text-books">Books</h4>
@@ -471,13 +520,25 @@
             <h4 data-config="footer-text-links">Links</h4>
             <div style="display:flex;gap:40px;align-items:flex-start;">
                 <div class="footer-links footer-links-1col">
-                    <a href="/ask">Ask</a><a href="/blog">Blog</a><a href="/vlog">Vlog</a><a href="/media">Media</a><a href="/books">Books</a>
+                    <a href="/ask">Ask</a>
+                    <a href="/blog">Blog</a>
+                    <a href="/vlog">Vlog</a>
+                    <a href="/media">Media</a>
+                    <a href="/books">Books</a>
                 </div>
                 <div class="footer-links footer-links-1col">
-                    <a href="/timeline">Timeline</a><a href="/translations">Translations</a><a href="/glossary">Glossary</a><a href="/dss">Dead Sea Scrolls</a><a href="/community">Community</a>
+                    <a href="/timeline">Timeline</a>
+                    <a href="/translations">Translations</a>
+                    <a href="/glossary">Glossary</a>
+                    <a href="/dss">Dead Sea Scrolls</a>
+                    <a href="/10-7-memorial">10-7 Memorial</a>
                 </div>
                 <div class="footer-links footer-links-1col">
-                    <a href="/music">Music</a><a href="/invite">Invite</a><a href="/Craig_Winn">Craig Winn</a><a href="/resources">Resources</a>
+                    <a href="/music">Music</a>
+                    <a href="/invite">Invite</a>
+                    <a href="/shorts">Shorts</a>
+                    <a href="/Craig_Winn">Craig Winn</a>
+                    <a href="/resources">Resources</a>
                 </div>
             </div>
         </div>
@@ -485,13 +546,14 @@
     <div class="footer-bottom">Copyright 2001 - 2026</div>
 </footer>
 
+<script src="/js/tinymce/tinymce.min.js"></script>
 <script src="/js/bg-video.js"></script>
-<script src="/js/community.js?v=7"></script>
-<script src="/js/community-auth.js?v=6"></script>
-<script src="/js/community-topics.js?v=6"></script>
-<script src="/js/community-notifications.js?v=6"></script>
+<script src="/js/community.js?v=8"></script>
+<script src="/js/community-auth.js?v=10"></script>
+<script src="/js/community-topics.js?v=7"></script>
+<script src="/js/community-notifications.js?v=11"></script>
 <script src="/js/community-profile.js?v=6"></script>
-<script src="/js/community-dm.js?v=6"></script>
+<script src="/js/community-dm.js?v=9"></script>
 <script src="/js/community-search.js?v=6"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>

@@ -1,19 +1,21 @@
-/* ── community-notifications.js ── Bell, dropdown, notification list ── */
+/* ── community-notifications.js ── Bell, dropdown, SSE real-time updates ── */
 (function() {
 'use strict';
 
 window.CommunityNotifications = {};
 
-var _pollInterval = null;
+var _eventSource = null;
 var _unreadCount = 0;
+var _unreadDm = 0;
 
 // ── Render bell icon with badge ──
 CommunityNotifications.renderBell = function() {
     var bell = document.getElementById('notification-bell');
     if (!bell) return;
-    if (_unreadCount > 0) {
+    var total = _unreadCount + _unreadDm;
+    if (total > 0) {
         bell.classList.add('has-unread');
-        bell.innerHTML = '&#128276;<span class="notif-badge">' + (_unreadCount > 99 ? '99+' : _unreadCount) + '</span>';
+        bell.innerHTML = '&#128276;<span class="notif-badge">' + (total > 99 ? '99+' : total) + '</span>';
     } else {
         bell.classList.remove('has-unread');
         bell.innerHTML = '&#128276;';
@@ -86,29 +88,80 @@ CommunityNotifications.markAllRead = function() {
     });
 };
 
-// ── Fetch unread count ──
+// ── Fetch unread count (fallback, used after mark_read) ──
 CommunityNotifications.fetchUnread = function() {
     if (!Community.currentUser) return;
     Community.api('/api/community-session.php').then(function(data) {
-        _unreadCount = data.unread_notifications || 0;
+        if (data.user) {
+            _unreadCount = data.user.unread_notifications || 0;
+            _unreadDm = data.user.unread_dm || 0;
+        }
         CommunityNotifications.renderBell();
     });
 };
 
-// ── Poll for new notifications every 30s ──
+// ── Start real-time updates: SSE + polling fallback ──
 CommunityNotifications.startPolling = function() {
     CommunityNotifications.fetchUnread();
-    if (_pollInterval) clearInterval(_pollInterval);
-    _pollInterval = setInterval(function() {
+
+    // Close any existing connections
+    CommunityNotifications.stopPolling();
+
+    // Always poll every 10s as baseline (covers SSE failures, read-receipts, etc.)
+    CommunityNotifications._fallbackInterval = setInterval(function() {
         CommunityNotifications.fetchUnread();
-    }, 30000);
+    }, 10000);
+
+    // Layer SSE on top for instant push of new messages
+    if (window.EventSource) {
+        _eventSource = new EventSource('/api/community-sse.php');
+
+        _eventSource.addEventListener('counts', function(e) {
+            var data = JSON.parse(e.data);
+            _unreadCount = data.unread_notifications || 0;
+            _unreadDm = data.unread_dm || 0;
+            CommunityNotifications.renderBell();
+            if (typeof CommunityDM !== 'undefined' && CommunityDM.updateUnreadBadge) {
+                CommunityDM.updateUnreadBadge(_unreadDm);
+            }
+        });
+
+        _eventSource.addEventListener('dm', function(e) {
+            var msg = JSON.parse(e.data);
+            if (typeof CommunityDM !== 'undefined' && CommunityDM.onNewMessage) {
+                CommunityDM.onNewMessage(msg);
+            }
+        });
+
+        _eventSource.addEventListener('reconnect', function() {
+            if (_eventSource) { _eventSource.close(); _eventSource = null; }
+            setTimeout(function() {
+                if (Community.currentUser && !_eventSource) {
+                    _eventSource = new EventSource('/api/community-sse.php');
+                }
+            }, 1000);
+        });
+    }
 };
 
 CommunityNotifications.stopPolling = function() {
-    if (_pollInterval) {
-        clearInterval(_pollInterval);
-        _pollInterval = null;
+    if (_eventSource) {
+        _eventSource.close();
+        _eventSource = null;
     }
+    if (CommunityNotifications._fallbackInterval) {
+        clearInterval(CommunityNotifications._fallbackInterval);
+        CommunityNotifications._fallbackInterval = null;
+    }
+};
+
+// ── Expose unread DM count ──
+CommunityNotifications.getUnreadDm = function() { return _unreadDm; };
+
+// ── Instantly clear DM count (called when user views messages) ──
+CommunityNotifications.clearDmCount = function() {
+    _unreadDm = 0;
+    CommunityNotifications.renderBell();
 };
 
 // ── Show all notifications view ──

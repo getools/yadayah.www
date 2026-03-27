@@ -48,6 +48,16 @@ if (!empty($_SESSION['user_key'])) {
         $nStmt->execute([$userKey]);
         $user['unread_notifications'] = (int)$nStmt->fetchColumn();
 
+        // Unread DM count (messages from others after my last_read_dtime)
+        $dmStmt = $db->prepare("
+            SELECT COUNT(*) FROM yy_community_dm_message m
+            JOIN yy_community_dm_participant p ON p.thread_key = m.thread_key AND p.user_key = ?
+            WHERE m.user_key != ? AND m.message_active_flag = TRUE
+              AND m.message_dtime > COALESCE(p.last_read_dtime, '1970-01-01')
+        ");
+        $dmStmt->execute([$userKey, $userKey]);
+        $user['unread_dm'] = (int)$dmStmt->fetchColumn();
+
         jsonResponse(['user' => $user]);
     }
 }
