@@ -120,8 +120,9 @@ CommunityNotifications.startPolling = function() {
             _unreadCount = data.unread_notifications || 0;
             _unreadDm = data.unread_dm || 0;
             CommunityNotifications.renderBell();
-            if (typeof CommunityDM !== 'undefined' && CommunityDM.updateUnreadBadge) {
-                CommunityDM.updateUnreadBadge(_unreadDm);
+            if (typeof CommunityDM !== 'undefined') {
+                if (CommunityDM.updateUnreadBadge) CommunityDM.updateUnreadBadge(_unreadDm);
+                if (CommunityDM.updateFabBadge) CommunityDM.updateFabBadge(_unreadDm);
             }
         });
 

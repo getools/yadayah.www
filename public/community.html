@@ -298,6 +298,36 @@
         .dm-recipient-search { position: relative; }
         .dm-recipient-search .mention-dropdown { position: absolute; top: 100%; left: 0; right: 0; }
 
+        /* ── Chat Popover (Messenger-style) ── */
+        .chat-fab { position: fixed; bottom: 24px; right: 24px; z-index: 8000; width: 56px; height: 56px; border-radius: 50%; background: #31345A; color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: transform 0.15s, background 0.15s; }
+        .chat-fab:hover { background: #4a4e7a; transform: scale(1.08); }
+        .chat-fab .fab-badge { position: absolute; top: -2px; right: -2px; background: #c0392b; color: #fff; font-size: 0.6rem; padding: 2px 6px; border-radius: 10px; font-weight: 700; }
+        .chat-popover { display: none; position: fixed; bottom: 90px; right: 24px; z-index: 8001; width: 370px; max-height: 520px; background: #fff; border-radius: 12px; box-shadow: 0 8px 40px rgba(0,0,0,0.2); flex-direction: column; overflow: hidden; }
+        .chat-popover.open { display: flex; }
+        .chat-pop-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #31345A; color: #fff; font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
+        .chat-pop-header button { background: none; border: none; color: #fff; cursor: pointer; font-size: 1.2rem; padding: 0 4px; opacity: 0.7; }
+        .chat-pop-header button:hover { opacity: 1; }
+        .chat-pop-body { flex: 1; overflow-y: auto; }
+        .chat-pop-thread { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.1s; }
+        .chat-pop-thread:hover { background: #fafafa; }
+        .chat-pop-thread.unread { background: #f0f4ff; }
+        .chat-pop-thread .cp-name { font-weight: 600; font-size: 0.85rem; color: #31345A; }
+        .chat-pop-thread .cp-preview { font-size: 0.78rem; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .chat-pop-thread .cp-time { font-size: 0.68rem; color: #bbb; margin-left: auto; flex-shrink: 0; }
+        .chat-pop-msgs { flex: 1; overflow-y: auto; padding: 10px 14px; max-height: 340px; min-height: 200px; }
+        .chat-pop-msgs .dm-message { margin-bottom: 8px; }
+        .chat-pop-msgs .dm-message-bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: #f0f0f0; font-size: 0.85rem; line-height: 1.4; word-wrap: break-word; }
+        .chat-pop-msgs .dm-message.mine { align-items: flex-end; }
+        .chat-pop-msgs .dm-message.mine .dm-message-bubble { background: #31345A; color: #fff; border-radius: 14px 14px 4px 14px; }
+        .chat-pop-msgs .dm-message-time { font-size: 0.62rem; color: #bbb; margin-top: 2px; padding: 0 4px; }
+        .chat-pop-compose { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; flex-shrink: 0; }
+        .chat-pop-compose input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 0.85rem; font-family: inherit; outline: none; }
+        .chat-pop-compose input:focus { border-color: #31345A; }
+        .chat-pop-compose button { background: #31345A; color: #fff; border: none; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+        .chat-pop-compose button:hover { background: #4a4e7a; }
+        .chat-pop-empty { text-align: center; padding: 40px 20px; color: #999; font-size: 0.85rem; }
+        @media (max-width: 480px) { .chat-popover { width: calc(100vw - 20px); right: 10px; bottom: 80px; max-height: 70vh; } .chat-fab { bottom: 16px; right: 16px; } }
+
         /* ── Member Directory ── */
         .members-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
         .members-search-wrap { flex: 1; min-width: 200px; }
@@ -499,6 +529,22 @@
 <!-- Notification Dropdown (in auth-bar, positioned by JS) -->
 <div id="notification-dropdown"></div>
 
+<!-- Chat Popover (Messenger-style) -->
+<button class="chat-fab" id="chat-fab" style="display:none" onclick="CommunityDM.togglePopover()">
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    <span class="fab-badge" id="chat-fab-badge" style="display:none"></span>
+</button>
+<div class="chat-popover" id="chat-popover">
+    <div class="chat-pop-header">
+        <span id="chat-pop-title">Messages</span>
+        <div>
+            <button id="chat-pop-back" style="display:none" onclick="CommunityDM.popInbox()" title="Back">&#8592;</button>
+            <button onclick="CommunityDM.togglePopover()" title="Close">&times;</button>
+        </div>
+    </div>
+    <div class="chat-pop-body" id="chat-pop-body"></div>
+</div>
+
 <footer>
     <video class="footer-video" autoplay muted loop playsinline>
     </video>
@@ -548,12 +594,12 @@
 
 <script src="/js/tinymce/tinymce.min.js"></script>
 <script src="/js/bg-video.js"></script>
-<script src="/js/community.js?v=8"></script>
+<script src="/js/community.js?v=21"></script>
 <script src="/js/community-auth.js?v=10"></script>
-<script src="/js/community-topics.js?v=7"></script>
-<script src="/js/community-notifications.js?v=12"></script>
+<script src="/js/community-topics.js?v=20"></script>
+<script src="/js/community-notifications.js?v=21"></script>
 <script src="/js/community-profile.js?v=6"></script>
-<script src="/js/community-dm.js?v=9"></script>
+<script src="/js/community-dm.js?v=21"></script>
 <script src="/js/community-search.js?v=6"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>

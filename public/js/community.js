@@ -489,6 +489,7 @@ Community.init = function() {
         CommunityAuth.renderVerifyBanner();
         if (data.user) {
             CommunityNotifications.startPolling();
+            CommunityDM.initPopover();
             // Show moderator toolbar for admin/moderator users
             var roles = data.user.roles || [];
             if (roles.indexOf('admin') >= 0 || roles.indexOf('moderator') >= 0) {
