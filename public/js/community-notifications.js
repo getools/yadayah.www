@@ -12,10 +12,9 @@ var _unreadDm = 0;
 CommunityNotifications.renderBell = function() {
     var bell = document.getElementById('notification-bell');
     if (!bell) return;
-    var total = _unreadCount + _unreadDm;
-    if (total > 0) {
+    if (_unreadDm > 0) {
         bell.classList.add('has-unread');
-        bell.innerHTML = '&#128276;<span class="notif-badge">' + (total > 99 ? '99+' : total) + '</span>';
+        bell.innerHTML = '&#128276;<span class="notif-badge">' + (_unreadDm > 99 ? '99+' : _unreadDm) + '</span>';
     } else {
         bell.classList.remove('has-unread');
         bell.innerHTML = '&#128276;';
