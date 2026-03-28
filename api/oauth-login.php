@@ -17,6 +17,11 @@ if ($return && preg_match('#^/admin#', $return)) {
     unset($_SESSION['oauth_return']);
 }
 
+// Merge mode: OAuth is being used to verify ownership of another account
+if (!empty($_GET['merge']) && !empty($_SESSION['user_key'])) {
+    $_SESSION['merge_via_oauth'] = true;
+}
+
 if ($provider === 'google') {
     $stmt = $db->prepare("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_group_code = 'oauth' AND setting_code IN ('oauth-google-client-id')");
     $stmt->execute();

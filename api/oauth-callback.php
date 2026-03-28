@@ -125,6 +125,27 @@ if ($provider === 'google') {
         }
     }
 
+    // Merge mode: store target instead of logging in
+    if (!empty($_SESSION['merge_via_oauth']) && !empty($_SESSION['user_key'])) {
+        unset($_SESSION['merge_via_oauth']);
+        if ((int)$userKey === (int)$_SESSION['user_key']) {
+            header('Location: /community#merge-error&reason=same');
+            exit;
+        }
+        $u = $db->prepare("SELECT user_display_name, user_email FROM yy_user WHERE user_key = ?");
+        $u->execute([$userKey]);
+        $info = $u->fetch();
+        $_SESSION['merge_target'] = [
+            'user_key' => (int)$userKey,
+            'display_name' => $info['user_display_name'] ?? $name,
+            'email' => $info['user_email'] ?? $email,
+            'token' => bin2hex(random_bytes(16)),
+            'expires' => time() + 600,
+        ];
+        header('Location: /community#merge-confirm');
+        exit;
+    }
+
     // Set session
     $_SESSION['user_key'] = $userKey;
     $_SESSION['user_display_name'] = $name;
@@ -210,6 +231,15 @@ if ($provider === 'facebook') {
             $userKey = $stmt->fetchColumn();
             $db->prepare("INSERT INTO yy_user_role (user_key, role_key) VALUES (?, 1)")->execute([$userKey]);
         }
+    }
+
+    // Merge mode
+    if (!empty($_SESSION['merge_via_oauth']) && !empty($_SESSION['user_key'])) {
+        unset($_SESSION['merge_via_oauth']);
+        if ((int)$userKey === (int)$_SESSION['user_key']) { header('Location: /community#merge-error&reason=same'); exit; }
+        $u = $db->prepare("SELECT user_display_name, user_email FROM yy_user WHERE user_key = ?"); $u->execute([$userKey]); $info = $u->fetch();
+        $_SESSION['merge_target'] = ['user_key' => (int)$userKey, 'display_name' => $info['user_display_name'] ?? $name, 'email' => $info['user_email'] ?? $email, 'token' => bin2hex(random_bytes(16)), 'expires' => time() + 600];
+        header('Location: /community#merge-confirm'); exit;
     }
 
     $_SESSION['user_key'] = $userKey;

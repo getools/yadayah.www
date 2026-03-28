@@ -211,6 +211,12 @@ Community.route = function() {
         CommunityNotifications.showAll();
     } else if (hash === '#categories') {
         Community.showCategoryManager();
+    } else if (hash === '#merge-confirm') {
+        CommunityProfile.handleMergeReturn();
+    } else if (hash.indexOf('#merge-error') === 0) {
+        var reason = hash.indexOf('reason=same') >= 0 ? 'That is your current account.' : 'No account found for that login.';
+        alert(reason);
+        window.location.hash = '#profile';
     } else {
         CommunityTopics.loadTopics();
     }
