@@ -106,41 +106,52 @@ CommunityNotifications.startPolling = function() {
     // Close any existing connections
     CommunityNotifications.stopPolling();
 
-    // Always poll every 10s as baseline (covers SSE failures, read-receipts, etc.)
+    // Always poll every 30s as baseline fallback
     CommunityNotifications._fallbackInterval = setInterval(function() {
         CommunityNotifications.fetchUnread();
-    }, 10000);
+    }, 30000);
 
-    // Layer SSE on top for instant push of new messages
+    // Layer SSE on top for near-instant push
     if (window.EventSource) {
         _eventSource = new EventSource('/api/community-sse.php');
 
         _eventSource.addEventListener('counts', function(e) {
-            var data = JSON.parse(e.data);
-            _unreadCount = data.unread_notifications || 0;
-            _unreadDm = data.unread_dm || 0;
-            CommunityNotifications.renderBell();
-            if (typeof CommunityDM !== 'undefined') {
-                if (CommunityDM.updateUnreadBadge) CommunityDM.updateUnreadBadge(_unreadDm);
-                if (CommunityDM.updateFabBadge) CommunityDM.updateFabBadge(_unreadDm);
-            }
+            try {
+                var data = JSON.parse(e.data);
+                _unreadCount = data.unread_notifications || 0;
+                _unreadDm = data.unread_dm || 0;
+                CommunityNotifications.renderBell();
+                if (typeof CommunityDM !== 'undefined' && CommunityDM.updateUnreadBadge) {
+                    CommunityDM.updateUnreadBadge(_unreadDm);
+                }
+                if (typeof CommunityDM !== 'undefined' && CommunityDM.updateFabBadge) {
+                    CommunityDM.updateFabBadge(_unreadDm);
+                }
+            } catch (ex) {}
         });
 
         _eventSource.addEventListener('dm', function(e) {
-            var msg = JSON.parse(e.data);
-            if (typeof CommunityDM !== 'undefined' && CommunityDM.onNewMessage) {
-                CommunityDM.onNewMessage(msg);
-            }
+            try {
+                var msg = JSON.parse(e.data);
+                if (typeof CommunityDM !== 'undefined' && CommunityDM.onNewMessage) {
+                    CommunityDM.onNewMessage(msg);
+                }
+            } catch (ex) {}
         });
 
         _eventSource.addEventListener('reconnect', function() {
             if (_eventSource) { _eventSource.close(); _eventSource = null; }
             setTimeout(function() {
                 if (Community.currentUser && !_eventSource) {
-                    _eventSource = new EventSource('/api/community-sse.php');
+                    CommunityNotifications.startPolling();
                 }
-            }, 1000);
+            }, 2000);
         });
+
+        _eventSource.onerror = function() {
+            // SSE failed — fallback polling is already running
+            if (_eventSource) { _eventSource.close(); _eventSource = null; }
+        };
     }
 };
 

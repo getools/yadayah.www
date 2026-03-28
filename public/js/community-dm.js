@@ -5,6 +5,36 @@
 window.CommunityDM = {};
 
 var _activeThreadKey = null;
+var _audioCtx = null;
+
+// ── Notification chime (two-tone, no external file needed) ──
+function playChime() {
+    try {
+        if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var ctx = _audioCtx;
+        var now = ctx.currentTime;
+        var gain = ctx.createGain();
+        gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.51);
+
+        // First tone
+        var osc1 = ctx.createOscillator();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(830, now);
+        osc1.connect(gain);
+        osc1.start(now);
+        osc1.stop(now + 0.127);
+
+        // Second tone (higher)
+        var osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1100, now + 0.127);
+        osc2.connect(gain);
+        osc2.start(now + 0.127);
+        osc2.stop(now + 0.34);
+    } catch(e) {}
+}
 
 // ── Media upload helper (shared across all compose areas) ──
 function uploadMedia(file, callback) {
@@ -493,6 +523,11 @@ var _origOnNewMessage = CommunityDM.onNewMessage;
 CommunityDM.onNewMessage = function(msg) {
     _origOnNewMessage(msg);
     if (!msg || !msg.thread_key) return;
+
+    // Play chime for incoming messages (not our own)
+    if (!Community.currentUser || msg.user_key !== Community.currentUser.user_key) {
+        playChime();
+    }
 
     var pop = document.getElementById('chat-popover');
     if (pop && pop.classList.contains('open')) {

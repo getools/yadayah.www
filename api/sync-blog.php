@@ -167,6 +167,23 @@ while ($url) {
             }
         }
 
+        // Last resort: scrape og:image from the post's permalink
+        if (!$fullPicture) {
+            $parts = explode('_', $postId);
+            $permalink = "https://www.facebook.com/{$parts[0]}/posts/{$parts[1]}/";
+            $ch = curl_init($permalink);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'facebookexternalhit/1.1');
+            $html = curl_exec($ch);
+            curl_close($ch);
+            if ($html && preg_match('/property="og:image"\s+content="([^"]+)"/', $html, $m)) {
+                $fullPicture = html_entity_decode($m[1]);
+                echo "    Got og:image from permalink\n";
+            }
+        }
+
         // Detect video attachments
         $videoId = null;
         $postType = 'text';
@@ -196,11 +213,8 @@ while ($url) {
             $postType = 'photo';
         }
 
-        // Skip video posts — blog only includes text and photo posts
-        if ($postType === 'video') {
-            echo "  [$postId] SKIP (video)\n";
-            continue;
-        }
+        // Video posts: keep them, use thumbnail image + embed
+        // full_picture serves as the video thumbnail
 
         // Skip posts matching exclude filters (e.g. #DoYouYada goes to its own feed)
         $excludePatterns = ['#DoYouYada', '#DoUYada'];

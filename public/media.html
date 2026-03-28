@@ -94,10 +94,12 @@
         }
         /* Content */
         .content {
+            width: 100%;
             max-width: 1200px;
             margin: 0 auto;
             padding: 30px 24px 60px;
             flex: 1;
+            box-sizing: border-box;
         }
         .content h1 {
             font-family: 'Julius Sans One', sans-serif;
@@ -111,7 +113,7 @@
         /* Media grid */
         .media-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 24px;
         }
         .media-card {

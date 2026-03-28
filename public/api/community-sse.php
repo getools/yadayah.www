@@ -136,5 +136,5 @@ while (true) {
         flush();
     }
 
-    sleep(3);
+    sleep(2);
 }

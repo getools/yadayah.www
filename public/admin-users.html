@@ -125,6 +125,10 @@
                 <input type="password" id="f-password" autocomplete="new-password">
             </div>
             <div class="field">
+                <label>Roles</label>
+                <div class="page-perms" id="f-roles"></div>
+            </div>
+            <div class="field">
                 <label>Admin Page Access</label>
                 <div class="page-perms" id="f-page-perms"></div>
             </div>
@@ -141,6 +145,7 @@
 var API = '/api';
 var allUsers = [];
 var allSettings = [];
+var allRoles = [];
 
 function esc(s) {
     var d = document.createElement('div');
@@ -202,6 +207,7 @@ function loadUsers() {
             if (d.error) { document.getElementById('table-container').innerHTML = '<div style="color:#c00;padding:20px">' + esc(d.error) + '</div>'; return; }
             allUsers = d.users || [];
             allSettings = d.settings || [];
+            allRoles = d.roles || [];
             document.getElementById('user-count').textContent = allUsers.length + ' user' + (allUsers.length !== 1 ? 's' : '');
             renderTable();
         });
@@ -212,8 +218,16 @@ function renderTable() {
         document.getElementById('table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No users.</div>';
         return;
     }
+    // Build role lookup from allRoles
+    var roleMap = {};
+    if (window.allRoles) {
+        for (var r = 0; r < allRoles.length; r++) {
+            roleMap[allRoles[r].role_key] = allRoles[r].role_label || allRoles[r].role_code;
+        }
+    }
+
     var html = '<table class="users-table"><thead><tr>'
-        + '<th>Login</th><th>Name</th><th>Email</th><th>Pages</th><th>Actions</th>'
+        + '<th>Login</th><th>Name</th><th>Email</th><th>Roles</th><th>Pages</th><th>Actions</th>'
         + '</tr></thead><tbody>';
     for (var i = 0; i < allUsers.length; i++) {
         var u = allUsers[i];
@@ -222,10 +236,12 @@ function renderTable() {
         }).join(', ');
         var allEnabled = (u.page_settings || []).every(function(p) { return p.enabled; });
         var pagesDisplay = allEnabled ? '<span style="color:#27ae60">All</span>' : (pages || '<span style="color:#c00">None</span>');
+        var rolesDisplay = (u.role_keys || []).map(function(rk) { return esc(roleMap[rk] || rk); }).join(', ') || '<span style="color:#999">—</span>';
         html += '<tr onclick="editUser(' + u.user_key + ')">'
             + '<td>' + esc(u.user_code) + '</td>'
             + '<td>' + esc(u.user_name_full) + '</td>'
             + '<td>' + esc(u.user_email || '') + '</td>'
+            + '<td style="font-size:0.8rem">' + rolesDisplay + '</td>'
             + '<td style="font-size:0.8rem">' + pagesDisplay + '</td>'
             + '<td class="actions"><button onclick="event.stopPropagation();editUser(' + u.user_key + ')">Edit</button></td>'
             + '</tr>';
@@ -246,6 +262,17 @@ function showForm(user) {
     document.getElementById('f-name').value = user ? user.user_name_full || '' : '';
     document.getElementById('f-email').value = user ? user.user_email || '' : '';
     document.getElementById('f-password').value = '';
+
+    // Render role checkboxes
+    var rolesHtml = '';
+    var userRoleKeys = user ? (user.role_keys || []) : [];
+    for (var r = 0; r < allRoles.length; r++) {
+        var role = allRoles[r];
+        var checked = user ? userRoleKeys.indexOf(parseInt(role.role_key)) >= 0 || userRoleKeys.indexOf(role.role_key) >= 0 : role.role_code === 'public';
+        rolesHtml += '<label><input type="checkbox" data-rk="' + role.role_key + '"'
+            + (checked ? ' checked' : '') + '> ' + esc(role.role_label || role.role_code) + '</label>';
+    }
+    document.getElementById('f-roles').innerHTML = rolesHtml;
 
     // Render page permission checkboxes
     var permsHtml = '';
@@ -276,6 +303,14 @@ function saveUser() {
     };
 
     if (!data.user_code) { alert('Login code is required.'); return; }
+
+    // Collect roles
+    var roleChecks = document.querySelectorAll('#f-roles input[type=checkbox]');
+    var roleKeys = [];
+    for (var r = 0; r < roleChecks.length; r++) {
+        if (roleChecks[r].checked) roleKeys.push(parseInt(roleChecks[r].getAttribute('data-rk')));
+    }
+    data.role_keys = roleKeys;
 
     // Collect page settings
     var checks = document.querySelectorAll('#f-page-perms input[type=checkbox]');
@@ -316,6 +351,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js"></script>
+<script src="/js/admin-login.js?v=5"></script>
 </body>
 </html>

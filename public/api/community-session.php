@@ -48,6 +48,22 @@ if (!empty($_SESSION['user_key'])) {
         $nStmt->execute([$userKey]);
         $user['unread_notifications'] = (int)$nStmt->fetchColumn();
 
+        // Linked auth providers
+        $authStmt = $db->prepare("SELECT auth_provider FROM yy_user_auth WHERE user_key = ? AND auth_active_flag = TRUE ORDER BY auth_linked_dtime");
+        $authStmt->execute([$userKey]);
+        $user['auth_providers'] = $authStmt->fetchAll(PDO::FETCH_COLUMN);
+
+        // Pending link info
+        $user['pending_link'] = null;
+        if (!empty($_SESSION['pending_link']) && $_SESSION['pending_link']['expires'] > time()) {
+            $p = $_SESSION['pending_link'];
+            $user['pending_link'] = [
+                'provider' => $p['provider'],
+                'email' => $p['email'],
+                'existing_name' => $p['existing_name'] ?? null,
+            ];
+        }
+
         // Unread DM count (messages from others after my last_read_dtime)
         $dmStmt = $db->prepare("
             SELECT COUNT(*) FROM yy_community_dm_message m

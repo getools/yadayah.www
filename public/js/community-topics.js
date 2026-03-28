@@ -169,10 +169,11 @@ CommunityTopics.loadTopics = function(page, category) {
             for (var i = 0; i < topics.length; i++) {
                 var t = topics[i];
                 var pinned = t.topic_pinned === true || t.topic_pinned === 't';
-                html += '<div class="topic-item' + (pinned ? ' pinned' : '') + '" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
+                var hidden = t.topic_active_flag === false || t.topic_active_flag === 'f';
+                html += '<div class="topic-item' + (pinned ? ' pinned' : '') + (hidden ? ' topic-hidden' : '') + '" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
                     + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_display_name, 'topic-avatar', t.user_last_active_dtime)
                     + '<div class="topic-info">'
-                    + '<div class="topic-title">' + (pinned ? '&#128204; ' : '') + Community.esc(t.topic_title) + '</div>'
+                    + '<div class="topic-title">' + (hidden ? '<span class="hidden-badge">Hidden</span> ' : '') + (pinned ? '&#128204; ' : '') + Community.esc(t.topic_title) + '</div>'
                     + '<div class="topic-meta">'
                     + Community.categoryBadge(t.category_slug)
                     + '<span onclick="event.stopPropagation();Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_display_name || 'Anonymous') + '</span>'
@@ -207,12 +208,15 @@ CommunityTopics.loadTopic = function(key) {
         var t = data.topic;
         var replies = data.replies || [];
         var user = Community.currentUser;
-        var isAuthorOrAdmin = user && (user.roles && user.roles.indexOf('admin') >= 0 || user.user_key === t.user_key);
+        var isMod = user && user.roles && (user.roles.indexOf('admin') >= 0 || user.roles.indexOf('moderator') >= 0);
+        var isAuthorOrMod = user && (isMod || user.user_key === t.user_key);
 
         var html = '<a href="#topics" class="back-link">&larr; Back to topics</a>';
 
         // Topic detail
-        html += '<div class="topic-detail">';
+        var topicHidden = t.topic_active_flag === false || t.topic_active_flag === 'f';
+        var topicIsRemoved = !!t.topic_delete_dtime;
+        html += '<div class="topic-detail' + (topicHidden ? ' item-hidden' : '') + (topicIsRemoved ? ' removed' : '') + '">';
         html += '<div class="topic-detail-header">';
         html += '<h2>' + Community.esc(t.topic_title) + '</h2>';
         // Watch and bookmark buttons
@@ -230,8 +234,11 @@ CommunityTopics.loadTopic = function(key) {
             + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_display_name, 'detail-avatar', t.user_last_active_dtime)
             + '<span onclick="Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_display_name || 'Anonymous') + '</span>'
             + ' &middot; ' + Community.timeAgo(t.topic_dtime)
-            + Community.categoryBadge(t.category_slug)
-            + '</div>';
+            + Community.categoryBadge(t.category_slug);
+        if (isMod && user.user_key !== t.user_key) {
+            html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + t.user_key + ',\'' + Community.esc(t.user_display_name || '').replace(/'/g, "\\'") + '\')">Ban User</button>';
+        }
+        html += '</div>';
 
         if (t.topic_body_html || t.topic_body) {
             html += '<div class="topic-body">' + (t.topic_body_html || Community.formatBody(t.topic_body)) + '</div>';
@@ -246,8 +253,21 @@ CommunityTopics.loadTopic = function(key) {
         html += CommunityTopics.renderLikeAndReactions('topic', key, t);
 
         // Report button
-        if (user && !isAuthorOrAdmin) {
+        if (user && !isAuthorOrMod) {
             html += '<button class="btn-icon report-btn" onclick="CommunityTopics.openReport(\'topic\',' + key + ')" title="Report">&#9873; Report</button>';
+        }
+
+        // Topic remove/restore actions
+        var topicRemoved = !!t.topic_delete_dtime;
+        if (topicRemoved && isMod) {
+            html += '<div class="removed-notice"><span>Topic removed ' + Community.timeAgo(t.topic_delete_dtime)
+                + (t.topic_delete_note ? ': ' + Community.esc(t.topic_delete_note) : '')
+                + '</span><button class="btn btn-sm btn-outline restore-btn" onclick="CommunityTopics.restoreTopic(' + key + ')">Restore</button></div>';
+        }
+        if (!topicRemoved && isAuthorOrMod) {
+            html += '<div class="mod-actions">'
+                + '<button class="btn btn-sm btn-outline" style="color:#c0392b;border-color:#c0392b;" onclick="CommunityTopics.removeTopic(' + key + ')">Remove</button>'
+                + '</div>';
         }
 
         html += '</div>';
@@ -257,24 +277,42 @@ CommunityTopics.loadTopic = function(key) {
             html += '<div class="reply-list">';
             for (var i = 0; i < replies.length; i++) {
                 var r = replies[i];
-                var canDelete = user && (user.roles && user.roles.indexOf('admin') >= 0 || user.user_key === r.user_key);
-                html += '<div class="reply-item" id="reply-' + r.reply_key + '">'
-                    + '<div class="reply-author">'
-                    + Community.clickableAvatar(r.user_key, r.user_avatar, r.user_display_name, 'reply-avatar', r.user_last_active_dtime)
-                    + '<span onclick="Community.showProfileCard(event,' + r.user_key + ')" style="cursor:pointer;">' + Community.esc(r.user_display_name || 'Anonymous') + '</span>'
-                    + ' &middot; ' + Community.timeAgo(r.reply_dtime) + '</div>'
-                    + '<div class="reply-body">' + (r.reply_body_html || Community.formatBody(r.reply_body)) + '</div>';
+                var canRemove = user && (isMod || user.user_key === r.user_key);
+                var isRemoved = !!r.reply_delete_dtime;
 
-                // Reply like + reactions
-                html += CommunityTopics.renderLikeAndReactions('reply', r.reply_key, r);
+                html += '<div class="reply-item' + (isRemoved ? ' removed' : '') + '" id="reply-' + r.reply_key + '">';
 
-                // Report for reply
-                if (user && !(user.user_key === r.user_key)) {
-                    html += '<button class="btn-icon report-btn" onclick="CommunityTopics.openReport(\'reply\',' + r.reply_key + ')" title="Report">&#9873;</button>';
+                if (isRemoved && isMod) {
+                    html += '<div class="removed-notice"><span>Removed ' + Community.timeAgo(r.reply_delete_dtime)
+                        + (r.reply_delete_note ? ': ' + Community.esc(r.reply_delete_note) : '')
+                        + '</span><button class="btn btn-sm btn-outline restore-btn" onclick="CommunityTopics.restoreReply(' + r.reply_key + ',' + key + ')">Restore</button></div>';
                 }
 
-                if (canDelete) {
-                    html += '<div class="reply-actions"><button class="btn btn-danger btn-sm" onclick="CommunityTopics.deleteReply(' + r.reply_key + ',' + key + ')">Delete</button></div>';
+                html += '<div class="reply-author">'
+                    + Community.clickableAvatar(r.user_key, r.user_avatar, r.user_display_name, 'reply-avatar', r.user_last_active_dtime)
+                    + '<span onclick="Community.showProfileCard(event,' + r.user_key + ')" style="cursor:pointer;">' + Community.esc(r.user_display_name || 'Anonymous') + '</span>'
+                    + ' &middot; ' + Community.timeAgo(r.reply_dtime);
+                if (isMod && !isRemoved && user.user_key !== r.user_key) {
+                    html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + r.user_key + ',\'' + Community.esc(r.user_display_name || '').replace(/'/g, "\\'") + '\')">Ban</button>';
+                }
+                html += '</div>'
+                    + '<div class="reply-body">' + (r.reply_body_html || Community.formatBody(r.reply_body)) + '</div>';
+
+                if (!isRemoved) {
+                    // Reply like + reactions
+                    html += CommunityTopics.renderLikeAndReactions('reply', r.reply_key, r);
+
+                    // Report for reply (non-mods, non-authors)
+                    if (user && !isMod && user.user_key !== r.user_key) {
+                        html += '<button class="btn-icon report-btn" onclick="CommunityTopics.openReport(\'reply\',' + r.reply_key + ')" title="Report">&#9873;</button>';
+                    }
+
+                    // Remove button
+                    if (canRemove) {
+                        html += '<div class="reply-actions">';
+                        html += '<button class="btn btn-sm btn-outline" style="color:#c0392b;border-color:#c0392b;" onclick="CommunityTopics.removeReply(' + r.reply_key + ',' + key + ')">Remove</button>';
+                        html += '</div>';
+                    }
                 }
                 html += '</div>';
             }
@@ -556,7 +594,44 @@ CommunityTopics.submitReply = function(topicKey) {
     });
 };
 
-// ── Delete reply ──
+// ── Remove / Restore ──
+CommunityTopics.removeReply = function(replyKey, topicKey) {
+    var note = prompt('Reason for removal (optional):');
+    if (note === null) return; // cancelled
+    fetch('/api/community-topics.php?type=reply&reply=' + replyKey, {
+        method: 'DELETE', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: note })
+    }).then(function() { CommunityTopics.loadTopic(topicKey); });
+};
+
+CommunityTopics.removeTopic = function(topicKey) {
+    var note = prompt('Reason for removal (optional):');
+    if (note === null) return;
+    fetch('/api/community-topics.php?topic=' + topicKey + '&type=topic', {
+        method: 'DELETE', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: note })
+    }).then(function() { CommunityTopics.loadTopic(topicKey); });
+};
+
+CommunityTopics.restoreReply = function(replyKey, topicKey) {
+    fetch('/api/community-topics.php?topic=' + topicKey, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'reply', reply_key: replyKey })
+    }).then(function() { CommunityTopics.loadTopic(topicKey); });
+};
+
+CommunityTopics.restoreTopic = function(topicKey) {
+    fetch('/api/community-topics.php?topic=' + topicKey, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'topic' })
+    }).then(function() { CommunityTopics.loadTopic(topicKey); });
+};
+
+// ── Legacy delete (kept for compatibility) ──
 CommunityTopics.deleteReply = function(replyKey, topicKey) {
     if (!confirm('Delete this reply?')) return;
     fetch('/api/community-topics.php?type=reply&reply=' + replyKey, { method: 'DELETE' })
@@ -592,6 +667,87 @@ CommunityTopics.submitReport = function(type, key) {
         document.getElementById('report-modal').classList.remove('active');
         if (data.error) alert(data.error);
         else alert('Report submitted. Thank you.');
+    });
+};
+
+// ── Hide/Delete modal (moderators) ──
+CommunityTopics.openHideModal = function(type, key, topicKey) {
+    var html = '<div class="report-modal-inner">'
+        + '<h3>Hide ' + type + '</h3>'
+        + '<p style="font-size:0.85rem;color:#666;margin:0 0 12px;">This will remove the ' + type + ' from public view.</p>'
+        + '<textarea id="hide-reason" placeholder="Reason (optional)" rows="3" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;box-sizing:border-box;resize:vertical;"></textarea>'
+        + '<div class="report-actions" style="margin-top:12px;">'
+        + '<button class="btn btn-primary" onclick="CommunityTopics.submitHide(\'' + type + '\',' + key + ',' + (topicKey || key) + ')">Hide ' + type + '</button>'
+        + '<button class="btn btn-outline" onclick="document.getElementById(\'report-modal\').classList.remove(\'active\')">Cancel</button>'
+        + '</div></div>';
+
+    var modal = document.getElementById('report-modal');
+    modal.innerHTML = html;
+    modal.classList.add('active');
+};
+
+CommunityTopics.submitHide = function(type, key, topicKey) {
+    var reason = document.getElementById('hide-reason').value.trim();
+    var url = '/api/community-topics.php?type=' + type;
+    if (type === 'topic') url += '&topic=' + key;
+    else url += '&reply=' + key;
+
+    Community.api(url, {
+        method: 'DELETE',
+        body: { reason: reason }
+    }).then(function(data) {
+        document.getElementById('report-modal').classList.remove('active');
+        if (data.error) { alert(data.error); return; }
+        if (type === 'topic') {
+            window.location.hash = '#topics';
+        } else {
+            CommunityTopics.loadTopic(topicKey);
+        }
+    });
+};
+
+// ── Ban modal (moderators) ──
+CommunityTopics.openBanModal = function(targetUserKey, displayName) {
+    // Don't allow banning yourself
+    if (Community.currentUser && Community.currentUser.user_key === targetUserKey) {
+        alert('You cannot ban yourself.');
+        return;
+    }
+
+    var html = '<div class="report-modal-inner">'
+        + '<h3>Ban User</h3>'
+        + '<p style="font-size:0.85rem;color:#666;margin:0 0 12px;">Ban <strong>' + Community.esc(displayName) + '</strong> from the community.</p>'
+        + '<div style="margin-bottom:12px;">'
+        + '<label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:4px;">Duration</label>'
+        + '<select id="ban-duration" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;">'
+        + '<option value="">Permanent</option>'
+        + '<option value="1">1 hour</option>'
+        + '<option value="24">24 hours</option>'
+        + '<option value="168">7 days</option>'
+        + '<option value="720">30 days</option>'
+        + '</select></div>'
+        + '<textarea id="ban-reason" placeholder="Reason (optional)" rows="3" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;box-sizing:border-box;resize:vertical;"></textarea>'
+        + '<div class="report-actions" style="margin-top:12px;">'
+        + '<button class="btn btn-primary" style="background:#c0392b;" onclick="CommunityTopics.submitBan(' + targetUserKey + ')">Ban User</button>'
+        + '<button class="btn btn-outline" onclick="document.getElementById(\'report-modal\').classList.remove(\'active\')">Cancel</button>'
+        + '</div></div>';
+
+    var modal = document.getElementById('report-modal');
+    modal.innerHTML = html;
+    modal.classList.add('active');
+};
+
+CommunityTopics.submitBan = function(targetUserKey) {
+    var reason = document.getElementById('ban-reason').value.trim();
+    var duration = document.getElementById('ban-duration').value;
+
+    Community.api('/api/community-ban.php?user=' + targetUserKey, {
+        method: 'POST',
+        body: { action: 'ban', reason: reason, duration: duration || null }
+    }).then(function(data) {
+        document.getElementById('report-modal').classList.remove('active');
+        if (data.error) { alert(data.error); return; }
+        alert('User has been banned.');
     });
 };
 

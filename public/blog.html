@@ -70,10 +70,12 @@
         .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
         /* Content */
         .content {
+            width: 100%;
             max-width: 1200px;
             margin: 0 auto;
             padding: 30px 24px 60px;
             flex: 1;
+            box-sizing: border-box;
         }
         .content h1 {
             font-family: 'Julius Sans One', sans-serif;
@@ -117,7 +119,8 @@
             border-radius: 50%;
             object-fit: cover;
         }
-        .post-author-info { flex: 1; }
+        .post-author-info { flex: 1;
+            box-sizing: border-box; }
         .post-author {
             font-weight: 700;
             font-size: 0.85rem;
@@ -393,7 +396,6 @@ function renderPost(p, idx) {
     var message = escHtml(p.blog_message || '');
     var needsTruncate = (p.blog_message || '').length > 300;
     var cardId = 'post-' + idx;
-
     var html = '<div class="post-card" id="' + cardId + '">'
         + '<div class="post-header">'
         + '<img class="post-avatar" src="' + AVATAR_URL + '" alt="">'
@@ -413,7 +415,9 @@ function renderPost(p, idx) {
             + '<iframe class="post-video" src="https://www.facebook.com/plugins/video.php?href=' + videoUrl + '&width=500&show_text=false" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>'
             + '</div>';
     } else if (p.blog_image) {
-        html += '<img class="post-image" src="' + escHtml(p.blog_image) + '" alt="" loading="lazy">';
+        html += '<a href="' + fbPostUrl(p.blog_post_id) + '" target="_blank" rel="noopener">'
+            + '<img class="post-image" src="' + escHtml(p.blog_image) + '" alt="" loading="lazy">'
+            + '</a>';
     }
 
     html += '<div class="post-footer">'

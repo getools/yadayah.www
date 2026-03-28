@@ -23,15 +23,20 @@ function userHasRole(PDO $db, int $userKey, string $roleCode): bool {
 
 // ── GET ──
 if ($method === 'GET') {
+    $isMod = $userKey && isModOrAdmin($db, $userKey);
+
     if ($topicKey) {
-        // Single topic with replies
+        // Single topic with replies — mods can see hidden topics
+        $activeFilter = $isMod ? '' : 'AND t.topic_active_flag = TRUE';
         $stmt = $db->prepare("
             SELECT t.*, u.user_display_name, u.user_avatar, u.user_handle,
-                   c.category_key AS cat_key, c.category_name, c.category_slug
+                   c.category_key AS cat_key, c.category_name, c.category_slug,
+                   hider.user_display_name AS hidden_by_name
             FROM yy_community_topic t
             LEFT JOIN yy_user u ON t.user_key = u.user_key
             LEFT JOIN yy_community_category c ON t.category_key = c.category_key
-            WHERE t.topic_key = ? AND t.topic_active_flag = TRUE
+            LEFT JOIN yy_user hider ON t.topic_hidden_by = hider.user_key
+            WHERE t.topic_key = ? {$activeFilter}
         ");
         $stmt->execute([$topicKey]);
         $topic = $stmt->fetch();
@@ -41,12 +46,15 @@ if ($method === 'GET') {
         $db->prepare("UPDATE yy_community_topic SET topic_view_count = topic_view_count + 1 WHERE topic_key = ?")
            ->execute([$topicKey]);
 
-        // Replies
+        // Replies — mods can see hidden replies
+        $replyActiveFilter = $isMod ? '' : 'AND r.reply_active_flag = TRUE';
         $stmt = $db->prepare("
-            SELECT r.*, u.user_display_name, u.user_avatar, u.user_handle
+            SELECT r.*, u.user_display_name, u.user_avatar, u.user_handle,
+                   rhider.user_display_name AS hidden_by_name
             FROM yy_community_reply r
             LEFT JOIN yy_user u ON r.user_key = u.user_key
-            WHERE r.topic_key = ? AND r.reply_active_flag = TRUE
+            LEFT JOIN yy_user rhider ON r.reply_hidden_by = rhider.user_key
+            WHERE r.topic_key = ? {$replyActiveFilter}
             ORDER BY r.reply_dtime
         ");
         $stmt->execute([$topicKey]);
@@ -98,7 +106,7 @@ if ($method === 'GET') {
     $offset = ($page - 1) * $limit;
     $categorySlug = trim($_GET['category'] ?? '');
 
-    $where = "WHERE t.topic_active_flag = TRUE";
+    $where = $isMod ? "WHERE 1=1" : "WHERE t.topic_active_flag = TRUE";
     $joins = "LEFT JOIN yy_user u ON t.user_key = u.user_key LEFT JOIN yy_community_category c ON t.category_key = c.category_key";
     $params = [];
 
@@ -114,6 +122,7 @@ if ($method === 'GET') {
     $listParams = array_merge($params, [$limit, $offset]);
     $stmt = $db->prepare("
         SELECT t.topic_key, t.topic_title, t.topic_pinned, t.topic_locked,
+               t.topic_active_flag, t.topic_hide_reason,
                t.topic_reply_count, t.topic_view_count, t.topic_like_count,
                t.topic_last_reply_dtime, t.topic_dtime,
                u.user_display_name, u.user_avatar,
@@ -282,31 +291,68 @@ if ($method === 'POST') {
     errorResponse('Unknown action');
 }
 
-// ── DELETE ── (admin or author)
+// ── PATCH ── restore hidden topic/reply (moderator/admin only)
+if ($method === 'PATCH') {
+    if (!$userKey) errorResponse('Login required', 401);
+    if (!isModOrAdmin($db, $userKey)) errorResponse('Moderator access required', 403);
+
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+    $type = $body['type'] ?? 'topic';
+
+    if ($type === 'reply' && !empty($body['reply_key'])) {
+        $rk = (int)$body['reply_key'];
+        $db->prepare("UPDATE yy_community_reply SET reply_active_flag = TRUE, reply_hide_reason = NULL, reply_hidden_by = NULL, reply_delete_dtime = NULL, reply_delete_note = NULL WHERE reply_key = ?")
+            ->execute([$rk]);
+        // Re-increment reply count
+        $stmt = $db->prepare("SELECT topic_key FROM yy_community_reply WHERE reply_key = ?");
+        $stmt->execute([$rk]);
+        $tk = $stmt->fetchColumn();
+        if ($tk) {
+            $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1 WHERE topic_key = ?")->execute([$tk]);
+        }
+        jsonResponse(['restored' => true]);
+    }
+
+    if ($type === 'topic' && $topicKey) {
+        $db->prepare("UPDATE yy_community_topic SET topic_active_flag = TRUE, topic_hide_reason = NULL, topic_hidden_by = NULL, topic_delete_dtime = NULL, topic_delete_note = NULL WHERE topic_key = ?")
+            ->execute([$topicKey]);
+        jsonResponse(['restored' => true]);
+    }
+
+    errorResponse('Invalid restore request');
+}
+
+// ── DELETE ── (admin, moderator, or author)
 if ($method === 'DELETE') {
     if (!$userKey) errorResponse('Login required', 401);
 
-    $isAdmin = userHasRole($db, $userKey, 'admin');
+    $isMod = isModOrAdmin($db, $userKey);
     $type = $_GET['type'] ?? 'topic';
 
+    // Accept reason from query string or request body (supports both 'reason' and 'note' keys)
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+    $reason = $_GET['reason'] ?? $body['reason'] ?? $body['note'] ?? null;
+
     if ($type === 'topic' && $topicKey) {
-        if (!$isAdmin) {
+        if (!$isMod) {
             $stmt = $db->prepare("SELECT user_key FROM yy_community_topic WHERE topic_key = ?");
             $stmt->execute([$topicKey]);
             if ((int)$stmt->fetchColumn() !== $userKey) errorResponse('Not authorized', 403);
         }
-        $db->prepare("UPDATE yy_community_topic SET topic_active_flag = FALSE WHERE topic_key = ?")->execute([$topicKey]);
+        $db->prepare("UPDATE yy_community_topic SET topic_active_flag = FALSE, topic_hide_reason = ?, topic_hidden_by = ?, topic_delete_dtime = NOW(), topic_delete_note = ? WHERE topic_key = ?")
+            ->execute([$reason, $isMod ? $userKey : null, $reason, $topicKey]);
         jsonResponse(['deleted' => true]);
     }
 
     $replyKey = (int)($_GET['reply'] ?? 0);
     if ($type === 'reply' && $replyKey) {
-        if (!$isAdmin) {
+        if (!$isMod) {
             $stmt = $db->prepare("SELECT user_key FROM yy_community_reply WHERE reply_key = ?");
             $stmt->execute([$replyKey]);
             if ((int)$stmt->fetchColumn() !== $userKey) errorResponse('Not authorized', 403);
         }
-        $db->prepare("UPDATE yy_community_reply SET reply_active_flag = FALSE WHERE reply_key = ?")->execute([$replyKey]);
+        $db->prepare("UPDATE yy_community_reply SET reply_active_flag = FALSE, reply_hide_reason = ?, reply_hidden_by = ?, reply_delete_dtime = NOW(), reply_delete_note = ? WHERE reply_key = ?")
+            ->execute([$reason, $isMod ? $userKey : null, $reason, $replyKey]);
         // Decrement reply count
         $stmt = $db->prepare("SELECT topic_key FROM yy_community_reply WHERE reply_key = ?");
         $stmt->execute([$replyKey]);

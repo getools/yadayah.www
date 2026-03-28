@@ -40,14 +40,64 @@ CommunityProfile.show = function() {
         if (u.has_password) {
             html += '<div class="profile-field"><label>Current Password</label><input id="pw-current" type="password"></div>';
         } else {
-            html += '<p style="font-size:0.85rem;color:#666;margin:0 0 12px;">You signed in with ' + esc(u.user_oauth_provider || 'social login') + '. Set a password to also enable email login.</p>';
+            html += '<p style="font-size:0.85rem;color:#666;margin:0 0 12px;">You signed in with social login. Set a password to also enable email login.</p>';
         }
         html += '<div class="profile-field"><label>New Password</label><input id="pw-new" type="password" placeholder="At least 6 characters"></div>';
         html += '<div class="profile-field"><label>Confirm New Password</label><input id="pw-confirm" type="password"></div>';
         html += '<div class="profile-actions"><button class="btn btn-primary" onclick="CommunityProfile.changePassword(' + (u.has_password ? 'true' : 'false') + ')">Update Password</button></div>';
         html += '</div>';
 
+        // Linked Accounts section
+        var methods = u.auth_methods || [];
+        var allProviders = ['email', 'google', 'microsoft', 'yahoo', 'x'];
+        var providerLabels = { email: 'Email', google: 'Google', microsoft: 'Microsoft', yahoo: 'Yahoo', x: 'X' };
+        var linkedProviders = methods.map(function(m) { return m.auth_provider; });
+
+        html += '<div class="profile-section"><h2>Linked Accounts</h2>';
+        html += '<div id="link-msg"></div>';
+
+        if (methods.length) {
+            html += '<div style="margin-bottom:16px;">';
+            for (var m = 0; m < methods.length; m++) {
+                var am = methods[m];
+                var canUnlink = methods.length > 1;
+                html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;">'
+                    + '<strong style="min-width:80px;">' + esc(providerLabels[am.auth_provider] || am.auth_provider) + '</strong>'
+                    + '<span style="flex:1;font-size:0.85rem;color:#666;">' + esc(am.auth_email || '') + '</span>';
+                if (canUnlink) {
+                    html += '<button class="btn btn-sm btn-outline" style="color:#c0392b;border-color:#c0392b;font-size:0.75rem;" '
+                        + 'onclick="CommunityProfile.unlinkAuth(' + am.user_auth_key + ')">Unlink</button>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        // Show buttons to link providers not yet linked
+        var unlinked = allProviders.filter(function(p) { return linkedProviders.indexOf(p) < 0 && p !== 'email'; });
+        if (unlinked.length) {
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+            for (var p = 0; p < unlinked.length; p++) {
+                html += '<a class="btn btn-sm btn-outline" href="/api/oauth-login.php?provider=' + unlinked[p] + '&return=/community%23profile&link=1">'
+                    + 'Link ' + esc(providerLabels[unlinked[p]]) + '</a>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+
         el.innerHTML = html;
+    });
+};
+
+// ── Unlink auth method ──
+CommunityProfile.unlinkAuth = function(authKey) {
+    if (!confirm('Remove this sign-in method?')) return;
+    Community.api('/api/user-auth-link.php', {
+        method: 'POST',
+        body: { action: 'unlink', user_auth_key: authKey }
+    }).then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        CommunityProfile.show();
     });
 };
 

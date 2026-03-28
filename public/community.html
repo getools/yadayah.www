@@ -152,7 +152,16 @@
         /* ── Replies ── */
         .reply-list { margin-bottom: 20px; }
         .reply-item { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); padding: 16px 20px; margin-bottom: 10px; }
-        .reply-author { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #666; margin-bottom: 8px; }
+        .reply-item.removed { background: #f8e8e8; border-left: 4px solid #c0392b; }
+        .reply-item.removed .reply-body, .reply-item.removed .reply-author { opacity: 0.45; }
+        .topic-detail.removed { background: #f8e8e8; border-left: 4px solid #c0392b; }
+        .topic-detail.removed .topic-body, .topic-detail.removed .topic-author { opacity: 0.45; }
+        .removed-notice { background: #fff3cd; color: #856404; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+        .removed-notice span { flex: 1; }
+        .removed-notice .restore-btn { margin-left: auto; flex-shrink: 0; font-size: 0.75rem; padding: 3px 10px; }
+        .reply-author { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #666; margin-bottom: 8px; flex-wrap: wrap; }
+        .reply-ban-btn { margin-left: auto; font-size: 0.7rem; padding: 2px 8px; color: #c0392b; border-color: #c0392b; opacity: 0.5; transition: opacity 0.15s; }
+        .reply-ban-btn:hover { opacity: 1; }
         .reply-author img { width: 24px; height: 24px; border-radius: 50%; }
         .reply-body { line-height: 1.6; word-wrap: break-word; }
         .reply-actions { margin-top: 6px; text-align: right; }
@@ -239,6 +248,19 @@
         .report-modal-inner textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 0.9rem; box-sizing: border-box; margin-bottom: 12px; resize: vertical; }
         .report-modal-inner textarea:focus { outline: none; border-color: #31345A; }
         .report-actions { display: flex; gap: 10px; }
+
+        /* ── Moderator actions ── */
+        .mod-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; justify-content: flex-end; }
+        .btn-danger { background: #c0392b; color: #fff; border: none; }
+        .btn-danger:hover { background: #a93226; }
+
+        /* ── Hidden items (visible to moderators, grayed out) ── */
+        .item-hidden { opacity: 0.45; border-left: 3px solid #c0392b; padding-left: 12px; }
+        .item-hidden:hover { opacity: 0.7; }
+        .topic-hidden { opacity: 0.45; }
+        .topic-hidden:hover { opacity: 0.7; }
+        .hidden-badge { display: inline-block; font-size: 0.7rem; background: #c0392b; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; vertical-align: middle; }
+        .removed-notice { font-size: 0.82rem; color: #c0392b; background: #fef0f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
 
         /* ── Profile ── */
         .profile-section { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; margin-bottom: 20px; }
@@ -601,12 +623,12 @@
 
 <script src="/js/tinymce/tinymce.min.js"></script>
 <script src="/js/bg-video.js"></script>
-<script src="/js/community.js?v=21"></script>
-<script src="/js/community-auth.js?v=10"></script>
-<script src="/js/community-topics.js?v=27"></script>
-<script src="/js/community-notifications.js?v=21"></script>
-<script src="/js/community-profile.js?v=6"></script>
-<script src="/js/community-dm.js?v=22"></script>
+<script src="/js/community.js?v=22"></script>
+<script src="/js/community-auth.js?v=11"></script>
+<script src="/js/community-topics.js?v=32"></script>
+<script src="/js/community-notifications.js?v=23"></script>
+<script src="/js/community-profile.js?v=7"></script>
+<script src="/js/community-dm.js?v=24"></script>
 <script src="/js/community-search.js?v=6"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>

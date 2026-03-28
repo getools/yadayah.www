@@ -4,6 +4,7 @@
  * Exchanges code for tokens, creates/finds user, sets session.
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/oauth-helpers.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $code = $_GET['code'] ?? '';
@@ -90,27 +91,24 @@ if (!$oauthId) {
     exit;
 }
 
-// Find or create user
-$stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_oauth_provider = 'x' AND user_oauth_id = ?");
-$stmt->execute([$oauthId]);
-$existing = $stmt->fetchColumn();
+// X doesn't provide email via OAuth 2.0 free tier
+$result = resolveOAuthUser($db, 'x', $oauthId, '', $name, $avatar);
 
-if ($existing) {
-    $userKey = $existing;
-    $db->prepare("UPDATE yy_user SET user_display_name = ?, user_avatar = ? WHERE user_key = ?")
-       ->execute([$name, $avatar, $userKey]);
-} else {
-    // X doesn't provide email via OAuth 2.0 free tier
-    $stmt = $db->prepare("INSERT INTO yy_user (user_code, user_display_name, user_avatar, user_handle, user_oauth_provider, user_oauth_id, user_active_flag, user_verified) VALUES (?, ?, ?, ?, 'x', ?, TRUE, TRUE) RETURNING user_key");
-    $stmt->execute(['x:' . $oauthId, $name, $avatar, $username, $oauthId]);
-    $userKey = $stmt->fetchColumn();
-    $db->prepare("INSERT INTO yy_user_role (user_key, role_key) VALUES (?, 1)")->execute([$userKey]);
+if ($result['action'] === 'new_user' && $username) {
+    // Set handle for new X users
+    $db->prepare("UPDATE yy_user SET user_handle = ? WHERE user_key = ?")->execute([$username, $result['user_key']]);
 }
 
-$_SESSION['user_key'] = $userKey;
+if ($result['action'] === 'pending_link') {
+    $return = $_SESSION['oauth_return'] ?? '/community';
+    unset($_SESSION['oauth_return']);
+    header('Location: ' . $return . '#link-account');
+    exit;
+}
+
+$_SESSION['user_key'] = $result['user_key'];
 $_SESSION['user_display_name'] = $name;
 $_SESSION['user_avatar'] = $avatar;
-$_SESSION['oauth_provider'] = 'x';
 
 $return = $_SESSION['oauth_return'] ?? '/community';
 unset($_SESSION['oauth_return']);

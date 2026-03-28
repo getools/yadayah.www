@@ -184,6 +184,11 @@ Community.route = function() {
         return;
     }
 
+    if (hash === '#link-account') {
+        CommunityAuth.showLinkPrompt();
+        return;
+    }
+
     if (hash === '#topics' || hash === '') {
         CommunityTopics.loadTopics();
     } else if (hash.indexOf('#topic/') === 0) {

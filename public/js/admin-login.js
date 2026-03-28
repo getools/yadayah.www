@@ -4,13 +4,27 @@
 
 // Same helpers as community.js
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
-function showMsg(el, msg, cls) {
-    cls = cls || 'login-error';
-    el.className = el.className.replace(/\bflash\b/, '').trim();
+function showMsg(el, msg) {
+    if (!el) { alert(msg); return; }
+    // Reset to trigger animation even if same message
+    el.style.transition = 'none';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-8px)';
     el.textContent = msg;
-    el.style.display = '';
+    el.style.display = 'block';
+    el.style.color = '#c0392b';
+    el.style.fontSize = '0.85rem';
+    el.style.textAlign = 'center';
+    el.style.marginBottom = '10px';
+    el.style.padding = '8px';
+    el.style.background = '#fef2f2';
+    el.style.borderRadius = '6px';
+    el.style.border = '1px solid #fecaca';
+    // Force reflow then animate
     void el.offsetWidth;
-    el.className = (el.className + ' ' + cls + ' flash').trim();
+    el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    el.style.opacity = '1';
+    el.style.transform = 'translateY(0)';
 }
 
 // Same SVGs as community-auth.js
@@ -19,9 +33,13 @@ var msSvg = '<svg viewBox="0 0 21 21" style="width:18px;height:18px;"><rect x="1
 var xSvg = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:#000;"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231z"/></svg>';
 var yahooSvg = '<svg viewBox="-143 145 512 512" style="width:22px;height:22px;"><circle cx="113" cy="401" r="256" fill="#720e9e"/><g fill="#fff" transform="translate(113,401) scale(1.1) translate(-113,-401)"><path d="M191.2,362.3c-6.3,1.7-63.6,46-67.4,56.8c-0.8,3.8,0.1,40.2,0.9,45.6c3.8,0.9,31,0.1,36,1l-0.6,11.2c-4.9-0.4-39.5-0.3-59.3-0.3c-10,0-42.3,1.1-52.2,0.8l1.9-10.7c5.4-0.4,28,1,32.9-4.2c2.5-2.6,1.7-37.2,0.9-43c-2.1-6.3-52.3-69-65.4-79.2H-15v-15.8H99.1v1.1c0.1,0,0.3,0,0.4,0.1l-0.4,2.6v12H64.7c15.3,22.3,37.3,49.3,46.7,62.3l46-41.5H130l-3.9-15.7h100.1l-0.7,1.1c0.1,0,0.2,0,0.4,0l-7.1,10.3c-0.1,0-0.2,0-0.2,0l-2.9,4.2h-18.5C194.7,361.5,192.6,362,191.2,362.3z M221.4,477.5l-8.4-0.6l-7.8-0.7l-0.1-16.8l9.8,1.2l8.8,0.4L221.4,477.5z M223.1,449.5l-15.3-1.2l-0.4-71.1c3.5,0.7,30.6,3.2,33.6,3.3L223.1,449.5z"/></g></svg>';
 
-// Hide old login screen
+// Hide old login screen and remove its login-error to avoid duplicate IDs
 var oldScreen = document.getElementById('login-screen');
-if (oldScreen) oldScreen.style.display = 'none';
+if (oldScreen) {
+    oldScreen.style.display = 'none';
+    var oldErr = oldScreen.querySelector('#login-error');
+    if (oldErr) oldErr.removeAttribute('id');
+}
 
 // Create modal — same structure as community.html
 var modal = document.createElement('div');
@@ -82,13 +100,15 @@ function openLoginModal(mode) {
         + '<div id="login-error" class="login-error" style="display:none"></div>'
         + '<input id="auth-email" type="email" placeholder="Email address">'
         + '<input id="auth-pass" type="password" placeholder="Password">'
-        + '<button class="btn btn-primary" style="width:100%;" onclick="AdminLogin.submitEmail()">Sign In</button>'
-        + '<div style="text-align:center;margin-top:10px;"><a style="font-size:0.82rem;color:#31345A;cursor:pointer;" onclick="AdminLogin.open(\'forgot\')">Forgot password?</a></div>';
+        + '<button class="btn btn-primary" style="width:100%;" id="admin-signin-btn">Sign In</button>'
+        + '<div style="text-align:center;margin-top:10px;"><a style="font-size:0.82rem;color:#31345A;cursor:pointer;" id="admin-forgot-link">Forgot password?</a></div>';
     modal.classList.add('active');
 
     setTimeout(function() {
         var el = document.getElementById('auth-email');
         if (el) el.focus();
+        document.getElementById('admin-signin-btn').addEventListener('click', function() { AdminLogin.submitEmail(); });
+        document.getElementById('admin-forgot-link').addEventListener('click', function() { openLoginModal('forgot'); });
         var passEl = document.getElementById('auth-pass');
         if (passEl) passEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') AdminLogin.submitEmail(); });
     }, 100);
@@ -101,16 +121,24 @@ window.AdminLogin = {
         var email = document.getElementById('auth-email').value.trim();
         var pass = document.getElementById('auth-pass').value;
         var errEl = document.getElementById('login-error');
-        if (!email) { showMsg(errEl, 'Email is required', 'login-error'); return; }
-        if (!pass) { showMsg(errEl, 'Password is required', 'login-error'); return; }
+        console.log('submitEmail called', { email: email, hasPass: !!pass, errEl: errEl });
+        if (!email) { showMsg(errEl, 'Email is required'); return; }
+        if (!pass) { showMsg(errEl, 'Password is required'); return; }
         fetch('/api/community-auth.php', {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'login', email: email, password: pass })
-        }).then(function(r) { return r.json(); }).then(function(data) {
-            if (data.error) { showMsg(errEl, data.error, 'login-error'); }
+        }).then(function(r) {
+            console.log('fetch response', r.status);
+            return r.json();
+        }).then(function(data) {
+            console.log('response data', data);
+            if (data.error) { showMsg(errEl, data.error); }
             else { location.reload(); }
-        }).catch(function() { showMsg(errEl, 'Connection error.', 'login-error'); });
+        }).catch(function(e) {
+            console.error('fetch error', e);
+            showMsg(errEl, 'Connection error. Please try again.');
+        });
     },
 
     submitForgot: function() {

@@ -251,4 +251,114 @@ CommunityAuth.resendVerify = function() {
     });
 };
 
+// ── Link Account Prompt ──
+// Shown when OAuth callback finds an email match and redirects to #link-account
+CommunityAuth.showLinkPrompt = function() {
+    // Check if there's a pending link in the session
+    Community.api('/api/user-auth-link.php', {
+        method: 'POST',
+        body: { action: 'check_pending' }
+    }).then(function(data) {
+        if (!data.pending) {
+            window.location.hash = '#topics';
+            return;
+        }
+
+        var providerLabels = { google: 'Google', microsoft: 'Microsoft', yahoo: 'Yahoo', x: 'X', facebook: 'Facebook' };
+        var providerName = providerLabels[data.provider] || data.provider;
+
+        var modal = document.getElementById('login-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.className = 'login-modal active';
+            modal.id = 'login-modal';
+            document.body.appendChild(modal);
+        }
+
+        var box = modal.querySelector('.login-box');
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'login-box';
+            modal.appendChild(box);
+        }
+
+        box.innerHTML = '<h2>Link Account?</h2>'
+            + '<p style="font-size:0.9rem;color:#333;text-align:center;margin:0 0 8px;">'
+            + 'Your <strong>' + Community.esc(providerName) + '</strong> account (<strong>' + Community.esc(data.email) + '</strong>) '
+            + 'matches an existing account' + (data.existing_name ? ' for <strong>' + Community.esc(data.existing_name) + '</strong>' : '') + '.</p>'
+            + '<p style="font-size:0.85rem;color:#666;text-align:center;margin:0 0 20px;">'
+            + 'Would you like to link your ' + Community.esc(providerName) + ' login to that account?</p>'
+            + '<div id="link-prompt-msg" style="display:none;text-align:center;margin-bottom:12px;font-size:0.85rem;"></div>';
+
+        // If user is logged in, they can confirm directly
+        if (Community.currentUser) {
+            box.innerHTML += '<div style="display:flex;gap:10px;justify-content:center;">'
+                + '<button class="btn btn-primary" onclick="CommunityAuth.confirmLink()">Link Account</button>'
+                + '<button class="btn btn-outline" onclick="CommunityAuth.declineLink()">Create Separate Account</button>'
+                + '</div>';
+        } else {
+            // User needs to sign in first to prove they own the existing account
+            box.innerHTML += '<p style="font-size:0.85rem;color:#c0392b;text-align:center;margin:0 0 12px;">'
+                + 'To link, please sign in with your existing account first.</p>'
+                + '<div id="link-login-error" class="login-error" style="display:none"></div>'
+                + '<input id="link-email" type="email" placeholder="Email address" value="' + Community.esc(data.email) + '">'
+                + '<input id="link-pass" type="password" placeholder="Password">'
+                + '<div style="display:flex;gap:10px;justify-content:center;margin-top:8px;">'
+                + '<button class="btn btn-primary" onclick="CommunityAuth.linkLogin()">Sign In & Link</button>'
+                + '<button class="btn btn-outline" onclick="CommunityAuth.declineLink()">Create Separate Account</button>'
+                + '</div>';
+            setTimeout(function() {
+                var passEl = document.getElementById('link-pass');
+                if (passEl) passEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') CommunityAuth.linkLogin(); });
+            }, 100);
+        }
+
+        modal.classList.add('active');
+    });
+};
+
+CommunityAuth.confirmLink = function() {
+    var msgEl = document.getElementById('link-prompt-msg');
+    Community.api('/api/user-auth-link.php', {
+        method: 'POST',
+        body: { action: 'confirm_link' }
+    }).then(function(data) {
+        if (data.error) {
+            if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c0392b'; msgEl.textContent = data.error; }
+            return;
+        }
+        // Success — reload as the linked user
+        location.reload();
+    });
+};
+
+CommunityAuth.declineLink = function() {
+    Community.api('/api/user-auth-link.php', {
+        method: 'POST',
+        body: { action: 'create_new' }
+    }).then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        location.reload();
+    });
+};
+
+CommunityAuth.linkLogin = function() {
+    var email = document.getElementById('link-email').value.trim();
+    var pass = document.getElementById('link-pass').value;
+    var errEl = document.getElementById('link-login-error');
+    if (!email || !pass) { if (errEl) { errEl.textContent = 'Email and password required'; errEl.style.display = ''; } return; }
+
+    Community.api('/api/community-auth.php', {
+        method: 'POST',
+        body: { action: 'login', email: email, password: pass }
+    }).then(function(data) {
+        if (data.error) {
+            if (errEl) { errEl.textContent = data.error; errEl.style.display = ''; }
+            return;
+        }
+        // Now logged in — confirm the link
+        CommunityAuth.confirmLink();
+    });
+};
+
 })();

@@ -4,6 +4,7 @@
  * Redirects to /community on success.
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/oauth-helpers.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $provider = $_GET['provider'] ?? '';
@@ -91,45 +92,18 @@ if ($provider === 'google') {
         exit;
     }
 
-    // Find or create user
-    $stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_oauth_provider = 'google' AND user_oauth_id = ?");
-    $stmt->execute([$oauthId]);
-    $existing = $stmt->fetchColumn();
+    $result = resolveOAuthUser($db, 'google', $oauthId, $email, $name, $avatar);
 
-    if ($existing) {
-        $userKey = $existing;
-        // Update profile info
-        $db->prepare("UPDATE yy_user SET user_display_name = ?, user_avatar = ?, user_email = ? WHERE user_key = ?")
-           ->execute([$name, $avatar, $email, $userKey]);
-    } else {
-        // Check if email already exists (link accounts)
-        if ($email) {
-            $stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_email = ?");
-            $stmt->execute([$email]);
-            $emailMatch = $stmt->fetchColumn();
-            if ($emailMatch) {
-                $userKey = $emailMatch;
-                $db->prepare("UPDATE yy_user SET user_oauth_provider = 'google', user_oauth_id = ?, user_display_name = ?, user_avatar = ? WHERE user_key = ?")
-                   ->execute([$oauthId, $name, $avatar, $userKey]);
-            }
-        }
-
-        if (!isset($userKey)) {
-            // Create new user
-            $stmt = $db->prepare("INSERT INTO yy_user (user_code, user_email, user_display_name, user_avatar, user_oauth_provider, user_oauth_id, user_active_flag) VALUES (?, ?, ?, ?, 'google', ?, TRUE) RETURNING user_key");
-            $stmt->execute(['google:' . $oauthId, $email, $name, $avatar, $oauthId]);
-            $userKey = $stmt->fetchColumn();
-
-            // Assign public role
-            $db->prepare("INSERT INTO yy_user_role (user_key, role_key) VALUES (?, 1)")->execute([$userKey]);
-        }
+    if ($result['action'] === 'pending_link') {
+        $return = $_SESSION['oauth_return'] ?? '/community';
+        unset($_SESSION['oauth_return']);
+        header('Location: ' . $return . '#link-account');
+        exit;
     }
 
-    // Set session
-    $_SESSION['user_key'] = $userKey;
+    $_SESSION['user_key'] = $result['user_key'];
     $_SESSION['user_display_name'] = $name;
     $_SESSION['user_avatar'] = $avatar;
-    $_SESSION['oauth_provider'] = 'google';
 
     $return = $_SESSION['oauth_return'] ?? '/community';
     unset($_SESSION['oauth_return']);
@@ -184,38 +158,18 @@ if ($provider === 'facebook') {
         exit;
     }
 
-    // Find or create user
-    $stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_oauth_provider = 'facebook' AND user_oauth_id = ?");
-    $stmt->execute([$oauthId]);
-    $existing = $stmt->fetchColumn();
+    $result = resolveOAuthUser($db, 'facebook', $oauthId, $email, $name, $avatar);
 
-    if ($existing) {
-        $userKey = $existing;
-        $db->prepare("UPDATE yy_user SET user_display_name = ?, user_avatar = ?, user_email = ? WHERE user_key = ?")
-           ->execute([$name, $avatar, $email, $userKey]);
-    } else {
-        if ($email) {
-            $stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_email = ?");
-            $stmt->execute([$email]);
-            $emailMatch = $stmt->fetchColumn();
-            if ($emailMatch) {
-                $userKey = $emailMatch;
-                $db->prepare("UPDATE yy_user SET user_oauth_provider = 'facebook', user_oauth_id = ?, user_display_name = ?, user_avatar = ? WHERE user_key = ?")
-                   ->execute([$oauthId, $name, $avatar, $userKey]);
-            }
-        }
-        if (!isset($userKey)) {
-            $stmt = $db->prepare("INSERT INTO yy_user (user_code, user_email, user_display_name, user_avatar, user_oauth_provider, user_oauth_id, user_active_flag) VALUES (?, ?, ?, ?, 'facebook', ?, TRUE) RETURNING user_key");
-            $stmt->execute(['facebook:' . $oauthId, $email, $name, $avatar, $oauthId]);
-            $userKey = $stmt->fetchColumn();
-            $db->prepare("INSERT INTO yy_user_role (user_key, role_key) VALUES (?, 1)")->execute([$userKey]);
-        }
+    if ($result['action'] === 'pending_link') {
+        $return = $_SESSION['oauth_return'] ?? '/community';
+        unset($_SESSION['oauth_return']);
+        header('Location: ' . $return . '#link-account');
+        exit;
     }
 
-    $_SESSION['user_key'] = $userKey;
+    $_SESSION['user_key'] = $result['user_key'];
     $_SESSION['user_display_name'] = $name;
     $_SESSION['user_avatar'] = $avatar;
-    $_SESSION['oauth_provider'] = 'facebook';
 
     $return = $_SESSION['oauth_return'] ?? '/community';
     unset($_SESSION['oauth_return']);
