@@ -46,6 +46,27 @@ CommunitySearch.init = function() {
 
 // ── Perform search ──
 CommunitySearch.search = function(query) {
+    // #hashtag = filter by category name
+    if (query.charAt(0) === '#' && query.length > 1) {
+        var catName = query.substring(1).toLowerCase();
+        var cats = Community.categories || [];
+        for (var i = 0; i < cats.length; i++) {
+            if (cats[i].category_name.toLowerCase() === catName || cats[i].category_slug.toLowerCase() === catName) {
+                Community.filterCategory(cats[i].category_slug);
+                document.getElementById('community-search').value = '';
+                CommunitySearch.hideResults();
+                return;
+            }
+        }
+        // No exact match — show as no results
+        var container = document.getElementById('search-results');
+        if (container) {
+            container.innerHTML = '<div class="search-empty">No category "' + Community.esc(query) + '"</div>';
+            container.style.display = '';
+        }
+        return;
+    }
+
     var url = '/api/community-search.php?q=' + encodeURIComponent(query);
     if (Community.currentCategory) {
         url += '&category=' + encodeURIComponent(Community.currentCategory);

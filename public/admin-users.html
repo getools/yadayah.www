@@ -14,6 +14,13 @@
         .users-table .actions { white-space: nowrap; }
         .users-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
         .users-table .actions button:hover { background: #f0f0f0; }
+        .users-table .actions button.ban { color: #c0392b; border-color: #e0c0c0; }
+        .users-table .actions button.ban:hover { background: #fde8e8; }
+        .users-table .actions button.unban { color: #27ae60; border-color: #b0e0b0; }
+        .users-table .actions button.unban:hover { background: #e8fde8; }
+        .users-table tr.banned { background: #fef0f0; }
+        .badge-banned { display: inline-block; font-size: 0.7rem; background: #c0392b; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: 6px; }
+        .badge-muted { display: inline-block; font-size: 0.7rem; background: #e67e22; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: 6px; }
 
         .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
         .form-overlay.open { display: flex; }
@@ -128,6 +135,23 @@
                 <label>Roles</label>
                 <div class="page-perms" id="f-roles"></div>
             </div>
+            <div class="field" id="f-ban-section">
+                <label>Community Status</label>
+                <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+                    <label style="font-weight:400;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="f-banned"> Banned</label>
+                    <label style="font-weight:400;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="f-muted"> Muted</label>
+                </div>
+                <div id="f-ban-details" style="display:none;">
+                    <select id="f-ban-duration" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;margin-bottom:8px;">
+                        <option value="">Permanent</option>
+                        <option value="1">1 hour</option>
+                        <option value="24">24 hours</option>
+                        <option value="168">7 days</option>
+                        <option value="720">30 days</option>
+                    </select>
+                    <input type="text" id="f-ban-reason" placeholder="Reason (optional)" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;box-sizing:border-box;">
+                </div>
+            </div>
             <div class="field">
                 <label>Admin Page Access</label>
                 <div class="page-perms" id="f-page-perms"></div>
@@ -227,7 +251,7 @@ function renderTable() {
     }
 
     var html = '<table class="users-table"><thead><tr>'
-        + '<th>Login</th><th>Name</th><th>Email</th><th>Roles</th><th>Pages</th><th>Actions</th>'
+        + '<th>Login</th><th>Name</th><th>Email</th><th>Roles</th><th>Status</th><th>Pages</th><th>Actions</th>'
         + '</tr></thead><tbody>';
     for (var i = 0; i < allUsers.length; i++) {
         var u = allUsers[i];
@@ -237,14 +261,23 @@ function renderTable() {
         var allEnabled = (u.page_settings || []).every(function(p) { return p.enabled; });
         var pagesDisplay = allEnabled ? '<span style="color:#27ae60">All</span>' : (pages || '<span style="color:#c00">None</span>');
         var rolesDisplay = (u.role_keys || []).map(function(rk) { return esc(roleMap[rk] || rk); }).join(', ') || '<span style="color:#999">—</span>';
-        html += '<tr onclick="editUser(' + u.user_key + ')">'
+        var isBanned = u.user_banned_flag === true || u.user_banned_flag === 't';
+        var isMuted = u.user_muted_flag === true || u.user_muted_flag === 't';
+        var statusHtml = isBanned ? '<span class="badge-banned">Banned</span>' : (isMuted ? '<span class="badge-muted">Muted</span>' : '<span style="color:#27ae60;font-size:0.8rem">Active</span>');
+        if (isBanned && u.user_ban_reason) statusHtml += '<br><span style="font-size:0.7rem;color:#999">' + esc(u.user_ban_reason) + '</span>';
+        html += '<tr class="' + (isBanned ? 'banned' : '') + '" onclick="editUser(' + u.user_key + ')">'
             + '<td>' + esc(u.user_code) + '</td>'
-            + '<td>' + esc(u.user_name_full) + '</td>'
+            + '<td>' + esc(u.user_name_full || u.user_display_name || '') + '</td>'
             + '<td>' + esc(u.user_email || '') + '</td>'
             + '<td style="font-size:0.8rem">' + rolesDisplay + '</td>'
+            + '<td style="font-size:0.8rem">' + statusHtml + '</td>'
             + '<td style="font-size:0.8rem">' + pagesDisplay + '</td>'
-            + '<td class="actions"><button onclick="event.stopPropagation();editUser(' + u.user_key + ')">Edit</button></td>'
-            + '</tr>';
+            + '<td class="actions">'
+            + '<button onclick="event.stopPropagation();editUser(' + u.user_key + ')">Edit</button>'
+            + (isBanned
+                ? '<button class="unban" onclick="event.stopPropagation();toggleBan(' + u.user_key + ',false)">Unban</button>'
+                : '<button class="ban" onclick="event.stopPropagation();toggleBan(' + u.user_key + ',true)">Ban</button>')
+            + '</td></tr>';
     }
     html += '</tbody></table>';
     document.getElementById('table-container').innerHTML = html;
@@ -286,6 +319,19 @@ function showForm(user) {
             + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>';
     }
     document.getElementById('f-page-perms').innerHTML = permsHtml;
+
+    // Ban/mute fields
+    var isBanned = user && (user.user_banned_flag === true || user.user_banned_flag === 't');
+    var isMuted = user && (user.user_muted_flag === true || user.user_muted_flag === 't');
+    document.getElementById('f-banned').checked = isBanned;
+    document.getElementById('f-muted').checked = isMuted;
+    document.getElementById('f-ban-reason').value = user ? (user.user_ban_reason || '') : '';
+    document.getElementById('f-ban-duration').value = '';
+    document.getElementById('f-ban-details').style.display = isBanned ? '' : 'none';
+    document.getElementById('f-banned').onchange = function() {
+        document.getElementById('f-ban-details').style.display = this.checked ? '' : 'none';
+    };
+
     document.getElementById('form-overlay').classList.add('open');
 }
 
@@ -311,6 +357,14 @@ function saveUser() {
         if (roleChecks[r].checked) roleKeys.push(parseInt(roleChecks[r].getAttribute('data-rk')));
     }
     data.role_keys = roleKeys;
+
+    // Ban/mute
+    data.banned = document.getElementById('f-banned').checked;
+    data.muted = document.getElementById('f-muted').checked;
+    if (data.banned) {
+        data.ban_duration = document.getElementById('f-ban-duration').value || null;
+        data.ban_reason = document.getElementById('f-ban-reason').value.trim() || null;
+    }
 
     // Collect page settings
     var checks = document.querySelectorAll('#f-page-perms input[type=checkbox]');
@@ -343,6 +397,24 @@ function saveUser() {
             else if (d.error) alert(d.error);
         });
     }
+}
+
+function toggleBan(userKey, ban) {
+    var reason = '';
+    if (ban) {
+        reason = prompt('Ban reason (optional):');
+        if (reason === null) return; // cancelled
+    } else {
+        if (!confirm('Unban this user?')) return;
+    }
+    fetch(API + '/admin-users.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user_key: userKey, banned: ban, ban_reason: reason || null })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.saved) loadUsers();
+        else if (d.error) alert(d.error);
+    });
 }
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {

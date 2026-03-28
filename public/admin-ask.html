@@ -34,6 +34,15 @@
         .qa-response { padding: 10px 14px; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
         .qa-meta { padding: 6px 14px; background: #f9f9f9; border-top: 1px solid #eee; font-size: 0.78rem; color: #888; display: flex; gap: 16px; flex-wrap: wrap; }
         .qa-error { color: #c0392b; font-weight: 600; }
+        .qa-note { padding: 8px 14px; background: #fffde7; border-top: 1px solid #f0e68c; }
+        .qa-note textarea { width: 100%; min-height: 50px; padding: 8px; border: 1px solid #e0d88c; border-radius: 4px; font-family: inherit; font-size: 0.85rem; resize: vertical; box-sizing: border-box; }
+        .qa-note textarea:focus { outline: none; border-color: #c0a830; }
+        .qa-note-actions { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
+        .qa-note-actions button { padding: 3px 10px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; }
+        .qa-note-actions button.save { background: #31345A; color: #fff; border-color: #31345A; }
+        .qa-note-actions button.save:hover { background: #4a4e7a; }
+        .qa-note-actions .note-status { font-size: 0.78rem; color: #27ae60; }
+        .qa-note-label { font-size: 0.75rem; font-weight: 600; color: #8a7a2e; margin-bottom: 4px; }
 
         .pagination { display: flex; justify-content: center; gap: 4px; padding: 16px 0; }
         .pagination button { padding: 6px 12px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
@@ -157,6 +166,8 @@
                 <input type="text" id="page-title" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Summary</label>
                 <textarea id="page-summary" rows="4" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;"></textarea>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Prompt</label>
+                <input type="text" id="page-placeholder" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Ban Title</label>
                 <input type="text" id="page-ban-title" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Ban Message</label>
@@ -296,6 +307,7 @@ function loadModel() {
             if (d.page) {
                 document.getElementById('page-title').value = d.page.title || '';
                 document.getElementById('page-summary').value = d.page.summary || '';
+                document.getElementById('page-placeholder').value = d.page['placeholder'] || '';
                 document.getElementById('page-ban-title').value = d.page['ban-title'] || '';
                 document.getElementById('page-ban-message').value = d.page['ban-message'] || '';
             }
@@ -308,6 +320,7 @@ function savePageSettings() {
         page: {
             'title': document.getElementById('page-title').value,
             'summary': document.getElementById('page-summary').value,
+            'placeholder': document.getElementById('page-placeholder').value,
             'ban-title': document.getElementById('page-ban-title').value,
             'ban-message': document.getElementById('page-ban-message').value
         }
@@ -492,6 +505,21 @@ function loadDetail(key, row) {
         });
 }
 
+function saveNote(logKey, noteId, btn) {
+    var note = document.getElementById(noteId).value.trim();
+    var statusEl = document.getElementById(noteId + '-status');
+    btn.disabled = true;
+    fetch(API + '/ask-sessions.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ ask_session_log_key: logKey, admin_note: note })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        btn.disabled = false;
+        if (d.saved) { statusEl.textContent = 'Saved'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
+        else { statusEl.textContent = d.error || 'Error'; statusEl.style.color = '#c00'; }
+    }).catch(function() { btn.disabled = false; statusEl.textContent = 'Error'; statusEl.style.color = '#c00'; });
+}
+
 function closeDetail() {
     document.getElementById('detail-overlay').classList.remove('open');
     var rows = document.querySelectorAll('.sessions-table tr');
@@ -537,7 +565,18 @@ function renderDetail(session, logs) {
         var ct = parseInt(log.ask_log_completion_tokens) || 0;
         if (pt || ct) html += '<span>Tokens: ' + pt.toLocaleString() + ' in / ' + ct.toLocaleString() + ' out</span>';
         if (log.ask_log_duration_ms) html += '<span>' + formatDuration(parseInt(log.ask_log_duration_ms)) + '</span>';
-        html += '</div></div>';
+        html += '</div>';
+        // Admin note
+        var noteId = 'note-' + log.ask_session_log_key;
+        var hasNote = log.ask_log_admin_note && log.ask_log_admin_note.trim();
+        html += '<div class="qa-note">'
+            + '<div class="qa-note-label">Admin Note' + (log.ask_log_admin_note_dtime ? ' (' + formatDate(log.ask_log_admin_note_dtime) + ')' : '') + '</div>'
+            + '<textarea id="' + noteId + '" placeholder="Add feedback on this response... (injected into future AI prompts)">' + esc(log.ask_log_admin_note || '') + '</textarea>'
+            + '<div class="qa-note-actions">'
+            + '<button class="save" onclick="saveNote(' + log.ask_session_log_key + ',\'' + noteId + '\',this)">Save Note</button>'
+            + '<span id="' + noteId + '-status" class="note-status"></span>'
+            + '</div></div>';
+        html += '</div>';
     }
     html += '</div></div>';
     document.getElementById('detail-container').innerHTML = html;

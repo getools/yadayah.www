@@ -15,7 +15,8 @@ switch ($method) {
     case 'GET':
         // List users with their page settings
         $users = $db->query("
-            SELECT user_key, user_code, user_name_full, user_display_name, user_email, user_oauth_provider, user_dtime
+            SELECT user_key, user_code, user_name_full, user_display_name, user_email, user_oauth_provider, user_dtime,
+                   user_banned_flag, user_banned_until, user_ban_reason, user_muted_flag
             FROM yy_user ORDER BY user_key
         ")->fetchAll();
 
@@ -84,6 +85,24 @@ switch ($method) {
             'email' => $input['user_email'] ?? '',
             'key' => $key,
         ]);
+
+        // Update ban status
+        if (isset($input['banned'])) {
+            if ($input['banned']) {
+                $banUntil = !empty($input['ban_duration']) ? date('Y-m-d H:i:s', time() + (int)$input['ban_duration'] * 3600) : null;
+                $db->prepare("UPDATE yy_user SET user_banned_flag = TRUE, user_banned_until = ?, user_ban_reason = ? WHERE user_key = ?")
+                    ->execute([$banUntil, $input['ban_reason'] ?? null, $key]);
+            } else {
+                $db->prepare("UPDATE yy_user SET user_banned_flag = FALSE, user_banned_until = NULL, user_ban_reason = NULL WHERE user_key = ?")
+                    ->execute([$key]);
+            }
+        }
+
+        // Update mute status
+        if (isset($input['muted'])) {
+            $db->prepare("UPDATE yy_user SET user_muted_flag = ? WHERE user_key = ?")
+                ->execute([$input['muted'] ? true : false, $key]);
+        }
 
         // Update password if provided
         if (!empty($input['new_password'])) {

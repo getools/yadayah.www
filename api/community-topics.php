@@ -274,20 +274,26 @@ if ($method === 'POST') {
         $titleStmt->execute([$tk]);
         $topicTitle = $titleStmt->fetchColumn();
 
+        // Respond immediately so the client isn't blocked by email sending
+        $responseJson = json_encode(['saved' => true, 'reply_key' => $replyKey]);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Length: ' . strlen($responseJson));
+        echo $responseJson;
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        else { ob_end_flush(); flush(); }
+
+        // Now send notifications and emails (client already got the response)
         foreach ($watchers as $watcherKey) {
-            // Create notification (if not already the topic author who got one)
             if ((int)$watcherKey !== $topicAuthorKey) {
                 notifyUser($db, (int)$watcherKey, $userKey, 'watch_reply', 'topic', $tk, $tk, 'New reply in a topic you\'re watching');
             }
-            // Send email
             $emailBody = '<h2 style="color:#31345A;">New Reply</h2>'
                 . '<p><strong>' . htmlspecialchars($replierName) . '</strong> replied to <strong>' . htmlspecialchars($topicTitle) . '</strong></p>'
                 . '<p>' . htmlspecialchars(mb_substr($body ?: strip_tags($bodyHtml ?? ''), 0, 200)) . '</p>'
                 . '<p><a href="https://yadayah.com/community#topic/' . $tk . '" style="color:#31345A;font-weight:600;">View Topic</a></p>';
             sendNotificationEmail($db, (int)$watcherKey, 'New reply: ' . mb_substr($topicTitle, 0, 60), $emailBody);
         }
-
-        jsonResponse(['saved' => true, 'reply_key' => $replyKey]);
+        exit;
     }
 
     errorResponse('Unknown action');

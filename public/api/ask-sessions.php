@@ -3,6 +3,19 @@ require_once __DIR__ . '/config.php';
 requireAuth();
 
 $db = getDb();
+$method = $_SERVER['REQUEST_METHOD'];
+
+// PUT — save admin note on a log entry
+if ($method === 'PUT') {
+    $data = json_decode(file_get_contents('php://input'), true) ?: [];
+    $logKey = (int)($data['ask_session_log_key'] ?? 0);
+    $note = trim($data['admin_note'] ?? '');
+    if (!$logKey) errorResponse('Log key required');
+
+    $db->prepare("UPDATE yy_ask_session_log SET ask_log_admin_note = ?, ask_log_admin_note_dtime = NOW() WHERE ask_session_log_key = ?")
+        ->execute([$note ?: null, $logKey]);
+    jsonResponse(['saved' => true]);
+}
 
 // GET ?session=N — single session with Q&A logs
 if (isset($_GET['session'])) {

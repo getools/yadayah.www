@@ -675,6 +675,7 @@ function sendMessage() {
 (function(){fetch('/api/page-ask-config.php').then(function(r){return r.json();}).then(function(cfg){
     if(cfg.title){var t=document.getElementById('ask-title');if(t)t.textContent=cfg.title;}
     if(cfg.summary){var s=document.getElementById('ask-summary');if(s)s.textContent=cfg.summary;}
+    if(cfg.placeholder){var p=document.getElementById('input');if(p)p.placeholder=cfg.placeholder;}
 });})();
 </script>
 </body>

@@ -396,6 +396,8 @@ CommunityDM.popInbox = function() {
     _popThread = null;
     document.getElementById('chat-pop-title').textContent = 'Messages';
     document.getElementById('chat-pop-back').style.display = 'none';
+    var newBtn = document.getElementById('chat-pop-new');
+    if (newBtn) newBtn.style.display = '';
     var body = document.getElementById('chat-pop-body');
     body.innerHTML = '<div class="chat-pop-empty">Loading...</div>';
 
@@ -425,6 +427,8 @@ CommunityDM.popInbox = function() {
 CommunityDM.popThread = function(threadKey) {
     _popThread = threadKey;
     document.getElementById('chat-pop-back').style.display = '';
+    var newBtn = document.getElementById('chat-pop-new');
+    if (newBtn) newBtn.style.display = 'none';
     var body = document.getElementById('chat-pop-body');
     body.innerHTML = '<div class="chat-pop-empty">Loading...</div>';
 
@@ -514,6 +518,111 @@ CommunityDM.popSend = function(threadKey) {
                 + '<div class="dm-message-time">just now</div>';
             msgs.appendChild(div);
             msgs.scrollTop = msgs.scrollHeight;
+        }
+    });
+};
+
+// ── Popover compose: search for a member to message ──
+CommunityDM.popCompose = function() {
+    _popThread = null;
+    document.getElementById('chat-pop-title').textContent = 'New Message';
+    document.getElementById('chat-pop-back').style.display = '';
+    document.getElementById('chat-pop-new').style.display = 'none';
+    var body = document.getElementById('chat-pop-body');
+    body.innerHTML = '<div class="chat-pop-search">'
+        + '<input id="chat-pop-member-search" placeholder="Search for a member..." autocomplete="off">'
+        + '</div>'
+        + '<div class="chat-pop-results" id="chat-pop-results"></div>';
+
+    var input = document.getElementById('chat-pop-member-search');
+    var searchTimeout;
+    input.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        var q = this.value.trim();
+        var results = document.getElementById('chat-pop-results');
+        if (q.length < 2) { results.innerHTML = ''; return; }
+        searchTimeout = setTimeout(function() {
+            Community.api('/api/community-members.php?q=' + encodeURIComponent(q) + '&limit=8').then(function(data) {
+                var members = data.members || [];
+                if (!members.length) {
+                    results.innerHTML = '<div class="chat-pop-empty" style="padding:20px">No members found</div>';
+                    return;
+                }
+                var html = '';
+                members.forEach(function(m) {
+                    if (Community.currentUser && m.user_key === Community.currentUser.user_key) return;
+                    html += '<div class="chat-pop-thread" onclick="CommunityDM.popStartThread(' + m.user_key + ')">'
+                        + Community.avatarHtml(m.user_avatar, m.user_display_name, 'dm-avatar', m.user_last_active_dtime)
+                        + '<div style="flex:1;min-width:0;">'
+                        + '<div class="cp-name">' + Community.esc(m.user_display_name) + '</div>'
+                        + (m.user_handle ? '<div class="cp-preview">@' + Community.esc(m.user_handle) + '</div>' : '')
+                        + '</div></div>';
+                });
+                results.innerHTML = html || '<div class="chat-pop-empty" style="padding:20px">No members found</div>';
+            });
+        }, 250);
+    });
+    input.focus();
+};
+
+// ── Start or open a thread with a selected member ──
+CommunityDM.popStartThread = function(userKey) {
+    // Check if thread already exists
+    Community.api('/api/community-dm.php?threads=1').then(function(data) {
+        var threads = data.threads || [];
+        for (var i = 0; i < threads.length; i++) {
+            if (threads[i].other_user && threads[i].other_user.user_key === userKey) {
+                CommunityDM.popThread(threads[i].thread_key);
+                return;
+            }
+        }
+        // No existing thread — create one with an empty first message prompt
+        _popThread = null;
+        document.getElementById('chat-pop-back').style.display = '';
+        document.getElementById('chat-pop-new').style.display = 'none';
+        var body = document.getElementById('chat-pop-body');
+        body.innerHTML = '<div class="chat-pop-msgs" id="chat-pop-msgs" style="min-height:200px">'
+            + '<div class="chat-pop-empty" style="padding:40px 20px">Start the conversation</div>'
+            + '</div>'
+            + '<div class="chat-pop-compose">'
+            + '<textarea id="chat-pop-input" placeholder="Type a message..." rows="1"></textarea>'
+            + '<button class="chat-pop-send" onclick="CommunityDM.popSendNew(' + userKey + ')">&#10148;</button>'
+            + '</div>';
+
+        Community.api('/api/community-members.php?user_key=' + userKey).then(function(d) {
+            var m = d.member || d;
+            if (m && m.user_display_name) {
+                document.getElementById('chat-pop-title').textContent = m.user_display_name;
+            }
+        });
+
+        var ta = document.getElementById('chat-pop-input');
+        if (ta) {
+            ta.focus();
+            ta.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    CommunityDM.popSendNew(userKey);
+                }
+            });
+        }
+    });
+};
+
+// ── Send first message to create new thread via popover ──
+CommunityDM.popSendNew = function(recipientKey) {
+    var input = document.getElementById('chat-pop-input');
+    var body = input ? input.value.trim() : '';
+    if (!body) return;
+    input.value = '';
+
+    Community.api('/api/community-dm.php', {
+        method: 'POST',
+        body: { action: 'new_thread', recipient_key: recipientKey, body: body }
+    }).then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        if (data.thread_key) {
+            CommunityDM.popThread(data.thread_key);
         }
     });
 };

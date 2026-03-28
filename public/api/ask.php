@@ -399,6 +399,30 @@ try {
     }
 } catch (Exception $e) {}
 
+// Append admin feedback notes from reviewed past responses
+// These are critical corrections — treat them as authoritative guidance for how to respond
+try {
+    $noteStmt = $pdo->query("
+        SELECT ask_log_question, ask_log_response, ask_log_admin_note
+        FROM yy_ask_session_log
+        WHERE ask_log_admin_note IS NOT NULL AND ask_log_admin_note != ''
+        ORDER BY ask_log_admin_note_dtime DESC
+        LIMIT 20
+    ");
+    $notes = $noteStmt->fetchAll();
+    if ($notes) {
+        $feedbackBlock = "--- CRITICAL ADMIN FEEDBACK ON PAST RESPONSES ---\n"
+            . "The following are corrections and guidance from the site administrator reviewing your previous answers. "
+            . "These notes identify specific problems with past responses. You MUST incorporate this feedback and avoid repeating the same mistakes.\n\n";
+        foreach ($notes as $n) {
+            $feedbackBlock .= "QUESTION: " . mb_substr($n['ask_log_question'], 0, 200) . "\n";
+            $feedbackBlock .= "YOUR RESPONSE (excerpt): " . mb_substr($n['ask_log_response'], 0, 300) . "\n";
+            $feedbackBlock .= "ADMIN FEEDBACK: " . $n['ask_log_admin_note'] . "\n\n";
+        }
+        $systemPrompt .= "\n\n" . $feedbackBlock;
+    }
+} catch (Exception $e) {}
+
 // --- Build messages array ---
 $messages = [];
 foreach ($history as $h) {

@@ -4,6 +4,9 @@
 
 window.CommunityTopics = {};
 
+// ── Moderator preference: show/hide removed posts ──
+var _showRemoved = localStorage.getItem('mod_show_removed') !== 'false'; // default true
+
 // ── Emoji reaction codes ──
 var REACTIONS = [
     { code: 'thumbsup', emoji: '\uD83D\uDC4D' },
@@ -30,12 +33,12 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
         selector: '#' + textareaId,
         base_url: '/js/tinymce',
         plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table autoresize charmap',
-        toolbar: 'bold italic underline strikethrough | blocks | bullist numlist | blockquote codesample | link image media emoticons charmap | table | fullscreen',
+        toolbar: 'bold italic underline strikethrough | blocks | bullist numlist | blockquote codesample | link uploadimage media emoticons charmap | table | fullscreen',
         menubar: false,
         statusbar: true,
         branding: false,
         promotion: false,
-        placeholder: 'Write your message...',
+        // placeholder handled manually via setup below
         min_height: 220,
         max_height: 600,
         autoresize_bottom_margin: 10,
@@ -123,8 +126,63 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
         // Block formats
         block_formats: 'Paragraph=p; Heading 3=h3; Heading 4=h4; Blockquote=blockquote; Code=pre',
 
+        // Override image button to open file picker directly
+        image_title: false,
+        image_description: false,
         setup: function(editor) {
             CommunityTopics._editors[textareaId] = editor;
+
+            // Custom image upload button
+            editor.ui.registry.addButton('uploadimage', {
+                icon: 'image',
+                tooltip: 'Upload Image',
+                onAction: function() {
+                    var input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/jpeg,image/png,image/gif,image/webp';
+                    input.onchange = function() {
+                        var file = input.files[0];
+                        if (!file) return;
+                        var fd = new FormData();
+                        fd.append('image', file, file.name);
+                        fetch('/api/community-image-upload.php', {
+                            method: 'POST', credentials: 'include', body: fd
+                        }).then(function(r) { return r.json(); }).then(function(data) {
+                            if (data.url) {
+                                editor.insertContent('<img src="' + data.url + '" alt="' + file.name.replace(/"/g, '') + '" style="max-width:100%;">');
+                            } else { alert(data.error || 'Upload failed'); }
+                        }).catch(function() { alert('Upload failed'); });
+                    };
+                    input.click();
+                }
+            });
+
+            // Manual placeholder overlay — hides on focus, shows on blur if empty
+            editor.on('init', function() {
+                var iframeWrap = editor.getContainer().querySelector('.tox-editor-container .tox-sidebar-wrap');
+                if (!iframeWrap) iframeWrap = editor.getContainer();
+                var ph = document.createElement('div');
+                ph.className = 'mce-placeholder-overlay';
+                ph.textContent = 'Write your message...';
+                ph.style.cssText = 'position:absolute;top:8px;left:20px;color:#aaa;font-size:0.95rem;pointer-events:none;z-index:1;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
+                iframeWrap.style.position = 'relative';
+                iframeWrap.appendChild(ph);
+
+                function isEmpty() {
+                    var content = editor.getContent({ format: 'text' }).trim();
+                    var html = editor.getContent();
+                    return !content && html.indexOf('<img') < 0 && html.indexOf('<video') < 0;
+                }
+
+                editor.on('focus', function() {
+                    ph.style.display = 'none';
+                });
+                editor.on('blur', function() {
+                    if (isEmpty()) ph.style.display = '';
+                });
+                if (isEmpty()) ph.style.display = '';
+                else ph.style.display = 'none';
+            });
         }
     });
 };
@@ -211,12 +269,19 @@ CommunityTopics.loadTopic = function(key) {
         var isMod = user && user.roles && (user.roles.indexOf('admin') >= 0 || user.roles.indexOf('moderator') >= 0);
         var isAuthorOrMod = user && (isMod || user.user_key === t.user_key);
 
-        var html = '<a href="#topics" class="back-link">&larr; Back to topics</a>';
+        var html = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+            + '<a href="#topics" class="back-link" style="margin-bottom:0;">&larr; Back to topics</a>';
+        if (isMod) {
+            html += '<label style="font-size:0.78rem;color:#888;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;">'
+                + '<input type="checkbox" id="toggle-removed" ' + (_showRemoved ? 'checked' : '') + ' onchange="CommunityTopics.toggleShowRemoved(this.checked,' + key + ')"> Show removed'
+                + '</label>';
+        }
+        html += '</div>';
 
         // Topic detail
         var topicHidden = t.topic_active_flag === false || t.topic_active_flag === 'f';
         var topicIsRemoved = !!t.topic_delete_dtime;
-        html += '<div class="topic-detail' + (topicHidden ? ' item-hidden' : '') + (topicIsRemoved ? ' removed' : '') + '">';
+        html += '<div class="topic-detail' + (topicHidden ? ' item-hidden' : '') + (topicIsRemoved && _showRemoved ? ' removed' : '') + '">';
         html += '<div class="topic-detail-header">';
         html += '<h2>' + Community.esc(t.topic_title) + '</h2>';
         // Watch and bookmark buttons
@@ -259,7 +324,7 @@ CommunityTopics.loadTopic = function(key) {
 
         // Topic remove/restore actions
         var topicRemoved = !!t.topic_delete_dtime;
-        if (topicRemoved && isMod) {
+        if (topicRemoved && isMod && _showRemoved) {
             html += '<div class="removed-notice"><span>Topic removed ' + Community.timeAgo(t.topic_delete_dtime)
                 + (t.topic_delete_note ? ': ' + Community.esc(t.topic_delete_note) : '')
                 + '</span><button class="btn btn-sm btn-outline restore-btn" onclick="CommunityTopics.restoreTopic(' + key + ')">Restore</button></div>';
@@ -279,6 +344,7 @@ CommunityTopics.loadTopic = function(key) {
                 var r = replies[i];
                 var canRemove = user && (isMod || user.user_key === r.user_key);
                 var isRemoved = !!r.reply_delete_dtime;
+                if (isRemoved && isMod && !_showRemoved) continue;
 
                 html += '<div class="reply-item' + (isRemoved ? ' removed' : '') + '" id="reply-' + r.reply_key + '">';
 
@@ -585,16 +651,38 @@ CommunityTopics.submitReply = function(topicKey) {
         alert('Please enter a reply');
         return;
     }
+
+    // Disable button to prevent double-submit
+    var btns = document.querySelectorAll('.compose-form .btn-primary');
+    btns.forEach(function(b) { b.disabled = true; b.textContent = 'Sending...'; });
+
     Community.api('/api/community-topics.php', {
         method: 'POST',
         body: { action: 'reply', topic_key: topicKey, body: body || '(media)', reply_body_html: bodyHtml }
     }).then(function(data) {
-        if (data.saved) CommunityTopics.loadTopic(topicKey);
-        else alert(data.error || 'Failed');
+        if (data.saved) {
+            CommunityTopics.loadTopic(topicKey);
+            setTimeout(function() {
+                var replies = document.querySelectorAll('.reply-item');
+                if (replies.length) replies[replies.length - 1].scrollIntoView({ behavior: 'smooth' });
+            }, 600);
+        } else {
+            alert(data.error || 'Failed to post reply');
+            btns.forEach(function(b) { b.disabled = false; b.textContent = 'Reply'; });
+        }
+    }).catch(function(err) {
+        alert('Error posting reply: ' + (err.message || err));
+        btns.forEach(function(b) { b.disabled = false; b.textContent = 'Reply'; });
     });
 };
 
 // ── Remove / Restore ──
+CommunityTopics.toggleShowRemoved = function(checked, topicKey) {
+    _showRemoved = checked;
+    localStorage.setItem('mod_show_removed', checked ? 'true' : 'false');
+    CommunityTopics.loadTopic(topicKey);
+};
+
 CommunityTopics.removeReply = function(replyKey, topicKey) {
     var note = prompt('Reason for removal (optional):');
     if (note === null) return; // cancelled
