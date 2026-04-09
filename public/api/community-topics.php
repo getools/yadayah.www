@@ -23,20 +23,19 @@ function userHasRole(PDO $db, int $userKey, string $roleCode): bool {
 
 // ── GET ──
 if ($method === 'GET') {
-    $isMod = $userKey && isModOrAdmin($db, $userKey);
-
     if ($topicKey) {
-        // Single topic with replies — mods can see hidden topics
-        $activeFilter = $isMod ? '' : 'AND t.topic_active_flag = TRUE';
+        // Single topic with replies
+        $isMod = $userKey ? isModOrAdmin($db, $userKey) : false;
+        $topicWhere = $isMod
+            ? "WHERE t.topic_key = ? AND t.topic_active_flag = TRUE"
+            : "WHERE t.topic_key = ? AND t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL";
         $stmt = $db->prepare("
-            SELECT t.*, u.user_display_name, u.user_avatar, u.user_handle,
-                   c.category_key AS cat_key, c.category_name, c.category_slug,
-                   hider.user_display_name AS hidden_by_name
+            SELECT t.*, u.user_display_name AS user_name_display, u.user_avatar, u.user_handle,
+                   c.category_key AS cat_key, c.category_name, c.category_slug
             FROM yy_community_topic t
             LEFT JOIN yy_user u ON t.user_key = u.user_key
             LEFT JOIN yy_community_category c ON t.category_key = c.category_key
-            LEFT JOIN yy_user hider ON t.topic_hidden_by = hider.user_key
-            WHERE t.topic_key = ? {$activeFilter}
+            {$topicWhere}
         ");
         $stmt->execute([$topicKey]);
         $topic = $stmt->fetch();
@@ -46,15 +45,15 @@ if ($method === 'GET') {
         $db->prepare("UPDATE yy_community_topic SET topic_view_count = topic_view_count + 1 WHERE topic_key = ?")
            ->execute([$topicKey]);
 
-        // Replies — mods can see hidden replies
-        $replyActiveFilter = $isMod ? '' : 'AND r.reply_active_flag = TRUE';
+        // Replies — mods see removed posts too
+        $replyWhere = $isMod
+            ? "WHERE r.topic_key = ? AND r.reply_active_flag = TRUE"
+            : "WHERE r.topic_key = ? AND r.reply_active_flag = TRUE AND r.reply_delete_dtime IS NULL";
         $stmt = $db->prepare("
-            SELECT r.*, u.user_display_name, u.user_avatar, u.user_handle,
-                   rhider.user_display_name AS hidden_by_name
+            SELECT r.*, u.user_display_name AS user_name_display, u.user_avatar, u.user_handle
             FROM yy_community_reply r
             LEFT JOIN yy_user u ON r.user_key = u.user_key
-            LEFT JOIN yy_user rhider ON r.reply_hidden_by = rhider.user_key
-            WHERE r.topic_key = ? {$replyActiveFilter}
+            {$replyWhere}
             ORDER BY r.reply_dtime
         ");
         $stmt->execute([$topicKey]);
@@ -97,6 +96,7 @@ if ($method === 'GET') {
             'topic' => $topic,
             'replies' => $replies,
             'user_status' => $userStatus,
+            'is_mod' => $isMod,
         ]);
     }
 
@@ -106,7 +106,10 @@ if ($method === 'GET') {
     $offset = ($page - 1) * $limit;
     $categorySlug = trim($_GET['category'] ?? '');
 
-    $where = $isMod ? "WHERE 1=1" : "WHERE t.topic_active_flag = TRUE";
+    $isMod = $userKey ? isModOrAdmin($db, $userKey) : false;
+    $where = $isMod
+        ? "WHERE t.topic_active_flag = TRUE"
+        : "WHERE t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL";
     $joins = "LEFT JOIN yy_user u ON t.user_key = u.user_key LEFT JOIN yy_community_category c ON t.category_key = c.category_key";
     $params = [];
 
@@ -122,10 +125,9 @@ if ($method === 'GET') {
     $listParams = array_merge($params, [$limit, $offset]);
     $stmt = $db->prepare("
         SELECT t.topic_key, t.topic_title, t.topic_pinned, t.topic_locked,
-               t.topic_active_flag, t.topic_hide_reason,
                t.topic_reply_count, t.topic_view_count, t.topic_like_count,
                t.topic_last_reply_dtime, t.topic_dtime,
-               u.user_display_name, u.user_avatar,
+               u.user_display_name AS user_name_display, u.user_avatar,
                c.category_name, c.category_slug
         FROM yy_community_topic t
         {$joins}
@@ -272,66 +274,86 @@ if ($method === 'POST') {
         $titleStmt->execute([$tk]);
         $topicTitle = $titleStmt->fetchColumn();
 
+        // Respond immediately so the client isn't blocked by email sending
+        $responseJson = json_encode(['saved' => true, 'reply_key' => $replyKey]);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Length: ' . strlen($responseJson));
+        echo $responseJson;
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        else { ob_end_flush(); flush(); }
+
+        // Now send notifications and emails (client already got the response)
         foreach ($watchers as $watcherKey) {
-            // Create notification (if not already the topic author who got one)
             if ((int)$watcherKey !== $topicAuthorKey) {
                 notifyUser($db, (int)$watcherKey, $userKey, 'watch_reply', 'topic', $tk, $tk, 'New reply in a topic you\'re watching');
             }
-            // Send email
             $emailBody = '<h2 style="color:#31345A;">New Reply</h2>'
                 . '<p><strong>' . htmlspecialchars($replierName) . '</strong> replied to <strong>' . htmlspecialchars($topicTitle) . '</strong></p>'
                 . '<p>' . htmlspecialchars(mb_substr($body ?: strip_tags($bodyHtml ?? ''), 0, 200)) . '</p>'
                 . '<p><a href="https://yadayah.com/community#topic/' . $tk . '" style="color:#31345A;font-weight:600;">View Topic</a></p>';
             sendNotificationEmail($db, (int)$watcherKey, 'New reply: ' . mb_substr($topicTitle, 0, 60), $emailBody);
         }
+        exit;
+    }
 
-        jsonResponse(['saved' => true, 'reply_key' => $replyKey]);
+    if ($action === 'edit_topic') {
+        $tk = (int)($data['topic_key'] ?? 0);
+        $title = trim($data['title'] ?? '');
+        $body = trim($data['body'] ?? '');
+        $bodyHtml = isset($data['topic_body_html']) ? sanitizeHtml($data['topic_body_html']) : null;
+
+        if (!$tk) errorResponse('topic_key is required');
+        if (!$title) errorResponse('Title is required');
+
+        // Only author or mod can edit
+        $isMod = isModOrAdmin($db, $userKey);
+        $stmt = $db->prepare("SELECT user_key FROM yy_community_topic WHERE topic_key = ? AND topic_active_flag = TRUE");
+        $stmt->execute([$tk]);
+        $authorKey = (int)$stmt->fetchColumn();
+        if (!$isMod && $authorKey !== $userKey) errorResponse('Not authorized', 403);
+
+        checkWordFilter($db, $title . ' ' . $body . ' ' . ($bodyHtml ?? ''));
+
+        $db->prepare("UPDATE yy_community_topic SET topic_title = ?, topic_body = ?, topic_body_html = ?, topic_edit_dtime = NOW() WHERE topic_key = ?")
+           ->execute([$title, $body, $bodyHtml, $tk]);
+
+        jsonResponse(['saved' => true]);
+    }
+
+    if ($action === 'edit_reply') {
+        $rk = (int)($data['reply_key'] ?? 0);
+        $body = trim($data['body'] ?? '');
+        $bodyHtml = isset($data['reply_body_html']) ? sanitizeHtml($data['reply_body_html']) : null;
+
+        if (!$rk) errorResponse('reply_key is required');
+        if (!$body && !$bodyHtml) errorResponse('Body is required');
+
+        $isMod = isModOrAdmin($db, $userKey);
+        $stmt = $db->prepare("SELECT user_key, topic_key FROM yy_community_reply WHERE reply_key = ? AND reply_active_flag = TRUE");
+        $stmt->execute([$rk]);
+        $reply = $stmt->fetch();
+        if (!$reply) errorResponse('Reply not found', 404);
+        if (!$isMod && (int)$reply['user_key'] !== $userKey) errorResponse('Not authorized', 403);
+
+        checkWordFilter($db, $body . ' ' . ($bodyHtml ?? ''));
+
+        $db->prepare("UPDATE yy_community_reply SET reply_body = ?, reply_body_html = ?, reply_edit_dtime = NOW() WHERE reply_key = ?")
+           ->execute([$body, $bodyHtml, $rk]);
+
+        jsonResponse(['saved' => true, 'topic_key' => (int)$reply['topic_key']]);
     }
 
     errorResponse('Unknown action');
 }
 
-// ── PATCH ── restore hidden topic/reply (moderator/admin only)
-if ($method === 'PATCH') {
-    if (!$userKey) errorResponse('Login required', 401);
-    if (!isModOrAdmin($db, $userKey)) errorResponse('Moderator access required', 403);
-
-    $body = json_decode(file_get_contents('php://input'), true) ?: [];
-    $type = $body['type'] ?? 'topic';
-
-    if ($type === 'reply' && !empty($body['reply_key'])) {
-        $rk = (int)$body['reply_key'];
-        $db->prepare("UPDATE yy_community_reply SET reply_active_flag = TRUE, reply_hide_reason = NULL, reply_hidden_by = NULL, reply_delete_dtime = NULL, reply_delete_note = NULL WHERE reply_key = ?")
-            ->execute([$rk]);
-        // Re-increment reply count
-        $stmt = $db->prepare("SELECT topic_key FROM yy_community_reply WHERE reply_key = ?");
-        $stmt->execute([$rk]);
-        $tk = $stmt->fetchColumn();
-        if ($tk) {
-            $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1 WHERE topic_key = ?")->execute([$tk]);
-        }
-        jsonResponse(['restored' => true]);
-    }
-
-    if ($type === 'topic' && $topicKey) {
-        $db->prepare("UPDATE yy_community_topic SET topic_active_flag = TRUE, topic_hide_reason = NULL, topic_hidden_by = NULL, topic_delete_dtime = NULL, topic_delete_note = NULL WHERE topic_key = ?")
-            ->execute([$topicKey]);
-        jsonResponse(['restored' => true]);
-    }
-
-    errorResponse('Invalid restore request');
-}
-
-// ── DELETE ── (admin, moderator, or author)
+// ── DELETE (remove) ── (admin/mod or author)
 if ($method === 'DELETE') {
     if (!$userKey) errorResponse('Login required', 401);
 
     $isMod = isModOrAdmin($db, $userKey);
     $type = $_GET['type'] ?? 'topic';
-
-    // Accept reason from query string or request body (supports both 'reason' and 'note' keys)
-    $body = json_decode(file_get_contents('php://input'), true) ?: [];
-    $reason = $_GET['reason'] ?? $body['reason'] ?? $body['note'] ?? null;
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $note = trim($input['note'] ?? '');
 
     if ($type === 'topic' && $topicKey) {
         if (!$isMod) {
@@ -339,8 +361,8 @@ if ($method === 'DELETE') {
             $stmt->execute([$topicKey]);
             if ((int)$stmt->fetchColumn() !== $userKey) errorResponse('Not authorized', 403);
         }
-        $db->prepare("UPDATE yy_community_topic SET topic_active_flag = FALSE, topic_hide_reason = ?, topic_hidden_by = ?, topic_delete_dtime = NOW(), topic_delete_note = ? WHERE topic_key = ?")
-            ->execute([$reason, $isMod ? $userKey : null, $reason, $topicKey]);
+        $db->prepare("UPDATE yy_community_topic SET topic_delete_dtime = NOW(), topic_delete_note = NULLIF(?, '') WHERE topic_key = ?")
+           ->execute([$note, $topicKey]);
         jsonResponse(['deleted' => true]);
     }
 
@@ -351,8 +373,8 @@ if ($method === 'DELETE') {
             $stmt->execute([$replyKey]);
             if ((int)$stmt->fetchColumn() !== $userKey) errorResponse('Not authorized', 403);
         }
-        $db->prepare("UPDATE yy_community_reply SET reply_active_flag = FALSE, reply_hide_reason = ?, reply_hidden_by = ?, reply_delete_dtime = NOW(), reply_delete_note = ? WHERE reply_key = ?")
-            ->execute([$reason, $isMod ? $userKey : null, $reason, $replyKey]);
+        $db->prepare("UPDATE yy_community_reply SET reply_delete_dtime = NOW(), reply_delete_note = NULLIF(?, '') WHERE reply_key = ?")
+           ->execute([$note, $replyKey]);
         // Decrement reply count
         $stmt = $db->prepare("SELECT topic_key FROM yy_community_reply WHERE reply_key = ?");
         $stmt->execute([$replyKey]);
@@ -364,6 +386,37 @@ if ($method === 'DELETE') {
     }
 
     errorResponse('Invalid delete request');
+}
+
+// ── PATCH (restore) ── (admin/mod only)
+if ($method === 'PATCH') {
+    if (!$userKey) errorResponse('Login required', 401);
+    if (!isModOrAdmin($db, $userKey)) errorResponse('Not authorized', 403);
+
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $type = $input['type'] ?? 'topic';
+
+    if ($type === 'topic' && $topicKey) {
+        $db->prepare("UPDATE yy_community_topic SET topic_delete_dtime = NULL, topic_delete_note = NULL WHERE topic_key = ?")
+           ->execute([$topicKey]);
+        jsonResponse(['restored' => true]);
+    }
+
+    $replyKey = (int)($input['reply_key'] ?? 0);
+    if ($type === 'reply' && $replyKey) {
+        $db->prepare("UPDATE yy_community_reply SET reply_delete_dtime = NULL, reply_delete_note = NULL WHERE reply_key = ?")
+           ->execute([$replyKey]);
+        // Re-increment reply count
+        $stmt = $db->prepare("SELECT topic_key FROM yy_community_reply WHERE reply_key = ?");
+        $stmt->execute([$replyKey]);
+        $tk = $stmt->fetchColumn();
+        if ($tk) {
+            $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1 WHERE topic_key = ?")->execute([$tk]);
+        }
+        jsonResponse(['restored' => true]);
+    }
+
+    errorResponse('Invalid restore request');
 }
 
 errorResponse('Method not allowed', 405);

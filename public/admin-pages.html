@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pages - Yada Yah</title>
+    <title>Links - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/login.css">
     <style>
@@ -43,39 +43,18 @@
 
 <div id="app" class="container" style="display:none">
     <div class="app-header">
-        <nav class="nav-tabs">
-            <a href="admin-site.html" class="nav-tab">Site</a>
-            <a href="admin-translation.html" class="nav-tab">Translation</a>
-            <a href="admin-word.html" class="nav-tab">Word</a>
-            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
-            <a href="admin-ask.html" class="nav-tab">Ask</a>
-            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
-            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
-            <a href="admin-media.html" class="nav-tab">Media</a>
-            <a href="admin-music.html" class="nav-tab">Music</a>
-            <a href="admin-invite.html" class="nav-tab">Invite</a>
-            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
-            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
-            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
-            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
-            <a href="admin-pages.html" class="nav-tab active">Pages</a>
-            <a href="admin-resources.html" class="nav-tab">Resources</a>
-            <a href="admin-users.html" class="nav-tab">Users</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
-        </nav>
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
         </div>
     </div>
 
-    <h1>Pages</h1>
+    <h1>Links</h1>
 
     <div id="list-view">
-        <div style="margin-bottom:16px;">
-            <button class="btn btn-primary" onclick="showPageForm()">New Page</button>
-        </div>
+        <div style="margin-bottom:16px;"></div>
         <div class="card">
             <table class="pages-table">
                 <thead>
@@ -83,7 +62,9 @@
                         <th class="sortable" data-col="page_code" onclick="setSort('page_code')">Code<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_title" onclick="setSort('page_title')">Title<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_toolbar" onclick="setSort('page_toolbar')">Header<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_header_sort" onclick="setSort('page_header_sort')">Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_header_sort" onclick="setSort('page_header_sort')">H.Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_footer_col" onclick="setSort('page_footer_col')">Footer<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_footer_sort" onclick="setSort('page_footer_sort')">F.Sort<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_active_flag" onclick="setSort('page_active_flag')">Active<span class="sort-indicator"></span></th>
                         <th></th>
                     </tr>
@@ -124,12 +105,30 @@
                     </select>
                 </div>
                 <div class="field">
+                    <label for="f-footer-col">Footer</label>
+                    <select id="f-footer-col">
+                        <option value="0">N/A</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+                </div>
+                <div class="field">
                     <label for="f-header-sort">Header Sort</label>
                     <input type="number" id="f-header-sort" value="0" style="width:80px">
                 </div>
+                <div class="field">
+                    <label for="f-footer-sort">Footer Sort</label>
+                    <input type="number" id="f-footer-sort" value="0" style="width:80px">
+                </div>
             </div>
-            <div class="button-row">
-                <button class="btn btn-primary" onclick="savePage()">Save Page</button>
+            <div id="aliases-section" style="display:none;margin-top:16px;border-top:1px solid #eee;padding-top:16px;">
+                <label style="font-weight:600;font-size:0.9rem;">Aliases (301 redirects to this page)</label>
+                <div id="alias-list" style="margin:8px 0;"></div>
+                <button class="btn btn-sm btn-secondary" type="button" onclick="addAlias()">+ Add Alias</button>
+            </div>
+            <div class="button-row" style="margin-top:16px;">
+                <button class="btn btn-primary" onclick="savePage()">Save</button>
                 <button class="btn btn-secondary" onclick="cancelForm()">Cancel</button>
                 <button class="btn btn-danger" id="btn-delete" style="display:none" onclick="deletePage()">Delete</button>
             </div>
@@ -138,7 +137,7 @@
 
 </div>
 
-<script src="js/admin-pages.js?v=2"></script>
+<script src="js/admin-links.js?v=2"></script>
 <script>
 var API = '/api';
 var editingPageKey = null;
@@ -198,6 +197,7 @@ var allPages = [];
 var sortStack = [{col:'page_toolbar', dir:1}, {col:'page_header_sort', dir:1}];
 
 var HEADER_LABELS = {0: 'None', 1: 'Main', 2: 'Sub'};
+var FOOTER_LABELS = {0: 'N/A', 1: '1', 2: '2', 3: '3'};
 
 function loadList() {
     fetch(API + '/pages.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
@@ -226,7 +226,7 @@ function setSort(col) {
 function renderList() {
     var tbody = document.getElementById('pages-list');
     if (!allPages.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic">No pages yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;font-style:italic">No pages yet</td></tr>';
         return;
     }
 
@@ -262,11 +262,14 @@ function renderList() {
     tbody.innerHTML = sorted.map(function(r) {
         var badge = r.page_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';
         var headerLabel = HEADER_LABELS[r.page_toolbar != null ? r.page_toolbar : ''] || r.page_toolbar;
+        var footerLabel = FOOTER_LABELS[r.page_footer_col != null ? r.page_footer_col : 0] || 'N/A';
         return '<tr>'
             + '<td>' + esc(r.page_code) + '</td>'
             + '<td>' + esc(r.page_title) + '</td>'
             + '<td>' + headerLabel + '</td>'
             + '<td>' + (r.page_header_sort || 0) + '</td>'
+            + '<td>' + footerLabel + '</td>'
+            + '<td>' + (r.page_footer_sort || 0) + '</td>'
             + '<td>' + badge + '</td>'
             + '<td>'
             + '<button class="btn btn-sm btn-secondary" onclick="editPage(' + r.page_key + ')">Edit</button>'
@@ -276,18 +279,77 @@ function renderList() {
 }
 
 // ── Page Form ──
+var currentAliases = [];
+var deletedAliases = [];
+
 function showPageForm(record) {
     editingPageKey = record ? record.page_key : null;
-    document.getElementById('form-title').textContent = editingPageKey ? 'Edit Page' : 'New Page';
+    document.getElementById('form-title').textContent = editingPageKey ? 'Edit Link' : 'New Link';
     document.getElementById('f-code').value = record ? record.page_code : '';
     document.getElementById('f-url').value = record ? (record.page_url || '') : '';
     document.getElementById('f-title').value = record ? (record.page_title || '') : '';
     document.getElementById('f-active').checked = record ? record.page_active_flag : true;
     document.getElementById('f-toolbar').value = record ? (record.page_toolbar || 0) : 1;
+    document.getElementById('f-footer-col').value = record ? (record.page_footer_col || 0) : 0;
     document.getElementById('f-header-sort').value = record ? (record.page_header_sort || 0) : 0;
+    document.getElementById('f-footer-sort').value = record ? (record.page_footer_sort || 0) : 0;
     document.getElementById('btn-delete').style.display = editingPageKey ? '' : 'none';
     document.getElementById('form-error').style.display = 'none';
+
+    // Aliases
+    currentAliases = (record && record.aliases) ? record.aliases.filter(function(a) { return a.alias_path; }) : [];
+    deletedAliases = [];
+    var aliasSection = document.getElementById('aliases-section');
+    aliasSection.style.display = editingPageKey ? '' : 'none';
+    renderAliases();
+
     showView('form-view');
+}
+
+function renderAliases() {
+    var container = document.getElementById('alias-list');
+    if (!currentAliases.length) {
+        container.innerHTML = '<div style="font-size:0.82rem;color:#999;font-style:italic;">No aliases</div>';
+        return;
+    }
+    container.innerHTML = currentAliases.map(function(a, i) {
+        return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;" data-idx="' + i + '">'
+            + '<span style="color:#888;font-size:0.82rem;">/' + '</span>'
+            + '<input type="text" class="alias-path" value="' + escAttr(a.alias_path || '') + '" placeholder="alias-path" style="flex:1;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;">'
+            + '<label style="font-size:0.8rem;white-space:nowrap;"><input type="checkbox" class="alias-active" ' + (a.alias_active_flag !== false && a.alias_active_flag !== 'f' ? 'checked' : '') + '> Active</label>'
+            + '<button type="button" class="btn btn-sm" style="color:#c0392b;border-color:#c0392b;font-size:0.72rem;padding:2px 6px;" onclick="removeAlias(' + i + ')">X</button>'
+            + '</div>';
+    }).join('');
+}
+
+function addAlias() {
+    currentAliases.push({ alias_key: null, alias_path: '', alias_active_flag: true });
+    renderAliases();
+    // Focus the new input
+    var inputs = document.querySelectorAll('#alias-list .alias-path');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+function removeAlias(idx) {
+    var a = currentAliases[idx];
+    if (a && a.alias_key) deletedAliases.push(a.alias_key);
+    currentAliases.splice(idx, 1);
+    renderAliases();
+}
+
+function collectAliases() {
+    var rows = document.querySelectorAll('#alias-list [data-idx]');
+    var result = [];
+    rows.forEach(function(row, i) {
+        var path = row.querySelector('.alias-path').value.trim();
+        if (!path) return;
+        result.push({
+            alias_key: currentAliases[i] ? currentAliases[i].alias_key : null,
+            alias_path: path,
+            alias_active_flag: row.querySelector('.alias-active').checked
+        });
+    });
+    return result;
 }
 
 function editPage(key) {
@@ -306,9 +368,11 @@ function savePage() {
     if (!code) { errEl.textContent = 'Code is required'; errEl.style.display = ''; return; }
 
     var toolbar = parseInt(document.getElementById('f-toolbar').value) || 0;
+    var footerCol = parseInt(document.getElementById('f-footer-col').value) || 0;
     var headerSort = parseInt(document.getElementById('f-header-sort').value) || 0;
     var url = document.getElementById('f-url').value.trim();
-    var body = {page_code: code, page_title: title, page_active_flag: active, page_toolbar: toolbar, page_header_sort: headerSort, page_url: url};
+    var footerSort = parseInt(document.getElementById('f-footer-sort').value) || 0;
+    var body = {page_code: code, page_title: title, page_active_flag: active, page_toolbar: toolbar, page_footer_col: footerCol, page_header_sort: headerSort, page_footer_sort: footerSort, page_url: url};
     var url = API + '/pages.php';
     var method = 'POST';
 
@@ -323,6 +387,16 @@ function savePage() {
         body: JSON.stringify(body)
     }).then(function(r){return r.json();}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        var pageKey = editingPageKey || d.page_key;
+        var aliases = collectAliases();
+        if (pageKey && (aliases.length || deletedAliases.length)) {
+            return fetch(API + '/pages.php', {
+                method: 'POST', credentials: 'include',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ page_key: pageKey, aliases: aliases, deleted_aliases: deletedAliases })
+            }).then(function(r){return r.json();});
+        }
+    }).then(function() {
         cancelForm();
         loadList();
     });
@@ -472,6 +546,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>

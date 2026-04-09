@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px; }
+        .cfg-field { display: flex; flex-direction: column; }
+        .cfg-field label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #555; }
+        .cfg-field input[type="text"] { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; }
+        .cfg-field input[type="color"] { height: 40px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; width: 100%; }
+        .cfg-field .icon-preview { font-size: 1.5rem; margin-top: 4px; }
+        .cfg-success { color: #27ae60; font-size: 0.9rem; margin-left: 12px; display: none; }
+        .form-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 20px; }
+        .form-card h2 { margin: 0 0 20px; font-size: 1.2rem; color: #31345A; }
+        .button-row { display: flex; gap: 8px; margin-top: 20px; align-items: center; }
+
+        .cat-table { width: 100%; border-collapse: collapse; }
+        .cat-table th { text-align: left; font-size: 0.8rem; color: #888; padding: 8px; border-bottom: 2px solid #eee; }
+        .cat-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .cat-table input[type="text"] { padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; width: 100%; font-family: inherit; }
+        .cat-table input[type="number"] { padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; width: 70px; font-family: inherit; }
+        .cat-table input[type="color"] { width: 40px; height: 32px; padding: 1px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; }
+        .cat-color-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+        .cat-active { color: #27ae60; }
+        .cat-inactive { color: #c0392b; }
+        .cat-row-inactive td { opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen"><div class="login-box"><h2>Admin Login</h2><div id="login-error" style="display:none"></div><input id="login-user" placeholder="Username"><input id="login-pass" type="password" placeholder="Password"><button onclick="doLogin()">Sign In</button></div></div>
+
+<div id="app" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Chat Settings</h1>
+
+    <!-- Section 1: Labels -->
+    <div class="form-card">
+        <h2>Labels</h2>
+        <p style="font-size:0.85rem;color:#888;margin:-12px 0 16px;">Tab labels and section titles displayed in the Community/Chat page.</p>
+
+        <h3 style="font-size:0.95rem;color:#31345A;margin:0 0 12px;">Tab Labels</h3>
+        <div class="cfg-grid" id="label-fields"></div>
+
+        <h3 style="font-size:0.95rem;color:#31345A;margin:16px 0 12px;">Section Titles</h3>
+        <div class="cfg-grid" id="title-fields"></div>
+
+        <div class="button-row">
+            <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Labels</button>
+            <span class="cfg-success" id="labels-saved">Saved!</span>
+        </div>
+    </div>
+
+    <!-- Section 2: Icons -->
+    <div class="form-card">
+        <h2>Icons</h2>
+        <p style="font-size:0.85rem;color:#888;margin:-12px 0 16px;">HTML entity codes for icons used throughout the Community/Chat interface. Use HTML entities like <code>&amp;#128276;</code> or emoji characters.</p>
+        <div class="cfg-grid" id="icon-fields"></div>
+        <div class="button-row">
+            <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Icons</button>
+            <span class="cfg-success" id="icons-saved">Saved!</span>
+        </div>
+    </div>
+
+    <!-- Section 2b: Image Settings -->
+    <div class="form-card">
+        <h2>Images</h2>
+        <p style="font-size:0.85rem;color:#888;margin:-12px 0 16px;">Max dimensions for images in messages and posts. Originals are preserved; scaled copies are served on the site.</p>
+        <div class="cfg-grid" id="image-fields"></div>
+        <div class="button-row">
+            <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Image Settings</button>
+            <button class="btn btn-secondary btn-sm" onclick="rescaleAll()" id="rescale-btn">Rescale All Images</button>
+            <span class="cfg-success" id="images-saved">Saved!</span>
+            <span class="cfg-success" id="rescale-status" style="display:none"></span>
+        </div>
+    </div>
+
+    <!-- Section 3: Categories -->
+    <div class="form-card">
+        <h2>Categories</h2>
+        <p style="font-size:0.85rem;color:#888;margin:-12px 0 16px;">Topic categories with display order and color.</p>
+        <table class="cat-table" id="cat-table">
+            <thead><tr><th>Name</th><th>Color</th><th>Order</th><th>Active</th><th></th></tr></thead>
+            <tbody id="cat-body"></tbody>
+        </table>
+        <div class="button-row">
+            <button class="btn btn-primary btn-sm" onclick="addCategory()">+ Add Category</button>
+            <span class="cfg-success" id="cats-saved">Saved!</span>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allSettings = [];
+var allCategories = [];
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadConfig();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({user_code: user, user_pass: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) { location.reload(); }
+        else {
+            var err = document.getElementById('login-error');
+            err.textContent = d.error || 'Login failed';
+            err.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function loadConfig() {
+    fetch(API + '/admin-chat-config.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+        allSettings = data.settings || [];
+        allCategories = data.categories || [];
+        renderLabels();
+        renderIcons();
+        renderImages();
+        renderCategories();
+    });
+}
+
+function renderLabels() {
+    var labelHtml = '';
+    var titleHtml = '';
+    allSettings.forEach(function(s) {
+        if (s.setting_code.indexOf('label-') === 0) {
+            labelHtml += '<div class="cfg-field">'
+                + '<label>' + esc(s.setting_label) + '</label>'
+                + '<input type="text" data-sk="' + s.setting_key + '" value="' + esc(s.setting_value || '') + '">'
+                + '</div>';
+        } else if (s.setting_code.indexOf('title-') === 0) {
+            titleHtml += '<div class="cfg-field">'
+                + '<label>' + esc(s.setting_label) + '</label>'
+                + '<input type="text" data-sk="' + s.setting_key + '" value="' + esc(s.setting_value || '') + '">'
+                + '</div>';
+        }
+    });
+    document.getElementById('label-fields').innerHTML = labelHtml;
+    document.getElementById('title-fields').innerHTML = titleHtml;
+}
+
+function renderIcons() {
+    var html = '';
+    allSettings.forEach(function(s) {
+        if (s.setting_code.indexOf('icon-') === 0) {
+            html += '<div class="cfg-field">'
+                + '<label>' + esc(s.setting_label) + '</label>'
+                + '<input type="text" data-sk="' + s.setting_key + '" value="' + esc(s.setting_value || '') + '" oninput="this.nextElementSibling.innerHTML=this.value">'
+                + '<span class="icon-preview">' + (s.setting_value || '') + '</span>'
+                + '</div>';
+        }
+    });
+    document.getElementById('icon-fields').innerHTML = html;
+}
+
+function renderImages() {
+    var html = '';
+    allSettings.forEach(function(s) {
+        if (s.setting_code.indexOf('image-') === 0) {
+            html += '<div class="cfg-field">'
+                + '<label>' + esc(s.setting_label) + '</label>'
+                + '<input type="text" data-sk="' + s.setting_key + '" value="' + esc(s.setting_value || '') + '">'
+                + '</div>';
+        }
+    });
+    document.getElementById('image-fields').innerHTML = html;
+}
+
+function rescaleAll() {
+    var btn = document.getElementById('rescale-btn');
+    var status = document.getElementById('rescale-status');
+    btn.disabled = true; btn.textContent = 'Rescaling...';
+    status.style.display = 'none';
+    // Save settings first, then rescale
+    saveSettings();
+    setTimeout(function() {
+        fetch(API + '/community-image-upload.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ action: 'rescale' })
+        }).then(function(r){return r.json();}).then(function(d) {
+            btn.disabled = false; btn.textContent = 'Rescale All Images';
+            status.style.display = 'inline';
+            if (d.rescaled) { status.textContent = d.count + ' images rescaled'; status.style.color = '#27ae60'; }
+            else { status.textContent = d.error || 'Failed'; status.style.color = '#c0392b'; }
+            setTimeout(function() { status.style.display = 'none'; }, 5000);
+        }).catch(function() {
+            btn.disabled = false; btn.textContent = 'Rescale All Images';
+            status.style.display = 'inline'; status.textContent = 'Error'; status.style.color = '#c0392b';
+        });
+    }, 500);
+}
+
+function renderCategories() {
+    var html = '';
+    allCategories.forEach(function(c, i) {
+        var active = c.category_active_flag === true || c.category_active_flag === 't';
+        html += '<tr class="' + (active ? '' : 'cat-row-inactive') + '" data-ck="' + c.category_key + '">'
+            + '<td><input type="text" value="' + esc(c.category_name) + '" data-field="name"></td>'
+            + '<td><input type="color" value="' + esc(c.category_color || '#31345A') + '" data-field="color"></td>'
+            + '<td><input type="number" value="' + (c.category_sort || 50) + '" data-field="sort"></td>'
+            + '<td><button class="btn btn-sm ' + (active ? 'btn-success' : 'btn-secondary') + '" onclick="toggleCategory(' + c.category_key + ',' + (active ? 'false' : 'true') + ')">'
+            + (active ? 'Active' : 'Inactive') + '</button></td>'
+            + '<td><button class="btn btn-sm btn-primary" onclick="saveCategory(' + c.category_key + ')">Save</button></td>'
+            + '</tr>';
+    });
+    document.getElementById('cat-body').innerHTML = html;
+}
+
+function saveSettings() {
+    var settings = [];
+    document.querySelectorAll('[data-sk]').forEach(function(el) {
+        settings.push({ setting_key: parseInt(el.getAttribute('data-sk')), setting_value: el.value });
+    });
+    fetch(API + '/admin-chat-config.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ settings: settings })
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.saved) {
+            document.querySelectorAll('.cfg-success').forEach(function(el) {
+                el.style.display = 'inline';
+                setTimeout(function() { el.style.display = 'none'; }, 2000);
+            });
+        }
+    });
+}
+
+function saveCategory(catKey) {
+    var row = document.querySelector('tr[data-ck="' + catKey + '"]');
+    if (!row) return;
+    var name = row.querySelector('[data-field="name"]').value.trim();
+    var color = row.querySelector('[data-field="color"]').value;
+    var sort = parseInt(row.querySelector('[data-field="sort"]').value) || 50;
+    if (!name) { alert('Category name is required'); return; }
+
+    fetch('/api/community-categories.php?key=' + catKey, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ category_name: name, category_color: color, category_sort: sort })
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) alert(d.error);
+        else {
+            var s = document.getElementById('cats-saved');
+            s.style.display = 'inline';
+            setTimeout(function() { s.style.display = 'none'; }, 2000);
+            loadConfig();
+        }
+    });
+}
+
+function toggleCategory(catKey, active) {
+    fetch('/api/community-categories.php?key=' + catKey, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ category_active_flag: active })
+    }).then(function(r){return r.json();}).then(function() { loadConfig(); });
+}
+
+function addCategory() {
+    var name = prompt('Category name:');
+    if (!name || !name.trim()) return;
+    fetch('/api/community-categories.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ category_name: name.trim() })
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) alert(d.error);
+        else loadConfig();
+    });
+}
+
+checkAuth();
+</script>
+</body>
+</html>

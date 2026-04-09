@@ -240,19 +240,24 @@ Community.showProfileCard = function(event, userKey) {
             + '<div class="profile-card-header">'
             + '<span class="avatar-wrap' + onlineClass + '">'
             + (u.user_avatar
-                ? '<img class="profile-card-avatar" src="' + Community.esc(u.user_avatar) + '" onerror="this.outerHTML=\'<span class=&quot;profile-card-avatar-circle&quot;>' + Community.esc(Community.initials(u.user_display_name)) + '</span>\'">'
-                : '<span class="profile-card-avatar-circle">' + Community.esc(Community.initials(u.user_display_name)) + '</span>')
+                ? '<img class="profile-card-avatar" src="' + Community.esc(u.user_avatar) + '" onerror="this.outerHTML=\'<span class=&quot;profile-card-avatar-circle&quot;>' + Community.esc(Community.initials(u.user_name_display)) + '</span>\'">'
+                : '<span class="profile-card-avatar-circle">' + Community.esc(Community.initials(u.user_name_display)) + '</span>')
             + '</span>'
-            + '<div><div class="profile-card-name">' + Community.esc(u.user_display_name) + '</div>'
+            + '<div><div class="profile-card-name">' + Community.esc(u.user_name_display) + '</div>'
             + (u.user_handle ? '<div class="profile-card-handle">@' + Community.esc(u.user_handle) + '</div>' : '')
             + '</div></div>'
             + (u.user_bio ? '<div class="profile-card-bio">' + Community.esc(u.user_bio) + '</div>' : '')
             + '<div class="profile-card-stats">'
-            + '<span>Rep: <strong>' + (u.user_reputation || 0) + '</strong></span>'
             + '<span>Topics: <strong>' + (u.topic_count || 0) + '</strong></span>'
             + '<span>Replies: <strong>' + (u.reply_count || 0) + '</strong></span>'
+            + '<span>Rep: <strong>' + (u.user_reputation || 0) + '</strong></span>'
             + '</div>'
-            + '<div class="profile-card-meta">Joined ' + (u.user_created_dtime ? new Date(u.user_created_dtime).toLocaleDateString() : 'N/A') + '</div>'
+            + '<div class="profile-card-meta">'
+            + 'Joined ' + (u.user_created_dtime ? new Date(u.user_created_dtime).toLocaleDateString() : 'N/A')
+            + (u.user_last_active_dtime ? ' &middot; Active ' + Community.timeAgo(u.user_last_active_dtime) : '')
+            + '</div>'
+            + (Community.currentUser && Community.currentUser.roles && (Community.currentUser.roles.indexOf('admin') >= 0 || Community.currentUser.roles.indexOf('moderator') >= 0) && u.user_email
+                ? '<div class="profile-card-meta" style="color:#999;">' + Community.esc(u.user_email) + '</div>' : '')
             + (Community.currentUser && Community.currentUser.user_key !== userKey
                 ? '<div class="profile-card-dm">'
                 + '<textarea id="profile-dm-body" placeholder="Send a message..." rows="2" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:0.85rem;resize:vertical;margin-bottom:8px;"></textarea>'
@@ -501,6 +506,10 @@ Community.init = function() {
         if (data.user) {
             CommunityNotifications.startPolling();
             CommunityDM.initPopover();
+            // Apply saved font size preference
+            if (data.user.user_font_size && window.applyUserFontSize) {
+                applyUserFontSize(data.user.user_font_size);
+            }
             // Show moderator toolbar for admin/moderator users
             var roles = data.user.roles || [];
             if (roles.indexOf('admin') >= 0 || roles.indexOf('moderator') >= 0) {

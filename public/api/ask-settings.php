@@ -12,15 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt2 = $db->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'ask_custom_prompt'");
     $prompt = $stmt2->fetchColumn();
 
-    // Page settings (title, summary, ban-title, ban-message)
-    $stmt3 = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'page' AND setting_group_code = 'ask'");
-    $page = [];
-    foreach ($stmt3->fetchAll() as $r) { $page[$r['setting_code']] = $r['setting_value']; }
-
     jsonResponse([
         'model' => in_array($model, $VALID) ? $model : 'claude-sonnet',
         'custom_prompt' => $prompt ?: '',
-        'page' => $page,
     ]);
 }
 
@@ -42,20 +36,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         $prompt = trim($input['custom_prompt'] ?? '');
         $stmt = $db->prepare("UPDATE yy_setting SET setting_value = ? WHERE setting_scope_code = 'app' AND setting_code = 'ask_custom_prompt'");
         $stmt->execute([$prompt]);
-    }
-
-    // Save page settings if provided
-    if (isset($input['page']) && is_array($input['page'])) {
-        $allowed = ['title', 'summary', 'ban-title', 'ban-message'];
-        foreach ($input['page'] as $code => $val) {
-            if (in_array($code, $allowed)) {
-                $stmt = $db->prepare("UPDATE yy_setting SET setting_value = ? WHERE setting_scope_code = 'page' AND setting_group_code = 'ask' AND setting_code = ?");
-                $stmt->execute([trim($val), $code]);
-            }
-        }
-        // Invalidate page config cache
-        $cacheFile = sys_get_temp_dir() . '/yada_ask_config.json';
-        if (file_exists($cacheFile)) unlink($cacheFile);
     }
 
     jsonResponse(['saved' => true]);

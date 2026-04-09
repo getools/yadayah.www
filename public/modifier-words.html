@@ -321,7 +321,7 @@ function render(data) {
     displayData.forEach(function(r) {
         var flipUrl = '';
         if (r.volume_flip_code && r.page != null) {
-            flipUrl = 'https://book.yadayah.com/books/' + encodeURIComponent(r.volume_flip_code) + '/#p=' + (r.page + 6);
+            flipUrl = 'https://book.yadayah.com/' + encodeURIComponent(r.volume_flip_code) + '/#p=' + (r.page + 6);
         }
 
         var wordCell = formatTranslit(r.translit);
@@ -492,6 +492,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>

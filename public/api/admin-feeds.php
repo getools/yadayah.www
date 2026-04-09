@@ -6,6 +6,35 @@ $db = getDb();
 
 $method = $_SERVER['REQUEST_METHOD'];
 
+// GET all page feed mappings
+if ($method === 'GET' && !empty($_GET['all_page_feeds'])) {
+    $stmt = $db->query("
+        SELECT pf.*, p.page_code, p.page_title
+        FROM yy_feed_page pf
+        JOIN yy_page p ON p.page_key = pf.page_key
+        ORDER BY p.page_code, pf.feed_page_sort
+    ");
+    jsonResponse(['page_feeds' => $stmt->fetchAll()]);
+}
+
+// GET page feeds for a specific feed (must be before main GET handler)
+if ($method === 'GET' && !empty($_GET['page_feeds'])) {
+    $feedKey = (int)($_GET['feed_key'] ?? 0);
+    $pages = $db->query("SELECT page_key, page_code, page_title FROM yy_page ORDER BY page_code")->fetchAll();
+    if (!$feedKey) {
+        jsonResponse(['page_feeds' => [], 'pages' => $pages]);
+    }
+    $stmt = $db->prepare("
+        SELECT pf.*, p.page_code, p.page_title
+        FROM yy_feed_page pf
+        JOIN yy_page p ON p.page_key = pf.page_key
+        WHERE pf.feed_key = ?
+        ORDER BY pf.feed_page_sort
+    ");
+    $stmt->execute([$feedKey]);
+    jsonResponse(['page_feeds' => $stmt->fetchAll(), 'pages' => $pages]);
+}
+
 // GET - list all feeds with their schedules
 if ($method === 'GET') {
     $feedKey = $_GET['feed_key'] ?? null;
@@ -21,16 +50,30 @@ if ($method === 'GET') {
         $schedStmt->execute([$feedKey]);
         $feed['schedules'] = $schedStmt->fetchAll();
 
+        // Include feed_page rows
+        $fpStmt = $db->prepare("
+            SELECT fp.*, p.page_code, p.page_title
+            FROM yy_feed_page fp
+            JOIN yy_page p ON p.page_key = fp.page_key
+            WHERE fp.feed_key = ?
+            ORDER BY fp.feed_page_sort
+        ");
+        $fpStmt->execute([$feedKey]);
+        $feed['feed_pages'] = $fpStmt->fetchAll();
+
         jsonResponse($feed);
     }
 
-    // All feeds
+    // All feeds with first page's filters
     $stmt = $db->query("
         SELECT f.*,
             (SELECT count(*) FROM yy_feed_schedule s WHERE s.feed_key = f.feed_key AND s.schedule_active_flag = true) as schedule_count,
-            (SELECT max(s.schedule_last_run) FROM yy_feed_schedule s WHERE s.feed_key = f.feed_key) as last_run
+            (SELECT max(s.schedule_last_run) FROM yy_feed_schedule s WHERE s.feed_key = f.feed_key) as last_run,
+            (SELECT count(*) FROM yy_feed_page fp WHERE fp.feed_key = f.feed_key) as page_count,
+            (SELECT fp.feed_page_filter_include FROM yy_feed_page fp WHERE fp.feed_key = f.feed_key ORDER BY fp.feed_page_sort LIMIT 1) as feed_page_filter_include,
+            (SELECT fp.feed_page_filter_exclude FROM yy_feed_page fp WHERE fp.feed_key = f.feed_key ORDER BY fp.feed_page_sort LIMIT 1) as feed_page_filter_exclude
         FROM yy_feed f
-        ORDER BY f.feed_sort, f.feed_name
+        ORDER BY f.feed_name
     ");
     jsonResponse($stmt->fetchAll());
 }
@@ -43,10 +86,7 @@ if ($method === 'POST') {
     $feedKey = $data['feed_key'] ?? null;
 
     $fields = [
-        'feed_name', 'feed_site_code', 'feed_site_id', 'feed_site_api',
-        'feed_type_code', 'feed_filter_positive', 'feed_filter_negative',
-        'feed_api_endpoint', 'feed_page_url', 'feed_db_table', 'feed_thumb_dir',
-        'feed_per_page', 'feed_paging_code', 'feed_active_flag', 'feed_sort'
+        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_api_key', 'feed_active_flag'
     ];
 
     if ($feedKey) {
@@ -126,8 +166,13 @@ if ($method === 'PUT') {
 
     $result = ['feed' => $feed['feed_name'], 'action' => 'sync'];
 
-    $endpoint = $feed['feed_api_endpoint'] ?? '';
     $site = strtolower($feed['feed_site_code'] ?? '');
+
+    // Get first feed_page for this feed to find endpoint and db_table info
+    $fpStmt = $db->prepare("SELECT * FROM yy_feed_page WHERE feed_key = ? ORDER BY feed_page_sort LIMIT 1");
+    $fpStmt->execute([$feedKey]);
+    $feedPage = $fpStmt->fetch();
+    $endpoint = $feedPage['feed_page_api_endpoint'] ?? '';
 
     $matchedCount = 0;
 
@@ -152,13 +197,11 @@ if ($method === 'PUT') {
         $scriptPath = realpath(__DIR__ . '/..' . parse_url($endpoint, PHP_URL_PATH))
                    ?: realpath(__DIR__ . '/' . basename(parse_url($endpoint, PHP_URL_PATH)));
         if ($scriptPath && file_exists($scriptPath) && $site === 'facebook') {
-            // Run in background via CLI (Facebook syncs take too long for HTTP)
             $logFile = sys_get_temp_dir() . '/sync_feed_' . $feedKey . '.log';
             $cmd = "php $scriptPath > $logFile 2>&1 &";
             exec($cmd);
             $result['sync_result'] = ['status' => 'started', 'message' => 'Sync running in background'];
         } else {
-            // Call the sync endpoint internally via HTTP
             $sep = strpos($endpoint, '?') !== false ? '&' : '?';
             $syncUrl = 'http://localhost' . $endpoint . $sep . 'action=sync&key=yada2026sync';
             $ctx = stream_context_create(['http' => ['timeout' => 120]]);
@@ -177,23 +220,9 @@ if ($method === 'PUT') {
         $result['error'] = 'No sync method available for this feed';
     }
 
-    // Count total records in DB table if available
-    $dbTable = $feed['feed_db_table'] ?? '';
-    if ($dbTable) {
-        $allowed = ['yy_feed_invite', 'yy_feed_doyou', 'yy_blog', 'yy_music'];
-        if (in_array($dbTable, $allowed)) {
-            $activeCol = ($dbTable === 'yy_blog') ? 'feed_active_flag' : 'feed_active_flag';
-            try {
-                $countStmt = $db->query("SELECT count(*) FROM $dbTable WHERE $activeCol = true");
-                $matchedCount = (int)$countStmt->fetchColumn();
-            } catch (\Exception $e) {}
-        }
-    }
-
     $result['matched_count'] = $matchedCount;
 
-    // Update feed and schedule
-    $db->prepare("UPDATE yy_feed SET feed_last_count = ? WHERE feed_key = ?")->execute([$matchedCount, $feedKey]);
+    // Update schedule
     $db->prepare("UPDATE yy_feed_schedule SET schedule_last_run = NOW(), schedule_last_count = ?, schedule_last_status = ? WHERE feed_key = ?")
         ->execute([$matchedCount, json_encode($result), $feedKey]);
 
@@ -203,9 +232,50 @@ if ($method === 'PUT') {
 // DELETE
 if ($method === 'DELETE') {
     $data = json_decode(file_get_contents('php://input'), true);
+
+    // Delete page-feed mapping
+    if (!empty($data['feed_page_key'])) {
+        $db->prepare("DELETE FROM yy_feed_page WHERE feed_page_key = ?")->execute([$data['feed_page_key']]);
+        jsonResponse(['deleted' => true]);
+    }
+
+    // Delete feed
     $feedKey = $data['feed_key'] ?? null;
     if (!$feedKey) errorResponse('feed_key required');
-
+    $db->prepare("DELETE FROM yy_feed_page WHERE feed_key = ?")->execute([$feedKey]);
+    $db->prepare("DELETE FROM yy_feed_schedule WHERE feed_key = ?")->execute([$feedKey]);
     $db->prepare("DELETE FROM yy_feed WHERE feed_key = ?")->execute([$feedKey]);
     jsonResponse(['deleted' => true]);
+}
+
+// ── Page Feed Mappings ──
+
+// POST - create/update page feed mapping
+if ($method === 'POST' && !empty($_POST['feed_page_action'] ?? json_decode(file_get_contents('php://input'), true)['feed_page_action'] ?? '')) {
+    $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+    $action = $data['feed_page_action'];
+
+    if ($action === 'create') {
+        $db->prepare("INSERT INTO yy_feed_page (page_key, feed_key, feed_page_filter_include, feed_page_filter_exclude, feed_page_sort) VALUES (?, ?, ?, ?, ?)")
+           ->execute([
+               (int)$data['page_key'],
+               (int)$data['feed_key'],
+               $data['feed_page_filter_include'] ?? null,
+               $data['feed_page_filter_exclude'] ?? null,
+               (int)($data['feed_page_sort'] ?? 0),
+           ]);
+        jsonResponse(['created' => true]);
+    }
+
+    if ($action === 'update') {
+        $db->prepare("UPDATE yy_feed_page SET page_key = ?, feed_page_filter_include = ?, feed_page_filter_exclude = ?, feed_page_sort = ? WHERE feed_page_key = ?")
+           ->execute([
+               (int)$data['page_key'],
+               $data['feed_page_filter_include'] ?? null,
+               $data['feed_page_filter_exclude'] ?? null,
+               (int)($data['feed_page_sort'] ?? 0),
+               (int)$data['feed_page_key'],
+           ]);
+        jsonResponse(['updated' => true]);
+    }
 }

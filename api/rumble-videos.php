@@ -10,10 +10,15 @@
  *  2. Live scrape from Rumble (works locally, blocked by Cloudflare on most servers)
  *  3. Static full cache file (rumble-all-videos.json) deployed with the app
  */
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+require_once __DIR__ . '/config.php';
 
-$CHANNEL_BASE  = 'https://rumble.com/c/YadaYahowah7';
+$db = getDb();
+
+// Load Rumble channel from yy_feed
+$feedStmt = $db->query("SELECT feed_account_id FROM yy_feed WHERE lower(feed_site_code) = 'rumble' AND feed_active_flag = true LIMIT 1");
+$feedRow = $feedStmt->fetch();
+$RUMBLE_ACCOUNT = $feedRow['feed_account_id'] ?? 'YadaYahowah7';
+$CHANNEL_BASE  = 'https://rumble.com/c/' . $RUMBLE_ACCOUNT;
 $STATIC_CACHE  = __DIR__ . '/../rumble-all-videos.json';
 $CACHE_DIR     = sys_get_temp_dir() . '/rumble_stevens';
 $CACHE_TTL     = 10800; // 3 hours

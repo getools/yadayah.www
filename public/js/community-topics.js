@@ -23,8 +23,20 @@ CommunityTopics._editors = {};
 CommunityTopics.createEditor = function(containerId, textareaId) {
     var container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = '<textarea id="' + textareaId + '"></textarea>';
+    container.innerHTML = '<textarea id="' + textareaId + '" style="width:100%;min-height:150px;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:0.95rem;resize:vertical;"></textarea>';
 
+    // Lazy-load TinyMCE
+    if (typeof tinymce === 'undefined') {
+        if (window.ensureTinyMCE) {
+            ensureTinyMCE(function() { CommunityTopics._initTinyMCE(containerId, textareaId); });
+        }
+        return;
+    }
+
+    CommunityTopics._initTinyMCE(containerId, textareaId);
+};
+
+CommunityTopics._initTinyMCE = function(containerId, textareaId) {
     // Remove existing instance if any
     var existing = tinymce.get(textareaId);
     if (existing) existing.remove();
@@ -164,7 +176,7 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
                 var ph = document.createElement('div');
                 ph.className = 'mce-placeholder-overlay';
                 ph.textContent = 'Write your message...';
-                ph.style.cssText = 'position:absolute;top:8px;left:20px;color:#aaa;font-size:0.95rem;pointer-events:none;z-index:1;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
+                ph.style.cssText = 'position:absolute;top:1px;left:12px;color:#aaa;font-size:0.95rem;pointer-events:none;z-index:1;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
                 iframeWrap.style.position = 'relative';
                 iframeWrap.appendChild(ph);
 
@@ -229,12 +241,12 @@ CommunityTopics.loadTopics = function(page, category) {
                 var pinned = t.topic_pinned === true || t.topic_pinned === 't';
                 var hidden = t.topic_active_flag === false || t.topic_active_flag === 'f';
                 html += '<div class="topic-item' + (pinned ? ' pinned' : '') + (hidden ? ' topic-hidden' : '') + '" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
-                    + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_display_name, 'topic-avatar', t.user_last_active_dtime)
+                    + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'topic-avatar', t.user_last_active_dtime)
                     + '<div class="topic-info">'
                     + '<div class="topic-title">' + (hidden ? '<span class="hidden-badge">Hidden</span> ' : '') + (pinned ? '&#128204; ' : '') + Community.esc(t.topic_title) + '</div>'
                     + '<div class="topic-meta">'
                     + Community.categoryBadge(t.category_slug)
-                    + '<span onclick="event.stopPropagation();Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_display_name || 'Anonymous') + '</span>'
+                    + '<span onclick="event.stopPropagation();Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_name_display || 'Anonymous') + '</span>'
                     + ' &middot; ' + Community.timeAgo(t.topic_dtime)
                     + '</div></div>'
                     + '<div class="topic-stats">'
@@ -296,17 +308,26 @@ CommunityTopics.loadTopic = function(key) {
         html += '</div>';
 
         html += '<div class="topic-author">'
-            + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_display_name, 'detail-avatar', t.user_last_active_dtime)
-            + '<span onclick="Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_display_name || 'Anonymous') + '</span>'
+            + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'detail-avatar', t.user_last_active_dtime)
+            + '<span onclick="Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_name_display || 'Anonymous') + '</span>'
             + ' &middot; ' + Community.timeAgo(t.topic_dtime)
             + Community.categoryBadge(t.category_slug);
         if (isMod && user.user_key !== t.user_key) {
-            html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + t.user_key + ',\'' + Community.esc(t.user_display_name || '').replace(/'/g, "\\'") + '\')">Ban User</button>';
+            html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + t.user_key + ',\'' + Community.esc(t.user_name_display || '').replace(/'/g, "\\'") + '\')">Ban User</button>';
         }
         html += '</div>';
 
         if (t.topic_body_html || t.topic_body) {
-            html += '<div class="topic-body">' + (t.topic_body_html || Community.formatBody(t.topic_body)) + '</div>';
+            html += '<div class="topic-body" id="topic-body-content">' + (t.topic_body_html || Community.formatBody(t.topic_body)) + '</div>';
+        }
+        // Edit button for topic author
+        var isAuthor = user && user.user_key === t.user_key;
+        if (isAuthor && !topicIsRemoved) {
+            html += '<div style="margin-top:6px;"><button class="btn btn-sm btn-outline" style="font-size:0.75rem;" onclick="CommunityTopics.editTopic(' + key + ')">Edit</button>';
+            if (t.topic_edit_dtime) html += ' <span style="font-size:0.72rem;color:#999;">(edited ' + Community.timeAgo(t.topic_edit_dtime) + ')</span>';
+            html += '</div>';
+        } else if (t.topic_edit_dtime) {
+            html += '<div style="margin-top:4px;font-size:0.72rem;color:#999;">(edited ' + Community.timeAgo(t.topic_edit_dtime) + ')</div>';
         }
 
         // Poll
@@ -355,11 +376,11 @@ CommunityTopics.loadTopic = function(key) {
                 }
 
                 html += '<div class="reply-author">'
-                    + Community.clickableAvatar(r.user_key, r.user_avatar, r.user_display_name, 'reply-avatar', r.user_last_active_dtime)
-                    + '<span onclick="Community.showProfileCard(event,' + r.user_key + ')" style="cursor:pointer;">' + Community.esc(r.user_display_name || 'Anonymous') + '</span>'
+                    + Community.clickableAvatar(r.user_key, r.user_avatar, r.user_name_display, 'reply-avatar', r.user_last_active_dtime)
+                    + '<span onclick="Community.showProfileCard(event,' + r.user_key + ')" style="cursor:pointer;">' + Community.esc(r.user_name_display || 'Anonymous') + '</span>'
                     + ' &middot; ' + Community.timeAgo(r.reply_dtime);
                 if (isMod && !isRemoved && user.user_key !== r.user_key) {
-                    html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + r.user_key + ',\'' + Community.esc(r.user_display_name || '').replace(/'/g, "\\'") + '\')">Ban</button>';
+                    html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + r.user_key + ',\'' + Community.esc(r.user_name_display || '').replace(/'/g, "\\'") + '\')">Ban</button>';
                 }
                 html += '</div>'
                     + '<div class="reply-body">' + (r.reply_body_html || Community.formatBody(r.reply_body)) + '</div>';
@@ -373,11 +394,22 @@ CommunityTopics.loadTopic = function(key) {
                         html += '<button class="btn-icon report-btn" onclick="CommunityTopics.openReport(\'reply\',' + r.reply_key + ')" title="Report">&#9873;</button>';
                     }
 
-                    // Remove button
-                    if (canRemove) {
-                        html += '<div class="reply-actions">';
-                        html += '<button class="btn btn-sm btn-outline" style="color:#c0392b;border-color:#c0392b;" onclick="CommunityTopics.removeReply(' + r.reply_key + ',' + key + ')">Remove</button>';
+                    // Edit + Remove buttons
+                    var replyIsAuthor = user && user.user_key === r.user_key;
+                    if (replyIsAuthor || canRemove) {
+                        html += '<div class="reply-actions" style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">';
+                        if (replyIsAuthor) {
+                            html += '<button class="btn btn-sm btn-outline" style="font-size:0.75rem;" onclick="CommunityTopics.editReply(' + r.reply_key + ',' + key + ')">Edit</button>';
+                        }
+                        if (r.reply_edit_dtime) {
+                            html += '<span style="font-size:0.72rem;color:#999;">(edited ' + Community.timeAgo(r.reply_edit_dtime) + ')</span>';
+                        }
+                        if (canRemove) {
+                            html += '<button class="btn btn-sm btn-outline" style="color:#c0392b;border-color:#c0392b;" onclick="CommunityTopics.removeReply(' + r.reply_key + ',' + key + ')">Remove</button>';
+                        }
                         html += '</div>';
+                    } else if (r.reply_edit_dtime) {
+                        html += '<div style="text-align:right;font-size:0.72rem;color:#999;">(edited ' + Community.timeAgo(r.reply_edit_dtime) + ')</div>';
                     }
                 }
                 html += '</div>';
@@ -432,7 +464,7 @@ CommunityTopics.renderLikeAndReactions = function(type, key, item) {
     var html = '<div class="like-reaction-bar">';
     // Like button
     html += '<button class="btn-icon like-btn' + (userLiked ? ' liked' : '') + '" onclick="CommunityTopics.toggleLike(\'' + type + '\',' + key + ')">'
-        + (userLiked ? '&#10084;&#65039;' : '&#9825;')
+        + '<span class="heart-icon">' + (userLiked ? '&#9829;' : '&#9825;') + '</span>'
         + ' <span class="like-count">' + likeCount + '</span></button>';
 
     // Existing reactions display
@@ -538,9 +570,9 @@ CommunityTopics.loadBookmarks = function() {
             for (var i = 0; i < topics.length; i++) {
                 var t = topics[i];
                 html += '<div class="topic-item" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
-                    + Community.avatarHtml(t.user_avatar, t.user_display_name, 'topic-avatar', t.user_last_active_dtime)
+                    + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'topic-avatar', t.user_last_active_dtime)
                     + '<div class="topic-info"><div class="topic-title">' + Community.esc(t.topic_title) + '</div>'
-                    + '<div class="topic-meta">' + Community.esc(t.user_display_name || 'Anonymous') + ' &middot; ' + Community.timeAgo(t.topic_dtime) + '</div></div>'
+                    + '<div class="topic-meta">' + Community.esc(t.user_name_display || 'Anonymous') + ' &middot; ' + Community.timeAgo(t.topic_dtime) + '</div></div>'
                     + '<div class="topic-stats">'
                     + '<div class="stat-item"><span class="stat-icon">&#128172;</span><span class="stat-num">' + (t.topic_reply_count || 0) + '</span></div>'
                     + '</div></div>';
@@ -681,6 +713,88 @@ CommunityTopics.toggleShowRemoved = function(checked, topicKey) {
     _showRemoved = checked;
     localStorage.setItem('mod_show_removed', checked ? 'true' : 'false');
     CommunityTopics.loadTopic(topicKey);
+};
+
+// ── Edit topic ──
+CommunityTopics.editTopic = function(topicKey) {
+    // Fetch current topic data
+    Community.api('/api/community-topics.php?topic=' + topicKey).then(function(data) {
+        var t = data.topic;
+        var el = document.getElementById('view-topic');
+        var html = '<a href="#topic/' + topicKey + '" class="back-link" onclick="CommunityTopics.loadTopic(' + topicKey + ');return false;">&larr; Cancel</a>'
+            + '<div class="compose-form">'
+            + '<h3 class="compose-title">Edit Topic</h3>'
+            + '<input id="edit-title" value="' + Community.esc(t.topic_title || '') + '" placeholder="Topic title">'
+            + '<div id="edit-body-editor"></div>'
+            + '<button class="btn btn-primary" onclick="CommunityTopics.saveEditTopic(' + topicKey + ')">Save Changes</button>'
+            + '</div>';
+        el.innerHTML = html;
+        CommunityTopics.createEditor('edit-body-editor', 'edit-body');
+        // Wait for TinyMCE to init, then set content
+        var interval = setInterval(function() {
+            var editor = (typeof tinymce !== 'undefined') ? tinymce.get('edit-body') : null;
+            if (editor) {
+                clearInterval(interval);
+                editor.setContent(t.topic_body_html || Community.formatBody(t.topic_body || ''));
+            }
+        }, 100);
+    });
+};
+
+CommunityTopics.saveEditTopic = function(topicKey) {
+    var title = document.getElementById('edit-title').value.trim();
+    var bodyHtml = CommunityTopics.getEditorHtml('edit-body');
+    var body = CommunityTopics.getEditorText('edit-body');
+    if (!title) { alert('Title is required'); return; }
+    Community.api('/api/community-topics.php', {
+        method: 'POST',
+        body: { action: 'edit_topic', topic_key: topicKey, title: title, body: body, topic_body_html: bodyHtml }
+    }).then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        CommunityTopics.loadTopic(topicKey);
+    });
+};
+
+// ── Edit reply ──
+CommunityTopics.editReply = function(replyKey, topicKey) {
+    Community.api('/api/community-topics.php?topic=' + topicKey).then(function(data) {
+        var replies = data.replies || [];
+        var r = null;
+        for (var i = 0; i < replies.length; i++) {
+            if (replies[i].reply_key === replyKey) { r = replies[i]; break; }
+        }
+        if (!r) { alert('Reply not found'); return; }
+
+        var replyEl = document.getElementById('reply-' + replyKey);
+        if (!replyEl) return;
+        replyEl.innerHTML = '<div class="compose-form" style="margin:0;">'
+            + '<div id="edit-reply-editor-' + replyKey + '"></div>'
+            + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+            + '<button class="btn btn-sm btn-outline" onclick="CommunityTopics.loadTopic(' + topicKey + ')">Cancel</button>'
+            + '<button class="btn btn-sm btn-primary" onclick="CommunityTopics.saveEditReply(' + replyKey + ',' + topicKey + ')">Save</button>'
+            + '</div></div>';
+        CommunityTopics.createEditor('edit-reply-editor-' + replyKey, 'edit-reply-' + replyKey);
+        var interval = setInterval(function() {
+            var editor = (typeof tinymce !== 'undefined') ? tinymce.get('edit-reply-' + replyKey) : null;
+            if (editor) {
+                clearInterval(interval);
+                editor.setContent(r.reply_body_html || Community.formatBody(r.reply_body || ''));
+            }
+        }, 100);
+    });
+};
+
+CommunityTopics.saveEditReply = function(replyKey, topicKey) {
+    var bodyHtml = CommunityTopics.getEditorHtml('edit-reply-' + replyKey);
+    var body = CommunityTopics.getEditorText('edit-reply-' + replyKey);
+    if (!body.trim() && (!bodyHtml || bodyHtml.replace(/<[^>]*>/g, '').trim() === '')) { alert('Reply cannot be empty'); return; }
+    Community.api('/api/community-topics.php', {
+        method: 'POST',
+        body: { action: 'edit_reply', reply_key: replyKey, body: body, reply_body_html: bodyHtml }
+    }).then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        CommunityTopics.loadTopic(topicKey);
+    });
 };
 
 CommunityTopics.removeReply = function(replyKey, topicKey) {

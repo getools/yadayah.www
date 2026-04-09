@@ -1,0 +1,16 @@
+RewriteEngine On
+
+# Redirect old .html URLs to clean paths (301 permanent)
+RewriteCond %{THE_REQUEST} \s/+(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite)\.html[\s?] [NC]
+RewriteRule ^(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite)\.html$ /$1 [R=301,L]
+
+# Serve clean URLs from .html files
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{DOCUMENT_ROOT}/%{REQUEST_URI}.html -f
+RewriteRule ^(.+)$ $1.html [L]
+
+# Route API requests to the api directory
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^api/(.*)$ /api/$1 [L]

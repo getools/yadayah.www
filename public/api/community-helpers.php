@@ -17,6 +17,9 @@ function sanitizeHtml(string $html): string {
         'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [],
         'pre' => ['class'], 'code' => ['class'],
         'table' => [], 'thead' => [], 'tbody' => [], 'tr' => [], 'td' => ['colspan', 'rowspan'], 'th' => ['colspan', 'rowspan'],
+        'video' => ['src', 'width', 'height', 'controls', 'poster', 'preload', 'style'],
+        'source' => ['src', 'type'],
+        'audio' => ['src', 'controls', 'preload'],
         'iframe' => ['src', 'width', 'height', 'frameborder', 'allowfullscreen', 'allow', 'style'],
         'figure' => [], 'figcaption' => [],
         'div' => ['style', 'class'],
@@ -93,13 +96,13 @@ function checkBanned(PDO $db, int $userKey): ?string {
  * Check text against word filter table. Returns error if blocked word found.
  */
 function checkWordFilter(PDO $db, string $text): void {
-    $stmt = $db->query("SELECT filter_word, filter_action FROM yy_community_word_filter WHERE filter_active_flag = TRUE");
+    $stmt = $db->query("SELECT filter_word, filter_type FROM yy_community_word_filter WHERE filter_active_flag = TRUE");
     $filters = $stmt->fetchAll();
     $lower = mb_strtolower($text);
     foreach ($filters as $f) {
         $word = mb_strtolower($f['filter_word']);
         if (mb_strpos($lower, $word) !== false) {
-            if ($f['filter_action'] === 'block') {
+            if ($f['filter_type'] === 'block') {
                 errorResponse('Your post contains a word that is not allowed.');
             }
         }
@@ -130,14 +133,23 @@ function sendNotificationEmail(PDO $db, int $recipientKey, string $subject, stri
     if (!$user || !$user['user_email']) return false;
     if ($user['user_email_notifications'] === false || $user['user_email_notifications'] === 'f') return false;
 
-    require_once __DIR__ . '/send-mail.php';
     $htmlBody = '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">'
         . $body
         . '<hr style="border:none;border-top:1px solid #eee;margin:20px 0;">'
         . '<p style="font-size:0.8em;color:#999;">You received this because you have notifications enabled. '
         . '<a href="https://yadayah.com/community#settings">Manage preferences</a></p>'
         . '</div>';
-    return sendMail($db, $user['user_email'], $subject, $htmlBody);
+
+    // Queue the email and trigger async processing
+    $stmt = $db->prepare("INSERT INTO yy_email_queue (to_email, subject, body_html) VALUES (?, ?, ?)");
+    $stmt->execute([$user['user_email'], $subject, $htmlBody]);
+
+    // Fire-and-forget: kick off the queue processor in the background
+    $script = __DIR__ . '/process-email-queue.php';
+    if (file_exists($script)) {
+        @exec('php ' . escapeshellarg($script) . ' > /dev/null 2>&1 &');
+    }
+    return true;
 }
 
 /**

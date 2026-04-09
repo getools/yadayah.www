@@ -12,14 +12,6 @@ if (php_sapi_name() !== 'cli') {
     exit;
 }
 
-$YT_PLAYLIST_ID = 'PLW5gXgQ3YcPCy7jFNQ_4Q759SVdS0e035';
-$YT_API_KEY     = getenv('YOUTUBE_API_KEY') ?: '';
-
-if (!$YT_API_KEY) {
-    echo "Error: YOUTUBE_API_KEY env var not set\n";
-    exit(1);
-}
-
 // DB connection
 $host = getenv('PG_HOST') ?: 'localhost';
 $port = getenv('PG_PORT') ?: '5432';
@@ -31,6 +23,24 @@ $db = new PDO($dsn, $user, $pass, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
+
+// Load playlist ID from yy_feed_page for the music page
+$fpStmt = $db->query("
+    SELECT f.feed_account_id, f.feed_api_key
+    FROM yy_feed_page fp
+    JOIN yy_feed f ON f.feed_key = fp.feed_key
+    JOIN yy_page p ON p.page_key = fp.page_key
+    WHERE p.page_code = 'music'
+    ORDER BY fp.feed_page_sort LIMIT 1
+");
+$fpRow = $fpStmt->fetch();
+$YT_PLAYLIST_ID = $fpRow['feed_account_id'] ?? 'PLW5gXgQ3YcPCy7jFNQ_4Q759SVdS0e035';
+$YT_API_KEY     = $fpRow['feed_api_key'] ?: getenv('YOUTUBE_API_KEY') ?: '';
+
+if (!$YT_API_KEY) {
+    echo "Error: YOUTUBE_API_KEY not configured\n";
+    exit(1);
+}
 
 $inserted = 0;
 $updated  = 0;

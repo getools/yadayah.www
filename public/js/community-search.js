@@ -88,7 +88,7 @@ CommunitySearch.search = function(query) {
             html += '<div class="search-result-item" onclick="window.location.hash=\'#topic/' + r.topic_key + '\';CommunitySearch.hideResults();">'
                 + '<div class="search-result-title">' + Community.esc(r.topic_title || r.title) + '</div>'
                 + '<div class="search-result-meta">'
-                + Community.esc(r.user_display_name || '') + ' &middot; ' + Community.timeAgo(r.topic_dtime || r.dtime)
+                + Community.esc(r.user_name_display || '') + ' &middot; ' + Community.timeAgo(r.topic_dtime || r.dtime)
                 + (r.match_type === 'reply' ? ' &middot; <em>match in reply</em>' : '')
                 + '</div>'
                 + (r.snippet ? '<div class="search-result-snippet">' + Community.esc(r.snippet) + '</div>' : '')

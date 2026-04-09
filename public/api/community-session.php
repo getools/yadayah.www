@@ -27,8 +27,8 @@ if (!empty($_SESSION['user_key'])) {
        ->execute([$userKey]);
 
     $stmt = $db->prepare("
-        SELECT u.user_key, u.user_display_name, u.user_handle, u.user_avatar, u.user_email,
-               u.user_oauth_provider, u.user_verified, u.user_reputation,
+        SELECT u.user_key, u.user_name_display, u.user_handle, u.user_avatar, u.user_email,
+               u.user_oauth_provider, u.user_verified, u.user_reputation, u.user_font_size,
                array_agg(r.role_code) as roles
         FROM yy_user u
         LEFT JOIN yy_user_role ur ON u.user_key = ur.user_key

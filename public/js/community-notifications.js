@@ -106,12 +106,7 @@ CommunityNotifications.startPolling = function() {
     // Close any existing connections
     CommunityNotifications.stopPolling();
 
-    // Always poll every 30s as baseline fallback
-    CommunityNotifications._fallbackInterval = setInterval(function() {
-        CommunityNotifications.fetchUnread();
-    }, 30000);
-
-    // Layer SSE on top for near-instant push
+    // SSE for real-time push; poll only as fallback if SSE unavailable
     if (window.EventSource) {
         _eventSource = new EventSource('/api/community-sse.php');
 
@@ -149,9 +144,19 @@ CommunityNotifications.startPolling = function() {
         });
 
         _eventSource.onerror = function() {
-            // SSE failed — fallback polling is already running
+            // SSE failed — start fallback polling
             if (_eventSource) { _eventSource.close(); _eventSource = null; }
+            if (!CommunityNotifications._fallbackInterval) {
+                CommunityNotifications._fallbackInterval = setInterval(function() {
+                    CommunityNotifications.fetchUnread();
+                }, 30000);
+            }
         };
+    } else {
+        // No SSE support — poll every 30s
+        CommunityNotifications._fallbackInterval = setInterval(function() {
+            CommunityNotifications.fetchUnread();
+        }, 30000);
     }
 };
 

@@ -32,12 +32,12 @@ switch ($method) {
             // If user_code not in session (OAuth/community login), look up from DB
             if (empty($_SESSION['user_code'])) {
                 $db = getDb();
-                $stmt = $db->prepare('SELECT user_code, user_name_full, user_display_name FROM yy_user WHERE user_key = ?');
+                $stmt = $db->prepare('SELECT user_code, user_name_display FROM yy_user WHERE user_key = ?');
                 $stmt->execute([$_SESSION['user_key']]);
                 $u = $stmt->fetch();
                 if ($u) {
                     $_SESSION['user_code'] = $u['user_code'];
-                    $_SESSION['user_name'] = $u['user_name_full'] ?: $u['user_display_name'] ?: $u['user_code'];
+                    $_SESSION['user_name'] = $u['user_name_display'] ?: $u['user_code'];
                 }
             }
             $pages = getUserPages($_SESSION['user_key']);
@@ -45,7 +45,7 @@ switch ($method) {
                 'authenticated' => true,
                 'user_key' => $_SESSION['user_key'],
                 'user_code' => $_SESSION['user_code'] ?? '',
-                'user_name' => $_SESSION['user_name'] ?? $_SESSION['user_display_name'] ?? $_SESSION['user_code'] ?? '',
+                'user_name' => $_SESSION['user_name'] ?? $_SESSION['user_name_display'] ?? $_SESSION['user_code'] ?? '',
                 'pages' => $pages,
             ]);
         } else {
@@ -60,17 +60,30 @@ switch ($method) {
         }
 
         $db = getDb();
-        $stmt = $db->prepare('SELECT user_key, user_code, user_pass, user_name_full FROM yy_user WHERE LOWER(user_code) = LOWER(?)');
+        // Try yy_user_auth first (new system), fall back to yy_user.user_pass (legacy)
+        $stmt = $db->prepare("
+            SELECT u.user_key, u.user_code, ua.auth_pass, u.user_name_display
+            FROM yy_user u
+            JOIN yy_user_auth ua ON ua.user_key = u.user_key
+            WHERE LOWER(u.user_code) = LOWER(?) AND ua.auth_provider = 'email' AND ua.auth_active_flag = TRUE
+        ");
         $stmt->execute([$data['login']]);
         $user = $stmt->fetch();
 
-        if (!$user || !$user['user_pass'] || !password_verify($data['password'], $user['user_pass'])) {
+        // Fallback: try legacy user_pass on yy_user
+        if (!$user) {
+            $stmt = $db->prepare('SELECT user_key, user_code, user_pass AS auth_pass, user_name_display FROM yy_user WHERE LOWER(user_code) = LOWER(?)');
+            $stmt->execute([$data['login']]);
+            $user = $stmt->fetch();
+        }
+
+        if (!$user || !$user['auth_pass'] || !password_verify($data['password'], $user['auth_pass'])) {
             errorResponse('Invalid login or password', 401);
         }
 
         $_SESSION['user_key'] = $user['user_key'];
         $_SESSION['user_code'] = $user['user_code'];
-        $_SESSION['user_name'] = $user['user_name_full'] ?: $user['user_code'];
+        $_SESSION['user_name'] = $user['user_name_display'] ?: $user['user_code'];
 
         $pages = getUserPages($user['user_key']);
         jsonResponse([

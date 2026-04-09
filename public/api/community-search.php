@@ -36,7 +36,7 @@ $params[] = $offset;
 
 $stmt = $db->prepare("
     SELECT t.topic_key, t.topic_title, t.topic_dtime, t.topic_reply_count,
-           u.user_display_name, u.user_avatar,
+           u.user_name_display, u.user_avatar,
            ts_headline('english', COALESCE(t.topic_body, t.topic_body_html, ''), plainto_tsquery('english', ?),
                'MaxWords=40, MinWords=20, StartSel=<mark>, StopSel=</mark>') AS snippet,
            'topic' AS result_type
@@ -77,7 +77,7 @@ $replyParams[] = $offset;
 
 $stmt = $db->prepare("
     SELECT r.reply_key, r.topic_key, t.topic_title, r.reply_dtime,
-           u.user_display_name, u.user_avatar,
+           u.user_name_display, u.user_avatar,
            ts_headline('english', COALESCE(r.reply_body, r.reply_body_html, ''), plainto_tsquery('english', ?),
                'MaxWords=40, MinWords=20, StartSel=<mark>, StopSel=</mark>') AS snippet,
            'reply' AS result_type

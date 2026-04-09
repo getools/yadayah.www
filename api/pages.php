@@ -6,6 +6,21 @@ $db = getDb();
 setCurrentUser($db, $user['user_key']);
 $method = $_SERVER['REQUEST_METHOD'];
 
+function rebuildAliasCache(PDO $db): void {
+    $stmt = $db->query("
+        SELECT a.alias_path, p.page_code
+        FROM yy_page_alias a
+        JOIN yy_page p ON a.page_key = p.page_key
+        WHERE a.alias_active_flag = TRUE AND p.page_active_flag = TRUE
+    ");
+    $aliases = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $aliases[$row['alias_path']] = $row['page_code'];
+    }
+    $cacheFile = sys_get_temp_dir() . '/yada_page_aliases.json';
+    file_put_contents($cacheFile, json_encode($aliases));
+}
+
 switch ($method) {
 
 case 'GET':
@@ -20,6 +35,10 @@ case 'GET':
         $sections = $db->prepare("SELECT * FROM yy_page_section WHERE page_key = ? ORDER BY page_section_sort, page_section_key");
         $sections->execute([$key]);
         $row['sections'] = $sections->fetchAll();
+
+        $aliases = $db->prepare("SELECT * FROM yy_page_alias WHERE page_key = ? ORDER BY alias_key");
+        $aliases->execute([$key]);
+        $row['aliases'] = $aliases->fetchAll();
         jsonResponse($row);
     }
 
@@ -83,6 +102,42 @@ case 'POST':
         }
     }
 
+    // Save aliases for a page
+    if (!empty($input['page_key']) && isset($input['aliases'])) {
+        $pageKey = (int)$input['page_key'];
+        $check = $db->prepare("SELECT page_key FROM yy_page WHERE page_key = ?");
+        $check->execute([$pageKey]);
+        if (!$check->fetch()) errorResponse('Page not found', 404);
+
+        $db->beginTransaction();
+        try {
+            foreach ($input['aliases'] as $a) {
+                $path = trim($a['alias_path'] ?? '', ' /');
+                if (!$path) continue;
+                if (!empty($a['alias_key'])) {
+                    $db->prepare("UPDATE yy_page_alias SET alias_path = ?, alias_active_flag = ? WHERE alias_key = ? AND page_key = ?")
+                       ->execute([$path, ($a['alias_active_flag'] ?? true) ? 't' : 'f', (int)$a['alias_key'], $pageKey]);
+                } else {
+                    $db->prepare("INSERT INTO yy_page_alias (page_key, alias_path, alias_active_flag) VALUES (?, ?, ?) ON CONFLICT (alias_path) DO UPDATE SET page_key = EXCLUDED.page_key, alias_active_flag = EXCLUDED.alias_active_flag")
+                       ->execute([$pageKey, $path, ($a['alias_active_flag'] ?? true) ? 't' : 'f']);
+                }
+            }
+            if (isset($input['deleted_aliases'])) {
+                foreach ($input['deleted_aliases'] as $delKey) {
+                    $db->prepare("DELETE FROM yy_page_alias WHERE alias_key = ? AND page_key = ?")
+                       ->execute([(int)$delKey, $pageKey]);
+                }
+            }
+            // Rebuild alias redirect cache
+            rebuildAliasCache($db);
+            $db->commit();
+            jsonResponse(['ok' => true]);
+        } catch (Exception $e) {
+            $db->rollBack();
+            errorResponse('Save failed: ' . $e->getMessage());
+        }
+    }
+
     // Create new page
     $code = trim($input['page_code'] ?? '');
     if (!$code) errorResponse('page_code is required');
@@ -91,10 +146,11 @@ case 'POST':
     $active = ($input['page_active_flag'] ?? true) ? 't' : 'f';
     $toolbar = (int)($input['page_toolbar'] ?? 1);
     $headerSort = (int)($input['page_header_sort'] ?? 0);
+    $footerSort = (int)($input['page_footer_sort'] ?? 0);
     $url = trim($input['page_url'] ?? '') ?: null;
 
-    $stmt = $db->prepare("INSERT INTO yy_page (page_code, page_title, page_active_flag, page_toolbar, page_header_sort, page_url) VALUES (?, ?, ?, ?, ?, ?) RETURNING page_key");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $url]);
+    $stmt = $db->prepare("INSERT INTO yy_page (page_code, page_title, page_active_flag, page_toolbar, page_header_sort, page_footer_sort, page_url) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING page_key");
+    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, $url]);
     $row = $stmt->fetch();
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
@@ -118,10 +174,11 @@ case 'PUT':
     $active = ($input['page_active_flag'] ?? true) ? 't' : 'f';
     $toolbar = (int)($input['page_toolbar'] ?? 1);
     $headerSort = (int)($input['page_header_sort'] ?? 0);
+    $footerSort = (int)($input['page_footer_sort'] ?? 0);
     $url = trim($input['page_url'] ?? '') ?: null;
 
-    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_url = ? WHERE page_key = ?");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $url, $key]);
+    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_footer_sort = ?, page_footer_col = ?, page_url = ? WHERE page_key = ?");
+    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, (int)($input['page_footer_col'] ?? 0), $url, $key]);
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
     jsonResponse(['ok' => true]);

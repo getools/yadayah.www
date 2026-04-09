@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $code = $_GET['code'] ?? '';
 $state = $_GET['state'] ?? '';
 $error = $_GET['error'] ?? '';
-$_oauthReturn = $_SESSION['oauth_return'] ?? '/community';
+$_oauthReturn = $_SESSION['oauth_return'] ?? '/chat';
 
 if ($error) {
     unset($_SESSION['oauth_return']);
@@ -34,7 +34,7 @@ foreach ($stmt->fetchAll() as $r) $settings[$r['setting_code']] = $r['setting_va
 
 $clientId = $settings['oauth-yahoo-client-id'] ?? '';
 $clientSecret = $settings['oauth-yahoo-client-secret'] ?? '';
-$redirectUri = 'https://yadayah.com/api/oauth-callback-yahoo.php';
+$redirectUri = $baseUrl . '/api/oauth-callback-yahoo.php';
 
 // Exchange code for tokens using Basic auth
 $authHeader = 'Authorization: Basic ' . base64_encode($clientId . ':' . $clientSecret);
@@ -91,7 +91,7 @@ if (!$oauthId) {
 $result = resolveOAuthUser($db, 'yahoo', $oauthId, $email, $name, $avatar);
 
 if ($result['action'] === 'pending_link') {
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
     header('Location: ' . $return . '#link-account');
     exit;
@@ -101,7 +101,7 @@ $_SESSION['user_key'] = $result['user_key'];
 $_SESSION['user_display_name'] = $name;
 $_SESSION['user_avatar'] = $avatar;
 
-$return = $_SESSION['oauth_return'] ?? '/community';
+$return = $_SESSION['oauth_return'] ?? '/chat';
 unset($_SESSION['oauth_return']);
 header('Location: ' . $return);
 exit;

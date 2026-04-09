@@ -55,7 +55,7 @@ if ($method === 'GET') {
     $stmt = $db->prepare("
         SELECT r.report_key, r.target_type, r.target_key, r.report_reason, r.report_detail,
                r.report_status, r.report_dtime,
-               u.user_display_name AS reporter_name, u.user_avatar AS reporter_avatar
+               u.user_name_display AS reporter_name, u.user_avatar AS reporter_avatar
         FROM yy_community_report r
         LEFT JOIN yy_user u ON r.user_key = u.user_key
         WHERE r.report_status = ?

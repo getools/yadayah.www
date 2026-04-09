@@ -32,6 +32,43 @@ try {
     // DB down — fall through to normal handling
 }
 
+// --- Page alias redirects ---
+$aliasPath = trim($path, '/');
+$aliasCacheFile = sys_get_temp_dir() . '/yada_page_aliases.json';
+$aliases = null;
+if (file_exists($aliasCacheFile)) {
+    $aliases = json_decode(file_get_contents($aliasCacheFile), true);
+}
+if (!$aliases && isset($pdo)) {
+    // Build from DB
+    try {
+        $stmt = $pdo->query("SELECT a.alias_path, p.page_code FROM yy_page_alias a JOIN yy_page p ON a.page_key = p.page_key WHERE a.alias_active_flag = TRUE AND p.page_active_flag = TRUE");
+        $aliases = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $aliases[$row['alias_path']] = $row['page_code'];
+        }
+        file_put_contents($aliasCacheFile, json_encode($aliases));
+    } catch (Exception $e) {}
+}
+if ($aliases && isset($aliases[$aliasPath])) {
+    $target = '/' . $aliases[$aliasPath];
+    if ($query) $target .= '?' . $query;
+    header('Location: ' . $target, true, 301);
+    exit;
+}
+// Also check case-insensitive alias
+if ($aliases) {
+    $lowerAlias = strtolower($aliasPath);
+    foreach ($aliases as $ap => $pc) {
+        if (strtolower($ap) === $lowerAlias) {
+            $target = '/' . $pc;
+            if ($query) $target .= '?' . $query;
+            header('Location: ' . $target, true, 301);
+            exit;
+        }
+    }
+}
+
 // --- Case-insensitive redirect ---
 $lower = strtolower($path);
 

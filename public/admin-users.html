@@ -22,9 +22,11 @@
         .badge-banned { display: inline-block; font-size: 0.7rem; background: #c0392b; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: 6px; }
         .badge-muted { display: inline-block; font-size: 0.7rem; background: #e67e22; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: 6px; }
 
-        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
         .form-overlay.open { display: flex; }
-        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 550px; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 800px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+        .form-grid .field-full { grid-column: 1 / -1; }
         .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
         .form-header h3 { margin: 0; font-size: 1rem; }
         .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
@@ -68,27 +70,8 @@
 
 <div id="app" class="container" style="display:none">
     <div class="app-header">
-        <nav class="nav-tabs">
-            <a href="admin-site.html" class="nav-tab">Site</a>
-            <a href="admin-translation.html" class="nav-tab">Translation</a>
-            <a href="admin-word.html" class="nav-tab">Word</a>
-            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
-            <a href="admin-ask.html" class="nav-tab">Ask</a>
-            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
-            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
-            <a href="admin-media.html" class="nav-tab">Media</a>
-            <a href="admin-music.html" class="nav-tab">Music</a>
-            <a href="admin-invite.html" class="nav-tab">Invite</a>
-            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
-            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
-            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
-            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
-            <a href="admin-pages.html" class="nav-tab">Pages</a>
-            <a href="admin-resources.html" class="nav-tab">Resources</a>
-            <a href="admin-users.html" class="nav-tab active">Users</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
-        </nav>
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -115,28 +98,46 @@
         </div>
         <div class="form-body">
             <input type="hidden" id="f-key">
+            <div class="form-grid">
+            <div class="field" id="f-key-display-wrap" style="display:none">
+                <label>User Key</label>
+                <input type="text" id="f-key-display" disabled style="background:#f0f0f0;color:#666;width:80px;">
+            </div>
             <div class="field">
                 <label>Login Code</label>
                 <input type="text" id="f-code">
             </div>
             <div class="field">
-                <label>Full Name</label>
-                <input type="text" id="f-name">
+                <label>Name</label>
+                <input type="text" id="f-display-name">
+            </div>
+            <div class="field">
+                <label>Handle</label>
+                <input type="text" id="f-handle" placeholder="@handle">
             </div>
             <div class="field">
                 <label>Email</label>
                 <input type="email" id="f-email">
             </div>
             <div class="field">
-                <label>New Password <span style="font-weight:400;color:#999">(leave blank to keep current)</span></label>
+                <label>New Password <span style="font-weight:400;color:#999">(leave blank to keep)</span></label>
                 <input type="password" id="f-password" autocomplete="new-password">
+            </div>
+            <div class="field field-full">
+                <label>Bio</label>
+                <textarea id="f-bio" rows="2" style="resize:vertical;"></textarea>
+            </div>
+            <div class="field field-full" id="f-auth-methods-wrap" style="display:none">
+                <label>Linked Accounts</label>
+                <div id="f-auth-methods" style="font-size:0.85rem;color:#555;"></div>
+            </div>
             </div>
             <div class="field">
                 <label>Roles</label>
                 <div class="page-perms" id="f-roles"></div>
             </div>
             <div class="field" id="f-ban-section">
-                <label>Community Status</label>
+                <label>Chat Status</label>
                 <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
                     <label style="font-weight:400;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="f-banned"> Banned</label>
                     <label style="font-weight:400;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="f-muted"> Muted</label>
@@ -164,7 +165,7 @@
     </div>
 </div>
 
-<script src="js/admin-pages.js?v=2"></script>
+<script src="js/admin-links.js?v=2"></script>
 <script>
 var API = '/api';
 var allUsers = [];
@@ -251,23 +252,35 @@ function renderTable() {
     }
 
     var html = '<table class="users-table"><thead><tr>'
-        + '<th>Login</th><th>Name</th><th>Email</th><th>Roles</th><th>Status</th><th>Pages</th><th>Actions</th>'
+        + '<th>Key</th><th>Login</th><th>Name</th><th>Email</th><th>Roles</th><th>Status</th><th>Pages</th><th>Actions</th>'
         + '</tr></thead><tbody>';
     for (var i = 0; i < allUsers.length; i++) {
         var u = allUsers[i];
-        var pages = (u.page_settings || []).filter(function(p) { return p.enabled; }).map(function(p) {
-            return p.setting_code.charAt(0).toUpperCase() + p.setting_code.slice(1);
-        }).join(', ');
-        var allEnabled = (u.page_settings || []).every(function(p) { return p.enabled; });
-        var pagesDisplay = allEnabled ? '<span style="color:#27ae60">All</span>' : (pages || '<span style="color:#c00">None</span>');
+        var userHasAdmin = false;
+        var adminRoleKey = null;
+        for (var ar = 0; ar < allRoles.length; ar++) {
+            if (allRoles[ar].role_code === 'admin') { adminRoleKey = parseInt(allRoles[ar].role_key); break; }
+        }
+        if (adminRoleKey && (u.role_keys || []).indexOf(adminRoleKey) >= 0) userHasAdmin = true;
+        var pagesDisplay;
+        if (!userHasAdmin) {
+            pagesDisplay = '<span style="color:#999">--</span>';
+        } else {
+            var pages = (u.page_settings || []).filter(function(p) { return p.enabled; }).map(function(p) {
+                return p.setting_code.charAt(0).toUpperCase() + p.setting_code.slice(1);
+            }).join(', ');
+            var allEnabled = (u.page_settings || []).every(function(p) { return p.enabled; });
+            pagesDisplay = allEnabled ? '<span style="color:#27ae60">All</span>' : (pages || '<span style="color:#c00">None</span>');
+        }
         var rolesDisplay = (u.role_keys || []).map(function(rk) { return esc(roleMap[rk] || rk); }).join(', ') || '<span style="color:#999">—</span>';
         var isBanned = u.user_banned_flag === true || u.user_banned_flag === 't';
         var isMuted = u.user_muted_flag === true || u.user_muted_flag === 't';
         var statusHtml = isBanned ? '<span class="badge-banned">Banned</span>' : (isMuted ? '<span class="badge-muted">Muted</span>' : '<span style="color:#27ae60;font-size:0.8rem">Active</span>');
         if (isBanned && u.user_ban_reason) statusHtml += '<br><span style="font-size:0.7rem;color:#999">' + esc(u.user_ban_reason) + '</span>';
         html += '<tr class="' + (isBanned ? 'banned' : '') + '" onclick="editUser(' + u.user_key + ')">'
+            + '<td>' + u.user_key + '</td>'
             + '<td>' + esc(u.user_code) + '</td>'
-            + '<td>' + esc(u.user_name_full || u.user_display_name || '') + '</td>'
+            + '<td>' + esc(u.user_name_display || '') + '</td>'
             + '<td>' + esc(u.user_email || '') + '</td>'
             + '<td style="font-size:0.8rem">' + rolesDisplay + '</td>'
             + '<td style="font-size:0.8rem">' + statusHtml + '</td>'
@@ -291,10 +304,27 @@ function editUser(key) {
 function showForm(user) {
     document.getElementById('form-title').textContent = user ? 'Edit User' : 'Add User';
     document.getElementById('f-key').value = user ? user.user_key : '';
+    document.getElementById('f-key-display').value = user ? user.user_key : '';
+    document.getElementById('f-key-display-wrap').style.display = user ? '' : 'none';
     document.getElementById('f-code').value = user ? user.user_code : '';
-    document.getElementById('f-name').value = user ? user.user_name_full || '' : '';
+    document.getElementById('f-display-name').value = user ? user.user_name_display || '' : '';
+    document.getElementById('f-handle').value = user ? user.user_handle || '' : '';
     document.getElementById('f-email').value = user ? user.user_email || '' : '';
+    document.getElementById('f-bio').value = user ? user.user_bio || '' : '';
     document.getElementById('f-password').value = '';
+
+    // Linked accounts (read-only display)
+    var authWrap = document.getElementById('f-auth-methods-wrap');
+    var authDiv = document.getElementById('f-auth-methods');
+    if (user && user.auth_methods && user.auth_methods.length) {
+        authWrap.style.display = '';
+        authDiv.innerHTML = user.auth_methods.map(function(am) {
+            return '<div style="padding:3px 0;"><strong>' + esc(am.provider) + '</strong>' + (am.email ? ' — ' + esc(am.email) : '') + '</div>';
+        }).join('');
+    } else {
+        authWrap.style.display = 'none';
+        authDiv.innerHTML = '';
+    }
 
     // Render role checkboxes
     var rolesHtml = '';
@@ -307,18 +337,45 @@ function showForm(user) {
     }
     document.getElementById('f-roles').innerHTML = rolesHtml;
 
-    // Render page permission checkboxes
-    var permsHtml = '';
-    var settings = user ? user.page_settings : allSettings.map(function(s) {
-        return { setting_key: s.setting_key, setting_code: s.setting_code, enabled: true };
+    // Toggle page perms visibility when admin role checkbox changes
+    document.querySelectorAll('#f-roles input[type=checkbox]').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var adminRoleKey = null;
+            for (var ar = 0; ar < allRoles.length; ar++) {
+                if (allRoles[ar].role_code === 'admin') { adminRoleKey = allRoles[ar].role_key; break; }
+            }
+            if (adminRoleKey && this.getAttribute('data-rk') == adminRoleKey) {
+                var permsSection = document.getElementById('f-page-perms').parentElement;
+                permsSection.style.display = this.checked ? '' : 'none';
+            }
+        });
     });
-    for (var i = 0; i < settings.length; i++) {
-        var s = settings[i];
-        var label = s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1);
-        permsHtml += '<label><input type="checkbox" data-sk="' + s.setting_key + '"'
-            + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>';
+
+    // Render page permission checkboxes — only for users with admin role
+    var hasAdminRole = false;
+    for (var ar = 0; ar < allRoles.length; ar++) {
+        if (allRoles[ar].role_code === 'admin' && userRoleKeys.indexOf(parseInt(allRoles[ar].role_key)) >= 0) {
+            hasAdminRole = true; break;
+        }
     }
-    document.getElementById('f-page-perms').innerHTML = permsHtml;
+    var permsSection = document.getElementById('f-page-perms').parentElement;
+    if (hasAdminRole) {
+        permsSection.style.display = '';
+        var permsHtml = '';
+        var settings = user ? user.page_settings : allSettings.map(function(s) {
+            return { setting_key: s.setting_key, setting_code: s.setting_code, enabled: true };
+        });
+        for (var i = 0; i < settings.length; i++) {
+            var s = settings[i];
+            var label = s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1);
+            permsHtml += '<label><input type="checkbox" data-sk="' + s.setting_key + '"'
+                + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>';
+        }
+        document.getElementById('f-page-perms').innerHTML = permsHtml;
+    } else {
+        permsSection.style.display = 'none';
+        document.getElementById('f-page-perms').innerHTML = '';
+    }
 
     // Ban/mute fields
     var isBanned = user && (user.user_banned_flag === true || user.user_banned_flag === 't');
@@ -333,6 +390,8 @@ function showForm(user) {
     };
 
     document.getElementById('form-overlay').classList.add('open');
+    // Reset change-tracking baseline so Save button works
+    setTimeout(function() { if (window.rearmForm) rearmForm(); }, 50);
 }
 
 function closeForm() {
@@ -343,8 +402,10 @@ function saveUser() {
     var key = document.getElementById('f-key').value;
     var data = {
         user_code: document.getElementById('f-code').value.trim(),
-        user_name_full: document.getElementById('f-name').value.trim(),
+        user_name_display: document.getElementById('f-display-name').value.trim(),
+        user_handle: document.getElementById('f-handle').value.trim(),
         user_email: document.getElementById('f-email').value.trim(),
+        user_bio: document.getElementById('f-bio').value.trim(),
         new_password: document.getElementById('f-password').value,
     };
 
@@ -423,6 +484,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>

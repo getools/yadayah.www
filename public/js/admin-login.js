@@ -94,12 +94,13 @@ function openLoginModal(mode) {
         + '<a class="btn btn-google" href="/api/oauth-login.php' + returnParam + '&provider=google">' + googleSvg + ' Google</a>'
         + '<a class="btn btn-microsoft" href="/api/oauth-login.php' + returnParam + '&provider=microsoft">' + msSvg + ' Microsoft</a>'
         + '<a class="btn btn-yahoo" href="/api/oauth-login.php' + returnParam + '&provider=yahoo">' + yahooSvg + ' Yahoo</a>'
-        + '<a class="btn btn-x" href="/api/oauth-login.php' + returnParam + '&provider=x">' + xSvg + ' X</a>'
+        + '<a class="btn btn-x" href="/api/oauth-login.php' + returnParam + '&provider=x">' + xSvg + '</a>'
         + '</div>'
         + '<div class="login-or">or</div>'
         + '<div id="login-error" class="login-error" style="display:none"></div>'
         + '<input id="auth-email" type="email" placeholder="Email address">'
-        + '<input id="auth-pass" type="password" placeholder="Password">'
+        + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;"><input id="auth-pass" type="password" placeholder="Password" style="flex:1;margin-bottom:0;">'
+        + '<button type="button" id="pass-toggle" style="background:none;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:1.1rem;color:#999;padding:6px 10px;flex-shrink:0;" title="Show password">&#128065;</button></div>'
         + '<button class="btn btn-primary" style="width:100%;" id="admin-signin-btn">Sign In</button>'
         + '<div style="text-align:center;margin-top:10px;"><a style="font-size:0.82rem;color:#31345A;cursor:pointer;" id="admin-forgot-link">Forgot password?</a></div>';
     modal.classList.add('active');
@@ -111,6 +112,12 @@ function openLoginModal(mode) {
         document.getElementById('admin-forgot-link').addEventListener('click', function() { openLoginModal('forgot'); });
         var passEl = document.getElementById('auth-pass');
         if (passEl) passEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') AdminLogin.submitEmail(); });
+        var toggleBtn = document.getElementById('pass-toggle');
+        if (toggleBtn) toggleBtn.addEventListener('click', function() {
+            var inp = document.getElementById('auth-pass');
+            if (inp.type === 'password') { inp.type = 'text'; this.style.color = '#31345A'; }
+            else { inp.type = 'password'; this.style.color = '#999'; }
+        });
     }, 100);
 }
 

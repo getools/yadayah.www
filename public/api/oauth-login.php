@@ -9,12 +9,17 @@ $provider = $_GET['provider'] ?? '';
 $db = getDb();
 if (session_status() === PHP_SESSION_NONE) session_start();
 
+// Build base URL from current host (works on localhost and production)
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'yadayah.com';
+$baseUrl = $scheme . '://' . $host;
+
 // Store return URL so callbacks redirect back to the originating page
-$return = $_GET['return'] ?? '';
+$return = $_GET['return'] ?? ($_SERVER['HTTP_REFERER'] ?? '');
 if ($return) {
     $_SESSION['oauth_return'] = $return;
-} else {
-    unset($_SESSION['oauth_return']);
+} elseif (empty($_SESSION['oauth_return'])) {
+    $_SESSION['oauth_return'] = $baseUrl . '/chat';
 }
 
 // If link=1 and user is logged in, mark this as a linking flow
@@ -32,7 +37,7 @@ if ($provider === 'google') {
     if (!$clientId) { http_response_code(500); echo 'Google OAuth not configured'; exit; }
     $state = bin2hex(random_bytes(16));
     $_SESSION['oauth_state'] = $state;
-    $redirectUri = 'https://yadayah.com/api/oauth-callback.php?provider=google';
+    $redirectUri = $baseUrl . '/api/oauth-callback.php?provider=google';
     $params = http_build_query([
         'client_id' => $clientId,
         'redirect_uri' => $redirectUri,
@@ -57,7 +62,7 @@ if ($provider === 'facebook') {
     $state = bin2hex(random_bytes(16));
     $_SESSION['oauth_state'] = $state;
 
-    $redirectUri = 'https://yadayah.com/api/oauth-callback.php?provider=facebook';
+    $redirectUri = $baseUrl . '/api/oauth-callback.php?provider=facebook';
     $params = http_build_query([
         'client_id' => $appId,
         'redirect_uri' => $redirectUri,
@@ -80,7 +85,7 @@ if ($provider === 'microsoft') {
     $state = bin2hex(random_bytes(16));
     $_SESSION['oauth_state'] = $state;
 
-    $redirectUri = 'https://yadayah.com/api/oauth-callback-microsoft.php';
+    $redirectUri = $baseUrl . '/api/oauth-callback-microsoft.php';
     $params = http_build_query([
         'client_id' => $clientId,
         'redirect_uri' => $redirectUri,
@@ -104,7 +109,7 @@ if ($provider === 'yahoo') {
     $state = bin2hex(random_bytes(16));
     $_SESSION['oauth_state'] = $state;
 
-    $redirectUri = 'https://yadayah.com/api/oauth-callback-yahoo.php';
+    $redirectUri = $baseUrl . '/api/oauth-callback-yahoo.php';
     $params = http_build_query([
         'client_id' => $clientId,
         'redirect_uri' => $redirectUri,
@@ -132,7 +137,7 @@ if ($provider === 'x') {
     $_SESSION['oauth_state'] = $state;
     $_SESSION['oauth_code_verifier'] = $codeVerifier;
 
-    $redirectUri = 'https://yadayah.com/api/oauth-callback-x.php';
+    $redirectUri = $baseUrl . '/api/oauth-callback-x.php';
     $params = http_build_query([
         'response_type' => 'code',
         'client_id' => $clientId,

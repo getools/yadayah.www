@@ -12,21 +12,21 @@ $PER_PAGE      = 24;
 
 $db = getDb();
 
-// Load feed config from yy_page_feed + yy_feed for the doyouyada page
+// Load feed config from yy_feed_page + yy_feed for the doyouyada page
 $feedStmt = $db->query("
-    SELECT f.feed_site_id, f.feed_api_key, pf.page_feed_filter_include, pf.page_feed_filter_exclude
-    FROM yy_page_feed pf
-    JOIN yy_feed f ON f.feed_key = pf.feed_key
-    JOIN yy_page p ON p.page_key = pf.page_key
+    SELECT f.feed_account_id, f.feed_api_key, fp.feed_page_filter_include, fp.feed_page_filter_exclude
+    FROM yy_feed_page fp
+    JOIN yy_feed f ON f.feed_key = fp.feed_key
+    JOIN yy_page p ON p.page_key = fp.page_key
     WHERE p.page_code = 'doyouyada'
-    ORDER BY pf.page_feed_sort, pf.page_feed_key
+    ORDER BY fp.feed_page_sort, fp.feed_page_key
     LIMIT 1
 ");
 $feedRow      = $feedStmt->fetch();
-$FB_PAGE_ID   = $feedRow['feed_site_id'] ?? '102425844783696';
+$FB_PAGE_ID   = $feedRow['feed_account_id'] ?? '102425844783696';
 $FB_PAGE_TOKEN = $feedRow['feed_api_key'] ?? '';
-$includeTerms = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['page_feed_filter_include'] ?? ''))) : ['#DoYouYada'];
-$excludeTerms = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['page_feed_filter_exclude'] ?? ''))) : [];
+$includeTerms = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['feed_page_filter_include'] ?? ''))) : ['#DoYouYada'];
+$excludeTerms = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['feed_page_filter_exclude'] ?? ''))) : [];
 
 // Fall back to env var
 if (!$FB_PAGE_TOKEN) $FB_PAGE_TOKEN = getenv('FB_PAGE_TOKEN') ?: '';

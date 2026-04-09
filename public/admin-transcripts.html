@@ -17,7 +17,10 @@
 
         .files-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .files-table th, .files-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
-        .files-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; }
+        .files-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; cursor: pointer; user-select: none; }
+        .files-table th:hover { background: #e8edff; }
+        .files-table th .sort-arrow { font-size: 0.7rem; margin-left: 4px; color: #999; }
+        .files-table th.sorted .sort-arrow { color: #31345A; }
         .files-table tr:hover { background: #f0f4ff; cursor: pointer; }
         .files-table tr.selected { background: #e8edff; }
 
@@ -80,27 +83,8 @@
 
 <div id="app" class="container" style="display:none">
     <div class="app-header">
-        <nav class="nav-tabs">
-            <a href="admin-site.html" class="nav-tab">Site</a>
-            <a href="admin-translation.html" class="nav-tab">Translation</a>
-            <a href="admin-word.html" class="nav-tab">Word</a>
-            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
-            <a href="admin-ask.html" class="nav-tab">Ask</a>
-            <a href="admin-transcripts.html" class="nav-tab active">Transcripts</a>
-            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
-            <a href="admin-media.html" class="nav-tab">Media</a>
-            <a href="admin-music.html" class="nav-tab">Music</a>
-            <a href="admin-invite.html" class="nav-tab">Invite</a>
-            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
-            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
-            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
-            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
-            <a href="admin-pages.html" class="nav-tab">Pages</a>
-            <a href="admin-resources.html" class="nav-tab">Resources</a>
-            <a href="admin-users.html" class="nav-tab">Users</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
-        </nav>
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -114,6 +98,7 @@
         <input type="file" id="folder-input" webkitdirectory style="display:none">
         <button class="btn btn-primary btn-sm" onclick="uploadFiles()">Upload &amp; Process</button>
         <button class="btn btn-secondary btn-sm" onclick="document.getElementById('folder-input').click()">Select Folder</button>
+        <button class="btn btn-secondary btn-sm" onclick="dedupFiles()" id="dedup-btn">Dedup</button>
         <span class="upload-status" id="upload-status"></span>
     </div>
     <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
@@ -138,7 +123,7 @@
     </div>
 </div>
 
-<script src="js/admin-pages.js?v=2"></script>
+<script src="js/admin-links.js?v=2"></script>
 <script>
 var API = '/api';
 
@@ -173,25 +158,70 @@ function loadFiles() {
         });
 }
 
+var _allFiles = [];
+var _sortCol = 'name';
+var _sortDir = 1; // 1 = asc, -1 = desc
+
+function sortFiles(col) {
+    if (_sortCol === col) {
+        _sortDir *= -1;
+    } else {
+        _sortCol = col;
+        _sortDir = 1;
+    }
+    renderFiles(_allFiles);
+}
+
 function renderFiles(files) {
+    _allFiles = files;
     if (!files.length) {
         document.getElementById('files-container').innerHTML = '<div class="empty-state">No transcript files found.</div>';
         return;
     }
+
+    // Sort
+    var sorted = files.slice().sort(function(a, b) {
+        var va, vb;
+        switch (_sortCol) {
+            case 'name': va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); break;
+            case 'status': va = a.in_database ? 1 : 0; vb = b.in_database ? 1 : 0; break;
+            case 'size': va = a.size || 0; vb = b.size || 0; break;
+            case 'uploaded': va = a.uploaded || ''; vb = b.uploaded || ''; break;
+            case 'modified': va = a.modified || ''; vb = b.modified || ''; break;
+            default: va = ''; vb = '';
+        }
+        if (va < vb) return -1 * _sortDir;
+        if (va > vb) return 1 * _sortDir;
+        return 0;
+    });
+
+    function thSort(col, label, cls) {
+        var arrow = _sortCol === col ? (_sortDir === 1 ? '&#9650;' : '&#9660;') : '&#9650;';
+        var active = _sortCol === col ? ' sorted' : '';
+        return '<th class="' + (cls || '') + active + '" onclick="sortFiles(\'' + col + '\')">' + label + '<span class="sort-arrow">' + arrow + '</span></th>';
+    }
+
     var html = '<table class="files-table"><thead><tr>' +
-        '<th>Filename</th><th class="status">Status</th><th class="num">Size</th><th>Modified</th><th class="actions">Actions</th>' +
+        thSort('name', 'Filename') +
+        thSort('status', 'Status', 'status') +
+        thSort('size', 'Size', 'num') +
+        thSort('uploaded', 'Uploaded') +
+        thSort('modified', 'Modified') +
+        '<th class="actions">Actions</th>' +
         '</tr></thead><tbody>';
-    for (var i = 0; i < files.length; i++) {
-        var f = files[i];
+    for (var i = 0; i < sorted.length; i++) {
+        var f = sorted[i];
         var size = formatSize(f.size);
         var safeName = f.name.replace(/'/g, "\\'");
         var badge = f.in_database
             ? '<span class="badge badge-parsed">Parsed</span>'
             : '<span class="badge badge-new">New</span>';
+        var uploaded = f.uploaded ? f.uploaded.replace('T', ' ').replace(/\.\d+.*$/, '').replace(/\+.*$/, '') : '';
         html += '<tr onclick="viewFile(\'' + safeName + '\', this)">' +
             '<td>' + esc(f.name) + '</td>' +
             '<td class="status">' + badge + '</td>' +
             '<td class="num">' + size + '</td>' +
+            '<td>' + uploaded + '</td>' +
             '<td>' + f.modified + '</td>' +
             '<td class="actions"><button class="delete-btn" onclick="event.stopPropagation(); deleteFile(\'' + safeName + '\')">Delete</button></td>' +
             '</tr>';
@@ -441,6 +471,26 @@ function finishUpload(uploaded, skipped, errors, statusEl, progressFill, reproce
     });
 }
 
+function dedupFiles() {
+    var btn = document.getElementById('dedup-btn');
+    var status = document.getElementById('upload-status');
+    btn.disabled = true; btn.textContent = 'Deduplicating...';
+    status.textContent = ''; status.className = 'upload-status';
+    fetch(API + '/transcripts.php?action=dedup', {credentials:'include'})
+        .then(r => r.json())
+        .then(function(d) {
+            btn.disabled = false; btn.textContent = 'Dedup';
+            if (d.error) {
+                status.textContent = d.error; status.className = 'upload-status error';
+            } else {
+                status.textContent = d.removed + ' duplicate(s) removed' + (d.kept ? ', kept ' + d.kept + ' unique files' : '');
+                status.className = 'upload-status success';
+                loadFiles();
+            }
+            setTimeout(function() { status.textContent = ''; }, 5000);
+        });
+}
+
 function deleteFile(name) {
     if (!confirm('Delete ' + name + '?\nThis will also remove it from the database.')) return;
     fetch(API + '/transcripts.php', {
@@ -552,6 +602,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>

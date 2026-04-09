@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Series Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .series-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .series-table th, .series-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .series-table th { background: #f5f5f5; font-weight: 600; font-size: 0.8rem; }
+        .series-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .series-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .series-table .actions button:hover { background: #f0f0f0; }
+        .series-table .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+        .series-table .actions button.del:hover { background: #fde8e8; }
+        .series-table img.thumb { height: 40px; border-radius: 4px; }
+        .series-count { font-size: 0.85rem; color: #666; margin-bottom: 16px; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 600px; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .form-header button:hover { background: #eee; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 14px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .form-body input[type=text], .form-body input[type=number], .form-body textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body textarea { resize: vertical; min-height: 120px; }
+        .form-body input[type=number] { width: 100px; }
+        .form-body .form-row { display: flex; gap: 12px; }
+        .form-body .form-row .field { flex: 1; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+
+        /* Crop modal */
+        .crop-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center; }
+        .crop-overlay.open { display:flex; }
+        .crop-box { background:#fff; border-radius:10px; padding:20px; max-width:90vw; max-height:90vh; display:flex; flex-direction:column; gap:12px; }
+        .crop-box h3 { margin:0; font-size:1rem; color:#31345A; }
+        .crop-canvas-wrap { position:relative; cursor:crosshair; display:inline-block; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
+        .crop-canvas-wrap canvas { display:block; }
+        .crop-selection { position:absolute; border:2px dashed #31345A; background:rgba(49,52,90,0.1); pointer-events:none; }
+        .crop-actions { display:flex; gap:8px; align-items:center; }
+        .crop-hint { font-size:0.82rem; color:#888; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Series</h1>
+
+    <div class="toolbar">
+        <span class="series-count" id="series-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="showForm(null)">+ Add Series</button>
+    </div>
+
+    <div id="table-container">
+        <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+    </div>
+</div>
+
+<!-- Form Overlay -->
+<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Add Series</h3>
+            <button onclick="closeForm()" title="Close">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="form-row">
+                <div class="field">
+                    <label>Series Number <span title="Series number defines the order in which a series is highlighted on the home page.&#10;&#10;A value of zero (0) causes the series to not be included in the carousel." style="cursor:help;color:#888;font-weight:400;">&#9432;</span></label>
+                    <input type="number" id="f-number" value="0" min="0">
+                </div>
+                <div class="field">
+                    <label>Sort Order <span title="Value used to determine the order in which the series are displayed on the Books page." style="cursor:help;color:#888;font-weight:400;">&#9432;</span></label>
+                    <input type="number" id="f-sort" value="0" min="0">
+                </div>
+            </div>
+            <div class="field">
+                <label>Label</label>
+                <input type="text" id="f-label" placeholder="Full label (e.g. An Introduction to God)">
+            </div>
+            <div class="field">
+                <label>Short Name</label>
+                <input type="text" id="f-name" placeholder="Short name (e.g. An Intro to God)">
+            </div>
+            <div class="field">
+                <label>Summary</label>
+                <textarea id="f-summary" placeholder="Series description (optional)"></textarea>
+            </div>
+            <div class="field">
+                <label>Image</label>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <label class="btn btn-secondary btn-sm" style="cursor:pointer;"><input type="file" id="f-image-file" accept="image/*" style="display:none" onchange="openCropper(this.files[0])"> Choose Image</label>
+                    <button class="btn btn-sm btn-secondary" id="crop-btn" style="display:none;" onclick="reopenCropper()">Crop</button>
+                    <span id="image-status" style="font-size:0.8rem;color:#27ae60;display:none;"></span>
+                    <button class="btn btn-sm" style="font-size:0.78rem;color:#c00;border:1px solid #e0c0c0;background:#fff;cursor:pointer;margin-left:auto;" onclick="clearImage()">Remove</button>
+                </div>
+                <div id="image-preview" style="margin-top:8px;"></div>
+                <input type="hidden" id="f-image">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" onclick="saveSeries()">Save</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Crop Modal -->
+<div id="crop-overlay" class="crop-overlay" onclick="if(event.target===this)closeCropper()">
+    <div class="crop-box">
+        <h3>Crop Image</h3>
+        <p class="crop-hint">Click and drag to select the area to keep.</p>
+        <div class="crop-canvas-wrap" id="crop-wrap">
+            <canvas id="crop-canvas"></canvas>
+            <div class="crop-selection" id="crop-sel" style="display:none;"></div>
+        </div>
+        <div class="crop-actions">
+            <button class="btn btn-primary btn-sm" onclick="applyCrop()">Crop &amp; Upload</button>
+            <button class="btn btn-secondary btn-sm" onclick="skipCrop()">Upload Without Cropping</button>
+            <button class="btn btn-sm" style="margin-left:auto;" onclick="closeCropper()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allSeries = [];
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadSeries();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadSeries();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); }); }
+function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
+
+function loadSeries() {
+    fetch(API + '/admin-series.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            allSeries = d.series || [];
+            document.getElementById('series-count').textContent = allSeries.length + ' series';
+            renderTable();
+        });
+}
+
+function renderTable() {
+    if (!allSeries.length) {
+        document.getElementById('table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No series found.</div>';
+        return;
+    }
+    var html = '<table class="series-table"><thead><tr>'
+        + '<th>Label</th><th>Name</th><th>#</th><th>Sort</th><th>Image</th><th>Actions</th>'
+        + '</tr></thead><tbody>';
+    for (var i = 0; i < allSeries.length; i++) {
+        var s = allSeries[i];
+        html += '<tr onclick="editSeries(' + s.series_key + ')">'
+            + '<td>' + esc(s.series_label) + '</td>'
+            + '<td>' + esc(s.series_name || '') + '</td>'
+            + '<td>' + (s.series_number || 0) + '</td>'
+            + '<td>' + (s.series_sort || 0) + '</td>'
+            + '<td>' + (s.series_image ? '<img class="thumb" src="' + esc(s.series_image) + '">' : '—') + '</td>'
+            + '<td class="actions">'
+            + '<button onclick="event.stopPropagation();editSeries(' + s.series_key + ')">Edit</button>'
+            + '<button class="del" onclick="event.stopPropagation();deleteSeries(' + s.series_key + ',\'' + esc(s.series_label).replace(/'/g, "\\'") + '\')">Delete</button>'
+            + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('table-container').innerHTML = html;
+}
+
+function editSeries(key) {
+    var s = allSeries.find(function(r) { return r.series_key == key; });
+    if (s) showForm(s);
+}
+
+function showForm(record) {
+    document.getElementById('form-title').textContent = record ? 'Edit Series' : 'Add Series';
+    document.getElementById('f-key').value = record ? record.series_key : '';
+    document.getElementById('f-number').value = record ? (record.series_number || 0) : allSeries.length + 1;
+    document.getElementById('f-sort').value = record ? (record.series_sort || 0) : allSeries.length + 1;
+    document.getElementById('f-label').value = record ? (record.series_label || '') : '';
+    document.getElementById('f-name').value = record ? (record.series_name || '') : '';
+    document.getElementById('f-summary').value = record ? (record.series_summary || '') : '';
+    document.getElementById('f-image').value = record ? (record.series_image || '') : '';
+    showImagePreview(record ? (record.series_image || '') : '');
+    document.getElementById('form-overlay').classList.add('open');
+    document.getElementById('f-label').focus();
+}
+
+function closeForm() {
+    document.getElementById('form-overlay').classList.remove('open');
+}
+
+function saveSeries() {
+    var key = document.getElementById('f-key').value;
+    var label = document.getElementById('f-label').value.trim();
+    if (!label) { alert('Label is required'); return; }
+
+    var payload = {
+        series_number: parseInt(document.getElementById('f-number').value) || 0,
+        series_label: label,
+        series_name: document.getElementById('f-name').value.trim(),
+        series_sort: parseInt(document.getElementById('f-sort').value) || 0,
+        series_summary: document.getElementById('f-summary').value.trim(),
+        series_image: document.getElementById('f-image').value.trim(),
+    };
+
+    var url = API + '/admin-series.php' + (key ? '?key=' + key : '');
+    fetch(url, {
+        method: key ? 'PUT' : 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        closeForm();
+        loadSeries();
+    });
+}
+
+function deleteSeries(key, label) {
+    if (!confirm('Delete series "' + label + '"?')) return;
+    fetch(API + '/admin-series.php?key=' + key, {
+        method: 'DELETE', credentials: 'include'
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        loadSeries();
+    });
+}
+
+// ── Image preview ──
+function showImagePreview(path) {
+    var el = document.getElementById('image-preview');
+    var cropBtn = document.getElementById('crop-btn');
+    if (path) {
+        el.innerHTML = '<img src="/' + path.replace(/^\//, '') + '" style="max-height:100px;border-radius:6px;border:1px solid #ddd;">';
+        if (cropBtn) cropBtn.style.display = '';
+    } else {
+        el.innerHTML = '<span style="font-size:0.82rem;color:#999;">No image</span>';
+        if (cropBtn) cropBtn.style.display = 'none';
+    }
+}
+
+function clearImage() {
+    document.getElementById('f-image').value = '';
+    showImagePreview('');
+}
+
+// ── Cropper ──
+var _cropFile = null, _cropImg = null, _cropScale = 1;
+var _cropSel = { x1:0, y1:0, x2:0, y2:0, dragging:false };
+
+function openCropper(file) {
+    if (!file) return;
+    _cropFile = file;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+            _cropImg = img;
+            var maxW = Math.min(800, window.innerWidth - 80);
+            var maxH = Math.min(500, window.innerHeight - 200);
+            _cropScale = Math.min(1, maxW / img.width, maxH / img.height);
+            var canvas = document.getElementById('crop-canvas');
+            canvas.width = Math.round(img.width * _cropScale);
+            canvas.height = Math.round(img.height * _cropScale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            document.getElementById('crop-sel').style.display = 'none';
+            _cropSel = { x1:0, y1:0, x2:0, y2:0, dragging:false };
+            document.getElementById('crop-overlay').classList.add('open');
+            initCropDrag();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function reopenCropper() {
+    var path = document.getElementById('f-image').value;
+    if (!path) return;
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+        _cropImg = img; _cropFile = null;
+        var maxW = Math.min(800, window.innerWidth - 80);
+        var maxH = Math.min(500, window.innerHeight - 200);
+        _cropScale = Math.min(1, maxW / img.width, maxH / img.height);
+        var canvas = document.getElementById('crop-canvas');
+        canvas.width = Math.round(img.width * _cropScale);
+        canvas.height = Math.round(img.height * _cropScale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        document.getElementById('crop-sel').style.display = 'none';
+        _cropSel = { x1:0, y1:0, x2:0, y2:0, dragging:false };
+        document.getElementById('crop-overlay').classList.add('open');
+        initCropDrag();
+    };
+    img.src = '/' + path.replace(/^\//, '');
+}
+
+function initCropDrag() {
+    var canvas = document.getElementById('crop-canvas');
+    var sel = document.getElementById('crop-sel');
+    canvas.onmousedown = function(e) {
+        var r = canvas.getBoundingClientRect();
+        _cropSel.x1 = _cropSel.x2 = e.clientX - r.left;
+        _cropSel.y1 = _cropSel.y2 = e.clientY - r.top;
+        _cropSel.dragging = true;
+        sel.style.display = 'block';
+        updateSelBox();
+    };
+    canvas.onmousemove = function(e) {
+        if (!_cropSel.dragging) return;
+        var r = canvas.getBoundingClientRect();
+        _cropSel.x2 = Math.max(0, Math.min(canvas.width, e.clientX - r.left));
+        _cropSel.y2 = Math.max(0, Math.min(canvas.height, e.clientY - r.top));
+        updateSelBox();
+    };
+    canvas.onmouseup = function() { _cropSel.dragging = false; };
+    canvas.onmouseleave = function() { _cropSel.dragging = false; };
+}
+
+function updateSelBox() {
+    var s = _cropSel, sel = document.getElementById('crop-sel');
+    sel.style.left = Math.min(s.x1, s.x2) + 'px';
+    sel.style.top = Math.min(s.y1, s.y2) + 'px';
+    sel.style.width = Math.abs(s.x2 - s.x1) + 'px';
+    sel.style.height = Math.abs(s.y2 - s.y1) + 'px';
+}
+
+function applyCrop() {
+    if (!_cropImg) return;
+    var s = _cropSel;
+    var sw = Math.round(Math.abs(s.x2 - s.x1) / _cropScale);
+    var sh = Math.round(Math.abs(s.y2 - s.y1) / _cropScale);
+    if (sw < 10 || sh < 10) { alert('Please select a crop area.'); return; }
+    var sx = Math.round(Math.min(s.x1, s.x2) / _cropScale);
+    var sy = Math.round(Math.min(s.y1, s.y2) / _cropScale);
+    var out = document.createElement('canvas');
+    out.width = sw; out.height = sh;
+    out.getContext('2d').drawImage(_cropImg, sx, sy, sw, sh, 0, 0, sw, sh);
+    out.toBlob(function(blob) { closeCropper(); doUpload(blob, 'cropped.png'); }, 'image/png');
+}
+
+function skipCrop() {
+    closeCropper();
+    if (_cropFile) doUpload(_cropFile, _cropFile.name);
+}
+
+function closeCropper() {
+    document.getElementById('crop-overlay').classList.remove('open');
+    document.getElementById('f-image-file').value = '';
+}
+
+function doUpload(blob, filename) {
+    var fd = new FormData();
+    fd.append('image_file', blob, filename);
+    var statusEl = document.getElementById('image-status');
+    fetch(API + '/admin-resource-upload.php', {
+        method: 'POST', credentials: 'include', body: fd
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        document.getElementById('f-image').value = d.path;
+        showImagePreview(d.path);
+        statusEl.textContent = 'Uploaded';
+        statusEl.style.display = '';
+        setTimeout(function() { statusEl.style.display = 'none'; }, 2000);
+    }).catch(function() { alert('Upload failed'); });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=7"></script>
+</body>
+</html>

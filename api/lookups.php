@@ -133,11 +133,11 @@ $TABLES = [
             ['name' => 'user_name_middle', 'label' => 'Middle Name','type' => 'text'],
             ['name' => 'user_name_last',   'label' => 'Last Name',  'type' => 'text'],
             ['name' => 'user_name_suffix', 'label' => 'Suffix',     'type' => 'text'],
-            ['name' => 'user_name_full',   'label' => 'Full Name',  'type' => 'text'],
+            ['name' => 'user_name_display',   'label' => 'Full Name',  'type' => 'text'],
             ['name' => 'user_email',       'label' => 'Email',      'type' => 'text'],
             ['name' => 'user_text',        'label' => 'Notes',      'type' => 'textarea'],
         ],
-        'display' => "user_code || ' - ' || COALESCE(user_name_full, '')",
+        'display' => "user_code || ' - ' || COALESCE(user_name_display, '')",
     ],
     'yy_volume' => [
         'pk' => 'volume_key',

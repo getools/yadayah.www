@@ -17,7 +17,7 @@ CommunityAuth.renderAuth = function() {
     var user = Community.currentUser;
     if (user) {
         var av = user.user_avatar;
-        var nm = user.user_display_name || '';
+        var nm = user.user_name_display || '';
         var avEl = av
             ? '<img class="avatar" src="' + Community.esc(av) + '" alt="" onclick="window.location.hash=\'#profile\'" onerror="this.outerHTML=\'<span class=&quot;avatar-circle&quot; onclick=&quot;window.location.hash=\\\'#profile\\\'&quot;>' + Community.esc(Community.initials(nm)) + '</span>\'">'
             : '<span class="avatar-circle" onclick="window.location.hash=\'#profile\'">' + Community.esc(Community.initials(nm)) + '</span>';
@@ -55,12 +55,14 @@ CommunityAuth.openLoginModal = function(mode) {
     var esc = Community.esc;
 
     if (mode === 'forgot') {
+        var prefill = CommunityAuth._prefillEmail || '';
+        CommunityAuth._prefillEmail = '';
         box.innerHTML = '<button class="login-close" onclick="CommunityAuth.closeLoginModal()">&times;</button>'
             + '<h2>Reset Password</h2>'
             + '<div id="login-error" class="login-error" style="display:none"></div>'
             + '<div id="forgot-success" style="display:none;text-align:center;padding:10px 0;color:#155724;font-size:0.9rem;"></div>'
             + '<p style="font-size:0.85rem;color:#666;text-align:center;margin:0 0 16px;">Enter your email and we\'ll send you a reset link.</p>'
-            + '<input id="auth-email" type="email" placeholder="Email address">'
+            + '<input id="auth-email" type="email" placeholder="Email address" value="' + esc(prefill) + '">'
             + '<button class="btn btn-primary" style="width:100%;" onclick="CommunityAuth.submitForgot()">Send Reset Link</button>'
             + '<div class="login-toggle"><a onclick="CommunityAuth.openLoginModal(\'login\')">Back to sign in</a></div>';
         document.getElementById('login-modal').classList.add('active');
@@ -75,6 +77,7 @@ CommunityAuth.openLoginModal = function(mode) {
             + '<div id="reset-success" style="display:none;text-align:center;padding:10px 0;color:#155724;font-size:0.9rem;"></div>'
             + '<input id="reset-pass" type="password" placeholder="New password">'
             + '<input id="reset-pass2" type="password" placeholder="Confirm password">'
+            + '<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#555;cursor:pointer;margin:4px 0 10px;"><input type="checkbox" onchange="var t=this.checked?\'text\':\'password\';document.getElementById(\'reset-pass\').type=t;document.getElementById(\'reset-pass2\').type=t;"> Show password</label>'
             + '<input type="hidden" id="reset-token" value="' + esc(token) + '">'
             + '<button class="btn btn-primary" style="width:100%;" onclick="CommunityAuth.submitReset()">Reset Password</button>';
         document.getElementById('login-modal').classList.add('active');
@@ -94,18 +97,21 @@ CommunityAuth.openLoginModal = function(mode) {
         + '<div id="login-error" class="login-error" style="display:none"></div>'
         + (isLogin ? '' : '<input id="auth-name" type="text" placeholder="Display name">')
         + '<input id="auth-email" type="email" placeholder="Email address">'
-        + '<input id="auth-pass" type="password" placeholder="Password">'
+        + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;"><input id="auth-pass" type="password" placeholder="Password" style="flex:1;margin-bottom:0;">'
+        + '<button type="button" class="pass-toggle-btn" onclick="var p=document.getElementById(\'auth-pass\');if(p.type===\'password\'){p.type=\'text\';this.style.color=\'#31345A\';}else{p.type=\'password\';this.style.color=\'#999\';}" style="background:none;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:1.1rem;color:#999;padding:6px 10px;flex-shrink:0;" title="Show password">&#128065;</button></div>'
         + '<button class="btn btn-primary" style="width:100%;" onclick="CommunityAuth.submitEmailAuth(\'' + mode + '\')">' + (isLogin ? 'Sign In' : 'Create Account') + '</button>'
-        + (isLogin ? '<div style="text-align:center;margin-top:10px;"><a style="font-size:0.82rem;color:#31345A;cursor:pointer;" onclick="CommunityAuth.openLoginModal(\'forgot\')">Forgot password?</a></div>' : '')
+        + (isLogin ? '<div style="text-align:center;margin-top:10px;"><a style="font-size:0.82rem;color:#31345A;cursor:pointer;" onclick="CommunityAuth._prefillEmail=(document.getElementById(\'auth-email\')||{}).value||\'\';CommunityAuth.openLoginModal(\'forgot\')">Forgot password?</a></div>' : '')
         + '<div class="login-toggle">' + (isLogin
             ? 'No account? <a onclick="CommunityAuth.openLoginModal(\'register\')">Create one</a>'
             : 'Already have an account? <a onclick="CommunityAuth.openLoginModal(\'login\')">Sign in</a>') + '</div>';
     document.getElementById('login-modal').classList.add('active');
 
-    // Focus first input
+    // Focus first input and wire Enter key on password
     setTimeout(function() {
         var first = box.querySelector('input');
         if (first) first.focus();
+        var passEl = document.getElementById('auth-pass');
+        if (passEl) passEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') CommunityAuth.submitEmailAuth(mode); });
     }, 100);
 };
 
@@ -157,13 +163,16 @@ CommunityAuth.submitForgot = function() {
         if (data.error) {
             Community.showMsg(errEl, data.error, 'login-error');
         } else {
-            errEl.style.display = 'none';
-            var suc = document.getElementById('forgot-success');
-            suc.textContent = data.message;
-            suc.style.display = '';
-            if (data.reset_url) {
-                suc.innerHTML += '<br><a href="' + Community.esc(data.reset_url) + '" style="word-break:break-all;font-size:0.8rem;">' + Community.esc(data.reset_url) + '</a>';
-            }
+            var box = document.getElementById('login-box');
+            box.innerHTML = '<button class="login-close" onclick="CommunityAuth.closeLoginModal()">&times;</button>'
+                + '<div style="text-align:center;padding:20px 0;">'
+                + '<div style="font-size:2rem;margin-bottom:12px;">&#9993;</div>'
+                + '<h2 style="margin:0 0 12px;">Reset Link Sent</h2>'
+                + '<p style="color:#555;font-size:0.95rem;">A password reset link has been sent to</p>'
+                + '<p style="font-weight:600;color:#31345A;font-size:1rem;word-break:break-all;">' + Community.esc(email) + '</p>'
+                + '<p style="color:#999;font-size:0.82rem;margin-top:16px;">Check your inbox and spam folder.<br>The link expires in 1 hour.</p>'
+                + '<button class="btn btn-primary" style="width:100%;margin-top:16px;" onclick="CommunityAuth.closeLoginModal()">OK</button>'
+                + '</div>';
         }
     }).catch(function() {
         Community.showMsg(errEl, 'Connection error.', 'login-error');

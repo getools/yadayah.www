@@ -4,6 +4,7 @@
  * Exchanges code for tokens, creates/finds user, sets session.
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/oauth-helpers.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $code = $_GET['code'] ?? '';
@@ -86,47 +87,18 @@ if (!$oauthId) {
     exit;
 }
 
-// Find or create user
-$stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_oauth_provider = 'microsoft' AND user_oauth_id = ?");
-$stmt->execute([$oauthId]);
-$existing = $stmt->fetchColumn();
+$result = resolveOAuthUser($db, 'microsoft', $oauthId, $email, $name, '');
 
-if ($existing) {
-    $userKey = $existing;
-    $db->prepare("UPDATE yy_user SET user_display_name = ?, user_email = ? WHERE user_key = ?")
-       ->execute([$name, $email, $userKey]);
-} else {
-    if ($email) {
-        $stmt = $db->prepare("SELECT user_key FROM yy_user WHERE user_email = ?");
-        $stmt->execute([$email]);
-        $emailMatch = $stmt->fetchColumn();
-        if ($emailMatch) {
-            $userKey = $emailMatch;
-            $db->prepare("UPDATE yy_user SET user_oauth_provider = 'microsoft', user_oauth_id = ?, user_display_name = ? WHERE user_key = ?")
-               ->execute([$oauthId, $name, $userKey]);
-        }
-    }
-    if (!isset($userKey)) {
-        $stmt = $db->prepare("INSERT INTO yy_user (user_code, user_email, user_display_name, user_oauth_provider, user_oauth_id, user_active_flag, user_verified) VALUES (?, ?, ?, 'microsoft', ?, TRUE, TRUE) RETURNING user_key");
-        $stmt->execute(['microsoft:' . $oauthId, $email, $name, $oauthId]);
-        $userKey = $stmt->fetchColumn();
-        $db->prepare("INSERT INTO yy_user_role (user_key, role_key) VALUES (?, 1)")->execute([$userKey]);
-    }
+if ($result['action'] === 'pending_link') {
+    $return = $_SESSION['oauth_return'] ?? '/community';
+    unset($_SESSION['oauth_return']);
+    header('Location: ' . $return . '#link-account');
+    exit;
 }
 
-// Merge mode
-if (!empty($_SESSION['merge_via_oauth']) && !empty($_SESSION['user_key'])) {
-    unset($_SESSION['merge_via_oauth']);
-    if ((int)$userKey === (int)$_SESSION['user_key']) { header('Location: /community#merge-error&reason=same'); exit; }
-    $u = $db->prepare("SELECT user_display_name, user_email FROM yy_user WHERE user_key = ?"); $u->execute([$userKey]); $info = $u->fetch();
-    $_SESSION['merge_target'] = ['user_key' => (int)$userKey, 'display_name' => $info['user_display_name'] ?? $name, 'email' => $info['user_email'] ?? $email, 'token' => bin2hex(random_bytes(16)), 'expires' => time() + 600];
-    header('Location: /community#merge-confirm'); exit;
-}
-
-$_SESSION['user_key'] = $userKey;
-$_SESSION['user_display_name'] = $name;
+$_SESSION['user_key'] = $result['user_key'];
+$_SESSION['user_name_display'] = $name;
 $_SESSION['user_avatar'] = '';
-$_SESSION['oauth_provider'] = 'microsoft';
 
 $return = $_SESSION['oauth_return'] ?? '/community';
 unset($_SESSION['oauth_return']);

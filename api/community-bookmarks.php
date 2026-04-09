@@ -28,7 +28,7 @@ if ($method === 'GET') {
 
     $stmt = $db->prepare("
         SELECT t.topic_key, t.topic_title, t.topic_reply_count, t.topic_last_reply_dtime, t.topic_dtime,
-               u.user_display_name, u.user_avatar,
+               u.user_name_display, u.user_avatar,
                c.category_name, c.category_slug,
                b.bookmark_dtime
         FROM yy_community_bookmark b

@@ -14,7 +14,7 @@ $db = getDb();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
-    $stmt = $db->prepare("SELECT user_key, user_display_name, user_handle, user_email, user_avatar, user_bio FROM yy_user WHERE user_key = ?");
+    $stmt = $db->prepare("SELECT user_key, user_name_display, user_handle, user_email, user_avatar, user_bio FROM yy_user WHERE user_key = ?");
     $stmt->execute([$userKey]);
     $user = $stmt->fetch();
     if (!$user) errorResponse('User not found', 404);
@@ -95,9 +95,9 @@ if ($method === 'POST') {
         if (isset($data['display_name'])) {
             $name = trim($data['display_name']);
             if (!$name) errorResponse('Display name cannot be empty');
-            $fields[] = 'user_display_name = ?';
+            $fields[] = 'user_name_display = ?';
             $params[] = $name;
-            $_SESSION['user_display_name'] = $name;
+            $_SESSION['user_name_display'] = $name;
         }
         if (isset($data['handle'])) {
             $handle = trim($data['handle']);
@@ -113,6 +113,11 @@ if ($method === 'POST') {
         if (isset($data['bio'])) {
             $fields[] = 'user_bio = ?';
             $params[] = trim($data['bio']);
+        }
+        if (isset($data['font_size'])) {
+            $fs = (int)$data['font_size'];
+            $fields[] = 'user_font_size = ?';
+            $params[] = ($fs >= 12 && $fs <= 24) ? $fs : null;
         }
         if (isset($data['email'])) {
             $email = trim($data['email']);

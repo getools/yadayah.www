@@ -12,19 +12,19 @@ $PER_PAGE   = 24;
 
 $db = getDb();
 
-// Load feed config from yy_page_feed + yy_feed for the music page
+// Load feed config from yy_feed_page + yy_feed for the music page
 $feedStmt = $db->query("
-    SELECT f.feed_list, pf.page_feed_filter_exclude
-    FROM yy_page_feed pf
-    JOIN yy_feed f ON f.feed_key = pf.feed_key
-    JOIN yy_page p ON p.page_key = pf.page_key
+    SELECT f.feed_account_id, fp.feed_page_filter_exclude
+    FROM yy_feed_page fp
+    JOIN yy_feed f ON f.feed_key = fp.feed_key
+    JOIN yy_page p ON p.page_key = fp.page_key
     WHERE p.page_code = 'music'
-    ORDER BY pf.page_feed_sort, pf.page_feed_key
+    ORDER BY fp.feed_page_sort, fp.feed_page_key
     LIMIT 1
 ");
 $feedRow = $feedStmt->fetch();
-$YT_PLAYLIST_ID  = $feedRow['feed_list'] ?? 'PLW5gXgQ3YcPCy7jFNQ_4Q759SVdS0e035';
-$excludeTerms    = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['page_feed_filter_exclude'] ?? ''))) : [];
+$YT_PLAYLIST_ID  = $feedRow['feed_account_id'] ?? 'PLW5gXgQ3YcPCy7jFNQ_4Q759SVdS0e035';
+$excludeTerms    = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['feed_page_filter_exclude'] ?? ''))) : [];
 
 $action = $_GET['action'] ?? '';
 

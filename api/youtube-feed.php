@@ -6,8 +6,13 @@ $limit = min((int)($_GET['limit'] ?? 15), 50);
 $offset = (int)($_GET['offset'] ?? 0);
 $pageToken = $_GET['pageToken'] ?? '';
 
-$CHANNEL_ID = 'UCKxk-PvJk6rLfBxykgSGXbA';
-$YT_API_KEY = getenv('YOUTUBE_API_KEY') ?: '';
+$db = getDb();
+
+// Load channel ID from yy_feed (youtube channel source, not playlist)
+$feedStmt = $db->query("SELECT feed_account_id, feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = true AND feed_account_id LIKE 'UC%' ORDER BY feed_key LIMIT 1");
+$feedRow = $feedStmt->fetch();
+$CHANNEL_ID = $feedRow['feed_account_id'] ?? 'UCKxk-PvJk6rLfBxykgSGXbA';
+$YT_API_KEY = $feedRow['feed_api_key'] ?: getenv('YOUTUBE_API_KEY') ?: '';
 $CACHE_DIR = sys_get_temp_dir() . '/yt_cache/';
 $CACHE_TTL = 900; // 15 minutes
 

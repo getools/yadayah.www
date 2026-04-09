@@ -1,0 +1,43 @@
+t.yadayah.com {
+    @fonts path *.woff2 *.woff *.ttf *.otf *.eot
+    header @fonts Access-Control-Allow-Origin *
+    header @fonts Cache-Control "public, max-age=31536000"
+
+    @sse path /api/ask.php /api/community-sse.php
+    reverse_proxy @sse web:80 {
+        flush_interval -1
+        transport http {
+            read_timeout 320s
+        }
+    }
+
+    reverse_proxy web:80
+}
+
+yadayah.com, www.yadayah.com {
+    tls /certs/origin.pem /certs/origin.key
+
+    @fonts path *.woff2 *.woff *.ttf *.otf *.eot
+    header @fonts Access-Control-Allow-Origin *
+    header @fonts Cache-Control "public, max-age=31536000"
+
+    @sse path /api/ask.php /api/community-sse.php
+    reverse_proxy @sse web:80 {
+        flush_interval -1
+        transport http {
+            read_timeout 320s
+        }
+    }
+
+    reverse_proxy web:80
+}
+
+inthecompanyofgoodandevil.com, www.inthecompanyofgoodandevil.com {
+    reverse_proxy itcoge-web:80
+}
+
+book.yadayah.com {
+    tls /certs/origin.pem /certs/origin.key
+
+    reverse_proxy books-web:80
+}

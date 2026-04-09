@@ -51,28 +51,8 @@
 
 <div id="app" class="container" style="display:none">
     <div class="app-header">
-        <nav class="nav-tabs">
-            <a href="admin-site.html" class="nav-tab">Site</a>
-            <a href="admin-translation.html" class="nav-tab">Translation</a>
-            <a href="admin-word.html" class="nav-tab">Word</a>
-            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
-            <a href="admin-ask.html" class="nav-tab">Ask</a>
-            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
-            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
-            <a href="admin-media.html" class="nav-tab">Media</a>
-            <a href="admin-music.html" class="nav-tab">Music</a>
-            <a href="admin-invite.html" class="nav-tab">Invite</a>
-            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
-            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
-            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
-            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
-            <a href="admin-pages.html" class="nav-tab">Pages</a>
-            <a href="admin-resources.html" class="nav-tab">Resources</a>
-            <a href="admin-users.html" class="nav-tab">Users</a>
-            <a href="admin-header.html" class="nav-tab active">Header</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
-        </nav>
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -98,12 +78,14 @@
 
     <div class="button-row" style="margin-top:20px">
         <button class="btn btn-primary" onclick="saveAll()">Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="rescaleLogo()" id="rescale-logo-btn">Rescale Logo</button>
         <span id="save-status" style="display:none">Saved!</span>
         <span id="save-error" style="display:none"></span>
+        <span id="rescale-status" style="display:none;font-size:0.85rem;color:#27ae60;margin-left:8px;"></span>
     </div>
 </div>
 
-<script src="js/admin-pages.js?v=2"></script>
+<script src="js/admin-links.js?v=2"></script>
 <script>
 var API = '/api';
 var _settings = {};
@@ -111,6 +93,7 @@ var _settings = {};
 // Setting codes grouped by section
 var LOGO_FIELDS = [
     { code: 'logo',                        label: 'Logo',          type: 'image' },
+    { code: 'logo-height',                 label: 'Height (px)',   type: 'px' },
     { code: 'logo-margin-top',             label: 'Margin-Top',    type: 'px' },
     { code: 'logo-margin-bottom',          label: 'Margin-Bottom', type: 'px' },
 ];
@@ -203,6 +186,20 @@ function renderSection(containerId, fields) {
     // Init swatches
     fields.forEach(function(f) {
         if (f.type === 'rgb') syncSwatch(f.code);
+        if (f.type === 'image') {
+            // Show current dimensions
+            var prev = document.getElementById('img-preview-' + f.code);
+            if (prev) {
+                var img = prev.querySelector('img');
+                if (img) {
+                    img.onload = function() {
+                        var hEl = document.getElementById('img-height-val-' + f.code);
+                        if (hEl) hEl.textContent = img.naturalWidth + ' x ' + img.naturalHeight + 'px';
+                    };
+                    if (img.complete && img.naturalWidth) img.onload();
+                }
+            }
+        }
     });
 }
 
@@ -210,13 +207,21 @@ function renderInput(f, key, val) {
     var id = 'input-' + f.code;
     if (f.type === 'image') {
         var imgHtml = val
-            ? '<img src="' + escAttr(val) + '?v=' + Date.now() + '" alt="' + escAttr(f.label) + '">'
+            ? '<img src="' + escAttr(val) + '?v=' + Date.now() + '" alt="' + escAttr(f.label) + '" style="max-height:120px;">'
             : '<span style="color:#999;font-size:0.82rem;font-style:italic">No image set</span>';
-        return '<div class="img-preview-wrap" id="img-preview-' + f.code + '">' + imgHtml + '</div>'
-            + '<div class="img-upload-row">'
-            + '<input type="file" id="img-file-' + f.code + '" accept="image/*" style="font-size:0.85rem" onchange="uploadImage(\'' + f.code + '\')">'
-            + '<span class="img-status" id="img-status-' + f.code + '" style="display:none">Saved!</span>'
-            + '<span class="img-error" id="img-error-' + f.code + '" style="display:none"></span>'
+        return '<div class="img-upload-card" style="border:1px solid #e0e0e0;border-radius:8px;padding:14px;background:#fafafa;">'
+            + '<div class="img-preview-wrap" id="img-preview-' + f.code + '" style="margin-bottom:10px;">' + imgHtml + '</div>'
+            + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
+            + '<input type="file" id="img-file-' + f.code + '" accept="image/*" style="font-size:0.82rem;flex:1;min-width:150px;" onchange="uploadImage(\'' + f.code + '\')">'
+            + '</div>'
+            + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
+            + '<label style="font-size:0.8rem;font-weight:600;color:#555;">Height:</label>'
+            + '<span id="img-height-val-' + f.code + '" style="font-size:0.8rem;color:#888;"></span>'
+            + '<button class="btn btn-secondary btn-sm" style="font-size:0.75rem;padding:3px 10px;" onclick="rescaleImage(\'' + f.code + '\')" id="img-rescale-' + f.code + '">Rescale</button>'
+            + '<span class="img-status" id="img-status-' + f.code + '" style="display:none;font-size:0.82rem;color:#27ae60;">Saved!</span>'
+            + '<span class="img-error" id="img-error-' + f.code + '" style="display:none;font-size:0.82rem;color:#c0392b;"></span>'
+            + '</div>'
+            + '<progress id="img-progress-' + f.code + '" value="0" max="100" style="display:none;width:100%;height:6px;margin-top:6px;"></progress>'
             + '</div>';
     }
     if (f.type === 'rgb') {
@@ -293,20 +298,110 @@ function uploadImage(code) {
     var input    = document.getElementById('img-file-'   + code);
     var statusEl = document.getElementById('img-status-' + code);
     var errorEl  = document.getElementById('img-error-'  + code);
+    var progress = document.getElementById('img-progress-' + code);
     statusEl.style.display = 'none';
     errorEl.style.display  = 'none';
     if (!input || !input.files[0]) return;
+
     var fd = new FormData();
     fd.append('logo_file', input.files[0]);
-    fetch(API + '/admin-logo-upload.php', {method:'POST', credentials:'include', body:fd})
-        .then(function(r){return r.json();}).then(function(d) {
-            if (d.error) { errorEl.textContent = d.error; errorEl.style.display = ''; return; }
-            input.value = '';
-            var prev = document.getElementById('img-preview-' + code);
-            if (prev) prev.innerHTML = '<img src="' + escAttr(d.path) + '?v=' + Date.now() + '" alt="Logo">';
+    // Pass the logo height so the scaled copy matches
+    var hInput = document.getElementById('input-logo-height');
+    if (hInput && hInput.value) fd.append('max_height', hInput.value);
+
+    // Show progress
+    progress.style.display = '';
+    progress.value = 0;
+    var xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) progress.value = Math.round(e.loaded / e.total * 100);
+    };
+    xhr.onload = function() {
+        progress.style.display = 'none';
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch(e) { d = {error:'Invalid response'}; }
+        if (d.error) { errorEl.textContent = d.error; errorEl.style.display = ''; return; }
+        input.value = '';
+        var prev = document.getElementById('img-preview-' + code);
+        if (prev) {
+            var img = new Image();
+            img.onload = function() {
+                var hEl = document.getElementById('img-height-val-' + code);
+                if (hEl) hEl.textContent = img.naturalWidth + ' x ' + img.naturalHeight + 'px';
+            };
+            img.src = d.path + '?v=' + Date.now();
+            img.alt = code;
+            img.style.maxHeight = '120px';
+            prev.innerHTML = '';
+            prev.appendChild(img);
+        }
+        statusEl.textContent = 'Uploaded!';
+        statusEl.style.display = '';
+        setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+    };
+    xhr.onerror = function() {
+        progress.style.display = 'none';
+        errorEl.textContent = 'Upload failed';
+        errorEl.style.display = '';
+    };
+    xhr.open('POST', API + '/admin-logo-upload.php');
+    xhr.withCredentials = true;
+    xhr.send(fd);
+}
+
+function rescaleImage(code) {
+    // For logo, trigger rescale via the logo upload API
+    var btn = document.getElementById('img-rescale-' + code);
+    var statusEl = document.getElementById('img-status-' + code);
+    if (btn) { btn.disabled = true; btn.textContent = 'Rescaling...'; }
+    // Save settings first so height is committed
+    saveAll();
+    setTimeout(function() {
+        fetch(API + '/admin-logo-upload.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ action: 'rescale' })
+        }).then(function(r){return r.json();}).then(function(d) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Rescale'; }
+            statusEl.textContent = d.rescaled ? 'Rescaled!' : (d.error || 'Failed');
+            statusEl.style.color = d.rescaled ? '#27ae60' : '#c0392b';
             statusEl.style.display = '';
-            setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+            setTimeout(function() { statusEl.style.display = 'none'; statusEl.style.color = '#27ae60'; }, 3000);
+            // Refresh preview
+            var prev = document.getElementById('img-preview-' + code);
+            if (prev) {
+                var img = prev.querySelector('img');
+                if (img) img.src = img.src.split('?')[0] + '?v=' + Date.now();
+            }
         });
+    }, 600);
+}
+
+function rescaleLogo() {
+    var btn = document.getElementById('rescale-logo-btn');
+    var status = document.getElementById('rescale-status');
+    btn.disabled = true; btn.textContent = 'Rescaling...';
+    // Save first so the height value is committed
+    saveAll();
+    setTimeout(function() {
+        fetch(API + '/admin-logo-upload.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ action: 'rescale' })
+        }).then(function(r){return r.json();}).then(function(d) {
+            btn.disabled = false; btn.textContent = 'Rescale Logo';
+            status.style.display = 'inline';
+            status.textContent = d.rescaled ? d.count + ' rescaled' : (d.error || 'Failed');
+            status.style.color = d.rescaled ? '#27ae60' : '#c0392b';
+            setTimeout(function() { status.style.display = 'none'; }, 4000);
+            // Refresh preview
+            var prev = document.getElementById('img-preview-logo');
+            if (prev) {
+                var img = prev.querySelector('img');
+                if (img) img.src = img.src.split('?')[0] + '?v=' + Date.now();
+            }
+        });
+    }, 600);
 }
 
 function esc(s) {
@@ -325,6 +420,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>

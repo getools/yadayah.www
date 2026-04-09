@@ -52,9 +52,9 @@ CommunityMembers.load = function(page, sort, query) {
                     + '<span class="avatar-wrap' + onlineClass + '">'
                     + (m.user_avatar
                         ? '<img class="member-avatar" src="' + Community.esc(m.user_avatar) + '">'
-                        : '<span class="member-avatar-circle">' + Community.esc(Community.initials(m.user_display_name)) + '</span>')
+                        : '<span class="member-avatar-circle">' + Community.esc(Community.initials(m.user_name_display)) + '</span>')
                     + '</span></div>'
-                    + '<div class="member-card-name">' + Community.esc(m.user_display_name) + '</div>'
+                    + '<div class="member-card-name">' + Community.esc(m.user_name_display) + '</div>'
                     + (m.user_handle ? '<div class="member-card-handle">@' + Community.esc(m.user_handle) + '</div>' : '')
                     + '<div class="member-card-stats">'
                     + '<span title="Reputation">&#11088; ' + (m.user_reputation || 0) + '</span>'

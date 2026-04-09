@@ -18,20 +18,18 @@ $key = isset($_GET['key']) ? (int)$_GET['key'] : null;
 // ── GET ──
 if ($method === 'GET') {
     if ($key) {
-        $stmt = $db->prepare("SELECT ticker_key, ticker_heading, ticker_subheading, ticker_target, ticker_timezone, ticker_sort, ticker_active_flag FROM yy_ticker WHERE ticker_key = ?");
+        $stmt = $db->prepare("SELECT ticker_key, ticker_heading, ticker_subheading, ticker_target, ticker_sort, ticker_active_flag FROM yy_ticker WHERE ticker_key = ?");
         $stmt->execute([$key]);
         $row = $stmt->fetch();
         if (!$row) errorResponse('Ticker not found', 404);
-        // Convert UTC back to the original timezone for the form
-        $tz = $row['ticker_timezone'] ?: '+00:00';
+        // Split ticker_target into date / time for the form
         $dt = new DateTime($row['ticker_target']);
-        $dt->setTimezone(new DateTimeZone($tz));
         $row['ticker_date']     = $dt->format('Y-m-d');
         $row['ticker_time']     = $dt->format('H:i');
-        $row['ticker_timezone'] = $tz;
+        $row['ticker_timezone'] = '+00:00';
         jsonResponse($row);
     }
-    $stmt = $db->query("SELECT ticker_key, ticker_heading, ticker_subheading, ticker_target, ticker_timezone, ticker_sort, ticker_active_flag FROM yy_ticker ORDER BY ticker_target");
+    $stmt = $db->query("SELECT ticker_key, ticker_heading, ticker_subheading, ticker_target, ticker_sort, ticker_active_flag FROM yy_ticker ORDER BY ticker_target");
     jsonResponse(['tickers' => $stmt->fetchAll()]);
 }
 
@@ -43,13 +41,11 @@ if ($method === 'POST') {
     $bgStmt = $db->prepare("SELECT setting_value FROM yy_setting WHERE setting_scope_code='page' AND setting_group_code='timeline' AND setting_code='ticker-primary-background'");
     $bgStmt->execute();
     $defaultBg = $bgStmt->fetchColumn() ?: '#021288';
-    $tz = trim($data['ticker_timezone'] ?? '') ?: '+00:00';
-    $stmt = $db->prepare("INSERT INTO yy_ticker (ticker_heading, ticker_subheading, ticker_target, ticker_timezone, ticker_bg, ticker_sort, ticker_active_flag, user_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt = $db->prepare("INSERT INTO yy_ticker (ticker_heading, ticker_subheading, ticker_target, ticker_bg, ticker_sort, ticker_active_flag, user_key) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $data['ticker_heading'] ?? ($data['ticker_header'] ?? ''),
         $data['ticker_subheading'] ?? '',
         $target,
-        $tz,
         $defaultBg,
         (int)($data['ticker_sort'] ?? 0),
         isset($data['ticker_active_flag']) ? (bool)$data['ticker_active_flag'] : true,
@@ -63,13 +59,11 @@ if ($method === 'PUT') {
     if (!$key) errorResponse('key required');
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
     $target = buildTarget($data);
-    $tz = trim($data['ticker_timezone'] ?? '') ?: '+00:00';
-    $stmt = $db->prepare("UPDATE yy_ticker SET ticker_heading = ?, ticker_subheading = ?, ticker_target = ?, ticker_timezone = ?, ticker_sort = ?, ticker_active_flag = ?, user_key = ? WHERE ticker_key = ?");
+    $stmt = $db->prepare("UPDATE yy_ticker SET ticker_heading = ?, ticker_subheading = ?, ticker_target = ?, ticker_sort = ?, ticker_active_flag = ?, user_key = ? WHERE ticker_key = ?");
     $stmt->execute([
         $data['ticker_heading'] ?? ($data['ticker_header'] ?? ''),
         $data['ticker_subheading'] ?? '',
         $target,
-        $tz,
         (int)($data['ticker_sort'] ?? 0),
         isset($data['ticker_active_flag']) ? (bool)$data['ticker_active_flag'] : true,
         $user['user_key'] ?? null,

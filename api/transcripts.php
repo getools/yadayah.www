@@ -22,12 +22,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         jsonResponse(['name' => $name, 'text' => implode(' ', $text)]);
     }
 
-    // List all files with database status
+    // List all files with database status and upload time
     $db = getDb();
     $parsed = [];
     $stmt = $db->query("SELECT DISTINCT transcript_source FROM yy_transcript");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $parsed[$row['transcript_source']] = true;
+    }
+
+    // Get upload timestamps
+    $uploads = [];
+    $stmt = $db->query("SELECT filename, uploaded_dtime FROM yy_transcript_upload");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $uploads[$row['filename']] = $row['uploaded_dtime'];
     }
 
     $files = [];
@@ -37,11 +44,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'name' => $name,
             'size' => filesize($path),
             'modified' => date('Y-m-d H:i:s', filemtime($path)),
+            'uploaded' => $uploads[$name] ?? null,
             'in_database' => isset($parsed[$name]),
         ];
     }
     usort($files, function($a, $b) { return strcmp($b['name'], $a['name']); });
     jsonResponse(['files' => $files, 'count' => count($files)]);
+}
+
+// Dedup action: remove files with identical content
+if (isset($_GET['action']) && $_GET['action'] === 'dedup') {
+    $hashes = []; // md5 => first filename
+    $removed = 0;
+    $db = getDb();
+
+    foreach (glob("$TRANSCRIPTS_DIR/*.vtt") as $path) {
+        $name = basename($path);
+        $hash = md5_file($path);
+        if (isset($hashes[$hash])) {
+            // Duplicate — remove this one
+            unlink($path);
+            $db->prepare("DELETE FROM yy_transcript WHERE transcript_source = ?")->execute([$name]);
+            $db->prepare("DELETE FROM yy_transcript_upload WHERE filename = ?")->execute([$name]);
+            $removed++;
+        } else {
+            $hashes[$hash] = $name;
+        }
+    }
+    jsonResponse(['removed' => $removed, 'kept' => count($hashes)]);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -158,6 +188,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!move_uploaded_file($file['tmp_name'], $dest)) {
         errorResponse('Failed to save file');
     }
+    // Record upload timestamp
+    $db = getDb();
+    $db->prepare("INSERT INTO yy_transcript_upload (filename, file_size, uploaded_dtime) VALUES (?, ?, NOW()) ON CONFLICT (filename) DO UPDATE SET uploaded_dtime = NOW(), file_size = ?")
+       ->execute([$name, filesize($dest), filesize($dest)]);
     jsonResponse(['name' => $name, 'saved' => true]);
 }
 
@@ -172,6 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     $db = getDb();
     $stmt = $db->prepare("DELETE FROM yy_transcript WHERE transcript_source = ?");
     $stmt->execute([$name]);
+    $db->prepare("DELETE FROM yy_transcript_upload WHERE filename = ?")->execute([$name]);
     jsonResponse(['deleted' => $name, 'db_removed' => $stmt->rowCount()]);
 }
 

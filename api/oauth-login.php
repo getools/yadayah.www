@@ -11,15 +11,15 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 
 // Store return URL so callbacks redirect back to the originating page
 $return = $_GET['return'] ?? '';
-if ($return && preg_match('#^/admin#', $return)) {
+if ($return) {
     $_SESSION['oauth_return'] = $return;
 } else {
     unset($_SESSION['oauth_return']);
 }
 
-// Merge mode: OAuth is being used to verify ownership of another account
-if (!empty($_GET['merge']) && !empty($_SESSION['user_key'])) {
-    $_SESSION['merge_via_oauth'] = true;
+// If link=1 and user is logged in, mark this as a linking flow
+if (!empty($_GET['link']) && !empty($_SESSION['user_key'])) {
+    $_SESSION['linking_provider'] = true;
 }
 
 if ($provider === 'google') {

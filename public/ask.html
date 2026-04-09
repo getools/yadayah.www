@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Roboto:wght@400;600&family=Nunito+Sans:wght@400;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         body {
             font-family: "Nunito Sans", Arial, sans-serif;
             margin: 0; padding: 0; background: #f5f5f5; color: #000;
@@ -168,7 +169,7 @@
 
         /* ── Welcome ── */
         .welcome {
-            text-align: center; padding: 40px 20px; color: #666;
+            text-align: center; padding: 10px 20px 40px; color: #666;
         }
         .welcome h2 {
             font-family: "Julius Sans One", sans-serif;
@@ -225,63 +226,8 @@
             .hide-narrower { display: none !important; }
             .msg { max-width: 90%; }
             .chat-wrapper { max-width: 100%; min-height: 0; }
-            footer { display: none; }
         }
 
-        /* Footer */
-        footer {
-            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
-            position: relative; overflow: hidden;
-            padding: 30px 20px 20px;
-            color: #E5C86C;
-        }
-        footer .footer-video {
-            position: absolute; top: 50%; left: 50%;
-            min-width: 100%; min-height: 100%;
-            transform: translate(-50%, -50%);
-            object-fit: cover; z-index: 0;
-        }
-        footer .footer-inner {
-            position: relative; z-index: 1;
-            max-width: 1000px; margin: 0 auto;
-            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
-        }
-        footer .footer-col { min-width: auto; }
-        footer .footer-col h4 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 1rem;
-            color: #E5C86C;
-            border-bottom: 1px solid rgba(229,200,108,0.3);
-            padding-bottom: 6px;
-            margin: 0 0 10px;
-        }
-        footer .footer-col a {
-            display: block;
-            font-size: 0.9rem;
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 3px 0;
-        }
-        footer .footer-links {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 4px 20px;
-        }
-        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
-        .footer-links-3col {
-            grid-template-columns: auto auto auto;
-        }
-        footer .footer-links-1col {
-            grid-template-columns: 1fr;
-        }
-        footer .footer-col a:hover { color: #fff; }
-        footer .footer-bottom {
-            position: relative; z-index: 1;
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.8rem;
-            color: rgba(255,255,255,0.5);
-        }
     </style>
 <script src="/js/site-nav.js"></script>
 </head>
@@ -316,6 +262,7 @@
 <div class="chat-wrapper">
     <div class="messages" id="messages">
         <div class="welcome" id="welcome">
+            <img id="ask-page-image" src="" alt="" style="display:none;max-height:180px;border-radius:10px;margin:0 auto 16px;">
             <h2 id="ask-title">Ask Yada</h2>
             <p id="ask-summary">Ask questions about scripture, prophecy, history, the Towrah, the Covenant, Hebrew translations, and more — drawing from nearly 40 books of research and translation and transcripts from hundreds of hours of shows.</p>
             <div class="topics" id="topics"></div>
@@ -332,9 +279,12 @@
         </div>
     </div>
 
-    <div class="chat-input">
+    <div class="chat-input" id="chat-input" style="display:none;">
         <textarea id="input" placeholder="Ask Yada a question..." rows="1" onkeydown="handleKey(event)"></textarea>
         <button id="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+    <div class="chat-input" id="signin-bar" style="display:none;justify-content:center;">
+        <button onclick="window.location.href='/chat#topics'" style="padding:12px 32px;background:#31345A;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">Sign In to Ask a Question</button>
     </div>
 </div>
 
@@ -342,6 +292,20 @@
 var history = [];
 var isStreaming = false;
 var qandaItems = [];
+
+// Check if user is signed in
+fetch('/api/community-session.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+    if (data.user) {
+        document.getElementById('chat-input').style.display = '';
+        document.getElementById('signin-bar').style.display = 'none';
+    } else {
+        document.getElementById('chat-input').style.display = 'none';
+        document.getElementById('signin-bar').style.display = 'flex';
+    }
+}).catch(function() {
+    document.getElementById('chat-input').style.display = 'none';
+    document.getElementById('signin-bar').style.display = 'flex';
+});
 
 // Load Q&A items from database
 function loadQandaItems() {
@@ -427,9 +391,15 @@ function newConversation() {
     var welcome = document.createElement('div');
     welcome.className = 'welcome';
     welcome.id = 'welcome';
-    welcome.innerHTML = '<h2>Ask Yada</h2>'
+    welcome.innerHTML = '<img id="ask-page-image" src="" alt="" style="display:none;max-height:180px;border-radius:10px;margin:0 auto 16px;text-align:center;">'
+        + '<h2>Ask Yada</h2>'
         + '<p>Ask questions about scripture, prophecy, history, the Towrah, the Covenant, Hebrew translations, and more — drawing from nearly 40 books of research and translation and transcripts from hundreds of hours of shows.</p>'
         + '<div class="topics" id="topics"></div>';
+    // Re-apply page image from cached config
+    fetch('/api/page-ask-config.php').then(function(r){return r.json();}).then(function(cfg){
+        var img=document.getElementById('ask-page-image');
+        if(img&&cfg['page-image']){img.src='/'+cfg['page-image'].replace(/^\//,'');img.style.display='block';if(cfg['page-image-height'])img.style.maxHeight=cfg['page-image-height']+'px';}
+    });
     msgs.appendChild(welcome);
     renderTopicTags();
     document.getElementById('rate-limit-msg').style.display = 'none';
@@ -617,52 +587,7 @@ function sendMessage() {
 }
 </script>
 
-    <footer>
-        <video class="footer-video" autoplay muted loop playsinline>
-        </video>
-        <div class="footer-inner">
-            <div class="footer-col">
-                <h4 data-config="footer-text-books">Books</h4>
-                <div class="footer-links footer-links-2col">
-                    <a href="books#An_Intro_to_God">An Intro to God</a>
-                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
-                    <a href="books#Observations">Observations</a>
-                    <a href="books#Coming_Home">Coming Home</a>
-                    <a href="books#Babel">Babel</a>
-                    <a href="books#Twistianity">Twistianity</a>
-                    <a href="books#God_Damn_Religion">God Damn Religion</a>
-                    <a href="books#In_the_Company">In the Company</a>
-                </div>
-            </div>
-            <div class="footer-col">
-            <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;align-items:flex-start;">
-                <div class="footer-links footer-links-1col">
-                    <a href="/ask">Ask</a>
-                    <a href="/blog">Blog</a>
-                    <a href="/vlog">Vlog</a>
-                    <a href="/media">Media</a>
-                    <a href="/books">Books</a>
-                </div>
-                <div class="footer-links footer-links-1col">
-                    <a href="/timeline">Timeline</a>
-                    <a href="/translations">Translations</a>
-                    <a href="/glossary">Glossary</a>
-                    <a href="/dss">Dead Sea Scrolls</a>
-                    <a href="/10-7-memorial">10-7 Memorial</a>
-                </div>
-                <div class="footer-links footer-links-1col">
-                    <a href="/music">Music</a>
-                    <a href="/invite">Invite</a>
-                    <a href="/shorts">Shorts</a>
-                    <a href="/Craig_Winn">Craig Winn</a>
-                    <a href="/resources">Resources</a>
-                </div>
-            </div>
-        </div>
-        </div>
-        <div class="footer-bottom">Copyright 2001 - 2026</div>
-    </footer>
+    <footer></footer>
 
 <script src="/js/bg-video.js"></script>
 <script>
@@ -676,7 +601,18 @@ function sendMessage() {
     if(cfg.title){var t=document.getElementById('ask-title');if(t)t.textContent=cfg.title;}
     if(cfg.summary){var s=document.getElementById('ask-summary');if(s)s.textContent=cfg.summary;}
     if(cfg.placeholder){var p=document.getElementById('input');if(p)p.placeholder=cfg.placeholder;}
+    var img=document.getElementById('ask-page-image');
+    if(img&&cfg['page-image']){img.src='/'+cfg['page-image'].replace(/^\//,'');img.style.display='block';if(cfg['page-image-height'])img.style.maxHeight=cfg['page-image-height']+'px';}
+    else if(img){img.style.display='none';}
+    // Offline mode: hide input areas when model is empty
+    if(cfg.model === '' || cfg.model === null) {
+        var chatInput = document.getElementById('chat-input');
+        var signinBar = document.getElementById('signin-bar');
+        if(chatInput) chatInput.style.display = 'none';
+        if(signinBar) signinBar.style.display = 'none';
+    }
 });})();
 </script>
+<script src="/js/site-footer.js"></script>
 </body>
 </html>

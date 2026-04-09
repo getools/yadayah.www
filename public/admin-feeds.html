@@ -72,71 +72,58 @@
 
 <div id="app" class="container" style="display:none">
     <div class="app-header">
-        <nav class="nav-tabs">
-            <a href="admin-site.html" class="nav-tab">Site</a>
-            <a href="admin-translation.html" class="nav-tab">Translation</a>
-            <a href="admin-word.html" class="nav-tab">Word</a>
-            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
-            <a href="admin-ask.html" class="nav-tab">Ask</a>
-            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
-            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
-            <a href="admin-media.html" class="nav-tab">Media</a>
-            <a href="admin-music.html" class="nav-tab">Music</a>
-            <a href="admin-invite.html" class="nav-tab">Invite</a>
-            <a href="admin-doyouyada.html" class="nav-tab">DoYou?</a>
-            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
-            <a href="admin-feeds.html" class="nav-tab active">Feeds</a>
-            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
-            <a href="admin-pages.html" class="nav-tab">Pages</a>
-            <a href="admin-resources.html" class="nav-tab">Resources</a>
-            <a href="admin-users.html" class="nav-tab">Users</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
-        </nav>
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
         </div>
     </div>
 
-    <div class="toolbar">
-        <span id="feed-count" class="feed-count"></span>
-        <button class="btn btn-primary btn-sm" onclick="openForm()">+ Add Feed</button>
-    </div>
-
+    <h2 style="font-size:1rem;color:#31345A;margin:0 0 12px;">Feed Sources</h2>
     <table class="feeds-table">
         <thead>
             <tr>
                 <th>Name</th>
                 <th>Site</th>
-                <th>Type</th>
-                <th>Page</th>
-                <th>Filters (+)</th>
-                <th>Per Load</th>
-                <th>Paging</th>
-                <th>Schedule</th>
-                <th>Last Run</th>
+                <th>Account ID</th>
                 <th>Status</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody id="feeds-body"></tbody>
     </table>
+
+    <h2 style="font-size:1rem;color:#31345A;margin:20px 0 12px;">Page Mappings</h2>
+    <div class="toolbar">
+        <span id="feed-count" class="feed-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="addPageMapping()">+ Add Page Mapping</button>
+    </div>
+    <table class="feeds-table">
+        <thead>
+            <tr>
+                <th>Page</th>
+                <th>Feed Source</th>
+                <th>Include Filters</th>
+                <th>Exclude Filters</th>
+                <th>Sort</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="page-feeds-body"></tbody>
+    </table>
 </div>
 
-<!-- Edit Form -->
+<!-- Edit Feed Source Form -->
 <div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
     <div class="form-panel">
         <div class="form-header">
-            <h3 id="form-title">Add Feed</h3>
+            <h3 id="form-title">Edit Feed Source</h3>
             <button onclick="closeForm()">&times;</button>
         </div>
         <div class="form-body">
             <input type="hidden" id="f-key">
-            <div class="form-row">
-                <div class="field"><label>Name</label><input type="text" id="f-name"></div>
-                <div class="field"><label>Sort</label><input type="number" id="f-sort" style="width:80px"></div>
-            </div>
+            <div class="field"><label>Name</label><input type="text" id="f-name"></div>
             <div class="form-row">
                 <div class="field"><label>Site</label>
                     <select id="f-site-code">
@@ -148,59 +135,50 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
-                <div class="field"><label>Type</label>
-                    <select id="f-type-code">
-                        <option value="channel">Channel</option>
-                        <option value="playlist">Playlist</option>
-                        <option value="shorts">Shorts</option>
-                        <option value="video">Video</option>
-                        <option value="post">Post</option>
-                        <option value="reel">Reel</option>
-                    </select>
-                </div>
+                <div class="field"><label>Account / Channel ID</label><input type="text" id="f-account-id"></div>
             </div>
-            <div class="field"><label>Site ID (channel, playlist, page ID)</label><input type="text" id="f-site-id"></div>
-            <div class="field"><label>API Key Env Var</label><input type="text" id="f-site-api" placeholder="e.g. YOUTUBE_API_KEY"></div>
-            <div class="form-row">
-                <div class="field"><label>API Endpoint</label><input type="text" id="f-api-endpoint"></div>
-                <div class="field"><label>Page URL</label><input type="text" id="f-page-url"></div>
-            </div>
-            <div class="form-row">
-                <div class="field"><label>DB Table</label><input type="text" id="f-db-table"></div>
-                <div class="field"><label>Thumb Dir</label><input type="text" id="f-thumb-dir"></div>
-            </div>
-            <div class="field"><label>Include Filters (+)</label><textarea id="f-filter-pos" placeholder="Comma-separated: #Invite, #YadaYah"></textarea></div>
-            <div class="field"><label>Exclude Filters (-)</label><textarea id="f-filter-neg" placeholder="Comma-separated: Private, Deleted video"></textarea></div>
-            <div class="form-row">
-                <div class="field"><label>Items Per Load</label><input type="number" id="f-per-page" placeholder="0 = unlimited"></div>
-                <div class="field"><label>Paging Style</label>
-                    <select id="f-paging-code">
-                        <option value="none">None</option>
-                        <option value="auto">Auto (infinite scroll)</option>
-                        <option value="load_more">Load More (button)</option>
-                        <option value="page_numbers">Page Numbers</option>
-                    </select>
-                </div>
-            </div>
-            <div class="field">
-                <label><input type="checkbox" id="f-active" checked> Active</label>
-            </div>
+            <div class="field"><label>API Key</label><input type="text" id="f-api-key" placeholder="API key or token"></div>
+            <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
 
-            <div class="schedule-section">
-                <h4>Schedule</h4>
-                <div id="schedules-container"></div>
-                <button class="add-sched-btn" onclick="addScheduleRow()">+ Add Schedule</button>
-            </div>
+            <h4 style="margin:16px 0 8px;border-top:1px solid #e0e0e0;padding-top:16px;">Schedule</h4>
+            <div id="schedules-container"></div>
+            <button class="add-sched-btn" onclick="addScheduleRow()">+ Add Schedule</button>
 
             <div class="form-actions">
-                <button class="btn btn-primary" onclick="saveFeed()">Save</button>
+                <button class="btn btn-primary" onclick="saveFeedSource()">Save</button>
                 <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
             </div>
         </div>
     </div>
 </div>
 
-<script src="js/admin-pages.js?v=2"></script>
+<!-- Edit Page Mapping Form -->
+<div id="pf-form-overlay" class="form-overlay" onclick="if(event.target===this)closePfForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="pf-form-title">Edit Page Mapping</h3>
+            <button onclick="closePfForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="pf-key">
+            <div class="field"><label>Feed Source</label>
+                <select id="pf-feed-source"></select>
+            </div>
+            <div class="field"><label>Page</label>
+                <select id="pf-page"></select>
+            </div>
+            <div class="field"><label>Include Filters (+)</label><textarea id="pf-filter-pos" placeholder="Comma-separated: #Invite, #YadaYah"></textarea></div>
+            <div class="field"><label>Exclude Filters (-)</label><textarea id="pf-filter-neg" placeholder="Comma-separated: Private, Deleted video"></textarea></div>
+            <div class="field"><label>Sort</label><input type="number" id="pf-sort" value="0" style="width:80px"></div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="savePageMapping()">Save</button>
+                <button class="btn btn-secondary" onclick="closePfForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
 <script>
 var API = '/api';
 var feeds = [];
@@ -253,42 +231,76 @@ function togglePassword() {
     input.type = input.type === 'password' ? 'text' : 'password';
 }
 
+var allPages = [];
+var pageMappings = [];
+
 function loadFeeds() {
-    fetch(API + '/admin-feeds.php', {credentials:'include'})
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            feeds = data;
-            renderFeeds();
-        });
+    Promise.all([
+        fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r) { return r.json(); }),
+        fetch(API + '/admin-feeds.php?page_feeds=1&feed_key=0', {credentials:'include'}).then(function(r) { return r.json(); }).catch(function() { return {pages:[]}; }),
+        fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return r.json(); }).catch(function() { return {page_feeds:[]}; })
+    ]).then(function(results) {
+        feeds = Array.isArray(results[0]) ? results[0] : [];
+        allPages = (results[1] && results[1].pages) ? results[1].pages : [];
+        pageMappings = (results[2] && results[2].page_feeds) ? results[2].page_feeds : [];
+        renderAll();
+    });
 }
 
-function renderFeeds() {
+function renderAll() {
+    // Feed Sources table
     var body = document.getElementById('feeds-body');
     var html = '';
     for (var i = 0; i < feeds.length; i++) {
         var f = feeds[i];
         var statusBadge = f.feed_active_flag ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>';
-        var schedText = f.schedule_count > 0 ? f.schedule_count + ' rule(s)' : '<span style="color:#999">None</span>';
-        var lastRun = f.last_run ? new Date(f.last_run).toLocaleDateString() + ' ' + new Date(f.last_run).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '-';
-        html += '<tr onclick="editFeed(' + f.feed_key + ')">'
+        html += '<tr onclick="editFeedSource(' + f.feed_key + ')">'
             + '<td><strong>' + esc(f.feed_name) + '</strong></td>'
             + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
-            + '<td>' + esc(f.feed_type_code || '') + '</td>'
-            + '<td>' + esc(f.feed_page_url || '') + '</td>'
-            + '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.feed_filter_positive || '') + '</td>'
-            + '<td>' + (f.feed_per_page || 'All') + '</td>'
-            + '<td>' + esc(f.feed_paging_code || 'none') + '</td>'
-            + '<td>' + schedText + '</td>'
-            + '<td style="font-size:0.8rem">' + lastRun + '</td>'
+            + '<td style="font-size:0.8rem">' + esc(f.feed_site_id || f.feed_account_id || '') + '</td>'
             + '<td>' + statusBadge + '</td>'
             + '<td class="actions" onclick="event.stopPropagation()">'
-            + '<button onclick="editFeed(' + f.feed_key + ')">Edit</button>'
+            + '<button onclick="editFeedSource(' + f.feed_key + ')">Edit</button>'
             + '<button onclick="syncFeed(' + f.feed_key + ')" style="background:#e8f4fd">Sync</button>'
-            + '<button onclick="deleteFeed(' + f.feed_key + ',\'' + esc(f.feed_name) + '\')">Del</button>'
             + '</td></tr>';
     }
     body.innerHTML = html;
-    document.getElementById('feed-count').textContent = feeds.length + ' feed(s)';
+
+    // Page Mappings table
+    var pfBody = document.getElementById('page-feeds-body');
+    var pfHtml = '';
+    var feedMap = {};
+    feeds.forEach(function(f) { feedMap[f.feed_key] = f.feed_name + ' (' + f.feed_site_code + ')'; });
+    for (var i = 0; i < pageMappings.length; i++) {
+        var pf = pageMappings[i];
+        pfHtml += '<tr onclick="editPageMapping(' + pf.feed_page_key + ')">'
+            + '<td><strong>' + esc(pf.page_code || '') + '</strong></td>'
+            + '<td>' + esc(feedMap[pf.feed_key] || 'Unknown') + '</td>'
+            + '<td>' + esc(pf.feed_page_filter_include || '') + '</td>'
+            + '<td>' + esc(pf.feed_page_filter_exclude || '') + '</td>'
+            + '<td>' + (pf.feed_page_sort || 0) + '</td>'
+            + '<td class="actions" onclick="event.stopPropagation()">'
+            + '<button onclick="editPageMapping(' + pf.feed_page_key + ')">Edit</button>'
+            + '<button onclick="deletePageMapping(' + pf.feed_page_key + ')">Del</button>'
+            + '</td></tr>';
+    }
+    pfBody.innerHTML = pfHtml;
+    document.getElementById('feed-count').textContent = pageMappings.length + ' mapping(s)';
+
+    // Populate dropdowns in page mapping form
+    var pfFeedSelect = document.getElementById('pf-feed-source');
+    var opts = '<option value="">— Select Feed Source —</option>';
+    feeds.forEach(function(f) {
+        opts += '<option value="' + f.feed_key + '">' + esc(f.feed_name + ' (' + f.feed_site_code + ')') + '</option>';
+    });
+    pfFeedSelect.innerHTML = opts;
+
+    var pfPageSelect = document.getElementById('pf-page');
+    var pOpts = '<option value="">— Select Page —</option>';
+    allPages.forEach(function(p) {
+        pOpts += '<option value="' + p.page_key + '">' + esc(p.page_code) + '</option>';
+    });
+    pfPageSelect.innerHTML = pOpts;
 }
 
 function esc(s) {
@@ -297,24 +309,21 @@ function esc(s) {
     return d.innerHTML;
 }
 
-function openForm(data) {
+// ── Feed Source form ──
+function editFeedSource(key) {
+    fetch(API + '/admin-feeds.php?feed_key=' + key, {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) { openFeedSourceForm(d); });
+}
+
+function openFeedSourceForm(data) {
     var d = data || {};
-    document.getElementById('form-title').textContent = d.feed_key ? 'Edit Feed' : 'Add Feed';
+    document.getElementById('form-title').textContent = d.feed_key ? 'Edit Feed Source' : 'Add Feed Source';
     document.getElementById('f-key').value = d.feed_key || '';
     document.getElementById('f-name').value = d.feed_name || '';
-    document.getElementById('f-sort').value = d.feed_sort || 0;
     document.getElementById('f-site-code').value = d.feed_site_code || 'YouTube';
-    document.getElementById('f-type-code').value = d.feed_type_code || 'channel';
-    document.getElementById('f-site-id').value = d.feed_site_id || '';
-    document.getElementById('f-site-api').value = d.feed_site_api || '';
-    document.getElementById('f-api-endpoint').value = d.feed_api_endpoint || '';
-    document.getElementById('f-page-url').value = d.feed_page_url || '';
-    document.getElementById('f-db-table').value = d.feed_db_table || '';
-    document.getElementById('f-thumb-dir').value = d.feed_thumb_dir || '';
-    document.getElementById('f-filter-pos').value = d.feed_filter_positive || '';
-    document.getElementById('f-filter-neg').value = d.feed_filter_negative || '';
-    document.getElementById('f-per-page').value = d.feed_per_page || 0;
-    document.getElementById('f-paging-code').value = d.feed_paging_code || 'none';
+    document.getElementById('f-account-id').value = d.feed_site_id || d.feed_account_id || '';
+    document.getElementById('f-api-key').value = d.feed_api_key || '';
     document.getElementById('f-active').checked = d.feed_active_flag !== false;
 
     var container = document.getElementById('schedules-container');
@@ -371,41 +380,71 @@ function collectSchedules() {
     return schedules;
 }
 
-function saveFeed() {
+function saveFeedSource() {
     var payload = {
         feed_key: document.getElementById('f-key').value || null,
         feed_name: document.getElementById('f-name').value,
         feed_site_code: document.getElementById('f-site-code').value,
-        feed_type_code: document.getElementById('f-type-code').value,
-        feed_site_id: document.getElementById('f-site-id').value,
-        feed_site_api: document.getElementById('f-site-api').value,
-        feed_api_endpoint: document.getElementById('f-api-endpoint').value,
-        feed_page_url: document.getElementById('f-page-url').value,
-        feed_db_table: document.getElementById('f-db-table').value,
-        feed_thumb_dir: document.getElementById('f-thumb-dir').value,
-        feed_filter_positive: document.getElementById('f-filter-pos').value,
-        feed_filter_negative: document.getElementById('f-filter-neg').value,
-        feed_per_page: parseInt(document.getElementById('f-per-page').value) || 0,
-        feed_paging_code: document.getElementById('f-paging-code').value,
+        feed_account_id: document.getElementById('f-account-id').value,
+        feed_api_key: document.getElementById('f-api-key').value,
         feed_active_flag: document.getElementById('f-active').checked,
-        feed_sort: parseInt(document.getElementById('f-sort').value) || 0,
         schedules: collectSchedules()
     };
-
     fetch(API + '/admin-feeds.php', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    })
-    .then(function(r) { return r.json(); })
+    }).then(function(r) { return r.json(); })
     .then(function() { closeForm(); loadFeeds(); });
 }
 
-function editFeed(key) {
-    fetch(API + '/admin-feeds.php?feed_key=' + key, {credentials:'include'})
-        .then(function(r) { return r.json(); })
-        .then(function(data) { openForm(data); });
+// ── Page Mapping form ──
+function addPageMapping() { openPageMappingForm({}); }
+
+function editPageMapping(key) {
+    var pf = pageMappings.find(function(p) { return p.feed_page_key == key; });
+    openPageMappingForm(pf || {});
+}
+
+function openPageMappingForm(d) {
+    document.getElementById('pf-form-title').textContent = d.feed_page_key ? 'Edit Page Mapping' : 'Add Page Mapping';
+    document.getElementById('pf-key').value = d.feed_page_key || '';
+    document.getElementById('pf-feed-source').value = d.feed_key || '';
+    document.getElementById('pf-page').value = d.page_key || '';
+    document.getElementById('pf-filter-pos').value = d.feed_page_filter_include || '';
+    document.getElementById('pf-filter-neg').value = d.feed_page_filter_exclude || '';
+    document.getElementById('pf-sort').value = d.feed_page_sort || 0;
+    document.getElementById('pf-form-overlay').classList.add('open');
+}
+
+function closePfForm() { document.getElementById('pf-form-overlay').classList.remove('open'); }
+
+function savePageMapping() {
+    var key = document.getElementById('pf-key').value;
+    var payload = {
+        feed_page_action: key ? 'update' : 'create',
+        feed_page_key: key || undefined,
+        feed_key: parseInt(document.getElementById('pf-feed-source').value),
+        page_key: parseInt(document.getElementById('pf-page').value),
+        feed_page_filter_include: document.getElementById('pf-filter-pos').value,
+        feed_page_filter_exclude: document.getElementById('pf-filter-neg').value,
+        feed_page_sort: parseInt(document.getElementById('pf-sort').value) || 0
+    };
+    fetch(API + '/admin-feeds.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); })
+    .then(function() { closePfForm(); loadFeeds(); });
+}
+
+function deletePageMapping(key) {
+    if (!confirm('Delete this page mapping?')) return;
+    fetch(API + '/admin-feeds.php', {
+        method: 'DELETE', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ feed_page_key: key })
+    }).then(function() { loadFeeds(); });
 }
 
 function deleteFeed(key, name) {
@@ -445,6 +484,6 @@ function syncFeed(key) {
 // Init
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>

@@ -15,9 +15,10 @@ $db = getDb();
 if (isset($_GET['user_key'])) {
     $uk = (int)$_GET['user_key'];
     $stmt = $db->prepare("
-        SELECT u.user_key, u.user_display_name, u.user_handle, u.user_avatar, u.user_bio,
-               u.user_reputation, u.user_topic_count AS topic_count, u.user_reply_count AS reply_count,
-               u.user_last_active_dtime, u.user_dtime AS user_created_dtime
+        SELECT u.user_key, u.user_name_display, u.user_handle, u.user_avatar, u.user_bio,
+               u.user_email, u.user_reputation, u.user_last_active_dtime, u.user_dtime AS user_created_dtime,
+               (SELECT COUNT(*) FROM yy_community_topic t WHERE t.user_key = u.user_key AND t.topic_active_flag = TRUE) AS topic_count,
+               (SELECT COUNT(*) FROM yy_community_reply r WHERE r.user_key = u.user_key AND r.reply_active_flag = TRUE) AS reply_count
         FROM yy_user u
         WHERE u.user_key = ? AND u.user_active_flag = TRUE
     ");
@@ -28,7 +29,7 @@ if (isset($_GET['user_key'])) {
 }
 
 $page = max(1, (int)($_GET['page'] ?? 1));
-$limit = 30;
+$limit = 32;
 $offset = ($page - 1) * $limit;
 $search = trim($_GET['q'] ?? '');
 $sort = $_GET['sort'] ?? 'reputation';
@@ -38,7 +39,7 @@ $where = "WHERE u.user_active_flag = TRUE AND u.user_banned_flag = FALSE AND EXI
 $params = [];
 
 if ($search) {
-    $where .= " AND (u.user_display_name ILIKE ? OR u.user_handle ILIKE ?)";
+    $where .= " AND (u.user_name_display ILIKE ? OR u.user_handle ILIKE ?)";
     $params[] = '%' . $search . '%';
     $params[] = '%' . $search . '%';
 }
@@ -46,7 +47,7 @@ if ($search) {
 // Build ORDER BY
 $orderBy = match ($sort) {
     'newest' => 'u.user_key DESC',
-    'name' => 'u.user_display_name ASC',
+    'name' => 'u.user_name_display ASC',
     default => 'u.user_reputation DESC, u.user_key DESC',
 };
 
@@ -58,7 +59,7 @@ $total = (int)$countStmt->fetchColumn();
 // Fetch
 $allParams = array_merge($params, [$limit, $offset]);
 $stmt = $db->prepare("
-    SELECT u.user_key, COALESCE(NULLIF(u.user_display_name,''), u.user_name_full, 'Anonymous') AS user_display_name, u.user_handle, u.user_avatar,
+    SELECT u.user_key, COALESCE(NULLIF(u.user_name_display,''), u.user_name_display, 'Anonymous') AS user_name_display, u.user_handle, u.user_avatar,
            u.user_reputation, u.user_topic_count AS topic_count, u.user_reply_count AS reply_count, u.user_last_active_dtime
     FROM yy_user u
     {$where}

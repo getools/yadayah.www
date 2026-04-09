@@ -23,6 +23,10 @@ $result = [];
 foreach ($rows as $row) {
     $result[$row['setting_code']] = $row['setting_value'];
 }
+
+// Include model setting so frontend knows if system is offline
+$modelStmt = $db->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'ask_model'");
+$result['model'] = $modelStmt->fetchColumn() ?: '';
 $json = json_encode($result, JSON_UNESCAPED_UNICODE);
 file_put_contents($CACHE_FILE, $json);
 

@@ -239,7 +239,7 @@ if ($total > 0) {
 // Add flip_url to each result
 foreach ($results as &$row) {
     if ($row['flip_code'] && $row['page']) {
-        $row['flip_url'] = 'https://book.yadayah.com/books/' . $row['flip_code'] . '/#p=' . ($row['page'] + 6);
+        $row['flip_url'] = 'https://book.yadayah.com/' . $row['flip_code'] . '/#p=' . ($row['page'] + 6);
     } else {
         $row['flip_url'] = null;
     }

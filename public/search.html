@@ -12,6 +12,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         @font-face {
             font-family: "Yada Towrah";
             src: url('fonts/YadaTowrah-Times.woff2') format('woff2'),
@@ -203,61 +205,6 @@
             .page-tabs a { padding: 10px 16px; font-size: 0.95rem; }
         }
 
-        /* Footer */
-        footer {
-            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
-            position: relative; overflow: hidden;
-            padding: 30px 20px 20px;
-            margin: 0 -20px;
-            color: #E5C86C;
-        }
-        footer .footer-video {
-            position: absolute; top: 50%; left: 50%;
-            min-width: 100%; min-height: 100%;
-            transform: translate(-50%, -50%);
-            object-fit: cover; z-index: 0;
-        }
-        footer .footer-inner {
-            position: relative; z-index: 1;
-            max-width: 1000px; margin: 0 auto;
-            display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start;
-        }
-        footer .footer-col { min-width: auto; }
-        footer .footer-col h4 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 1rem;
-            color: #E5C86C;
-            border-bottom: 1px solid rgba(229,200,108,0.3);
-            padding-bottom: 6px;
-            margin: 0 0 10px;
-        }
-        footer .footer-col a {
-            display: block;
-            font-size: 0.9rem;
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 3px 0;
-        }
-        footer .footer-links {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 4px 20px;
-        }
-        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
-        .footer-links-3col {
-            grid-template-columns: auto auto auto;
-        }
-        footer .footer-links-1col {
-            grid-template-columns: 1fr;
-        }
-        footer .footer-col a:hover { color: #fff; }
-        footer .footer-bottom {
-            position: relative; z-index: 1;
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.8rem;
-            color: rgba(255,255,255,0.5);
-        }
     </style>
 <script src="/js/site-nav.js"></script>
 </head>
@@ -563,52 +510,7 @@
         initFromUrl();
     </script>
 
-    <footer>
-        <video class="footer-video" autoplay muted loop playsinline>
-        </video>
-        <div class="footer-inner">
-            <div class="footer-col">
-                <h4 data-config="footer-text-books">Books</h4>
-                <div class="footer-links footer-links-2col">
-                    <a href="books#An_Intro_to_God">An Intro to God</a>
-                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
-                    <a href="books#Observations">Observations</a>
-                    <a href="books#Coming_Home">Coming Home</a>
-                    <a href="books#Babel">Babel</a>
-                    <a href="books#Twistianity">Twistianity</a>
-                    <a href="books#God_Damn_Religion">God Damn Religion</a>
-                    <a href="books#In_the_Company">In the Company</a>
-                </div>
-            </div>
-            <div class="footer-col">
-            <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;align-items:flex-start;">
-                <div class="footer-links footer-links-1col">
-                    <a href="/ask">Ask</a>
-                    <a href="/blog">Blog</a>
-                    <a href="/vlog">Vlog</a>
-                    <a href="/media">Media</a>
-                    <a href="/books">Books</a>
-                </div>
-                <div class="footer-links footer-links-1col">
-                    <a href="/timeline">Timeline</a>
-                    <a href="/translations">Translations</a>
-                    <a href="/glossary">Glossary</a>
-                    <a href="/dss">Dead Sea Scrolls</a>
-                    <a href="/10-7-memorial">10-7 Memorial</a>
-                </div>
-                <div class="footer-links footer-links-1col">
-                    <a href="/music">Music</a>
-                    <a href="/invite">Invite</a>
-                    <a href="/shorts">Shorts</a>
-                    <a href="/Craig_Winn">Craig Winn</a>
-                    <a href="/resources">Resources</a>
-                </div>
-            </div>
-        </div>
-        </div>
-        <div class="footer-bottom">Copyright 2001 - 2026</div>
-    </footer>
+    <footer></footer>
 <script src="/js/bg-video.js"></script>
 <script>
 (function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
@@ -618,5 +520,6 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
+<script src="/js/site-footer.js"></script>
 </body>
 </html>

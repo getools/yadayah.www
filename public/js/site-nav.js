@@ -44,10 +44,19 @@
                 logoImg.style.padding = '0';
                 logoImg.style.margin  = '0';
                 logoImg.style.display = 'block'; // eliminate inline baseline gap
-                // Also fix the parent <a> tag if present
+                // Ensure logo is wrapped in a link to home
                 if (logoImg.parentElement && logoImg.parentElement.tagName === 'A') {
                     logoImg.parentElement.style.display = 'block';
                     logoImg.parentElement.style.lineHeight = '0';
+                    if (!logoImg.parentElement.getAttribute('href')) logoImg.parentElement.href = '/';
+                } else {
+                    // Wrap in <a href="/">
+                    var logoLink = document.createElement('a');
+                    logoLink.href = '/';
+                    logoLink.style.display = 'block';
+                    logoLink.style.lineHeight = '0';
+                    logoImg.parentElement.insertBefore(logoLink, logoImg);
+                    logoLink.appendChild(logoImg);
                 }
             }
             if (headerEl)    headerEl.style.padding    = '0';

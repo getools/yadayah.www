@@ -133,14 +133,23 @@ function sendNotificationEmail(PDO $db, int $recipientKey, string $subject, stri
     if (!$user || !$user['user_email']) return false;
     if ($user['user_email_notifications'] === false || $user['user_email_notifications'] === 'f') return false;
 
-    require_once __DIR__ . '/send-mail.php';
     $htmlBody = '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">'
         . $body
         . '<hr style="border:none;border-top:1px solid #eee;margin:20px 0;">'
         . '<p style="font-size:0.8em;color:#999;">You received this because you have notifications enabled. '
         . '<a href="https://yadayah.com/community#settings">Manage preferences</a></p>'
         . '</div>';
-    return sendMail($db, $user['user_email'], $subject, $htmlBody);
+
+    // Queue the email and trigger async processing
+    $stmt = $db->prepare("INSERT INTO yy_email_queue (to_email, subject, body_html) VALUES (?, ?, ?)");
+    $stmt->execute([$user['user_email'], $subject, $htmlBody]);
+
+    // Fire-and-forget: kick off the queue processor in the background
+    $script = __DIR__ . '/process-email-queue.php';
+    if (file_exists($script)) {
+        @exec('php ' . escapeshellarg($script) . ' > /dev/null 2>&1 &');
+    }
+    return true;
 }
 
 /**

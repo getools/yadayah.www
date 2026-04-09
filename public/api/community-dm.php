@@ -33,7 +33,7 @@ if ($method === 'GET') {
         // Get messages
         $stmt = $db->prepare("
             SELECT m.message_key, m.user_key, m.message_body, m.message_dtime,
-                   u.user_display_name, u.user_avatar
+                   u.user_name_display, u.user_avatar
             FROM yy_community_dm_message m
             LEFT JOIN yy_user u ON m.user_key = u.user_key
             WHERE m.thread_key = ? AND m.message_active_flag = TRUE
@@ -44,7 +44,7 @@ if ($method === 'GET') {
 
         // Get other participant info
         $stmt = $db->prepare("
-            SELECT u.user_key, u.user_display_name, u.user_avatar, u.user_last_active_dtime
+            SELECT u.user_key, u.user_name_display, u.user_avatar, u.user_last_active_dtime
             FROM yy_community_dm_participant p
             JOIN yy_user u ON p.user_key = u.user_key
             WHERE p.thread_key = ? AND p.user_key != ?
@@ -62,7 +62,7 @@ if ($method === 'GET') {
     // List threads (default)
     $stmt = $db->prepare("
         SELECT t.thread_key, t.last_message_dtime,
-               ou.user_key AS other_user_key, ou.user_display_name, ou.user_avatar, ou.user_last_active_dtime,
+               ou.user_key AS other_user_key, ou.user_name_display, ou.user_avatar, ou.user_last_active_dtime,
                last_msg.message_body AS last_message,
                (SELECT COUNT(*) FROM yy_community_dm_message m2
                 WHERE m2.thread_key = t.thread_key AND m2.user_key != ?
@@ -93,7 +93,7 @@ if ($method === 'GET') {
             'unread_count' => (int)$t['unread_count'],
             'other_user' => [
                 'user_key' => $t['other_user_key'],
-                'user_display_name' => $t['user_display_name'],
+                'user_name_display' => $t['user_name_display'],
                 'user_avatar' => $t['user_avatar'],
                 'user_last_active_dtime' => $t['user_last_active_dtime'],
             ],

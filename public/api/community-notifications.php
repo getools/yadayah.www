@@ -27,7 +27,7 @@ if ($method === 'GET') {
     $stmt = $db->prepare("
         SELECT n.notification_key, n.notification_type, n.target_type, n.target_key,
                n.topic_key, n.notification_text, n.read_flag, n.notification_dtime,
-               u.user_display_name AS actor_name, u.user_avatar AS actor_avatar
+               u.user_name_display AS actor_name, u.user_avatar AS actor_avatar
         FROM yy_community_notification n
         LEFT JOIN yy_user u ON n.actor_key = u.user_key
         WHERE n.user_key = ?

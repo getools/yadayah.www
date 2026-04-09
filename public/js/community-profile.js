@@ -17,7 +17,7 @@ CommunityProfile.show = function() {
     Community.api('/api/community-profile.php').then(function(u) {
         var esc = Community.esc;
         var av = u.user_avatar;
-        var nm = u.user_display_name || '';
+        var nm = u.user_name_display || '';
         var avImg = av
             ? '<img class="profile-avatar-lg" src="' + esc(av) + '" onerror="this.outerHTML=\'<div class=&quot;profile-avatar-circle-lg&quot;>' + esc(Community.initials(nm)) + '</div>\'">'
             : '<div class="profile-avatar-circle-lg">' + esc(Community.initials(nm)) + '</div>';
@@ -42,7 +42,7 @@ CommunityProfile.show = function() {
         } else {
             html += '<p style="font-size:0.85rem;color:#666;margin:0 0 12px;">You signed in with social login. Set a password to also enable email login.</p>';
         }
-        html += '<div class="profile-field"><label>New Password</label><input id="pw-new" type="password" placeholder="At least 6 characters"></div>';
+        html += '<div class="profile-field"><label>New Password</label><input id="pw-new" type="password" placeholder="Enter new password"></div>';
         html += '<div class="profile-field"><label>Confirm New Password</label><input id="pw-confirm" type="password"></div>';
         html += '<div class="profile-actions"><button class="btn btn-primary" onclick="CommunityProfile.changePassword(' + (u.has_password ? 'true' : 'false') + ')">Update Password</button></div>';
         html += '</div>';
@@ -73,16 +73,6 @@ CommunityProfile.show = function() {
             html += '</div>';
         }
 
-        // Show buttons to link providers not yet linked
-        var unlinked = allProviders.filter(function(p) { return linkedProviders.indexOf(p) < 0 && p !== 'email'; });
-        if (unlinked.length) {
-            html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-            for (var p = 0; p < unlinked.length; p++) {
-                html += '<a class="btn btn-sm btn-outline" href="/api/oauth-login.php?provider=' + unlinked[p] + '&return=/community%23profile&link=1">'
-                    + 'Link ' + esc(providerLabels[unlinked[p]]) + '</a>';
-            }
-            html += '</div>';
-        }
         html += '</div>';
 
         // Merge Account section
@@ -125,7 +115,7 @@ CommunityProfile.save = function() {
             Community.showMsg(msg, res.error, 'profile-msg error');
         } else {
             Community.showMsg(msg, 'Profile updated!', 'profile-msg success');
-            Community.currentUser.user_display_name = data.display_name;
+            Community.currentUser.user_name_display = data.display_name;
             CommunityAuth.renderAuth();
         }
     });

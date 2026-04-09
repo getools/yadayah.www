@@ -20,67 +20,93 @@ function getPageKey(PDO $db, string $code): int {
 $pageCode = trim($_GET['page'] ?? '');
 if (!$pageCode) errorResponse('page parameter required');
 
-// GET: list page_feed rows + available feeds
+// GET: list feed_page rows + available feeds
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $pageKey = getPageKey($db, $pageCode);
 
     $stmt = $db->prepare("
-        SELECT pf.page_feed_key, pf.feed_key, pf.page_feed_filter_include,
-               pf.page_feed_filter_exclude, pf.page_feed_sort,
-               f.feed_name, f.feed_site_code, f.feed_type_code
-        FROM yy_page_feed pf
-        JOIN yy_feed f ON f.feed_key = pf.feed_key
-        WHERE pf.page_key = ?
-        ORDER BY pf.page_feed_sort, pf.page_feed_key
+        SELECT fp.feed_page_key, fp.feed_key, fp.feed_page_name,
+               fp.feed_page_type_code, fp.feed_page_list,
+               fp.feed_page_filter_include, fp.feed_page_filter_exclude,
+               fp.feed_page_duration_code, fp.feed_page_per_page,
+               fp.feed_page_paging_code, fp.feed_page_api_endpoint,
+               fp.feed_page_sort, fp.feed_page_active_flag,
+               f.feed_name, f.feed_site_code
+        FROM yy_feed_page fp
+        JOIN yy_feed f ON f.feed_key = fp.feed_key
+        WHERE fp.page_key = ?
+        ORDER BY fp.feed_page_sort, fp.feed_page_key
     ");
     $stmt->execute([$pageKey]);
     $assigned = $stmt->fetchAll();
 
-    $feeds = $db->query("SELECT feed_key, feed_name, feed_site_code, feed_type_code FROM yy_feed WHERE feed_active_flag = TRUE ORDER BY feed_sort, feed_name")->fetchAll();
+    $feeds = $db->query("SELECT feed_key, feed_name, feed_site_code FROM yy_feed WHERE feed_active_flag = TRUE ORDER BY feed_name")->fetchAll();
 
     jsonResponse(['assigned' => $assigned, 'feeds' => $feeds]);
 }
 
-// POST: add a feed association
+// POST: add a feed_page association
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pageKey = getPageKey($db, $pageCode);
     $input   = json_decode(file_get_contents('php://input'), true);
     $feedKey = (int)($input['feed_key'] ?? 0);
-    $include = trim($input['page_feed_filter_include'] ?? '');
-    $exclude = trim($input['page_feed_filter_exclude'] ?? '');
-    $sort    = (int)($input['page_feed_sort'] ?? 0);
     if (!$feedKey) errorResponse('feed_key required');
-    $stmt = $db->prepare("INSERT INTO yy_page_feed (page_key, feed_key, page_feed_filter_include, page_feed_filter_exclude, page_feed_sort) VALUES (?,?,?,?,?) RETURNING page_feed_key");
-    $stmt->execute([$pageKey, $feedKey, $include ?: null, $exclude ?: null, $sort]);
-    jsonResponse(['page_feed_key' => $stmt->fetchColumn()]);
+
+    $stmt = $db->prepare("
+        INSERT INTO yy_feed_page (feed_key, page_key, feed_page_name, feed_page_type_code, feed_page_list,
+            feed_page_filter_include, feed_page_filter_exclude, feed_page_duration_code,
+            feed_page_per_page, feed_page_paging_code, feed_page_api_endpoint, feed_page_sort)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING feed_page_key
+    ");
+    $stmt->execute([
+        $feedKey, $pageKey,
+        trim($input['feed_page_name'] ?? '') ?: null,
+        trim($input['feed_page_type_code'] ?? '') ?: null,
+        trim($input['feed_page_list'] ?? '') ?: null,
+        trim($input['feed_page_filter_include'] ?? '') ?: null,
+        trim($input['feed_page_filter_exclude'] ?? '') ?: null,
+        trim($input['feed_page_duration_code'] ?? '') ?: null,
+        (int)($input['feed_page_per_page'] ?? 0),
+        trim($input['feed_page_paging_code'] ?? '') ?: 'none',
+        trim($input['feed_page_api_endpoint'] ?? '') ?: null,
+        (int)($input['feed_page_sort'] ?? 0),
+    ]);
+    jsonResponse(['feed_page_key' => $stmt->fetchColumn()]);
 }
 
-// PUT: update an existing association
+// PUT: update an existing feed_page
 if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
-    $pfKey = (int)($_GET['key'] ?? 0);
-    if (!$pfKey) errorResponse('key required');
-    $input   = json_decode(file_get_contents('php://input'), true);
-    $feedKey = (int)($input['feed_key'] ?? 0);
-    $include = trim($input['page_feed_filter_include'] ?? '');
-    $exclude = trim($input['page_feed_filter_exclude'] ?? '');
-    $sort    = (int)($input['page_feed_sort'] ?? 0);
-    $sql = $feedKey
-        ? "UPDATE yy_page_feed SET feed_key=?, page_feed_filter_include=?, page_feed_filter_exclude=?, page_feed_sort=? WHERE page_feed_key=?"
-        : "UPDATE yy_page_feed SET page_feed_filter_include=?, page_feed_filter_exclude=?, page_feed_sort=? WHERE page_feed_key=?";
-    $params = $feedKey
-        ? [$feedKey, $include ?: null, $exclude ?: null, $sort, $pfKey]
-        : [$include ?: null, $exclude ?: null, $sort, $pfKey];
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
+    $fpKey = (int)($_GET['key'] ?? 0);
+    if (!$fpKey) errorResponse('key required');
+    $input = json_decode(file_get_contents('php://input'), true);
+
+    $fields = [
+        'feed_key', 'feed_page_name', 'feed_page_type_code', 'feed_page_list',
+        'feed_page_filter_include', 'feed_page_filter_exclude', 'feed_page_duration_code',
+        'feed_page_per_page', 'feed_page_paging_code', 'feed_page_api_endpoint', 'feed_page_sort',
+        'feed_page_active_flag'
+    ];
+    $sets = [];
+    $vals = [];
+    foreach ($fields as $f) {
+        if (array_key_exists($f, $input)) {
+            $sets[] = "$f = ?";
+            $vals[] = $input[$f];
+        }
+    }
+    if ($sets) {
+        $vals[] = $fpKey;
+        $db->prepare("UPDATE yy_feed_page SET " . implode(', ', $sets) . " WHERE feed_page_key = ?")->execute($vals);
+    }
     jsonResponse(['saved' => true]);
 }
 
-// DELETE: remove an association
+// DELETE: remove a feed_page
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
-    $pfKey = (int)($_GET['key'] ?? 0);
-    if (!$pfKey) errorResponse('key required');
-    $stmt = $db->prepare("DELETE FROM yy_page_feed WHERE page_feed_key = ?");
-    $stmt->execute([$pfKey]);
+    $fpKey = (int)($_GET['key'] ?? 0);
+    if (!$fpKey) errorResponse('key required');
+    $stmt = $db->prepare("DELETE FROM yy_feed_page WHERE feed_page_key = ?");
+    $stmt->execute([$fpKey]);
     jsonResponse(['deleted' => true]);
 }
 

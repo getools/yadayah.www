@@ -204,9 +204,9 @@ CommunityDM.loadInbox = function() {
                 var unread = t.unread_count > 0;
                 var otherUser = t.other_user || {};
                 html += '<div class="dm-thread-item' + (unread ? ' unread' : '') + '" onclick="window.location.hash=\'#message/' + t.thread_key + '\'">'
-                    + Community.avatarHtml(otherUser.user_avatar, otherUser.user_display_name, 'dm-avatar', otherUser.user_last_active_dtime)
+                    + Community.clickableAvatar(otherUser.user_key, otherUser.user_avatar, otherUser.user_name_display, 'dm-avatar', otherUser.user_last_active_dtime)
                     + '<div class="dm-thread-info">'
-                    + '<div class="dm-thread-name">' + Community.esc(otherUser.user_display_name || 'Unknown') + (unread ? ' <span class="dm-unread-badge">' + t.unread_count + '</span>' : '') + '</div>'
+                    + '<div class="dm-thread-name">' + Community.esc(otherUser.user_name_display || 'Unknown') + (unread ? ' <span class="dm-unread-badge">' + t.unread_count + '</span>' : '') + '</div>'
                     + '<div class="dm-thread-preview">' + Community.esc(t.last_message || '') + '</div>'
                     + '</div>'
                     + '<div class="dm-thread-time">' + Community.timeAgo(t.last_message_dtime) + '</div>'
@@ -238,8 +238,8 @@ CommunityDM.loadThread = function(threadKey) {
 
         var html = '<a href="#messages" class="back-link">&larr; Back to inbox</a>';
         html += '<div class="dm-thread-header">'
-            + Community.avatarHtml(otherUser.user_avatar, otherUser.user_display_name, 'dm-header-avatar', otherUser.user_last_active_dtime)
-            + '<span class="dm-header-name">' + Community.esc(otherUser.user_display_name || 'Unknown') + '</span>'
+            + Community.clickableAvatar(otherUser.user_key, otherUser.user_avatar, otherUser.user_name_display, 'dm-header-avatar', otherUser.user_last_active_dtime)
+            + '<span class="dm-header-name">' + Community.esc(otherUser.user_name_display || 'Unknown') + '</span>'
             + '</div>';
 
         html += '<div class="dm-messages" id="dm-messages">';
@@ -311,9 +311,9 @@ CommunityDM.showCompose = function(recipientKey) {
                 if (!members.length) { dd.style.display = 'none'; return; }
                 var h = '';
                 members.forEach(function(m) {
-                    h += '<div class="mention-item" data-key="' + m.user_key + '" data-name="' + Community.esc(m.user_display_name) + '">'
-                        + Community.avatarHtml(m.user_avatar, m.user_display_name, 'mention-avatar', m.user_last_active_dtime)
-                        + '<span>' + Community.esc(m.user_display_name) + '</span></div>';
+                    h += '<div class="mention-item" data-key="' + m.user_key + '" data-name="' + Community.esc(m.user_name_display) + '">'
+                        + Community.clickableAvatar(m.user_key, m.user_avatar, m.user_name_display, 'mention-avatar', m.user_last_active_dtime)
+                        + '<span>' + Community.esc(m.user_name_display) + '</span></div>';
                 });
                 dd.innerHTML = h;
                 dd.style.display = '';
@@ -331,8 +331,8 @@ CommunityDM.showCompose = function(recipientKey) {
     if (recipientKey) {
         Community.api('/api/community-members.php?user_key=' + recipientKey).then(function(data) {
             var m = data.member || data;
-            if (m && m.user_display_name) {
-                input.value = m.user_display_name;
+            if (m && m.user_name_display) {
+                input.value = m.user_name_display;
                 input.setAttribute('data-key', recipientKey);
             }
         });
@@ -411,9 +411,9 @@ CommunityDM.popInbox = function() {
         threads.forEach(function(t) {
             var u = t.other_user || {};
             html += '<div class="chat-pop-thread' + (t.unread_count > 0 ? ' unread' : '') + '" onclick="CommunityDM.popThread(' + t.thread_key + ')">'
-                + Community.avatarHtml(u.user_avatar, u.user_display_name, 'dm-avatar', u.user_last_active_dtime)
+                + Community.clickableAvatar(u.user_key, u.user_avatar, u.user_name_display, 'dm-avatar', u.user_last_active_dtime)
                 + '<div style="flex:1;min-width:0;">'
-                + '<div class="cp-name">' + Community.esc(u.user_display_name || 'Unknown')
+                + '<div class="cp-name">' + Community.esc(u.user_name_display || 'Unknown')
                 + (t.unread_count > 0 ? ' <span class="dm-unread-badge">' + t.unread_count + '</span>' : '') + '</div>'
                 + '<div class="cp-preview">' + Community.esc(t.last_message || '') + '</div>'
                 + '</div>'
@@ -439,7 +439,7 @@ CommunityDM.popThread = function(threadKey) {
         var thread = data.thread || {};
         var otherUser = thread.other_user || {};
 
-        document.getElementById('chat-pop-title').textContent = otherUser.user_display_name || 'Messages';
+        document.getElementById('chat-pop-title').textContent = otherUser.user_name_display || 'Messages';
 
         var html = '<div class="chat-pop-msgs" id="chat-pop-msgs">';
         messages.forEach(function(m) {
@@ -552,9 +552,9 @@ CommunityDM.popCompose = function() {
                 members.forEach(function(m) {
                     if (Community.currentUser && m.user_key === Community.currentUser.user_key) return;
                     html += '<div class="chat-pop-thread" onclick="CommunityDM.popStartThread(' + m.user_key + ')">'
-                        + Community.avatarHtml(m.user_avatar, m.user_display_name, 'dm-avatar', m.user_last_active_dtime)
+                        + Community.clickableAvatar(m.user_key, m.user_avatar, m.user_name_display, 'dm-avatar', m.user_last_active_dtime)
                         + '<div style="flex:1;min-width:0;">'
-                        + '<div class="cp-name">' + Community.esc(m.user_display_name) + '</div>'
+                        + '<div class="cp-name">' + Community.esc(m.user_name_display) + '</div>'
                         + (m.user_handle ? '<div class="cp-preview">@' + Community.esc(m.user_handle) + '</div>' : '')
                         + '</div></div>';
                 });
@@ -591,8 +591,8 @@ CommunityDM.popStartThread = function(userKey) {
 
         Community.api('/api/community-members.php?user_key=' + userKey).then(function(d) {
             var m = d.member || d;
-            if (m && m.user_display_name) {
-                document.getElementById('chat-pop-title').textContent = m.user_display_name;
+            if (m && m.user_name_display) {
+                document.getElementById('chat-pop-title').textContent = m.user_name_display;
             }
         });
 

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/image-helpers.php';
 $user = requireAuth();
 $db = getDb();
 
@@ -49,19 +50,9 @@ if ($method === 'POST' || $method === 'PUT') {
     // Handle image upload
     $imageValue = $data['timeline_image'] ?? null;
     if (!empty($_FILES['image_file']) && $_FILES['image_file']['error'] === UPLOAD_ERR_OK) {
-        $file = $_FILES['image_file'];
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
-        if (!in_array($ext, $allowed)) {
-            errorResponse('Image must be: ' . implode(', ', $allowed));
-        }
-        if (!is_dir($UPLOAD_DIR)) mkdir($UPLOAD_DIR, 0755, true);
-        $safeName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', basename($file['name']));
-        $dest = "$UPLOAD_DIR/$safeName";
-        if (!move_uploaded_file($file['tmp_name'], $dest)) {
-            errorResponse('Failed to save image');
-        }
-        $imageValue = "u/timeline/$safeName";
+        $result = processImageUpload($db, $_FILES['image_file'], $UPLOAD_DIR, 'tl_');
+        if (!$result) errorResponse('Invalid image type');
+        $imageValue = "u/timeline/" . $result['filename'];
     }
 
     // Video: use URL/path (upload+conversion handled by admin-timeline-upload-video.php)

@@ -113,7 +113,7 @@ while (true) {
         if ($prevLatestDmKey > 0) {
             $stmt = $db->prepare("
                 SELECT m.thread_key, m.message_key, m.message_body, m.message_dtime,
-                       u.user_display_name, u.user_avatar
+                       u.user_name_display, u.user_avatar
                 FROM yy_community_dm_message m
                 LEFT JOIN yy_user u ON m.user_key = u.user_key
                 WHERE m.message_key > ? AND m.user_key != ?
@@ -136,5 +136,5 @@ while (true) {
         flush();
     }
 
-    sleep(3);
+    sleep(2);
 }

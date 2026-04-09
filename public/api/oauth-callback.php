@@ -11,7 +11,10 @@ $provider = $_GET['provider'] ?? '';
 $code = $_GET['code'] ?? '';
 $state = $_GET['state'] ?? '';
 $error = $_GET['error'] ?? '';
-$_oauthReturn = $_SESSION['oauth_return'] ?? '/community';
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'yadayah.com';
+$baseUrl = $scheme . '://' . $host;
+$_oauthReturn = $_SESSION['oauth_return'] ?? '/chat';
 
 if ($error) {
     unset($_SESSION['oauth_return']);
@@ -38,7 +41,7 @@ if ($provider === 'google') {
 
     $clientId = $settings['oauth-google-client-id'] ?? '';
     $clientSecret = $settings['oauth-google-client-secret'] ?? '';
-    $redirectUri = 'https://yadayah.com/api/oauth-callback.php?provider=google';
+    $redirectUri = $baseUrl . '/api/oauth-callback.php?provider=google';
 
     // Exchange code for tokens
     $tokenResp = file_get_contents('https://oauth2.googleapis.com/token', false, stream_context_create([
@@ -95,7 +98,7 @@ if ($provider === 'google') {
     $result = resolveOAuthUser($db, 'google', $oauthId, $email, $name, $avatar);
 
     if ($result['action'] === 'pending_link') {
-        $return = $_SESSION['oauth_return'] ?? '/community';
+        $return = $_SESSION['oauth_return'] ?? '/chat';
         unset($_SESSION['oauth_return']);
         header('Location: ' . $return . '#link-account');
         exit;
@@ -105,7 +108,7 @@ if ($provider === 'google') {
     $_SESSION['user_display_name'] = $name;
     $_SESSION['user_avatar'] = $avatar;
 
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
     header('Location: ' . $return);
     exit;
@@ -119,7 +122,7 @@ if ($provider === 'facebook') {
 
     $appId = $settings['oauth-facebook-app-id'] ?? '';
     $appSecret = $settings['oauth-facebook-app-secret'] ?? '';
-    $redirectUri = 'https://yadayah.com/api/oauth-callback.php?provider=facebook';
+    $redirectUri = $baseUrl . '/api/oauth-callback.php?provider=facebook';
 
     // Exchange code for access token
     $tokenUrl = 'https://graph.facebook.com/v22.0/oauth/access_token?' . http_build_query([
@@ -161,7 +164,7 @@ if ($provider === 'facebook') {
     $result = resolveOAuthUser($db, 'facebook', $oauthId, $email, $name, $avatar);
 
     if ($result['action'] === 'pending_link') {
-        $return = $_SESSION['oauth_return'] ?? '/community';
+        $return = $_SESSION['oauth_return'] ?? '/chat';
         unset($_SESSION['oauth_return']);
         header('Location: ' . $return . '#link-account');
         exit;
@@ -171,7 +174,7 @@ if ($provider === 'facebook') {
     $_SESSION['user_display_name'] = $name;
     $_SESSION['user_avatar'] = $avatar;
 
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
     header('Location: ' . $return);
     exit;

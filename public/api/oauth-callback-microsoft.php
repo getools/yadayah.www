@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $code = $_GET['code'] ?? '';
 $state = $_GET['state'] ?? '';
 $error = $_GET['error'] ?? '';
-$_oauthReturn = $_SESSION['oauth_return'] ?? '/community';
+$_oauthReturn = $_SESSION['oauth_return'] ?? '/chat';
 
 if ($error) {
     unset($_SESSION['oauth_return']);
@@ -34,7 +34,7 @@ foreach ($stmt->fetchAll() as $r) $settings[$r['setting_code']] = $r['setting_va
 
 $clientId = $settings['oauth-microsoft-client-id'] ?? '';
 $clientSecret = $settings['oauth-microsoft-client-secret'] ?? '';
-$redirectUri = 'https://yadayah.com/api/oauth-callback-microsoft.php';
+$redirectUri = $baseUrl . '/api/oauth-callback-microsoft.php';
 
 // Exchange code for tokens
 $tokenResp = @file_get_contents('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', false, stream_context_create([
@@ -90,7 +90,7 @@ if (!$oauthId) {
 $result = resolveOAuthUser($db, 'microsoft', $oauthId, $email, $name, '');
 
 if ($result['action'] === 'pending_link') {
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
     header('Location: ' . $return . '#link-account');
     exit;
@@ -100,7 +100,7 @@ $_SESSION['user_key'] = $result['user_key'];
 $_SESSION['user_display_name'] = $name;
 $_SESSION['user_avatar'] = '';
 
-$return = $_SESSION['oauth_return'] ?? '/community';
+$return = $_SESSION['oauth_return'] ?? '/chat';
 unset($_SESSION['oauth_return']);
 header('Location: ' . $return);
 exit;

@@ -2,8 +2,9 @@
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
+ini_set('session.gc_maxlifetime', (string)(315360000)); // 10 years
 session_set_cookie_params([
-    'lifetime' => 86400,
+    'lifetime' => 315360000, // 10 years
     'path' => '/',
     'httponly' => true,
     'samesite' => 'Lax',

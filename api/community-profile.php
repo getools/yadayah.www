@@ -14,13 +14,22 @@ $db = getDb();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
-    $stmt = $db->prepare("SELECT user_key, user_display_name, user_handle, user_email, user_avatar, user_bio, user_oauth_provider FROM yy_user WHERE user_key = ?");
+    $stmt = $db->prepare("SELECT user_key, user_name_display, user_handle, user_email, user_avatar, user_bio FROM yy_user WHERE user_key = ?");
     $stmt->execute([$userKey]);
     $user = $stmt->fetch();
     if (!$user) errorResponse('User not found', 404);
-    // Don't expose whether they have a password, just whether they CAN change it
-    $user['has_password'] = !empty($user['user_oauth_provider']) && $user['user_oauth_provider'] !== 'email' ? false : true;
-    unset($user['user_oauth_provider']);
+
+    // Check for email auth method with password
+    $authStmt = $db->prepare("SELECT auth_pass FROM yy_user_auth WHERE user_key = ? AND auth_provider = 'email' AND auth_active_flag = TRUE");
+    $authStmt->execute([$userKey]);
+    $emailAuth = $authStmt->fetch();
+    $user['has_password'] = $emailAuth && !empty($emailAuth['auth_pass']);
+
+    // Get linked auth methods
+    $methodsStmt = $db->prepare("SELECT user_auth_key, auth_provider, auth_email, auth_linked_dtime FROM yy_user_auth WHERE user_key = ? AND auth_active_flag = TRUE ORDER BY auth_linked_dtime");
+    $methodsStmt->execute([$userKey]);
+    $user['auth_methods'] = $methodsStmt->fetchAll();
+
     jsonResponse($user);
 }
 
@@ -86,9 +95,9 @@ if ($method === 'POST') {
         if (isset($data['display_name'])) {
             $name = trim($data['display_name']);
             if (!$name) errorResponse('Display name cannot be empty');
-            $fields[] = 'user_display_name = ?';
+            $fields[] = 'user_name_display = ?';
             $params[] = $name;
-            $_SESSION['user_display_name'] = $name;
+            $_SESSION['user_name_display'] = $name;
         }
         if (isset($data['handle'])) {
             $handle = trim($data['handle']);
@@ -128,17 +137,29 @@ if ($method === 'POST') {
         $newPass = $data['new_password'] ?? '';
         if (!strlen($newPass)) errorResponse('New password cannot be empty');
 
-        // Check if user has existing password
-        $stmt = $db->prepare("SELECT user_pass, user_oauth_provider FROM yy_user WHERE user_key = ?");
+        // Check yy_user_auth for existing email password
+        $stmt = $db->prepare("SELECT auth_pass FROM yy_user_auth WHERE user_key = ? AND auth_provider = 'email' AND auth_active_flag = TRUE");
         $stmt->execute([$userKey]);
-        $user = $stmt->fetch();
+        $emailAuth = $stmt->fetch();
 
-        if ($user['user_pass']) {
+        if ($emailAuth && $emailAuth['auth_pass']) {
             if (!$current) errorResponse('Current password is required');
-            if (!password_verify($current, $user['user_pass'])) errorResponse('Current password is incorrect');
+            if (!password_verify($current, $emailAuth['auth_pass'])) errorResponse('Current password is incorrect');
         }
 
         $hash = password_hash($newPass, PASSWORD_BCRYPT);
+        if ($emailAuth) {
+            $db->prepare("UPDATE yy_user_auth SET auth_pass = ? WHERE user_key = ? AND auth_provider = 'email' AND auth_active_flag = TRUE")
+                ->execute([$hash, $userKey]);
+        } else {
+            // Create email auth method (OAuth user setting a password for the first time)
+            $emailStmt = $db->prepare("SELECT user_email FROM yy_user WHERE user_key = ?");
+            $emailStmt->execute([$userKey]);
+            $userEmail = $emailStmt->fetchColumn();
+            $db->prepare("INSERT INTO yy_user_auth (user_key, auth_provider, auth_email, auth_pass) VALUES (?, 'email', ?, ?)")
+                ->execute([$userKey, $userEmail, $hash]);
+        }
+        // Keep yy_user.user_pass in sync for backward compatibility
         $db->prepare("UPDATE yy_user SET user_pass = ? WHERE user_key = ?")->execute([$hash, $userKey]);
         jsonResponse(['saved' => true]);
     }

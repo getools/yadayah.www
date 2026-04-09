@@ -89,10 +89,12 @@ function buildOrTsquery(string $text): string {
 $orQuery = buildOrTsquery($cleanQ);
 
 // --- Session tracking ---
+$askUserKey = $_SESSION['user_key'] ?? null;
+
 if (empty($_SESSION['ask_session_key'])) {
     $sessStmt = $pdo->prepare("
-        INSERT INTO yy_ask_session (session_id, ip_address, user_agent, referer, accept_language)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO yy_ask_session (session_id, ip_address, user_agent, referer, accept_language, user_key)
+        VALUES (?, ?, ?, ?, ?, ?)
         RETURNING ask_session_key
     ");
     $sessStmt->execute([
@@ -101,6 +103,7 @@ if (empty($_SESSION['ask_session_key'])) {
         $_SERVER['HTTP_USER_AGENT'] ?? '',
         $_SERVER['HTTP_REFERER'] ?? '',
         $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '',
+        $askUserKey,
     ]);
     $_SESSION['ask_session_key'] = (int)$sessStmt->fetchColumn();
 
@@ -115,6 +118,10 @@ if (empty($_SESSION['ask_session_key'])) {
             }
         }
     }
+} else if ($askUserKey) {
+    // Update user_key on existing session if user logged in after session started
+    $pdo->prepare("UPDATE yy_ask_session SET user_key = COALESCE(user_key, ?) WHERE ask_session_key = ?")
+       ->execute([$askUserKey, $_SESSION['ask_session_key']]);
 }
 $askSessionKey = $_SESSION['ask_session_key'];
 
@@ -458,6 +465,9 @@ $MODEL_MAP = [
 ];
 
 $modelSetting = getAskModel($pdo);
+if ($modelSetting === '') {
+    errorResponse('The system is currently offline.', 503);
+}
 $modelInfo = $MODEL_MAP[$modelSetting];
 $modelName = $modelInfo['name'];
 $apiKey = readEnvKey($modelInfo['env']);
@@ -468,11 +478,11 @@ if (!$apiKey) {
 
 // --- Insert log row ---
 $logStmt = $pdo->prepare("
-    INSERT INTO yy_ask_session_log (ask_session_key, ask_log_question, ask_log_context_count, ask_log_model)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO yy_ask_session_log (ask_session_key, ask_log_question, ask_log_context_count, ask_log_model, user_key)
+    VALUES (?, ?, ?, ?, ?)
     RETURNING ask_session_log_key
 ");
-$logStmt->execute([$askSessionKey, $question, count($contextRows) + count($transcriptRows), $modelName]);
+$logStmt->execute([$askSessionKey, $question, count($contextRows) + count($transcriptRows), $modelName, $askUserKey]);
 $askLogKey = (int)$logStmt->fetchColumn();
 $startTime = microtime(true);
 
@@ -795,9 +805,10 @@ function readEnvKey(string $name): string {
 
 function getAskModel(PDO $pdo): string {
     try {
-        $stmt = $pdo->query("SELECT setting_value FROM yy_setting WHERE setting_key = 'ask_model'");
+        $stmt = $pdo->query("SELECT setting_value FROM yy_setting WHERE setting_code = 'ask_model' AND setting_scope_code = 'app'");
         $val = $stmt->fetchColumn();
-        if ($val && in_array($val, ['gemini-flash', 'gpt-4o-mini', 'claude-haiku', 'claude-sonnet'])) {
+        if ($val === '' || $val === null) return ''; // Offline
+        if (in_array($val, ['gemini-flash', 'gpt-4o-mini', 'claude-haiku', 'claude-sonnet'])) {
             return $val;
         }
     } catch (Exception $e) {}

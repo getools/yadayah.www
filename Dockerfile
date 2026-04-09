@@ -2,7 +2,7 @@ FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y libpq-dev ffmpeg libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev \
     && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
-    && docker-php-ext-install pdo pdo_pgsql gd \
+    && docker-php-ext-install pdo pdo_pgsql gd exif \
     && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/*
 

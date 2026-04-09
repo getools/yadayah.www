@@ -96,52 +96,11 @@
             line-height: 1.6;
         }
 
-        /* Footer */
-        footer {
-            position: relative; overflow: hidden;
-            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
-            padding: 30px 24px;
-        }
         .footer-video {
             position: absolute; top: 50%; left: 50%;
             min-width: 100%; min-height: 100%;
             transform: translate(-50%, -50%);
             object-fit: cover; z-index: 0;
-        }
-        footer .footer-inner {
-            position: relative; z-index: 1;
-            max-width: 1140px; margin: 0 auto;
-            display: grid; grid-template-columns: 1fr 1fr;
-            gap: 30px;
-        }
-        footer .footer-col h4 {
-            font-family: 'Julius Sans One', sans-serif;
-            color: #E5C86C; margin: 0 0 12px; font-size: 1rem;
-        }
-        footer .footer-col a {
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 3px 0;
-        }
-        footer .footer-links {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 4px 20px;
-        }
-        footer .footer-links-2col { grid-template-columns: 1fr 1fr; }
-        .footer-links-3col {
-            grid-template-columns: auto auto auto;
-        }
-        footer .footer-links-1col {
-            grid-template-columns: 1fr;
-        }
-        footer .footer-col a:hover { color: #fff; }
-        footer .footer-bottom {
-            position: relative; z-index: 1;
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.8rem;
-            color: rgba(255,255,255,0.5);
         }
     </style>
 <script src="/js/site-nav.js"></script>
@@ -541,51 +500,8 @@
             <p class="quote" style="font-family: Wingdings, sans-serif; font-style: normal;"></p>
     </div>
 
-    <footer>
-        <video class="footer-video" autoplay muted loop playsinline>
-        </video>
-        <div class="footer-inner">
-            <div class="footer-col">
-                <h4 data-config="footer-text-books">Books</h4>
-                <div class="footer-links footer-links-2col">
-                    <a href="books#An_Intro_to_God">An Intro to God</a>
-                    <a href="books#Yada_Yahowah">Yada Yahowah</a>
-                    <a href="books#Observations">Observations</a>
-                    <a href="books#Coming_Home">Coming Home</a>
-                    <a href="books#Babel">Babel</a>
-                    <a href="books#Twistianity">Twistianity</a>
-                    <a href="books#God_Damn_Religion">God Damn Religion</a>
-                    <a href="books#In_the_Company">In the Company</a>
-                </div>
-            </div>
-            <div class="footer-col">
-            <h4 data-config="footer-text-links">Links</h4>
-            <div style="display:flex;gap:40px;align-items:flex-start;">
-                <div class="footer-links footer-links-1col">
-                    <a href="/ask">Ask</a>
-                    <a href="/blog">Blog</a>
-                    <a href="/vlog">Vlog</a>
-                    <a href="/media">Media</a>
-                </div>
-                <div class="footer-links footer-links-1col">
-                    <a href="/timeline">Timeline</a>
-                    <a href="/translations">Translations</a>
-                    <a href="/glossary">Glossary</a>
-                    <a href="/dss">Dead Sea Scrolls</a>
-                    <a href="/10-7-memorial">10-7 Memorial</a>
-                </div>
-                <div class="footer-links footer-links-1col">
-                    <a href="/music">Music</a>
-                    <a href="/invite">Invite</a>
-                    <a href="/shorts">Shorts</a>
-                    <a href="/Craig_Winn">Craig Winn</a>
-                    <a href="/resources">Resources</a>
-                </div>
-            </div>
-        </div>
-        </div>
-        <div class="footer-bottom">Copyright 2001 - 2026</div>
-    </footer>
+    <footer></footer>
 <script src="/js/bg-video.js"></script>
+<script src="/js/site-footer.js"></script>
 </body>
 </html>

@@ -58,27 +58,8 @@
 
 <div id="app" class="container" style="display:none">
     <div class="app-header">
-        <nav class="nav-tabs">
-            <a href="admin-site.html" class="nav-tab">Site</a>
-            <a href="admin-translation.html" class="nav-tab">Translation</a>
-            <a href="admin-word.html" class="nav-tab">Word</a>
-            <a href="admin-lookups.html" class="nav-tab">Lookups</a>
-            <a href="admin-ask.html" class="nav-tab">Ask</a>
-            <a href="admin-transcripts.html" class="nav-tab">Transcripts</a>
-            <a href="admin-timeline.html" class="nav-tab">Timeline</a>
-            <a href="admin-memorial.html" class="nav-tab">Memorial</a>
-            <a href="admin-media.html" class="nav-tab">Media</a>
-            <a href="admin-music.html" class="nav-tab">Music</a>
-            <a href="admin-invite.html" class="nav-tab">Invite</a>
-            <a href="admin-doyouyada.html" class="nav-tab active">DoYou?</a>
-            <a href="admin-backgrounds.html" class="nav-tab">Backgrounds</a>
-            <a href="admin-feeds.html" class="nav-tab">Feeds</a>
-            <a href="admin-redirects.html" class="nav-tab">Redirects</a>
-            <a href="admin-pages.html" class="nav-tab">Pages</a>
-            <a href="admin-resources.html" class="nav-tab">Resources</a>
-            <a href="admin-users.html" class="nav-tab">Users</a>
-            <a href="admin-misc.html" class="nav-tab">Misc</a>
-        </nav>
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -334,15 +315,15 @@ function renderFeeds(assigned) {
     assigned.forEach(function(row) {
         var item = document.createElement('div');
         item.className = 'feed-item';
-        item.dataset.key = row.page_feed_key;
+        item.dataset.key = row.feed_page_key;
         item.innerHTML =
             '<div class="feed-item-header">' +
                 feedSelectHtml(row.feed_key) +
             '</div>' +
             '<div class="feed-item-fields">' +
-                '<div><label>Include</label><input type="text" class="fi-include" value="' + esc(row.page_feed_filter_include || '') + '" placeholder="keywords to include"></div>' +
-                '<div><label>Exclude</label><input type="text" class="fi-exclude" value="' + esc(row.page_feed_filter_exclude || '') + '" placeholder="keywords to exclude"></div>' +
-                '<div class="sort-field" style="display:none"><label>Sort</label><input type="number" class="fi-sort" value="' + (row.page_feed_sort || 0) + '" min="0"></div>' +
+                '<div><label>Include</label><input type="text" class="fi-include" value="' + esc(row.feed_page_filter_include || '') + '" placeholder="keywords to include"></div>' +
+                '<div><label>Exclude</label><input type="text" class="fi-exclude" value="' + esc(row.feed_page_filter_exclude || '') + '" placeholder="keywords to exclude"></div>' +
+                '<div class="sort-field" style="display:none"><label>Sort</label><input type="number" class="fi-sort" value="' + (row.feed_page_sort || 0) + '" min="0"></div>' +
             '</div>' +
             '<div class="button-row">' +
                 '<button class="btn btn-primary btn-sm" onclick="saveFeedRow(this)">Save</button>' +
@@ -366,7 +347,7 @@ function addFeed() {
     fetch(API + '/admin-page-feed.php?page=doyouyada', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({feed_key: feedKey, page_feed_filter_include: '', page_feed_filter_exclude: '', page_feed_sort: 0})
+        body: JSON.stringify({feed_key: feedKey, feed_page_filter_include: '', feed_page_filter_exclude: '', feed_page_sort: 0})
     }).then(function(r){return r.json();}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
         sel.value = '';
@@ -379,9 +360,9 @@ function saveFeedRow(btn) {
     var pfKey = item.dataset.key;
     var payload = {
         feed_key: parseInt(item.querySelector('.fi-feed-key').value) || 0,
-        page_feed_filter_include: item.querySelector('.fi-include').value,
-        page_feed_filter_exclude: item.querySelector('.fi-exclude').value,
-        page_feed_sort: parseInt(item.querySelector('.fi-sort').value) || 0
+        feed_page_filter_include: item.querySelector('.fi-include').value,
+        feed_page_filter_exclude: item.querySelector('.fi-exclude').value,
+        feed_page_sort: parseInt(item.querySelector('.fi-sort').value) || 0
     };
     fetch(API + '/admin-page-feed.php?page=doyouyada&key=' + pfKey, {
         method: 'PUT', credentials: 'include',
@@ -413,6 +394,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=5"></script>
+<script src="/js/admin-login.js?v=6"></script>
 </body>
 </html>
