@@ -1,5 +1,14 @@
 RewriteEngine On
 
+# ── Ban check: block temporarily banned IPs ──
+php_value auto_prepend_file "/var/www/html/api/check-ban.php"
+
+# ── Honeypot: trap known attack paths and ban the IP ──
+RewriteRule ^(wp-config|wp-login|wp-admin|wp-includes|xmlrpc|wp-content|wordpress) /api/honeypot.php [L,NC]
+RewriteRule \.(ashx|aspx|asp|cgi|env|bak|sql|orig|save|old|swp|dist|config)$ /api/honeypot.php [L,NC]
+RewriteRule (phpmyadmin|myadmin|mysql|adminer|phpinfo|eval-stdin|vendor/phpunit|solr|actuator|telescope) /api/honeypot.php [L,NC]
+RewriteRule (\.git/|\.svn/|\.env|\.DS_Store|\.htpasswd|/config\.php\.|/db\.php\.) /api/honeypot.php [L,NC]
+
 # Strip trailing slashes (301 redirect to canonical URL without slash)
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} (.+)/$
@@ -8,6 +17,13 @@ RewriteRule ^(.+)/$ /$1 [R=301,L]
 # Redirect old .html URLs to clean paths (301 permanent)
 RewriteCond %{THE_REQUEST} \s/+(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media|translations|chat|admin|admin-[a-z]+|10-7-memorial)\.html[\s?] [NC]
 RewriteRule ^(books|vlog|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media|translations|chat|admin|admin-[a-z]+|10-7-memorial)\.html$ /$1 [R=301,L]
+
+# Memorial: /memorial → /10-7-memorial, /memorial/Name → /10-7-memorial/Name
+RewriteRule ^memorial/(.+)$ /10-7-memorial.html?name=$1 [L,QSA]
+RewriteRule ^memorial$ /10-7-memorial [R=301,L]
+
+# Memorial deep-link: /10-7-memorial/Name → 10-7-memorial.html?name=Name
+RewriteRule ^10-7-memorial/(.+)$ /10-7-memorial.html?name=$1 [L,QSA]
 
 # Redirect /time to /timeline
 RewriteRule ^time$ /timeline [R=301,L,NC]

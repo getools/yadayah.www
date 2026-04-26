@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tests Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .test-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .test-table th, .test-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+        .test-table th { background: #f5f5f5; font-weight: 600; font-size: 0.8rem; position: sticky; top: 0; }
+        .test-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .test-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .test-table .actions button:hover { background: #f0f0f0; }
+        .test-table .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+        .test-table .actions button.run { color: #27ae60; border-color: #b8d8c0; }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+        .badge.pass { background: #d4edda; color: #155724; }
+        .badge.fail { background: #fde8e8; color: #c0392b; }
+        .badge.skip { background: #fff3cd; color: #856404; }
+        .badge-type { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; background: #e2e3f1; color: #383d6e; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 700px; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 14px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .form-body input[type=text], .form-body input[type=number], .form-body input[type=time], .form-body select, .form-body textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body textarea { resize: vertical; min-height: 80px; }
+        .form-body input[type=number] { width: 100px; }
+        .form-body .form-row { display: flex; gap: 12px; }
+        .form-body .form-row .field { flex: 1; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .config-section { background: #f8f9ff; border: 1px solid #e0e3f0; border-radius: 6px; padding: 14px; margin-top: 8px; }
+        .config-section h4 { margin: 0 0 10px; font-size: 0.85rem; color: #31345A; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .test-count { font-size: 0.85rem; color: #666; }
+
+        .log-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .log-table th, .log-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #e8e8e8; vertical-align: top; }
+        .log-table th { background: #f5f5f5; font-weight: 600; font-size: 0.78rem; }
+        .log-detail { max-width: 400px; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.75rem; color: #666; max-height: 40px; overflow: hidden; cursor: pointer; }
+        .log-detail.open { max-height: 300px; overflow-y: auto; }
+
+        .sub-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+        .sub-tab { padding: 8px 20px; font-size: 0.9rem; font-weight: 600; color: #777; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; }
+        .sub-tab:hover { color: #333; }
+        .sub-tab.active { color: #2c3e50; border-bottom-color: #3498db; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field"><label for="login-pass">Password</label>
+            <div class="pass-wrap"><input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button></div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=7"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Tests</h1>
+
+    <div class="sub-tabs">
+        <span class="sub-tab active" onclick="switchTab('tests')">Tests</span>
+        <span class="sub-tab" onclick="switchTab('logs')">Logs</span>
+    </div>
+
+    <!-- Tests Tab -->
+    <div id="tab-tests" class="tab-panel active">
+        <div class="toolbar">
+            <span class="test-count" id="test-count"></span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-sm" style="background:#e8f4fd;border:1px solid #b8d8f0;" onclick="runAllTests()">Run All Now</button>
+                <button class="btn btn-primary btn-sm" onclick="showForm(null)">+ Add Test</button>
+            </div>
+        </div>
+        <div id="test-table-area"></div>
+    </div>
+
+    <!-- Logs Tab -->
+    <div id="tab-logs" class="tab-panel">
+        <div class="toolbar">
+            <select id="log-filter-test" onchange="loadLogs()" style="padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:0.85rem;">
+                <option value="">All Tests</option>
+            </select>
+            <span id="log-count" class="test-count"></span>
+        </div>
+        <div id="log-table-area"></div>
+    </div>
+</div>
+
+<!-- Form Overlay -->
+<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Add Test</h3>
+            <button onclick="closeForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="field"><label>Title</label><input type="text" id="f-title" placeholder="e.g. Homepage loads"></div>
+            <div class="field"><label>Summary</label><textarea id="f-summary" placeholder="What this test checks..."></textarea></div>
+            <div class="form-row">
+                <div class="field"><label>Type</label>
+                    <select id="f-type" onchange="updateConfigFields()">
+                        <option value="url_check">URL Check</option>
+                        <option value="api_check">API Check</option>
+                        <option value="db_check">DB Check</option>
+                        <option value="content_check">Content Check</option>
+                        <option value="feed_freshness">Feed Freshness</option>
+                    </select>
+                </div>
+                <div class="field"><label>Sort</label><input type="number" id="f-sort" value="0"></div>
+            </div>
+            <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
+
+            <h4 style="margin:16px 0 8px;border-top:1px solid #e0e0e0;padding-top:14px;">Schedule</h4>
+            <div class="form-row">
+                <div class="field"><label>Every (minutes)</label><input type="number" id="f-interval" placeholder="e.g. 60"></div>
+                <div class="field"><label>At Time</label><input type="time" id="f-time"></div>
+                <div class="field"><label>Day</label>
+                    <select id="f-day"><option value="">Every day</option>
+                        <option value="0">Sun</option><option value="1">Mon</option><option value="2">Tue</option>
+                        <option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option><option value="6">Sat</option>
+                    </select>
+                </div>
+            </div>
+
+            <h4 style="margin:16px 0 8px;border-top:1px solid #e0e0e0;padding-top:14px;">Configuration</h4>
+            <div id="config-fields"></div>
+
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" onclick="saveTest()">Save</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allTests = [];
+var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function timeAgo(dt) {
+    if (!dt) return 'never';
+    var diff = (Date.now() - new Date(dt).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    return Math.floor(diff/86400) + 'd ago';
+}
+
+function switchTab(name) {
+    document.querySelectorAll('.sub-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('tab-' + name).classList.add('active');
+    document.querySelector('.sub-tab[onclick*="' + name + '"]').classList.add('active');
+    if (name === 'logs') loadLogs();
+}
+
+// ── Auth ──
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadTests();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+function doLogin() {
+    var user = document.getElementById('login-user').value, pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error'); errEl.style.display = 'none';
+    fetch(API + '/auth.php', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({login:user, password:pass})})
+    .then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) { document.getElementById('login-screen').classList.remove('visible'); document.getElementById('app').style.display = ''; document.getElementById('user-display').textContent = d.user_name; applyPagePermissions(d.pages); loadTests(); }
+        else { errEl.textContent = d.error || 'Login failed'; errEl.style.display = ''; }
+    });
+}
+function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); }); }
+function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
+
+// ── Load & Render Tests ──
+function loadTests() {
+    fetch(API + '/admin-test.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        allTests = d.tests || [];
+        document.getElementById('test-count').textContent = allTests.length + ' test(s)';
+        renderTests();
+        populateLogFilter();
+    });
+}
+
+function renderTests() {
+    if (!allTests.length) { document.getElementById('test-table-area').innerHTML = '<div style="text-align:center;padding:30px;color:#888;">No tests configured yet.</div>'; return; }
+    var html = '<table class="test-table"><thead><tr><th>Title</th><th>Type</th><th>Schedule</th><th>Last Run</th><th>Status</th><th>Runs</th><th>Fails</th><th>Actions</th></tr></thead><tbody>';
+    for (var i = 0; i < allTests.length; i++) {
+        var t = allTests[i];
+        var sched = '';
+        if (t.test_schedule_interval_minutes) sched = 'Every ' + t.test_schedule_interval_minutes + 'm';
+        else if (t.test_schedule_time) sched = 'Daily ' + t.test_schedule_time.substring(0,5);
+        if (t.test_schedule_day_of_week !== null && t.test_schedule_day_of_week !== undefined && t.test_schedule_day_of_week !== '') sched += ' (' + DAYS[t.test_schedule_day_of_week] + ')';
+        var statusClass = (t.test_last_status || 'none');
+        html += '<tr onclick="editTest(' + t.test_key + ')" style="' + (!t.test_active_flag ? 'opacity:0.4;' : '') + '">'
+            + '<td><strong>' + esc(t.test_title) + '</strong>' + (t.test_summary ? '<div style="font-size:0.78rem;color:#888;margin-top:2px;">' + esc(t.test_summary).substring(0,80) + '</div>' : '') + '</td>'
+            + '<td><span class="badge-type">' + esc(t.test_type) + '</span></td>'
+            + '<td style="font-size:0.8rem;">' + (sched || '<span style="color:#ccc">none</span>') + '</td>'
+            + '<td style="font-size:0.78rem;white-space:nowrap;">' + timeAgo(t.test_last_run) + '</td>'
+            + '<td>' + (t.test_last_status ? '<span class="badge ' + statusClass + '">' + esc(t.test_last_status) + '</span>' : '<span style="color:#ccc">—</span>') + '</td>'
+            + '<td>' + (t.log_count || 0) + '</td>'
+            + '<td style="' + ((t.fail_count > 0) ? 'color:#c0392b;font-weight:600;' : '') + '">' + (t.fail_count || 0) + '</td>'
+            + '<td class="actions" onclick="event.stopPropagation()">'
+            + '<button class="run" onclick="runTest(' + t.test_key + ')">Run</button>'
+            + '<button onclick="viewLogs(' + t.test_key + ')">Logs</button>'
+            + '<button onclick="editTest(' + t.test_key + ')">Edit</button>'
+            + '<button class="del" onclick="deleteTest(' + t.test_key + ',\'' + esc(t.test_title).replace(/'/g,"\\'") + '\')">Del</button>'
+            + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('test-table-area').innerHTML = html;
+}
+
+// ── Form ──
+function editTest(key) { var t = allTests.find(function(r){return r.test_key==key;}); if(t) showForm(t); }
+
+function showForm(record) {
+    var r = record || {};
+    document.getElementById('form-title').textContent = r.test_key ? 'Edit Test' : 'Add Test';
+    document.getElementById('f-key').value = r.test_key || '';
+    document.getElementById('f-title').value = r.test_title || '';
+    document.getElementById('f-summary').value = r.test_summary || '';
+    document.getElementById('f-type').value = r.test_type || 'url_check';
+    document.getElementById('f-sort').value = r.test_sort || 0;
+    document.getElementById('f-active').checked = r.test_active_flag !== false;
+    document.getElementById('f-interval').value = r.test_schedule_interval_minutes || '';
+    document.getElementById('f-time').value = (r.test_schedule_time || '').substring(0,5);
+    document.getElementById('f-day').value = (r.test_schedule_day_of_week !== null && r.test_schedule_day_of_week !== undefined) ? r.test_schedule_day_of_week : '';
+    _currentConfig = r.test_config ? (typeof r.test_config === 'string' ? JSON.parse(r.test_config) : r.test_config) : {};
+    updateConfigFields();
+    document.getElementById('form-overlay').classList.add('open');
+}
+
+function closeForm() { document.getElementById('form-overlay').classList.remove('open'); }
+
+var _currentConfig = {};
+
+function updateConfigFields() {
+    var type = document.getElementById('f-type').value;
+    var el = document.getElementById('config-fields');
+    var c = _currentConfig;
+    var html = '';
+
+    if (type === 'url_check' || type === 'api_check' || type === 'content_check') {
+        html += '<div class="field"><label>URL</label><input type="text" id="cfg-url" value="' + esc(c.url || '') + '" placeholder="https://yadayah.com/..."></div>';
+        html += '<div class="form-row"><div class="field"><label>Expected Status</label><input type="number" id="cfg-status" value="' + (c.expected_status || 200) + '" style="width:80px;"></div>';
+        html += '<div class="field"><label>Timeout (s)</label><input type="number" id="cfg-timeout" value="' + (c.timeout || 15) + '" style="width:80px;"></div></div>';
+    }
+    if (type === 'api_check') {
+        html += '<div class="field"><label>Expect Key</label><input type="text" id="cfg-expect-key" value="' + esc(c.expect_key || '') + '" placeholder="e.g. videos"></div>';
+        html += '<div class="form-row"><div class="field"><label>Count Key</label><input type="text" id="cfg-count-key" value="' + esc(c.count_key || '') + '" placeholder="e.g. total"></div>';
+        html += '<div class="field"><label>Min Count</label><input type="number" id="cfg-min-count" value="' + (c.min_count || '') + '"></div></div>';
+    }
+    if (type === 'content_check') {
+        html += '<div class="field"><label>Must Contain</label><input type="text" id="cfg-contains" value="' + esc(c.expect_content || '') + '" placeholder="Text that must appear in page"></div>';
+    }
+    if (type === 'db_check') {
+        html += '<div class="field"><label>SQL Query (SELECT only)</label><textarea id="cfg-query" style="font-family:monospace;font-size:0.82rem;">' + esc(c.query || '') + '</textarea></div>';
+        html += '<div class="form-row"><div class="field"><label>Expect Min Rows</label><input type="number" id="cfg-expect-min" value="' + (c.expect_min || '') + '"></div>';
+        html += '<div class="field"><label>Expect Max Rows</label><input type="number" id="cfg-expect-max" value="' + (c.expect_max || '') + '"></div></div>';
+    }
+    if (type === 'feed_freshness') {
+        html += '<div class="field"><label>Feed</label><select id="cfg-feed-key"><option value="">— Select Feed —</option></select></div>';
+        html += '<div class="field"><label>Max Age (hours)</label><input type="number" id="cfg-max-age" value="' + (c.max_age_hours || 24) + '" style="width:100px;"></div>';
+        // Populate feed dropdown async
+        setTimeout(function() {
+            fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(feeds) {
+                var sel = document.getElementById('cfg-feed-key');
+                if (!sel) return;
+                (Array.isArray(feeds) ? feeds : []).forEach(function(f) {
+                    var opt = document.createElement('option');
+                    opt.value = f.feed_key;
+                    opt.textContent = f.feed_name + ' (' + f.feed_site_code + ')';
+                    if (c.feed_key && c.feed_key == f.feed_key) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            });
+        }, 50);
+    }
+
+    el.innerHTML = html;
+}
+
+function collectConfig() {
+    var type = document.getElementById('f-type').value;
+    var c = {};
+    if (type === 'url_check' || type === 'api_check' || type === 'content_check') {
+        c.url = (document.getElementById('cfg-url') || {}).value || '';
+        c.expected_status = parseInt((document.getElementById('cfg-status') || {}).value) || 200;
+        c.timeout = parseInt((document.getElementById('cfg-timeout') || {}).value) || 15;
+    }
+    if (type === 'api_check') {
+        var ek = (document.getElementById('cfg-expect-key') || {}).value; if (ek) c.expect_key = ek;
+        var ck = (document.getElementById('cfg-count-key') || {}).value; if (ck) c.count_key = ck;
+        var mc = parseInt((document.getElementById('cfg-min-count') || {}).value); if (mc) c.min_count = mc;
+    }
+    if (type === 'content_check') {
+        var ct = (document.getElementById('cfg-contains') || {}).value; if (ct) c.expect_content = ct;
+    }
+    if (type === 'db_check') {
+        c.query = (document.getElementById('cfg-query') || {}).value || '';
+        var emin = parseInt((document.getElementById('cfg-expect-min') || {}).value); if (emin) c.expect_min = emin;
+        var emax = parseInt((document.getElementById('cfg-expect-max') || {}).value); if (emax) c.expect_max = emax;
+    }
+    if (type === 'feed_freshness') {
+        c.feed_key = parseInt((document.getElementById('cfg-feed-key') || {}).value) || 0;
+        c.max_age_hours = parseInt((document.getElementById('cfg-max-age') || {}).value) || 24;
+    }
+    return c;
+}
+
+function saveTest() {
+    var key = document.getElementById('f-key').value;
+    var title = document.getElementById('f-title').value.trim();
+    if (!title) { alert('Title is required'); return; }
+
+    var payload = {
+        test_title: title,
+        test_summary: document.getElementById('f-summary').value.trim(),
+        test_type: document.getElementById('f-type').value,
+        test_sort: parseInt(document.getElementById('f-sort').value) || 0,
+        test_active_flag: document.getElementById('f-active').checked,
+        test_schedule_interval_minutes: parseInt(document.getElementById('f-interval').value) || 0,
+        test_schedule_time: document.getElementById('f-time').value || null,
+        test_schedule_day_of_week: document.getElementById('f-day').value,
+        test_config: collectConfig(),
+    };
+
+    var url = API + '/admin-test.php' + (key ? '?key=' + key : '');
+    fetch(url, { method: key ? 'PUT' : 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    .then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} closeForm(); loadTests(); });
+}
+
+function deleteTest(key, title) {
+    if (!confirm('Delete test "' + title + '" and all its logs?')) return;
+    fetch(API + '/admin-test.php?key=' + key, {method:'DELETE', credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} loadTests(); });
+}
+
+// ── Run ──
+function runTest(key) {
+    var btn = event.target; btn.textContent = '...'; btn.disabled = true;
+    fetch(API + '/admin-test.php?action=run', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'run', test_key:key})})
+    .then(function(r){return safeJson(r);}).then(function(d) {
+        btn.textContent = 'Run'; btn.disabled = false;
+        var r = (d.results || [])[0];
+        if (r) alert(r.title + ': ' + r.status + (r.message ? ' — ' + r.message : '') + ' (' + r.duration_ms + 'ms)');
+        loadTests();
+    }).catch(function() { btn.textContent = 'Run'; btn.disabled = false; });
+}
+
+function runAllTests() {
+    if (!confirm('Run all active tests now?')) return;
+    fetch(API + '/admin-test.php?action=run_all', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'run_all'})})
+    .then(function(r){return safeJson(r);}).then(function(d) {
+        alert('Ran ' + (d.tests_run || 0) + ' test(s): ' + (d.passed || 0) + ' passed, ' + (d.failed || 0) + ' failed');
+        loadTests();
+    });
+}
+
+// ── Logs ──
+function populateLogFilter() {
+    var sel = document.getElementById('log-filter-test');
+    var opts = '<option value="">All Tests</option>';
+    allTests.forEach(function(t) { opts += '<option value="' + t.test_key + '">' + esc(t.test_title) + '</option>'; });
+    sel.innerHTML = opts;
+}
+
+function viewLogs(key) {
+    document.getElementById('log-filter-test').value = key;
+    switchTab('logs');
+}
+
+function loadLogs() {
+    var testKey = document.getElementById('log-filter-test').value;
+    var url = API + '/admin-test.php?logs=1&limit=100' + (testKey ? '&key=' + testKey : '');
+    fetch(url, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        var logs = d.logs || [];
+        document.getElementById('log-count').textContent = d.total + ' log(s)' + (logs.length < d.total ? ' (showing ' + logs.length + ')' : '');
+        if (!logs.length) { document.getElementById('log-table-area').innerHTML = '<div style="text-align:center;padding:30px;color:#888;">No logs yet.</div>'; return; }
+        var html = '<table class="log-table"><thead><tr><th>Time</th><th>Test</th><th>Status</th><th>Message</th><th>Detail</th><th>Duration</th><th>HTTP</th></tr></thead><tbody>';
+        logs.forEach(function(l) {
+            html += '<tr>'
+                + '<td style="white-space:nowrap;font-size:0.75rem;">' + timeAgo(l.test_log_dtime) + '</td>'
+                + '<td style="font-size:0.8rem;">' + esc(l.test_title) + '</td>'
+                + '<td><span class="badge ' + l.test_log_status + '">' + esc(l.test_log_status) + '</span></td>'
+                + '<td style="font-size:0.8rem;">' + esc(l.test_log_message || '') + '</td>'
+                + '<td>' + (l.test_log_detail ? '<div class="log-detail" onclick="this.classList.toggle(\'open\')">' + esc(l.test_log_detail) + '</div>' : '<span style="color:#ccc">—</span>') + '</td>'
+                + '<td style="font-size:0.78rem;">' + (l.test_log_duration_ms || 0) + 'ms</td>'
+                + '<td style="font-size:0.78rem;">' + (l.test_log_http_status || '—') + '</td>'
+                + '</tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('log-table-area').innerHTML = html;
+    });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+</body>
+</html>

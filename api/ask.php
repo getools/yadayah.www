@@ -447,6 +447,40 @@ try {
     }
 } catch (Exception $e) {}
 
+// --- RAG: Inject learned corrections and similar past Q&As ---
+try {
+    require_once __DIR__ . '/ask-rag.php';
+
+    // 1. Inject mod-approved corrections/guidelines
+    $learnedBlock = getLearnedPromptAdditions($pdo);
+    if ($learnedBlock) {
+        $systemPrompt .= "\n\n" . $learnedBlock;
+    }
+
+    // 2. Search for semantically similar past Q&As via vector similarity
+    $voyageKey = getenv('VOYAGE_API_KEY') ?: '';
+    if (!$voyageKey) {
+        $vkStmt = $pdo->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'voyage-api-key'");
+        $voyageKey = $vkStmt->fetchColumn() ?: '';
+    }
+    if ($voyageKey) {
+        $qEmbedding = generateEmbedding($question, $voyageKey);
+        if ($qEmbedding) {
+            $similar = searchSimilar($pdo, $qEmbedding, 5);
+            $simBlock = '';
+            foreach ($similar as $s) {
+                if (($s['similarity'] ?? 0) < 0.7) continue; // Only high-relevance matches
+                $simBlock .= trim($s['content_text']) . "\n\n";
+            }
+            if ($simBlock) {
+                $systemPrompt .= "\n\n--- SIMILAR PAST Q&A (use for consistency) ---\n\n" . $simBlock;
+            }
+        }
+    }
+} catch (Exception $e) {
+    // RAG is optional — don't break the main flow
+}
+
 // --- Build messages array ---
 $messages = [];
 foreach ($history as $h) {
@@ -777,6 +811,15 @@ try {
         WHERE ask_session_key = ?
     ");
     $updateSess->execute([$askSessionKey]);
+    // Embed Q&A pair for future RAG retrieval (async, non-blocking)
+    if ($fullResponse && !$streamError) {
+        try {
+            require_once __DIR__ . '/ask-rag.php';
+            embedQAPair($pdo, $askLogKey, $question, $fullResponse);
+        } catch (Exception $e) {
+            error_log('Ask Yada embedding error: ' . $e->getMessage());
+        }
+    }
 } catch (Exception $e) {
     error_log('Ask Yada post-stream DB error: ' . $e->getMessage());
 }

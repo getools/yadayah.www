@@ -499,7 +499,9 @@ function renderVideos() {
             + '<div class="thumb">'
             + '<img src="' + v.thumbnail + '" alt="' + esc(v.title) + '" onclick="playVideo(this,\'' + v.id + '\')" loading="lazy">'
             + '</div>'
-            + '<div class="vid-info"><h3>' + esc(v.title) + '</h3></div></div>';
+            + '<div class="vid-info"><h3>' + esc(v.title) + '</h3>'
+            + (typeof VideoComments !== 'undefined' ? VideoComments.link(v.id, 'index', 'youtube') : '')
+            + '</div></div>';
     }).join('');
 
     // Show/hide load more
@@ -511,6 +513,7 @@ function renderVideos() {
 function playVideo(img, videoId) {
     var thumb = img.parentNode;
     thumb.innerHTML = '<iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1" allowfullscreen></iframe>';
+    if (typeof VideoComments !== 'undefined') VideoComments.open(videoId, 'index', 'youtube');
 }
 
 function loadMoreVideos() {
@@ -628,6 +631,7 @@ loadFeatured();
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
+<script src="/js/video-comments.js"></script>
 </body>
 </html>

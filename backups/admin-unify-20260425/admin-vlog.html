@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vlog Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .count { font-size: 0.85rem; color: #666; }
+        .tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .tbl th, .tbl td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .tbl th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .tbl tr:hover { background: #f0f4ff; }
+        .tbl tr.inactive { opacity: 0.4; }
+        .tbl .thumb { width: 120px; height: 68px; object-fit: cover; border-radius: 4px; }
+        .tbl select, .tbl input[type="number"] { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.82rem; font-family: inherit; }
+        .tbl select { min-width: 100px; }
+        .tbl input[type="number"] { width: 60px; }
+        .sub-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+        .sub-tab { padding: 8px 20px; border: none; background: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #E5C86C; }
+        .sub-panel { display: none; }
+        .sub-panel.active { display: block; }
+        .status { font-size: 0.85rem; color: #27ae60; margin-left: 8px; }
+        .status.error { color: #c0392b; }
+        .cat-table { width: 100%; border-collapse: collapse; max-width: 900px; }
+        .cat-table th, .cat-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .cat-table th { background: #f5f5f5; font-weight: 600; font-size: 0.8rem; }
+        .cat-table input[type="text"] { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; width: 100%; font-family: inherit; }
+        .cat-table input[type="number"] { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; width: 70px; font-family: inherit; }
+        button.del { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #e0c0c0; border-radius: 4px; cursor: pointer; background: #fff; color: #c0392b; }
+        button.del:hover { background: #fde8e8; }
+        button.act { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; }
+        button.act:hover { background: #f0f0f0; }
+        .cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px; }
+        .cfg-field { display: flex; flex-direction: column; }
+        .cfg-field label { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: #555; }
+        .cfg-field input[type="text"], .cfg-field input[type="number"], .cfg-field select { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; }
+        .rgba-picker { display: flex; align-items: center; gap: 8px; }
+        .rgba-picker .color-swatch { width: 32px; height: 32px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; position: relative; overflow: hidden; flex-shrink: 0; }
+        .rgba-picker .color-swatch input[type="color"] { position: absolute; top: -4px; left: -4px; width: 40px; height: 40px; border: none; cursor: pointer; opacity: 0; }
+        .rgba-picker .opacity-wrap { display: flex; align-items: center; gap: 4px; }
+        .rgba-picker .opacity-wrap input[type="range"] { width: 80px; }
+        .rgba-picker .opacity-wrap .opacity-val { font-size: 0.78rem; color: #666; width: 32px; text-align: center; }
+        .rgba-picker .rgba-result { font-size: 0.78rem; color: #888; min-width: 160px; }
+        .cfg-success { color: #27ae60; font-size: 0.9rem; margin-left: 12px; display: none; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field"><label for="login-pass">Password</label><div class="pass-wrap"><input type="password" id="login-pass" autocomplete="current-password"><button type="button" class="pass-toggle" onclick="var i=document.getElementById('login-pass');i.type=i.type==='password'?'text':'password'" title="Show/hide">&#128065;</button></div></div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+        <script src="/js/admin-nav.js?v=5"></script>
+        <div class="user-info"><span id="user-display"></span> <button class="btn btn-secondary btn-sm" onclick="fetch('/api/auth.php',{method:'DELETE',credentials:'include'}).then(function(){location.reload()})">Logout</button></div>
+    </div>
+
+    <h1>Vlog</h1>
+
+    <div class="sub-tabs">
+        <button class="sub-tab active" onclick="switchTab('videos')">Videos</button>
+        <button class="sub-tab" onclick="switchTab('categories')">Categories</button>
+        <button class="sub-tab" onclick="switchTab('general')">General</button>
+    </div>
+
+    <div id="panel-general" class="sub-panel">
+        <div id="cfg-error" class="error-messages" style="display:none"></div>
+        <div class="cfg-grid">
+            <div class="cfg-field" style="grid-column: 1 / -1">
+                <label>Heading</label>
+                <input type="text" id="cfg-heading">
+            </div>
+            <div class="cfg-field">
+                <label>Heading Text</label>
+                <div class="rgba-picker" data-id="cfg-heading-color"></div>
+            </div>
+            <div class="cfg-field">
+                <label>Heading Background</label>
+                <div class="rgba-picker" data-id="cfg-heading-bg"></div>
+            </div>
+            <div class="cfg-field">
+                <label>Background</label>
+                <div class="rgba-picker" data-id="cfg-background"></div>
+            </div>
+        </div>
+        <div class="cfg-grid">
+            <div class="cfg-field">
+                <label>Columns</label>
+                <select id="cfg-columns">
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                    <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                </select>
+            </div>
+            <div class="cfg-field">
+                <label>Records</label>
+                <select id="cfg-records">
+                    <option value="0">All</option><option value="12">12</option><option value="24">24</option><option value="48">48</option>
+                </select>
+            </div>
+        </div>
+        <div class="cfg-grid">
+            <div class="cfg-field">
+                <label>Label Size (em)</label>
+                <input type="number" id="cfg-label-size" step="0.1" min="0.5" max="3">
+            </div>
+            <div class="cfg-field">
+                <label>Label Text</label>
+                <div class="rgba-picker" data-id="cfg-label-color"></div>
+            </div>
+        </div>
+        <div class="cfg-grid">
+            <div class="cfg-field">
+                <label>Spacing-Horizontal (px)</label>
+                <input type="number" id="cfg-spacing-horizontal" min="0" max="100">
+            </div>
+            <div class="cfg-field">
+                <label>Spacing-Vertical (px)</label>
+                <input type="number" id="cfg-spacing-vertical" min="0" max="100">
+            </div>
+        </div>
+        <div class="button-row">
+            <button class="btn btn-primary" onclick="saveVlogConfig()">Save</button>
+            <span class="cfg-success" id="cfg-success">Saved!</span>
+        </div>
+    </div>
+
+    <div id="panel-videos" class="sub-panel active">
+        <div class="toolbar">
+            <span class="count" id="vid-count"></span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-secondary btn-sm" onclick="syncVlog()" id="sync-btn">Resync</button>
+                <span class="status" id="sync-status"></span>
+            </div>
+        </div>
+        <div id="table-container"><div style="text-align:center;padding:20px;color:#888">Loading...</div></div>
+    </div>
+
+    <div id="panel-categories" class="sub-panel">
+        <div class="toolbar">
+            <span></span>
+            <button class="btn btn-primary btn-sm" onclick="addCategory()">+ Add Category</button>
+        </div>
+        <div id="cat-container"><div style="text-align:center;padding:20px;color:#888">Loading...</div></div>
+    </div>
+
+    <div id="add-cat-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)document.getElementById('add-cat-overlay').style.display='none'">
+        <div style="background:#fff;border-radius:10px;padding:24px;max-width:450px;width:90%;">
+            <h3 style="margin:0 0 16px;font-size:1.1rem;color:#31345A;">New Category</h3>
+            <div style="margin-bottom:12px;"><label style="font-size:0.85rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Title</label><input type="text" id="add-cat-title" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;"></div>
+            <div style="margin-bottom:16px;"><label style="font-size:0.85rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Subtitle</label><input type="text" id="add-cat-subtitle" placeholder="" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn btn-sm" style="padding:6px 16px;" onclick="document.getElementById('add-cat-overlay').style.display='none'">Cancel</button>
+                <button class="btn btn-primary btn-sm" style="padding:6px 16px;" onclick="submitAddCat()">Add</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allCats = [];
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function switchTab(tab) {
+    document.querySelectorAll('.sub-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.sub-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'categories') loadCategories();
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json()}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+            loadVlogConfig();
+            loadVideos();
+        } else { document.getElementById('login-screen').classList.add('visible'); }
+    });
+}
+
+function doLogin() {
+    var u = document.getElementById('login-user').value, p = document.getElementById('login-pass').value;
+    var err = document.getElementById('login-error');
+    err.style.display = 'none';
+    fetch(API + '/auth.php', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({login:u,password:p}) })
+    .then(function(r){return r.json()}).then(function(d) {
+        if (d.authenticated) { document.getElementById('login-screen').classList.remove('visible'); document.getElementById('app').style.display=''; document.getElementById('user-display').textContent=d.user_name; if(typeof applyPagePermissions==='function')applyPagePermissions(d.pages); loadVlogConfig(); loadVideos(); }
+        else { err.textContent = d.error||'Login failed'; err.style.display=''; }
+    });
+}
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key==='Enter') doLogin(); });
+
+// ── Categories ──
+function loadCategories() {
+    fetch(API + '/admin-vlog.php?type=categories', {credentials:'include'}).then(function(r){return r.json()}).then(function(d) {
+        allCats = d.categories || [];
+        renderCategories();
+    });
+}
+
+function renderCategories() {
+    if (!allCats.length) { document.getElementById('cat-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No categories yet. They are auto-created from #vlog-[category]-[episode] hashtags during sync.</div>'; return; }
+    var html = '<table class="cat-table"><thead><tr><th>Title</th><th>Subtitle</th><th>Slug</th><th>Order</th><th>Videos</th><th></th></tr></thead><tbody>';
+    allCats.forEach(function(c, i) {
+        html += '<tr data-ck="' + c.category_key + '">'
+            + '<td><input type="text" value="' + esc(c.category_title||'') + '" data-field="title" onchange="saveCat(' + c.category_key + ')"></td>'
+            + '<td><input type="text" value="' + esc(c.category_subtitle||'') + '" data-field="subtitle" placeholder="" onchange="saveCat(' + c.category_key + ')"></td>'
+            + '<td><input type="text" value="' + esc(c.category_slug||'') + '" data-field="slug" style="font-size:0.78rem;color:#888;" onchange="saveCat(' + c.category_key + ')"></td>'
+            + '<td style="white-space:nowrap">'
+            + '<button class="act" style="' + (i===0?'opacity:0.25;pointer-events:none;':'') + '" onclick="moveCat(' + c.category_key + ',-1)">&#9650;</button>'
+            + '<button class="act" style="' + (i===allCats.length-1?'opacity:0.25;pointer-events:none;':'') + '" onclick="moveCat(' + c.category_key + ',1)">&#9660;</button>'
+            + '</td>'
+            + '<td style="color:#888">' + (c.video_count||0) + '</td>'
+            + '<td><button class="del" onclick="deleteCat(' + c.category_key + ')">Delete</button></td></tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('cat-container').innerHTML = html;
+}
+
+function addCategory() {
+    document.getElementById('add-cat-title').value = '';
+    document.getElementById('add-cat-subtitle').value = '';
+    document.getElementById('add-cat-overlay').style.display = 'flex';
+    document.getElementById('add-cat-title').focus();
+}
+
+function submitAddCat() {
+    var t = document.getElementById('add-cat-title').value.trim();
+    var s = document.getElementById('add-cat-subtitle').value.trim();
+    if (!t) { alert('Title is required'); return; }
+    fetch(API + '/admin-vlog.php?type=category', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({category_title:t,category_subtitle:s||null,category_sort:0}) })
+    .then(function(r){return r.json()}).then(function(d) { if(d.error)alert(d.error); else{document.getElementById('add-cat-overlay').style.display='none';loadCategories();} });
+}
+
+var _catTimers = {};
+function saveCat(key) {
+    if (_catTimers[key]) clearTimeout(_catTimers[key]);
+    _catTimers[key] = setTimeout(function() {
+        var row = document.querySelector('tr[data-ck="' + key + '"]');
+        if (!row) return;
+        var t = row.querySelector('[data-field="title"]').value.trim();
+        var s = row.querySelector('[data-field="subtitle"]').value.trim();
+        var sl = row.querySelector('[data-field="slug"]').value.trim();
+        if (!t) return;
+        var sort = 0;
+        for (var i=0;i<allCats.length;i++) { if(allCats[i].category_key==key){sort=allCats[i].category_sort||0;break;} }
+        fetch(API + '/admin-vlog.php?type=category&key=' + key, { method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({category_title:t,category_subtitle:s,category_slug:sl,category_sort:sort}) })
+        .then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error);});
+    }, 300);
+}
+
+function moveCat(key, dir) {
+    var idx = -1;
+    for (var i=0;i<allCats.length;i++) { if(allCats[i].category_key==key){idx=i;break;} }
+    if (idx<0) return;
+    var si = idx+dir;
+    if (si<0||si>=allCats.length) return;
+    var a=allCats[idx], b=allCats[si];
+    var tmp=a.category_sort; a.category_sort=b.category_sort; b.category_sort=tmp;
+    if (a.category_sort===b.category_sort) a.category_sort=b.category_sort+dir;
+    fetch(API+'/admin-vlog.php?type=category&key='+a.category_key,{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({category_sort:a.category_sort})});
+    fetch(API+'/admin-vlog.php?type=category&key='+b.category_key,{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({category_sort:b.category_sort})}).then(function(){loadCategories();});
+}
+
+function deleteCat(key) {
+    if (!confirm('Delete this category? Videos will be uncategorized.')) return;
+    fetch(API+'/admin-vlog.php?type=category&key='+key,{method:'DELETE',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error);else loadCategories();});
+}
+
+// ── Videos ──
+function loadVideos() {
+    return fetch(API + '/admin-vlog.php?type=categories', {credentials:'include'}).then(function(r){return r.json()}).then(function(catData) {
+        allCats = catData.categories || [];
+        return fetch(API + '/admin-vlog.php?type=videos', {credentials:'include'});
+    }).then(function(r){return r.json()}).then(function(data) {
+        var vids = data.videos || [];
+        document.getElementById('vid-count').textContent = vids.length + ' video' + (vids.length!==1?'s':'');
+        if (!vids.length) { document.getElementById('table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No videos. Click Sync to import.</div>'; return; }
+        var catOpts = '<option value="">-- None --</option>';
+        allCats.forEach(function(c) { catOpts += '<option value="'+c.category_key+'">'+esc(c.category_title)+'</option>'; });
+
+        // Build category jump links
+        var catSlugs = [];
+        var seenCats = {};
+        vids.forEach(function(v) {
+            var c = v.category_title || 'Uncategorized';
+            if (!seenCats[c]) { seenCats[c] = true; catSlugs.push(c); }
+        });
+        var jumpHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px;padding:8px 0;border-bottom:1px solid #ddd;">';
+        catSlugs.forEach(function(c) {
+            var slug = c.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+            jumpHtml += '<a href="#cat-' + slug + '" style="font-size:0.82rem;color:#31345A;font-weight:600;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(c) + '</a>';
+        });
+        jumpHtml += '</div>';
+
+        var html = jumpHtml + '<table class="tbl"><thead><tr><th>Thumb</th><th style="width:550px;">Title</th><th>Category</th><th title="Episode Number">#</th><th>MP3</th><th>Active</th><th></th></tr></thead><tbody>';
+        var lastCat = null;
+        vids.forEach(function(v) {
+            var curCat = v.category_title || 'Uncategorized';
+            if (curCat !== lastCat) {
+                var catSlug = curCat.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+                html += '<tr id="cat-' + catSlug + '"><td colspan="7" style="background:#31345A;color:#E5C86C;font-family:\'Julius Sans One\',sans-serif;font-weight:600;font-size:0.95rem;padding:10px 12px;border:none;">' + esc(curCat) + '</td></tr>';
+                lastCat = curCat;
+            }
+            var inactive = !v.active_flag;
+            html += '<tr class="'+(inactive?'inactive':'')+'" data-vk="'+v.video_key+'">'
+                + '<td>' + (v.url ? '<a href="'+esc(v.url)+'" target="_blank" rel="noopener">' : '') + '<img class="thumb" src="'+esc(v.thumbnail||'')+'" alt="">' + (v.url ? '</a>' : '') + '</td>'
+                + '<td><input type="text" value="'+esc(v.title||'')+'" data-field="title" style="width:100%;font-size:0.82rem;" onchange="saveVid('+v.video_key+')"></td>'
+                + '<td><select data-field="cat" onchange="saveVid('+v.video_key+')">'+catOpts.replace('value="'+(v.category_key||'')+'"','value="'+(v.category_key||'')+'" selected')+'</select></td>'
+                + '<td><input type="number" value="'+(v.episode||'')+'" data-field="ep" style="width:50px" onchange="saveVid('+v.video_key+')"></td>'
+                + '<td style="text-align:center;white-space:nowrap;">'
+                + '<input type="file" id="mp3-'+v.video_key+'" accept=".mp3" style="display:none" onchange="uploadMp3('+v.video_key+')">'
+                + (v.audio_file ? '<a href="/'+esc(v.audio_file)+'" target="_blank" title="Play MP3" style="font-size:1.1rem;text-decoration:none;">&#127911;</a> ' : '')
+                + '<button class="act" style="font-size:0.7rem;" onclick="document.getElementById(\'mp3-'+v.video_key+'\').click()">'+(v.audio_file?'Replace':'Upload')+'</button>'
+                + (v.audio_file ? ' <button class="act" style="font-size:0.7rem;color:#c00;" onclick="removeMp3('+v.video_key+')">X</button>' : '')
+                + '</td>'
+                + '<td style="text-align:center"><input type="checkbox" data-field="active"'+(inactive?'':' checked')+' onchange="saveVid('+v.video_key+')"></td>'
+                + '<td><button class="del" onclick="deleteVid('+v.video_key+')">Del</button></td></tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('table-container').innerHTML = html;
+    });
+}
+
+var _vidTimers = {};
+function saveVid(key) {
+    if (_vidTimers[key]) clearTimeout(_vidTimers[key]);
+    _vidTimers[key] = setTimeout(function() {
+        var row = document.querySelector('tr[data-vk="'+key+'"]');
+        if (!row) return;
+        var title = row.querySelector('[data-field="title"]').value.trim();
+        var catKey = row.querySelector('[data-field="cat"]').value || null;
+        var ep = row.querySelector('[data-field="ep"]').value;
+        var active = row.querySelector('[data-field="active"]').checked;
+        row.classList.toggle('inactive', !active);
+        fetch(API+'/admin-vlog.php?type=video&key='+key, { method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:title, category_key:catKey?parseInt(catKey):null, episode:ep?parseInt(ep):null, active_flag:active}) })
+        .then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error);});
+    }, 300);
+}
+
+function uploadMp3(key) {
+    var input = document.getElementById('mp3-' + key);
+    if (!input || !input.files[0]) return;
+    var row = document.querySelector('tr[data-vk="'+key+'"]');
+    var mp3Cell = row ? row.querySelectorAll('td')[4] : null;
+    if (mp3Cell) {
+        var oldHtml = mp3Cell.innerHTML;
+        mp3Cell.innerHTML = '<span style="color:#888;font-size:0.8rem;">Uploading...</span>';
+    }
+    var fd = new FormData();
+    fd.append('audio', input.files[0]);
+    fetch(API + '/admin-vlog.php?type=audio&key=' + key, { method: 'POST', credentials: 'include', body: fd })
+    .then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) { alert(d.error); if (mp3Cell) mp3Cell.innerHTML = oldHtml; }
+        else {
+            loadVideos().then(function() {
+                var r = document.querySelector('tr[data-vk="'+key+'"]');
+                if (r) { r.style.background = '#d4edda'; setTimeout(function() { r.style.background = ''; }, 2500); }
+            });
+        }
+    }).catch(function() { if (mp3Cell) mp3Cell.innerHTML = oldHtml; });
+}
+function removeMp3(key) {
+    fetch(API + '/admin-vlog.php?type=audio&key=' + key, { method: 'DELETE', credentials: 'include' })
+    .then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) alert(d.error); else loadVideos();
+    });
+}
+
+function deleteVid(key) {
+    if (!confirm('Delete this video?')) return;
+    fetch(API+'/admin-vlog.php?type=video&key='+key,{method:'DELETE',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error);else loadVideos();});
+}
+
+// ── RGBA Picker ──
+function initRgbaPickers() {
+    document.querySelectorAll('.rgba-picker').forEach(function(el) {
+        var id = el.getAttribute('data-id');
+        el.innerHTML = '<div class="color-swatch" id="'+id+'-swatch" style="background:#000;"><input type="color" id="'+id+'-hex" value="#000000"></div>'
+            + '<div class="opacity-wrap"><input type="range" id="'+id+'-opacity" min="0" max="100" value="100" step="1"><span class="opacity-val" id="'+id+'-opval">1.00</span></div>'
+            + '<span class="rgba-result" id="'+id+'-result"></span>';
+        var hex=document.getElementById(id+'-hex'), opacity=document.getElementById(id+'-opacity'), swatch=document.getElementById(id+'-swatch'), opval=document.getElementById(id+'-opval'), result=document.getElementById(id+'-result');
+        function update(){var h=hex.value,a=(parseInt(opacity.value)/100).toFixed(2);opval.textContent=a;var r=parseInt(h.substr(1,2),16),g=parseInt(h.substr(3,2),16),b=parseInt(h.substr(5,2),16);var rgba='rgba('+r+','+g+','+b+','+a+')';swatch.style.background=rgba;result.textContent=rgba;}
+        hex.addEventListener('input',update);opacity.addEventListener('input',update);
+    });
+}
+function setPickerValue(id,cssColor){if(!cssColor)cssColor='rgba(0,0,0,1)';var hex=document.getElementById(id+'-hex'),opacity=document.getElementById(id+'-opacity');if(!hex||!opacity)return;var r=0,g=0,b=0,a=1;var m=cssColor.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);if(m){r=parseInt(m[1]);g=parseInt(m[2]);b=parseInt(m[3]);a=m[4]!==undefined?parseFloat(m[4]):1;}else if(cssColor.charAt(0)==='#'){var hx=cssColor.replace('#','');if(hx.length===3)hx=hx[0]+hx[0]+hx[1]+hx[1]+hx[2]+hx[2];r=parseInt(hx.substr(0,2),16);g=parseInt(hx.substr(2,2),16);b=parseInt(hx.substr(4,2),16);}hex.value='#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);opacity.value=Math.round(a*100);hex.dispatchEvent(new Event('input'));}
+function getPickerValue(id){var hex=document.getElementById(id+'-hex'),opacity=document.getElementById(id+'-opacity');if(!hex||!opacity)return'';var h=hex.value,a=(parseInt(opacity.value)/100).toFixed(2);var r=parseInt(h.substr(1,2),16),g=parseInt(h.substr(3,2),16),b=parseInt(h.substr(5,2),16);return'rgba('+r+','+g+','+b+','+a+')';}
+initRgbaPickers();
+
+// ── General Config ──
+function loadVlogConfig() {
+    fetch(API + '/admin-vlog-config.php', {credentials:'include'})
+        .then(function(r){return r.json();}).then(function(cfg) {
+            document.getElementById('cfg-heading').value = cfg['heading'] || '';
+            setPickerValue('cfg-heading-color', cfg['heading-color'] || '#E5C86C');
+            setPickerValue('cfg-heading-bg', cfg['heading-bg'] || 'rgba(0,0,0,0)');
+            setPickerValue('cfg-background', cfg['background'] || '#373737');
+            document.getElementById('cfg-columns').value = cfg['columns'] || '4';
+            document.getElementById('cfg-records').value = cfg['records'] || '0';
+            document.getElementById('cfg-label-size').value = cfg['label-size'] || '0.85';
+            setPickerValue('cfg-label-color', cfg['label-color'] || 'rgba(255,255,255,0.85)');
+            document.getElementById('cfg-spacing-horizontal').value = cfg['spacing-horizontal'] || '16';
+            document.getElementById('cfg-spacing-vertical').value = cfg['spacing-vertical'] || '16';
+        });
+}
+
+function saveVlogConfig() {
+    var errEl = document.getElementById('cfg-error');
+    errEl.style.display = 'none';
+    var payload = {
+        'heading':            document.getElementById('cfg-heading').value,
+        'heading-color':      getPickerValue('cfg-heading-color'),
+        'heading-bg':         getPickerValue('cfg-heading-bg'),
+        'background':         getPickerValue('cfg-background'),
+        'columns':            document.getElementById('cfg-columns').value,
+        'records':            document.getElementById('cfg-records').value,
+        'label-size':         document.getElementById('cfg-label-size').value,
+        'label-color':        getPickerValue('cfg-label-color'),
+        'spacing-horizontal': document.getElementById('cfg-spacing-horizontal').value,
+        'spacing-vertical':   document.getElementById('cfg-spacing-vertical').value,
+    };
+    fetch(API + '/admin-vlog-config.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
+        var s = document.getElementById('cfg-success');
+        s.style.display = '';
+        setTimeout(function(){ s.style.display = 'none'; }, 2000);
+    });
+}
+
+function syncVlog() {
+    var btn = document.getElementById('sync-btn');
+    var st = document.getElementById('sync-status');
+    btn.disabled = true; btn.textContent = 'Syncing...'; st.textContent = '';
+    fetch(API + '/sync-rumble.php?key=yada2026sync', {credentials:'include'}).then(function(r){return r.json()}).then(function(d) {
+        btn.disabled = false; btn.textContent = 'Resync';
+        if (d.synced) { st.textContent = 'Found: '+d.found+', New: '+d.inserted+', Updated: '+d.updated; st.className = 'status'; loadVideos(); }
+        else { st.textContent = d.error||'Sync failed'; st.className = 'status error'; }
+    }).catch(function() { btn.disabled=false; btn.textContent='Resync'; st.textContent='Connection error'; st.className='status error'; });
+}
+
+checkAuth();
+</script>
+<script src="/js/error-reporter.js?v=2"></script>
+</body>
+</html>

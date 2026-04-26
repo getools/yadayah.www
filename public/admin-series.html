@@ -75,7 +75,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -169,7 +169,7 @@ var allSeries = [];
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -190,7 +190,7 @@ function doLogin() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({login: user, password: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
@@ -209,7 +209,7 @@ function togglePassword() { var i = document.getElementById('login-pass'); i.typ
 
 function loadSeries() {
     fetch(API + '/admin-series.php', {credentials:'include'})
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return safeJson(r); })
         .then(function(d) {
             allSeries = d.series || [];
             document.getElementById('series-count').textContent = allSeries.length + ' series';
@@ -284,7 +284,7 @@ function saveSeries() {
         method: key ? 'PUT' : 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.error) { alert(d.error); return; }
         closeForm();
         loadSeries();
@@ -295,7 +295,7 @@ function deleteSeries(key, label) {
     if (!confirm('Delete series "' + label + '"?')) return;
     fetch(API + '/admin-series.php?key=' + key, {
         method: 'DELETE', credentials: 'include'
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.error) { alert(d.error); return; }
         loadSeries();
     });
@@ -430,7 +430,7 @@ function doUpload(blob, filename) {
     var statusEl = document.getElementById('image-status');
     fetch(API + '/admin-resource-upload.php', {
         method: 'POST', credentials: 'include', body: fd
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.error) { alert(d.error); return; }
         document.getElementById('f-image').value = d.path;
         showImagePreview(d.path);
@@ -443,6 +443,7 @@ function doUpload(blob, filename) {
 document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=7"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

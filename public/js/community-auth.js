@@ -3,6 +3,38 @@
 'use strict';
 
 window.CommunityAuth = {};
+CommunityAuth._notifyHelp = '';
+
+// Load configurable notification help text
+(function() {
+    fetch('/api/site-config.php').then(function(r) { return r.json(); }).then(function(cfg) {
+        if (cfg['comments-notify-help']) CommunityAuth._notifyHelp = cfg['comments-notify-help'];
+    }).catch(function() {});
+})();
+
+// Ensure Community utilities exist even without community.js
+if (typeof Community === 'undefined') window.Community = {};
+if (!Community.esc) Community.esc = function(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
+if (!Community.api) Community.api = function(url, opts) {
+    opts = opts || {};
+    if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) {
+        opts.headers = opts.headers || {};
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(opts.body);
+    }
+    return fetch(url, opts).then(function(r) { return r.json(); });
+};
+if (!Community.showMsg) Community.showMsg = function(el, msg, cls) {
+    if (!el) return;
+    el.textContent = msg;
+    el.className = cls || '';
+    el.style.display = '';
+};
+if (!Community.initials) Community.initials = function(name) {
+    if (!name) return '?';
+    var p = name.trim().split(/\s+/);
+    return p.length > 1 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : p[0].substring(0, 2).toUpperCase();
+};
 
 // ── SVG icons for OAuth buttons ──
 var googleSvg = '<svg viewBox="0 0 48 48" style="width:18px;height:18px;"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.28-3.14.76-4.59l-7.98-6.19A23.99 23.99 0 0 0 0 24c0 3.77.9 7.35 2.56 10.53l7.97-5.94z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 5.94C6.51 42.62 14.62 48 24 48z"/></svg>';
@@ -21,11 +53,32 @@ CommunityAuth.renderAuth = function() {
         var avEl = av
             ? '<img class="avatar" src="' + Community.esc(av) + '" alt="" onclick="window.location.hash=\'#profile\'" onerror="this.outerHTML=\'<span class=&quot;avatar-circle&quot; onclick=&quot;window.location.hash=\\\'#profile\\\'&quot;>' + Community.esc(Community.initials(nm)) + '</span>\'">'
             : '<span class="avatar-circle" onclick="window.location.hash=\'#profile\'">' + Community.esc(Community.initials(nm)) + '</span>';
+        var notifyOn = user.user_email_notifications === true || user.user_email_notifications === 't';
+        var notifyHelp = CommunityAuth._notifyHelp || 'When enabled, you will receive email notifications for topics you create or reply to.';
         bar.innerHTML = '<span id="notification-bell" class="notification-bell" onclick="window.location.hash=\'#messages\'" style="cursor:pointer"></span>'
             + avEl
             + '<span class="user-name" onclick="window.location.hash=\'#profile\'">' + Community.esc(nm) + '</span>'
+            + '<label class="notify-toggle" title="' + Community.esc(notifyHelp) + '">'
+            + '<span class="notify-label">Notifications</span>'
+            + '<input type="checkbox" ' + (notifyOn ? 'checked' : '') + ' onchange="CommunityAuth.toggleNotifications(this.checked)">'
+            + '<span class="notify-slider"></span>'
+            + '</label>'
             + '<button class="btn btn-outline btn-sm" onclick="CommunityAuth.logout()">Logout</button>';
-        CommunityNotifications.renderBell();
+        // Show Deletions toggle for mods only
+        var roles = user.roles || [];
+        if (typeof roles === 'string') try { roles = JSON.parse(roles.replace('{','[').replace('}',']')); } catch(e) { roles = []; }
+        var isMod = roles.indexOf('admin') >= 0 || roles.indexOf('moderator') >= 0;
+        if (isMod) {
+            var showDel = CommunityAuth._showDeletions || false;
+            var notifyEl = bar.querySelector('.notify-toggle');
+            var delHtml = '<label class="notify-toggle" title="Show removed topics and replies">'
+                + '<span class="notify-label">Show Deletions</span>'
+                + '<input type="checkbox" ' + (showDel ? 'checked' : '') + ' onchange="CommunityAuth.toggleShowDeletions(this.checked)">'
+                + '<span class="notify-slider"></span>'
+                + '</label>';
+            if (notifyEl) notifyEl.insertAdjacentHTML('afterend', delHtml);
+        }
+        if (typeof CommunityNotifications !== 'undefined') CommunityNotifications.renderBell();
     } else {
         bar.innerHTML = '<button class="btn btn-primary" onclick="CommunityAuth.openLoginModal(\'login\')">Sign In</button>';
     }
@@ -44,10 +97,54 @@ CommunityAuth.logout = function() {
     }).then(function() {
         Community.currentUser = null;
         CommunityAuth.renderAuth();
-        CommunityNotifications.stopPolling();
-        window.location.hash = '#topics';
+        if (typeof CommunityNotifications !== 'undefined') CommunityNotifications.stopPolling();
+        if (window.location.pathname.indexOf('/chat') >= 0) window.location.hash = '#topics';
+        else window.location.reload();
     });
 };
+
+CommunityAuth.toggleNotifications = function(on) {
+    Community.api('/api/community-profile.php', {
+        method: 'POST',
+        body: { action: 'update', email_notifications: on }
+    }).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        if (Community.currentUser) Community.currentUser.user_email_notifications = on;
+    });
+};
+
+CommunityAuth._showDeletions = false;
+CommunityAuth.toggleShowDeletions = function(on) {
+    CommunityAuth._showDeletions = on;
+    // Reload current view to apply filter
+    if (typeof Community !== 'undefined' && Community.route) Community.route();
+};
+
+// ── OAuth popup ──
+CommunityAuth.oauthPopup = function(provider) {
+    var url = '/api/oauth-login.php?provider=' + encodeURIComponent(provider)
+        + '&return=' + encodeURIComponent(window.location.pathname)
+        + '&popup=1';
+    var w = 500, h = 600;
+    var left = (screen.width - w) / 2, top = (screen.height - h) / 2;
+    window.open(url, 'oauth_popup', 'width=' + w + ',height=' + h + ',left=' + left + ',top=' + top + ',toolbar=no,menubar=no');
+};
+
+// Listen for OAuth popup completion
+window.addEventListener('message', function(e) {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.type === 'oauth_complete') {
+        CommunityAuth.closeLoginModal();
+        Community.api('/api/community-session.php').then(function(d) {
+            Community.currentUser = d.user;
+            CommunityAuth.renderAuth();
+            CommunityAuth.renderVerifyBanner();
+            if (d.user && typeof CommunityNotifications !== 'undefined') CommunityNotifications.startPolling();
+            if (typeof Community.route === 'function') Community.route();
+            if (typeof VideoComments !== 'undefined') VideoComments.load();
+        });
+    }
+});
 
 // ── Login Modal ──
 CommunityAuth.openLoginModal = function(mode) {
@@ -77,7 +174,7 @@ CommunityAuth.openLoginModal = function(mode) {
             + '<div id="reset-success" style="display:none;text-align:center;padding:10px 0;color:#155724;font-size:0.9rem;"></div>'
             + '<input id="reset-pass" type="password" placeholder="New password">'
             + '<input id="reset-pass2" type="password" placeholder="Confirm password">'
-            + '<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#555;cursor:pointer;margin:4px 0 10px;"><input type="checkbox" onchange="var t=this.checked?\'text\':\'password\';document.getElementById(\'reset-pass\').type=t;document.getElementById(\'reset-pass2\').type=t;"> Show password</label>'
+            + '<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#555;cursor:pointer;margin:4px 0 10px;white-space:nowrap;"><input type="checkbox" style="width:auto;margin:0;" onchange="var t=this.checked?\'text\':\'password\';document.getElementById(\'reset-pass\').type=t;document.getElementById(\'reset-pass2\').type=t;"> Show password</label>'
             + '<input type="hidden" id="reset-token" value="' + esc(token) + '">'
             + '<button class="btn btn-primary" style="width:100%;" onclick="CommunityAuth.submitReset()">Reset Password</button>';
         document.getElementById('login-modal').classList.add('active');
@@ -88,10 +185,10 @@ CommunityAuth.openLoginModal = function(mode) {
     box.innerHTML = '<button class="login-close" onclick="CommunityAuth.closeLoginModal()">&times;</button>'
         + '<h2>' + (isLogin ? 'Sign In' : 'Create Account') + '</h2>'
         + '<div class="login-social">'
-        + '<a class="btn btn-google" href="/api/oauth-login.php?provider=google">' + googleSvg + ' Google</a>'
-        + '<a class="btn btn-microsoft" href="/api/oauth-login.php?provider=microsoft">' + msSvg + ' Microsoft</a>'
-        + '<a class="btn btn-yahoo" href="/api/oauth-login.php?provider=yahoo">' + yahooSvg + ' Yahoo</a>'
-        + '<a class="btn btn-x" href="/api/oauth-login.php?provider=x">' + xSvg + '</a>'
+        + '<a class="btn btn-google" href="#" onclick="CommunityAuth.oauthPopup(\'google\');return false;">' + googleSvg + ' Google</a>'
+        + '<a class="btn btn-microsoft" href="#" onclick="CommunityAuth.oauthPopup(\'microsoft\');return false;">' + msSvg + ' Microsoft</a>'
+        + '<a class="btn btn-yahoo" href="#" onclick="CommunityAuth.oauthPopup(\'yahoo\');return false;">' + yahooSvg + ' Yahoo</a>'
+        + '<a class="btn btn-x" href="#" onclick="CommunityAuth.oauthPopup(\'x\');return false;">' + xSvg + '</a>'
         + '</div>'
         + '<div class="login-or">or</div>'
         + '<div id="login-error" class="login-error" style="display:none"></div>'
@@ -142,8 +239,9 @@ CommunityAuth.submitEmailAuth = function(mode) {
                 Community.currentUser = d.user;
                 CommunityAuth.renderAuth();
                 CommunityAuth.renderVerifyBanner();
-                if (d.user) CommunityNotifications.startPolling();
-                Community.route();
+                if (d.user && typeof CommunityNotifications !== 'undefined') CommunityNotifications.startPolling();
+                if (typeof Community.route === 'function') Community.route();
+                if (typeof VideoComments !== 'undefined') VideoComments.load();
             });
         }
     }).catch(function() {

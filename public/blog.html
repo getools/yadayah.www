@@ -73,19 +73,12 @@
             width: 100%;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 30px 24px 60px;
+            padding: 0 24px 60px;
             flex: 1;
             box-sizing: border-box;
         html, body { overflow-x: hidden; }
         }
-        .content h1 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 2.2em;
-            font-weight: 700;
-            color: #333;
-            text-align: center;
-            margin: 0 0 30px;
-        }
+        /* page heading styles in site-nav.js */
 
         /* Post masonry - 3 columns with natural heights */
         .post-grid {
@@ -197,6 +190,12 @@
             font-weight: 600;
         }
         .post-fb-link:hover { text-decoration: underline; }
+        .post-comments-link { color: #31345A; text-decoration: none; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+        .post-comments-link:hover { text-decoration: underline; }
+        .blog-comments { padding: 0 14px 14px; border-top: 1px solid #eee; }
+        .blog-comments .blog-signin-bar { text-align: center; padding: 12px 0; }
+        .blog-comments .blog-signin-bar button { padding: 8px 20px; background: #31345A; color: #fff; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+        .blog-comments .blog-signin-bar button:hover { background: #4a4e7a; }
         .post-share-btn {
             color: #888;
             text-decoration: none;
@@ -224,6 +223,7 @@
 
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
     <header>
@@ -252,8 +252,8 @@
 </header>
 
 
+    <div class="page-heading-wrap"><h1 class="page-heading">Blog</h1></div>
     <div class="content">
-        <h1>Blog</h1>
         <div id="post-grid" class="post-grid"></div>
         <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
         <div id="scroll-sentinel" style="height:1px;"></div>
@@ -325,7 +325,10 @@ function renderPost(p, idx) {
 
     html += '<div class="post-footer">'
         + '<a class="post-fb-link" href="' + fbPostUrl(p.blog_post_id) + '" target="_blank" rel="noopener">View on Facebook</a>'
-        + '</div></div>';
+        + '<a href="javascript:void(0)" class="post-comments-link" id="comment-link-' + idx + '" onclick="toggleBlogComments(\'' + escHtml(p.blog_post_id) + '\',' + idx + ',this)">' + (p.comment_count > 0 ? p.comment_count + ' Comment' + (p.comment_count !== 1 ? 's' : '') : 'Comments') + '</a>'
+        + '</div>'
+        + '<div class="blog-comments" id="blog-comments-' + idx + '" style="display:none;"></div>'
+        + '</div>';
 
     return html;
 }
@@ -388,6 +391,64 @@ observer.observe(sentinel);
 
 // Initial load
 loadPage();
+
+// ── Blog comments ──
+var _blogCommentLoaded = {};
+
+function toggleBlogComments(postId, idx, linkEl) {
+    var container = document.getElementById('blog-comments-' + idx);
+    if (!container) return;
+
+    if (container.style.display !== 'none') {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = '';
+
+    if (_blogCommentLoaded[idx]) return;
+    _blogCommentLoaded[idx] = true;
+
+    // Check if user is logged in
+    fetch('/api/community-session.php', {credentials:'include'})
+        .then(function(r) { return r.json(); })
+        .then(function(session) {
+            if (typeof VideoComments !== 'undefined') {
+                VideoComments.openInline(postId, 'blog', 'facebook', 'blog-comments-' + idx, allPosts[idx].blog_message || '', allPosts[idx].blog_image || '');
+            }
+            if (!session.user) {
+                // Add sign-in bar below comments
+                var signin = document.createElement('div');
+                signin.className = 'blog-signin-bar';
+                signin.innerHTML = '<button onclick="blogSignIn()">Sign In to Leave a Comment</button>';
+                container.appendChild(signin);
+            }
+        });
+}
+
+function blogSignIn() {
+    if (typeof CommunityAuth !== 'undefined') {
+        CommunityAuth.openLoginModal('login');
+        window.addEventListener('message', function handler(e) {
+            if (e.origin !== window.location.origin) return;
+            if (e.data && e.data.type === 'oauth_complete') {
+                window.removeEventListener('message', handler);
+                location.reload();
+            }
+        });
+        var checkInterval = setInterval(function() {
+            var modal = document.getElementById('login-modal');
+            if (!modal || !modal.classList.contains('active')) {
+                clearInterval(checkInterval);
+                fetch('/api/community-session.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+                    if (d.user) location.reload();
+                });
+            }
+        }, 500);
+        setTimeout(function() { clearInterval(checkInterval); }, 120000);
+    } else {
+        window.location.href = '/chat#topics';
+    }
+}
 </script>
 <script src="/js/bg-video.js"></script>
 <script>
@@ -398,6 +459,10 @@ loadPage();
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<link rel="stylesheet" href="/css/login.css">
+<div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"><div class="login-box" id="login-box"></div></div>
+<script src="/js/community-auth.js?v=22"></script>
+<script src="/js/video-comments.js?v=11"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

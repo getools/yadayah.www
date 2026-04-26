@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring - Yada Yah Admin</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .summary-cards { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .summary-card { background: #fff; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 8px 12px; min-width: 70px; text-align: center; cursor: pointer; transition: box-shadow 0.15s, transform 0.15s; }
+        .summary-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.15); transform: translateY(-1px); }
+        .summary-card.active { outline: 2px solid #31345A; }
+        .summary-card .num { font-size: 1.1rem; font-weight: 700; }
+        .summary-card .label { font-size: 0.68rem; color: #888; margin-top: 1px; }
+        .num.error { color: #c0392b; }
+        .num.warning { color: #e67e22; }
+        .num.ok { color: #27ae60; }
+        .num.info { color: #2980b9; }
+
+        .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+        .toolbar select, .toolbar button { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.82rem; font-family: inherit; }
+        .toolbar button { cursor: pointer; background: #fff; }
+        .toolbar button:hover { background: #f0f0f0; }
+        .toolbar button.primary { background: #31345A; color: #fff; border-color: #31345A; }
+        .toolbar button.primary:hover { background: #4a4e7a; }
+        .toolbar .spacer { flex: 1; }
+
+        .event-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .event-table th, .event-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e8e8e8; vertical-align: top; }
+        .event-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; }
+        .event-table tr:hover { background: #f7f9ff; }
+        .event-table tr.resolved { opacity: 0.75; background: #f9f9f9; }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+        .badge.error { background: #fde8e8; color: #c0392b; }
+        .badge.warning { background: #fef3e2; color: #e67e22; }
+        .badge.info { background: #e8f0fe; color: #2980b9; }
+
+        .source-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; background: #eee; color: #555; }
+
+        .action-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; background: #d4edda; color: #155724; }
+
+        .event-detail { max-width: 500px; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.75rem; color: #666; max-height: 60px; overflow: hidden; cursor: pointer; transition: max-height 0.3s; }
+        .event-detail.open { max-height: 400px; overflow-y: auto; }
+
+        .actions button { padding: 2px 8px; font-size: 0.72rem; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; background: #fff; margin-right: 3px; }
+        .actions button:hover { background: #f0f0f0; }
+        .actions button.resolve { color: #27ae60; border-color: #b8d8c0; }
+        .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+
+        .empty-msg { text-align: center; padding: 40px; color: #999; font-size: 0.9rem; }
+        .scan-status { font-size: 0.82rem; color: #27ae60; margin-left: 8px; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none;max-width:100%;padding:0 16px;box-sizing:border-box;">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=7"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Monitoring</h1>
+
+    <div id="summary-area" class="summary-cards"></div>
+
+    <div class="toolbar">
+        <select id="filter-source" onchange="loadEvents()">
+            <option value="">All Sources</option>
+            <option value="php_error">PHP Errors</option>
+            <option value="js_error">JS Errors</option>
+            <option value="promise_rejection">Promise Rejections</option>
+            <option value="console_error">Console Errors</option>
+            <option value="fetch_error">Fetch Errors</option>
+            <option value="resource_error">Resource Errors</option>
+            <option value="long_task">Long Tasks</option>
+            <option value="network_error">Network Errors</option>
+            <option value="browser_deprecation">Deprecations</option>
+            <option value="sync">Sync</option>
+            <option value="db">Database</option>
+        </select>
+        <select id="filter-severity" onchange="loadEvents()">
+            <option value="">All Severities</option>
+            <option value="error">Errors</option>
+            <option value="warning">Warnings</option>
+            <option value="info">Info</option>
+        </select>
+        <select id="filter-status" onchange="loadEvents()">
+            <option value="unresolved">Unresolved</option>
+            <option value="">All</option>
+            <option value="resolved">Resolved</option>
+        </select>
+        <span class="spacer"></span>
+        <button class="primary" onclick="runScan()">Run Scan Now</button>
+        <button onclick="runAutoFix()" id="autofix-btn" style="background:#27ae60;color:#fff;border-color:#27ae60;">&#9881; Auto-Fix Now</button>
+        <span id="autofix-timer" style="font-size:0.75rem;color:#888;"></span>
+        <span id="scan-status" class="scan-status" style="display:none"></span>
+        <button onclick="clearResolved()">Clear Resolved</button>
+    </div>
+
+    <div id="events-area"></div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allEvents = [];
+var _monSort = 'event_dtime';
+var _monDir = 'desc';
+
+function monSort(col) {
+    if (_monSort === col) {
+        _monDir = _monDir === 'desc' ? 'asc' : 'desc';
+    } else {
+        _monSort = col;
+        _monDir = col === 'event_key' || col === 'event_source' || col === 'event_client_ip' ? 'asc' : 'desc';
+    }
+    allEvents.sort(function(a, b) {
+        var va = a[col], vb = b[col];
+        if (va == null) va = '';
+        if (vb == null) vb = '';
+        if (col === 'event_key') { va = parseInt(va) || 0; vb = parseInt(vb) || 0; }
+        var cmp = va < vb ? -1 : va > vb ? 1 : 0;
+        return _monDir === 'asc' ? cmp : -cmp;
+    });
+    renderEvents();
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadSummary();
+            loadEvents();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadSummary();
+            loadEvents();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function loadSummary() {
+    fetch(API + '/admin-monitoring.php?summary=1', {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            var s = d.summary || {};
+            var errors = parseInt(s.errors) || 0;
+            var warnings = parseInt(s.warnings) || 0;
+            var unresolved = parseInt(s.unresolved) || 0;
+            var autoFixed = parseInt(s.auto_fixed) || 0;
+
+            var html = '';
+            html += '<div class="summary-card" onclick="filterByCard(\'severity\',\'error\')" title="Show all errors"><div class="num ' + (errors > 0 ? 'error' : 'ok') + '">' + errors + '</div><div class="label">Errors</div></div>';
+            html += '<div class="summary-card" onclick="filterByCard(\'severity\',\'warning\')" title="Show all warnings"><div class="num ' + (warnings > 0 ? 'warning' : 'ok') + '">' + warnings + '</div><div class="label">Warnings</div></div>';
+            html += '<div class="summary-card" onclick="filterByCard(\'status\',\'resolved\')" title="Show auto-fixed"><div class="num info">' + autoFixed + '</div><div class="label">Auto-Fixed</div></div>';
+            html += '<div class="summary-card" onclick="filterByCard(\'status\',\'unresolved\')" title="Show unresolved"><div class="num ' + (unresolved > 0 ? 'warning' : 'ok') + '">' + unresolved + '</div><div class="label">Unresolved</div></div>';
+
+            (d.by_source || []).forEach(function(src) {
+                var u = parseInt(src.unresolved) || 0;
+                html += '<div class="summary-card" onclick="filterByCard(\'source\',\'' + esc(src.event_source) + '\')" title="Show ' + esc(src.event_source) + ' events"><div class="num ' + (u > 0 ? 'warning' : 'ok') + '">' + src.cnt + '</div><div class="label">' + esc(src.event_source) + '</div></div>';
+            });
+
+            document.getElementById('summary-area').innerHTML = html;
+        });
+}
+
+function filterByCard(type, value) {
+    // Reset all filters first
+    document.getElementById('filter-source').value = '';
+    document.getElementById('filter-severity').value = '';
+    document.getElementById('filter-status').value = '';
+    // Set the clicked filter
+    if (type === 'source') document.getElementById('filter-source').value = value;
+    if (type === 'severity') document.getElementById('filter-severity').value = value;
+    if (type === 'status') document.getElementById('filter-status').value = value;
+    // Highlight active card
+    document.querySelectorAll('.summary-card').forEach(function(c) { c.classList.remove('active'); });
+    if (event && event.target) {
+        var card = event.target.closest('.summary-card');
+        if (card) card.classList.add('active');
+    }
+    loadEvents();
+}
+
+function loadEvents() {
+    var source = document.getElementById('filter-source').value;
+    var severity = document.getElementById('filter-severity').value;
+    var status = document.getElementById('filter-status').value;
+
+    var url = API + '/admin-monitoring.php?limit=200';
+    if (source) url += '&source=' + source;
+    if (severity) url += '&severity=' + severity;
+    if (status) url += '&status=' + status;
+
+    fetch(url, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        allEvents = d.events || [];
+        _monTotal = d.total || allEvents.length;
+        renderEvents();
+    });
+}
+var _monTotal = 0;
+function renderEvents() {
+    if (!allEvents.length) {
+        document.getElementById('events-area').innerHTML = '<div class="empty-msg">No events found. All clear!</div>';
+        return;
+    }
+    var thStyle = 'cursor:pointer;user-select:none;';
+    var arrow = function(col) { return _monSort === col ? (_monDir === 'asc' ? ' ▲' : ' ▼') : ''; };
+    var html = '<table class="event-table"><thead><tr>'
+        + '<th style="' + thStyle + '" onclick="monSort(\'event_key\')">#' + arrow('event_key') + '</th>'
+        + '<th style="' + thStyle + '" onclick="monSort(\'event_dtime\')">Time' + arrow('event_dtime') + '</th>'
+        + '<th style="' + thStyle + '" onclick="monSort(\'event_source\')">Source' + arrow('event_source') + '</th>'
+        + '<th style="' + thStyle + '" onclick="monSort(\'event_severity\')">Severity' + arrow('event_severity') + '</th>'
+        + '<th>Message</th><th>File</th><th>Page</th>'
+        + '<th style="' + thStyle + '" onclick="monSort(\'event_client_ip\')">IP' + arrow('event_client_ip') + '</th>'
+        + '<th>Action</th><th></th></tr></thead><tbody>';
+    allEvents.forEach(function(e) {
+        var resolved = e.event_resolved_flag === true || e.event_resolved_flag === 't';
+        html += '<tr class="' + (resolved ? 'resolved' : '') + '">';
+        html += '<td style="font-size:0.7rem;color:#999;font-family:monospace;">' + e.event_key + '</td>';
+        html += '<td style="white-space:nowrap;font-size:0.75rem;">' + timeAgo(e.event_dtime) + '</td>';
+        html += '<td><span class="source-badge">' + esc(e.event_source) + '</span></td>';
+        html += '<td><span class="badge ' + esc(e.event_severity) + '">' + esc(e.event_severity) + '</span></td>';
+        var msgShort = (e.event_message || '').split(/[\n\r]/)[0].substring(0, 120);
+        var hasMore = (e.event_message || '').length > msgShort.length || !!e.event_detail;
+        html += '<td style="max-width:400px;cursor:' + (hasMore ? 'pointer' : 'default') + ';" ' + (hasMore ? 'onclick="showErrorDetail(' + e.event_key + ')"' : '') + '>'
+            + '<span style="font-size:0.82rem;">' + esc(msgShort) + (hasMore ? '…' : '') + '</span></td>';
+        html += '<td style="font-size:0.75rem;font-family:monospace;white-space:nowrap;">' + (e.event_file ? esc(e.event_file) : '<span style="color:#ccc">—</span>') + '</td>';
+        html += '<td style="font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(e.event_referer || '') + '">' + (e.event_referer ? esc(e.event_referer.replace(/^https?:\/\/[^/]+/, '')) : '<span style="color:#ccc">—</span>') + '</td>';
+        html += '<td style="font-size:0.75rem;white-space:nowrap;">' + (e.event_client_ip ? esc(e.event_client_ip) : '<span style="color:#ccc">—</span>') + '</td>';
+        html += '<td style="text-align:center;">' + (e.event_action_taken ? '<button onclick="showActionDetail(' + e.event_key + ')" style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:2px 6px;" title="View action details">&#128270;</button>' : '') + '</td>';
+        html += '<td class="actions">';
+        if (!resolved) html += '<button class="resolve" onclick="resolveEvent(' + e.event_key + ')">Resolve</button>';
+        html += '<button class="del" onclick="deleteEvent(' + e.event_key + ')">Delete</button>';
+        html += '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    if (_monTotal > allEvents.length) html += '<div style="text-align:center;padding:10px;color:#888;font-size:0.82rem;">Showing ' + allEvents.length + ' of ' + _monTotal + ' events</div>';
+    document.getElementById('events-area').innerHTML = html;
+}
+
+function showErrorDetail(key) {
+    var e = allEvents.find(function(ev) { return ev.event_key === key || ev.event_key == key; });
+    if (!e) return;
+    var fullText = (e.event_message || '') + (e.event_detail ? '\n\n── Detail ──\n' + e.event_detail : '');
+    var overlay = document.getElementById('error-detail-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'error-detail-overlay';
+        overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;';
+        overlay.onclick = function(ev) { if (ev.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:800px;width:90%;max-height:80vh;overflow-y:auto;position:relative;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+            + '<h3 style="margin:0;font-size:1rem;color:#31345A;">Error Details</h3>'
+            + '<div><button id="error-detail-copy" style="padding:4px 12px;font-size:0.8rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;margin-right:8px;" onclick="copyErrorDetail()">&#128203; Copy</button>'
+            + '<button onclick="document.getElementById(\'error-detail-overlay\').style.display=\'none\'" style="background:none;border:none;font-size:1.3rem;cursor:pointer;">&times;</button></div></div>'
+            + '<pre id="error-detail-text" style="white-space:pre-wrap;word-break:break-word;font-size:0.82rem;color:#333;line-height:1.5;margin:0;font-family:monospace;background:#f8f8f8;padding:12px;border-radius:6px;"></pre>'
+            + '</div>';
+        document.body.appendChild(overlay);
+    }
+    document.getElementById('error-detail-text').textContent = fullText;
+    overlay.style.display = 'flex';
+}
+
+function copyErrorDetail() {
+    var text = document.getElementById('error-detail-text').textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        var btn = document.getElementById('error-detail-copy');
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.innerHTML = '&#128203; Copy'; }, 1500);
+    });
+}
+
+function showActionDetail(key) {
+    var e = allEvents.find(function(ev) { return ev.event_key === key || ev.event_key == key; });
+    if (!e || !e.event_action_taken) return;
+    var overlay = document.getElementById('action-detail-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'action-detail-overlay';
+        overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;';
+        overlay.onclick = function(ev) { if (ev.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;position:relative;">'
+            + '<button onclick="document.getElementById(\'action-detail-overlay\').style.display=\'none\'" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:1.3rem;cursor:pointer;">&times;</button>'
+            + '<h3 style="margin:0 0 12px;font-size:1rem;color:#31345A;">Action Details</h3>'
+            + '<pre id="action-detail-text" style="white-space:pre-wrap;word-break:break-word;font-size:0.85rem;color:#333;line-height:1.5;margin:0;font-family:inherit;"></pre>'
+            + '</div>';
+        document.body.appendChild(overlay);
+    }
+    document.getElementById('action-detail-text').textContent = e.event_action_taken;
+    overlay.style.display = 'flex';
+}
+
+function resolveEvent(key) {
+    fetch(API + '/admin-monitoring.php?key=' + key, {method:'PUT', credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function() { loadEvents(); loadSummary(); });
+}
+
+function deleteEvent(key) {
+    fetch(API + '/admin-monitoring.php?key=' + key, {method:'DELETE', credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function() { loadEvents(); loadSummary(); });
+}
+
+function runAutoFix() {
+    triggerAutoFixCycle();
+}
+
+// Timer countdown to next auto-fix run (every 30 min on :00 and :30)
+var _autoFixRunning = false;
+function startAutoFixTimer() {
+    var el = document.getElementById('autofix-timer');
+    function update() {
+        if (_autoFixRunning) return;
+        var now = new Date();
+        var mins = now.getMinutes();
+        var secsLeft = ((mins < 30 ? 30 : 60) - mins) * 60 - now.getSeconds();
+        if (secsLeft <= 0) {
+            triggerAutoFixCycle();
+            return;
+        }
+        var m = Math.floor(secsLeft / 60);
+        var s = secsLeft % 60;
+        el.textContent = 'Next run: ' + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+    }
+    update();
+    setInterval(update, 1000);
+}
+
+function triggerAutoFixCycle() {
+    if (_autoFixRunning) return;
+    _autoFixRunning = true;
+    var el = document.getElementById('autofix-timer');
+    var btn = document.getElementById('autofix-btn');
+    var area = document.getElementById('events-area');
+    el.textContent = 'Auto-fix running...';
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:#888;"><div class="spinner" style="margin:0 auto 12px;"></div>Auto-fix analyzing errors...</div>';
+
+    fetch(API + '/admin-monitoring.php?action=autofix', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{}'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            _autoFixRunning = false;
+            btn.disabled = false;
+            btn.innerHTML = '&#9881; Auto-Fix Now';
+            el.textContent = 'Just ran — refreshing...';
+            // Wait a moment then reload everything
+            setTimeout(function() {
+                loadSummary();
+                loadEvents();
+            }, 1500);
+        })
+        .catch(function() {
+            _autoFixRunning = false;
+            btn.disabled = false;
+            btn.innerHTML = '&#9881; Auto-Fix Now';
+            el.textContent = 'Error — will retry next cycle';
+            loadEvents();
+        });
+}
+
+startAutoFixTimer();
+
+function runScan() {
+    var s = document.getElementById('scan-status');
+    s.textContent = 'Scanning...';
+    s.style.display = '';
+    fetch(API + '/admin-monitoring.php?action=run', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{}'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (d && d.error) {
+                s.textContent = 'Scan error: ' + d.error;
+                s.style.color = '#c0392b';
+            } else {
+                s.textContent = 'Scan complete';
+                s.style.color = '#27ae60';
+                setTimeout(function(){ s.style.display = 'none'; }, 3000);
+            }
+            loadSummary();
+            loadEvents();
+        })
+        .catch(function(err) {
+            s.textContent = 'Scan failed: ' + (err.message || err);
+            s.style.color = '#c0392b';
+        });
+}
+
+function clearResolved() {
+    if (!confirm('Delete all resolved events?')) return;
+    fetch(API + '/admin-monitoring.php?action=clear', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{"action":"clear"}'})
+        .then(function(r){return safeJson(r);})
+        .then(function() { loadSummary(); loadEvents(); });
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function timeAgo(dt) {
+    if (!dt) return '';
+    var diff = (Date.now() - new Date(dt).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+    return new Date(dt).toLocaleDateString();
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
+</body>
+</html>

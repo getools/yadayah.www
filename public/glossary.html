@@ -83,7 +83,7 @@
             display: flex;
             justify-content: center;
             gap: 0;
-            margin: 0 -20px 20px -20px;
+            margin: 0 -20px 0 -20px;
             background: #f0f0f0;
             border-bottom: 2px solid #ddd;
         }
@@ -101,6 +101,11 @@
         .page-tabs a.active {
             color: #31345A;
             border-bottom-color: #31345A;
+        }
+        .tab-short { display: none; }
+        @media (max-width: 600px) {
+            .tab-full { display: none; }
+            .tab-short { display: inline; }
         }
 
         /* Page title */
@@ -182,6 +187,7 @@
         }
         .letter-content {
             position: relative;
+            overflow: hidden;
         }
         .letter-content.has-bg::before {
             content: '';
@@ -190,7 +196,8 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: var(--letter-bg) center top/contain no-repeat;
+            background: var(--letter-bg) center top no-repeat;
+            background-size: var(--letter-bg-scale, 100%) auto;
             opacity: 0.08;
             pointer-events: none;
         }
@@ -351,7 +358,7 @@
     <div class="page-tabs">
         <a href="/translations">Translations</a>
         <a href="/glossary" class="active">Glossary</a>
-        <a href="/dss">Dead Sea Scrolls</a>
+        <a href="/dss"><span class="tab-full">Dead Sea Scrolls</span><span class="tab-short">DSS</span></a>
     </div>
 
     <div style="max-width:1024px;margin:0 auto;flex:1;">
@@ -479,11 +486,13 @@
             selectedLetter = lt;
             var letterName = lt.letter_label.toLowerCase();
 
-            // Letter background image
+            // Letter background image — read from DB (letter_image) with hardcoded fallback
             var contentEl = document.getElementById('letter-content');
-            var bgFile = letterBackgrounds[letterName];
+            var bgFile = lt.letter_image || letterBackgrounds[letterName];
             if (bgFile) {
                 contentEl.style.setProperty('--letter-bg', "url('images/" + bgFile + "')");
+                var scale = lt.letter_image_scale || 100;
+                contentEl.style.setProperty('--letter-bg-scale', scale + '%');
                 contentEl.classList.add('has-bg');
             } else {
                 contentEl.classList.remove('has-bg');
@@ -503,14 +512,12 @@
             var hasOverview = lt.letter_overview && lt.letter_overview.trim();
             var hasInfo = lt.letter_sort > 0;
 
+            var hasInfo = lt.letter_info && lt.letter_info.trim();
+
             if (hasInfo || hasOverview) {
                 var html = '';
                 if (hasInfo) {
-                    html += '<div class="letter-info">';
-                    html += 'Letter number ' + escHtml(String(lt.letter_sort)) + " of the Hebrew 'alephbeyth is ";
-                    html += '<b><i>' + escHtml(lt.letter_label) + '</i> - ' + escHtml(lt.letter_hebrew) + ' / <span class="yt-char">' + escHtml(lt.letter_yt) + '</span></b>.';
-                    html += '  The numerical value is ' + escHtml(String(lt.letter_numeric_value)) + '.';
-                    html += '</div>';
+                    html += '<div class="letter-info">' + escHtml(lt.letter_info) + '</div>';
                 }
                 if (hasOverview) {
                     html += lt.letter_overview;
@@ -715,7 +722,7 @@
                     breakDiv.className = 'section-break';
                     var bookLabel = record.translation_book.replace(/^YY-/i, '');
                     if (record.volume_flip_code) {
-                        var hdrUrl = 'https://book.yadayah.com/' + encodeURIComponent(record.volume_flip_code) + '/';
+                        var hdrUrl = '/' + encodeURIComponent(record.volume_flip_code) + '/';
                         var hdrLink = document.createElement('a');
                         hdrLink.href = hdrUrl;
                         hdrLink.target = '_blank';
@@ -735,7 +742,7 @@
                 var chapterName = record.chapter_name || '';
                 var lineLabel;
                 if (flipCode) {
-                    var url = 'https://book.yadayah.com/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
+                    var url = '/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
                     lineLabel = '<a href="' + url + '" target="_blank">' + (chapterName ? chapterName : '') + ' - Page ' + (page || '?') + '</a>';
                 } else {
                     lineLabel = (chapterName ? chapterName : '') + ' - Page ' + (page || '?');
@@ -864,6 +871,6 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

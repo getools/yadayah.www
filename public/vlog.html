@@ -6,16 +6,15 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Rumble Videos</title>
+    <title>Vlog</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/video-comments.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         html, body { overflow-x: hidden; }
         html { height: 100%; }
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; background: var(--vlog-bg, #fff); }
 
         /* Video grid */
         .video-grid {
@@ -57,15 +56,11 @@
             padding: 10px 12px;
         }
         .video-title {
-            font-size: 0.9rem;
+            font-size: var(--label-size, 0.9rem);
             font-weight: 600;
             color: #31345A;
             line-height: 1.3;
             margin-bottom: 6px;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
         }
         .video-date {
             font-size: 0.78rem;
@@ -151,42 +146,6 @@
         }
         .pagination .ellipsis:hover { background: none; }
 
-        /* Modal overlay for embedded video */
-        .video-modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.8);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
-        .video-modal-overlay.active { display: flex; }
-        .video-modal {
-            width: 90%;
-            max-width: 900px;
-            aspect-ratio: 16/9;
-            position: relative;
-        }
-        .video-modal iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            border-radius: 8px;
-        }
-        .video-modal-close {
-            position: absolute;
-            top: -36px; right: 0;
-            color: #fff;
-            font-size: 1.8rem;
-            cursor: pointer;
-            background: none;
-            border: none;
-            padding: 4px 10px;
-            box-shadow: none;
-        }
-        .video-modal-close:hover { color: #E5C86C; background: none; box-shadow: none; }
-
         /* Header */
         header {
             position: relative; overflow: hidden;
@@ -245,7 +204,7 @@
             display: flex;
             justify-content: center;
             gap: 0;
-            margin: 0 -20px 20px -20px;
+            margin: 0 -20px 0 -20px;
             background: #f0f0f0;
             border-bottom: 2px solid #ddd;
         }
@@ -348,82 +307,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Lightbox */
-        .lightbox-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.92);
-            z-index: 10000;
-            justify-content: center;
-            align-items: center;
-        }
-        .lightbox-overlay.active { display: flex; }
-        .lightbox-container {
-            position: relative;
-            width: 90%;
-            max-width: 900px;
-        }
-        .lightbox-video {
-            width: 100%;
-            aspect-ratio: 16/9;
-            background: #000;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-        .lightbox-video iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        .lightbox-close {
-            position: absolute;
-            top: -40px; right: 0;
-            color: #fff;
-            font-size: 2rem;
-            cursor: pointer;
-            background: none;
-            border: none;
-            padding: 4px 10px;
-            line-height: 1;
-            opacity: 0.8;
-            transition: opacity 0.2s;
-            box-shadow: none;
-        }
-        .lightbox-close:hover { opacity: 1; color: #E5C86C; background: none; box-shadow: none; }
-        .lightbox-nav {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #fff;
-            font-size: 2.5rem;
-            cursor: pointer;
-            background: rgba(0,0,0,0.5);
-            border: none;
-            border-radius: 50%;
-            width: 48px; height: 48px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.7;
-            transition: opacity 0.2s, background 0.2s;
-            box-shadow: none;
-        }
-        .lightbox-nav:hover { opacity: 1; background: rgba(0,0,0,0.8); box-shadow: none; }
-        .lightbox-prev { left: -60px; }
-        .lightbox-next { right: -60px; }
-        .lightbox-caption {
-            text-align: center;
-            color: rgba(255,255,255,0.8);
-            font-size: 0.9rem;
-            margin-top: 12px;
-            line-height: 1.4;
-        }
-        @media (max-width: 1024px) {
-            .lightbox-prev { left: 8px; }
-            .lightbox-next { right: 8px; }
-        }
-
     </style>
 <script src="/js/site-nav.js"></script>
 </head>
@@ -460,22 +343,12 @@
 
     <!-- Vlog tab -->
     <div id="tab-vlog">
-        <div class="channel-link" style="padding-top:10px">
-            <a href="https://rumble.com/c/YadaYahowah7" target="_blank">View Channel on Rumble &rarr;</a>
-        </div>
 
         <div id="video-container">
             <div class="video-loading">Loading videos...</div>
         </div>
 
-        <!-- Modal for embedded video playback -->
-        <div class="video-modal-overlay" id="video-modal">
-            <div class="video-modal">
-                <button class="video-modal-close" onclick="closeModal()">&times;</button>
-                <iframe id="video-iframe" allowfullscreen></iframe>
-                <div id="video-comments"></div>
-            </div>
-        </div>
+        <!-- Lightbox handled by video-lightbox.js -->
     </div>
 
     <!-- Shorts tab -->
@@ -485,20 +358,11 @@
             <div id="shorts-status" class="shorts-status"><div class="spinner"></div></div>
         </div>
 
-        <!-- Shorts Lightbox -->
-        <div id="shorts-lightbox" class="lightbox-overlay" onclick="if(event.target===this)closeShortsLB()">
-            <div class="lightbox-container">
-                <button class="lightbox-close" onclick="closeShortsLB()">&times;</button>
-                <button class="lightbox-nav lightbox-prev" onclick="navShortsLB(-1)">&#8249;</button>
-                <button class="lightbox-nav lightbox-next" onclick="navShortsLB(1)">&#8250;</button>
-                <div class="lightbox-video">
-                    <iframe id="shorts-lb-iframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
-                </div>
-                <div id="shorts-lb-caption" class="lightbox-caption"></div>
-            </div>
-        </div>
+        <!-- Shorts lightbox handled by video-lightbox.js -->
     </div>
 
+    <script src="/js/video-comments.js?v=11"></script>
+    <script src="/js/video-lightbox.js?v=15"></script>
     <script>
         function escHtml(str) {
             if (str == null) return '';
@@ -506,51 +370,24 @@
         }
 
         function formatDate(isoStr) {
+            if (!isoStr) return '';
             var d = new Date(isoStr);
+            if (isNaN(d.getTime())) return '';
             return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         }
 
-        async function openModal(videoUrl) {
-            var iframe = document.getElementById('video-iframe');
-            document.getElementById('video-modal').classList.add('active');
-            iframe.src = '';
-
-            // Extract embed_id from URL for comments (e.g. "v6abcde" from rumble URL)
-            var embedMatch = videoUrl.match(/\/v([a-z0-9]+)-/);
-            var embedId = embedMatch ? 'v' + embedMatch[1] : videoUrl;
-            VideoComments.open(embedId, 'rumble');
-
-            try {
-                var response = await fetch('/api/rumble-oembed.php?url=' + encodeURIComponent(videoUrl));
-                var data = await response.json();
-                if (data.embed_url) {
-                    iframe.src = data.embed_url;
-                }
-            } catch (err) {
-                console.error('oEmbed error:', err);
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('video-modal').classList.remove('active');
-            document.getElementById('video-iframe').src = '';
-            VideoComments.close();
-        }
-
-        // Close modal on overlay click or Escape key
-        document.getElementById('video-modal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
-        });
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeModal();
-        });
+        // Configure shared lightbox for Vlog videos
+        var vlogAllVideos = [];
+        configureForVlog();
 
         var currentPage = 1;
         var totalPages = 1;
 
-        function renderCard(v) {
-            return '<div class="video-card">'
-                + '<a href="javascript:void(0)" onclick="openModal(\'' + escHtml(v.url) + '\')">'
+        function renderCard(v, idx) {
+            var audioIcon = v.audio ? '<a href="javascript:void(0)" onclick="event.stopPropagation();configureForVlog();VideoLightbox.openAudio(' + idx + ')" title="Listen to MP3" style="position:absolute;bottom:6px;right:6px;font-size:1.3rem;text-decoration:none;background:rgba(0,0,0,0.6);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;z-index:2;">&#127911;</a>' : '';
+            return '<div class="video-card" style="position:relative;">'
+                + audioIcon
+                + '<a href="javascript:void(0)" onclick="configureForVlog();VideoLightbox.open(' + idx + ')">'
                 + '<div class="video-thumb">'
                 + '<img src="' + escHtml(v.thumbnail) + '" alt="' + escHtml(v.title) + '" loading="lazy">'
                 + '</div>'
@@ -607,12 +444,11 @@
             window.scrollTo({ top: document.getElementById('video-container').offsetTop - 20, behavior: 'smooth' });
         }
 
-        async function loadVideos(page) {
-            page = page || 1;
+        async function loadVideos() {
             var container = document.getElementById('video-container');
             container.innerHTML = '<div class="video-loading">Loading videos...</div>';
             try {
-                var response = await fetch('/api/rumble-videos.php?page=' + page);
+                var response = await fetch('/api/rumble-videos.php?grouped=1');
                 var data = await response.json();
 
                 if (data.error) {
@@ -620,19 +456,49 @@
                     return;
                 }
 
-                var videos = data.videos || data;
-                totalPages = data.total_pages || 1;
-                currentPage = data.page || page;
-
-                if (!videos.length) {
+                var sections = data.sections || [];
+                if (!sections.length) {
                     container.innerHTML = '<div class="video-loading">No videos found.</div>';
                     return;
                 }
 
-                var html = '<div class="video-grid">';
-                videos.forEach(function(v) { html += renderCard(v); });
-                html += '</div>';
-                html += buildPagination(currentPage, totalPages);
+                vlogAllVideos = [];
+                var html = '';
+
+                // Jump links
+                if (sections.length > 1) {
+                    html += '<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;padding:12px 0 16px;max-width:1024px;margin:0 auto;">';
+                    for (var j = 0; j < sections.length; j++) {
+                        var jc = sections[j].category || {};
+                        var jslug = jc.category_slug || 'uncategorized';
+                        html += '<a href="#cat-' + jslug + '" style="color:#E5C86C;font-family:\'Julius Sans One\',sans-serif;font-size:0.9rem;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + escHtml(jc.category_title || 'Uncategorized') + '</a>';
+                    }
+                    html += '</div>';
+                }
+
+                for (var s = 0; s < sections.length; s++) {
+                    var sec = sections[s];
+                    var cat = sec.category || {};
+                    var slug = cat.category_slug || 'uncategorized';
+
+                    html += '<div id="cat-' + slug + '" style="text-align:center;padding:16px 0 8px;">';
+                    html += '<h2 style="font-family:\'Julius Sans One\',sans-serif;font-size:1.4rem;color:#E5C86C;margin:0;">' + escHtml(cat.category_title || 'Uncategorized') + '</h2>';
+                    if (cat.category_subtitle) {
+                        html += '<p style="font-size:0.9rem;color:rgba(255,255,255,0.7);margin:6px 0 0;">' + escHtml(cat.category_subtitle) + '</p>';
+                    }
+                    html += '</div>';
+
+                    html += '<div class="video-grid">';
+                    var vids = sec.videos || [];
+                    for (var i = 0; i < vids.length; i++) {
+                        var globalIdx = vlogAllVideos.length;
+                        vlogAllVideos.push(vids[i]);
+                        html += renderCard(vids[i], globalIdx);
+                    }
+                    html += '</div>';
+                }
+
+                VideoLightbox.setVideos(vlogAllVideos);
                 container.innerHTML = html;
 
             } catch (err) {
@@ -641,7 +507,7 @@
             }
         }
 
-        loadVideos(1);
+        loadVideos();
 
         // ── Tab switching ──
         var shortsLoaded = false;
@@ -662,13 +528,39 @@
 
         // ── Shorts ──
         var allShorts = [];
-        var shortsLBIndex = -1;
+
+        function configureForShorts() {
+            VideoLightbox.configure({
+                pageCode: 'shorts',
+                videoSource: 'youtube',
+                getVideoId: function(v) { return v.id || ''; },
+                getTitle: function(v) { return v.title || ''; },
+                getThumbnail: function(v) { return v.thumbnail || 'https://i.ytimg.com/vi/' + v.id + '/hqdefault.jpg'; },
+                getEmbedUrl: function(v) { return 'https://www.youtube.com/embed/' + (v.id || '') + '?autoplay=1'; }
+            });
+            VideoLightbox.setVideos(allShorts);
+        }
+
+        function configureForVlog() {
+            VideoLightbox.configure({
+                pageCode: 'vlog',
+                videoSource: 'youtube',
+                getVideoId: function(v) { return v.videoId || v.embedId || ''; },
+                getTitle: function(v) { return v.title || ''; },
+                getThumbnail: function(v) { return v.thumbnail || ''; },
+                getEmbedUrl: function(v) {
+                    var id = v.videoId || v.embedId || '';
+                    return 'https://www.youtube.com/embed/' + id + '?autoplay=1';
+                }
+            });
+            VideoLightbox.setVideos(vlogAllVideos);
+        }
 
         function renderShortCard(v, idx) {
             var thumb = v.thumbnail || '';
             var title = v.title || 'Short';
             var date = formatDate(v.published || v.date);
-            return '<div class="shorts-card" onclick="openShortsLB(' + idx + ')">'
+            return '<div class="shorts-card" onclick="configureForShorts();VideoLightbox.open(' + idx + ')">'
                 + '<div class="shorts-thumb">'
                 + '<img src="' + escHtml(thumb) + '" alt="' + escHtml(title) + '" loading="lazy">'
                 + '<div class="shorts-play-btn"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>'
@@ -700,56 +592,28 @@
                 });
         }
 
-        function openShortsLB(idx) {
-            shortsLBIndex = idx;
-            var v = allShorts[idx];
-            if (!v) return;
-            document.getElementById('shorts-lb-iframe').src = 'https://www.youtube.com/embed/' + v.id + '?autoplay=1';
-            document.getElementById('shorts-lb-caption').textContent = v.title || '';
-            document.getElementById('shorts-lightbox').classList.add('active');
-            document.body.style.overflow = 'hidden';
-        }
-
-        function closeShortsLB() {
-            document.getElementById('shorts-lightbox').classList.remove('active');
-            document.getElementById('shorts-lb-iframe').src = '';
-            document.body.style.overflow = '';
-        }
-
-        function navShortsLB(dir) {
-            var next = shortsLBIndex + dir;
-            if (next < 0 || next >= allShorts.length) return;
-            openShortsLB(next);
-        }
-
-        // Keyboard/swipe for shorts lightbox
-        document.addEventListener('keydown', function(e) {
-            if (!document.getElementById('shorts-lightbox').classList.contains('active')) return;
-            if (e.key === 'Escape') closeShortsLB();
-            if (e.key === 'ArrowLeft') navShortsLB(-1);
-            if (e.key === 'ArrowRight') navShortsLB(1);
-        });
-        (function() {
-            var lb = document.getElementById('shorts-lightbox');
-            var startX = 0;
-            lb.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; });
-            lb.addEventListener('touchend', function(e) {
-                var diff = e.changedTouches[0].clientX - startX;
-                if (Math.abs(diff) > 50) navShortsLB(diff > 0 ? -1 : 1);
-            });
-        })();
-
         // Check hash on load
         if (window.location.hash === '#shorts') showTab('shorts');
     </script>
 
-    <link rel="stylesheet" href="/css/login-modal.css">
-    <div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"></div>
+    <link rel="stylesheet" href="/css/login.css?v=2">
+    <div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"><div class="login-box" id="login-box"></div></div>
 
     <footer></footer>
-<script src="/js/community-auth.js"></script>
-<script src="/js/video-comments.js"></script>
+<script src="/js/community-auth.js?v=22"></script>
 <script src="/js/bg-video.js"></script>
+<script>
+(function(){fetch('/api/page-vlog-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['background'])r.style.setProperty('--vlog-bg',cfg['background']);
+    if(cfg['heading-color'])r.style.setProperty('--heading-color',cfg['heading-color']);
+    if(cfg['label-color'])r.style.setProperty('--label-color',cfg['label-color']);
+    if(cfg['label-size'])r.style.setProperty('--label-size',cfg['label-size']+'em');
+    if(cfg['columns'])r.style.setProperty('--grid-cols',cfg['columns']);
+    if(cfg['spacing-horizontal'])r.style.setProperty('--grid-gap-h',cfg['spacing-horizontal']+'px');
+    if(cfg['spacing-vertical'])r.style.setProperty('--grid-gap-v',cfg['spacing-vertical']+'px');
+}).catch(function(){});})();
+</script>
 <script>
 (function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
     var r=document.documentElement;
@@ -758,6 +622,6 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

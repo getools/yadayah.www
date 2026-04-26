@@ -114,6 +114,10 @@ if ($method === 'POST') {
             $fields[] = 'user_bio = ?';
             $params[] = trim($data['bio']);
         }
+        if (isset($data['email_notifications'])) {
+            $fields[] = 'user_email_notifications = ?';
+            $params[] = !empty($data['email_notifications']) ? 't' : 'f';
+        }
         if (isset($data['email'])) {
             $email = trim($data['email']);
             if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL)) errorResponse('Invalid email');

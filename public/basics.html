@@ -7,7 +7,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/video-comments.css">
     <style>
         html { height: 100%; }
         body {
@@ -74,18 +73,11 @@
             width: 100%;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 30px 24px 60px;
+            padding: 0 24px 60px;
             flex: 1;
             box-sizing: border-box;
         }
-        .content h1 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 2.2em;
-            font-weight: 700;
-            color: var(--heading-color, #E5C86C);
-            text-align: center;
-            margin: 0 0 30px;
-        }
+        /* page heading styles now in site-nav.js */
 
         /* Video grid */
         .video-grid {
@@ -237,6 +229,18 @@
             margin-top: 12px;
             line-height: 1.4;
         }
+        .vc-toggle-bar { width: 100%; background: rgba(255,255,255,0.1); border: none; border-top: 1px solid rgba(255,255,255,0.2); padding: 6px 0; cursor: pointer; font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.7); text-align: center; transition: background 0.15s; margin-top: 6px; border-radius: 4px 4px 0 0; }
+        .vc-toggle-bar:hover { background: rgba(255,255,255,0.2); color: #fff; }
+        .lightbox-container.comments-expanded .lightbox-video { height: 0; overflow: hidden; }
+        .lightbox-container.comments-expanded #lb-caption { display: none; }
+        .lightbox-container.comments-expanded #video-comments { max-height: 70vh; }
+        #video-comments {
+            background: #fff;
+            border-radius: 0 0 8px 8px;
+            max-height: 250px;
+            overflow-y: auto;
+            padding: 12px 16px;
+        }
         @media (max-width: 1024px) {
             .lightbox-prev { left: 8px; }
             .lightbox-next { right: 8px; }
@@ -244,6 +248,7 @@
 
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
     <header>
@@ -272,40 +277,28 @@
 </header>
 
 
+    <div class="page-heading-wrap"><h1 class="page-heading" id="basics-heading">Basics</h1></div>
     <div class="content">
-        <h1 id="basics-heading">Basics</h1>
         <div id="video-grid" class="video-grid"></div>
         <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
         <div id="scroll-sentinel" style="height:1px;"></div>
     </div>
 
-    <!-- Lightbox -->
-    <div id="lightbox" class="lightbox-overlay" onclick="if(event.target===this)closeLightbox()">
-        <div class="lightbox-container">
-            <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
-            <button class="lightbox-nav lightbox-prev" onclick="navLightbox(-1)">&#8249;</button>
-            <button class="lightbox-nav lightbox-next" onclick="navLightbox(1)">&#8250;</button>
-            <div class="lightbox-video">
-                <iframe id="lb-iframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
-            </div>
-            <div id="lb-caption" class="lightbox-caption"></div>
-            <div id="video-comments"></div>
-        </div>
-    </div>
+    <!-- Lightbox handled by video-lightbox.js -->
 
-    <link rel="stylesheet" href="/css/login-modal.css">
-    <div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"></div>
+    <link rel="stylesheet" href="/css/login.css">
+    <div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"><div class="login-box" id="login-box"></div></div>
 
     <footer></footer>
 
-<script src="/js/community-auth.js"></script>
-<script src="/js/video-comments.js"></script>
+<script src="/js/community-auth.js?v=22"></script>
+<script src="/js/video-comments.js?v=11"></script>
+<script src="/js/video-lightbox.js?v=15"></script>
 <script>
 var allVideos = [];
 var currentPage = 0;
 var totalPages = 1;
 var loading = false;
-var lbIndex = -1;
 var BASICS_RECORDS = 0; // 0 = infinite scroll; >0 = load this many then stop
 
 function escHtml(s) {
@@ -325,7 +318,9 @@ function renderCard(v, idx) {
     var thumb = v.basics_thumbnail || '';
     var title = v.basics_title || 'Basics';
     var date = formatDate(v.basics_create);
-    return '<div class="video-card" onclick="openLightbox(' + idx + ')">'
+    var audioIcon = v.basics_audio ? '<a href="/' + escHtml(v.basics_audio) + '" target="_blank" onclick="event.stopPropagation();" title="Listen to MP3" style="position:absolute;top:6px;right:6px;font-size:1.3rem;text-decoration:none;background:rgba(0,0,0,0.6);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;z-index:2;">&#127911;</a>' : '';
+    return '<div class="video-card" style="position:relative;" onclick="VideoLightbox.open(' + idx + ')">'
+        + audioIcon
         + '<div class="video-thumb">'
         + '<img src="' + escHtml(thumb) + '" alt="' + escHtml(title) + '" loading="lazy">'
         + '<div class="play-btn"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>'
@@ -349,16 +344,28 @@ function loadPage() {
             var sections = data.sections || [];
             var html = '';
 
+            // Jump links
+            if (sections.length > 1) {
+                html += '<div style="grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;padding:12px 0 8px;">';
+                for (var j = 0; j < sections.length; j++) {
+                    var jc = sections[j].category || {};
+                    var jslug = jc.category_slug || 'uncategorized';
+                    html += '<a href="#cat-' + jslug + '" style="color:var(--heading-color, #E5C86C);font-family:\'Julius Sans One\',sans-serif;font-size:0.9rem;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + escHtml(jc.category_title || 'Uncategorized') + '</a>';
+                }
+                html += '</div>';
+            }
+
             for (var s = 0; s < sections.length; s++) {
                 var sec = sections[s];
                 var cat = sec.category;
+                var slug = (cat && cat.category_slug) || 'uncategorized';
 
                 // Section header
                 if (cat) {
-                    html += '<div class="basics-section-header" style="grid-column:1/-1;text-align:center;padding:30px 0 10px;">';
-                    html += '<h2 style="font-family:\'Julius Sans One\',sans-serif;font-size:1.4rem;color:#E5C86C;margin:0;">' + escHtml(cat.basics_category_title || '') + '</h2>';
-                    if (cat.basics_category_subtitle) {
-                        html += '<p style="font-size:0.9rem;color:rgba(255,255,255,0.7);margin:6px 0 0;">' + escHtml(cat.basics_category_subtitle) + '</p>';
+                    html += '<div id="cat-' + slug + '" class="basics-section-header" style="grid-column:1/-1;text-align:center;padding:10px 0 4px;background:var(--heading-bg, transparent);border-radius:8px;">';
+                    html += '<h2 style="font-family:\'Julius Sans One\',sans-serif;font-size:1.4rem;color:var(--heading-color, #E5C86C);margin:0;">' + escHtml(cat.category_title || '') + '</h2>';
+                    if (cat.category_subtitle) {
+                        html += '<p style="font-size:0.9rem;color:rgba(255,255,255,0.7);margin:6px 0 0;">' + escHtml(cat.category_subtitle) + '</p>';
                     }
                     html += '</div>';
                 }
@@ -373,6 +380,7 @@ function loadPage() {
             }
 
             container.innerHTML = html;
+            VideoLightbox.setVideos(allVideos);
             currentPage = 1;
             totalPages = 1;
             loading = false;
@@ -392,6 +400,7 @@ fetch('/api/page-basics-config.php')
         var root = document.documentElement;
         if (cfg['background'])         root.style.setProperty('--basics-bg',     cfg['background']);
         if (cfg['heading-color'])      root.style.setProperty('--heading-color', cfg['heading-color']);
+        if (cfg['heading-bg'])         root.style.setProperty('--heading-bg',    cfg['heading-bg']);
         if (cfg['label-color'])        root.style.setProperty('--label-color',   cfg['label-color']);
         if (cfg['label-size'])         root.style.setProperty('--label-size',    cfg['label-size'] + 'em');
         if (cfg['columns'])            root.style.setProperty('--grid-cols',      cfg['columns']);
@@ -415,49 +424,15 @@ function ytEmbedUrl(videoId) {
     return 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
 }
 
-function openLightbox(idx) {
-    lbIndex = idx;
-    var v = allVideos[idx];
-    if (!v) return;
-    document.getElementById('lb-iframe').src = ytEmbedUrl(v.basics_video_id);
-    document.getElementById('lb-caption').textContent = v.basics_title || '';
-    document.getElementById('lightbox').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    VideoComments.open(v.basics_video_id, 'youtube');
-}
-
-function closeLightbox() {
-    document.getElementById('lightbox').classList.remove('active');
-    document.getElementById('lb-iframe').src = '';
-    document.body.style.overflow = '';
-    VideoComments.close();
-}
-
-function navLightbox(dir) {
-    var next = lbIndex + dir;
-    if (next < 0 || next >= allVideos.length) return;
-    openLightbox(next);
-}
-
-document.addEventListener('keydown', function(e) {
-    if (!document.getElementById('lightbox').classList.contains('active')) return;
-    if (e.key === 'Escape') closeLightbox();
-    if (e.key === 'ArrowLeft') navLightbox(-1);
-    if (e.key === 'ArrowRight') navLightbox(1);
+// Configure shared lightbox
+VideoLightbox.configure({
+    pageCode: 'basics',
+    videoSource: 'youtube',
+    getVideoId: function(v) { return v.basics_video_id; },
+    getTitle: function(v) { return v.basics_title || 'Basics'; },
+    getThumbnail: function(v) { return v.basics_thumbnail || 'https://i.ytimg.com/vi/' + v.basics_video_id + '/hqdefault.jpg'; },
+    getEmbedUrl: function(v) { return ytEmbedUrl(v.basics_video_id); }
 });
-
-// Swipe support
-(function() {
-    var lb = document.getElementById('lightbox');
-    var startX = 0;
-    lb.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; });
-    lb.addEventListener('touchend', function(e) {
-        var diff = e.changedTouches[0].clientX - startX;
-        if (Math.abs(diff) > 50) {
-            navLightbox(diff > 0 ? -1 : 1);
-        }
-    });
-})();
 
 // Initial load
 loadPage();
@@ -471,6 +446,6 @@ loadPage();
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

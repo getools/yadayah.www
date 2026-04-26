@@ -11,7 +11,7 @@ $provider = $_GET['provider'] ?? '';
 $code = $_GET['code'] ?? '';
 $state = $_GET['state'] ?? '';
 $error = $_GET['error'] ?? '';
-$_oauthReturn = $_SESSION['oauth_return'] ?? '/community';
+$_oauthReturn = $_SESSION['oauth_return'] ?? '/chat';
 
 if ($error) {
     unset($_SESSION['oauth_return']);
@@ -41,7 +41,7 @@ if ($provider === 'google') {
     $redirectUri = 'https://yadayah.com/api/oauth-callback.php?provider=google';
 
     // Exchange code for tokens
-    $tokenResp = file_get_contents('https://oauth2.googleapis.com/token', false, stream_context_create([
+    $tokenResp = @file_get_contents('https://oauth2.googleapis.com/token', false, stream_context_create([
         'http' => [
             'method' => 'POST',
             'header' => 'Content-Type: application/x-www-form-urlencoded',
@@ -52,11 +52,21 @@ if ($provider === 'google') {
                 'redirect_uri' => $redirectUri,
                 'grant_type' => 'authorization_code',
             ]),
+            'ignore_errors' => true,
         ],
     ]));
 
     if (!$tokenResp) {
+        error_log('Google OAuth token exchange: no response');
         header('Location: ' . $_oauthReturn . '?error=token_exchange_failed');
+        exit;
+    }
+
+    // Log non-200 responses
+    $tokens = json_decode($tokenResp, true);
+    if (isset($tokens['error'])) {
+        error_log('Google OAuth token exchange error: ' . $tokens['error'] . ' - ' . ($tokens['error_description'] ?? ''));
+        header('Location: ' . $_oauthReturn . '?error=token_exchange_failed&detail=' . urlencode($tokens['error']));
         exit;
     }
 
@@ -95,20 +105,18 @@ if ($provider === 'google') {
     $result = resolveOAuthUser($db, 'google', $oauthId, $email, $name, $avatar);
 
     if ($result['action'] === 'pending_link') {
-        $return = $_SESSION['oauth_return'] ?? '/community';
+        $return = $_SESSION['oauth_return'] ?? '/chat';
         unset($_SESSION['oauth_return']);
-        header('Location: ' . $return . '#link-account');
-        exit;
+        oauthComplete($return . '#link-account');
     }
 
     $_SESSION['user_key'] = $result['user_key'];
     $_SESSION['user_name_display'] = $name;
     $_SESSION['user_avatar'] = $avatar;
 
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
-    header('Location: ' . $return);
-    exit;
+    oauthComplete($return);
 }
 
 if ($provider === 'facebook') {
@@ -161,20 +169,18 @@ if ($provider === 'facebook') {
     $result = resolveOAuthUser($db, 'facebook', $oauthId, $email, $name, $avatar);
 
     if ($result['action'] === 'pending_link') {
-        $return = $_SESSION['oauth_return'] ?? '/community';
+        $return = $_SESSION['oauth_return'] ?? '/chat';
         unset($_SESSION['oauth_return']);
-        header('Location: ' . $return . '#link-account');
-        exit;
+        oauthComplete($return . '#link-account');
     }
 
     $_SESSION['user_key'] = $result['user_key'];
     $_SESSION['user_name_display'] = $name;
     $_SESSION['user_avatar'] = $avatar;
 
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
-    header('Location: ' . $return);
-    exit;
+    oauthComplete($return);
 }
 
 header('Location: ' . $_oauthReturn . '?error=unknown_provider');

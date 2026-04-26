@@ -107,11 +107,25 @@ if ($method === 'GET') {
     $categorySlug = trim($_GET['category'] ?? '');
 
     $isMod = $userKey ? isModOrAdmin($db, $userKey) : false;
-    $where = $isMod
-        ? "WHERE t.topic_active_flag = TRUE"
-        : "WHERE t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL";
+    $videoComments = !empty($_GET['video_comments']);
+    $videoPageCode = trim($_GET['video_page_code'] ?? '');
+
+    if ($videoComments) {
+        $where = $isMod
+            ? "WHERE t.topic_active_flag = TRUE AND t.video_id IS NOT NULL"
+            : "WHERE t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL AND t.video_id IS NOT NULL";
+    } else {
+        $where = $isMod
+            ? "WHERE t.topic_active_flag = TRUE AND t.video_id IS NULL"
+            : "WHERE t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL AND t.video_id IS NULL";
+    }
     $joins = "LEFT JOIN yy_user u ON t.user_key = u.user_key LEFT JOIN yy_community_category c ON t.category_key = c.category_key";
     $params = [];
+
+    if ($videoPageCode) {
+        $where .= " AND t.page_code = ?";
+        $params[] = $videoPageCode;
+    }
 
     if ($categorySlug) {
         $where .= " AND c.category_slug = ?";

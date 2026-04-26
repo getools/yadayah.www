@@ -9,7 +9,8 @@ $items = [];
 foreach ($rows as $r) {
     $video = '/' . $r['asset_file'];
     $thumb = preg_replace('/\.webm$/i', '.jpg', $video);
-    $items[] = ['video' => $video, 'thumb' => $thumb];
+    $mp4 = preg_replace('/\.webm$/i', '.mp4', $video);
+    $items[] = ['video' => $video, 'mp4' => $mp4, 'thumb' => $thumb];
 }
 
 jsonResponse($items);

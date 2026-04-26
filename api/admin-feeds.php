@@ -78,15 +78,51 @@ if ($method === 'GET') {
     jsonResponse($stmt->fetchAll());
 }
 
-// POST - create or update feed
+// POST - create or update
 if ($method === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
     if (!$data) errorResponse('Invalid JSON');
 
+    // Page feed mapping create/update
+    if (!empty($data['feed_page_action'])) {
+        $action = $data['feed_page_action'];
+
+        if ($action === 'create') {
+            $db->prepare("INSERT INTO yy_feed_page (page_key, feed_key, feed_page_filter_include, feed_page_filter_exclude, feed_page_listing_type, feed_page_filter_orientation, feed_page_sort) VALUES (?, ?, ?, ?, ?, ?, ?)")
+               ->execute([
+                   (int)$data['page_key'],
+                   (int)$data['feed_key'],
+                   $data['feed_page_filter_include'] ?? null,
+                   $data['feed_page_filter_exclude'] ?? null,
+                   $data['feed_page_listing_type'] ?? null,
+                   $data['feed_page_filter_orientation'] ?? null,
+                   (int)($data['feed_page_sort'] ?? 0),
+               ]);
+            jsonResponse(['created' => true]);
+        }
+
+        if ($action === 'update') {
+            $db->prepare("UPDATE yy_feed_page SET feed_key = ?, page_key = ?, feed_page_filter_include = ?, feed_page_filter_exclude = ?, feed_page_listing_type = ?, feed_page_filter_orientation = ?, feed_page_sort = ?, feed_page_revision_dtime = NOW() WHERE feed_page_key = ?")
+               ->execute([
+                   (int)$data['feed_key'],
+                   (int)$data['page_key'],
+                   $data['feed_page_filter_include'] ?? null,
+                   $data['feed_page_filter_exclude'] ?? null,
+                   $data['feed_page_listing_type'] ?? null,
+                   $data['feed_page_filter_orientation'] ?? null,
+                   (int)($data['feed_page_sort'] ?? 0),
+                   (int)$data['feed_page_key'],
+               ]);
+            jsonResponse(['updated' => true]);
+        }
+
+        errorResponse('Invalid feed_page_action');
+    }
+
     $feedKey = $data['feed_key'] ?? null;
 
     $fields = [
-        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_api_key', 'feed_active_flag'
+        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_source_url', 'feed_api_key', 'feed_active_flag'
     ];
 
     if ($feedKey) {
@@ -153,6 +189,22 @@ if ($method === 'POST') {
     }
 }
 
+// Extract inserted+updated counts from sync response (handles flat or nested results)
+function parseSyncCounts(array $data): int {
+    if (isset($data['inserted']) || isset($data['updated'])) {
+        return ($data['inserted'] ?? 0) + ($data['updated'] ?? 0);
+    }
+    // YouTube returns {results: [{inserted, updated}, ...]}
+    if (isset($data['results']) && is_array($data['results'])) {
+        $total = 0;
+        foreach ($data['results'] as $r) {
+            $total += ($r['inserted'] ?? 0) + ($r['updated'] ?? 0);
+        }
+        return $total;
+    }
+    return 0;
+}
+
 // SYNC - force refresh a feed
 if ($method === 'PUT') {
     $data = json_decode(file_get_contents('php://input'), true);
@@ -168,56 +220,40 @@ if ($method === 'PUT') {
 
     $site = strtolower($feed['feed_site_code'] ?? '');
 
-    // Get first feed_page for this feed to find endpoint and db_table info
-    $fpStmt = $db->prepare("SELECT * FROM yy_feed_page WHERE feed_key = ? ORDER BY feed_page_sort LIMIT 1");
-    $fpStmt->execute([$feedKey]);
-    $feedPage = $fpStmt->fetch();
-    $endpoint = $feedPage['feed_page_api_endpoint'] ?? '';
+    // Map sites to their sync scripts
+    $syncScripts = [
+        'youtube'  => __DIR__ . '/sync-youtube.php',
+        'rumble'   => __DIR__ . '/sync-rumble.php',
+        'facebook' => __DIR__ . '/sync-facebook.php',
+    ];
 
     $matchedCount = 0;
+    $syncScript = $syncScripts[$site] ?? null;
 
-    if ($site === 'youtube' && !$endpoint) {
-        // Cache-based: clear cache files
-        $cacheDir = sys_get_temp_dir() . '/yt_cache/';
-        $cleared = 0;
-        if (is_dir($cacheDir)) {
-            foreach (glob($cacheDir . '*.json') as $f) { unlink($f); $cleared++; }
-        }
-        $result['cache_cleared'] = $cleared;
-    } elseif ($site === 'rumble') {
-        // Clear rumble cache
-        $cacheDir = sys_get_temp_dir() . '/rumble_stevens/';
-        $cleared = 0;
-        if (is_dir($cacheDir)) {
-            foreach (glob($cacheDir . '*.json') as $f) { unlink($f); $cleared++; }
-        }
-        $result['cache_cleared'] = $cleared;
-    } elseif ($endpoint) {
-        // For long-running syncs (Facebook), run CLI script in background
-        $scriptPath = realpath(__DIR__ . '/..' . parse_url($endpoint, PHP_URL_PATH))
-                   ?: realpath(__DIR__ . '/' . basename(parse_url($endpoint, PHP_URL_PATH)));
-        if ($scriptPath && file_exists($scriptPath) && $site === 'facebook') {
+    if ($syncScript && file_exists($syncScript)) {
+        if ($site === 'facebook') {
+            // Facebook is long-running — run in background
             $logFile = sys_get_temp_dir() . '/sync_feed_' . $feedKey . '.log';
-            $cmd = "php $scriptPath > $logFile 2>&1 &";
+            $cmd = "php " . escapeshellarg($syncScript) . " > " . escapeshellarg($logFile) . " 2>&1 &";
             exec($cmd);
             $result['sync_result'] = ['status' => 'started', 'message' => 'Sync running in background'];
         } else {
-            $sep = strpos($endpoint, '?') !== false ? '&' : '?';
-            $syncUrl = 'http://localhost' . $endpoint . $sep . 'action=sync&key=yada2026sync';
-            $ctx = stream_context_create(['http' => ['timeout' => 120]]);
-            $response = @file_get_contents($syncUrl, false, $ctx);
-            if ($response !== false) {
-                $syncData = json_decode($response, true);
-                $result['sync_result'] = $syncData;
-                if (isset($syncData['inserted']) && isset($syncData['updated'])) {
-                    $matchedCount = ($syncData['inserted'] ?? 0) + ($syncData['updated'] ?? 0);
-                }
-            } else {
-                $result['error'] = 'Sync request failed';
-            }
+            // Run sync script via CLI, capture JSON output
+            $output = [];
+            $rc = 0;
+            exec("php " . escapeshellarg($syncScript) . " 2>/dev/null", $output, $rc);
+            // Sync scripts print human-readable lines to stdout; the last line or
+            // a line containing JSON has the counts. Parse counts from output.
+            $fullOutput = implode("\n", $output);
+            $inserted = 0; $updated = 0; $found = 0;
+            if (preg_match('/found[=:\s]+(\d+)/i', $fullOutput, $m)) $found = (int)$m[1];
+            if (preg_match_all('/inserted[=:\s]+(\d+)/i', $fullOutput, $m)) $inserted = array_sum(array_map('intval', $m[1]));
+            if (preg_match_all('/updated[=:\s]+(\d+)/i',  $fullOutput, $m)) $updated  = array_sum(array_map('intval', $m[1]));
+            $matchedCount = $inserted + $updated;
+            $result['sync_result'] = ['found' => $found, 'inserted' => $inserted, 'updated' => $updated, 'rc' => $rc];
         }
     } else {
-        $result['error'] = 'No sync method available for this feed';
+        $result['error'] = 'No sync script for site: ' . $site;
     }
 
     $result['matched_count'] = $matchedCount;
@@ -248,34 +284,3 @@ if ($method === 'DELETE') {
     jsonResponse(['deleted' => true]);
 }
 
-// ── Page Feed Mappings ──
-
-// POST - create/update page feed mapping
-if ($method === 'POST' && !empty($_POST['feed_page_action'] ?? json_decode(file_get_contents('php://input'), true)['feed_page_action'] ?? '')) {
-    $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
-    $action = $data['feed_page_action'];
-
-    if ($action === 'create') {
-        $db->prepare("INSERT INTO yy_feed_page (page_key, feed_key, feed_page_filter_include, feed_page_filter_exclude, feed_page_sort) VALUES (?, ?, ?, ?, ?)")
-           ->execute([
-               (int)$data['page_key'],
-               (int)$data['feed_key'],
-               $data['feed_page_filter_include'] ?? null,
-               $data['feed_page_filter_exclude'] ?? null,
-               (int)($data['feed_page_sort'] ?? 0),
-           ]);
-        jsonResponse(['created' => true]);
-    }
-
-    if ($action === 'update') {
-        $db->prepare("UPDATE yy_feed_page SET page_key = ?, feed_page_filter_include = ?, feed_page_filter_exclude = ?, feed_page_sort = ? WHERE feed_page_key = ?")
-           ->execute([
-               (int)$data['page_key'],
-               $data['feed_page_filter_include'] ?? null,
-               $data['feed_page_filter_exclude'] ?? null,
-               (int)($data['feed_page_sort'] ?? 0),
-               (int)$data['feed_page_key'],
-           ]);
-        jsonResponse(['updated' => true]);
-    }
-}

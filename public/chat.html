@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/login.css">
     <style>
         /* ── Base ── */
         * { box-sizing: border-box; }
@@ -31,16 +32,24 @@
         .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
 
         /* ── Layout ── */
-        .community-wrap { width: 100%; max-width: 1100px; margin: 0 auto; padding: 20px 20px 60px; flex: 1; box-sizing: border-box; }
+        .community-wrap { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 20px 60px; flex: 1; box-sizing: border-box; }
         html, body { overflow-x: hidden; }
-        .community-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .community-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; }
+        .community-header .page-heading-wrap { width: auto; flex-shrink: 0; }
         .community-header h1 { font-family: 'Julius Sans One', sans-serif; font-size: 1.8em; margin: 0; color: #31345A; }
 
         /* ── Auth Bar ── */
-        .auth-bar { display: flex; align-items: center; gap: 12px; }
+        .auth-bar { display: flex; align-items: center; gap: 12px; margin-left: auto; justify-content: flex-end; flex-wrap: wrap; padding-top: 10px; }
         .auth-bar img.avatar { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
         .auth-bar .avatar-circle { width: 32px; height: 32px; border-radius: 50%; background: #31345A; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; cursor: pointer; }
         .auth-bar .user-name { font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+        .notify-toggle { display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; }
+        .notify-label { font-size:0.78rem; color:#666; font-weight:600; }
+        .notify-toggle input { display:none; }
+        .notify-slider { width:34px; height:18px; background:#ccc; border-radius:9px; position:relative; transition:background 0.2s; flex-shrink:0; }
+        .notify-slider::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; background:#fff; border-radius:50%; transition:transform 0.2s; }
+        .notify-toggle input:checked + .notify-slider { background:#31345A; }
+        .notify-toggle input:checked + .notify-slider::after { transform:translateX(16px); }
 
         /* ── Notification Bell ── */
         .notification-bell { position: relative; font-size: 1.3rem; line-height: 1; padding: 4px; opacity: 0.35; transition: opacity 0.2s; cursor: default; }
@@ -146,7 +155,7 @@
         /* ── Topic Detail ── */
         .topic-detail { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 24px; margin-bottom: 20px; }
         .topic-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-        .topic-detail h2 { margin: 0 0 8px; font-size: 1.3rem; color: #31345A; }
+        .topic-detail h2 { margin: 0 0 8px; font-size: 1.05rem; color: #31345A; }
         .topic-actions-top { display: flex; gap: 8px; flex-shrink: 0; }
         .topic-detail .topic-body { line-height: 1.7; margin: 16px 0 0; word-wrap: break-word; }
         .topic-body img, .reply-body img { max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0; }
@@ -168,8 +177,10 @@
         .back-link:hover { text-decoration: underline; }
 
         /* ── Video Embeds ── */
-        .video-embed { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; margin: 12px 0; border-radius: 6px; }
+        .video-embed { position: relative; overflow: hidden; max-width: 100%; margin: 12px 0; border-radius: 6px; }
+        .video-embed:has(iframe) { padding-bottom: 56.25%; height: 0; }
         .video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 6px; }
+        .video-embed img { display: block; max-height: 300px; width: auto; border-radius: 6px; }
 
         /* ── Replies ── */
         .reply-list { margin-bottom: 20px; }
@@ -285,6 +296,9 @@
         .item-hidden:hover { opacity: 0.7; }
         .topic-hidden { opacity: 0.45; }
         .topic-hidden:hover { opacity: 0.7; }
+        .topic-deleted { background: #e0c8c8 !important; }
+        .topic-deleted:hover { background: #d4b8b8 !important; }
+        .reply-deleted { background: #e0c8c8; border-left: 3px solid #c0392b; padding: 10px; border-radius: 6px; margin-bottom: 8px; }
         .hidden-badge { display: inline-block; font-size: 0.7rem; background: #c0392b; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; vertical-align: middle; }
         .removed-notice { font-size: 0.82rem; color: #c0392b; background: #fef0f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
 
@@ -338,8 +352,11 @@
         .dm-message .dm-message-bubble { max-width: 75%; padding: 10px 14px; border-radius: 16px 16px 16px 4px; background: #f0f0f0; font-size: 0.9rem; line-height: 1.5; word-wrap: break-word; }
         .dm-message.mine { align-items: flex-end; }
         .dm-message.mine .dm-message-bubble { background: #31345A; color: #fff; border-radius: 16px 16px 4px 16px; }
+        .dm-message.mine .dm-message-bubble a { color: #E5C86C; }
         .dm-message-time { font-size: 0.68rem; color: #999; margin-top: 3px; padding: 0 4px; }
         .dm-compose { display: flex; flex-direction: column; gap: 8px; }
+        .dm-compose-row { width: 100%; max-width: 100%; overflow: hidden; box-sizing: border-box; }
+        .dm-compose-row .tox.tox-tinymce { max-width: 100% !important; box-sizing: border-box !important; }
         .dm-compose textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 0.9rem; resize: vertical; min-height: 40px; box-sizing: border-box; }
         html, body { overflow-x: hidden; }
         .dm-compose textarea:focus { outline: none; border-color: #31345A; }
@@ -347,6 +364,19 @@
         .dm-compose-actions .btn { margin-left: auto; }
         .dm-media-btn { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 1.1rem; color: #666; transition: background 0.15s, border-color 0.15s; }
         .dm-media-btn:hover { background: #f5f5f5; border-color: #31345A; color: #31345A; }
+        /* Group messaging styles */
+        .dm-group-icon { width: 42px; height: 42px; border-radius: 50%; background: #e8eaf6; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
+        .dm-group-header { display: flex; align-items: center; gap: 10px; }
+        .dm-group-panel { background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .dm-group-members { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+        .dm-group-member-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+        .dm-group-chip { display: inline-flex; align-items: center; gap: 4px; background: #e8eaf6; color: #31345A; border-radius: 16px; padding: 4px 12px; font-size: 0.85rem; font-weight: 500; }
+        .dm-group-chip-remove { cursor: pointer; font-size: 1rem; color: #888; margin-left: 2px; }
+        .dm-group-chip-remove:hover { color: #c0392b; }
+        .dm-system-message { align-items: center !important; }
+        .dm-system-text { font-size: 0.8rem; color: #888; font-style: italic; padding: 4px 0; }
+        .dm-sender-name { font-size: 0.75rem; color: #31345A; font-weight: 600; padding: 0 4px; margin-bottom: 2px; }
+        .dm-avatar-sm { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
         .compose-form textarea { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem; }
         html, body { overflow-x: hidden; }
         .compose-form input { font-family: inherit; font-size: 0.9rem; }
@@ -355,10 +385,10 @@
         .dm-recipient-search .mention-dropdown { position: absolute; top: 100%; left: 0; right: 0; }
 
         /* ── Chat Popover (Messenger-style) ── */
-        .chat-fab { position: fixed; bottom: 24px; right: 24px; z-index: 8000; width: 56px; height: 56px; border-radius: 50%; background: #31345A; color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: transform 0.15s, background 0.15s; }
+        .chat-fab { position: fixed; bottom: 24px; left: 24px; z-index: 8000; width: 56px; height: 56px; border-radius: 50%; background: #31345A; color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: transform 0.15s, background 0.15s; }
         .chat-fab:hover { background: #4a4e7a; transform: scale(1.08); }
-        .chat-fab .fab-badge { position: absolute; top: -2px; right: -2px; background: #c0392b; color: #fff; font-size: 0.6rem; padding: 2px 6px; border-radius: 10px; font-weight: 700; }
-        .chat-popover { display: none; position: fixed; bottom: 90px; right: 24px; z-index: 8001; width: 370px; height: 480px; min-width: 300px; min-height: 300px; max-width: 600px; max-height: 80vh; background: #fff; border-radius: 12px; box-shadow: 0 8px 40px rgba(0,0,0,0.2); flex-direction: column; overflow: hidden; resize: both; direction: rtl; }
+        .chat-fab .fab-badge { position: absolute; top: -2px; left: -2px; background: #c0392b; color: #fff; font-size: 0.6rem; padding: 2px 6px; border-radius: 10px; font-weight: 700; }
+        .chat-popover { display: none; position: fixed; bottom: 90px; left: 24px; z-index: 8001; width: 370px; height: 480px; min-width: 300px; min-height: 300px; max-width: 600px; max-height: 80vh; background: #fff; border-radius: 12px; box-shadow: 0 8px 40px rgba(0,0,0,0.2); flex-direction: column; overflow: hidden; resize: both; direction: rtl; }
         .chat-popover > * { direction: ltr; }
         .chat-popover.open { display: flex; }
         .chat-pop-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #31345A; color: #fff; font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
@@ -376,6 +406,7 @@
         .chat-pop-msgs .dm-message-bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: #f0f0f0; font-size: 0.85rem; line-height: 1.4; word-wrap: break-word; }
         .chat-pop-msgs .dm-message.mine { align-items: flex-end; }
         .chat-pop-msgs .dm-message.mine .dm-message-bubble { background: #31345A; color: #fff; border-radius: 14px 14px 4px 14px; }
+        .chat-pop-msgs .dm-message.mine .dm-message-bubble a { color: #E5C86C; }
         .chat-pop-msgs .dm-message-time { font-size: 0.62rem; color: #bbb; margin-top: 2px; padding: 0 4px; }
         .chat-pop-msgs .dm-message-bubble img { max-width: 100%; height: auto; border-radius: 8px; cursor: pointer; }
         .dm-messages img { max-width: 100%; height: auto; border-radius: 8px; cursor: pointer; }
@@ -397,11 +428,11 @@
         .chat-pop-results .chat-pop-thread { cursor: pointer; }
         .chat-pop-results .chat-pop-thread:hover { background: #f0f4ff; }
         @media (max-width: 600px) {
-            .chat-popover { width: 100vw; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; right: 0; bottom: auto; top: 0; border-radius: 0; resize: none; overflow: hidden; display: none; flex-direction: column; }
+            .chat-popover { width: 100vw; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; left: 0; bottom: auto; top: 0; border-radius: 0; resize: none; overflow: hidden; display: none; flex-direction: column; }
             .chat-popover .chat-pop-header { position: sticky; top: 0; z-index: 10; flex-shrink: 0; }
             .chat-popover .chat-pop-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
             .chat-popover .chat-pop-compose { flex-shrink: 0; }
-            .chat-fab { bottom: 16px; right: 16px; }
+            .chat-fab { bottom: 16px; left: 16px; }
         }
 
         /* ── Member Directory ── */
@@ -437,55 +468,23 @@
         .btn-danger:hover { background: #e74c3c; }
         .btn-outline { background: none; border: 1px solid #ccc; color: #666; }
         .btn-outline:hover { background: #f0f0f0; }
-        .btn-google { background: #fff; color: #333; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .btn-google:hover { background: #f5f5f5; }
-        .btn-google svg { width: 18px; height: 18px; }
-        .btn-microsoft { background: #fff; color: #333; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .btn-microsoft:hover { background: #f5f5f5; }
-        .btn-microsoft svg { width: 18px; height: 18px; }
-        .btn-yahoo { background: #fff; color: #6001D2; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-weight: 700; }
-        .btn-yahoo:hover { background: #f5f5f5; }
-        .btn-yahoo svg { width: 18px; height: 18px; }
-        .btn-x { background: #fff; color: #000; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .btn-x:hover { background: #f5f5f5; }
-        .btn-x svg { width: 16px; height: 16px; }
-
-        /* ── Login Modal ── */
-        .login-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; }
-        .login-modal.active { display: flex; }
-        .login-box { background: #fff; border-radius: 10px; padding: 30px; width: 90%; max-width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); position: relative; }
-        .login-box h2 { margin: 0 0 20px; font-family: 'Julius Sans One', sans-serif; color: #31345A; font-size: 1.3rem; text-align: center; }
-        .login-box input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 0.9rem; box-sizing: border-box; margin-bottom: 12px; }
         html, body { overflow-x: hidden; }
-        .login-box input:focus { outline: none; border-color: #31345A; }
-        .login-box .login-error { color: #c0392b; font-size: 0.85rem; margin-bottom: 10px; text-align: center; transition: opacity 0.15s; }
-        .login-box .login-error.flash { animation: errFlash 0.3s; }
         .profile-msg.flash { animation: errFlash 0.3s; }
         @keyframes errFlash { 0%{opacity:0;transform:scale(0.97)} 50%{opacity:1;transform:scale(1.02)} 100%{opacity:1;transform:scale(1)} }
-        .login-box .login-toggle { text-align: center; margin-top: 14px; font-size: 0.85rem; color: #666; }
-        .login-box .login-toggle a { color: #31345A; font-weight: 600; cursor: pointer; text-decoration: underline; }
-        .login-close { position: absolute; top: 10px; right: 14px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #999; padding: 0; line-height: 1; }
-        .login-close:hover { color: #333; }
-        .login-or { text-align: center; color: #999; font-size: 0.85rem; margin: 16px 0; position: relative; }
-        .login-or::before, .login-or::after { content: ''; position: absolute; top: 50%; width: 35%; height: 1px; background: #ddd; }
-        .login-or::before { left: 0; }
-        .login-or::after { right: 0; }
-        .login-social { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
-        .login-social .btn { width: 100%; justify-content: center; box-sizing: border-box; padding: 10px 12px; font-size: 0.85rem; }
-        html, body { overflow-x: hidden; }
 
         /* ── Verify Banner ── */
         .verify-banner { background: #fff3cd; color: #856404; padding: 12px 18px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
         .verify-banner a { color: #31345A; font-weight: 600; cursor: pointer; text-decoration: underline; }
 
         /* ── Font Size Control ── */
-        .font-size-ctrl { display: flex; align-items: center; gap: 4px; margin-left: 12px; }
+        .font-size-ctrl { display: flex; align-items: center; gap: 4px; margin-right: 20px; }
         .font-size-ctrl button { background: #f0f0f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: 700; color: #31345A; line-height: 1; padding: 4px 8px; }
         .font-size-ctrl button:hover { background: #e0e0ee; }
         .font-size-ctrl .fs-small { font-size: 0.8rem; }
         .font-size-ctrl .fs-large { font-size: 1.1rem; }
 
     </style>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
 <header>
@@ -535,7 +534,7 @@
 
 <div class="community-wrap">
     <div class="community-header">
-        <h1>Chat</h1>
+        <div class="page-heading-wrap"><h1 class="page-heading">Chat</h1></div>
         <div style="display:flex;align-items:center;">
             <div class="font-size-ctrl">
                 <button class="fs-small" onclick="changeFontSize(-1)" title="Smaller text">A-</button>
@@ -551,12 +550,11 @@
         <a href="#topics" id="nav-topics" class="active">Topics</a>
         <a href="#messages" id="nav-messages">Messages</a>
         <a href="#members" id="nav-members">Members</a>
-        <a href="#bookmarks" id="nav-bookmarks">Bookmarks</a>
+        <a href="#blog-comments" id="nav-blog-comments">Blog</a>
+        <a href="#vlog-comments" id="nav-vlog-comments">Vlog</a>
+        <a href="#comments" id="nav-comments">Comments</a>
     </div>
-    <!-- Moderator Toolbar -->
-    <div class="community-mod-bar" id="community-mod-bar" style="display:none">
-        <a href="#categories" id="nav-categories">Categories</a>
-    </div>
+    <div id="community-mod-bar" style="display:none"></div>
 
     <!-- Topics View -->
     <div id="view-topics">
@@ -590,6 +588,8 @@
 
     <!-- Bookmarks View -->
     <div id="view-bookmarks" style="display:none"></div>
+
+    <!-- Videos Comments View -->
 
     <!-- Notifications View -->
     <div id="view-notifications" style="display:none"></div>
@@ -645,12 +645,12 @@ window.ensureTinyMCE = function(callback) {
 };
 </script>
 <script src="/js/bg-video.js"></script>
-<script src="/js/community.js?v=24"></script>
-<script src="/js/community-auth.js?v=15"></script>
-<script src="/js/community-topics.js?v=43"></script>
-<script src="/js/community-notifications.js?v=23"></script>
+<script src="/js/community.js?v=37"></script>
+<script src="/js/community-auth.js?v=23"></script>
+<script src="/js/community-topics.js?v=63"></script>
+<script src="/js/community-notifications.js?v=24"></script>
 <script src="/js/community-profile.js?v=21"></script>
-<script src="/js/community-dm.js?v=26"></script>
+<script src="/js/community-dm.js?v=42"></script>
 <script src="/js/community-search.js?v=10"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>
@@ -674,6 +674,17 @@ window.ensureTinyMCE = function(callback) {
             bell.parentNode.insertBefore(wrap, bell);
             wrap.appendChild(bell);
             wrap.appendChild(dd);
+        }
+        // Add bookmark icon right after the bell
+        if (bell && bell.parentNode) {
+            var bmk = document.createElement('a');
+            bmk.href = '#bookmarks';
+            bmk.title = 'Bookmarks';
+            bmk.style.cssText = 'font-size:1.2rem;opacity:0.5;text-decoration:none;cursor:pointer;padding:0 2px;margin-left:2px;';
+            bmk.innerHTML = '&#128278;';
+            bmk.onmouseover = function() { bmk.style.opacity = '0.8'; };
+            bmk.onmouseout = function() { bmk.style.opacity = '0.5'; };
+            bell.parentNode.insertBefore(bmk, bell.nextSibling);
         }
     };
 })();
@@ -699,6 +710,7 @@ document.addEventListener('click', function(e) {
     document.body.appendChild(overlay);
 });
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
+<script src="/js/video-comments.js?v=11"></script>
 </body>
 </html>

@@ -149,8 +149,22 @@ case 'POST':
     $footerSort = (int)($input['page_footer_sort'] ?? 0);
     $url = trim($input['page_url'] ?? '') ?: null;
 
-    $stmt = $db->prepare("INSERT INTO yy_page (page_code, page_title, page_active_flag, page_toolbar, page_header_sort, page_footer_sort, page_url) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING page_key");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, $url]);
+    $heading = trim($input['page_heading'] ?? '') ?: null;
+    $subheading = trim($input['page_subheading'] ?? '') ?: null;
+    $description = trim($input['page_description'] ?? '') ?: null;
+    $body = trim($input['page_body'] ?? '') ?: null;
+    $footerCol = (int)($input['page_footer_col'] ?? 0);
+
+    $headingColor = trim($input['page_heading_color'] ?? '') ?: null;
+    $headingSize = trim($input['page_heading_size'] ?? '') ?: null;
+    $subheadingColor = trim($input['page_subheading_color'] ?? '') ?: null;
+    $subheadingSize = trim($input['page_subheading_size'] ?? '') ?: null;
+    $descColor = trim($input['page_description_color'] ?? '') ?: null;
+    $descSize = trim($input['page_description_size'] ?? '') ?: null;
+    $bgColor = trim($input['page_background_color'] ?? '') ?: null;
+
+    $stmt = $db->prepare("INSERT INTO yy_page (page_code, page_title, page_active_flag, page_toolbar, page_header_sort, page_footer_sort, page_footer_col, page_url, page_heading, page_subheading, page_description, page_body, page_heading_color, page_heading_size, page_subheading_color, page_subheading_size, page_description_color, page_description_size, page_background_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING page_key");
+    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, $footerCol, $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor]);
     $row = $stmt->fetch();
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
@@ -177,8 +191,21 @@ case 'PUT':
     $footerSort = (int)($input['page_footer_sort'] ?? 0);
     $url = trim($input['page_url'] ?? '') ?: null;
 
-    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_footer_sort = ?, page_footer_col = ?, page_url = ? WHERE page_key = ?");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, (int)($input['page_footer_col'] ?? 0), $url, $key]);
+    $heading = trim($input['page_heading'] ?? '') ?: null;
+    $subheading = trim($input['page_subheading'] ?? '') ?: null;
+    $description = trim($input['page_description'] ?? '') ?: null;
+    $body = trim($input['page_body'] ?? '') ?: null;
+
+    $headingColor = trim($input['page_heading_color'] ?? '') ?: null;
+    $headingSize = trim($input['page_heading_size'] ?? '') ?: null;
+    $subheadingColor = trim($input['page_subheading_color'] ?? '') ?: null;
+    $subheadingSize = trim($input['page_subheading_size'] ?? '') ?: null;
+    $descColor = trim($input['page_description_color'] ?? '') ?: null;
+    $descSize = trim($input['page_description_size'] ?? '') ?: null;
+    $bgColor = trim($input['page_background_color'] ?? '') ?: null;
+
+    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_footer_sort = ?, page_footer_col = ?, page_url = ?, page_heading = ?, page_subheading = ?, page_description = ?, page_body = ?, page_heading_color = ?, page_heading_size = ?, page_subheading_color = ?, page_subheading_size = ?, page_description_color = ?, page_description_size = ?, page_background_color = ? WHERE page_key = ?");
+    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, (int)($input['page_footer_col'] ?? 0), $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor, $key]);
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
     jsonResponse(['ok' => true]);

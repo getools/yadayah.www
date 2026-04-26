@@ -17,8 +17,8 @@ function resolveOAuthUser(PDO $db, string $provider, string $oauthId, string $em
 
     if ($existingUserKey) {
         // Known OAuth identity — update profile, log them in
-        $updates = ['user_name_display = ?'];
-        $params = [$name];
+        $updates = ['user_name_display = ?', 'user_display_name = ?'];
+        $params = [$name, $name];
 
         // Only update avatar if the user doesn't have a manually uploaded one
         if ($avatar) {
@@ -86,10 +86,10 @@ function resolveOAuthUser(PDO $db, string $provider, string $oauthId, string $em
     if (!$name && $email) $name = explode('@', $email)[0];
     if (!$name) $name = 'Unknown';
     $stmt = $db->prepare("
-        INSERT INTO yy_user (user_code, user_email, user_display_name, user_avatar, user_active_flag, user_verified)
-        VALUES (?, ?, ?, ?, TRUE, TRUE) RETURNING user_key
+        INSERT INTO yy_user (user_code, user_email, user_display_name, user_name_display, user_avatar, user_active_flag, user_verified)
+        VALUES (?, ?, ?, ?, ?, TRUE, TRUE) RETURNING user_key
     ");
-    $stmt->execute([$userCode, $email ?: null, $name, $avatar ?: null]);
+    $stmt->execute([$userCode, $email ?: null, $name, $name, $avatar ?: null]);
     $userKey = (int)$stmt->fetchColumn();
 
     // Insert auth method
@@ -101,4 +101,27 @@ function resolveOAuthUser(PDO $db, string $provider, string $oauthId, string $em
         ->execute([$userKey]);
 
     return ['action' => 'new_user', 'user_key' => $userKey];
+}
+
+/**
+ * Complete OAuth flow: redirect normally, or close popup and notify opener.
+ */
+function oauthComplete(string $url): void {
+    if (!empty($_SESSION['oauth_popup'])) {
+        unset($_SESSION['oauth_popup']);
+        // Detect HTTPS correctly behind reverse proxy (Cloudflare/Caddy)
+        $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+                || (isset($_SERVER['HTTP_CF_VISITOR']) && strpos($_SERVER['HTTP_CF_VISITOR'], 'https') !== false);
+        $origin = ($isHttps ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html><html><body><script>'
+           . 'try{if(window.opener&&!window.opener.closed){window.opener.postMessage({type:"oauth_complete"},"' . htmlspecialchars($origin) . '");}}catch(e){}'
+           . 'window.close();'
+           . 'setTimeout(function(){document.body.innerHTML="<p style=\"font-family:sans-serif;text-align:center;padding:40px\">Login complete. You can close this window.</p>";},100);'
+           . '</script></body></html>';
+        exit;
+    }
+    header('Location: ' . $url);
+    exit;
 }

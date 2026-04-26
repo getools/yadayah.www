@@ -5,36 +5,73 @@ $db = getDb();
 setCurrentUser($db, $user['user_key']);
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Strip own domain from target URLs — store relative paths only
+function stripOwnDomain(?string $url): ?string {
+    if (!$url) return $url;
+    return preg_replace('#^https?://(www\.)?(yadayah\.com|books\.yadayah\.com)#i', '', trim($url));
+}
+
 if ($method === 'GET') {
-    $queue = isset($_GET['queue']) ? $_GET['queue'] === '1' : null;
-    $sql = 'SELECT * FROM yy_redirect';
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $limit = min(200, max(10, (int)($_GET['limit'] ?? 100)));
+    $offset = ($page - 1) * $limit;
+    $search = trim($_GET['search'] ?? '');
+    $filter = trim($_GET['filter'] ?? '');
+
+    $where = [];
     $params = [];
-    if ($queue !== null) {
-        $sql .= ' WHERE redirect_queue_flag = :q';
-        $params[':q'] = $queue ? 't' : 'f';
+    if ($filter === 'queue') {
+        $where[] = 'redirect_active_flag IS NULL AND (redirect_attack_flag IS NULL OR redirect_attack_flag = FALSE)';
+    } elseif ($filter === 'active') {
+        $where[] = 'redirect_active_flag = TRUE AND (redirect_attack_flag IS NULL OR redirect_attack_flag = FALSE)';
+    } elseif ($filter === 'inactive') {
+        $where[] = 'redirect_active_flag = FALSE AND (redirect_attack_flag IS NULL OR redirect_attack_flag = FALSE)';
+    } elseif ($filter === 'bot') {
+        $where[] = 'redirect_attack_flag = TRUE';
     }
-    $sql .= ' ORDER BY redirect_dtime DESC';
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    jsonResponse($stmt->fetchAll());
+    if ($search) {
+        $where[] = '(redirect_request ILIKE ? OR redirect_target ILIKE ?)';
+        $params[] = '%' . $search . '%';
+        $params[] = '%' . $search . '%';
+    }
+
+    $whereStr = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+    $countStmt = $db->prepare("SELECT COUNT(*) FROM yy_redirect" . $whereStr);
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+
+    $sort = trim($_GET['sort'] ?? 'date');
+    $dir = strtoupper(trim($_GET['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+    $sortCol = 'redirect_dtime';
+    if ($sort === 'hits') $sortCol = 'redirect_hit_count';
+    elseif ($sort === 'url') $sortCol = 'redirect_request';
+    $stmt = $db->prepare("SELECT * FROM yy_redirect" . $whereStr . " ORDER BY $sortCol $dir NULLS LAST LIMIT ? OFFSET ?");
+    $stmt->execute(array_merge($params, [$limit, $offset]));
+
+    jsonResponse([
+        'redirects' => $stmt->fetchAll(),
+        'page' => $page,
+        'limit' => $limit,
+        'total' => $total,
+        'total_pages' => max(1, (int)ceil($total / $limit)),
+    ]);
 }
 
 if ($method === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
     if (empty($data['redirect_request'])) errorResponse('redirect_request required');
 
-    $stmt = $db->prepare('INSERT INTO yy_redirect (redirect_request, redirect_target, redirect_queue_flag, redirect_active_flag)
-        VALUES (:req, :tgt, :queue, :active)
+    $stmt = $db->prepare('INSERT INTO yy_redirect (redirect_request, redirect_target, redirect_active_flag)
+        VALUES (:req, :tgt, :active)
         ON CONFLICT (redirect_request) DO UPDATE SET
             redirect_target = EXCLUDED.redirect_target,
-            redirect_queue_flag = EXCLUDED.redirect_queue_flag,
             redirect_active_flag = EXCLUDED.redirect_active_flag
         RETURNING *');
     $stmt->execute([
         ':req' => $data['redirect_request'],
-        ':tgt' => $data['redirect_target'] ?? null,
-        ':queue' => ($data['redirect_queue_flag'] ?? false) ? 't' : 'f',
-        ':active' => ($data['redirect_active_flag'] ?? false) ? 't' : 'f',
+        ':tgt' => stripOwnDomain($data['redirect_target'] ?? null),
+        ':active' => !array_key_exists('redirect_active_flag', $data) || $data['redirect_active_flag'] === null ? null : ($data['redirect_active_flag'] ? 't' : 'f'),
     ]);
     jsonResponse($stmt->fetch());
 }
@@ -52,15 +89,19 @@ if ($method === 'PUT') {
     }
     if (array_key_exists('redirect_target', $data)) {
         $fields[] = 'redirect_target = :tgt';
-        $params[':tgt'] = $data['redirect_target'];
+        $params[':tgt'] = stripOwnDomain($data['redirect_target']);
     }
-    if (array_key_exists('redirect_queue_flag', $data)) {
-        $fields[] = 'redirect_queue_flag = :queue';
-        $params[':queue'] = $data['redirect_queue_flag'] ? 't' : 'f';
+    if (false) { // queue flag removed — queue status is inferred from empty target
     }
     if (array_key_exists('redirect_active_flag', $data)) {
         $fields[] = 'redirect_active_flag = :active';
-        $params[':active'] = $data['redirect_active_flag'] ? 't' : 'f';
+        $val = $data['redirect_active_flag'];
+        $params[':active'] = ($val === null) ? null : ($val ? 't' : 'f');
+    }
+    if (array_key_exists('redirect_attack_flag', $data)) {
+        $fields[] = 'redirect_attack_flag = :attack';
+        $val = $data['redirect_attack_flag'];
+        $params[':attack'] = ($val === null) ? null : ($val ? 't' : 'f');
     }
 
     if (empty($fields)) errorResponse('No fields to update');

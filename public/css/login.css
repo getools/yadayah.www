@@ -1,9 +1,9 @@
-/* ── Login Modal ── shared between community and admin ── */
-.login-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; }
+/* ── Login Modal ── shared across all pages ── */
+.login-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 20000; justify-content: center; align-items: center; }
 .login-modal.active { display: flex; }
 .login-box { background: #fff; border-radius: 10px; padding: 30px; width: 90%; max-width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); position: relative; }
-.login-box h2 { margin: 0 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #31345A; font-size: 1.3rem; text-align: center; }
-.login-box input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 0.9rem; box-sizing: border-box; margin-bottom: 12px; }
+.login-box h2 { margin: 0 0 20px; font-family: 'Julius Sans One', sans-serif; color: #31345A; font-size: 1.3rem; text-align: center; }
+.login-box input:not([type="checkbox"]) { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 0.9rem; box-sizing: border-box; margin-bottom: 12px; }
 .login-box input:focus { outline: none; border-color: #31345A; box-shadow: none; }
 .login-box .login-error { color: #c0392b; font-size: 0.85rem; margin-bottom: 10px; text-align: center; transition: opacity 0.15s; }
 .login-box .login-error.flash { animation: errFlash 0.3s; }
@@ -18,8 +18,6 @@
 .login-or::after { right: 0; }
 .login-social { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
 .login-social .btn { width: 100%; justify-content: center; box-sizing: border-box; padding: 10px 12px; font-size: 0.85rem; }
-
-/* ── Social / login buttons (self-contained, no dependency on external .btn) ── */
 .login-box .btn { padding: 8px 18px; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; font-family: inherit; }
 .login-box .btn-primary { background: #31345A; color: #fff; }
 .login-box .btn-primary:hover { background: #4a4e7a; }

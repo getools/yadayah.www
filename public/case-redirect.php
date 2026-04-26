@@ -13,6 +13,33 @@ try {
     $dsn = "pgsql:host=$host;port=$port;dbname=$name";
     $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
+    // Check for attack-flagged redirect first
+    $atkStmt = $pdo->prepare('SELECT 1 FROM yy_redirect WHERE redirect_request = :req AND redirect_attack_flag = TRUE LIMIT 1');
+    $atkStmt->execute([':req' => $path]);
+    if ($atkStmt->fetchColumn()) {
+        // Ban this IP via honeypot
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+        if (strpos($ip, ',') !== false) $ip = trim(explode(',', $ip)[0]);
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        if ($ip) {
+            $pdo->prepare("
+                INSERT INTO yy_ip_ban (ban_ip, ban_reason, ban_uri, ban_ua, ban_expires_dtime)
+                VALUES (?, 'attack_redirect', ?, ?, NOW() + INTERVAL '48 hours')
+                ON CONFLICT (ban_ip) DO UPDATE SET
+                    ban_hit_count = yy_ip_ban.ban_hit_count + 1,
+                    ban_uri = EXCLUDED.ban_uri,
+                    ban_ua = EXCLUDED.ban_ua,
+                    ban_expires_dtime = GREATEST(yy_ip_ban.ban_expires_dtime, NOW() + INTERVAL '48 hours'),
+                    ban_last_dtime = NOW()
+            ")->execute([$ip, substr($uri, 0, 500), substr($ua, 0, 500)]);
+        }
+        $pdo->prepare('UPDATE yy_redirect SET redirect_hit_count = redirect_hit_count + 1 WHERE redirect_request = :req AND redirect_attack_flag = TRUE')
+            ->execute([':req' => $path]);
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><title>403</title></head><body><h1>Forbidden</h1></body></html>';
+        exit;
+    }
+
     // Check for active redirect
     $stmt = $pdo->prepare('SELECT redirect_target FROM yy_redirect WHERE redirect_request = :req AND redirect_active_flag = true LIMIT 1');
     $stmt->execute([':req' => $path]);
@@ -69,6 +96,22 @@ if ($aliases) {
     }
 }
 
+// --- Dynamic page from yy_page ---
+$pageSlug = trim($path, '/');
+if ($pageSlug && isset($pdo)) {
+    try {
+        $pgStmt = $pdo->prepare("SELECT * FROM yy_page WHERE (page_code = ? OR page_url = ? OR page_url = ?) AND page_active_flag = TRUE LIMIT 1");
+        $pgStmt->execute([$pageSlug, $pageSlug, '/' . $pageSlug]);
+        $pageRow = $pgStmt->fetch(PDO::FETCH_ASSOC);
+        if ($pageRow && ($pageRow['page_heading'] || $pageRow['page_body'])) {
+            // Render dynamic page
+            require __DIR__ . '/page-render.php';
+            renderDynamicPage($pageRow);
+            exit;
+        }
+    } catch (Exception $e) {}
+}
+
 // --- Case-insensitive redirect ---
 $lower = strtolower($path);
 
@@ -97,12 +140,12 @@ $skipLog = preg_match('#^/(wp-|\.|\cgi-|tag/|category/|event/|wp-json/|checkout|
 
 try {
     if (isset($pdo) && !$skipLog) {
-        $stmt = $pdo->prepare('INSERT INTO yy_redirect (redirect_request, redirect_queue_flag) VALUES (:req, true) ON CONFLICT (redirect_request) DO UPDATE SET redirect_hit_count = yy_redirect.redirect_hit_count + 1');
+        $stmt = $pdo->prepare('INSERT INTO yy_redirect (redirect_request, redirect_hit_count) VALUES (:req, 1) ON CONFLICT (redirect_request) DO UPDATE SET redirect_hit_count = yy_redirect.redirect_hit_count + 1');
         $stmt->execute([':req' => $path]);
     }
 } catch (Exception $e) {
     // ignore
 }
 
-http_response_code(404);
-echo 'Not found';
+header('Location: /', true, 302);
+exit;

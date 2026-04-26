@@ -9,13 +9,16 @@
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
-session_set_cookie_params([
-    'lifetime' => 86400,
-    'path' => '/',
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 86400,
+        'path' => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    if (!session_save_path()) session_save_path('/tmp');
+    session_start();
+}
 
 $userKey = $_SESSION['user_key'] ?? null;
 session_write_close(); // Release session lock immediately
@@ -112,7 +115,7 @@ while (true) {
         // Find which thread the new message is in
         if ($prevLatestDmKey > 0) {
             $stmt = $db->prepare("
-                SELECT m.thread_key, m.message_key, m.message_body, m.message_dtime,
+                SELECT m.thread_key, m.message_key, m.user_key, m.message_body, m.message_dtime,
                        u.user_name_display, u.user_avatar
                 FROM yy_community_dm_message m
                 LEFT JOIN yy_user u ON m.user_key = u.user_key

@@ -187,7 +187,11 @@ function handleUpload(array $file, array $opts = []): string|array {
         }
 
         $filterArg = count($filters) ? '-vf ' . escapeshellarg(implode(',', $filters)) . ' ' : '';
+        $mp4Name = $base . '.mp4';
+        $mp4Dest = $UPLOAD_DIR . $mp4Name;
+        $mp4Esc = escapeshellarg($mp4Dest);
         $videoCmd = "ffmpeg -i $tmpEsc {$filterArg}-c:v libvpx-vp9 -crf 30 -b:v 0 -an -y $destEsc";
+        $mp4Cmd = "ffmpeg -i $tmpEsc {$filterArg}-c:v libx264 -crf 28 -preset slow -an -movflags +faststart -y $mp4Esc";
 
         // Thumbnail with scale filter if set
         $scaleArg = '';
@@ -204,6 +208,7 @@ function handleUpload(array $file, array $opts = []): string|array {
         $script = "#!/bin/bash\n";
         $script .= "$videoCmd 2>&1\n";
         $script .= "if [ \$? -eq 0 ]; then\n";
+        $script .= "  $mp4Cmd 2>&1\n";
         $script .= "  $thumbCmd 2>&1\n";
         $script .= "  rm -f $tmpEsc\n";
         $script .= "  echo done > $statusEsc\n";

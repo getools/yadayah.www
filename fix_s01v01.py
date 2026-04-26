@@ -106,7 +106,7 @@ def main():
             if new_page is None:
                 continue
             cur.execute("""
-                UPDATE translation
+                UPDATE yy_cite_translation
                 SET translation_page = %s
                 WHERE translation_book = %s
                   AND translation_text_word = %s
@@ -118,7 +118,7 @@ def main():
         logging.info(f"  Updated {updated} rows in database")
 
         # Verify
-        cur.execute("SELECT translation_id, translation_page FROM translation WHERE translation_id = 168")
+        cur.execute("SELECT translation_id, translation_page FROM yy_cite_translation WHERE translation_id = 168")
         row = cur.fetchone()
         if row:
             logging.info(f"  Verification: translation_id 168, page={row[1]}")
@@ -138,7 +138,7 @@ def main():
         )
         cur = conn.cursor()
         cur.execute("""
-            UPDATE translation SET translation_page = NULL
+            UPDATE yy_cite_translation SET translation_page = NULL
             WHERE translation_book = %s
         """, (book_name,))
         logging.info(f"  Set {cur.rowcount} rows to NULL page")

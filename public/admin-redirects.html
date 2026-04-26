@@ -14,7 +14,8 @@
         .redir-table .actions { white-space: nowrap; }
         .redir-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
         .redir-table .actions button:hover { background: #f0f0f0; }
-        .redir-table td.url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.8rem; }
+        .redir-table td.url-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.8rem; position: relative; cursor: default; }
+        .redir-table td.url-cell:hover { overflow: visible; white-space: normal; word-break: break-all; z-index: 10; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
         .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
         .badge-active { background: #d4edda; color: #155724; }
         .badge-inactive { background: #f8d7da; color: #721c24; }
@@ -71,7 +72,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -81,12 +82,14 @@
     <div class="toolbar">
         <div class="toolbar-left">
             <div class="filter-tabs">
-                <button class="active" onclick="setFilter('all')">All</button>
-                <button onclick="setFilter('queue')">Queue</button>
+                <button onclick="setFilter('all')">All</button>
+                <button class="active" onclick="setFilter('queue')">Queue</button>
                 <button onclick="setFilter('active')">Active</button>
                 <button onclick="setFilter('inactive')">Inactive</button>
+                <button onclick="setFilter('bot')">Bot</button>
             </div>
             <span id="redir-count" class="redir-count"></span>
+            <input type="text" id="redir-search" placeholder="Search..." style="padding:5px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;width:180px;" onkeydown="if(event.key==='Enter'){searchTerm=this.value.trim();loadRedirects(1);}">
         </div>
         <button class="btn btn-primary btn-sm" onclick="openForm()">+ Add Redirect</button>
     </div>
@@ -94,11 +97,11 @@
     <table class="redir-table">
         <thead>
             <tr>
-                <th>Request URL</th>
+                <th style="cursor:pointer;user-select:none;" onclick="toggleSort('url')">Request URL <span id="sort-url"></span></th>
                 <th>Target URL</th>
-                <th>Hits</th>
+                <th style="cursor:pointer;user-select:none;" onclick="toggleSort('hits')">Hits <span id="sort-hits"></span></th>
                 <th>Status</th>
-                <th>Created</th>
+                <th style="cursor:pointer;user-select:none;" onclick="toggleSort('date')">Created <span id="sort-date"></span></th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -123,13 +126,13 @@
                 <label>Target URL</label>
                 <input type="text" id="f-target" placeholder="/new-path or https://...">
             </div>
-            <div class="checkbox-row">
-                <input type="checkbox" id="f-queue">
-                <label for="f-queue">Queue (awaiting target)</label>
-            </div>
-            <div class="checkbox-row">
-                <input type="checkbox" id="f-active">
-                <label for="f-active">Active (redirect enabled)</label>
+            <div class="field">
+                <label for="f-active">Status</label>
+                <select id="f-active" style="padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
+                    <option value="null">Queue</option>
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
             </div>
             <div class="form-actions">
                 <button class="btn btn-primary" onclick="saveForm()">Save</button>
@@ -143,7 +146,7 @@
 <script>
 var API = '/api';
 var redirects = [];
-var currentFilter = 'all';
+var currentFilter = 'queue';
 
 function checkAuth() {
     fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
@@ -192,11 +195,35 @@ function togglePassword() {
     input.type = input.type === 'password' ? 'text' : 'password';
 }
 
-function loadRedirects() {
-    fetch(API + '/redirects.php', {credentials:'include'})
-        .then(function(r) { return r.json(); })
+var currentPage = 1;
+var totalPages = 1;
+var totalCount = 0;
+var searchTerm = '';
+var currentSort = 'date';
+var currentDir = 'DESC';
+
+function toggleSort(col) {
+    if (currentSort === col) {
+        currentDir = currentDir === 'DESC' ? 'ASC' : 'DESC';
+    } else {
+        currentSort = col;
+        currentDir = col === 'url' ? 'ASC' : 'DESC';
+    }
+    loadRedirects(1);
+}
+
+function loadRedirects(page) {
+    page = page || currentPage || 1;
+    var url = API + '/redirects.php?page=' + page + '&limit=100&sort=' + currentSort + '&dir=' + currentDir;
+    if (currentFilter && currentFilter !== 'all') url += '&filter=' + encodeURIComponent(currentFilter);
+    if (searchTerm) url += '&search=' + encodeURIComponent(searchTerm);
+    fetch(url, {credentials:'include'})
+        .then(function(r) { return safeJson(r); })
         .then(function(data) {
-            redirects = data;
+            redirects = data.redirects || data;
+            currentPage = data.page || 1;
+            totalPages = data.total_pages || 1;
+            totalCount = data.total || redirects.length;
             renderRedirects();
         });
 }
@@ -206,42 +233,59 @@ function setFilter(f) {
     document.querySelectorAll('.filter-tabs button').forEach(function(btn) {
         btn.classList.toggle('active', btn.textContent.toLowerCase() === f);
     });
-    renderRedirects();
+    loadRedirects(1);
 }
 
 function renderRedirects() {
-    var filtered = redirects.filter(function(r) {
-        if (currentFilter === 'queue') return r.redirect_queue_flag;
-        if (currentFilter === 'active') return r.redirect_active_flag;
-        if (currentFilter === 'inactive') return !r.redirect_active_flag && !r.redirect_queue_flag;
-        return true;
-    });
+    var filtered = redirects;
 
-    document.getElementById('redir-count').textContent = filtered.length + ' redirect' + (filtered.length !== 1 ? 's' : '');
+    document.getElementById('redir-count').textContent = totalCount + ' redirect' + (totalCount !== 1 ? 's' : '') + ' (page ' + currentPage + '/' + totalPages + ')';
+    var arrow = function(col) { return currentSort === col ? (currentDir === 'DESC' ? ' ▼' : ' ▲') : ''; };
+    document.getElementById('sort-url').textContent = arrow('url');
+    document.getElementById('sort-hits').textContent = arrow('hits');
+    document.getElementById('sort-date').textContent = arrow('date');
 
     var html = '';
     filtered.forEach(function(r) {
         var status = '';
-        if (r.redirect_queue_flag) status = '<span class="badge badge-queue">Queue</span>';
-        else if (r.redirect_active_flag) status = '<span class="badge badge-active">Active</span>';
-        else status = '<span class="badge badge-inactive">Inactive</span>';
+        if (r.redirect_attack_flag === true || r.redirect_attack_flag === 't') status = '<span class="badge" style="background:#c0392b;color:#fff;">Bot</span>';
+        else if (r.redirect_active_flag === null || r.redirect_active_flag === undefined) status = '<span class="badge badge-queue">Queue</span>';
+        else if (r.redirect_active_flag === false || r.redirect_active_flag === 'f') status = '<span class="badge badge-inactive">Inactive</span>';
+        else status = '<span class="badge badge-active">Active</span>';
 
         var created = r.redirect_dtime ? new Date(r.redirect_dtime).toLocaleDateString() : '';
 
-        html += '<tr>'
-            + '<td class="url-cell" title="' + esc(r.redirect_request) + '">' + esc(r.redirect_request) + '</td>'
-            + '<td class="url-cell" title="' + esc(r.redirect_target || '') + '">' + esc(r.redirect_target || '-') + '</td>'
+        html += '<tr data-rk="' + r.redirect_key + '">'
+            + '<td class="url-cell" title="Click to copy" style="cursor:pointer;" onclick="navigator.clipboard.writeText(\'' + esc(r.redirect_request).replace(/'/g, "\\'") + '\');this.style.background=\'#d4edda\';var t=this;setTimeout(function(){t.style.background=\'\';},500);">' + esc(r.redirect_request) + '</td>'
+            + '<td><input type="text" value="' + esc(r.redirect_target || '') + '" placeholder="Target URL" style="width:100%;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:0.82rem;font-family:inherit;" onchange="inlineSave(' + r.redirect_key + ',this)"></td>'
             + '<td>' + (r.redirect_hit_count || 0) + '</td>'
             + '<td>' + status + '</td>'
             + '<td>' + created + '</td>'
             + '<td class="actions">'
-            + '<button onclick="editRedirect(' + r.redirect_key + ')">Edit</button>'
-            + '<button onclick="deleteRedirect(' + r.redirect_key + ', \'' + esc(r.redirect_request) + '\')">Del</button>'
+            + '<button onclick="markBot(' + r.redirect_key + ',' + (r.redirect_attack_flag === true || r.redirect_attack_flag === 't' ? 'true' : 'false') + ')" style="color:' + (r.redirect_attack_flag === true || r.redirect_attack_flag === 't' ? '#c0392b;font-weight:700;' : '#888;') + '">Bot</button>'
+            + (r.redirect_active_flag !== false && r.redirect_active_flag !== 'f' && r.redirect_attack_flag !== true && r.redirect_attack_flag !== 't' ? '<button onclick="deactivateRedirect(' + r.redirect_key + ')">Ignore</button>' : '')
             + '</td>'
             + '</tr>';
     });
 
     document.getElementById('redir-body').innerHTML = html;
+
+    // Pagination
+    var pagHtml = '';
+    if (totalPages > 1) {
+        pagHtml += '<div style="display:flex;gap:6px;justify-content:center;padding:12px 0;">';
+        pagHtml += '<button ' + (currentPage <= 1 ? 'disabled' : 'onclick="loadRedirects(' + (currentPage-1) + ')"') + ' style="padding:4px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;">&laquo; Prev</button>';
+        pagHtml += '<span style="padding:4px 8px;font-size:0.85rem;color:#666;">Page ' + currentPage + ' of ' + totalPages + '</span>';
+        pagHtml += '<button ' + (currentPage >= totalPages ? 'disabled' : 'onclick="loadRedirects(' + (currentPage+1) + ')"') + ' style="padding:4px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;">Next &raquo;</button>';
+        pagHtml += '</div>';
+    }
+    var pagEl = document.getElementById('redir-pagination');
+    if (!pagEl) {
+        pagEl = document.createElement('div');
+        pagEl.id = 'redir-pagination';
+        document.getElementById('redir-body').parentNode.parentNode.appendChild(pagEl);
+    }
+    pagEl.innerHTML = pagHtml;
 }
 
 function esc(s) {
@@ -255,8 +299,8 @@ function openForm(data) {
     document.getElementById('f-key').value = data ? data.redirect_key : '';
     document.getElementById('f-request').value = data ? data.redirect_request : '';
     document.getElementById('f-target').value = data ? (data.redirect_target || '') : '';
-    document.getElementById('f-queue').checked = data ? data.redirect_queue_flag : false;
-    document.getElementById('f-active').checked = data ? data.redirect_active_flag : false;
+    var activeVal = data ? (data.redirect_active_flag === null || data.redirect_active_flag === undefined ? 'null' : data.redirect_active_flag ? 'true' : 'false') : 'null';
+    document.getElementById('f-active').value = activeVal;
     document.getElementById('form-title').textContent = data ? 'Edit Redirect' : 'Add Redirect';
     document.getElementById('form-overlay').classList.add('open');
 }
@@ -270,8 +314,7 @@ function saveForm() {
     var payload = {
         redirect_request: document.getElementById('f-request').value,
         redirect_target: document.getElementById('f-target').value || null,
-        redirect_queue_flag: document.getElementById('f-queue').checked,
-        redirect_active_flag: document.getElementById('f-active').checked,
+        redirect_active_flag: document.getElementById('f-active').value === 'true' ? true : document.getElementById('f-active').value === 'false' ? false : null,
     };
 
     if (key) {
@@ -295,12 +338,64 @@ function editRedirect(key) {
     if (r) openForm(r);
 }
 
-function deleteRedirect(key, url) {
-    if (!confirm('Delete redirect for "' + url + '"?')) return;
+function makeEditable(el, key) {
+    var td = el.parentNode;
+    var current = el.textContent === '+ New URL' ? '' : el.textContent;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.style.cssText = 'width:100%;padding:4px 6px;border:1px solid #3498db;border-radius:3px;font-size:0.82rem;font-family:inherit;';
+    input.onblur = function() { inlineSave(key, input); };
+    input.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } };
+    td.innerHTML = '';
+    td.appendChild(input);
+    input.focus();
+}
+
+var _inlineTimers = {};
+function inlineSave(key, el) {
+    if (_inlineTimers[key]) clearTimeout(_inlineTimers[key]);
+    _inlineTimers[key] = setTimeout(function() {
+        var target = el.value.trim();
+        var payload = { redirect_key: key, redirect_target: target };
+        // If target was just set and status is queue (null), auto-activate
+        if (target) payload.redirect_active_flag = true;
+        el.style.borderColor = '#f0ad4e';
+        fetch(API + '/redirects.php', {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        }).then(function(r) { return safeJson(r); }).then(function(d) {
+            el.style.borderColor = d.error ? '#c00' : '#27ae60';
+            setTimeout(function() { el.style.borderColor = '#ddd'; }, 1500);
+            if (!d.error && target) {
+                // Update status badge inline without reloading
+                var row = el.closest('tr');
+                if (row) {
+                    var statusCell = row.querySelectorAll('td')[3];
+                    if (statusCell) statusCell.innerHTML = '<span class="badge badge-active">Active</span>';
+                }
+            }
+        });
+    }, 500);
+}
+
+function markBot(key, currentlyBot) {
+    var payload = currentlyBot
+        ? {redirect_key: key, redirect_attack_flag: null}
+        : {redirect_key: key, redirect_active_flag: false, redirect_attack_flag: true};
     fetch(API + '/redirects.php', {
-        method: 'DELETE', credentials: 'include',
+        method: 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({redirect_key: key})
+        body: JSON.stringify(payload)
+    }).then(function() { loadRedirects(); });
+}
+
+function deactivateRedirect(key) {
+    fetch(API + '/redirects.php', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({redirect_key: key, redirect_active_flag: false})
     }).then(function() { loadRedirects(); });
 }
 
@@ -310,6 +405,7 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

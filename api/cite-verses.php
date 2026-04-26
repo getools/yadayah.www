@@ -25,7 +25,7 @@ if ($chapter !== null) {
 }
 
 $where = implode(' AND ', $conditions);
-$stmt = $pdo->prepare("SELECT DISTINCT translation_cite_verse FROM translation WHERE $where ORDER BY translation_cite_verse");
+$stmt = $pdo->prepare("SELECT DISTINCT translation_cite_verse FROM yy_cite_translation WHERE $where ORDER BY translation_cite_verse");
 $stmt->execute($params);
 
 jsonResponse($stmt->fetchAll());

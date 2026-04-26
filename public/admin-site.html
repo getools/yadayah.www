@@ -27,6 +27,13 @@
         .rgb-wrap { display: flex; gap: 8px; align-items: center; }
         .rgb-wrap input[type=text] { flex: 1; font-family: monospace; }
         .rgb-swatch { width: 32px; height: 32px; border-radius: 4px; border: 1px solid #ccc; flex-shrink: 0; }
+        .rgba-picker { display: flex; align-items: center; gap: 8px; }
+        .rgba-picker .color-swatch { width: 32px; height: 32px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; position: relative; overflow: hidden; flex-shrink: 0; }
+        .rgba-picker .color-swatch input[type="color"] { position: absolute; top: -4px; left: -4px; width: 40px; height: 40px; border: none; cursor: pointer; opacity: 0; }
+        .rgba-picker .opacity-wrap { display: flex; align-items: center; gap: 4px; }
+        .rgba-picker .opacity-wrap input[type="range"] { width: 80px; }
+        .rgba-picker .opacity-wrap .opacity-val { font-size: 0.78rem; color: #666; width: 32px; text-align: center; }
+        .rgba-picker .rgba-result { font-size: 0.78rem; color: #888; min-width: 140px; }
         .img-preview-wrap { margin-bottom: 8px; }
         .img-preview-wrap img { max-height: 80px; max-width: 260px; border: 1px solid #ddd; border-radius: 4px; padding: 3px; background: #f8f8f8; vertical-align: middle; }
         .img-upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -65,7 +72,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -83,7 +90,45 @@
     <div id="tab-general" class="tab-panel active">
         <div class="section-box">
             <div id="general-body"></div>
-            <div class="button-row" style="margin-top:20px">
+        </div>
+        <div class="section-box">
+            <h2>Page Heading</h2>
+            <div class="setting-row">
+                <label>Text Color</label>
+                <div class="setting-input"><div class="rgba-picker" data-id="ph-text-color"></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Text Size</label>
+                <div class="setting-input"><div class="em-wrap"><input type="number" id="input-ph-text-size" value="" step="0.1" min="0.1" max="10"><span class="unit-label">em</span></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Background Opacity</label>
+                <div class="setting-input">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input type="range" id="input-ph-bg-opacity" min="0" max="100" value="0" step="1" style="width:200px;">
+                        <span id="ph-bg-opacity-val" style="font-size:0.85rem;color:#666;width:36px;text-align:center;">0.00</span>
+                    </div>
+                </div>
+            </div>
+            <div class="setting-row">
+                <label>Margin Top</label>
+                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-margin-top" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Margin Bottom</label>
+                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-margin-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Padding Top</label>
+                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-padding-top" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Padding Bottom</label>
+                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-padding-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+            </div>
+        </div>
+        <div class="section-box">
+            <div class="button-row" style="margin-top:0">
                 <button class="btn btn-primary" onclick="saveGeneral()">Save</button>
                 <span id="general-status" style="display:none">Saved!</span>
                 <span id="general-error" style="display:none;font-size:0.875rem;color:#c0392b"></span>
@@ -111,6 +156,7 @@
             <span id="header-error" style="display:none;font-size:0.875rem;color:#c0392b"></span>
         </div>
     </div>
+
 </div>
 
 <script src="js/admin-links.js?v=2"></script>
@@ -122,9 +168,12 @@ var _headerSettings = {};
 
 // Header field definitions
 var LOGO_FIELDS = [
-    { code: 'logo',                        label: 'Logo',          type: 'image' },
-    { code: 'logo-margin-top',             label: 'Margin-Top',    type: 'px' },
-    { code: 'logo-margin-bottom',          label: 'Margin-Bottom', type: 'px' },
+    { code: 'logo',                        label: 'Logo',               type: 'image' },
+    { code: 'logo-height',                 label: 'Height',             type: 'px' },
+    { code: 'logo-width',                  label: 'Width',              type: 'px' },
+    { code: 'logo-margin-top',             label: 'Margin-Top',         type: 'px' },
+    { code: 'logo-margin-bottom',          label: 'Margin-Bottom',      type: 'px' },
+    { code: 'header-default-bg',           label: 'Default Background', type: 'rgb' },
 ];
 var MAIN_FIELDS = [
     { code: 'toolbar-main-text-color',     label: 'Text Color',    type: 'rgb' },
@@ -152,7 +201,7 @@ function switchTab(name) {
 // ── Auth ─────────────────────────────────────────────────────
 
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -173,7 +222,7 @@ function doLogin() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({login: user, password: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
@@ -200,18 +249,44 @@ function togglePassword() {
 
 function loadSettings() {
     fetch(API + '/admin-config-settings.php', {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(rows) {
             _allRecords = rows;
-            _generalRecords = rows.filter(function(r) { return r.setting_group_code !== 'header'; });
+            _generalRecords = rows.filter(function(r) { return r.setting_group_code !== 'header' && r.setting_group_code !== 'comments' && r.setting_group_code !== 'page-heading'; });
             _headerSettings = {};
             rows.forEach(function(r) { _headerSettings[r.setting_code] = r; });
 
             renderGeneral();
+            renderPageHeading(rows);
             renderHeaderSection('logo-fields', LOGO_FIELDS);
             renderHeaderSection('main-fields', MAIN_FIELDS);
             renderHeaderSection('sub-fields', SUB_FIELDS);
         });
+}
+
+function renderPageHeading(rows) {
+    var ph = {};
+    rows.forEach(function(r) { if (r.setting_group_code === 'page-heading') ph[r.setting_code] = r; });
+
+    initRgbaPickers();
+    setPickerValue('ph-text-color', (ph['page-heading-text-color'] || {}).setting_value || '#E5C86C');
+
+    var sizeInput = document.getElementById('input-ph-text-size');
+    sizeInput.value = (ph['page-heading-text-size'] || {}).setting_value || '2.2';
+
+    var opSlider = document.getElementById('input-ph-bg-opacity');
+    var opVal = document.getElementById('ph-bg-opacity-val');
+    var opacity = (ph['page-heading-bg-opacity'] || {}).setting_value || '0';
+    opSlider.value = Math.round(parseFloat(opacity) * 100);
+    opVal.textContent = parseFloat(opacity).toFixed(2);
+    opSlider.addEventListener('input', function() {
+        opVal.textContent = (parseInt(opSlider.value) / 100).toFixed(2);
+    });
+
+    document.getElementById('input-ph-margin-top').value = (ph['page-heading-margin-top'] || {}).setting_value || '0';
+    document.getElementById('input-ph-margin-bottom').value = (ph['page-heading-margin-bottom'] || {}).setting_value || '10';
+    document.getElementById('input-ph-padding-top').value = (ph['page-heading-padding-top'] || {}).setting_value || '4';
+    document.getElementById('input-ph-padding-bottom').value = (ph['page-heading-padding-bottom'] || {}).setting_value || '4';
 }
 
 // ── General tab rendering ────────────────────────────────────
@@ -226,9 +301,7 @@ function renderGeneral() {
         html += '</div>';
     });
     body.innerHTML = html;
-    _generalRecords.forEach(function(r) {
-        if (r.setting_value_code === 'rgb') syncSwatch('g-' + r.setting_key);
-    });
+    initRgbaPickers();
 }
 
 function renderGeneralInput(r) {
@@ -248,10 +321,7 @@ function renderGeneralInput(r) {
             + '</div>';
     }
     if (r.setting_value_code === 'rgb') {
-        return '<div class="rgb-wrap">'
-            + '<input type="text" id="input-' + id + '" value="' + escAttr(v) + '" maxlength="6" oninput="syncSwatch(\'' + id + '\')">'
-            + '<div class="rgb-swatch" id="swatch-' + id + '"></div>'
-            + '</div>';
+        return '<div class="rgba-picker" data-id="' + id + '" data-init="' + escAttr(v) + '"></div>';
     }
     if (r.setting_value_code === 'int') {
         return '<input type="number" id="input-' + id + '" value="' + escAttr(v) + '" style="width:140px">';
@@ -280,9 +350,7 @@ function renderHeaderSection(containerId, fields) {
         html += '</div>';
     });
     container.innerHTML = html;
-    fields.forEach(function(f) {
-        if (f.type === 'rgb') syncSwatch('h-' + f.code);
-    });
+    initRgbaPickers();
 }
 
 function renderHeaderInput(f, key, val) {
@@ -299,10 +367,7 @@ function renderHeaderInput(f, key, val) {
             + '</div>';
     }
     if (f.type === 'rgb') {
-        return '<div class="rgb-wrap">'
-            + '<input type="text" id="input-' + id + '" data-key="' + key + '" value="' + escAttr(val) + '" maxlength="6" oninput="syncSwatch(\'' + id + '\')">'
-            + '<div class="rgb-swatch" id="swatch-' + id + '"></div>'
-            + '</div>';
+        return '<div class="rgba-picker" data-id="' + id + '" data-key="' + key + '" data-init="' + escAttr(val) + '"></div>';
     }
     if (f.type === 'px') {
         return '<div class="px-wrap"><input type="number" id="input-' + id + '" data-key="' + key + '" value="' + escAttr(val) + '" step="1" min="0"><span class="unit-label">px</span></div>';
@@ -323,6 +388,55 @@ function syncSwatch(id) {
     swatch.style.background = hex.length >= 3 ? '#' + hex : 'transparent';
 }
 
+// ── RGBA Color Picker ──
+function initRgbaPickers() {
+    document.querySelectorAll('.rgba-picker').forEach(function(el) {
+        if (el.querySelector('.color-swatch')) return; // already initialized
+        var id = el.getAttribute('data-id');
+        var initVal = el.getAttribute('data-init') || '';
+        el.innerHTML = '<div class="color-swatch" id="'+id+'-swatch" style="background:#000;"><input type="color" id="'+id+'-hex" value="#000000"></div>'
+            + '<div class="opacity-wrap"><input type="range" id="'+id+'-opacity" min="0" max="100" value="100" step="1"><span class="opacity-val" id="'+id+'-opval">1.00</span></div>'
+            + '<span class="rgba-result" id="'+id+'-result"></span>';
+        var hex = document.getElementById(id+'-hex'), opacity = document.getElementById(id+'-opacity'),
+            swatch = document.getElementById(id+'-swatch'), opval = document.getElementById(id+'-opval'),
+            result = document.getElementById(id+'-result');
+        function update() {
+            var h=hex.value, a=(parseInt(opacity.value)/100).toFixed(2); opval.textContent=a;
+            var r=parseInt(h.substr(1,2),16), g=parseInt(h.substr(3,2),16), b=parseInt(h.substr(5,2),16);
+            var rgba='rgba('+r+','+g+','+b+','+a+')'; swatch.style.background=rgba; result.textContent=rgba;
+        }
+        hex.addEventListener('input', update);
+        opacity.addEventListener('input', update);
+        if (initVal) setPickerValue(id, initVal);
+    });
+}
+
+function setPickerValue(id, c) {
+    if (!c) c = 'rgba(0,0,0,1)';
+    var hex = document.getElementById(id+'-hex'), op = document.getElementById(id+'-opacity');
+    if (!hex || !op) return;
+    var r=0, g=0, b=0, a=1;
+    var m = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
+    if (m) { r=parseInt(m[1]); g=parseInt(m[2]); b=parseInt(m[3]); a=m[4]!==undefined?parseFloat(m[4]):1; }
+    else if (c.charAt(0)==='#') {
+        var hx=c.replace('#',''); if(hx.length===3) hx=hx[0]+hx[0]+hx[1]+hx[1]+hx[2]+hx[2];
+        r=parseInt(hx.substr(0,2),16); g=parseInt(hx.substr(2,2),16); b=parseInt(hx.substr(4,2),16);
+    } else if (/^[0-9a-fA-F]{6}$/.test(c)) {
+        r=parseInt(c.substr(0,2),16); g=parseInt(c.substr(2,2),16); b=parseInt(c.substr(4,2),16);
+    }
+    hex.value = '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+    op.value = Math.round(a*100);
+    hex.dispatchEvent(new Event('input'));
+}
+
+function getPickerValue(id) {
+    var hex=document.getElementById(id+'-hex'), op=document.getElementById(id+'-opacity');
+    if (!hex || !op) return '';
+    var h=hex.value, a=(parseInt(op.value)/100).toFixed(2);
+    var r=parseInt(h.substr(1,2),16), g=parseInt(h.substr(3,2),16), b=parseInt(h.substr(5,2),16);
+    return 'rgba('+r+','+g+','+b+','+a+')';
+}
+
 // ── Save General ─────────────────────────────────────────────
 
 function saveGeneral() {
@@ -334,8 +448,15 @@ function saveGeneral() {
     var promises = _generalRecords
         .filter(function(r) { return r.setting_value_code !== 'image'; })
         .map(function(r) {
-            var input = document.getElementById('input-g-' + r.setting_key);
-            if (!input) return Promise.resolve(null);
+            var id = 'g-' + r.setting_key;
+            var val;
+            if (r.setting_value_code === 'rgb') {
+                val = getPickerValue(id);
+            } else {
+                var input = document.getElementById('input-' + id);
+                if (!input) return Promise.resolve(null);
+                val = input.value;
+            }
             return fetch(API + '/admin-config-settings.php?key=' + r.setting_key, {
                 method: 'PUT', credentials: 'include',
                 headers: {'Content-Type':'application/json'},
@@ -345,10 +466,35 @@ function saveGeneral() {
                     setting_code: r.setting_code,
                     setting_value_code: r.setting_value_code,
                     setting_sort: r.setting_sort,
-                    setting_value: input.value
+                    setting_value: val
                 })
             }).then(function(res){return res.json();});
         });
+
+    // Also save Page Heading settings (upsert: PUT if exists, POST if new)
+    var phSettings = [
+        { code: 'page-heading-text-color',    value: getPickerValue('ph-text-color') },
+        { code: 'page-heading-text-size',      value: document.getElementById('input-ph-text-size').value },
+        { code: 'page-heading-bg-opacity',     value: (parseInt(document.getElementById('input-ph-bg-opacity').value) / 100).toFixed(2) },
+        { code: 'page-heading-margin-top',     value: document.getElementById('input-ph-margin-top').value },
+        { code: 'page-heading-margin-bottom',  value: document.getElementById('input-ph-margin-bottom').value },
+        { code: 'page-heading-padding-top',    value: document.getElementById('input-ph-padding-top').value },
+        { code: 'page-heading-padding-bottom', value: document.getElementById('input-ph-padding-bottom').value }
+    ];
+    phSettings.forEach(function(s) {
+        var existing = _allRecords.filter(function(r) { return r.setting_code === s.code && r.setting_group_code === 'page-heading'; })[0];
+        if (existing) {
+            promises.push(fetch(API + '/admin-config-settings.php?key=' + existing.setting_key, {
+                method: 'PUT', credentials: 'include', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ setting_group_code: 'page-heading', setting_label: '', setting_code: s.code, setting_value_code: 'text', setting_sort: 0, setting_value: s.value })
+            }).then(function(res){return res.json();}));
+        } else {
+            promises.push(fetch(API + '/admin-config-settings.php', {
+                method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ setting_group_code: 'page-heading', setting_code: s.code, setting_value_code: 'text', setting_value: s.value })
+            }).then(function(res){return res.json();}));
+        }
+    });
 
     Promise.all(promises).then(function(results) {
         var err = results.filter(Boolean).map(function(d){return d.error;}).filter(Boolean)[0];
@@ -367,12 +513,18 @@ function saveHeader() {
 
     var allFields = LOGO_FIELDS.concat(MAIN_FIELDS).concat(SUB_FIELDS);
     var promises = allFields.filter(function(f) { return f.type !== 'image'; }).map(function(f) {
-        var input = document.getElementById('input-h-' + f.code);
-        if (!input) return Promise.resolve(null);
-        var key = input.getAttribute('data-key');
-        if (!key) return Promise.resolve(null);
+        var id = 'h-' + f.code;
         var s = _headerSettings[f.code];
-        return fetch(API + '/admin-config-settings.php?key=' + key, {
+        if (!s) return Promise.resolve(null);
+        var val;
+        if (f.type === 'rgb') {
+            val = getPickerValue(id);
+        } else {
+            var input = document.getElementById('input-' + id);
+            if (!input) return Promise.resolve(null);
+            val = input.value;
+        }
+        return fetch(API + '/admin-config-settings.php?key=' + s.setting_key, {
             method: 'PUT', credentials: 'include',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({
@@ -381,7 +533,7 @@ function saveHeader() {
                 setting_code: s.setting_code,
                 setting_value_code: s.setting_value_code,
                 setting_sort: s.setting_sort,
-                setting_value: input.value
+                setting_value: val
             })
         }).then(function(res){return res.json();});
     });
@@ -405,7 +557,7 @@ function uploadImage(id) {
     var fd = new FormData();
     fd.append('logo_file', input.files[0]);
     fetch(API + '/admin-logo-upload.php', {method:'POST', credentials:'include', body:fd})
-        .then(function(r){return r.json();}).then(function(d) {
+        .then(function(r){return safeJson(r);}).then(function(d) {
             if (d.error) { errorEl.textContent = d.error; errorEl.style.display = ''; return; }
             input.value = '';
             var prev = document.getElementById('img-preview-' + id);
@@ -433,6 +585,7 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

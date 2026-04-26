@@ -396,6 +396,7 @@
         }
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
     <header>
@@ -428,7 +429,7 @@
         <div class="tickers-grid" id="tickers-grid"></div>
     </div>
 
-    <h1 class="page-title" id="page-heading">Timeline</h1>
+    <div class="page-heading-wrap"><h1 class="page-heading" id="page-heading">Timeline</h1></div>
 
     <div class="timeline-wrap" id="timeline">
         <div class="tl-loading">Loading timeline...</div>
@@ -676,6 +677,6 @@ fetch(API + '/timeline.php')
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

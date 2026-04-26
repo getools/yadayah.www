@@ -28,7 +28,7 @@ $pdo = getDb();
 $queryWords = preg_split('/\s+/', $q);
 $aliasTargets = [];
 foreach ($queryWords as $w) {
-    $aliasStmt = $pdo->prepare("SELECT alias_target FROM search_alias WHERE lower(alias_term) = lower(?)");
+    $aliasStmt = $pdo->prepare("SELECT alias_target FROM yy_search_alias WHERE lower(alias_term) = lower(?)");
     $aliasStmt->execute([$w]);
     $targets = $aliasStmt->fetchAll(PDO::FETCH_COLUMN);
     foreach ($targets as $t) {

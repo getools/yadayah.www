@@ -6,9 +6,11 @@ ini_set('session.gc_maxlifetime', (string)(315360000)); // 10 years
 session_set_cookie_params([
     'lifetime' => 315360000, // 10 years
     'path' => '/',
+    'secure' => true,
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
+if (!session_save_path()) session_save_path('/tmp');
 session_start();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -34,6 +36,9 @@ function getDb(): PDO {
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
+        // Pass session user_key to PostgreSQL so revision triggers can record who made the change
+        $sessionUserKey = $_SESSION['user_key'] ?? 0;
+        $pdo->exec("SET app.user_key = " . (int)$sessionUserKey);
     }
     return $pdo;
 }

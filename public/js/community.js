@@ -155,11 +155,17 @@ Community.showView = function(id) {
         'view-new': 'nav-topics',
         'view-messages': 'nav-messages',
         'view-members': 'nav-members',
-        'view-bookmarks': 'nav-bookmarks',
         'view-notifications': 'nav-notifications',
         'view-categories': 'nav-categories'
     };
     var navId = navMap[id];
+    // Override for comments section — highlight the correct tab
+    if ((id === 'view-topics' || id === 'view-topic') && Community.currentSection === 'comments') {
+        var h = window.location.hash;
+        if (h === '#blog-comments') navId = 'nav-blog-comments';
+        else if (h === '#vlog-comments') navId = 'nav-vlog-comments';
+        else navId = 'nav-comments';
+    }
     if (navId) {
         var navEl = document.getElementById(navId);
         if (navEl) navEl.classList.add('active');
@@ -189,8 +195,31 @@ Community.route = function() {
         return;
     }
 
+    if (Community._skipRoute) { Community._skipRoute = false; return; }
+
     if (hash === '#topics' || hash === '') {
+        Community.setSection('topics');
         CommunityTopics.loadTopics();
+    } else if (hash === '#comments') {
+        Community.setSection('comments');
+        CommunityTopics.loadTopics(1, null, { parentSlug: 'comments' });
+    } else if (hash === '#blog-comments') {
+        Community.setSection('comments');
+        Community.currentCategory = 'comment-blog';
+        Community.renderCategorySidebar();
+        CommunityTopics.loadTopics(1, 'comment-blog', { parentSlug: 'comments' });
+    } else if (hash === '#vlog-comments') {
+        Community.setSection('comments');
+        Community.currentCategory = 'comment-vlog';
+        Community.renderCategorySidebar();
+        CommunityTopics.loadTopics(1, 'comment-vlog', { parentSlug: 'comments' });
+    } else if (hash === '#bookmarks') {
+        CommunityTopics.loadBookmarks();
+    } else if (hash.indexOf('#category/') === 0) {
+        var catSlug = hash.split('/')[1];
+        Community.setSection('topics');
+        Community.currentCategory = catSlug;
+        CommunityTopics.loadTopics(1, catSlug);
     } else if (hash.indexOf('#topic/') === 0) {
         var key = parseInt(hash.split('/')[1]);
         if (key) CommunityTopics.loadTopic(key);
@@ -307,10 +336,22 @@ Community.sendProfileDM = function(recipientKey) {
 };
 
 // ── Load categories for sidebar ──
-Community.loadCategories = function() {
-    Community.api('/api/community-categories.php').then(function(data) {
+Community.currentSection = 'topics'; // 'topics' or 'comments'
+
+Community.setSection = function(section) {
+    Community.currentSection = section;
+    Community.currentCategory = '';
+    Community.loadCategories(section === 'comments' ? 'comments' : 'topics');
+};
+
+Community.loadCategories = function(parent) {
+    parent = parent || Community.currentSection || 'topics';
+    var url = '/api/community-categories.php?parent=' + encodeURIComponent(parent);
+    Community.api(url).then(function(data) {
         Community.categories = data.categories || [];
         Community.renderCategorySidebar();
+    }).catch(function(err) {
+        console.error('loadCategories error:', err);
     });
 };
 
@@ -320,7 +361,11 @@ Community.renderCategorySidebar = function() {
     var cats = Community.categories;
     var isMod = Community.currentUser && (Community.currentUser.roles.indexOf('admin') >= 0 || Community.currentUser.roles.indexOf('moderator') >= 0);
     var html = '<div class="category-bar">';
-    html += '<span class="category-bar-label">Categories</span>';
+    if (isMod) {
+        html += '<a class="category-bar-label" href="#categories" style="cursor:pointer;text-decoration:none;">Categories</a>';
+    } else {
+        html += '<span class="category-bar-label">Categories</span>';
+    }
     html += '<div class="category-item' + (!Community.currentCategory ? ' active' : '') + '" onclick="Community.filterCategory(\'\')">All</div>';
     for (var i = 0; i < cats.length; i++) {
         var c = cats[i];
@@ -329,9 +374,6 @@ Community.renderCategorySidebar = function() {
             + '<span class="category-badge" style="background:' + Community.esc(c.category_color || '#31345A') + '"></span>'
             + Community.esc(c.category_name)
             + '</div>';
-    }
-    if (isMod) {
-        html += '<button class="btn btn-sm btn-outline" onclick="Community.showCategoryManager()" title="Manage categories" style="padding:2px 8px;font-size:0.75rem;margin-left:auto;">&#9881;</button>';
     }
     html += '</div>';
     el.innerHTML = html;
@@ -363,11 +405,10 @@ Community.showCategoryManager = function() {
                 + '<div class="topic-title">' + Community.esc(c.category_name) + (inactive ? ' <em style="color:#999;font-weight:400">(inactive)</em>' : '') + '</div>'
                 + '<div class="topic-meta">' + Community.esc(c.category_description || '') + ' &middot; ' + (c.topic_count || 0) + ' topics</div>'
                 + '</div>'
-                + '<div style="display:flex;gap:6px;">'
+                + '<div style="display:flex;gap:10px;align-items:center;">'
+                + '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;color:#555;cursor:pointer;white-space:nowrap;">'
+                + '<input type="checkbox"' + (inactive ? '' : ' checked') + ' onchange="event.stopPropagation();Community.toggleCategory(' + c.category_key + ',this.checked)"> Active</label>'
                 + '<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();Community.showCategoryForm(' + c.category_key + ')">Edit</button>'
-                + (inactive
-                    ? '<button class="btn btn-sm" style="background:#2ecc71;color:#fff;border:none;" onclick="event.stopPropagation();Community.toggleCategory(' + c.category_key + ',true)">Activate</button>'
-                    : '<button class="btn btn-sm btn-outline" style="color:#c00;border-color:#c00;" onclick="event.stopPropagation();Community.toggleCategory(' + c.category_key + ',false)">Deactivate</button>')
                 + '</div></div>';
         }
         html += '</div>';
@@ -472,16 +513,26 @@ Community.toggleCategory = function(catKey, activate) {
     }).then(function(res) {
         if (res.error) { alert(res.error); return; }
         Community.loadCategories();
-        Community.showCategoryManager();
     });
 };
 
+Community._skipRoute = false;
 Community.filterCategory = function(slug) {
+    if (slug && slug === Community.currentCategory) return;
     Community.currentCategory = slug;
     Community.currentPage = 1;
     Community.renderCategorySidebar();
-    CommunityTopics.loadTopics(1, slug);
-    window.location.hash = '#topics';
+    var opts = {};
+    if (Community.currentSection === 'comments') {
+        opts.parentSlug = 'comments';
+    }
+    CommunityTopics.loadTopics(1, slug, opts);
+    Community._skipRoute = true;
+    if (Community.currentSection === 'comments') {
+        window.location.hash = '#comments';
+    } else {
+        window.location.hash = slug ? '#category/' + slug : '#topics';
+    }
 };
 
 // ── Category badge HTML ──
@@ -490,7 +541,7 @@ Community.categoryBadge = function(slug) {
     for (var i = 0; i < Community.categories.length; i++) {
         var c = Community.categories[i];
         if (c.category_slug === slug) {
-            return '<span class="topic-category-badge" style="background:' + Community.esc(c.category_color || '#31345A') + '">' + Community.esc(c.category_name) + '</span>';
+            return '<a href="#category/' + Community.esc(slug) + '" onclick="event.stopPropagation();" class="topic-category-badge" style="background:' + Community.esc(c.category_color || '#31345A') + ';text-decoration:none;color:#fff;cursor:pointer;">' + Community.esc(c.category_name) + '</a>';
         }
     }
     return '';
@@ -521,8 +572,6 @@ Community.init = function() {
     }).catch(function() {
         Community.route();
     });
-
-    Community.loadCategories();
 
     // Listen for hash changes
     window.addEventListener('hashchange', Community.route);

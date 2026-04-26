@@ -99,7 +99,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -211,7 +211,7 @@ function esc(s) {
 
 // Auth
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -230,7 +230,7 @@ function doLogin() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({login: user, password: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
@@ -260,7 +260,7 @@ function togglePassword() {
 function loadEvents() {
     document.getElementById('list-container').innerHTML = '<div class="loading">Loading timeline...</div>';
     fetch(API + '/admin-timeline.php', {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.error) { document.getElementById('list-container').innerHTML = '<div class="empty-state">' + esc(d.error) + '</div>'; return; }
             allEvents = d.events || [];
@@ -380,7 +380,7 @@ function hideForm() {
 
 function editEvent(key) {
     fetch(API + '/admin-timeline.php?key=' + key, {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.error) { alert(d.error); return; }
             showForm(d);
@@ -584,7 +584,7 @@ function saveEvent() {
 function deleteEvent(key) {
     if (!confirm('Delete this timeline event?')) return;
     fetch(API + '/admin-timeline.php?key=' + key, {method:'DELETE', credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.error) { alert(d.error); return; }
             hideForm();
@@ -604,7 +604,7 @@ function showTab(tab) {
 // ── Config ──
 function loadConfig() {
     fetch(API + '/admin-timeline-config.php', {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(cfg) {
             document.getElementById('cfg-heading').value                  = cfg['heading'] || '';
             document.getElementById('cfg-ticker-primary-heading').value   = cfg['ticker-primary-heading'] || '';
@@ -665,7 +665,7 @@ function saveConfig() {
         method: 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
         var s = document.getElementById('cfg-success');
         s.style.display = '';
@@ -680,6 +680,7 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

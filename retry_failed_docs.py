@@ -103,7 +103,7 @@ def main():
                     continue
 
                 cur.execute("""
-                    UPDATE translation
+                    UPDATE yy_cite_translation
                     SET translation_page = %s
                     WHERE translation_book = %s
                       AND translation_text_word = %s
@@ -123,7 +123,7 @@ def main():
     cur.execute("""
         SELECT translation_id, translation_page,
                LEFT(translation_text_word, 100) as text_preview
-        FROM translation
+        FROM yy_cite_translation
         WHERE translation_id = 168
     """)
     row = cur.fetchone()

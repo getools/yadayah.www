@@ -72,15 +72,15 @@ def step_alter_existing_pg_tables(pg):
         AND constraint_name LIKE '%volume%'
     """)
     for row in cur.fetchall():
-        cur.execute(f"ALTER TABLE translation DROP CONSTRAINT IF EXISTS {row[0]}")
+        cur.execute(f"ALTER TABLE yy_cite_translation DROP CONSTRAINT IF EXISTS {row[0]}")
 
     cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='translation' AND column_name='yy_volume_id'")
     if cur.fetchone():
-        cur.execute("ALTER TABLE translation RENAME COLUMN yy_volume_id TO yy_volume_key")
+        cur.execute("ALTER TABLE yy_cite_translation RENAME COLUMN yy_volume_id TO yy_volume_key")
 
     # Re-add FK
     cur.execute("""
-        ALTER TABLE translation ADD CONSTRAINT translation_yy_volume_key_fkey
+        ALTER TABLE yy_cite_translation ADD CONSTRAINT translation_yy_volume_key_fkey
         FOREIGN KEY (yy_volume_key) REFERENCES yy_volume(yy_volume_key)
     """)
 

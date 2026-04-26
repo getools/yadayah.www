@@ -22,6 +22,13 @@ if (!empty($_GET['link']) && !empty($_SESSION['user_key'])) {
     $_SESSION['linking_provider'] = true;
 }
 
+// Popup mode: OAuth flow runs in a popup window
+if (!empty($_GET['popup'])) {
+    $_SESSION['oauth_popup'] = true;
+} else {
+    unset($_SESSION['oauth_popup']);
+}
+
 if ($provider === 'google') {
     $stmt = $db->prepare("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_group_code = 'oauth' AND setting_code IN ('oauth-google-client-id')");
     $stmt->execute();

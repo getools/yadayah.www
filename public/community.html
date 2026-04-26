@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/login.css">
     <style>
         /* ── Base ── */
         * { box-sizing: border-box; }
@@ -322,6 +323,8 @@
         .dm-message.mine .dm-message-bubble { background: #31345A; color: #fff; border-radius: 16px 16px 4px 16px; }
         .dm-message-time { font-size: 0.68rem; color: #999; margin-top: 3px; padding: 0 4px; }
         .dm-compose { display: flex; flex-direction: column; gap: 8px; }
+        .dm-compose-row { width: 100%; max-width: 100%; overflow: hidden; box-sizing: border-box; }
+        .dm-compose-row .tox.tox-tinymce { max-width: 100% !important; box-sizing: border-box !important; }
         .dm-compose textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 0.9rem; resize: vertical; min-height: 40px; box-sizing: border-box; }
         html, body { overflow-x: hidden; }
         .dm-compose textarea:focus { outline: none; border-color: #31345A; }
@@ -329,6 +332,18 @@
         .dm-compose-actions .btn { margin-left: auto; }
         .dm-media-btn { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 1.1rem; color: #666; transition: background 0.15s, border-color 0.15s; }
         .dm-media-btn:hover { background: #f5f5f5; border-color: #31345A; color: #31345A; }
+        .dm-group-icon { width: 42px; height: 42px; border-radius: 50%; background: #e8eaf6; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
+        .dm-group-header { display: flex; align-items: center; gap: 10px; }
+        .dm-group-panel { background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .dm-group-members { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+        .dm-group-member-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+        .dm-group-chip { display: inline-flex; align-items: center; gap: 4px; background: #e8eaf6; color: #31345A; border-radius: 16px; padding: 4px 12px; font-size: 0.85rem; font-weight: 500; }
+        .dm-group-chip-remove { cursor: pointer; font-size: 1rem; color: #888; margin-left: 2px; }
+        .dm-group-chip-remove:hover { color: #c0392b; }
+        .dm-system-message { align-items: center !important; }
+        .dm-system-text { font-size: 0.8rem; color: #888; font-style: italic; padding: 4px 0; }
+        .dm-sender-name { font-size: 0.75rem; color: #31345A; font-weight: 600; padding: 0 4px; margin-bottom: 2px; }
+        .dm-avatar-sm { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
         .compose-form textarea { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem; }
         html, body { overflow-x: hidden; }
         .compose-form input { font-family: inherit; font-size: 0.9rem; }
@@ -409,48 +424,16 @@
         .btn-danger:hover { background: #e74c3c; }
         .btn-outline { background: none; border: 1px solid #ccc; color: #666; }
         .btn-outline:hover { background: #f0f0f0; }
-        .btn-google { background: #fff; color: #333; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .btn-google:hover { background: #f5f5f5; }
-        .btn-google svg { width: 18px; height: 18px; }
-        .btn-microsoft { background: #fff; color: #333; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .btn-microsoft:hover { background: #f5f5f5; }
-        .btn-microsoft svg { width: 18px; height: 18px; }
-        .btn-yahoo { background: #fff; color: #6001D2; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-weight: 700; }
-        .btn-yahoo:hover { background: #f5f5f5; }
-        .btn-yahoo svg { width: 18px; height: 18px; }
-        .btn-x { background: #fff; color: #000; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .btn-x:hover { background: #f5f5f5; }
-        .btn-x svg { width: 16px; height: 16px; }
-
-        /* ── Login Modal ── */
-        .login-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center; }
-        .login-modal.active { display: flex; }
-        .login-box { background: #fff; border-radius: 10px; padding: 30px; width: 90%; max-width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); position: relative; }
-        .login-box h2 { margin: 0 0 20px; font-family: 'Julius Sans One', sans-serif; color: #31345A; font-size: 1.3rem; text-align: center; }
-        .login-box input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 0.9rem; box-sizing: border-box; margin-bottom: 12px; }
         html, body { overflow-x: hidden; }
-        .login-box input:focus { outline: none; border-color: #31345A; }
-        .login-box .login-error { color: #c0392b; font-size: 0.85rem; margin-bottom: 10px; text-align: center; transition: opacity 0.15s; }
-        .login-box .login-error.flash { animation: errFlash 0.3s; }
         .profile-msg.flash { animation: errFlash 0.3s; }
         @keyframes errFlash { 0%{opacity:0;transform:scale(0.97)} 50%{opacity:1;transform:scale(1.02)} 100%{opacity:1;transform:scale(1)} }
-        .login-box .login-toggle { text-align: center; margin-top: 14px; font-size: 0.85rem; color: #666; }
-        .login-box .login-toggle a { color: #31345A; font-weight: 600; cursor: pointer; text-decoration: underline; }
-        .login-close { position: absolute; top: 10px; right: 14px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #999; padding: 0; line-height: 1; }
-        .login-close:hover { color: #333; }
-        .login-or { text-align: center; color: #999; font-size: 0.85rem; margin: 16px 0; position: relative; }
-        .login-or::before, .login-or::after { content: ''; position: absolute; top: 50%; width: 35%; height: 1px; background: #ddd; }
-        .login-or::before { left: 0; }
-        .login-or::after { right: 0; }
-        .login-social { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
-        .login-social .btn { width: 100%; justify-content: center; box-sizing: border-box; padding: 10px 12px; font-size: 0.85rem; }
-        html, body { overflow-x: hidden; }
 
         /* ── Verify Banner ── */
         .verify-banner { background: #fff3cd; color: #856404; padding: 12px 18px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
         .verify-banner a { color: #31345A; font-weight: 600; cursor: pointer; text-decoration: underline; }
 
     </style>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
 <header>
@@ -464,7 +447,7 @@
 
 <div class="community-wrap">
     <div class="community-header">
-        <h1>Community</h1>
+        <div class="page-heading-wrap"><h1 class="page-heading">Community</h1></div>
         <div class="auth-bar" id="auth-bar"></div>
     </div>
     <div id="verify-banner" style="display:none"></div>
@@ -551,12 +534,12 @@
 
 <script src="/js/tinymce/tinymce.min.js"></script>
 <script src="/js/bg-video.js"></script>
-<script src="/js/community.js?v=22"></script>
+<script src="/js/community.js?v=30"></script>
 <script src="/js/community-auth.js?v=15"></script>
-<script src="/js/community-topics.js?v=43"></script>
+<script src="/js/community-topics.js?v=63"></script>
 <script src="/js/community-notifications.js?v=23"></script>
 <script src="/js/community-profile.js?v=20"></script>
-<script src="/js/community-dm.js?v=25"></script>
+<script src="/js/community-dm.js?v=35"></script>
 <script src="/js/community-search.js?v=10"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>
@@ -592,6 +575,7 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
+<script src="/js/video-comments.js"></script>
 </body>
 </html>

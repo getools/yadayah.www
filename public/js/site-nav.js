@@ -111,6 +111,20 @@
                 el.href = 'mailto:contact' + '\x40' + 'YadaYah.com';
             });
 
+            // Page Heading settings (apply to .content h1)
+            var root = document.documentElement;
+            if (data.page_heading_text_color)    root.style.setProperty('--heading-color', data.page_heading_text_color);
+            if (data.page_heading_text_size)     root.style.setProperty('--heading-size', data.page_heading_text_size + 'em');
+            if (data.page_heading_bg_opacity) {
+                var op = parseFloat(data.page_heading_bg_opacity);
+                root.style.setProperty('--heading-bg-opacity', String(op));
+                root.style.setProperty('--heading-bg', 'rgba(0,0,0,' + op + ')');
+            }
+            if (data.page_heading_margin_top)    root.style.setProperty('--heading-margin-top', data.page_heading_margin_top + 'px');
+            if (data.page_heading_margin_bottom) root.style.setProperty('--heading-margin-bottom', data.page_heading_margin_bottom + 'px');
+            if (data.page_heading_padding_top)   root.style.setProperty('--heading-padding-top', data.page_heading_padding_top + 'px');
+            if (data.page_heading_padding_bottom) root.style.setProperty('--heading-padding-bottom', data.page_heading_padding_bottom + 'px');
+
             reveal();
         })
         .catch(reveal);

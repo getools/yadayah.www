@@ -23,11 +23,13 @@ function userHasRole(PDO $db, int $userKey, string $roleCode): bool {
 
 // ── GET ──
 if ($method === 'GET') {
+    $showDeleted = false;
     if ($topicKey) {
         // Single topic with replies
         $isMod = $userKey ? isModOrAdmin($db, $userKey) : false;
+        $showDeleted = $isMod && !empty($_GET['show_deleted']);
         $topicWhere = $isMod
-            ? "WHERE t.topic_key = ? AND t.topic_active_flag = TRUE"
+            ? ($showDeleted ? "WHERE t.topic_key = ?" : "WHERE t.topic_key = ? AND t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL")
             : "WHERE t.topic_key = ? AND t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL";
         $stmt = $db->prepare("
             SELECT t.*, u.user_display_name AS user_name_display, u.user_avatar, u.user_handle,
@@ -45,9 +47,15 @@ if ($method === 'GET') {
         $db->prepare("UPDATE yy_community_topic SET topic_view_count = topic_view_count + 1 WHERE topic_key = ?")
            ->execute([$topicKey]);
 
+        // Track user view
+        if ($userKey) {
+            $db->prepare("INSERT INTO yy_community_view (user_key, topic_key) VALUES (?, ?) ON CONFLICT (user_key, topic_key) DO UPDATE SET view_dtime = NOW()")
+               ->execute([$userKey, $topicKey]);
+        }
+
         // Replies — mods see removed posts too
-        $replyWhere = $isMod
-            ? "WHERE r.topic_key = ? AND r.reply_active_flag = TRUE"
+        $replyWhere = $showDeleted
+            ? "WHERE r.topic_key = ?"
             : "WHERE r.topic_key = ? AND r.reply_active_flag = TRUE AND r.reply_delete_dtime IS NULL";
         $stmt = $db->prepare("
             SELECT r.*, u.user_display_name AS user_name_display, u.user_avatar, u.user_handle
@@ -107,11 +115,23 @@ if ($method === 'GET') {
     $categorySlug = trim($_GET['category'] ?? '');
 
     $isMod = $userKey ? isModOrAdmin($db, $userKey) : false;
-    $where = $isMod
-        ? "WHERE t.topic_active_flag = TRUE"
+    $parentSlug = trim($_GET['parent_slug'] ?? '');
+
+    $showDeleted = $isMod && !empty($_GET['show_deleted']);
+    $where = $showDeleted
+        ? "WHERE 1=1"
         : "WHERE t.topic_active_flag = TRUE AND t.topic_delete_dtime IS NULL";
     $joins = "LEFT JOIN yy_user u ON t.user_key = u.user_key LEFT JOIN yy_community_category c ON t.category_key = c.category_key";
     $params = [];
+
+    // Scope to categories under a parent
+    if ($parentSlug) {
+        $where .= " AND t.category_key IN (SELECT category_key FROM yy_community_category WHERE parent_key = (SELECT category_key FROM yy_community_category WHERE category_slug = ? LIMIT 1))";
+        $params[] = $parentSlug;
+    } else {
+        // Default: topics section (exclude comment categories)
+        $where .= " AND (t.category_key IS NULL OR t.category_key IN (SELECT category_key FROM yy_community_category WHERE parent_key = (SELECT category_key FROM yy_community_category WHERE category_slug = 'topics' LIMIT 1)))";
+    }
 
     if ($categorySlug) {
         $where .= " AND c.category_slug = ?";
@@ -126,9 +146,13 @@ if ($method === 'GET') {
     $stmt = $db->prepare("
         SELECT t.topic_key, t.topic_title, t.topic_pinned, t.topic_locked,
                t.topic_reply_count, t.topic_view_count, t.topic_like_count,
+               t.topic_like_count + COALESCE((SELECT SUM(r.reply_like_count) FROM yy_community_reply r WHERE r.topic_key = t.topic_key AND r.reply_active_flag = TRUE AND r.reply_delete_dtime IS NULL), 0) AS total_like_count,
                t.topic_last_reply_dtime, t.topic_dtime,
+               t.topic_delete_dtime, t.topic_active_flag,
                u.user_display_name AS user_name_display, u.user_avatar,
-               c.category_name, c.category_slug
+               u.user_key, u.user_last_active_dtime,
+               c.category_name, c.category_slug,
+               t.video_id, t.topic_thumbnail
         FROM yy_community_topic t
         {$joins}
         {$where}
@@ -136,9 +160,58 @@ if ($method === 'GET') {
         LIMIT ? OFFSET ?
     ");
     $stmt->execute($listParams);
+    $topics = $stmt->fetchAll();
+
+    // Populate user_liked and user_replied per topic for the current user
+    if ($userKey && $topics) {
+        $topicKeys = array_map('intval', array_column($topics, 'topic_key'));
+        $in = implode(',', $topicKeys);
+
+        // User liked the topic itself
+        $likeStmt = $db->prepare("
+            SELECT target_key FROM yy_community_like
+            WHERE user_key = ? AND target_type = 'topic'
+              AND target_key IN ({$in})
+        ");
+        $likeStmt->execute([$userKey]);
+        $likedTopicSet = array_flip(array_map('intval', $likeStmt->fetchAll(PDO::FETCH_COLUMN)));
+
+        // User liked any reply in the topic
+        $replyLikeStmt = $db->prepare("
+            SELECT DISTINCT r.topic_key FROM yy_community_like l
+            JOIN yy_community_reply r ON l.target_key = r.reply_key AND l.target_type = 'reply'
+            WHERE l.user_key = ? AND r.topic_key IN ({$in})
+        ");
+        $replyLikeStmt->execute([$userKey]);
+        $likedReplySet = array_flip(array_map('intval', $replyLikeStmt->fetchAll(PDO::FETCH_COLUMN)));
+
+        // User replied to the topic
+        $repliedStmt = $db->prepare("
+            SELECT DISTINCT topic_key FROM yy_community_reply
+            WHERE user_key = ? AND topic_key IN ({$in}) AND reply_active_flag = TRUE AND reply_delete_dtime IS NULL
+        ");
+        $repliedStmt->execute([$userKey]);
+        $repliedSet = array_flip(array_map('intval', $repliedStmt->fetchAll(PDO::FETCH_COLUMN)));
+
+        // User viewed the topic
+        $viewedStmt = $db->prepare("
+            SELECT topic_key FROM yy_community_view
+            WHERE user_key = ? AND topic_key IN ({$in})
+        ");
+        $viewedStmt->execute([$userKey]);
+        $viewedSet = array_flip(array_map('intval', $viewedStmt->fetchAll(PDO::FETCH_COLUMN)));
+
+        foreach ($topics as &$tRow) {
+            $tk = (int)$tRow['topic_key'];
+            $tRow['user_liked'] = isset($likedTopicSet[$tk]) || isset($likedReplySet[$tk]);
+            $tRow['user_replied'] = isset($repliedSet[$tk]);
+            $tRow['user_viewed'] = isset($viewedSet[$tk]);
+        }
+        unset($tRow);
+    }
 
     jsonResponse([
-        'topics' => $stmt->fetchAll(),
+        'topics' => $topics,
         'total' => $total,
         'page' => $page,
         'pages' => (int)ceil($total / $limit),
@@ -282,16 +355,47 @@ if ($method === 'POST') {
         if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
         else { ob_end_flush(); flush(); }
 
+        // Load configurable email template
+        $tplStmt = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'config' AND setting_group_code = 'comments' AND setting_code IN ('notify-reply-subject','notify-reply-body')");
+        $tplCfg = [];
+        foreach ($tplStmt->fetchAll() as $r) $tplCfg[$r['setting_code']] = $r['setting_value'];
+
+        $tplSubject = $tplCfg['notify-reply-subject'] ?? 'New reply: {{topic_title}}';
+        $tplBody = $tplCfg['notify-reply-body'] ?? '<h2 style="color:#31345A;">New Reply</h2><p><strong>{{reply_author}}</strong> replied to <strong>{{topic_title}}</strong></p><blockquote style="border-left:3px solid #31345A;padding:8px 12px;margin:12px 0;color:#333;">{{reply_body}}</blockquote><p><a href="{{topic_url}}" style="color:#31345A;font-weight:600;">View Topic</a></p>';
+
+        $replyBody = htmlspecialchars(mb_substr($body ?: strip_tags($bodyHtml ?? ''), 0, 500));
+        $replyTime = date('M j, Y g:i A');
+        $topicUrl = 'https://yadayah.com/chat#topic/' . $tk;
+
+        // Get topic author name
+        $topicAuthorNameStmt = $db->prepare("SELECT user_display_name FROM yy_user WHERE user_key = ?");
+        $topicAuthorNameStmt->execute([$topicAuthorKey]);
+        $topicAuthorName = $topicAuthorNameStmt->fetchColumn() ?: 'Unknown';
+
+        $mergeFields = [
+            '{{topic_title}}' => htmlspecialchars($topicTitle),
+            '{{topic_id}}' => $tk,
+            '{{topic_url}}' => $topicUrl,
+            '{{reply_body}}' => $replyBody,
+            '{{reply_author}}' => htmlspecialchars($replierName),
+            '{{reply_time}}' => $replyTime,
+            '{{topic_author}}' => htmlspecialchars($topicAuthorName),
+        ];
+
         // Now send notifications and emails (client already got the response)
         foreach ($watchers as $watcherKey) {
             if ((int)$watcherKey !== $topicAuthorKey) {
                 notifyUser($db, (int)$watcherKey, $userKey, 'watch_reply', 'topic', $tk, $tk, 'New reply in a topic you\'re watching');
             }
-            $emailBody = '<h2 style="color:#31345A;">New Reply</h2>'
-                . '<p><strong>' . htmlspecialchars($replierName) . '</strong> replied to <strong>' . htmlspecialchars($topicTitle) . '</strong></p>'
-                . '<p>' . htmlspecialchars(mb_substr($body ?: strip_tags($bodyHtml ?? ''), 0, 200)) . '</p>'
-                . '<p><a href="https://yadayah.com/community#topic/' . $tk . '" style="color:#31345A;font-weight:600;">View Topic</a></p>';
-            sendNotificationEmail($db, (int)$watcherKey, 'New reply: ' . mb_substr($topicTitle, 0, 60), $emailBody);
+            // Get recipient name for merge
+            $rcptStmt = $db->prepare("SELECT user_display_name FROM yy_user WHERE user_key = ?");
+            $rcptStmt->execute([(int)$watcherKey]);
+            $recipientName = $rcptStmt->fetchColumn() ?: 'User';
+
+            $fields = array_merge($mergeFields, ['{{recipient_name}}' => htmlspecialchars($recipientName)]);
+            $emailSubject = str_replace(array_keys($fields), array_values($fields), $tplSubject);
+            $emailBody = str_replace(array_keys($fields), array_values($fields), $tplBody);
+            sendNotificationEmail($db, (int)$watcherKey, $emailSubject, $emailBody);
         }
         exit;
     }

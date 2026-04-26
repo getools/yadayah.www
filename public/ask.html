@@ -284,27 +284,36 @@
         <button id="send-btn" onclick="sendMessage()">Send</button>
     </div>
     <div class="chat-input" id="signin-bar" style="display:none;justify-content:center;">
-        <button onclick="window.location.href='/chat#topics'" style="padding:12px 32px;background:#31345A;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">Sign In to Ask a Question</button>
+        <button onclick="askSignIn()" style="padding:12px 32px;background:#31345A;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">Sign In to Ask a Question</button>
     </div>
 </div>
 
 <script>
-var history = [];
+var chatHistory = [];
 var isStreaming = false;
 var qandaItems = [];
 
-// Check if user is signed in
-fetch('/api/community-session.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
-    if (data.user) {
-        document.getElementById('chat-input').style.display = '';
-        document.getElementById('signin-bar').style.display = 'none';
+// Check session + page config together. When offline (empty model), hide
+// both the chat input and the sign-in prompt regardless of auth state.
+Promise.all([
+    fetch('/api/community-session.php', {credentials:'include'}).then(function(r){return r.json();}).catch(function(){return {};}),
+    fetch('/api/page-ask-config.php').then(function(r){return r.json();}).catch(function(){return {};})
+]).then(function(results) {
+    var session = results[0] || {};
+    var cfg = results[1] || {};
+    var isOffline = (cfg.model === '' || cfg.model === null || cfg.model === undefined);
+    var chatInput = document.getElementById('chat-input');
+    var signinBar = document.getElementById('signin-bar');
+    if (isOffline) {
+        chatInput.style.display = 'none';
+        signinBar.style.display = 'none';
+    } else if (session.user) {
+        chatInput.style.display = '';
+        signinBar.style.display = 'none';
     } else {
-        document.getElementById('chat-input').style.display = 'none';
-        document.getElementById('signin-bar').style.display = 'flex';
+        chatInput.style.display = 'none';
+        signinBar.style.display = 'flex';
     }
-}).catch(function() {
-    document.getElementById('chat-input').style.display = 'none';
-    document.getElementById('signin-bar').style.display = 'flex';
 });
 
 // Load Q&A items from database
@@ -377,15 +386,15 @@ function showStoredAnswer(question, answer) {
     var yadaDiv = appendMessage('assistant', '');
     var contentEl = yadaDiv.querySelector('.msg-content');
     contentEl.innerHTML = formatMarkdown(answer);
-    history.push({ role: 'user', content: question });
-    history.push({ role: 'assistant', content: answer });
-    if (history.length > 20) history = history.slice(-20);
+    chatHistory.push({ role: 'user', content: question });
+    chatHistory.push({ role: 'assistant', content: answer });
+    if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
     var msgs = document.getElementById('messages');
     msgs.scrollTop = msgs.scrollHeight;
 }
 
 function newConversation() {
-    history = [];
+    chatHistory = [];
     var msgs = document.getElementById('messages');
     msgs.innerHTML = '';
     var welcome = document.createElement('div');
@@ -473,7 +482,7 @@ function sendMessage() {
     fetch('/api/ask.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: text, history: history })
+        body: JSON.stringify({ question: text, history: chatHistory })
     }).then(function(response) {
         if (response.status === 429) {
             contentEl.innerHTML = '';
@@ -559,10 +568,10 @@ function sendMessage() {
             isStreaming = false;
             document.getElementById('send-btn').disabled = false;
             if (fullText) {
-                history.push({ role: 'user', content: text });
-                history.push({ role: 'assistant', content: fullText });
+                chatHistory.push({ role: 'user', content: text });
+                chatHistory.push({ role: 'assistant', content: fullText });
                 // Keep history manageable
-                if (history.length > 20) history = history.slice(-20);
+                if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
             }
             input.focus();
         }
@@ -574,9 +583,9 @@ function sendMessage() {
             // Stream completed successfully, connection just closed
             isStreaming = false;
             document.getElementById('send-btn').disabled = false;
-            history.push({ role: 'user', content: text });
-            history.push({ role: 'assistant', content: fullText });
-            if (history.length > 20) history = history.slice(-20);
+            chatHistory.push({ role: 'user', content: text });
+            chatHistory.push({ role: 'assistant', content: fullText });
+            if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
             return;
         }
         yadaDiv.remove();
@@ -604,15 +613,37 @@ function sendMessage() {
     var img=document.getElementById('ask-page-image');
     if(img&&cfg['page-image']){img.src='/'+cfg['page-image'].replace(/^\//,'');img.style.display='block';if(cfg['page-image-height'])img.style.maxHeight=cfg['page-image-height']+'px';}
     else if(img){img.style.display='none';}
-    // Offline mode: hide input areas when model is empty
-    if(cfg.model === '' || cfg.model === null) {
-        var chatInput = document.getElementById('chat-input');
-        var signinBar = document.getElementById('signin-bar');
-        if(chatInput) chatInput.style.display = 'none';
-        if(signinBar) signinBar.style.display = 'none';
-    }
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<link rel="stylesheet" href="/css/login.css">
+<div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"><div class="login-box" id="login-box"></div></div>
+<script src="/js/community-auth.js?v=22"></script>
+<script>
+function askSignIn() {
+    if (typeof CommunityAuth === 'undefined') { window.location.href = '/chat#topics'; return; }
+    CommunityAuth.openLoginModal('login');
+    // After OAuth or manual login, reload to show the question area
+    window.addEventListener('message', function handler(e) {
+        if (e.origin !== window.location.origin) return;
+        if (e.data && e.data.type === 'oauth_complete') {
+            window.removeEventListener('message', handler);
+            location.reload();
+        }
+    });
+    // Also watch for modal close (manual login) — poll for session
+    var checkInterval = setInterval(function() {
+        var modal = document.getElementById('login-modal');
+        if (!modal || !modal.classList.contains('active')) {
+            clearInterval(checkInterval);
+            fetch('/api/community-session.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+                if (d.user) location.reload();
+            });
+        }
+    }, 500);
+    // Stop polling after 2 minutes
+    setTimeout(function() { clearInterval(checkInterval); }, 120000);
+}
+</script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

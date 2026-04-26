@@ -37,6 +37,7 @@ CommunityTopics.createEditor = function(containerId, textareaId) {
 };
 
 CommunityTopics._initTinyMCE = function(containerId, textareaId) {
+    try {
     // Remove existing instance if any
     var existing = tinymce.get(textareaId);
     if (existing) existing.remove();
@@ -114,7 +115,10 @@ CommunityTopics._initTinyMCE = function(containerId, textareaId) {
                     fetch('/api/community-doc-upload.php', {
                         method: 'POST', credentials: 'include', body: fd
                     }).then(function(r) { return r.json(); }).then(function(data) {
-                        if (data.url) callback(data.url, { text: data.name || file.name, title: file.name });
+                        if (data.url) {
+                            var absUrl = window.location.origin + data.url;
+                            callback(absUrl, { text: data.name || file.name, title: file.name });
+                        }
                         else alert(data.error || 'Upload failed');
                     }).catch(function() { alert('Upload failed'); });
                 }
@@ -197,6 +201,7 @@ CommunityTopics._initTinyMCE = function(containerId, textareaId) {
             });
         }
     });
+    } catch(e) { console.warn('TinyMCE init failed, using plain textarea:', e); }
 };
 
 // Get editor HTML content
@@ -216,7 +221,8 @@ CommunityTopics.getEditorText = function(textareaId) {
 };
 
 // ── Load topic list ──
-CommunityTopics.loadTopics = function(page, category) {
+CommunityTopics.loadTopics = function(page, category, opts) {
+    opts = opts || {};
     page = page || Community.currentPage || 1;
     category = category !== undefined ? category : Community.currentCategory;
     Community.currentPage = page;
@@ -226,7 +232,10 @@ CommunityTopics.loadTopics = function(page, category) {
     if (!el) return;
 
     var url = '/api/community-topics.php?page=' + page;
+    if (typeof CommunityAuth !== 'undefined' && CommunityAuth._showDeletions) url += '&show_deleted=1';
     if (category) url += '&category=' + encodeURIComponent(category);
+    var parentSlug = opts.parentSlug || Community.currentSection || 'topics';
+    if (parentSlug && parentSlug !== 'topics') url += '&parent_slug=' + encodeURIComponent(parentSlug);
 
     Community.api(url).then(function(data) {
         var topics = data.topics || [];
@@ -240,19 +249,25 @@ CommunityTopics.loadTopics = function(page, category) {
                 var t = topics[i];
                 var pinned = t.topic_pinned === true || t.topic_pinned === 't';
                 var hidden = t.topic_active_flag === false || t.topic_active_flag === 'f';
-                html += '<div class="topic-item' + (pinned ? ' pinned' : '') + (hidden ? ' topic-hidden' : '') + '" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
-                    + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'topic-avatar', t.user_last_active_dtime)
+                var isDeleted = !!t.topic_delete_dtime;
+                var avatarHtml = t.topic_thumbnail
+                    ? '<img class="topic-avatar" src="' + Community.esc(t.topic_thumbnail) + '" alt="" style="object-fit:cover;border-radius:6px;">'
+                    : Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'topic-avatar', t.user_last_active_dtime);
+                html += '<div class="topic-item' + (pinned ? ' pinned' : '') + (hidden ? ' topic-hidden' : '') + (isDeleted ? ' topic-deleted' : '') + '" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
+                    + avatarHtml
                     + '<div class="topic-info">'
                     + '<div class="topic-title">' + (hidden ? '<span class="hidden-badge">Hidden</span> ' : '') + (pinned ? '&#128204; ' : '') + Community.esc(t.topic_title) + '</div>'
                     + '<div class="topic-meta">'
                     + Community.categoryBadge(t.category_slug)
                     + '<span onclick="event.stopPropagation();Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_name_display || 'Anonymous') + '</span>'
                     + ' &middot; ' + Community.timeAgo(t.topic_dtime)
+                    + (t.topic_last_reply_dtime ? ' &middot; last reply ' + Community.timeAgo(t.topic_last_reply_dtime) : '')
                     + '</div></div>'
                     + '<div class="topic-stats">'
-                    + '<div class="stat-item"><span class="stat-icon">&#128172;</span><span class="stat-num">' + (t.topic_reply_count || 0) + '</span></div>'
-                    + '<div class="stat-item"><span class="stat-icon">&#128065;</span><span class="stat-num">' + (t.topic_view_count || 0) + '</span></div>'
-                    + '<div class="stat-item"><span class="stat-icon">&#10084;</span><span class="stat-num">' + (t.topic_like_count || 0) + '</span></div>'
+                    + '<div class="stat-item"><span class="stat-icon" style="' + (t.user_replied ? 'color:#1a4f8a;' : 'opacity:0.35;') + '">' + (t.user_replied ? '&#9998;' : '&#128394;') + '</span><span class="stat-num">' + (t.topic_reply_count || 0) + '</span></div>'
+                    + '<div class="stat-item"><span class="stat-icon" style="' + (t.user_viewed ? 'color:#0a3d1a;' : 'opacity:0.25;') + '">' + (t.user_viewed ? '&#128065;&#8205;&#128488;' : '&#128065;') + '</span><span class="stat-num">' + (t.topic_view_count || 0) + '</span></div>'
+                    + '<div class="stat-item"><span class="stat-icon" style="' + (t.user_liked ? 'color:#e74c3c;' : 'opacity:0.35;') + '">' + (t.user_liked ? '&#10084;' : '&#9825;') + '</span><span class="stat-num">' + (t.total_like_count != null ? t.total_like_count : (t.topic_like_count || 0)) + '</span></div>'
+                    + (isDeleted ? '<div class="stat-item"><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();CommunityTopics.restoreTopic(' + t.topic_key + ')" style="font-size:0.72rem;">Restore</button></div>' : '')
                     + '</div></div>';
             }
             html += '</div>';
@@ -274,15 +289,35 @@ CommunityTopics.loadTopic = function(key) {
     var el = document.getElementById('view-topic');
     el.innerHTML = '<div class="empty-state">Loading...</div>';
 
-    Community.api('/api/community-topics.php?topic=' + key).then(function(data) {
+    var topicUrl = '/api/community-topics.php?topic=' + key;
+    if (typeof CommunityAuth !== 'undefined' && CommunityAuth._showDeletions) topicUrl += '&show_deleted=1';
+    Community.api(topicUrl).then(function(data) {
+        if (data.error || !data.topic) {
+            el.innerHTML = '<div class="empty-state">' + (data.error || 'Topic not found') + '</div>'
+                + '<a href="#topics" class="back-link" style="margin-top:12px;display:inline-block;">&larr; Back to topics</a>';
+            return;
+        }
         var t = data.topic;
         var replies = data.replies || [];
         var user = Community.currentUser;
+        // Wire user status from top-level response onto topic + replies
+        t.user_status = data.user_status || null;
+        t.user_liked = !!(data.user_status && data.user_status.liked);
+        var likedReplies = (data.user_status && data.user_status.liked_replies) || [];
+        for (var li = 0; li < replies.length; li++) {
+            replies[li].user_liked = likedReplies.indexOf(replies[li].reply_key) >= 0
+                || likedReplies.indexOf(String(replies[li].reply_key)) >= 0;
+        }
         var isMod = user && user.roles && (user.roles.indexOf('admin') >= 0 || user.roles.indexOf('moderator') >= 0);
         var isAuthorOrMod = user && (isMod || user.user_key === t.user_key);
 
+        // Detect section from topic's category slug
+        var isComment = (t.category_slug && t.category_slug.indexOf('comment-') === 0) || Community.currentSection === 'comments';
+        var backHash = isComment ? '#comments' : '#topics';
+        var backLabel = isComment ? 'Back to comments' : 'Back to topics';
+
         var html = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
-            + '<a href="#topics" class="back-link" style="margin-bottom:0;">&larr; Back to topics</a>';
+            + '<a href="' + backHash + '" class="back-link" style="margin-bottom:0;">&larr; ' + backLabel + '</a>';
         if (isMod) {
             html += '<label style="font-size:0.78rem;color:#888;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;">'
                 + '<input type="checkbox" id="toggle-removed" ' + (_showRemoved ? 'checked' : '') + ' onchange="CommunityTopics.toggleShowRemoved(this.checked,' + key + ')"> Show removed'
@@ -295,13 +330,22 @@ CommunityTopics.loadTopic = function(key) {
         var topicIsRemoved = !!t.topic_delete_dtime;
         html += '<div class="topic-detail' + (topicHidden ? ' item-hidden' : '') + (topicIsRemoved && _showRemoved ? ' removed' : '') + '">';
         html += '<div class="topic-detail-header">';
-        html += '<h2>' + Community.esc(t.topic_title) + '</h2>';
+        var videoUrl = '';
+        if (t.video_id) {
+            if (t.video_source === 'youtube') videoUrl = 'https://www.youtube.com/watch?v=' + t.video_id;
+            else if (t.video_source === 'rumble') videoUrl = 'https://rumble.com/' + (t.video_id.charAt(0) === 'v' ? '' : 'v') + t.video_id;
+            else if (t.video_source === 'facebook' && t.video_id.indexOf('_') > 0) videoUrl = 'https://www.facebook.com/' + t.video_id;
+        }
+        if (videoUrl) {
+            html += '<h2><a href="' + Community.esc(videoUrl) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + Community.esc(t.topic_title) + '</a></h2>';
+        } else {
+            html += '<h2>' + Community.esc(t.topic_title) + '</h2>';
+        }
         // Watch and bookmark buttons
         if (user) {
             var watched = t.user_status && t.user_status.watching;
             var bookmarked = t.user_status && t.user_status.bookmarked;
             html += '<div class="topic-actions-top">'
-                + '<button class="btn-icon' + (watched ? ' active' : '') + '" onclick="CommunityTopics.toggleWatch(' + key + ')" title="' + (watched ? 'Stop watching' : 'Watch') + '">&#128064;' + (watched ? ' Watching' : '') + '</button>'
                 + '<button class="btn-icon' + (bookmarked ? ' active' : '') + '" onclick="CommunityTopics.toggleBookmark(' + key + ')" title="' + (bookmarked ? 'Remove bookmark' : 'Bookmark') + '">&#128278;' + (bookmarked ? ' Saved' : '') + '</button>'
                 + '</div>';
         }
@@ -311,6 +355,7 @@ CommunityTopics.loadTopic = function(key) {
             + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'detail-avatar', t.user_last_active_dtime)
             + '<span onclick="Community.showProfileCard(event,' + t.user_key + ')" style="cursor:pointer;">' + Community.esc(t.user_name_display || 'Anonymous') + '</span>'
             + ' &middot; ' + Community.timeAgo(t.topic_dtime)
+            + (t.topic_last_reply_dtime ? ' &middot; last reply ' + Community.timeAgo(t.topic_last_reply_dtime) : '')
             + Community.categoryBadge(t.category_slug);
         if (isMod && user.user_key !== t.user_key) {
             html += '<button class="btn btn-sm btn-outline reply-ban-btn" onclick="CommunityTopics.openBanModal(' + t.user_key + ',\'' + Community.esc(t.user_name_display || '').replace(/'/g, "\\'") + '\')">Ban User</button>';
@@ -318,7 +363,29 @@ CommunityTopics.loadTopic = function(key) {
         html += '</div>';
 
         if (t.topic_body_html || t.topic_body) {
-            html += '<div class="topic-body" id="topic-body-content">' + (t.topic_body_html || Community.formatBody(t.topic_body)) + '</div>';
+            var bodyContent = t.topic_body_html || Community.formatBody(t.topic_body);
+            if (t.video_id && t.topic_thumbnail) {
+                var embedUrl = '';
+                if (t.video_source === 'youtube') embedUrl = 'https://www.youtube.com/embed/' + t.video_id + '?autoplay=1';
+                if (embedUrl) {
+                    // YouTube: clickable thumbnail that swaps to inline player
+                    bodyContent = '<div class="topic-video-thumb" onclick="this.innerHTML=\'<iframe width=560 height=315 src=&quot;' + Community.esc(embedUrl) + '&quot; frameborder=0 allowfullscreen allow=&quot;autoplay; encrypted-media&quot;></iframe>\';this.style.cursor=\'default\';this.onclick=null;" style="cursor:pointer;position:relative;display:inline-block;">'
+                        + '<img src="' + Community.esc(t.topic_thumbnail) + '" alt="' + Community.esc(t.topic_title) + '" style="max-height:300px;width:auto;border-radius:6px;">'
+                        + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="30" height="30" fill="#fff"><polygon points="8,5 19,12 8,19"/></svg></div>'
+                        + '</div>';
+                } else {
+                    // Non-YouTube: thumbnail links to source page if valid
+                    var sourceUrl = videoUrl;
+                    if (sourceUrl) {
+                        bodyContent = '<a href="' + Community.esc(sourceUrl) + '" target="_blank" rel="noopener" style="display:inline-block;">'
+                            + '<img src="' + Community.esc(t.topic_thumbnail) + '" alt="' + Community.esc(t.topic_title) + '" style="max-height:300px;width:auto;border-radius:6px;">'
+                            + '</a>';
+                    } else {
+                        bodyContent = '<img src="' + Community.esc(t.topic_thumbnail) + '" alt="' + Community.esc(t.topic_title) + '" style="max-height:300px;width:auto;border-radius:6px;">';
+                    }
+                }
+            }
+            html += '<div class="topic-body" id="topic-body-content">' + bodyContent + '</div>';
         }
         // Edit button for topic author
         var isAuthor = user && user.user_key === t.user_key;
@@ -430,6 +497,12 @@ CommunityTopics.loadTopic = function(key) {
             html += '<div class="empty-state" style="padding:20px;"><a href="#" onclick="CommunityAuth.openLoginModal(\'login\');return false;">Sign in</a> to reply.</div>';
         }
 
+        // Clean up any existing TinyMCE instances before replacing HTML
+        if (typeof tinymce !== 'undefined') {
+            var existing = tinymce.get('reply-body');
+            if (existing) { try { existing.remove(); } catch(e) {} }
+        }
+
         el.innerHTML = html;
 
         // Init reply editor
@@ -454,42 +527,15 @@ CommunityTopics.loadTopic = function(key) {
     });
 };
 
-// ── Like + Reactions HTML ──
+// ── Like HTML ──
 CommunityTopics.renderLikeAndReactions = function(type, key, item) {
-    var user = Community.currentUser;
     var likeCount = item[type + '_like_count'] || item.like_count || 0;
     var userLiked = item.user_liked;
-    var reactions = item.reactions || {};
-
-    var html = '<div class="like-reaction-bar">';
-    // Like button
-    html += '<button class="btn-icon like-btn' + (userLiked ? ' liked' : '') + '" onclick="CommunityTopics.toggleLike(\'' + type + '\',' + key + ')">'
+    return '<div class="like-reaction-bar">'
+        + '<button id="like-btn-' + type + '-' + key + '" class="btn-icon like-btn' + (userLiked ? ' liked' : '') + '" onclick="event.stopPropagation();CommunityTopics.toggleLike(event,\'' + type + '\',' + key + ');return false;">'
         + '<span class="heart-icon">' + (userLiked ? '&#9829;' : '&#9825;') + '</span>'
-        + ' <span class="like-count">' + likeCount + '</span></button>';
-
-    // Existing reactions display
-    REACTIONS.forEach(function(r) {
-        var count = reactions[r.code] || 0;
-        var active = item.user_reactions && item.user_reactions.indexOf(r.code) >= 0;
-        if (count > 0 || active) {
-            html += '<button class="reaction-chip' + (active ? ' active' : '') + '" onclick="CommunityTopics.toggleReaction(\'' + type + '\',' + key + ',\'' + r.code + '\')">'
-                + r.emoji + ' ' + count + '</button>';
-        }
-    });
-
-    // Add reaction button
-    if (user) {
-        html += '<div class="reaction-picker-wrap">'
-            + '<button class="btn-icon add-reaction-btn" onclick="CommunityTopics.toggleReactionPicker(this)" title="Add reaction">+</button>'
-            + '<div class="reaction-picker" style="display:none">';
-        REACTIONS.forEach(function(r) {
-            html += '<button class="reaction-option" onclick="CommunityTopics.toggleReaction(\'' + type + '\',' + key + ',\'' + r.code + '\')" title="' + r.code + '">' + r.emoji + '</button>';
-        });
-        html += '</div></div>';
-    }
-
-    html += '</div>';
-    return html;
+        + ' <span class="like-count">' + likeCount + '</span></button>'
+        + '</div>';
 };
 
 CommunityTopics.toggleReactionPicker = function(btn) {
@@ -501,18 +547,28 @@ CommunityTopics.toggleReactionPicker = function(btn) {
 };
 
 // ── Toggle like ──
-CommunityTopics.toggleLike = function(type, key) {
-    if (!Community.currentUser) { CommunityAuth.openLoginModal('login'); return; }
+CommunityTopics.toggleLike = function(ev, type, key) {
+    if (ev && ev.preventDefault) { ev.preventDefault(); ev.stopPropagation(); }
+    if (!Community.currentUser) { CommunityAuth.openLoginModal('login'); return false; }
+    // Resolve button from the event first, fall back to id lookup.
+    var btn = (ev && (ev.currentTarget || ev.target)) || null;
+    if (btn && btn.closest) btn = btn.closest('.like-btn') || btn;
+    if (!btn || !btn.classList || !btn.classList.contains('like-btn')) {
+        btn = document.getElementById('like-btn-' + type + '-' + key);
+    }
     Community.api('/api/community-likes.php', {
         method: 'POST',
         body: { target_type: type, target_key: key }
     }).then(function(data) {
-        // Reload current view
-        var hash = window.location.hash;
-        if (hash.indexOf('#topic/') === 0) {
-            CommunityTopics.loadTopic(parseInt(hash.split('/')[1]));
-        }
+        if (!data || data.error || !btn) return;
+        if (data.liked) btn.classList.add('liked');
+        else btn.classList.remove('liked');
+        var heart = btn.querySelector('.heart-icon');
+        if (heart) heart.innerHTML = data.liked ? '&#9829;' : '&#9825;';
+        var countEl = btn.querySelector('.like-count');
+        if (countEl && typeof data.count === 'number') countEl.textContent = data.count;
     });
+    return false;
 };
 
 // ── Toggle reaction ──
@@ -541,6 +597,16 @@ CommunityTopics.toggleWatch = function(topicKey) {
 };
 
 // ── Bookmark ──
+CommunityTopics.restoreTopic = function(topicKey) {
+    Community.api('/api/community-topics.php?topic=' + topicKey + '&type=topic', {
+        method: 'DELETE',
+        body: { action: 'restore' }
+    }).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        CommunityTopics.loadTopics();
+    });
+};
+
 CommunityTopics.toggleBookmark = function(topicKey) {
     if (!Community.currentUser) return;
     Community.api('/api/community-bookmarks.php', {
@@ -572,9 +638,9 @@ CommunityTopics.loadBookmarks = function() {
                 html += '<div class="topic-item" onclick="window.location.hash=\'#topic/' + t.topic_key + '\'">'
                     + Community.clickableAvatar(t.user_key, t.user_avatar, t.user_name_display, 'topic-avatar', t.user_last_active_dtime)
                     + '<div class="topic-info"><div class="topic-title">' + Community.esc(t.topic_title) + '</div>'
-                    + '<div class="topic-meta">' + Community.esc(t.user_name_display || 'Anonymous') + ' &middot; ' + Community.timeAgo(t.topic_dtime) + '</div></div>'
+                    + '<div class="topic-meta">' + Community.esc(t.user_name_display || 'Anonymous') + ' &middot; ' + Community.timeAgo(t.topic_dtime) + (t.topic_last_reply_dtime ? ' &middot; last reply ' + Community.timeAgo(t.topic_last_reply_dtime) : '') + '</div></div>'
                     + '<div class="topic-stats">'
-                    + '<div class="stat-item"><span class="stat-icon">&#128172;</span><span class="stat-num">' + (t.topic_reply_count || 0) + '</span></div>'
+                    + '<div class="stat-item"><span class="stat-icon" style="' + (t.user_replied ? 'color:#31345A;' : '') + '">' + (t.user_replied ? '&#128172;' : '&#128173;') + '</span><span class="stat-num">' + (t.topic_reply_count || 0) + '</span></div>'
                     + '</div></div>';
             }
             html += '</div>';
@@ -594,7 +660,9 @@ CommunityTopics.showNewTopic = function() {
         catOptions += '<option value="' + Community.esc(cats[i].category_slug) + '">' + Community.esc(cats[i].category_name) + '</option>';
     }
 
-    el.innerHTML = '<a href="#topics" class="back-link">&larr; Back to topics</a>'
+    var backHash = Community.currentSection === 'comments' ? '#comments' : '#topics';
+    var backLabel = Community.currentSection === 'comments' ? 'Back to comments' : 'Back to topics';
+    el.innerHTML = '<a href="' + backHash + '" class="back-link">&larr; ' + backLabel + '</a>'
         + '<div class="compose-form">'
         + '<h3 class="compose-title">New Topic</h3>'
         + '<input id="new-title" placeholder="Topic title">'

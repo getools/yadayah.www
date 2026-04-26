@@ -7,7 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $db = getDb();
 $stmt = $db->query("
-    SELECT memorial_key, memorial_name_full, memorial_summary,
+    SELECT memorial_key, memorial_name_full, memorial_code, memorial_summary,
            memorial_image_file, memorial_image_url, memorial_bio_url
     FROM yy_memorial
     WHERE memorial_active_flag = true

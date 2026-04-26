@@ -223,7 +223,7 @@ def main():
     # Get books with missing pages
     cur.execute("""
         SELECT translation_book, COUNT(*) as missing
-        FROM translation WHERE translation_page IS NULL
+        FROM yy_cite_translation WHERE translation_page IS NULL
         GROUP BY translation_book ORDER BY missing DESC
     """)
     missing_books = cur.fetchall()
@@ -249,7 +249,7 @@ def main():
         # Step 2: Get ALL translations from DB for this book (with pages)
         cur.execute("""
             SELECT translation_id, translation_text_word, translation_page
-            FROM translation
+            FROM yy_cite_translation
             WHERE translation_book = %s
             ORDER BY translation_id
         """, (book_name,))
@@ -385,7 +385,7 @@ def main():
 
             if page is not None:
                 cur.execute("""
-                    UPDATE translation SET translation_page = %s
+                    UPDATE yy_cite_translation SET translation_page = %s
                     WHERE translation_id = %s AND translation_page IS NULL
                 """, (page, tid))
                 if cur.rowcount > 0:
@@ -399,7 +399,7 @@ def main():
         logging.info(f"  Fixed {fixed}/{missing_count} ({neighbor_fixed} via neighbor disambiguation)")
 
     # Final check
-    cur.execute("SELECT COUNT(*) FROM translation WHERE translation_page IS NULL")
+    cur.execute("SELECT COUNT(*) FROM yy_cite_translation WHERE translation_page IS NULL")
     still_missing = cur.fetchone()[0]
 
     logging.info(f"\n{'=' * 60}")
@@ -411,7 +411,7 @@ def main():
     if still_missing > 0:
         cur.execute("""
             SELECT translation_book, COUNT(*) as missing
-            FROM translation WHERE translation_page IS NULL
+            FROM yy_cite_translation WHERE translation_page IS NULL
             GROUP BY translation_book ORDER BY missing DESC
         """)
         for book, count in cur.fetchall():

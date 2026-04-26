@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $code = $_GET['code'] ?? '';
 $state = $_GET['state'] ?? '';
 $error = $_GET['error'] ?? '';
-$_oauthReturn = $_SESSION['oauth_return'] ?? '/community';
+$_oauthReturn = $_SESSION['oauth_return'] ?? '/chat';
 
 if ($error) {
     unset($_SESSION['oauth_return']);
@@ -90,17 +90,15 @@ if (!$oauthId) {
 $result = resolveOAuthUser($db, 'microsoft', $oauthId, $email, $name, '');
 
 if ($result['action'] === 'pending_link') {
-    $return = $_SESSION['oauth_return'] ?? '/community';
+    $return = $_SESSION['oauth_return'] ?? '/chat';
     unset($_SESSION['oauth_return']);
-    header('Location: ' . $return . '#link-account');
-    exit;
+    oauthComplete($return . '#link-account');
 }
 
 $_SESSION['user_key'] = $result['user_key'];
 $_SESSION['user_name_display'] = $name;
 $_SESSION['user_avatar'] = '';
 
-$return = $_SESSION['oauth_return'] ?? '/community';
+$return = $_SESSION['oauth_return'] ?? '/chat';
 unset($_SESSION['oauth_return']);
-header('Location: ' . $return);
-exit;
+oauthComplete($return);

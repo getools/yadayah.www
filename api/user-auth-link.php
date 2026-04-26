@@ -92,12 +92,12 @@ if ($method === 'POST') {
         if (!$displayName && $pending['email']) $displayName = explode('@', $pending['email'])[0];
         if (!$displayName) $displayName = 'Unknown';
         $stmt = $db->prepare("
-            INSERT INTO yy_user (user_code, user_email, user_display_name, user_avatar, user_active_flag, user_verified)
-            VALUES (?, ?, ?, ?, TRUE, TRUE) RETURNING user_key
+            INSERT INTO yy_user (user_code, user_email, user_display_name, user_name_display, user_avatar, user_active_flag, user_verified)
+            VALUES (?, ?, ?, ?, ?, TRUE, TRUE) RETURNING user_key
         ");
         // Use a modified email to avoid conflict
         $newEmail = $pending['email'] ? $pending['provider'] . '+' . $pending['email'] : null;
-        $stmt->execute([$userCode, $newEmail, $displayName, $pending['avatar'] ?: null]);
+        $stmt->execute([$userCode, $newEmail, $displayName, $displayName, $pending['avatar'] ?: null]);
         $newUserKey = (int)$stmt->fetchColumn();
 
         // Insert auth method

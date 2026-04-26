@@ -60,7 +60,7 @@ def main():
 
     # Get distinct books from DB
     cur = conn.cursor()
-    cur.execute("SELECT DISTINCT translation_book FROM translation ORDER BY translation_book")
+    cur.execute("SELECT DISTINCT translation_book FROM yy_cite_translation ORDER BY translation_book")
     books = [row[0] for row in cur.fetchall()]
     logging.info(f"Found {len(books)} distinct books in database")
 
@@ -115,7 +115,7 @@ def main():
 
             # Update DB row by matching book + text_word
             cur.execute("""
-                UPDATE translation
+                UPDATE yy_cite_translation
                 SET translation_page = %s
                 WHERE translation_book = %s
                   AND translation_text_word = %s
@@ -140,7 +140,7 @@ def main():
     cur.execute("""
         SELECT translation_id, translation_book, translation_page,
                LEFT(translation_text_word, 80) as text_preview
-        FROM translation
+        FROM yy_cite_translation
         WHERE translation_book = 'YY-s01v01-An Intro to God-Dabarym-Words'
           AND translation_text_word LIKE '%wa hayah%achar%maweth%'
         LIMIT 5

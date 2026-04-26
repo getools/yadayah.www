@@ -1,20 +1,19 @@
 <?php
 /**
- * Public API for Music videos (YouTube playlist).
+ * Public API for Music videos — serves from yy_feed_item.
  *
  * GET ?page=N          — paginated list (24 per page)
- * GET ?action=sync     — (auth required) refresh from YouTube Data API v3
+ * GET ?limit=N         — return exactly N records
+ * GET ?action=sync     — (auth required) refresh via sync-youtube.php
  */
 require_once __DIR__ . '/config.php';
 
-$YT_API_KEY = getenv('YOUTUBE_API_KEY') ?: '';
-$PER_PAGE   = 24;
-
+$PER_PAGE = 24;
 $db = getDb();
 
-// Load feed config from yy_feed_page + yy_feed for the music page
+// Load feed config
 $feedStmt = $db->query("
-    SELECT f.feed_account_id, fp.feed_page_filter_exclude
+    SELECT f.feed_key, fp.feed_page_filter_include, fp.feed_page_filter_exclude
     FROM yy_feed_page fp
     JOIN yy_feed f ON f.feed_key = fp.feed_key
     JOIN yy_page p ON p.page_key = fp.page_key
@@ -23,95 +22,37 @@ $feedStmt = $db->query("
     LIMIT 1
 ");
 $feedRow = $feedStmt->fetch();
-$YT_PLAYLIST_ID  = $feedRow['feed_account_id'] ?? 'PLW5gXgQ3YcPCy7jFNQ_4Q759SVdS0e035';
-$excludeTerms    = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['feed_page_filter_exclude'] ?? ''))) : [];
+$feedKey = $feedRow ? (int)$feedRow['feed_key'] : 4;
+$excludeTerms = $feedRow ? array_filter(array_map('trim', explode(',', $feedRow['feed_page_filter_exclude'] ?? ''))) : [];
 
 $action = $_GET['action'] ?? '';
 
-// ── Sync from YouTube Data API v3 (auth required) ──
 if ($action === 'sync') {
     $secret = $_GET['key'] ?? '';
-    if ($secret !== 'yada2026sync') {
-        $user = requireAuth();
-    }
-
-    if (!$YT_API_KEY) {
-        errorResponse('YOUTUBE_API_KEY not configured', 500);
-    }
-
-    $inserted = 0;
-    $updated  = 0;
-    $skipped  = 0;
-    $pageToken = '';
-
-    do {
-        $url = "https://www.googleapis.com/youtube/v3/playlistItems"
-             . "?part=snippet&maxResults=50&playlistId=$YT_PLAYLIST_ID"
-             . "&key=$YT_API_KEY";
-        if ($pageToken) $url .= "&pageToken=$pageToken";
-
-        $response = @file_get_contents($url);
-        if ($response === false) break;
-
-        $json = json_decode($response, true);
-        if (empty($json['items'])) break;
-
-        foreach ($json['items'] as $item) {
-            $snippet = $item['snippet'] ?? [];
-            $title = $snippet['title'] ?? '';
-            $videoId = $snippet['resourceId']['videoId'] ?? '';
-            if (!$videoId) continue;
-
-            // Skip videos matching any exclude term
-            $skip = false;
-            foreach ($excludeTerms as $term) {
-                if (stripos($title, $term) !== false) { $skip = true; break; }
-            }
-            if ($skip) { $skipped++; continue; }
-
-            // Get best thumbnail
-            $thumbUrl = '';
-            $thumbs = $snippet['thumbnails'] ?? [];
-            foreach (['high', 'medium', 'default'] as $size) {
-                if (!empty($thumbs[$size]['url'])) {
-                    $thumbUrl = $thumbs[$size]['url'];
-                    break;
-                }
-            }
-
-            $publishedAt = $snippet['publishedAt'] ?? null;
-
-            // Upsert
-            $existing = $db->prepare("SELECT music_key FROM yy_music WHERE music_video_id = ?");
-            $existing->execute([$videoId]);
-
-            if ($existing->fetch()) {
-                $stmt = $db->prepare("UPDATE yy_music SET music_title = ?, music_thumbnail = ?, music_create = ? WHERE music_video_id = ?");
-                $stmt->execute([$title, $thumbUrl, $publishedAt, $videoId]);
-                $updated++;
-            } else {
-                $stmt = $db->prepare("INSERT INTO yy_music (music_video_id, music_title, music_thumbnail, music_create) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$videoId, $title, $thumbUrl, $publishedAt]);
-                $inserted++;
-            }
-        }
-
-        $pageToken = $json['nextPageToken'] ?? '';
-    } while ($pageToken);
-
-    jsonResponse(['synced' => true, 'inserted' => $inserted, 'updated' => $updated, 'skipped' => $skipped]);
+    if ($secret !== 'yada2026sync') { requireAuth(); }
+    require __DIR__ . '/sync-youtube.php';
+    exit;
 }
 
-// ── Public: paginated video list ──
-// ?limit=N (N>0) returns exactly N records in one shot; absent/0 = paginated 24/page
-$limit = (int)($_GET['limit'] ?? 0);
+// Build WHERE clause
+$where = "feed_key = ? AND feed_item_active_flag = TRUE";
+$params = [$feedKey];
 
-$countStmt = $db->query("SELECT COUNT(*) FROM yy_music WHERE music_active_flag = TRUE");
+if ($excludeTerms) {
+    foreach ($excludeTerms as $term) {
+        $where .= " AND feed_item_title NOT ILIKE ?";
+        $params[] = '%' . $term . '%';
+    }
+}
+
+$countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item WHERE $where");
+$countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 
+$limit = (int)($_GET['limit'] ?? 0);
 if ($limit > 0) {
-    $stmt = $db->prepare("SELECT music_key, music_video_id, music_title, music_thumbnail, music_create FROM yy_music WHERE music_active_flag = TRUE ORDER BY music_key LIMIT ?");
-    $stmt->execute([$limit]);
+    $stmt = $db->prepare("SELECT feed_item_external_id AS music_video_id, feed_item_title AS music_title, feed_item_thumbnail AS music_thumbnail, feed_item_publish_dtime AS music_create FROM yy_feed_item WHERE $where ORDER BY feed_item_publish_dtime DESC NULLS LAST LIMIT ?");
+    $stmt->execute(array_merge($params, [$limit]));
     jsonResponse(['videos' => $stmt->fetchAll(), 'page' => 1, 'total_pages' => 1, 'total' => $total]);
 }
 
@@ -120,13 +61,14 @@ $offset = ($page - 1) * $PER_PAGE;
 $totalPages = max(1, (int)ceil($total / $PER_PAGE));
 
 $stmt = $db->prepare("
-    SELECT music_key, music_video_id, music_title, music_thumbnail, music_create
-    FROM yy_music
-    WHERE music_active_flag = TRUE
-    ORDER BY music_key
+    SELECT feed_item_external_id AS music_video_id, feed_item_title AS music_title,
+           feed_item_thumbnail AS music_thumbnail, feed_item_publish_dtime AS music_create
+    FROM yy_feed_item
+    WHERE $where
+    ORDER BY feed_item_publish_dtime DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
-$stmt->execute([$PER_PAGE, $offset]);
+$stmt->execute(array_merge($params, [$PER_PAGE, $offset]));
 
 jsonResponse([
     'videos'      => $stmt->fetchAll(),

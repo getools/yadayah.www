@@ -23,3 +23,5 @@ _upload_plan.json
 _upload_results.json
 _pw_upload.js
 yada.translations.markup/
+scripts/.yt-token.json
+scripts/yt-fix-slugs.php

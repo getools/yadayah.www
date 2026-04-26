@@ -58,6 +58,15 @@ foreach ($cfgStmt->fetchAll() as $row) {
     }
 }
 
+// Page Heading settings
+$phStmt = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_group_code = 'page-heading'");
+foreach ($phStmt->fetchAll() as $row) {
+    $v = $row['setting_value'];
+    if (!strlen((string)$v)) continue;
+    $key = str_replace('-', '_', $row['setting_code']);
+    $result[$key] = $v;
+}
+
 $json = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 file_put_contents($CACHE_FILE, $json);
 

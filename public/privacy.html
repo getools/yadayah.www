@@ -24,8 +24,8 @@
         .sub-toolbar a { text-decoration: none; color: var(--toolbar-text, #8ED0EC); font-family: "Julius Sans One", sans-serif; font-size: 0.95em; font-weight: 700; }
         .sub-toolbar a:hover { color: #fff; }
         .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
-        .content { max-width: 800px; margin: 0 auto; padding: 40px 20px 60px; flex: 1; }
-        .content h1 { font-family: 'Julius Sans One', sans-serif; font-size: 1.8em; color: #31345A; margin: 0 0 30px; }
+        .content { max-width: 800px; margin: 0 auto; padding: 0 24px 60px; flex: 1; }
+        
         .content h2 { font-size: 1.15em; color: #31345A; margin: 28px 0 10px; }
         .content p { line-height: 1.7; margin: 0 0 14px; }
         .content ul { line-height: 1.7; padding-left: 24px; }
@@ -33,6 +33,7 @@
         .content a { color: #31345A; }
         .last-updated { font-size: 0.85rem; color: #999; margin-bottom: 30px; }
     </style>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
 <header>
@@ -44,8 +45,8 @@
 </header>
 <script src="/js/site-nav.js"></script>
 
-<div class="content">
-    <h1>Privacy Policy</h1>
+<div class="page-heading-wrap"><h1 class="page-heading">Privacy Policy</h1></div>
+    <div class="content">
     <p class="last-updated">Last updated: March 26, 2026</p>
 
     <h2>Introduction</h2>
@@ -111,6 +112,6 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

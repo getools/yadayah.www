@@ -134,7 +134,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -505,7 +505,7 @@ function doUpload(blob, filename) {
 
     fetch(API + '/admin-resource-upload.php', {
         method: 'POST', credentials: 'include', body: fd
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.error) { statusEl.style.display = 'none'; alert(d.error); return; }
         document.getElementById('page-image-path').value = d.path;
         showImagePreview(d.path);
@@ -642,7 +642,7 @@ var bannedIPs = {};
 
 function loadBannedIPs() {
     return fetch(API + '/ask-ip-ban.php', {credentials:'include'})
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return safeJson(r); })
         .then(function(d) {
             bannedIPs = {};
             (d.bans || []).forEach(function(b) { bannedIPs[b.ip_address] = true; });
@@ -657,7 +657,7 @@ function loadSessions(page) {
     // Load banned IPs and sessions in parallel
     Promise.all([
         loadBannedIPs(),
-        fetch(API + '/ask-sessions.php?page=' + page + '&limit=50', {credentials:'include'}).then(function(r) { return r.json(); })
+        fetch(API + '/ask-sessions.php?page=' + page + '&limit=50', {credentials:'include'}).then(function(r) { return safeJson(r); })
     ]).then(function(results) {
         var d = results[1];
         if (d.error) { document.getElementById('sessions-container').innerHTML = '<div class="empty-state">' + d.error + '</div>'; return; }
@@ -679,28 +679,32 @@ function renderSessions(sessions) {
         return;
     }
     var html = '<table class="sessions-table"><thead><tr>' +
-        '<th>Date/Time</th><th>User</th><th>IP</th><th>Location</th><th>Model</th><th class="num">Questions</th>' +
-        '<th class="num">Tokens</th><th class="num">Duration</th><th class="ua">User Agent</th>' +
+        '<th>Date/Time</th><th>User</th><th>IP</th><th>Location</th><th>Model</th><th class="num">Qs</th>' +
+        '<th class="num">Notes</th><th class="num">Rating</th>' +
+        '<th class="num">Tokens</th><th class="num">Duration</th>' +
         '</tr></thead><tbody>';
 
     for (var i = 0; i < sessions.length; i++) {
         var s = sessions[i];
-        var dt = formatDate(s.ask_session_dtime);
+        var dt = formatDateMil(s.ask_session_dtime);
         var tokens = (parseInt(s.total_prompt_tokens)||0) + (parseInt(s.total_completion_tokens)||0);
         var dur = formatDuration(parseInt(s.total_duration_ms)||0);
-        var ua = (s.user_agent || '').substring(0, 80);
         var loc = [s.ip_city, s.ip_region, s.ip_country].filter(Boolean).join(', ');
         var userName = s.ask_user_name || (s.user_key ? 'User #' + s.user_key : '');
+        var pendNotes = parseInt(s.pending_notes) || 0;
+        var pendCorr = parseInt(s.pending_corrections) || 0;
+        var totalQs = parseInt(s.total_questions) || parseInt(s.ask_session_question_count) || 0;
         html += '<tr onclick="loadDetail(' + s.ask_session_key + ', this)" data-key="' + s.ask_session_key + '">' +
             '<td>' + dt + '</td>' +
             '<td>' + (userName ? esc(userName) : '<span style="color:#ccc">—</span>') + '</td>' +
             '<td' + (bannedIPs[s.ip_address] ? ' style="color:#c0392b;font-weight:600;"' : '') + '>' + esc(s.ip_address || '') + (bannedIPs[s.ip_address] ? ' <span style="font-size:0.7rem;background:#c0392b;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;">Banned</span>' : '') + '</td>' +
             '<td>' + esc(loc) + '</td>' +
             '<td>' + esc(s.model || '') + '</td>' +
-            '<td class="num">' + (s.ask_session_question_count || 0) + '</td>' +
+            '<td class="num">' + totalQs + '</td>' +
+            '<td class="num">' + (pendNotes > 0 ? '<span style="color:#c0392b;font-weight:600;">' + pendNotes + '</span>' : '<span style="color:#27ae60;">0</span>') + '</td>' +
+            '<td class="num">' + (pendCorr > 0 ? '<span style="color:#c0392b;font-weight:600;">' + pendCorr + '</span>' : '<span style="color:#27ae60;">0</span>') + '</td>' +
             '<td class="num">' + tokens.toLocaleString() + '</td>' +
             '<td class="num">' + dur + '</td>' +
-            '<td class="ua" title="' + esc(s.user_agent || '') + '">' + esc(ua) + '</td>' +
             '</tr>';
     }
     html += '</tbody></table>';
@@ -757,9 +761,47 @@ function saveNote(logKey, noteId, btn) {
         method: 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ ask_session_log_key: logKey, admin_note: note })
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         btn.disabled = false;
         if (d.saved) { statusEl.textContent = 'Saved'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
+        else { statusEl.textContent = d.error || 'Error'; statusEl.style.color = '#c00'; }
+    }).catch(function() { btn.disabled = false; statusEl.textContent = 'Error'; statusEl.style.color = '#c00'; });
+}
+
+var _ratingTimers = {};
+function autoSaveRating(logKey, sessionKey) {
+    if (_ratingTimers[logKey]) clearTimeout(_ratingTimers[logKey]);
+    _ratingTimers[logKey] = setTimeout(function() {
+        var ratingVal = document.getElementById('fb-rating-' + logKey).value;
+        var statusEl = document.getElementById('fb-status-' + logKey);
+        if (ratingVal === '') return;
+        var rating = parseInt(ratingVal);
+        if (isNaN(rating) || rating < 0 || rating > 100) { statusEl.textContent = '0-100'; statusEl.style.color = '#c00'; return; }
+        statusEl.textContent = 'Saving...'; statusEl.style.color = '#888';
+        fetch(API + '/ask-feedback.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ ask_session_log_key: logKey, ask_session_key: sessionKey, rating: rating })
+        }).then(function(r) { return safeJson(r); }).then(function(d) {
+            if (d.saved) { statusEl.textContent = 'Saved'; statusEl.style.color = '#27ae60'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
+            else { statusEl.textContent = d.error || 'Error'; statusEl.style.color = '#c00'; }
+        }).catch(function() { statusEl.textContent = 'Error'; statusEl.style.color = '#c00'; });
+    }, 500);
+}
+
+function saveCorrection(logKey, corrId, btn) {
+    var corrEl = document.getElementById(corrId);
+    var statusEl = document.getElementById(corrId + '-status');
+    var correction = corrEl ? corrEl.value.trim() : '';
+    if (!correction) { statusEl.textContent = 'Enter the recommended answer'; statusEl.style.color = '#c00'; return; }
+    btn.disabled = true;
+    fetch(API + '/ask-feedback.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action: 'learn', ask_session_log_key: logKey, corrected_answer: correction })
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
+        btn.disabled = false;
+        if (d.saved) { statusEl.textContent = 'Saved as high-priority correction!'; statusEl.style.color = '#27ae60'; setTimeout(function() { statusEl.textContent = ''; }, 3000); }
         else { statusEl.textContent = d.error || 'Error'; statusEl.style.color = '#c00'; }
     }).catch(function() { btn.disabled = false; statusEl.textContent = 'Error'; statusEl.style.color = '#c00'; });
 }
@@ -813,16 +855,40 @@ function renderDetail(session, logs) {
         if (pt || ct) html += '<span>Tokens: ' + pt.toLocaleString() + ' in / ' + ct.toLocaleString() + ' out</span>';
         if (log.ask_log_duration_ms) html += '<span>' + formatDuration(parseInt(log.ask_log_duration_ms)) + '</span>';
         html += '</div>';
-        // Admin note
+        // Admin feedback section
         var noteId = 'note-' + log.ask_session_log_key;
-        var hasNote = log.ask_log_admin_note && log.ask_log_admin_note.trim();
+        var corrId = 'corr-' + log.ask_session_log_key;
+        html += '<div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px;">';
+
+        // Rating slider (auto-saves on change)
+        var existingRating = log.ask_log_rating != null ? log.ask_log_rating : 50;
+        var ratingColor = existingRating >= 70 ? '#27ae60' : existingRating >= 40 ? '#e67e22' : '#c0392b';
+        html += '<div style="margin-bottom:8px;display:flex;align-items:center;gap:10px;">'
+            + '<label style="font-weight:600;color:#555;font-size:0.82rem;flex-shrink:0;">Rating:</label>'
+            + '<input type="range" id="fb-rating-' + log.ask_session_log_key + '" min="0" max="100" value="' + existingRating + '" style="flex:1;max-width:250px;cursor:pointer;" oninput="document.getElementById(\'fb-val-' + log.ask_session_log_key + '\').textContent=this.value;var v=parseInt(this.value);this.style.accentColor=v>=70?\'#27ae60\':v>=40?\'#e67e22\':\'#c0392b\'" onchange="autoSaveRating(' + log.ask_session_log_key + ',' + (session.ask_session_key || 0) + ')">'
+            + '<span id="fb-val-' + log.ask_session_log_key + '" style="font-weight:700;font-size:0.85rem;min-width:28px;color:' + ratingColor + ';">' + existingRating + '</span>'
+            + '<span id="fb-status-' + log.ask_session_log_key + '" class="note-status"></span>'
+            + '</div>';
+
+        // Field 1: Admin Notes (for other admins + AI consideration)
         html += '<div class="qa-note">'
-            + '<div class="qa-note-label">Admin Note' + (log.ask_log_admin_note_dtime ? ' (' + formatDate(log.ask_log_admin_note_dtime) + ')' : '') + '</div>'
-            + '<textarea id="' + noteId + '" placeholder="Add feedback on this response... (injected into future AI prompts)">' + esc(log.ask_log_admin_note || '') + '</textarea>'
+            + '<div class="qa-note-label">Admin Notes <span style="font-weight:normal;color:#999;">(visible to other admins; considered by the AI for future responses)</span></div>'
+            + '<textarea id="' + noteId + '" placeholder="Leave notes about this response for other admins and for the AI to consider...">' + esc(log.ask_log_admin_note || '') + '</textarea>'
             + '<div class="qa-note-actions">'
-            + '<button class="save" onclick="saveNote(' + log.ask_session_log_key + ',\'' + noteId + '\',this)">Save Note</button>'
+            + '<button class="save" onclick="saveNote(' + log.ask_session_log_key + ',\'' + noteId + '\',this)">Save Notes</button>'
             + '<span id="' + noteId + '-status" class="note-status"></span>'
             + '</div></div>';
+
+        // Field 2: Recommended Answer (high priority correction)
+        html += '<div class="qa-note" style="margin-top:8px;">'
+            + '<div class="qa-note-label" style="color:#27ae60;">Recommended Answer <span style="font-weight:normal;color:#999;">(high priority — this becomes the preferred response to similar future questions)</span></div>'
+            + '<textarea id="' + corrId + '" rows="15" placeholder="Supply the answer that should have been provided..." style="border-color:#27ae60;">' + esc(log.ask_log_corrected_answer || '') + '</textarea>'
+            + '<div class="qa-note-actions">'
+            + '<button class="save" style="background:#27ae60;color:#fff;" onclick="saveCorrection(' + log.ask_session_log_key + ',\'' + corrId + '\',this)">Save as Correction</button>'
+            + '<span id="' + corrId + '-status" class="note-status"></span>'
+            + '</div></div>';
+
+        html += '</div>';
         html += '</div>';
     }
     html += '</div></div>';
@@ -830,7 +896,7 @@ function renderDetail(session, logs) {
     // Check ban status for this IP
     if (session.ip_address) {
         fetch(API + '/ask-ip-ban.php?check=' + encodeURIComponent(session.ip_address), {credentials:'include'})
-            .then(function(r){return r.json();})
+            .then(function(r){return safeJson(r);})
             .then(function(d) {
                 var btn = document.getElementById('ban-toggle-btn');
                 if (!btn) return;
@@ -850,6 +916,17 @@ function formatDate(s) {
     var d = new Date(s);
     return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) +
         ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+}
+
+function formatDateMil(s) {
+    if (!s) return '';
+    var d = new Date(s);
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var h = String(d.getHours()).padStart(2, '0');
+    var min = String(d.getMinutes()).padStart(2, '0');
+    return y + '-' + m + '-' + day + ' ' + h + ':' + min;
 }
 
 function formatDuration(ms) {
@@ -876,7 +953,7 @@ document.addEventListener('keydown', function(e) {
 function loadQanda() {
     document.getElementById('qanda-list-container').innerHTML = '<div class="loading">Loading...</div>';
     fetch(API + '/ask-qanda.php', {credentials:'include'})
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return safeJson(r); })
         .then(function(d) {
             if (d.error) { document.getElementById('qanda-list-container').innerHTML = '<div class="empty-state">' + esc(d.error) + '</div>'; return; }
             qandaItems = d.items || [];
@@ -967,7 +1044,7 @@ function saveQanda() {
         method: method, credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.saved) {
             cancelQandaForm();
             loadQanda();
@@ -993,7 +1070,7 @@ function deleteQanda(key) {
         method: 'DELETE', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({key: key})
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.deleted) loadQanda();
         else alert(d.error || 'Delete failed');
     });
@@ -1002,7 +1079,7 @@ function deleteQanda(key) {
 // ── IP Bans ──
 function loadBans() {
     fetch(API + '/ask-ip-ban.php', {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(d) {
             var bans = d.bans || [];
             document.getElementById('bans-count').textContent = bans.length + ' banned IP' + (bans.length !== 1 ? 's' : '');
@@ -1028,7 +1105,7 @@ function addBan() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ip_address: ip, ban_reason: reason})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.saved) {
             document.getElementById('ban-ip-input').value = '';
             document.getElementById('ban-reason-input').value = '';
@@ -1046,7 +1123,7 @@ function removeBan(ip) {
         method: 'DELETE', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ip_address: ip})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.deleted) loadBans();
     });
 }
@@ -1055,7 +1132,7 @@ function toggleBanFromDetail(ip) {
     var btn = document.getElementById('ban-toggle-btn');
     if (!btn) return;
     fetch(API + '/ask-ip-ban.php?check=' + encodeURIComponent(ip), {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.banned) {
                 if (!confirm('Unban ' + ip + '?')) return;
@@ -1063,7 +1140,7 @@ function toggleBanFromDetail(ip) {
                     method: 'DELETE', credentials: 'include',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({ip_address: ip})
-                }).then(function(r){return r.json();}).then(function() {
+                }).then(function(r){return safeJson(r);}).then(function() {
                     btn.textContent = 'Ban';
                     btn.className = 'btn btn-danger btn-sm';
                     bansLoaded = false;
@@ -1075,7 +1152,7 @@ function toggleBanFromDetail(ip) {
                     method: 'POST', credentials: 'include',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({ip_address: ip, ban_reason: reason})
-                }).then(function(r){return r.json();}).then(function() {
+                }).then(function(r){return safeJson(r);}).then(function() {
                     btn.textContent = 'Unban';
                     btn.className = 'btn btn-secondary btn-sm';
                     bansLoaded = false;
@@ -1086,6 +1163,7 @@ function toggleBanFromDetail(ip) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

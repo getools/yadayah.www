@@ -7,8 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/video-comments.css">
-    <link rel="stylesheet" href="/css/login-modal.css">
+    <link rel="stylesheet" href="/css/login.css">
     <style>
         html { height: 100%; }
         body {
@@ -75,19 +74,12 @@
             width: 100%;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 30px 24px 60px;
+            padding: 0 24px 60px;
             flex: 1;
             box-sizing: border-box;
         html, body { overflow-x: hidden; }
         }
-        .content h1 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 2.2em;
-            font-weight: 700;
-            color: var(--heading-color, #E5C86C);
-            text-align: center;
-            margin: 0 0 30px;
-        }
+        /* page heading styles now in site-nav.js */
 
         /* Video grid */
         .video-grid {
@@ -170,82 +162,9 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Lightbox */
-        .lightbox-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.92);
-            z-index: 10000;
-            justify-content: center;
-            align-items: center;
-        }
-        .lightbox-overlay.active { display: flex; }
-        .lightbox-container {
-            position: relative;
-            width: 90%;
-            max-width: 900px;
-        }
-        .lightbox-video {
-            width: 100%;
-            aspect-ratio: 16/9;
-            background: #000;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-        .lightbox-video iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        .lightbox-close {
-            position: absolute;
-            top: -40px; right: 0;
-            color: #fff;
-            font-size: 2rem;
-            cursor: pointer;
-            background: none;
-            border: none;
-            padding: 4px 10px;
-            line-height: 1;
-            opacity: 0.8;
-            transition: opacity 0.2s;
-        }
-        .lightbox-close:hover { opacity: 1; color: #E5C86C; }
-        .lightbox-nav {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #fff;
-            font-size: 2.5rem;
-            cursor: pointer;
-            background: rgba(0,0,0,0.5);
-            border: none;
-            border-radius: 50%;
-            width: 48px; height: 48px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.7;
-            transition: opacity 0.2s, background 0.2s;
-        }
-        .lightbox-nav:hover { opacity: 1; background: rgba(0,0,0,0.8); }
-        .lightbox-prev { left: -60px; }
-        .lightbox-next { right: -60px; }
-        .lightbox-caption {
-            text-align: center;
-            color: rgba(255,255,255,0.8);
-            font-size: 0.9rem;
-            margin-top: 12px;
-            line-height: 1.4;
-        }
-        @media (max-width: 1024px) {
-            .lightbox-prev { left: 8px; }
-            .lightbox-next { right: 8px; }
-        }
-
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
     <header>
@@ -274,39 +193,35 @@
 </header>
 
 
+    <div class="page-heading-wrap"><h1 class="page-heading" id="music-heading">Music</h1></div>
     <div class="content">
-        <h1 id="music-heading">Music</h1>
         <div id="video-grid" class="video-grid"></div>
         <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
         <div id="scroll-sentinel" style="height:1px;"></div>
     </div>
 
-    <!-- Lightbox -->
-    <div id="lightbox" class="lightbox-overlay" onclick="if(event.target===this)closeLightbox()">
-        <div class="lightbox-container">
-            <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
-            <button class="lightbox-nav lightbox-prev" onclick="navLightbox(-1)">&#8249;</button>
-            <button class="lightbox-nav lightbox-next" onclick="navLightbox(1)">&#8250;</button>
-            <div class="lightbox-video">
-                <iframe id="lb-iframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
-            </div>
-            <div id="lb-caption" class="lightbox-caption"></div>
-            <div id="video-comments"></div>
-        </div>
-    </div>
-
-    <div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"></div>
+    <!-- Lightbox handled by video-lightbox.js -->
+    <div class="login-modal" id="login-modal" onclick="if(event.target===this)CommunityAuth.closeLoginModal()"><div class="login-box" id="login-box"></div></div>
     <footer></footer>
 
-<script src="/js/community-auth.js"></script>
-<script src="/js/video-comments.js"></script>
+<script src="/js/community-auth.js?v=22"></script>
+<script src="/js/video-comments.js?v=11"></script>
+<script src="/js/video-lightbox.js?v=15"></script>
 <script>
 var allVideos = [];
 var currentPage = 0;
 var totalPages = 1;
 var loading = false;
-var lbIndex = -1;
 var MUSIC_RECORDS = 0; // 0 = infinite scroll; >0 = load this many then stop
+
+VideoLightbox.configure({
+    pageCode: 'music',
+    videoSource: 'youtube',
+    getVideoId: function(v) { return v.music_video_id || ''; },
+    getTitle: function(v) { return v.music_title || ''; },
+    getThumbnail: function(v) { return v.music_thumbnail || 'https://i.ytimg.com/vi/' + v.music_video_id + '/hqdefault.jpg'; },
+    getEmbedUrl: function(v) { return 'https://www.youtube.com/embed/' + (v.music_video_id || '') + '?autoplay=1&rel=0'; }
+});
 
 function escHtml(s) {
     var d = document.createElement('div');
@@ -325,7 +240,7 @@ function renderCard(v, idx) {
     var thumb = v.music_thumbnail || '';
     var title = v.music_title || 'Music';
     var date = formatDate(v.music_create);
-    return '<div class="video-card" onclick="openLightbox(' + idx + ')">'
+    return '<div class="video-card" onclick="VideoLightbox.open(' + idx + ')">'
         + '<div class="video-thumb">'
         + '<img src="' + escHtml(thumb) + '" alt="' + escHtml(title) + '" loading="lazy">'
         + '<div class="play-btn"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>'
@@ -361,6 +276,7 @@ function loadPage() {
             totalPages = data.total_pages;
             loading = false;
 
+            VideoLightbox.setVideos(allVideos);
             if (currentPage >= totalPages) {
                 status.textContent = data.total === 0 ? 'No videos found.' : '';
             } else {
@@ -381,6 +297,7 @@ fetch('/api/page-music-config.php')
         var root = document.documentElement;
         if (cfg['background'])         root.style.setProperty('--music-bg',     cfg['background']);
         if (cfg['heading-color'])      root.style.setProperty('--heading-color', cfg['heading-color']);
+        if (cfg['heading-bg'])         root.style.setProperty('--heading-bg',    cfg['heading-bg']);
         if (cfg['label-color'])        root.style.setProperty('--label-color',   cfg['label-color']);
         if (cfg['label-size'])         root.style.setProperty('--label-size',    cfg['label-size'] + 'em');
         if (cfg['columns'])            root.style.setProperty('--grid-cols',      cfg['columns']);
@@ -399,55 +316,6 @@ var observer = new IntersectionObserver(function(entries) {
 }, { rootMargin: '200px' });
 observer.observe(sentinel);
 
-// Lightbox
-function ytEmbedUrl(videoId) {
-    return 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
-}
-
-function openLightbox(idx) {
-    lbIndex = idx;
-    var v = allVideos[idx];
-    if (!v) return;
-    document.getElementById('lb-iframe').src = ytEmbedUrl(v.music_video_id);
-    document.getElementById('lb-caption').textContent = v.music_title || '';
-    document.getElementById('lightbox').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    VideoComments.open(v.music_video_id, 'youtube');
-}
-
-function closeLightbox() {
-    document.getElementById('lightbox').classList.remove('active');
-    document.getElementById('lb-iframe').src = '';
-    document.body.style.overflow = '';
-    VideoComments.close();
-}
-
-function navLightbox(dir) {
-    var next = lbIndex + dir;
-    if (next < 0 || next >= allVideos.length) return;
-    openLightbox(next);
-}
-
-document.addEventListener('keydown', function(e) {
-    if (!document.getElementById('lightbox').classList.contains('active')) return;
-    if (e.key === 'Escape') closeLightbox();
-    if (e.key === 'ArrowLeft') navLightbox(-1);
-    if (e.key === 'ArrowRight') navLightbox(1);
-});
-
-// Swipe support
-(function() {
-    var lb = document.getElementById('lightbox');
-    var startX = 0;
-    lb.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; });
-    lb.addEventListener('touchend', function(e) {
-        var diff = e.changedTouches[0].clientX - startX;
-        if (Math.abs(diff) > 50) {
-            navLightbox(diff > 0 ? -1 : 1);
-        }
-    });
-})();
-
 // Initial load
 loadPage();
 </script>
@@ -460,6 +328,6 @@ loadPage();
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

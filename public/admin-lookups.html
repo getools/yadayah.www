@@ -66,7 +66,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button id="btn-logout" class="btn btn-secondary btn-sm">Logout</button>
@@ -163,7 +163,7 @@ var pendingAction = null;
 
 // ── Auth ──
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -183,7 +183,7 @@ document.getElementById('btn-login').addEventListener('click', function() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({login: user, password: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
@@ -249,7 +249,7 @@ document.getElementById('table-select').addEventListener('change', function() {
 function loadTable(table) {
     fkCache = {};
     fetch(API + '/lookups.php?action=meta&table=' + table, {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(meta) {
             currentMeta = meta;
             loadRows(table);
@@ -258,7 +258,7 @@ function loadTable(table) {
 
 function loadRows(table) {
     fetch(API + '/lookups.php?action=list&table=' + table, {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(rows) {
             currentRows = rows;
             document.getElementById('row-count').textContent = rows.length + ' rows';
@@ -344,7 +344,7 @@ function doRenderList() {
 function loadFkOptions(fkTable, callback) {
     if (fkCache[fkTable]) { if (callback) callback(); return; }
     fetch(API + '/lookups.php?action=fk_options&fk_table=' + fkTable, {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(opts) {
             fkCache[fkTable] = opts;
             if (callback) callback();
@@ -393,7 +393,7 @@ document.getElementById('btn-cancel').addEventListener('click', function() {
 
 function editRow(pk) {
     fetch(API + '/lookups.php?action=get&table=' + currentTable + '&key=' + pk, {credentials:'include'})
-        .then(function(r){return r.json();})
+        .then(function(r){return safeJson(r);})
         .then(function(row) {
             if (row.error) { alert(row.error); return; }
             editingKey = pk;
@@ -566,7 +566,7 @@ document.getElementById('btn-save').addEventListener('click', function() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data)
-    }).then(function(r){return r.json();}).then(function(resp) {
+    }).then(function(r){return safeJson(r);}).then(function(resp) {
         if (resp.error) {
             showErrors([resp.error]);
             return;
@@ -590,9 +590,9 @@ document.getElementById('btn-delete').addEventListener('click', function() {
         method: 'DELETE', credentials: 'include'
     }).then(function(r){
         if (!r.ok) {
-            return r.json().catch(function() { return {error: 'Delete failed (server error)'}; });
+            return safeJson(r).catch(function() { return {error: 'Delete failed (server error)'}; });
         }
-        return r.json();
+        return safeJson(r);
     }).then(function(resp) {
         if (resp.error) {
             alert(resp.error);
@@ -735,7 +735,7 @@ document.getElementById('dirty-save').addEventListener('click', function() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data)
-    }).then(function(r){return r.json();}).then(function(resp) {
+    }).then(function(r){return safeJson(r);}).then(function(resp) {
         if (resp.error) { showErrors([resp.error]); return; }
         if (resp.errors) { showErrors(resp.errors); return; }
         formSnapshot = {};
@@ -830,6 +830,7 @@ for (var i = 0; i < navTabs.length; i++) {
 // ── Init ──
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

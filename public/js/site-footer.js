@@ -2,12 +2,34 @@
 (function() {
 'use strict';
 
+// Load error reporter
+if (!document.getElementById('error-reporter-js')) {
+    var s = document.createElement('script');
+    s.id = 'error-reporter-js';
+    s.src = '/js/error-reporter.js?v=5';
+    document.head.appendChild(s);
+}
+
+// Google Analytics 4
+if (!document.getElementById('ga-script')) {
+    var ga = document.createElement('script');
+    ga.id = 'ga-script';
+    ga.async = true;
+    ga.src = 'https://www.googletagmanager.com/gtag/js?id=G-VL844ZWNR9';
+    document.head.appendChild(ga);
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-VL844ZWNR9');
+}
+
 // Inject footer CSS if not already present
 if (!document.getElementById('site-footer-css')) {
     var style = document.createElement('style');
     style.id = 'site-footer-css';
     style.textContent = ''
-        + 'footer { background: url("/images/yy-bg-bluewave.jpg") center/cover no-repeat; position: relative; overflow: hidden; padding: 30px 20px 20px; color: #E5C86C; }'
+        + 'html, body { overflow-x: hidden; max-width: 100%; }'
+        + 'footer { background: url("/images/yy-bg-bluewave.jpg") center/cover no-repeat; position: relative; width: 100%; overflow: hidden; padding: 30px 20px 20px; color: #E5C86C; box-sizing: border-box; margin: auto -20px 0; padding-left: 20px; padding-right: 20px; width: calc(100% + 40px); }'
         + 'footer .footer-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; transform: translate(-50%, -50%); object-fit: cover; z-index: 0; }'
         + 'footer .footer-inner { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }'
         + 'footer .footer-col { min-width: auto; }'
@@ -77,10 +99,219 @@ fetch('/api/site-config.php')
         });
     });
 
-// Background video (reuse bg-video.js pattern if available)
-if (typeof window._bgVideoSrc !== 'undefined' && window._bgVideoSrc) {
+// Background video — apply from sessionStorage since bg-video.js may have run before footer was created
+(function() {
     var vid = footer.querySelector('.footer-video');
-    if (vid) vid.src = window._bgVideoSrc;
+    if (!vid) return;
+    var webm = sessionStorage.getItem('yy_bg_video');
+    var mp4 = sessionStorage.getItem('yy_bg_mp4');
+    var thumb = sessionStorage.getItem('yy_bg_thumb');
+    if (thumb) vid.setAttribute('poster', thumb);
+    if (webm) {
+        var s1 = document.createElement('source');
+        s1.setAttribute('src', webm);
+        s1.setAttribute('type', 'video/webm');
+        vid.appendChild(s1);
+        if (mp4) {
+            var s2 = document.createElement('source');
+            s2.setAttribute('src', mp4);
+            s2.setAttribute('type', 'video/mp4');
+            vid.appendChild(s2);
+        }
+        vid.load();
+    } else if (typeof window._bgVideoSrc !== 'undefined' && window._bgVideoSrc) {
+        vid.src = window._bgVideoSrc;
+    }
+})();
+
+// ── Scroll nav buttons ──
+var scrollBtnStyle = document.createElement('style');
+scrollBtnStyle.textContent = ''
+    + '.scroll-btn { display:none; position:fixed; right:8px; width:40px; height:40px; border-radius:50%; background:rgba(49,52,90,0.85); color:#E5C86C; border:none; font-size:1.1rem; cursor:pointer; z-index:9999; box-shadow:0 2px 8px rgba(0,0,0,0.3); transition:opacity 0.2s,background 0.2s; opacity:0.7; align-items:center; justify-content:center; }'
+    + '.scroll-btn:hover { opacity:1; background:rgba(49,52,90,1); }'
+    + '.scroll-btn.visible { display:flex; }';
+document.head.appendChild(scrollBtnStyle);
+
+// Back to top — fixed bottom-right
+var btt = document.createElement('button');
+btt.id = 'back-to-top';
+btt.className = 'scroll-btn';
+btt.style.bottom = '8px';
+btt.style.right = '8px';
+btt.innerHTML = '&#9650;';
+btt.title = 'Back to top';
+btt.setAttribute('aria-label', 'Back to top');
+btt.onclick = function() { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+document.body.appendChild(btt);
+
+// Scroll to bottom — fixed top-right
+var btb = document.createElement('button');
+btb.id = 'scroll-to-bottom';
+btb.className = 'scroll-btn';
+btb.style.top = '8px';
+btb.style.right = '8px';
+btb.innerHTML = '&#9660;';
+btb.title = 'Go to bottom';
+btb.setAttribute('aria-label', 'Go to bottom');
+btb.onclick = function() {
+    btb.classList.remove('visible');
+    var ft = document.querySelector('footer');
+    if (ft) { var y = ft.getBoundingClientRect().top + window.scrollY - window.innerHeight; window.scrollTo({ top: y, behavior: 'smooth' }); }
+    else { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
+};
+document.body.appendChild(btb);
+
+function updateScrollButtons() {
+    var docHeight = document.documentElement.scrollHeight;
+    var winHeight = window.innerHeight;
+    var scrollY = window.scrollY;
+    var ft = document.querySelector('footer');
+    var footerHeight = ft ? ft.offsetHeight : 0;
+    var contentBottom = docHeight - footerHeight;
+    var atBottom = scrollY + winHeight >= contentBottom - 50;
+    var hasOverflow = contentBottom > winHeight + 150;
+    var showUp = scrollY > 150;
+    var showDown = hasOverflow && !atBottom;
+    btt.classList.toggle('visible', showUp);
+    btb.classList.toggle('visible', showDown);
+    // Force display in case inline styles override the class
+    btt.style.display = showUp ? 'flex' : 'none';
+    btb.style.display = showDown ? 'flex' : 'none';
 }
+window.addEventListener('scroll', updateScrollButtons, { passive: true });
+window.addEventListener('resize', updateScrollButtons, { passive: true });
+// Run after page settles (images, dynamic content)
+updateScrollButtons();
+setTimeout(updateScrollButtons, 500);
+setTimeout(updateScrollButtons, 2000);
+setTimeout(updateScrollButtons, 5000);
+// Re-check when DOM changes (dynamic content loading)
+if (typeof MutationObserver !== 'undefined') {
+    var _scrollBtnTimer = null;
+    new MutationObserver(function() {
+        clearTimeout(_scrollBtnTimer);
+        _scrollBtnTimer = setTimeout(updateScrollButtons, 200);
+    }).observe(document.body, { childList: true, subtree: true });
+}
+
+// ── Live Feed indicator ──
+(function() {
+    var _liveStyleInjected = false;
+    var _isLive = false;
+    var _liveStarted = 0; // timestamp when live was first detected
+    var MAX_LIVE_POLL = 3 * 60 * 60 * 1000; // 3 hours
+
+    var _liveData = null;
+
+    function injectLiveStyle() {
+        if (_liveStyleInjected) return;
+        _liveStyleInjected = true;
+        var style = document.createElement('style');
+        style.textContent = ''
+            + '#live-indicator { position:fixed; top:8px; left:8px; z-index:9999; cursor:pointer; }'
+            + '#live-indicator .live-badge { display:flex; align-items:center; gap:6px; background:rgba(200,0,0,0.9); color:#fff; padding:6px 14px 6px 10px; border-radius:8px 8px 8px 0; font-size:0.8rem; font-weight:700; box-shadow:0 2px 10px rgba(200,0,0,0.4); transition:background 0.15s; position:absolute; top:0; left:0; z-index:2; }'
+            + '#live-indicator:hover .live-badge { background:rgba(220,0,0,1); }'
+            + '#live-indicator:hover { background:rgba(220,0,0,1); }'
+            + ''
+            + '#live-indicator .live-dot { width:10px; height:10px; background:#fff; border-radius:50%; animation:live-pulse 1.5s ease-in-out infinite; }'
+            + '@keyframes live-pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }'
+            + '.live-preview { width:200px; border-radius:8px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.5); background:#000; position:relative; }'
+            + '.live-preview img { width:100%; display:block; }'
+            + '.live-preview .live-preview-title { padding:6px 8px; font-size:0.7rem; font-weight:400; color:#ccc; line-height:1.3; white-space:normal; }'
+            + '#live-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:10001; justify-content:center; align-items:center; }'
+            + '#live-overlay.active { display:flex; }'
+            + '#live-container { display:flex; width:95vw; max-width:1400px; height:85vh; border-radius:10px; overflow:hidden; box-shadow:0 4px 30px rgba(0,0,0,0.6); position:relative; }'
+            + '#live-container .live-video { flex:1; min-width:0; background:#000; }'
+            + '#live-container .live-video iframe { width:100%; height:100%; border:none; }'
+            + '#live-container .live-chat { width:360px; flex-shrink:0; background:#fff; }'
+            + '#live-container .live-chat iframe { width:100%; height:100%; border:none; }'
+            + '#live-close { position:absolute; top:-36px; right:0; color:#fff; font-size:1.8rem; cursor:pointer; background:none; border:none; padding:4px 10px; z-index:2; }'
+            + '#live-close:hover { color:#E5C86C; }'
+            + '#live-title-bar { position:absolute; top:-36px; left:0; color:#E5C86C; font-size:0.85rem; font-weight:600; padding:4px 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:calc(100% - 60px); }'
+            + '@media (max-width:800px) { #live-container { flex-direction:column; width:98vw; height:92vh; } #live-container .live-chat { width:100%; height:280px; } }';
+        document.head.appendChild(style);
+    }
+
+    function openLivePopover() {
+        if (!_liveData) return;
+        var existing = document.getElementById('live-overlay');
+        if (existing) existing.remove();
+
+        var videoId = _liveData.video_id || '';
+        var embedUrl = _liveData.embed_url || ('https://www.youtube.com/embed/' + videoId + '?autoplay=1');
+        var chatUrl = 'https://www.youtube.com/live_chat?v=' + videoId + '&embed_domain=' + location.hostname;
+        var title = _liveData.title || 'Live Now';
+
+        var overlay = document.createElement('div');
+        overlay.id = 'live-overlay';
+        overlay.innerHTML = '<div id="live-container">'
+            + '<div id="live-title-bar">' + title.replace(/</g, '&lt;') + '</div>'
+            + '<button id="live-close" onclick="document.getElementById(\'live-overlay\').remove()" title="Close">&times;</button>'
+            + '<div class="live-video"><iframe src="' + embedUrl + '" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>'
+            + '<div class="live-chat"><iframe src="' + chatUrl + '"></iframe></div>'
+            + '</div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+        overlay.classList.add('active');
+    }
+
+    function checkLive() {
+        fetch('/api/live-check.php').then(function(r) { return r.json(); }).then(function(d) {
+            var existing = document.getElementById('live-indicator');
+            if (existing) existing.remove();
+
+            if (d.live) {
+                if (!_isLive) _liveStarted = Date.now();
+                _isLive = true;
+                _liveData = d;
+                injectLiveStyle();
+                var btn = document.createElement('div');
+                btn.id = 'live-indicator';
+                btn.title = d.title || 'Live Now';
+                var previewHtml = '';
+                var thumbUrl = d.thumbnail || (d.video_id ? 'https://i.ytimg.com/vi/' + d.video_id + '/mqdefault.jpg' : '');
+                if (thumbUrl) {
+                    previewHtml = '<div class="live-preview">'
+                        + '<img src="' + thumbUrl + '" alt="">'
+                        + '<div class="live-preview-title">' + (d.title || 'Live Now').replace(/</g, '&lt;') + '</div>'
+                        + '</div>';
+                }
+                btn.innerHTML = '<div class="live-badge"><span class="live-dot"></span> LIVE</div>' + previewHtml;
+                btn.addEventListener('click', openLivePopover);
+                document.body.appendChild(btn);
+            } else {
+                _isLive = false;
+                _liveStarted = 0;
+                _liveData = null;
+            }
+
+            scheduleNext();
+        }).catch(function() { scheduleNext(); });
+    }
+
+    function scheduleNext() {
+        var delay;
+        if (_isLive) {
+            // During live: poll every 2 minutes to detect stream end, up to 3 hours
+            if (Date.now() - _liveStarted > MAX_LIVE_POLL) {
+                // Exceeded 3 hours — stop polling, clear live indicator
+                _isLive = false;
+                _liveStarted = 0;
+                var el = document.getElementById('live-indicator');
+                if (el) el.remove();
+                return; // Stop polling
+            }
+            delay = 120000; // 2 minutes
+        } else {
+            // Not live: check once on page load (already done), then stop
+            // Push handles new live events — no need to keep polling
+            return;
+        }
+        setTimeout(checkLive, delay);
+    }
+
+    // Initial check on page load
+    checkLive();
+})();
 
 })();

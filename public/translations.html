@@ -24,7 +24,7 @@
         html { height: 100%; }
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; min-height: 100vh; display: flex; flex-direction: column; }
         span.Yada.Towrah { font-family: "Yada Towrah", serif; color: #1a5276; }
-        .filters { margin-bottom: 20px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 1024px; margin-left: auto; margin-right: auto; }
+        .filters { margin-top: 15px; margin-bottom: 20px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 1024px; margin-left: auto; margin-right: auto; }
         .filter-group { margin-bottom: 0; }
         .filter-group > label { font-weight: bold; display: block; margin-bottom: 5px; padding-left: 2px; }
         select { padding: 5px; width: 250px; }
@@ -154,7 +154,7 @@
             display: flex;
             justify-content: center;
             gap: 0;
-            margin: 0 -20px 20px -20px;
+            margin: 0 -20px 0 -20px;
             background: #f0f0f0;
             border-bottom: 2px solid #ddd;
         }
@@ -172,6 +172,11 @@
         .page-tabs a.active {
             color: #31345A;
             border-bottom-color: #31345A;
+        }
+        .tab-short { display: none; }
+        @media (max-width: 600px) {
+            .tab-full { display: none; }
+            .tab-short { display: inline; }
         }
 
     </style>
@@ -207,7 +212,7 @@
     <div class="page-tabs">
         <a href="/translations" class="active">Translations</a>
         <a href="/glossary">Glossary</a>
-        <a href="/dss">Dead Sea Scrolls</a>
+        <a href="/dss"><span class="tab-full">Dead Sea Scrolls</span><span class="tab-short">DSS</span></a>
     </div>
 
     <div class="filters">
@@ -470,7 +475,7 @@
                         }
                     }
                     if (record.volume_flip_code) {
-                        var hdrUrl = 'https://book.yadayah.com/' + encodeURIComponent(record.volume_flip_code) + '/' + (record.translation_page ? '#p=' + (record.translation_page + 6) : '');
+                        var hdrUrl = '/' + encodeURIComponent(record.volume_flip_code) + '/' + (record.translation_page ? '#p=' + (record.translation_page + 6) : '');
                         var hdrLink = document.createElement('a');
                         hdrLink.href = hdrUrl;
                         hdrLink.target = '_blank';
@@ -495,7 +500,7 @@
                 var bookPage;
                 var chapterName = record.chapter_name || '';
                 if (flipCode) {
-                    var url = 'https://book.yadayah.com/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
+                    var url = '/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
                     bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?') + '</a>';
                 } else {
                     bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?');
@@ -634,6 +639,6 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

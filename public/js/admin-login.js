@@ -1,4 +1,22 @@
 /* ── admin-login.js ── OAuth + email login modal for admin (same markup as community) ── */
+
+// ── Safe JSON fetch: checks response status before parsing ──
+// Prevents "Unexpected end of JSON input" when server returns 403/empty/HTML
+window.safeJson = function(response) {
+    if (!response.ok) {
+        return response.text().then(function(text) {
+            var err = { error: 'HTTP ' + response.status + ': ' + (text || response.statusText).substring(0, 200) };
+            try { var j = JSON.parse(text); if (j.error) err.error = j.error; } catch(e) {}
+            return err;
+        });
+    }
+    return response.text().then(function(text) {
+        if (!text || !text.trim()) return { error: 'Empty response from server' };
+        try { return JSON.parse(text); }
+        catch(e) { return { error: 'Invalid JSON: ' + text.substring(0, 100) }; }
+    });
+};
+
 (function() {
 'use strict';
 
@@ -51,7 +69,7 @@ document.body.appendChild(modal);
 
 // Check auth
 fetch('/api/auth.php', { credentials: 'include' })
-    .then(function(r) { return r.json(); })
+    .then(function(r) { return safeJson(r); })
     .then(function(d) {
         if (d.authenticated && d.pages && Object.keys(d.pages).length > 0) {
             // OK
@@ -128,7 +146,6 @@ window.AdminLogin = {
         var email = document.getElementById('auth-email').value.trim();
         var pass = document.getElementById('auth-pass').value;
         var errEl = document.getElementById('login-error');
-        console.log('submitEmail called', { email: email, hasPass: !!pass, errEl: errEl });
         if (!email) { showMsg(errEl, 'Email is required'); return; }
         if (!pass) { showMsg(errEl, 'Password is required'); return; }
         fetch('/api/community-auth.php', {
@@ -136,14 +153,11 @@ window.AdminLogin = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'login', email: email, password: pass })
         }).then(function(r) {
-            console.log('fetch response', r.status);
-            return r.json();
+            return safeJson(r);
         }).then(function(data) {
-            console.log('response data', data);
             if (data.error) { showMsg(errEl, data.error); }
             else { location.reload(); }
         }).catch(function(e) {
-            console.error('fetch error', e);
             showMsg(errEl, 'Connection error. Please try again.');
         });
     },
@@ -156,7 +170,7 @@ window.AdminLogin = {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'forgot', email: email })
-        }).then(function(r) { return r.json(); }).then(function(data) {
+        }).then(function(r) { return safeJson(r); }).then(function(data) {
             if (data.error) { showMsg(errEl, data.error, 'login-error'); }
             else {
                 errEl.style.display = 'none';

@@ -17,10 +17,22 @@ $userKey = $_SESSION['user_key'] ?? null;
 if ($method === 'GET') {
     $includeInactive = isset($_GET['all']) && $userKey && isModOrAdmin($db, $userKey);
 
-    $where = $includeInactive ? '' : 'WHERE c.category_active_flag = TRUE';
+    $parentKey = $_GET['parent_key'] ?? null;
+    $parentSlug = trim($_GET['parent'] ?? '');
+    $where = $includeInactive ? 'WHERE 1=1' : 'WHERE c.category_active_flag = TRUE';
+
+    if ($parentKey !== null) {
+        $where .= " AND c.parent_key = " . (int)$parentKey;
+    } elseif ($parentSlug) {
+        $where .= " AND c.parent_key = (SELECT category_key FROM yy_community_category WHERE category_slug = " . $db->quote($parentSlug) . " LIMIT 1)";
+    } else {
+        // Default: show topic categories (children of 'topics' section)
+        $where .= " AND c.parent_key = (SELECT category_key FROM yy_community_category WHERE category_slug = 'topics' LIMIT 1)";
+    }
     $stmt = $db->query("
         SELECT c.category_key, c.category_name, c.category_slug, c.category_description,
                c.category_color, c.category_sort, c.category_active_flag,
+               c.parent_key,
                COUNT(t.topic_key) AS topic_count
         FROM yy_community_category c
         LEFT JOIN yy_community_topic t ON t.category_key = c.category_key AND t.topic_active_flag = TRUE

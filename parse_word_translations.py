@@ -1510,7 +1510,7 @@ def save_translation(conn, translation_data: Dict[str, any]) -> bool:
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO translation (translation_book, translation_page, translation_text_word,
+            INSERT INTO yy_cite_translation (translation_book, translation_page, translation_text_word,
                                      translation_cite, translation_cite_hebrew, translation_cite_common,
                                      translation_cite_chapter, translation_cite_verse,
                                      translation_cite_verse_end, translation_cite_note)
@@ -1548,8 +1548,8 @@ def populate_cite_table(conn) -> int:
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO cite (label)
-            SELECT DISTINCT translation_cite FROM translation
+            INSERT INTO yy_cite (label)
+            SELECT DISTINCT translation_cite FROM yy_cite_translation
             WHERE translation_cite IS NOT NULL
             ON CONFLICT (label) DO NOTHING
         """)
@@ -1583,7 +1583,7 @@ def normalize_unicode_text(conn) -> int:
         # Normalize translation_text_word, translation_cite, translation_cite_hebrew, translation_cite_common
         for col in ['translation_text_word', 'translation_cite', 'translation_cite_hebrew', 'translation_cite_common']:
             cursor.execute(f"""
-                UPDATE translation
+                UPDATE yy_cite_translation
                 SET {col} = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                     {col},
                     E'\u2019', ''''),
@@ -1604,7 +1604,7 @@ def normalize_unicode_text(conn) -> int:
 
         # Also normalize em dash (rare but handle it)
         cursor.execute("""
-            UPDATE translation
+            UPDATE yy_cite_translation
             SET translation_text_word = REPLACE(translation_text_word, E'\u2014', '-')
             WHERE translation_text_word LIKE '%' || E'\u2014' || '%'
         """)
@@ -1630,9 +1630,9 @@ def update_cite_book_ids(conn) -> int:
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            UPDATE translation t
+            UPDATE yy_cite_translation t
             SET translation_cite_book_id = cbm.cite_book_id
-            FROM cite_book_map cbm
+            FROM yy_cite_book_map cbm
             WHERE (t.translation_cite_hebrew = cbm.cite_book_map_hebrew
                    OR REPLACE(REPLACE(t.translation_cite_hebrew, E'\u2019', ''''), E'\u2018', '''') = cbm.cite_book_map_hebrew)
               AND t.translation_cite_book_id IS NULL

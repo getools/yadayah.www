@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         errorResponse('You can only edit your own posts');
     }
 
-    $stmt = $db->prepare("UPDATE yy_community_post SET post_text = ?, post_update_dtime = NOW() WHERE post_key = ?");
+    $stmt = $db->prepare("UPDATE yy_community_post SET post_text = ?, post_revision_dtime = NOW() WHERE post_key = ?");
     $stmt->execute([$text, $postKey]);
     jsonResponse(['saved' => true]);
 }

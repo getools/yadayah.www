@@ -86,7 +86,7 @@ def get_null_page_translations():
     cur = conn.cursor()
     cur.execute("""
         SELECT translation_id, translation_book, translation_text_word
-        FROM translation
+        FROM yy_cite_translation
         WHERE translation_page IS NULL
         ORDER BY translation_book, translation_id
     """)
@@ -250,7 +250,7 @@ def update_pages(page_updates):
     cur = conn.cursor()
     count = 0
     for tid, page in page_updates.items():
-        cur.execute("UPDATE translation SET translation_page = %s WHERE translation_id = %s",
+        cur.execute("UPDATE yy_cite_translation SET translation_page = %s WHERE translation_id = %s",
                     (page, tid))
         count += cur.rowcount
     conn.commit()

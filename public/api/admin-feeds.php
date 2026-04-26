@@ -86,7 +86,7 @@ if ($method === 'POST') {
     $feedKey = $data['feed_key'] ?? null;
 
     $fields = [
-        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_api_key', 'feed_active_flag'
+        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_source_url', 'feed_api_key', 'feed_active_flag'
     ];
 
     if ($feedKey) {

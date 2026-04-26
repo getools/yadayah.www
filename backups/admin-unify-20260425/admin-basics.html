@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basics Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .basics-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .basics-count { font-size: 0.85rem; color: #666; }
+        .basics-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .basics-table th, .basics-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .basics-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .basics-table tr:hover { background: #f0f4ff; }
+        .basics-table tr.inactive { opacity: 0.4; }
+        .basics-table .thumb { width: 120px; height: 68px; object-fit: cover; border-radius: 4px; }
+        .basics-table .actions { white-space: nowrap; }
+        .basics-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .basics-table .actions button:hover { background: #f0f0f0; }
+        .basics-table .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+        .basics-table .actions button.del:hover { background: #fde8e8; }
+        .basics-table select, .basics-table input[type="number"] { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.82rem; font-family: inherit; }
+        .basics-table select { min-width: 100px; }
+        .basics-table input[type="number"] { width: 60px; }
+        .sub-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+        .sub-tab { padding: 8px 20px; border: none; background: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #E5C86C; }
+        .sub-panel { display: none; }
+        .sub-panel.active { display: block; }
+        .config-section h3 { margin: 0 0 12px 0; font-size: 1rem; color: #333; }
+        .sync-status { font-size: 0.85rem; color: #27ae60; margin-left: 8px; }
+        .sync-error { color: #c0392b; }
+        .cat-table { width: 100%; border-collapse: collapse; max-width: 900px; }
+        .cat-table th, .cat-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .cat-table th { background: #f5f5f5; font-weight: 600; font-size: 0.8rem; }
+        .cat-table input[type="text"] { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; width: 100%; font-family: inherit; }
+        .cat-table input[type="number"] { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; width: 70px; font-family: inherit; }
+        .cat-actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .cat-actions button:hover { background: #f0f0f0; }
+        .cat-actions button.del { color: #c0392b; border-color: #e0c0c0; }
+
+        /* RGBA Color Picker */
+        .rgba-picker { display: flex; align-items: center; gap: 8px; }
+        .rgba-picker .color-swatch { width: 32px; height: 32px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; position: relative; overflow: hidden; flex-shrink: 0; }
+        .rgba-picker .color-swatch input[type="color"] { position: absolute; top: -4px; left: -4px; width: 40px; height: 40px; border: none; cursor: pointer; opacity: 0; }
+        .rgba-picker .opacity-wrap { display: flex; align-items: center; gap: 4px; }
+        .rgba-picker .opacity-wrap input[type="range"] { width: 80px; }
+        .rgba-picker .opacity-wrap .opacity-val { font-size: 0.78rem; color: #666; width: 32px; text-align: center; }
+        .rgba-picker .rgba-result { font-size: 0.78rem; color: #888; min-width: 160px; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=5"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Basics</h1>
+
+    <div class="sub-tabs">
+        <button class="sub-tab active" onclick="switchTab('videos')">Videos</button>
+        <button class="sub-tab" onclick="switchTab('categories')">Categories</button>
+        <button class="sub-tab" onclick="switchTab('settings')">Page Settings</button>
+    </div>
+
+    <!-- Videos Panel -->
+    <div id="panel-videos" class="sub-panel active">
+        <div class="basics-toolbar">
+            <span class="basics-count" id="basics-count"></span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-secondary btn-sm" onclick="syncBasics()" id="sync-btn">Sync from YouTube</button>
+                <span class="sync-status" id="sync-status"></span>
+            </div>
+        </div>
+        <div id="table-container">
+            <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Categories Panel -->
+    <div id="panel-categories" class="sub-panel">
+        <div class="basics-toolbar">
+            <span></span>
+            <button class="btn btn-primary btn-sm" onclick="addCategory()">+ Add Category</button>
+        </div>
+        <div id="cat-container">
+            <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+        </div>
+        <span class="sync-status" id="cat-status"></span>
+    </div>
+
+    <!-- Add Category Modal -->
+    <div id="add-cat-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)closeAddCat()">
+        <div style="background:#fff;border-radius:10px;padding:24px;max-width:450px;width:90%;">
+            <h3 style="margin:0 0 16px;font-size:1.1rem;color:#31345A;">New Category</h3>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:0.85rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Title</label>
+                <input type="text" id="add-cat-title" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:0.85rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Subtitle</label>
+                <input type="text" id="add-cat-subtitle" placeholder="" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn btn-sm" style="padding:6px 16px;" onclick="closeAddCat()">Cancel</button>
+                <button class="btn btn-primary btn-sm" style="padding:6px 16px;" onclick="submitAddCat()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="panel-settings" class="sub-panel">
+        <div class="config-section">
+            <h3>Page Settings</h3>
+            <div style="display:grid; grid-template-columns:160px 1fr; gap:10px 16px; align-items:center; max-width:700px;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading</label>
+                <input type="text" id="s-heading" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading Text</label>
+                <div class="rgba-picker" data-id="s-heading-color"></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading Background</label>
+                <div class="rgba-picker" data-id="s-heading-bg"></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Background</label>
+                <div class="rgba-picker" data-id="s-background"></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Columns</label>
+                <input type="number" id="s-columns" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;width:80px;" min="1" max="6">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Label Size (rem)</label>
+                <input type="text" id="s-label-size" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;width:80px;" placeholder="0.85">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Label Text</label>
+                <div class="rgba-picker" data-id="s-label-color"></div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+                <span class="sync-status" id="settings-status"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allCategories = [];
+
+function switchTab(tab) {
+    document.querySelectorAll('.sub-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.sub-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
+    document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'settings' && !document.getElementById('s-heading').value) loadSettings();
+    if (tab === 'categories') loadCategories();
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadVideos();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadVideos();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+
+// ── Categories ──
+function loadCategories() {
+    fetch(API + '/admin-basics.php?type=categories', {credentials:'include'}).then(r=>r.json()).then(function(data) {
+        allCategories = data.categories || [];
+        renderCategories();
+        // Also refresh video table if loaded (category dropdowns need updating)
+    });
+}
+
+function renderCategories() {
+    var cats = allCategories;
+    if (!cats.length) {
+        document.getElementById('cat-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No categories yet.</div>';
+        return;
+    }
+    var html = '<table class="cat-table"><thead><tr><th>Title</th><th>Subtitle</th><th>Order</th><th>Videos</th><th></th></tr></thead><tbody>';
+    cats.forEach(function(c, i) {
+        html += '<tr data-ck="' + c.category_key + '">'
+            + '<td><input type="text" value="' + esc(c.category_title || '') + '" data-field="title" onchange="saveCategory(' + c.category_key + ')"></td>'
+            + '<td><input type="text" value="' + esc(c.category_subtitle || '') + '" data-field="subtitle" placeholder="" onchange="saveCategory(' + c.category_key + ')"></td>'
+            + '<td style="white-space:nowrap">'
+            + '<button style="border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;padding:1px 5px;font-size:0.7rem;margin-right:2px;' + (i === 0 ? 'opacity:0.25;pointer-events:none;' : '') + '" onclick="moveCat(' + c.category_key + ',-1)">&#9650;</button>'
+            + '<button style="border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;padding:1px 5px;font-size:0.7rem;' + (i === cats.length - 1 ? 'opacity:0.25;pointer-events:none;' : '') + '" onclick="moveCat(' + c.category_key + ',1)">&#9660;</button>'
+            + '</td>'
+            + '<td style="color:#888">' + (c.video_count || 0) + '</td>'
+            + '<td class="cat-actions">'
+            + '<button class="del" onclick="deleteCategory(' + c.category_key + ')">Delete</button>'
+            + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('cat-container').innerHTML = html;
+}
+
+function addCategory() {
+    document.getElementById('add-cat-title').value = '';
+    document.getElementById('add-cat-subtitle').value = '';
+    document.getElementById('add-cat-overlay').style.display = 'flex';
+    document.getElementById('add-cat-title').focus();
+}
+
+function closeAddCat() {
+    document.getElementById('add-cat-overlay').style.display = 'none';
+}
+
+function submitAddCat() {
+    var title = document.getElementById('add-cat-title').value.trim();
+    var subtitle = document.getElementById('add-cat-subtitle').value.trim();
+    if (!title) { alert('Title is required'); return; }
+    fetch(API + '/admin-basics.php?type=category', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ basics_category_title: title, basics_category_subtitle: subtitle || null, basics_category_sort: 0 })
+    }).then(r=>r.json()).then(function(d) {
+        if (d.error) alert(d.error);
+        else { closeAddCat(); loadCategories(); }
+    });
+}
+
+var _catSaveTimers = {};
+function saveCategory(key) {
+    if (_catSaveTimers[key]) clearTimeout(_catSaveTimers[key]);
+    _catSaveTimers[key] = setTimeout(function() {
+        var row = document.querySelector('tr[data-ck="' + key + '"]');
+        if (!row) return;
+        var title = row.querySelector('[data-field="title"]').value.trim();
+        var subtitle = row.querySelector('[data-field="subtitle"]').value.trim();
+        if (!title) return;
+        // Read sort from allCategories (managed by moveCat)
+        var sort = 0;
+        for (var i = 0; i < allCategories.length; i++) {
+            if (allCategories[i].category_key == key) { sort = allCategories[i].category_sort || 0; break; }
+        }
+        fetch(API + '/admin-basics.php?type=category&key=' + key, {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ basics_category_title: title, basics_category_subtitle: subtitle, basics_category_sort: sort })
+        }).then(r=>r.json()).then(function(d) {
+            if (d.error) alert(d.error);
+        });
+    }, 300);
+}
+
+function moveCat(key, direction) {
+    // Find index in allCategories
+    var idx = -1;
+    for (var i = 0; i < allCategories.length; i++) {
+        if (allCategories[i].category_key == key) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    var swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= allCategories.length) return;
+
+    // Swap sort values
+    var a = allCategories[idx], b = allCategories[swapIdx];
+    var tmpSort = a.category_sort;
+    a.category_sort = b.category_sort;
+    b.category_sort = tmpSort;
+    // If same sort, force different
+    if (a.category_sort === b.category_sort) {
+        a.category_sort = b.category_sort + direction;
+    }
+
+    // Save both
+    fetch(API + '/admin-basics.php?type=category&key=' + a.category_key, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ basics_category_sort: a.category_sort })
+    });
+    fetch(API + '/admin-basics.php?type=category&key=' + b.category_key, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ basics_category_sort: b.category_sort })
+    }).then(function() { loadCategories(); });
+}
+
+function deleteCategory(key) {
+    if (!confirm('Delete this category? Videos will be unassigned.')) return;
+    fetch(API + '/admin-basics.php?type=category&key=' + key, {
+        method: 'DELETE', credentials: 'include'
+    }).then(r=>r.json()).then(function(d) {
+        if (d.error) alert(d.error);
+        else loadCategories();
+    });
+}
+
+// ── Videos ──
+function loadVideos() {
+    // Load categories first for the dropdown
+    fetch(API + '/admin-basics.php?type=categories', {credentials:'include'}).then(r=>r.json()).then(function(catData) {
+        allCategories = catData.categories || [];
+        return fetch(API + '/admin-basics.php?type=videos', {credentials:'include'});
+    }).then(r=>r.json()).then(function(data) {
+        var videos = data.videos || [];
+        document.getElementById('basics-count').textContent = videos.length + ' video' + (videos.length !== 1 ? 's' : '');
+        if (!videos.length) {
+            document.getElementById('table-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No videos. Click "Sync from YouTube" to import.</div>';
+            return;
+        }
+        var catOpts = '<option value="">— None —</option>';
+        allCategories.forEach(function(c) {
+            var catLabel = c.category_title || '';
+            if (c.category_subtitle) catLabel += ' ~ ' + c.category_subtitle;
+            catOpts += '<option value="' + c.category_key + '">' + esc(catLabel) + '</option>';
+        });
+
+        // Group videos by category to determine first/last within each group
+        var catGroups = {};
+        videos.forEach(function(v) {
+            var cat = v.basics_category_key || v.category_key || '_none';
+            if (!catGroups[cat]) catGroups[cat] = [];
+            catGroups[cat].push(v.basics_key);
+        });
+
+        var html = '<table class="basics-table"><thead><tr><th>Thumb</th><th>Title</th><th>Category</th><th>Sort</th><th>Active</th><th>Actions</th></tr></thead><tbody>';
+        videos.forEach(function(v) {
+            var inactive = v.basics_active_flag === false || v.basics_active_flag === 'f';
+            var selCat = v.basics_category_key || v.category_key || '';
+            var cat = v.basics_category_key || v.category_key || '_none';
+            var group = catGroups[cat];
+            var posInGroup = group.indexOf(v.basics_key);
+            var isFirst = posInGroup === 0;
+            var isLast = posInGroup === group.length - 1;
+            var arrowStyle = 'border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;padding:1px 5px;font-size:0.7rem;';
+            var hiddenStyle = 'visibility:hidden;';
+            html += '<tr class="' + (inactive ? 'inactive' : '') + '" data-vk="' + v.basics_key + '">'
+                + '<td><a href="' + esc(v.basics_url || ('https://www.youtube.com/watch?v=' + v.basics_video_id)) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(v.basics_thumbnail || '') + '" alt=""></a></td>'
+                + '<td><input type="text" value="' + esc(v.basics_title || '') + '" data-field="title" style="width:100%;font-size:0.82rem;" onchange="saveVideo(' + v.basics_key + ')"></td>'
+                + '<td><select data-field="cat" onchange="saveVideo(' + v.basics_key + ')">' + catOpts.replace('value="' + selCat + '"', 'value="' + selCat + '" selected') + '</select></td>'
+                + '<td style="white-space:nowrap"><input type="number" value="' + (v.basics_sort || 0) + '" data-field="sort" style="width:50px" onchange="saveVideo(' + v.basics_key + ')">'
+                + '<button style="' + arrowStyle + 'margin-left:2px;' + (isFirst ? hiddenStyle : '') + '" onclick="moveVideo(' + v.basics_key + ',-1)">&#9650;</button>'
+                + '<button style="' + arrowStyle + (isLast ? hiddenStyle : '') + '" onclick="moveVideo(' + v.basics_key + ',1)">&#9660;</button></td>'
+                + '<td style="text-align:center"><input type="checkbox" data-field="active"' + (inactive ? '' : ' checked') + ' onchange="saveVideo(' + v.basics_key + ')"></td>'
+                + '<td class="actions">'
+                + '<button class="del" onclick="deleteVideo(' + v.basics_key + ')">Delete</button>'
+                + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('table-container').innerHTML = html;
+    });
+}
+
+var _saveTimers = {};
+function saveVideo(key) {
+    // Debounce to avoid rapid-fire saves on typing
+    if (_saveTimers[key]) clearTimeout(_saveTimers[key]);
+    _saveTimers[key] = setTimeout(function() {
+        var row = document.querySelector('tr[data-vk="' + key + '"]');
+        if (!row) return;
+        var title = row.querySelector('[data-field="title"]').value.trim();
+        var catKey = row.querySelector('[data-field="cat"]').value || null;
+        var sort = parseInt(row.querySelector('[data-field="sort"]').value) || 0;
+        var active = row.querySelector('[data-field="active"]').checked;
+        row.classList.toggle('inactive', !active);
+        fetch(API + '/admin-basics.php?type=video&key=' + key, {
+            method: 'PUT', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ basics_title: title, basics_category_key: catKey ? parseInt(catKey) : null, basics_sort: sort, basics_active_flag: active })
+        }).then(r=>r.json()).then(function(d) {
+            if (d.error) alert(d.error);
+        });
+    }, 300);
+}
+
+function moveVideo(key, direction) {
+    // Find all visible video rows, group by category, swap within group
+    var rows = document.querySelectorAll('tr[data-vk]');
+    var groups = {}; // catKey -> [{ key, sort, row }]
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var vk = parseInt(r.getAttribute('data-vk'));
+        var cat = r.querySelector('[data-field="cat"]').value || '_none';
+        var sort = parseInt(r.querySelector('[data-field="sort"]').value) || 0;
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push({ key: vk, sort: sort, row: r });
+    }
+    // Find the group containing this video
+    for (var cat in groups) {
+        var g = groups[cat];
+        for (var j = 0; j < g.length; j++) {
+            if (g[j].key === key) {
+                var swapIdx = j + direction;
+                if (swapIdx < 0 || swapIdx >= g.length) return; // can't move further
+                // Swap sort values
+                var tmpSort = g[j].sort;
+                g[j].sort = g[swapIdx].sort;
+                g[swapIdx].sort = tmpSort;
+                // If they had the same sort, force different values
+                if (g[j].sort === g[swapIdx].sort) {
+                    g[j].sort = g[swapIdx].sort + direction;
+                }
+                // Update inputs and save both
+                g[j].row.querySelector('[data-field="sort"]').value = g[j].sort;
+                g[swapIdx].row.querySelector('[data-field="sort"]').value = g[swapIdx].sort;
+                saveVideo(g[j].key);
+                saveVideo(g[swapIdx].key);
+                // Reload after a brief delay to reflect new order
+                setTimeout(loadVideos, 500);
+                return;
+            }
+        }
+    }
+}
+
+function toggleActive(key, activate) {
+    fetch(API + '/basics-admin.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action: 'toggle', basics_key: key, active: activate})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.saved) loadVideos();
+        else alert(d.error || 'Failed');
+    });
+}
+
+function deleteVideo(key) {
+    if (!confirm('Permanently delete this video?')) return;
+    fetch(API + '/basics-admin.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action: 'delete', basics_key: key})
+    }).then(r=>r.json()).then(function(d) {
+        if (d.deleted) loadVideos();
+        else alert(d.error || 'Failed');
+    });
+}
+
+function syncBasics() {
+    var btn = document.getElementById('sync-btn');
+    var status = document.getElementById('sync-status');
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    status.textContent = '';
+    fetch(API + '/basics-videos.php?action=sync', {credentials:'include'}).then(r=>r.json()).then(function(d) {
+        btn.disabled = false;
+        btn.textContent = 'Sync from YouTube';
+        if (d.synced) {
+            status.textContent = 'Inserted: ' + d.inserted + ', Updated: ' + d.updated + ', Skipped: ' + d.skipped;
+            status.className = 'sync-status';
+            loadVideos();
+        } else {
+            status.textContent = d.error || 'Sync failed';
+            status.className = 'sync-status sync-error';
+        }
+    }).catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Sync from YouTube';
+        status.textContent = 'Connection error';
+        status.className = 'sync-status sync-error';
+    });
+}
+
+// ── RGBA Color Picker ──
+function initRgbaPickers() {
+    document.querySelectorAll('.rgba-picker').forEach(function(el) {
+        var id = el.getAttribute('data-id');
+        el.innerHTML =
+            '<div class="color-swatch" id="' + id + '-swatch" style="background:#000;">'
+            + '<input type="color" id="' + id + '-hex" value="#000000">'
+            + '</div>'
+            + '<div class="opacity-wrap">'
+            + '<input type="range" id="' + id + '-opacity" min="0" max="100" value="100" step="1">'
+            + '<span class="opacity-val" id="' + id + '-opval">1.00</span>'
+            + '</div>'
+            + '<span class="rgba-result" id="' + id + '-result"></span>';
+
+        var hex = document.getElementById(id + '-hex');
+        var opacity = document.getElementById(id + '-opacity');
+        var swatch = document.getElementById(id + '-swatch');
+        var opval = document.getElementById(id + '-opval');
+        var result = document.getElementById(id + '-result');
+
+        function update() {
+            var h = hex.value;
+            var a = (parseInt(opacity.value) / 100).toFixed(2);
+            opval.textContent = a;
+            var r = parseInt(h.substr(1,2), 16);
+            var g = parseInt(h.substr(3,2), 16);
+            var b = parseInt(h.substr(5,2), 16);
+            var rgba = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+            swatch.style.background = rgba;
+            result.textContent = rgba;
+        }
+        hex.addEventListener('input', update);
+        opacity.addEventListener('input', update);
+    });
+}
+
+function setPickerValue(id, cssColor) {
+    if (!cssColor) cssColor = 'rgba(0,0,0,1)';
+    var hex = document.getElementById(id + '-hex');
+    var opacity = document.getElementById(id + '-opacity');
+    if (!hex || !opacity) return;
+
+    // Parse rgba(r,g,b,a) or #hex
+    var r = 0, g = 0, b = 0, a = 1;
+    var rgbaMatch = cssColor.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
+    if (rgbaMatch) {
+        r = parseInt(rgbaMatch[1]); g = parseInt(rgbaMatch[2]); b = parseInt(rgbaMatch[3]);
+        a = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
+    } else if (cssColor.charAt(0) === '#') {
+        var hx = cssColor.replace('#', '');
+        if (hx.length === 3) hx = hx[0]+hx[0]+hx[1]+hx[1]+hx[2]+hx[2];
+        r = parseInt(hx.substr(0,2), 16); g = parseInt(hx.substr(2,2), 16); b = parseInt(hx.substr(4,2), 16);
+    }
+    hex.value = '#' + ((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+    opacity.value = Math.round(a * 100);
+    // Trigger update
+    hex.dispatchEvent(new Event('input'));
+}
+
+function getPickerValue(id) {
+    var hex = document.getElementById(id + '-hex');
+    var opacity = document.getElementById(id + '-opacity');
+    if (!hex || !opacity) return '';
+    var h = hex.value;
+    var a = (parseInt(opacity.value) / 100).toFixed(2);
+    var r = parseInt(h.substr(1,2), 16);
+    var g = parseInt(h.substr(3,2), 16);
+    var b = parseInt(h.substr(5,2), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+initRgbaPickers();
+
+// ── Page Settings ──
+function loadSettings() {
+    fetch(API + '/page-basics-config.php', {credentials:'include'}).then(r=>r.json()).then(function(cfg) {
+        document.getElementById('s-heading').value = cfg.heading || '';
+        setPickerValue('s-heading-color', cfg['heading-color'] || '#E5C86C');
+        setPickerValue('s-heading-bg', cfg['heading-bg'] || 'rgba(0,0,0,0)');
+        setPickerValue('s-background', cfg.background || '#373737');
+        document.getElementById('s-columns').value = cfg.columns || '';
+        document.getElementById('s-label-size').value = cfg['label-size'] || '';
+        setPickerValue('s-label-color', cfg['label-color'] || 'rgba(255,255,255,0.85)');
+    });
+}
+
+function saveSettings() {
+    var settings = {
+        heading: document.getElementById('s-heading').value,
+        'heading-color': getPickerValue('s-heading-color'),
+        'heading-bg': getPickerValue('s-heading-bg'),
+        background: getPickerValue('s-background'),
+        columns: document.getElementById('s-columns').value,
+        'label-size': document.getElementById('s-label-size').value,
+        'label-color': getPickerValue('s-label-color')
+    };
+    fetch(API + '/basics-admin.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action: 'save_settings', settings: settings})
+    }).then(r=>r.json()).then(function(d) {
+        var el = document.getElementById('settings-status');
+        if (d.saved) { el.textContent = 'Saved!'; el.className = 'sync-status'; }
+        else { el.textContent = d.error || 'Failed'; el.className = 'sync-status sync-error'; }
+        setTimeout(function() { el.textContent = ''; }, 3000);
+    });
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/site-nav.js"></script>
+<script src="/js/error-reporter.js?v=2"></script>
+</body>
+</html>

@@ -73,7 +73,7 @@
             display: flex;
             justify-content: center;
             gap: 0;
-            margin: 0 -20px 20px -20px;
+            margin: 0 -20px 0 -20px;
             background: #f0f0f0;
             border-bottom: 2px solid #ddd;
         }
@@ -93,23 +93,16 @@
             border-bottom-color: #31345A;
         }
         /* Content */
+        html, body { overflow-x: hidden; }
         .content {
             width: 100%;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 30px 24px 60px;
+            padding: 0 24px 60px;
             flex: 1;
             box-sizing: border-box;
-        html, body { overflow-x: hidden; }
         }
-        .content h1 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 2.2em;
-            font-weight: 700;
-            color: #E5C86C;
-            text-align: center;
-            margin: 0 0 30px;
-        }
+        /* page heading styles in site-nav.js */
 
         /* Media grid */
         .media-grid {
@@ -178,6 +171,7 @@
 
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
     <header>
@@ -211,8 +205,8 @@
         <a href="/DoYouYada">Do You Yada?</a>
     </div>
 
+    <div class="page-heading-wrap"><h1 class="page-heading">Media</h1></div>
     <div class="content">
-        <h1>Media</h1>
         <div id="media-grid" class="media-grid"></div>
         <div id="grid-status" class="grid-status"><div class="spinner"></div></div>
     </div>
@@ -259,6 +253,6 @@ fetch('/api/media-links.php')
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

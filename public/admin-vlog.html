@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vlog Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <link rel="stylesheet" href="css/admin-feed.css?v=2">
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=7"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Vlog</h1>
+
+    <div class="sub-tabs">
+        <button class="sub-tab active" onclick="switchTab('videos')">Videos</button>
+        <button class="sub-tab" onclick="switchTab('categories')">Categories</button>
+        <button class="sub-tab" onclick="switchTab('settings')">Settings</button>
+    </div>
+
+    <!-- Videos Panel -->
+    <div id="panel-videos" class="sub-panel active">
+        <div class="feed-toolbar">
+            <span class="feed-count" id="item-count"></span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-secondary btn-sm" onclick="syncFeed()" id="sync-btn">Sync</button>
+                <span class="sync-status" id="sync-status"></span>
+            </div>
+        </div>
+        <div id="table-container">
+            <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Categories Panel -->
+    <div id="panel-categories" class="sub-panel">
+        <div class="feed-toolbar">
+            <span></span>
+            <button class="btn btn-primary btn-sm" onclick="addCategory()">+ Add Category</button>
+        </div>
+        <div id="cat-container">
+            <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+        </div>
+        <span class="sync-status" id="cat-status"></span>
+    </div>
+
+    <!-- Add Category Modal -->
+    <div id="add-cat-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)closeAddCat()">
+        <div style="background:#fff;border-radius:10px;padding:24px;max-width:450px;width:90%;">
+            <h3 style="margin:0 0 16px;font-size:1.1rem;color:#31345A;">New Category</h3>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:0.85rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Title</label>
+                <input type="text" id="add-cat-title" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:0.85rem;font-weight:600;color:#555;display:block;margin-bottom:4px;">Subtitle</label>
+                <input type="text" id="add-cat-subtitle" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn btn-sm" style="padding:6px 16px;" onclick="closeAddCat()">Cancel</button>
+                <button class="btn btn-primary btn-sm" style="padding:6px 16px;" onclick="submitAddCat()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="panel-settings" class="sub-panel">
+        <div class="config-section">
+            <h3>Settings</h3>
+            <div style="display:grid; grid-template-columns:160px 1fr; gap:10px 16px; align-items:center; max-width:700px;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading</label>
+                <input type="text" id="s-heading" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading Text</label>
+                <div class="rgba-picker" data-id="s-heading-color"></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading Background</label>
+                <div class="rgba-picker" data-id="s-heading-bg"></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Background</label>
+                <div class="rgba-picker" data-id="s-background"></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Columns</label>
+                <input type="number" id="s-columns" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;width:80px;" min="1" max="6">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Label Size (rem)</label>
+                <input type="text" id="s-label-size" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;width:80px;" placeholder="0.85">
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Label Text</label>
+                <div class="rgba-picker" data-id="s-label-color"></div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+                <span class="sync-status" id="settings-status"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+window.ADMIN_PAGE_CODE = 'vlog';
+window.ADMIN_PAGE_TITLE = 'Vlog';
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+</script>
+<script src="/js/admin-feed.js?v=10"></script>
+<script>checkAuth();</script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/site-nav.js"></script>
+<script src="/js/error-reporter.js?v=2"></script>
+</body>
+</html>

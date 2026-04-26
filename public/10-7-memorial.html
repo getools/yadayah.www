@@ -205,6 +205,7 @@
         }
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
 
@@ -234,7 +235,7 @@
 </header>
 
 
-<h1 class="page-title" id="page-title">October 7 Memorial</h1>
+<div class="page-heading-wrap"><h1 class="page-heading" id="page-title">October 7 Memorial</h1></div>
 <p class="page-subtitle" id="page-subtitle">Remembering the 527 lives lost on October 7, 2023</p>
 
 <!-- ── Carousel ── -->
@@ -295,10 +296,30 @@ function loadMemorials() {
         .then(function(data) {
             memorials = data.items || [];
             currentSlide = Math.floor(Math.random() * memorials.length);
+
+            // Check URL for individual identifier
+            // Supports: /10-7-memorial/123 (by key), /10-7-memorial/moshe_shuva (by code)
+            // Also: ?id=N, ?name=Name
+            var pathMatch = window.location.pathname.match(/\/10-7-memorial\/(.+)/);
+            var targetVal = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
+            var params = new URLSearchParams(window.location.search);
+            if (!targetVal) targetVal = params.get('id') || params.get('name') || null;
+
+            if (targetVal) {
+                var isNum = /^\d+$/.test(targetVal);
+                var tv = targetVal.toLowerCase().replace(/-/g, '_');
+                for (var ti = 0; ti < memorials.length; ti++) {
+                    if (isNum && String(memorials[ti].memorial_key) === targetVal) { currentSlide = ti; break; }
+                    if (!isNum && memorials[ti].memorial_code && memorials[ti].memorial_code === tv) { currentSlide = ti; break; }
+                    if (!isNum && memorials[ti].memorial_name_full.toLowerCase() === tv.replace(/_/g, ' ')) { currentSlide = ti; break; }
+                }
+            }
+
             buildCarousel();
             buildGrid();
             goToSlide(currentSlide);
-            startAutoPlay();
+            // Only auto-play if no specific person was requested
+            if (!targetVal) startAutoPlay();
 
             var carousel = document.querySelector('.memorial-carousel');
             carousel.addEventListener('mouseenter', function() { hovering = true; if (autoTimer) clearInterval(autoTimer); });
@@ -341,6 +362,12 @@ function goToSlide(i) {
     updateCounter();
     updateActiveThumb();
     restartAutoPlay();
+
+    // Update URL to reflect current person (no page reload)
+    var m = memorials[i];
+    if (m && m.memorial_code) {
+        history.replaceState(null, '', '/10-7-memorial/' + m.memorial_code);
+    }
 
     // Scroll carousel into view
     document.querySelector('.memorial-carousel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -385,6 +412,6 @@ loadSettings();
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

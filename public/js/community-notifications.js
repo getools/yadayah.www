@@ -144,13 +144,13 @@ CommunityNotifications.startPolling = function() {
         });
 
         _eventSource.onerror = function() {
-            // SSE failed — start fallback polling
+            // SSE dropped — close and reconnect after 5 seconds
             if (_eventSource) { _eventSource.close(); _eventSource = null; }
-            if (!CommunityNotifications._fallbackInterval) {
-                CommunityNotifications._fallbackInterval = setInterval(function() {
-                    CommunityNotifications.fetchUnread();
-                }, 30000);
-            }
+            setTimeout(function() {
+                if (Community.currentUser && !_eventSource) {
+                    CommunityNotifications.startPolling();
+                }
+            }, 5000);
         };
     } else {
         // No SSE support — poll every 30s

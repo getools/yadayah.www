@@ -72,17 +72,10 @@
         .content {
             max-width: 800px;
             margin: 0 auto;
-            padding: 40px 24px 60px;
+            padding: 0 24px 60px;
             flex: 1;
         }
-        .content h1 {
-            font-family: 'Julius Sans One', sans-serif;
-            font-size: 2.2em;
-            font-weight: 700;
-            color: #333;
-            text-align: center;
-            margin: 0 0 40px;
-        }
+        /* page heading styles in site-nav.js */
 
         /* Resource card */
         .resource-card {
@@ -96,13 +89,12 @@
         }
         .resource-card .resource-icon {
             flex-shrink: 0;
-            width: 64px;
-            height: 64px;
+            width: 75px;
             display: block;
         }
         .resource-card .resource-icon img {
-            width: 64px;
-            height: 64px;
+            width: 75px;
+            height: auto;
             object-fit: contain;
         }
         .resource-card .resource-body {
@@ -128,6 +120,7 @@
         }
         .resource-card .download-link {
             display: inline-block;
+            margin-top: 8px;
             color: #1a73e8;
             text-decoration: none;
             font-weight: 600;
@@ -143,6 +136,7 @@
 
     </style>
 <script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
     <header>
@@ -171,8 +165,8 @@
 </header>
 
 
+    <div class="page-heading-wrap"><h1 class="page-heading">Resources</h1></div>
     <div class="content">
-        <h1>Resources</h1>
         <div id="resources-container"><div style="text-align:center;padding:40px;color:#888">Loading resources...</div></div>
     </div>
 
@@ -222,6 +216,6 @@ fetch('/api/resources.php')
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js"></script>
+<script src="/js/site-footer.js?v=12"></script>
 </body>
 </html>

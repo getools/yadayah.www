@@ -32,12 +32,12 @@
 </head>
 <body>
 
-<div id="login-screen"><div class="login-box"><h2>Admin Login</h2><div id="login-error" style="display:none"></div><input id="login-user" placeholder="Username"><input id="login-pass" type="password" placeholder="Password"><button onclick="doLogin()">Sign In</button></div></div>
+<div id="login-screen" class="login-screen"><div class="login-card"><h2>Admin Login</h2><p>Login and password are required</p><div id="login-error" style="display:none"></div><input id="login-user" placeholder="Username"><input id="login-pass" type="password" placeholder="Password"><button onclick="doLogin()">Sign In</button></div></div>
 
 <div id="app" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -111,7 +111,7 @@ var allCategories = [];
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -129,7 +129,7 @@ function doLogin() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({user_code: user, user_pass: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) { location.reload(); }
         else {
             var err = document.getElementById('login-error');
@@ -144,7 +144,7 @@ function doLogout() {
 }
 
 function loadConfig() {
-    fetch(API + '/admin-chat-config.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+    fetch(API + '/admin-chat-config.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(data) {
         allSettings = data.settings || [];
         allCategories = data.categories || [];
         renderLabels();
@@ -213,7 +213,7 @@ function rescaleAll() {
             method: 'POST', credentials: 'include',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ action: 'rescale' })
-        }).then(function(r){return r.json();}).then(function(d) {
+        }).then(function(r){return safeJson(r);}).then(function(d) {
             btn.disabled = false; btn.textContent = 'Rescale All Images';
             status.style.display = 'inline';
             if (d.rescaled) { status.textContent = d.count + ' images rescaled'; status.style.color = '#27ae60'; }
@@ -251,7 +251,7 @@ function saveSettings() {
         method: 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ settings: settings })
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.saved) {
             document.querySelectorAll('.cfg-success').forEach(function(el) {
                 el.style.display = 'inline';
@@ -273,7 +273,7 @@ function saveCategory(catKey) {
         method: 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ category_name: name, category_color: color, category_sort: sort })
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) alert(d.error);
         else {
             var s = document.getElementById('cats-saved');
@@ -289,7 +289,7 @@ function toggleCategory(catKey, active) {
         method: 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ category_active_flag: active })
-    }).then(function(r){return r.json();}).then(function() { loadConfig(); });
+    }).then(function(r){return safeJson(r);}).then(function() { loadConfig(); });
 }
 
 function addCategory() {
@@ -299,7 +299,7 @@ function addCategory() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ category_name: name.trim() })
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) alert(d.error);
         else loadConfig();
     });
@@ -307,5 +307,6 @@ function addCategory() {
 
 checkAuth();
 </script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

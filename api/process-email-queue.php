@@ -9,34 +9,37 @@ require_once __DIR__ . '/send-mail.php';
 
 $db = getDb();
 
-// Fetch pending emails (max 10 per run, oldest first, max 3 attempts)
-$stmt = $db->query("
-    SELECT email_queue_key, to_email, subject, body_html, attempts
-    FROM yy_email_queue
-    WHERE sent_dtime IS NULL AND attempts < 3
-    ORDER BY created_dtime ASC
-    LIMIT 10
-");
-$emails = $stmt->fetchAll();
-
-if (!$emails) exit;
-
+// Process one email at a time with row locking to prevent duplicates
 $sent = 0;
 $failed = 0;
 
-foreach ($emails as $e) {
+for ($i = 0; $i < 10; $i++) {
+    $db->beginTransaction();
+    $stmt = $db->query("
+        SELECT email_queue_key, to_email, subject, body_html, attempts
+        FROM yy_email_queue
+        WHERE sent_dtime IS NULL AND attempts < 3
+        ORDER BY created_dtime ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+    ");
+    $e = $stmt->fetch();
+    if (!$e) { $db->rollBack(); break; }
+
     $key = $e['email_queue_key'];
     $attempts = (int)$e['attempts'] + 1;
+
+    // Mark as processing immediately to prevent other workers from picking it up
+    $db->prepare("UPDATE yy_email_queue SET attempts = ? WHERE email_queue_key = ?")->execute([$attempts, $key]);
+    $db->commit();
 
     $ok = sendMail($db, $e['to_email'], $e['subject'], $e['body_html']);
 
     if ($ok) {
-        $db->prepare("UPDATE yy_email_queue SET sent_dtime = NOW(), attempts = ? WHERE email_queue_key = ?")
-           ->execute([$attempts, $key]);
+        $db->prepare("UPDATE yy_email_queue SET sent_dtime = NOW() WHERE email_queue_key = ?")->execute([$key]);
         $sent++;
     } else {
-        $db->prepare("UPDATE yy_email_queue SET attempts = ?, error = 'Send failed' WHERE email_queue_key = ?")
-           ->execute([$attempts, $key]);
+        $db->prepare("UPDATE yy_email_queue SET error = 'Send failed' WHERE email_queue_key = ?")->execute([$key]);
         $failed++;
     }
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Links - Yada Yah</title>
+    <title>Pages Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/login.css">
     <style>
@@ -18,6 +18,18 @@
         .badge-active { background: #27ae60; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
         .badge-inactive { background: #95a5a6; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; }
         .form-card { }
+        .rgba-picker { display: flex; align-items: center; gap: 8px; }
+        .rgba-picker .color-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; position: relative; overflow: hidden; flex-shrink: 0; }
+        .rgba-picker .color-swatch input[type="color"] { position: absolute; top: -4px; left: -4px; width: 36px; height: 36px; border: none; cursor: pointer; opacity: 0; }
+        .rgba-picker .opacity-wrap { display: flex; align-items: center; gap: 4px; }
+        .rgba-picker .opacity-wrap input[type="range"] { width: 70px; }
+        .rgba-picker .opacity-wrap .opacity-val { font-size: 0.75rem; color: #666; width: 28px; text-align: center; }
+        .rgba-picker .rgba-result { font-size: 0.75rem; color: #888; min-width: 140px; }
+        .style-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .style-row label { font-size: 0.85rem; font-weight: 600; color: #555; min-width: 100px; }
+        .em-field { display: flex; align-items: center; gap: 4px; }
+        .em-field input { width: 68px; }
+        .em-field .unit { font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
@@ -44,17 +56,19 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
         </div>
     </div>
 
-    <h1>Links</h1>
+    <h1>Pages</h1>
 
     <div id="list-view">
-        <div style="margin-bottom:16px;"></div>
+        <div style="margin-bottom:16px;display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary btn-sm" onclick="showPageForm(null)">+ New Page</button>
+        </div>
         <div class="card">
             <table class="pages-table">
                 <thead>
@@ -89,37 +103,84 @@
                 </div>
             </div>
             <div class="field">
-                <label for="f-title">Title</label>
+                <label for="f-title">Title (browser tab)</label>
                 <input type="text" id="f-title">
+            </div>
+            <div class="field">
+                <label for="f-heading">Heading</label>
+                <input type="text" id="f-heading" placeholder="Displayed at top of page">
+            </div>
+            <div class="field">
+                <label for="f-subheading">Subheading</label>
+                <input type="text" id="f-subheading" placeholder="Below the heading">
+            </div>
+            <div class="field">
+                <label for="f-description">Description</label>
+                <textarea id="f-description" rows="3" style="width:100%;font-family:inherit;font-size:0.9rem;padding:8px 10px;border:1px solid #ccc;border-radius:4px;" placeholder="Summary below heading and subheading"></textarea>
+            </div>
+            <div style="border:1px solid #e0e0e0;border-radius:6px;padding:14px 16px;margin:12px 0;">
+                <div style="font-weight:600;font-size:0.9rem;color:#31345A;margin-bottom:10px;">Style</div>
+                <table style="border-collapse:collapse;font-size:0.85rem;">
+                    <tr>
+                        <td style="padding:5px 10px 5px 0;font-weight:600;color:#555;white-space:nowrap;">Heading</td>
+                        <td style="padding:5px 10px;"><div class="rgba-picker" data-id="f-heading-color"></div></td>
+                        <td style="padding:5px 10px;font-weight:600;color:#555;">Size</td>
+                        <td style="padding:5px 0;"><div class="em-field"><input type="number" id="f-heading-size" step="0.1" min="0.5" max="6" placeholder="2.2"><span class="unit">em</span></div></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:5px 10px 5px 0;font-weight:600;color:#555;white-space:nowrap;">Subheading</td>
+                        <td style="padding:5px 10px;"><div class="rgba-picker" data-id="f-subheading-color"></div></td>
+                        <td style="padding:5px 10px;font-weight:600;color:#555;">Size</td>
+                        <td style="padding:5px 0;"><div class="em-field"><input type="number" id="f-subheading-size" step="0.1" min="0.5" max="6" placeholder="1.1"><span class="unit">em</span></div></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:5px 10px 5px 0;font-weight:600;color:#555;white-space:nowrap;">Description</td>
+                        <td style="padding:5px 10px;"><div class="rgba-picker" data-id="f-description-color"></div></td>
+                        <td style="padding:5px 10px;font-weight:600;color:#555;">Size</td>
+                        <td style="padding:5px 0;"><div class="em-field"><input type="number" id="f-description-size" step="0.1" min="0.5" max="6" placeholder="0.95"><span class="unit">em</span></div></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:5px 10px 5px 0;font-weight:600;color:#555;white-space:nowrap;">Background</td>
+                        <td style="padding:5px 10px;" colspan="3"><div class="rgba-picker" data-id="f-background-color"></div></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="field">
+                <label for="f-body">Body</label>
+                <div id="f-body-wrap"><textarea id="f-body"></textarea></div>
             </div>
             <div class="field">
                 <label><input type="checkbox" id="f-active" checked> Active</label>
             </div>
-            <div class="form-row">
-                <div class="field">
-                    <label for="f-toolbar">Header</label>
-                    <select id="f-toolbar">
-                        <option value="0">0 - None</option>
-                        <option value="1" selected>1 - Main</option>
-                        <option value="2">2 - Sub</option>
-                    </select>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:flex-end;gap:8px;">
+                    <div class="field" style="width:auto;">
+                        <label for="f-toolbar">Header</label>
+                        <select id="f-toolbar" style="width:120px;" onchange="document.getElementById('f-header-sort').disabled = this.value === '0';">
+                            <option value="0" selected>None</option>
+                            <option value="1">Main</option>
+                            <option value="2">Sub</option>
+                        </select>
+                    </div>
+                    <div class="field" style="width:auto;">
+                        <label for="f-header-sort">Sort</label>
+                        <input type="number" id="f-header-sort" value="0" style="width:60px" disabled>
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="f-footer-col">Footer</label>
-                    <select id="f-footer-col">
-                        <option value="0">N/A</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label for="f-header-sort">Header Sort</label>
-                    <input type="number" id="f-header-sort" value="0" style="width:80px">
-                </div>
-                <div class="field">
-                    <label for="f-footer-sort">Footer Sort</label>
-                    <input type="number" id="f-footer-sort" value="0" style="width:80px">
+                <div style="display:flex;align-items:flex-end;gap:8px;">
+                    <div class="field" style="width:auto;">
+                        <label for="f-footer-col">Footer</label>
+                        <select id="f-footer-col" style="width:120px;" onchange="document.getElementById('f-footer-sort').disabled = this.value === '0';">
+                            <option value="0">N/A</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
+                    <div class="field" style="width:auto;">
+                        <label for="f-footer-sort">Sort</label>
+                        <input type="number" id="f-footer-sort" value="0" style="width:60px" disabled>
+                    </div>
                 </div>
             </div>
             <div id="aliases-section" style="display:none;margin-top:16px;border-top:1px solid #eee;padding-top:16px;">
@@ -130,6 +191,7 @@
             <div class="button-row" style="margin-top:16px;">
                 <button class="btn btn-primary" onclick="savePage()">Save</button>
                 <button class="btn btn-secondary" onclick="cancelForm()">Cancel</button>
+                <a class="btn btn-secondary" id="btn-view" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;">View Page</a>
                 <button class="btn btn-danger" id="btn-delete" style="display:none" onclick="deletePage()">Delete</button>
             </div>
         </div>
@@ -137,15 +199,74 @@
 
 </div>
 
+<script src="js/tinymce/tinymce.min.js"></script>
 <script src="js/admin-links.js?v=2"></script>
 <script>
 var API = '/api';
 var editingPageKey = null;
 var currentPageKey = null;
 var deletedSections = [];
+var _bodyEditorReady = false;
+
+// ── RGBA Picker ──
+function initRgbaPickers(){document.querySelectorAll('.rgba-picker').forEach(function(el){var id=el.getAttribute('data-id');el.innerHTML='<div class="color-swatch" id="'+id+'-swatch" style="background:#000;"><input type="color" id="'+id+'-hex" value="#000000"></div><div class="opacity-wrap"><input type="range" id="'+id+'-opacity" min="0" max="100" value="100" step="1"><span class="opacity-val" id="'+id+'-opval">1.00</span></div><span class="rgba-result" id="'+id+'-result"></span>';var hex=document.getElementById(id+'-hex'),opacity=document.getElementById(id+'-opacity'),swatch=document.getElementById(id+'-swatch'),opval=document.getElementById(id+'-opval'),result=document.getElementById(id+'-result');function update(){var h=hex.value,a=(parseInt(opacity.value)/100).toFixed(2);opval.textContent=a;var r=parseInt(h.substr(1,2),16),g=parseInt(h.substr(3,2),16),b=parseInt(h.substr(5,2),16);var rgba='rgba('+r+','+g+','+b+','+a+')';swatch.style.background=rgba;result.textContent=rgba;}hex.addEventListener('input',update);opacity.addEventListener('input',update);});}
+function setPickerValue(id,c){if(!c)c='rgba(0,0,0,1)';var hex=document.getElementById(id+'-hex'),op=document.getElementById(id+'-opacity');if(!hex||!op)return;var r=0,g=0,b=0,a=1;var m=c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);if(m){r=parseInt(m[1]);g=parseInt(m[2]);b=parseInt(m[3]);a=m[4]!==undefined?parseFloat(m[4]):1;}else if(c.charAt(0)==='#'){var hx=c.replace('#','');if(hx.length===3)hx=hx[0]+hx[0]+hx[1]+hx[1]+hx[2]+hx[2];r=parseInt(hx.substr(0,2),16);g=parseInt(hx.substr(2,2),16);b=parseInt(hx.substr(4,2),16);}hex.value='#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);op.value=Math.round(a*100);hex.dispatchEvent(new Event('input'));}
+function getPickerValue(id){var hex=document.getElementById(id+'-hex'),op=document.getElementById(id+'-opacity');if(!hex||!op)return'';var h=hex.value,a=(parseInt(op.value)/100).toFixed(2);var r=parseInt(h.substr(1,2),16),g=parseInt(h.substr(3,2),16),b=parseInt(h.substr(5,2),16);return'rgba('+r+','+g+','+b+','+a+')';}
+initRgbaPickers();
+
+function initBodyEditor(content) {
+    _bodyEditorReady = false;
+    var existing = tinymce.get('f-body');
+    if (existing) existing.remove();
+
+    tinymce.init({
+        selector: '#f-body',
+        base_url: '/js/tinymce',
+        plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table autoresize charmap code',
+        toolbar: 'bold italic underline strikethrough | blocks fontfamily fontsize | forecolor backcolor | bullist numlist | blockquote codesample | link image media emoticons charmap | table | code fullscreen',
+        menubar: 'file edit view insert format tools table',
+        statusbar: true,
+        branding: false,
+        promotion: false,
+        min_height: 450,
+        max_height: 900,
+        autoresize_bottom_margin: 20,
+        skin: 'oxide',
+        font_family_formats: 'Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Maven Pro=Maven Pro,sans-serif; Semitic Early=Semitic Early; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Yada Towrah=YadaTowrah-Times; Webdings=webdings; Wingdings=wingdings,zapf dingbats',
+        content_css: 'default',
+        content_style: '@font-face { font-family: "YadaTowrah-Times"; src: url("/fonts/YadaTowrah-Times.woff2") format("woff2"), url("/fonts/YadaTowrah-Times.ttf") format("truetype"); } @font-face { font-family: "Semitic Early"; src: url("/fonts/SemiticEarly.ttf") format("truetype"); } body { font-family: "Maven Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 1rem; line-height: 1.7; color: #333; padding: 12px; } img { max-width: 100%; height: auto; border-radius: 6px; } a { color: #31345A; } blockquote { border-left: 3px solid #E5C86C; margin: 8px 0; padding: 8px 16px; background: #fafafa; } pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 8px; }',
+        images_upload_handler: function(blobInfo) {
+            return new Promise(function(resolve, reject) {
+                var fd = new FormData();
+                fd.append('image', blobInfo.blob(), blobInfo.filename());
+                fetch('/api/community-image-upload.php', {
+                    method: 'POST', credentials: 'include', body: fd
+                }).then(function(r) { return safeJson(r); }).then(function(data) {
+                    if (data.url) resolve(data.url); else reject(data.error || 'Upload failed');
+                }).catch(function() { reject('Upload failed'); });
+            });
+        },
+        automatic_uploads: true,
+        setup: function(editor) {
+            editor.on('init', function() {
+                editor.setContent(content || '');
+                _bodyEditorReady = true;
+                // Notify dirty-tracking that content changed
+                editor.on('focus', function() {
+                    if (typeof window.markDirty === 'function') window.markDirty();
+                });
+            });
+        }
+    });
+}
+
+function getBodyContent() {
+    var editor = tinymce.get('f-body');
+    return editor ? editor.getContent() : document.getElementById('f-body').value;
+}
 
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -166,7 +287,7 @@ function doLogin() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({login: user, password: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
@@ -200,7 +321,7 @@ var HEADER_LABELS = {0: 'None', 1: 'Main', 2: 'Sub'};
 var FOOTER_LABELS = {0: 'N/A', 1: '1', 2: '2', 3: '3'};
 
 function loadList() {
-    fetch(API + '/pages.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
+    fetch(API + '/pages.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(rows) {
         allPages = rows;
         renderList();
     });
@@ -272,7 +393,8 @@ function renderList() {
             + '<td>' + (r.page_footer_sort || 0) + '</td>'
             + '<td>' + badge + '</td>'
             + '<td>'
-            + '<button class="btn btn-sm btn-secondary" onclick="editPage(' + r.page_key + ')">Edit</button>'
+            + '<button class="btn btn-sm btn-secondary" onclick="editPage(' + r.page_key + ')">Edit</button> '
+            + '<a class="btn btn-sm btn-secondary" href="' + esc(pageViewUrl(r)) + '" target="_blank" rel="noopener" style="text-decoration:none;">View</a>'
             + '</td>'
             + '</tr>';
     }).join('');
@@ -284,16 +406,40 @@ var deletedAliases = [];
 
 function showPageForm(record) {
     editingPageKey = record ? record.page_key : null;
-    document.getElementById('form-title').textContent = editingPageKey ? 'Edit Link' : 'New Link';
+    document.getElementById('form-title').textContent = editingPageKey ? 'Edit Page' : 'New Page';
     document.getElementById('f-code').value = record ? record.page_code : '';
     document.getElementById('f-url').value = record ? (record.page_url || '') : '';
     document.getElementById('f-title').value = record ? (record.page_title || '') : '';
+    document.getElementById('f-heading').value = record ? (record.page_heading || '') : '';
+    document.getElementById('f-subheading').value = record ? (record.page_subheading || '') : '';
+    document.getElementById('f-description').value = record ? (record.page_description || '') : '';
+
+    // Style fields
+    setPickerValue('f-heading-color', (record && record.page_heading_color) || 'rgba(229,200,108,1)');
+    document.getElementById('f-heading-size').value = (record && record.page_heading_size) || '';
+    setPickerValue('f-subheading-color', (record && record.page_subheading_color) || 'rgba(102,102,102,1)');
+    document.getElementById('f-subheading-size').value = (record && record.page_subheading_size) || '';
+    setPickerValue('f-description-color', (record && record.page_description_color) || 'rgba(85,85,85,1)');
+    document.getElementById('f-description-size').value = (record && record.page_description_size) || '';
+    setPickerValue('f-background-color', (record && record.page_background_color) || 'rgba(245,245,245,1)');
+
     document.getElementById('f-active').checked = record ? record.page_active_flag : true;
-    document.getElementById('f-toolbar').value = record ? (record.page_toolbar || 0) : 1;
-    document.getElementById('f-footer-col').value = record ? (record.page_footer_col || 0) : 0;
+    var toolbarVal = record ? (record.page_toolbar || 0) : 0;
+    var footerVal = record ? (record.page_footer_col || 0) : 0;
+    document.getElementById('f-toolbar').value = toolbarVal;
+    document.getElementById('f-footer-col').value = footerVal;
     document.getElementById('f-header-sort').value = record ? (record.page_header_sort || 0) : 0;
     document.getElementById('f-footer-sort').value = record ? (record.page_footer_sort || 0) : 0;
+    document.getElementById('f-header-sort').disabled = (String(toolbarVal) === '0');
+    document.getElementById('f-footer-sort').disabled = (String(footerVal) === '0');
     document.getElementById('btn-delete').style.display = editingPageKey ? '' : 'none';
+    var viewBtn = document.getElementById('btn-view');
+    if (editingPageKey && record) {
+        viewBtn.href = pageViewUrl(record);
+        viewBtn.style.display = '';
+    } else {
+        viewBtn.style.display = 'none';
+    }
     document.getElementById('form-error').style.display = 'none';
 
     // Aliases
@@ -304,6 +450,9 @@ function showPageForm(record) {
     renderAliases();
 
     showView('form-view');
+
+    // Init TinyMCE body editor after form is visible
+    initBodyEditor(record ? (record.page_body || '') : '');
 }
 
 function renderAliases() {
@@ -353,7 +502,7 @@ function collectAliases() {
 }
 
 function editPage(key) {
-    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(data) {
         showPageForm(data);
     });
 }
@@ -372,7 +521,22 @@ function savePage() {
     var headerSort = parseInt(document.getElementById('f-header-sort').value) || 0;
     var url = document.getElementById('f-url').value.trim();
     var footerSort = parseInt(document.getElementById('f-footer-sort').value) || 0;
-    var body = {page_code: code, page_title: title, page_active_flag: active, page_toolbar: toolbar, page_footer_col: footerCol, page_header_sort: headerSort, page_footer_sort: footerSort, page_url: url};
+    var heading = document.getElementById('f-heading').value.trim();
+    var subheading = document.getElementById('f-subheading').value.trim();
+    var description = document.getElementById('f-description').value.trim();
+    var pageBody = getBodyContent().trim();
+    var body = {
+        page_code: code, page_title: title, page_active_flag: active,
+        page_toolbar: toolbar, page_footer_col: footerCol, page_header_sort: headerSort, page_footer_sort: footerSort,
+        page_url: url, page_heading: heading, page_subheading: subheading, page_description: description, page_body: pageBody,
+        page_heading_color: getPickerValue('f-heading-color'),
+        page_heading_size: document.getElementById('f-heading-size').value || null,
+        page_subheading_color: getPickerValue('f-subheading-color'),
+        page_subheading_size: document.getElementById('f-subheading-size').value || null,
+        page_description_color: getPickerValue('f-description-color'),
+        page_description_size: document.getElementById('f-description-size').value || null,
+        page_background_color: getPickerValue('f-background-color')
+    };
     var url = API + '/pages.php';
     var method = 'POST';
 
@@ -385,7 +549,7 @@ function savePage() {
         method: method, credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(body)
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
         var pageKey = editingPageKey || d.page_key;
         var aliases = collectAliases();
@@ -394,7 +558,7 @@ function savePage() {
                 method: 'POST', credentials: 'include',
                 headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ page_key: pageKey, aliases: aliases, deleted_aliases: deletedAliases })
-            }).then(function(r){return r.json();});
+            }).then(function(r){return safeJson(r);});
         }
     }).then(function() {
         cancelForm();
@@ -404,7 +568,7 @@ function savePage() {
 
 function deletePage() {
     if (!editingPageKey || !confirm('Delete this page and all its sections?')) return;
-    fetch(API + '/pages.php?key=' + editingPageKey, {method:'DELETE', credentials:'include'}).then(function(r){return r.json();}).then(function() {
+    fetch(API + '/pages.php?key=' + editingPageKey, {method:'DELETE', credentials:'include'}).then(function(r){return safeJson(r);}).then(function() {
         cancelForm();
         loadList();
     });
@@ -421,7 +585,7 @@ function editSections(key) {
     deletedSections = [];
     document.getElementById('sections-error').style.display = 'none';
 
-    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(data) {
         document.getElementById('sections-title').textContent = 'Sections: ' + (data.page_title || data.page_code);
         renderSections(data.sections || []);
         showView('sections-view');
@@ -506,7 +670,7 @@ function saveSections() {
             sections: sections,
             deleted_sections: deletedSections,
         })
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
         deletedSections = [];
         // Reload to show saved state
@@ -532,6 +696,12 @@ function esc(s) {
     return d.innerHTML;
 }
 
+function pageViewUrl(r) {
+    var url = r.page_url || r.page_code || '';
+    if (url && url.charAt(0) !== '/' && url.indexOf('http') !== 0) url = '/' + url;
+    return url || '/';
+}
+
 function escAttr(s) {
     return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -545,7 +715,10 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 });
 
 checkAuth();
+
+// TinyMCE dirty-tracking: focus on editor marks form as dirty (handled via admin-dirty.js markDirty)
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Books Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .books-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .books-table th, .books-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+        .books-table th { background: #f5f5f5; font-weight: 600; font-size: 0.8rem; position: sticky; top: 0; }
+        .books-table tr:hover { background: #f0f4ff; cursor: pointer; }
+        .books-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
+        .books-table .actions button:hover { background: #f0f0f0; }
+        .books-table .actions button.del { color: #c0392b; border-color: #e0c0c0; }
+
+        .series-header { background: #31345A; color: #E5C86C; padding: 10px 14px; font-weight: 700; font-size: 0.9rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; margin-top: 16px; }
+        .series-header:first-child { margin-top: 0; }
+        .series-header:hover { background: #4a4e7a; }
+        .series-header .series-meta { font-size: 0.78rem; font-weight: 400; color: rgba(229,200,108,0.7); }
+        .series-header .series-actions { display: flex; gap: 6px; }
+        .series-header .series-actions button { padding: 2px 8px; font-size: 0.72rem; border: 1px solid rgba(229,200,108,0.4); border-radius: 3px; cursor: pointer; background: transparent; color: #E5C86C; }
+        .series-header .series-actions button:hover { background: rgba(229,200,108,0.15); }
+        .series-volumes { margin-bottom: 8px; }
+
+        .badge-active { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #d4edda; color: #155724; }
+        .badge-inactive { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #f8d7da; color: #721c24; }
+
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .form-overlay.open { display: flex; }
+        .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 650px; }
+        .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
+        .form-header h3 { margin: 0; font-size: 1rem; }
+        .form-header button { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #666; }
+        .form-body { padding: 20px; }
+        .form-body .field { margin-bottom: 14px; }
+        .form-body label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: #333; }
+        .form-body input[type=text], .form-body input[type=number], .form-body select, .form-body textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .form-body input[type=number] { width: 100px; }
+        .form-body .form-row { display: flex; gap: 12px; }
+        .form-body .form-row .field { flex: 1; }
+        .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .book-count { font-size: 0.85rem; color: #666; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field"><label for="login-pass">Password</label>
+            <div class="pass-wrap"><input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button></div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=7"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Books</h1>
+
+    <div class="toolbar">
+        <span class="book-count" id="book-count"></span>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="showVolumeForm(null)">+ Add Volume</button>
+        </div>
+    </div>
+
+    <div id="table-container">
+        <div style="text-align:center;padding:20px;color:#888">Loading...</div>
+    </div>
+</div>
+
+<!-- Volume Form -->
+<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)closeForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="form-title">Add Volume</h3>
+            <button onclick="closeForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="f-key">
+            <div class="field"><label>Series</label>
+                <select id="f-series"></select>
+            </div>
+            <div class="field"><label>Label</label><input type="text" id="f-label" placeholder="e.g. Dabarym-Words"></div>
+            <div class="field"><label>Name</label><input type="text" id="f-name" placeholder="e.g. Dabarym-Words"></div>
+            <div class="form-row">
+                <div class="field"><label>Volume #</label><input type="number" id="f-number" value="0"></div>
+                <div class="field"><label>Sort</label><input type="number" id="f-sort" value="0"></div>
+                <div class="field"><label>Pages</label><input type="number" id="f-pages" value="0"></div>
+            </div>
+            <div class="field"><label>FlipHTML5 Code</label><input type="text" id="f-flip" placeholder="e.g. YY-s01v01-..."></div>
+            <div class="field"><label>PDF Filename</label><input type="text" id="f-pdf" placeholder="e.g. YY-s01v01-..."></div>
+            <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" onclick="saveVolume()">Save</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Series Form -->
+<div id="series-form-overlay" class="form-overlay" onclick="if(event.target===this)closeSeriesForm()">
+    <div class="form-panel">
+        <div class="form-header">
+            <h3 id="series-form-title">Edit Series</h3>
+            <button onclick="closeSeriesForm()">&times;</button>
+        </div>
+        <div class="form-body">
+            <input type="hidden" id="sf-key">
+            <div class="field"><label>Label</label><input type="text" id="sf-label"></div>
+            <div class="field"><label>Short Name</label><input type="text" id="sf-name"></div>
+            <div class="form-row">
+                <div class="field"><label>Series #</label><input type="number" id="sf-number" value="0"></div>
+                <div class="field"><label>Sort</label><input type="number" id="sf-sort" value="0"></div>
+            </div>
+            <div class="field"><label>Summary</label><textarea id="sf-summary" style="min-height:80px;"></textarea></div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" onclick="saveSeries()">Save</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeSeriesForm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allSeries = [];
+var allVolumes = [];
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadBooks();
+        } else { document.getElementById('login-screen').classList.add('visible'); }
+    });
+}
+function doLogin() {
+    var user = document.getElementById('login-user').value, pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error'); errEl.style.display = 'none';
+    fetch(API + '/auth.php', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({login:user, password:pass})})
+    .then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) { document.getElementById('login-screen').classList.remove('visible'); document.getElementById('app').style.display = ''; document.getElementById('user-display').textContent = d.user_name; applyPagePermissions(d.pages); loadBooks(); }
+        else { errEl.textContent = d.error || 'Login failed'; errEl.style.display = ''; }
+    });
+}
+function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); }); }
+function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
+
+function loadBooks() {
+    fetch(API + '/admin-books.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        allSeries = d.series || [];
+        allVolumes = d.volumes || [];
+        document.getElementById('book-count').textContent = allSeries.length + ' series, ' + allVolumes.length + ' volumes';
+        renderBooks();
+    });
+}
+
+function renderBooks() {
+    var container = document.getElementById('table-container');
+    if (!allSeries.length) { container.innerHTML = '<div style="text-align:center;padding:30px;color:#888">No series found.</div>'; return; }
+
+    var html = '';
+    for (var si = 0; si < allSeries.length; si++) {
+        var s = allSeries[si];
+        var vols = allVolumes.filter(function(v) { return v.series_key == s.series_key; });
+
+        html += '<div class="series-header" onclick="editSeries(' + s.series_key + ')">'
+            + '<div>' + esc(s.series_label) + ' <span class="series-meta">(' + vols.length + ' volume' + (vols.length !== 1 ? 's' : '') + ')</span></div>'
+            + '<div class="series-actions" onclick="event.stopPropagation()">'
+            + '<button onclick="addVolumeToSeries(' + s.series_key + ')">+ Volume</button>'
+            + '<button onclick="editSeries(' + s.series_key + ')">Edit</button>'
+            + '</div></div>';
+
+        if (vols.length) {
+            html += '<div class="series-volumes"><table class="books-table"><thead><tr>'
+                + '<th>#</th><th>Label</th><th>Name</th><th>Pages</th><th>FlipHTML5</th><th>Status</th><th>Actions</th>'
+                + '</tr></thead><tbody>';
+            for (var vi = 0; vi < vols.length; vi++) {
+                var v = vols[vi];
+                html += '<tr onclick="editVolume(' + v.volume_key + ')">'
+                    + '<td>' + (v.volume_number || '') + '</td>'
+                    + '<td><strong>' + esc(v.volume_label) + '</strong></td>'
+                    + '<td style="font-size:0.8rem;color:#666;">' + esc(v.volume_name || '') + '</td>'
+                    + '<td>' + (v.volume_page_count || '') + '</td>'
+                    + '<td style="font-size:0.75rem;font-family:monospace;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(v.volume_flip_code || '') + '</td>'
+                    + '<td>' + (v.volume_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>') + '</td>'
+                    + '<td class="actions" onclick="event.stopPropagation()">'
+                    + '<button onclick="editVolume(' + v.volume_key + ')">Edit</button>'
+                    + '<button class="del" onclick="deleteVolume(' + v.volume_key + ',\'' + esc(v.volume_label).replace(/'/g,"\\'") + '\')">Del</button>'
+                    + '</td></tr>';
+            }
+            html += '</tbody></table></div>';
+        }
+    }
+    container.innerHTML = html;
+}
+
+// ── Volume Form ──
+function editVolume(key) { var v = allVolumes.find(function(r){return r.volume_key==key;}); if(v) showVolumeForm(v); }
+function addVolumeToSeries(seriesKey) { showVolumeForm({series_key: seriesKey}); }
+
+function showVolumeForm(record) {
+    var r = record || {};
+    document.getElementById('form-title').textContent = r.volume_key ? 'Edit Volume' : 'Add Volume';
+    document.getElementById('f-key').value = r.volume_key || '';
+    document.getElementById('f-label').value = r.volume_label || '';
+    document.getElementById('f-name').value = r.volume_name || '';
+    document.getElementById('f-number').value = r.volume_number || 0;
+    document.getElementById('f-sort').value = r.volume_sort || 0;
+    document.getElementById('f-pages').value = r.volume_page_count || 0;
+    document.getElementById('f-flip').value = r.volume_flip_code || '';
+    document.getElementById('f-pdf').value = r.volume_pdf || '';
+    document.getElementById('f-active').checked = r.volume_active_flag !== false;
+
+    var sel = document.getElementById('f-series');
+    sel.innerHTML = allSeries.map(function(s) {
+        return '<option value="' + s.series_key + '"' + (r.series_key == s.series_key ? ' selected' : '') + '>' + esc(s.series_label) + '</option>';
+    }).join('');
+
+    document.getElementById('form-overlay').classList.add('open');
+}
+
+function closeForm() { document.getElementById('form-overlay').classList.remove('open'); }
+
+function saveVolume() {
+    var key = document.getElementById('f-key').value;
+    var label = document.getElementById('f-label').value.trim();
+    if (!label) { alert('Label is required'); return; }
+
+    var payload = {
+        series_key: parseInt(document.getElementById('f-series').value),
+        volume_label: label,
+        volume_name: document.getElementById('f-name').value.trim(),
+        volume_number: parseInt(document.getElementById('f-number').value) || 0,
+        volume_sort: parseInt(document.getElementById('f-sort').value) || 0,
+        volume_page_count: parseInt(document.getElementById('f-pages').value) || 0,
+        volume_flip_code: document.getElementById('f-flip').value.trim(),
+        volume_pdf: document.getElementById('f-pdf').value.trim(),
+        volume_active_flag: document.getElementById('f-active').checked,
+    };
+
+    fetch(API + '/admin-books.php' + (key ? '?key=' + key : ''), {
+        method: key ? 'PUT' : 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    }).then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} closeForm(); loadBooks(); });
+}
+
+function deleteVolume(key, label) {
+    if (!confirm('Delete volume "' + label + '"?')) return;
+    fetch(API + '/admin-books.php?key=' + key, {method:'DELETE', credentials:'include'})
+    .then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} loadBooks(); });
+}
+
+// ── Series Form ──
+function editSeries(key) {
+    var s = allSeries.find(function(r){return r.series_key==key;});
+    if (!s) return;
+    document.getElementById('series-form-title').textContent = 'Edit Series';
+    document.getElementById('sf-key').value = s.series_key;
+    document.getElementById('sf-label').value = s.series_label || '';
+    document.getElementById('sf-name').value = s.series_name || '';
+    document.getElementById('sf-number').value = s.series_number || 0;
+    document.getElementById('sf-sort').value = s.series_sort || 0;
+    document.getElementById('sf-summary').value = s.series_summary || '';
+    document.getElementById('series-form-overlay').classList.add('open');
+}
+
+function closeSeriesForm() { document.getElementById('series-form-overlay').classList.remove('open'); }
+
+function saveSeries() {
+    var key = document.getElementById('sf-key').value;
+    var payload = {
+        series_label: document.getElementById('sf-label').value.trim(),
+        series_name: document.getElementById('sf-name').value.trim(),
+        series_number: parseInt(document.getElementById('sf-number').value) || 0,
+        series_sort: parseInt(document.getElementById('sf-sort').value) || 0,
+        series_summary: document.getElementById('sf-summary').value.trim(),
+    };
+    if (!payload.series_label) { alert('Label is required'); return; }
+
+    fetch(API + '/admin-books.php?series_key=' + key, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    }).then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} closeSeriesForm(); loadBooks(); });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+</body>
+</html>

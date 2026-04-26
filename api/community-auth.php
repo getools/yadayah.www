@@ -34,8 +34,8 @@ if ($action === 'register') {
     if ($stmt->fetchColumn()) errorResponse('An account with this email already exists. Try logging in instead.');
 
     $hash = password_hash($pass, PASSWORD_BCRYPT);
-    $stmt = $db->prepare("INSERT INTO yy_user (user_code, user_email, user_display_name, user_active_flag, user_verified) VALUES (?, ?, ?, TRUE, FALSE) RETURNING user_key");
-    $stmt->execute(['email:' . $email, $email, $name]);
+    $stmt = $db->prepare("INSERT INTO yy_user (user_code, user_email, user_display_name, user_name_display, user_active_flag, user_verified) VALUES (?, ?, ?, ?, TRUE, FALSE) RETURNING user_key");
+    $stmt->execute(['email:' . $email, $email, $name, $name]);
     $userKey = $stmt->fetchColumn();
 
     // Insert auth method

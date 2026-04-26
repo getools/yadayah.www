@@ -44,7 +44,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -145,7 +145,7 @@ var currentPageKey = null;
 var deletedSections = [];
 
 function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(d) {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
@@ -166,7 +166,7 @@ function doLogin() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({login: user, password: pass})
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
             document.getElementById('login-screen').classList.remove('visible');
             document.getElementById('app').style.display = '';
@@ -200,7 +200,7 @@ var HEADER_LABELS = {0: 'None', 1: 'Main', 2: 'Sub'};
 var FOOTER_LABELS = {0: 'N/A', 1: '1', 2: '2', 3: '3'};
 
 function loadList() {
-    fetch(API + '/pages.php', {credentials:'include'}).then(function(r){return r.json();}).then(function(rows) {
+    fetch(API + '/pages.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(rows) {
         allPages = rows;
         renderList();
     });
@@ -354,12 +354,12 @@ function saveAlias() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ page_key: editingPageKey, aliases: aliases, deleted_aliases: deletedAliases })
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { alert(d.error); return; }
         deletedAliases = [];
         _pendingAliasIdx = null;
         // Reload aliases from server
-        fetch(API + '/pages.php?key=' + editingPageKey, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+        fetch(API + '/pages.php?key=' + editingPageKey, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(data) {
             currentAliases = (data.aliases || []).filter(function(a) { return a.alias_path; });
             renderAliases();
             resetAliasBtn();
@@ -401,7 +401,7 @@ function collectAliases() {
 }
 
 function editPage(key) {
-    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(data) {
         showPageForm(data);
     });
 }
@@ -433,7 +433,7 @@ function savePage() {
         method: method, credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(body)
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
         var pageKey = editingPageKey || d.page_key;
         var aliases = collectAliases();
@@ -442,7 +442,7 @@ function savePage() {
                 method: 'POST', credentials: 'include',
                 headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ page_key: pageKey, aliases: aliases, deleted_aliases: deletedAliases })
-            }).then(function(r){return r.json();});
+            }).then(function(r){return safeJson(r);});
         }
     }).then(function() {
         cancelForm();
@@ -452,7 +452,7 @@ function savePage() {
 
 function deletePage() {
     if (!editingPageKey || !confirm('Delete this page and all its sections?')) return;
-    fetch(API + '/pages.php?key=' + editingPageKey, {method:'DELETE', credentials:'include'}).then(function(r){return r.json();}).then(function() {
+    fetch(API + '/pages.php?key=' + editingPageKey, {method:'DELETE', credentials:'include'}).then(function(r){return safeJson(r);}).then(function() {
         cancelForm();
         loadList();
     });
@@ -469,7 +469,7 @@ function editSections(key) {
     deletedSections = [];
     document.getElementById('sections-error').style.display = 'none';
 
-    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return r.json();}).then(function(data) {
+    fetch(API + '/pages.php?key=' + key, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(data) {
         document.getElementById('sections-title').textContent = 'Sections: ' + (data.page_title || data.page_code);
         renderSections(data.sections || []);
         showView('sections-view');
@@ -554,7 +554,7 @@ function saveSections() {
             sections: sections,
             deleted_sections: deletedSections,
         })
-    }).then(function(r){return r.json();}).then(function(d) {
+    }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { errEl.textContent = d.error; errEl.style.display = ''; return; }
         deletedSections = [];
         // Reload to show saved state
@@ -594,6 +594,7 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>

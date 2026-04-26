@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glossary Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        @font-face { font-family: 'YadaTowrah'; src: url('/fonts/YadaTowrah-Regular.woff2') format('woff2'), url('/fonts/YadaTowrah-Regular.woff') format('woff'); }
+        .letter-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .letter-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; cursor: pointer; transition: box-shadow 0.2s, border-color 0.2s; display: flex; gap: 14px; align-items: center; }
+        .letter-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.1); border-color: #3498db; }
+        .letter-card.inactive { opacity: 0.4; }
+        .letter-card .yt-char { font-family: 'YadaTowrah', serif; font-size: 2.2rem; color: #1a5276; width: 44px; text-align: center; flex-shrink: 0; }
+        .letter-card .card-info { flex: 1; min-width: 0; }
+        .letter-card .card-name { font-weight: 700; font-size: 0.95rem; color: #333; text-transform: capitalize; }
+        .letter-card .card-meta { font-size: 0.78rem; color: #888; margin-top: 2px; }
+        .letter-card .card-sort { font-size: 0.75rem; color: #aaa; flex-shrink: 0; }
+
+        .edit-panel { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 20px; display: none; }
+        .edit-panel.active { display: block; }
+        .edit-panel h2 { margin: 0 0 20px; font-size: 1.1rem; color: #31345A; display: flex; align-items: center; gap: 10px; }
+        .edit-panel h2 .yt-char { font-family: 'YadaTowrah', serif; font-size: 2rem; color: #1a5276; }
+
+        .field-row { display: flex; gap: 16px; margin-bottom: 14px; align-items: baseline; }
+        .field-row label { flex: 0 0 140px; font-weight: 600; font-size: 0.85rem; color: #555; text-align: right; }
+        .field-row .field-input { flex: 1; }
+        .field-row input[type=text], .field-row input[type=number] {
+            width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.9rem; box-sizing: border-box; font-family: inherit;
+        }
+        .field-row input:focus, .field-row textarea:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
+        .field-row textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.85rem; font-family: inherit; resize: vertical; box-sizing: border-box;
+        }
+        .field-row .yt-preview { font-family: 'YadaTowrah', serif; font-size: 1.8rem; color: #1a5276; margin-left: 8px; }
+        .field-row .hebrew-preview { font-size: 1.4rem; direction: rtl; margin-left: 8px; }
+        .field-row .char-inputs { display: flex; gap: 8px; align-items: center; }
+        .field-row .char-inputs input { width: 60px; text-align: center; }
+        .field-row .small-input { width: 100px !important; }
+
+        .img-preview { margin-bottom: 8px; }
+        .img-preview img { max-height: 80px; max-width: 200px; border: 1px solid #ddd; border-radius: 4px; padding: 2px; background: #f8f8f8; }
+        .img-upload { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .img-status { font-size: 0.82rem; color: #27ae60; }
+
+        .button-row { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
+        .save-status { font-size: 0.85rem; color: #27ae60; }
+        .save-error { font-size: 0.85rem; color: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=7"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Glossary - Hebrew Letters</h1>
+
+    <div id="edit-panel" class="edit-panel"></div>
+    <div id="letter-list" class="letter-list"></div>
+</div>
+
+<script src="js/admin-links.js?v=2"></script>
+<script>
+var API = '/api';
+var allLetters = [];
+var editingKey = null;
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadLetters();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: user, password: pass})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            applyPagePermissions(d.pages);
+            loadLetters();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); });
+}
+
+function togglePassword() {
+    var input = document.getElementById('login-pass');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function loadLetters() {
+    fetch(API + '/admin-glossary.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        allLetters = d.letters || [];
+        renderList();
+    });
+}
+
+function renderList() {
+    var html = '';
+    allLetters.forEach(function(l) {
+        if (l.letter_sort == 0) return; // skip intro
+        var inactive = l.letter_active === false || l.letter_active === 'f';
+        html += '<div class="letter-card' + (inactive ? ' inactive' : '') + '" onclick="editLetter(' + l.letter_key + ')">'
+            + '<div class="yt-char">' + esc(l.letter_yt || '') + '</div>'
+            + '<div class="card-info">'
+            + '<div class="card-name">' + esc(l.letter_label || '') + '</div>'
+            + '<div class="card-meta">' + esc(l.letter_hebrew || '') + ' &middot; Value: ' + (l.letter_numeric_value || '—') + '</div>'
+            + '</div>'
+            + '<div class="card-sort">#' + l.letter_sort + '</div>'
+            + '</div>';
+    });
+    document.getElementById('letter-list').innerHTML = html;
+}
+
+function editLetter(key) {
+    editingKey = key;
+    var l = allLetters.find(function(x) { return x.letter_key == key; });
+    if (!l) return;
+
+    var imgHtml = l.letter_image
+        ? '<div class="img-preview"><img src="/images/' + esc(l.letter_image) + '?v=' + Date.now() + '" alt=""></div>'
+        : '<div class="img-preview"><span style="color:#999;font-size:0.82rem;font-style:italic">No image set</span></div>';
+
+    var html = '<h2><span class="yt-char">' + esc(l.letter_yt || '') + '</span> ' + esc(l.letter_label || 'Intro') + '</h2>'
+
+        + '<div class="field-row"><label>List Number</label><div class="field-input"><input type="number" id="f-sort" value="' + (l.letter_sort || 0) + '" class="small-input"></div></div>'
+
+        + '<div class="field-row"><label>Numerical Value</label><div class="field-input"><input type="number" id="f-numeric" value="' + (l.letter_numeric_value || '') + '" class="small-input"></div></div>'
+
+        + '<div class="field-row"><label>Name</label><div class="field-input"><input type="text" id="f-label" value="' + esc(l.letter_label || '') + '"></div></div>'
+
+        + '<div class="field-row"><label>Character</label><div class="field-input"><div class="char-inputs">'
+        + '<input type="text" id="f-yt" value="' + esc(l.letter_yt || '') + '" maxlength="1" style="font-family:YadaTowrah,serif;font-size:1.4rem;color:#1a5276;">'
+        + '<span style="color:#888;font-size:0.82rem;">YT font</span>'
+        + '<input type="text" id="f-hebrew" value="' + esc(l.letter_hebrew || '') + '" maxlength="1" style="font-size:1.4rem;direction:rtl;">'
+        + '<span style="color:#888;font-size:0.82rem;">Hebrew</span>'
+        + '</div></div></div>'
+
+        + '<div class="field-row"><label>Info</label><div class="field-input"><textarea id="f-info" rows="2">' + esc(l.letter_info || '') + '</textarea></div></div>'
+
+        + '<div class="field-row"><label>Summary</label><div class="field-input"><textarea id="f-overview" rows="8">' + esc(l.letter_overview || '') + '</textarea></div></div>'
+
+        + '<div class="field-row"><label>Background Image</label><div class="field-input">'
+        + imgHtml
+        + '<div class="img-upload">'
+        + '<input type="file" id="f-image-file" accept="image/*" style="font-size:0.85rem">'
+        + '<button class="btn btn-secondary btn-sm" onclick="uploadImage()">Upload</button>'
+        + '<span id="img-status" class="img-status" style="display:none">Uploaded!</span>'
+        + '</div>'
+        + '<div style="margin-top:4px;font-size:0.78rem;color:#888;">Current: ' + esc(l.letter_image || 'none') + '</div>'
+        + '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">'
+        + '<label style="font-size:0.85rem;font-weight:600;color:#555;">Scale:</label>'
+        + '<input type="range" id="f-image-scale" min="0" max="200" value="' + (l.letter_image_scale || 100) + '" style="width:240px;" oninput="document.getElementById(\'f-scale-val\').textContent=this.value+\'%\'">'
+        + '<span id="f-scale-val" style="font-size:0.82rem;color:#666;min-width:40px;">' + (l.letter_image_scale || 100) + '%</span>'
+        + '</div>'
+        + '</div></div>'
+
+        + '<div class="button-row">'
+        + '<button class="btn btn-primary" onclick="saveLetter()">Save</button>'
+        + '<button class="btn btn-secondary" onclick="closeEdit()">Cancel</button>'
+        + '<span id="save-status" class="save-status" style="display:none">Saved!</span>'
+        + '<span id="save-error" class="save-error" style="display:none"></span>'
+        + '</div>';
+
+    var panel = document.getElementById('edit-panel');
+    panel.innerHTML = html;
+    panel.classList.add('active');
+    panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function closeEdit() {
+    editingKey = null;
+    var panel = document.getElementById('edit-panel');
+    panel.classList.remove('active');
+    panel.innerHTML = '';
+}
+
+function saveLetter() {
+    if (!editingKey) return;
+    var statusEl = document.getElementById('save-status');
+    var errorEl = document.getElementById('save-error');
+    statusEl.style.display = 'none';
+    errorEl.style.display = 'none';
+
+    var data = {
+        letter_sort: parseInt(document.getElementById('f-sort').value) || 0,
+        letter_numeric_value: parseInt(document.getElementById('f-numeric').value) || 0,
+        letter_label: document.getElementById('f-label').value.trim(),
+        letter_yt: document.getElementById('f-yt').value,
+        letter_hebrew: document.getElementById('f-hebrew').value,
+        letter_info: document.getElementById('f-info').value.trim(),
+        letter_overview: document.getElementById('f-overview').value.trim(),
+        letter_image_scale: parseInt(document.getElementById('f-image-scale').value) || 100
+    };
+
+    fetch(API + '/admin-glossary.php?key=' + editingKey, {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) {
+            errorEl.textContent = d.error;
+            errorEl.style.display = '';
+        } else {
+            statusEl.style.display = '';
+            setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+            loadLetters();
+        }
+    });
+}
+
+function uploadImage() {
+    if (!editingKey) return;
+    var fileInput = document.getElementById('f-image-file');
+    var statusEl = document.getElementById('img-status');
+    if (!fileInput || !fileInput.files[0]) return;
+
+    var fd = new FormData();
+    fd.append('image', fileInput.files[0]);
+    fd.append('action', 'upload');
+
+    fetch(API + '/admin-glossary.php?key=' + editingKey + '&action=upload', {
+        method: 'POST', credentials: 'include', body: fd
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        statusEl.style.display = '';
+        setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+        fileInput.value = '';
+        loadLetters();
+        // Refresh the edit panel with new image
+        setTimeout(function() { editLetter(editingKey); }, 300);
+    });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+});
+
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
+</body>
+</html>

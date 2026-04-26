@@ -47,6 +47,15 @@
 
         .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .feed-count { font-size: 0.85rem; color: #666; }
+
+        .sync-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.35); z-index:2000; justify-content:center; align-items:center; }
+        .sync-overlay.open { display:flex; }
+        .sync-card { background:#fff; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.25); padding:28px 36px; min-width:320px; text-align:center; }
+        .sync-card h3 { margin:0 0 6px; font-size:1rem; color:#31345A; }
+        .sync-card .sync-sub { font-size:0.82rem; color:#888; margin-bottom:16px; }
+        .sync-bar-track { width:100%; height:6px; background:#e8e8e8; border-radius:3px; overflow:hidden; }
+        .sync-bar-fill { width:30%; height:100%; background:linear-gradient(90deg,#3498db,#2980b9); border-radius:3px; animation:sync-slide 1.4s ease-in-out infinite; }
+        @keyframes sync-slide { 0%{transform:translateX(-100%);width:30%} 50%{transform:translateX(150%);width:50%} 100%{transform:translateX(400%);width:30%} }
     </style>
 </head>
 <body>
@@ -73,7 +82,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js"></script>
+<script src="/js/admin-nav.js?v=7"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -106,12 +115,22 @@
                 <th>Feed Source</th>
                 <th>Include Filters</th>
                 <th>Exclude Filters</th>
-                <th>Sort</th>
+                <th>Listing Type</th>
+                <th>Orientation</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody id="page-feeds-body"></tbody>
     </table>
+</div>
+
+<!-- Sync progress overlay -->
+<div id="sync-overlay" class="sync-overlay">
+    <div class="sync-card">
+        <h3 id="sync-title">Syncing...</h3>
+        <div class="sync-sub" id="sync-sub">This may take a moment</div>
+        <div class="sync-bar-track"><div class="sync-bar-fill"></div></div>
+    </div>
 </div>
 
 <!-- Edit Feed Source Form -->
@@ -137,6 +156,7 @@
                 </div>
                 <div class="field"><label>Account / Channel ID</label><input type="text" id="f-account-id"></div>
             </div>
+            <div class="field"><label>Source URL</label><input type="text" id="f-source-url" placeholder="https://..."></div>
             <div class="field"><label>API Key</label><input type="text" id="f-api-key" placeholder="API key or token"></div>
             <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
 
@@ -169,7 +189,24 @@
             </div>
             <div class="field"><label>Include Filters (+)</label><textarea id="pf-filter-pos" placeholder="Comma-separated: #Invite, #YadaYah"></textarea></div>
             <div class="field"><label>Exclude Filters (-)</label><textarea id="pf-filter-neg" placeholder="Comma-separated: Private, Deleted video"></textarea></div>
-            <div class="field"><label>Sort</label><input type="number" id="pf-sort" value="0" style="width:80px"></div>
+            <div class="field"><label>Listing Type</label>
+                <select id="pf-listing-type">
+                    <option value="">— None —</option>
+                    <option value="video">Video (horizontal)</option>
+                    <option value="shorts">Shorts (vertical)</option>
+                    <option value="post">Post</option>
+                    <option value="channel">Channel</option>
+                    <option value="featured">Featured</option>
+                </select>
+            </div>
+            <div class="field"><label>Orientation Filter</label>
+                <select id="pf-orientation">
+                    <option value="">— Any —</option>
+                    <option value="horizontal">Horizontal</option>
+                    <option value="vertical">Vertical</option>
+                </select>
+            </div>
+            <input type="hidden" id="pf-sort" value="0">
             <div class="form-actions">
                 <button class="btn btn-primary" onclick="savePageMapping()">Save</button>
                 <button class="btn btn-secondary" onclick="closePfForm()">Cancel</button>
@@ -236,9 +273,9 @@ var pageMappings = [];
 
 function loadFeeds() {
     Promise.all([
-        fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r) { return r.json(); }),
-        fetch(API + '/admin-feeds.php?page_feeds=1&feed_key=0', {credentials:'include'}).then(function(r) { return r.json(); }).catch(function() { return {pages:[]}; }),
-        fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return r.json(); }).catch(function() { return {page_feeds:[]}; })
+        fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r) { return safeJson(r); }),
+        fetch(API + '/admin-feeds.php?page_feeds=1&feed_key=0', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {pages:[]}; }),
+        fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {page_feeds:[]}; })
     ]).then(function(results) {
         feeds = Array.isArray(results[0]) ? results[0] : [];
         allPages = (results[1] && results[1].pages) ? results[1].pages : [];
@@ -257,7 +294,7 @@ function renderAll() {
         html += '<tr onclick="editFeedSource(' + f.feed_key + ')">'
             + '<td><strong>' + esc(f.feed_name) + '</strong></td>'
             + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
-            + '<td style="font-size:0.8rem">' + esc(f.feed_site_id || f.feed_account_id || '') + '</td>'
+            + '<td style="font-size:0.8rem">' + (f.feed_source_url ? '<a href="' + esc(f.feed_source_url) + '" target="_blank" style="color:#31345A">' + esc(f.feed_source_url.replace(/https?:\/\/(www\.)?/, '').substring(0,40)) + '</a>' : esc(f.feed_account_id || '')) + '</td>'
             + '<td>' + statusBadge + '</td>'
             + '<td class="actions" onclick="event.stopPropagation()">'
             + '<button onclick="editFeedSource(' + f.feed_key + ')">Edit</button>'
@@ -278,7 +315,8 @@ function renderAll() {
             + '<td>' + esc(feedMap[pf.feed_key] || 'Unknown') + '</td>'
             + '<td>' + esc(pf.feed_page_filter_include || '') + '</td>'
             + '<td>' + esc(pf.feed_page_filter_exclude || '') + '</td>'
-            + '<td>' + (pf.feed_page_sort || 0) + '</td>'
+            + '<td>' + esc(pf.feed_page_listing_type || '') + '</td>'
+            + '<td>' + esc(pf.feed_page_filter_orientation || '') + '</td>'
             + '<td class="actions" onclick="event.stopPropagation()">'
             + '<button onclick="editPageMapping(' + pf.feed_page_key + ')">Edit</button>'
             + '<button onclick="deletePageMapping(' + pf.feed_page_key + ')">Del</button>'
@@ -312,7 +350,7 @@ function esc(s) {
 // ── Feed Source form ──
 function editFeedSource(key) {
     fetch(API + '/admin-feeds.php?feed_key=' + key, {credentials:'include'})
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return safeJson(r); })
         .then(function(d) { openFeedSourceForm(d); });
 }
 
@@ -323,6 +361,7 @@ function openFeedSourceForm(data) {
     document.getElementById('f-name').value = d.feed_name || '';
     document.getElementById('f-site-code').value = d.feed_site_code || 'YouTube';
     document.getElementById('f-account-id').value = d.feed_site_id || d.feed_account_id || '';
+    document.getElementById('f-source-url').value = d.feed_source_url || '';
     document.getElementById('f-api-key').value = d.feed_api_key || '';
     document.getElementById('f-active').checked = d.feed_active_flag !== false;
 
@@ -386,6 +425,7 @@ function saveFeedSource() {
         feed_name: document.getElementById('f-name').value,
         feed_site_code: document.getElementById('f-site-code').value,
         feed_account_id: document.getElementById('f-account-id').value,
+        feed_source_url: document.getElementById('f-source-url').value,
         feed_api_key: document.getElementById('f-api-key').value,
         feed_active_flag: document.getElementById('f-active').checked,
         schedules: collectSchedules()
@@ -394,7 +434,7 @@ function saveFeedSource() {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    }).then(function(r) { return r.json(); })
+    }).then(function(r) { return safeJson(r); })
     .then(function() { closeForm(); loadFeeds(); });
 }
 
@@ -413,6 +453,8 @@ function openPageMappingForm(d) {
     document.getElementById('pf-page').value = d.page_key || '';
     document.getElementById('pf-filter-pos').value = d.feed_page_filter_include || '';
     document.getElementById('pf-filter-neg').value = d.feed_page_filter_exclude || '';
+    document.getElementById('pf-listing-type').value = d.feed_page_listing_type || '';
+    document.getElementById('pf-orientation').value = d.feed_page_filter_orientation || '';
     document.getElementById('pf-sort').value = d.feed_page_sort || 0;
     document.getElementById('pf-form-overlay').classList.add('open');
 }
@@ -428,14 +470,19 @@ function savePageMapping() {
         page_key: parseInt(document.getElementById('pf-page').value),
         feed_page_filter_include: document.getElementById('pf-filter-pos').value,
         feed_page_filter_exclude: document.getElementById('pf-filter-neg').value,
+        feed_page_listing_type: document.getElementById('pf-listing-type').value,
+        feed_page_filter_orientation: document.getElementById('pf-orientation').value,
         feed_page_sort: parseInt(document.getElementById('pf-sort').value) || 0
     };
     fetch(API + '/admin-feeds.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
-    }).then(function(r) { return r.json(); })
-    .then(function() { closePfForm(); loadFeeds(); });
+    }).then(function(r) { return safeJson(r); })
+    .then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        closePfForm(); loadFeeds();
+    }).catch(function(e) { alert('Save failed: ' + e.message); });
 }
 
 function deletePageMapping(key) {
@@ -458,32 +505,61 @@ function deleteFeed(key, name) {
     .then(function() { loadFeeds(); });
 }
 
+function showSyncProgress(feedName) {
+    document.getElementById('sync-title').textContent = 'Syncing ' + (feedName || '...');
+    document.getElementById('sync-sub').textContent = 'This may take a moment';
+    document.getElementById('sync-overlay').classList.add('open');
+}
+
+function hideSyncProgress() {
+    document.getElementById('sync-overlay').classList.remove('open');
+}
+
+function formatSyncResult(data) {
+    var lines = [];
+    var sr = data.sync_result || {};
+    if (sr.found !== undefined) lines.push('Found: ' + sr.found);
+    if (sr.inserted !== undefined) lines.push('Inserted: ' + sr.inserted);
+    if (sr.updated !== undefined) lines.push('Updated: ' + sr.updated);
+    if (sr.results && Array.isArray(sr.results)) {
+        sr.results.forEach(function(r) {
+            lines.push((r.feed || '') + ': ' + (r.inserted || 0) + ' new, ' + (r.updated || 0) + ' updated');
+        });
+    }
+    if (sr.status === 'started') lines.push(sr.message || 'Running in background');
+    if (data.error) lines.push('Error: ' + data.error);
+    return lines.join('\n');
+}
+
 function syncFeed(key) {
     if (!confirm('Force sync this feed now?')) return;
+    var feedName = '';
+    for (var i = 0; i < feeds.length; i++) {
+        if (feeds[i].feed_key == key) { feedName = feeds[i].feed_name; break; }
+    }
+    showSyncProgress(feedName);
     fetch(API + '/admin-feeds.php', {
         method: 'PUT',
         credentials: 'include',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({feed_key: key})
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) { return safeJson(r); })
     .then(function(data) {
-        var msg = 'Sync: ' + (data.feed || '');
-        if (data.sync_result) {
-            if (data.sync_result.inserted !== undefined) msg += '\nInserted: ' + data.sync_result.inserted;
-            if (data.sync_result.updated !== undefined) msg += '\nUpdated: ' + data.sync_result.updated;
-        }
-        if (data.cache_cleared !== undefined) msg += '\nCache files cleared: ' + data.cache_cleared;
-        if (data.error) msg += '\nError: ' + data.error;
-        alert(msg);
+        hideSyncProgress();
+        alert(formatSyncResult(data));
         loadFeeds();
     })
-    .catch(function(err) { alert('Sync failed: ' + err.message); });
+    .catch(function(err) {
+        hideSyncProgress();
+        alert('Sync failed: ' + err.message);
+    });
 }
 
 // Init
 checkAuth();
 </script>
-<script src="/js/admin-login.js?v=6"></script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/error-reporter.js?v=2"></script>
 </body>
 </html>
