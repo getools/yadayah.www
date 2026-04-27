@@ -250,12 +250,17 @@ VideoLightbox.configure({
     getTitle: function(v) { return v.feed_title || ''; },
     getThumbnail: function(v) { return v.feed_thumbnail || ''; },
     renderContent: function(item, el) {
-        if (item.feed_type === 'video' && item.feed_url) {
+        if (item.feed_type === 'video' && (item.feed_url || item.feed_embed_id)) {
+            var videoUrl = item.feed_url;
+            // If embed_id exists, use reel URL for proper Facebook embedding
+            if (item.feed_embed_id && item.feed_embed_id !== item.feed_video_id) {
+                videoUrl = 'https://www.facebook.com/reel/' + item.feed_embed_id;
+            }
             var iframe = document.createElement('iframe');
             iframe.allowFullscreen = true;
             iframe.allow = 'autoplay; encrypted-media';
             iframe.src = 'https://www.facebook.com/plugins/video.php?href='
-                + encodeURIComponent(item.feed_url)
+                + encodeURIComponent(videoUrl)
                 + '&show_text=false&autoplay=true';
             el.appendChild(iframe);
         } else if (item.feed_thumbnail) {
@@ -368,6 +373,6 @@ observer.observe(sentinel);
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js?v=14"></script>
+<script src="/js/site-footer.js?v=15"></script>
 </body>
 </html>

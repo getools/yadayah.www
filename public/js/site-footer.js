@@ -2,48 +2,93 @@
 (function() {
 'use strict';
 
-// ── Livestream banner + admin control ──
+// ── Livestream indicator + embedded player popover + admin control ──
 (function() {
-    // Inject styles once
     var lsStyle = document.createElement('style');
     lsStyle.textContent = ''
-        + '#livestream-banner { position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#c0392b,#e74c3c);color:#fff;text-align:center;padding:8px 16px;font-size:0.9rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.3); }'
-        + '#livestream-banner a { color:#fff;text-decoration:underline; }'
-        + '#livestream-banner .live-dot { width:10px;height:10px;background:#fff;border-radius:50%;animation:livestream-blink 1s infinite; }'
+        + '#livestream-indicator { position:fixed;top:12px;left:12px;z-index:99999;background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(192,57,43,0.4);animation:livestream-pulse 2s infinite; }'
+        + '#livestream-indicator:hover { transform:scale(1.05);box-shadow:0 4px 16px rgba(192,57,43,0.5); }'
+        + '#livestream-indicator .live-dot { width:8px;height:8px;background:#fff;border-radius:50%;animation:livestream-blink 1s infinite; }'
         + '@keyframes livestream-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }'
-        + 'body.has-livestream { padding-top:40px; }'
-        + '#stream-admin-btn { position:fixed;top:8px;left:8px;z-index:99998;width:36px;height:36px;border-radius:50%;border:none;background:rgba(192,57,43,0.8);color:#fff;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3); }'
+        + '@keyframes livestream-pulse { 0%,100%{box-shadow:0 2px 10px rgba(192,57,43,0.4)} 50%{box-shadow:0 2px 20px rgba(192,57,43,0.6)} }'
+        + '#livestream-popover { display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:100000;justify-content:center;align-items:center; }'
+        + '#livestream-popover-inner { background:#000;border-radius:12px;overflow:hidden;width:90vw;max-width:1200px;height:80vh;max-height:700px;display:flex;position:relative;box-shadow:0 8px 40px rgba(0,0,0,0.5); }'
+        + '#livestream-popover-inner .ls-player { flex:1;min-width:0; }'
+        + '#livestream-popover-inner .ls-player iframe { width:100%;height:100%;border:none; }'
+        + '#livestream-popover-inner .ls-chat { width:340px;border-left:1px solid #333; }'
+        + '#livestream-popover-inner .ls-chat iframe { width:100%;height:100%;border:none; }'
+        + '#livestream-popover-close { position:absolute;top:8px;right:8px;z-index:10;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center; }'
+        + '#livestream-popover-close:hover { background:rgba(255,255,255,0.2); }'
+        + '@media (max-width:768px) { #livestream-popover-inner { flex-direction:column;width:95vw;height:90vh; } #livestream-popover-inner .ls-chat { width:100%;height:40%;border-left:none;border-top:1px solid #333; } }'
+        + '#stream-admin-btn { position:fixed;top:12px;left:12px;z-index:99998;width:36px;height:36px;border-radius:50%;border:none;background:rgba(192,57,43,0.8);color:#fff;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3); }'
         + '#stream-admin-modal { display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;justify-content:center;align-items:center; }';
     document.head.appendChild(lsStyle);
 
     var _streamFeedKey = null;
+    var _streamVideoId = null;
+
+    function extractVideoId(url) {
+        if (!url) return null;
+        var m = url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?&]+)/) || url.match(/embed\/([^?&]+)/);
+        return m ? m[1] : null;
+    }
 
     function checkLivestream() {
         fetch('/api/livestream-status.php').then(function(r) { return r.json(); }).then(function(d) {
-            var existing = document.getElementById('livestream-banner');
+            var existing = document.getElementById('livestream-indicator');
             _streamFeedKey = d.feed_key || null;
 
             if (d.live) {
+                _streamVideoId = extractVideoId(d.feed_source_url);
                 if (!existing) {
-                    var banner = document.createElement('div');
-                    banner.id = 'livestream-banner';
-                    var url = d.feed_source_url || '#';
-                    var siteName = (d.feed_site_code || '').charAt(0).toUpperCase() + (d.feed_site_code || '').slice(1);
-                    banner.innerHTML = '<span class="live-dot"></span> LIVE NOW — <a href="' + url + '" target="_blank" rel="noopener">Watch on ' + siteName + '</a>'
-                        + '<button onclick="this.parentNode.remove();document.body.classList.remove(\'has-livestream\');" style="background:none;border:none;color:#fff;font-size:1.2rem;cursor:pointer;margin-left:8px;opacity:0.7;">&times;</button>';
-                    document.body.insertBefore(banner, document.body.firstChild);
-                    document.body.classList.add('has-livestream');
+                    var btn = document.createElement('button');
+                    btn.id = 'livestream-indicator';
+                    btn.innerHTML = '<span class="live-dot"></span> LIVE';
+                    btn.title = 'Watch live stream';
+                    btn.onclick = function() { openLivestreamPopover(); };
+                    document.body.appendChild(btn);
                 }
-                // Remove admin ghost button when live (banner is already visible)
                 var ghost = document.getElementById('stream-admin-btn');
                 if (ghost) ghost.remove();
             } else {
-                if (existing) { existing.remove(); document.body.classList.remove('has-livestream'); }
-                // Check if user is admin — show ghost button
+                if (existing) existing.remove();
+                closeLivestreamPopover();
                 showAdminStreamButton(d);
             }
         }).catch(function() {});
     }
+
+    function openLivestreamPopover() {
+        var pop = document.getElementById('livestream-popover');
+        if (!pop) {
+            pop = document.createElement('div');
+            pop.id = 'livestream-popover';
+            pop.onclick = function(ev) { if (ev.target === pop) closeLivestreamPopover(); };
+            pop.innerHTML = '<div id="livestream-popover-inner">'
+                + '<button id="livestream-popover-close" onclick="window._closeLivePopover()">&times;</button>'
+                + '<div class="ls-player"><iframe id="ls-player-frame" allow="autoplay;encrypted-media" allowfullscreen></iframe></div>'
+                + '<div class="ls-chat"><iframe id="ls-chat-frame"></iframe></div>'
+                + '</div>';
+            document.body.appendChild(pop);
+        }
+        if (_streamVideoId) {
+            document.getElementById('ls-player-frame').src = 'https://www.youtube.com/embed/' + _streamVideoId + '?autoplay=1';
+            document.getElementById('ls-chat-frame').src = 'https://www.youtube.com/live_chat?v=' + _streamVideoId + '&embed_domain=' + location.hostname;
+        }
+        pop.style.display = 'flex';
+    }
+
+    function closeLivestreamPopover() {
+        var pop = document.getElementById('livestream-popover');
+        if (pop) {
+            pop.style.display = 'none';
+            var player = document.getElementById('ls-player-frame');
+            var chat = document.getElementById('ls-chat-frame');
+            if (player) player.src = '';
+            if (chat) chat.src = '';
+        }
+    }
+    window._closeLivePopover = closeLivestreamPopover;
 
     function showAdminStreamButton(d) {
         if (document.getElementById('stream-admin-btn')) return;
@@ -383,16 +428,26 @@ if (typeof MutationObserver !== 'undefined') {
                 injectLiveStyle();
                 var btn = document.createElement('div');
                 btn.id = 'live-indicator';
-                btn.title = d.title || 'Live Now';
+                var isUpcoming = d.upcoming;
+                var badgeLabel = isUpcoming ? 'UPCOMING' : 'LIVE';
+                var titleText = d.title || (isUpcoming ? 'Upcoming' : 'Live Now');
+                btn.title = titleText;
                 var previewHtml = '';
                 var thumbUrl = d.thumbnail || (d.video_id ? 'https://i.ytimg.com/vi/' + d.video_id + '/mqdefault.jpg' : '');
                 if (thumbUrl) {
+                    var scheduleInfo = '';
+                    if (isUpcoming && d.scheduled_start) {
+                        var startDate = new Date(d.scheduled_start);
+                        scheduleInfo = '<div style="font-size:0.7rem;color:#E5C86C;margin-top:2px;">' + startDate.toLocaleString(undefined, {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) + '</div>';
+                    }
                     previewHtml = '<div class="live-preview">'
                         + '<img src="' + thumbUrl + '" alt="">'
-                        + '<div class="live-preview-title">' + (d.title || 'Live Now').replace(/</g, '&lt;') + '</div>'
+                        + '<div class="live-preview-title">' + titleText.replace(/</g, '&lt;') + '</div>'
+                        + scheduleInfo
                         + '</div>';
                 }
-                btn.innerHTML = '<div class="live-badge"><span class="live-dot"></span> LIVE</div>' + previewHtml;
+                var badgeColor = isUpcoming ? 'background:#E5C86C;color:#333;' : '';
+                btn.innerHTML = '<div class="live-badge" style="' + badgeColor + '"><span class="live-dot" style="' + (isUpcoming ? 'background:#333;' : '') + '"></span> ' + badgeLabel + '</div>' + previewHtml;
                 btn.addEventListener('click', openLivePopover);
                 document.body.appendChild(btn);
             } else {
