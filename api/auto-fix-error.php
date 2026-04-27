@@ -411,13 +411,7 @@ foreach ($errors as $error) {
     }
 
     // ── Call Claude API ──
-    // Limit context to avoid exceeding API limits
-    if (strlen($context) > 15000) {
-        $context = substr($context, 0, 15000) . "\n\n[Context truncated to 15KB]";
-    }
-    $prompt = "You are a code-fixing agent for the Yada Yah website. Investigate this error thoroughly and fix the root cause.\n\n"
-        . $context . "\n\n"
-        . "Rules:\n"
+    $rules = "Rules:\n"
         . "- ALWAYS investigate the root cause. Don't dismiss errors as 'noise' or 'transient'. Ask: what code on OUR side caused this?\n"
         . "- USE THE ERROR HISTORY provided above. If this error keeps recurring, previous fixes clearly didn't work — try a different, deeper approach.\n"
         . "- If related errors share the same page/file, look for a COMMON ROOT CAUSE that fixes all of them at once.\n"
@@ -440,9 +434,29 @@ foreach ($errors as $error) {
 
     echo "  [analyze] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . "\n";
 
-    $response = callClaude($ANTHROPIC_KEY, $MODEL, $prompt);
+    // Try with progressively smaller context if the API rejects the request
+    $contextLimit = 15000;
+    $response = null;
+    while ($contextLimit >= 2000) {
+        $trimmedContext = $context;
+        if (strlen($trimmedContext) > $contextLimit) {
+            $trimmedContext = substr($trimmedContext, 0, $contextLimit) . "\n\n[Context truncated to " . round($contextLimit / 1000) . "KB]";
+        }
+        $prompt = "You are a code-fixing agent for the Yada Yah website. Investigate this error thoroughly and fix the root cause.\n\n"
+            . $trimmedContext . "\n\n" . $rules;
+
+        $response = callClaude($ANTHROPIC_KEY, $MODEL, $prompt);
+        if ($response !== null) break;
+
+        // API failed — retry with half the context
+        $prevLimit = $contextLimit;
+        $contextLimit = (int)($contextLimit / 2);
+        echo "  [retry] Reducing context from {$prevLimit} to {$contextLimit} bytes\n";
+    }
     if (!$response) {
-        echo "  [error] Claude API call failed\n";
+        echo "  [error] Claude API call failed at all context sizes\n";
+        $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ?")
+           ->execute(["Auto-fix: API failed even with minimal context", $error['event_key']]);
         continue;
     }
 
