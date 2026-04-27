@@ -6,7 +6,6 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/image-helpers.php';
-require_once __DIR__ . '/response-helpers.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $userKey = $_SESSION['user_key'] ?? null;
