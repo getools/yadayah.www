@@ -170,7 +170,7 @@
         .post-video-wrap {
             width: 100%;
             position: relative;
-            aspect-ratio: 9 / 16;
+            padding-bottom: 100%;
             overflow: hidden;
         }
         .post-video {
@@ -178,6 +178,7 @@
             top: 0; left: 0;
             width: 100%; height: 100%;
             border: none;
+            display: block;
         }
         .post-footer {
             padding: 8px 14px;
@@ -318,7 +319,7 @@ function renderPost(p, idx) {
     if (p.blog_video_id) {
         var videoUrl = encodeURIComponent('https://www.facebook.com/reel/' + p.blog_video_id + '/');
         html += '<div class="post-video-wrap">'
-            + '<iframe class="post-video" src="https://www.facebook.com/plugins/video.php?href=' + videoUrl + '&width=500&show_text=false" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>'
+            + '<iframe class="post-video" src="https://www.facebook.com/plugins/video.php?href=' + videoUrl + '&width=500&show_text=false" scrolling="no" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>'
             + '</div>';
     } else if (p.blog_image) {
         html += '<a href="' + fbPostUrl(p.blog_post_id) + '" target="_blank" rel="noopener">'
