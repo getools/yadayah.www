@@ -136,7 +136,8 @@ function serveItems(PDO $db, string $where, array $params, int $limit, int $offs
     $total = (int)$countStmt->fetchColumn();
 
     $stmt = $db->prepare("
-        SELECT feed_item_external_id AS id, COALESCE(feed_item_title_override, feed_item_title_import) AS title,
+        SELECT feed_item_external_id AS id,
+               COALESCE(feed_item_title_override, feed_item_title_import) AS title,
                COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime) AS published,
                feed_item_thumbnail AS thumbnail,
                REPLACE(feed_item_thumbnail, 'hqdefault', 'maxresdefault') AS \"thumbnailMax\",

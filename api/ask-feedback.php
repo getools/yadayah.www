@@ -78,6 +78,37 @@ if ($method === 'POST') {
         // Save as learned correction with high priority
         $stmt = $db->prepare("
             INSERT INTO yy_ask_learned (learned_type, learned_question, learned_answer, learned_priority, user_key)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute(['correction', $question, $correctedAnswer, 100, $userKey]);
+
+        // Embed the corrected Q&A pair
+        try {
+            require_once __DIR__ . '/ask-rag.php';
+            embedQAPair($db, $logKey, $question, $correctedAnswer);
+        } catch (Exception $e) {
+            // Non-critical
+        }
+
+        jsonResponse(['saved' => true]);
+    }
+}
+
+if ($method === 'GET') {
+    // Admin list feedback/learned items
+    $feedbackStmt = $db->prepare("SELECT * FROM yy_ask_feedback ORDER BY feedback_key DESC LIMIT 100");
+    $feedbackStmt->execute();
+    $feedback = $feedbackStmt->fetchAll();
+
+    $learnedStmt = $db->prepare("SELECT * FROM yy_ask_learned ORDER BY learned_key DESC LIMIT 100");
+    $learnedStmt->execute();
+    $learned = $learnedStmt->fetchAll();
+
+    jsonResponse(['feedback' => $feedback, 'learned' => $learned]);
+}
+
+errorResponse('Method not allowed');
+?>
             VALUES ('correction', ?, ?, 100, ?)
             RETURNING ask_learned_key
         ");

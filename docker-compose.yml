@@ -1,14 +1,46 @@
 services:
+  rsshub:
+    image: diygod/rsshub:chromium-bundled
+    restart: always
+    expose:
+      - "1200"
+    volumes:
+      - ./rumble-scraper:/scraper
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+      CACHE_EXPIRE: '3600'
+      REQUEST_RETRY: '3'
+      PUPPETEER_WS_ENDPOINT: ''
+      TZ: America/New_York
+
+  caddy:
+    image: caddy:2
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - itcoge-web
+      - books-web
+
   web:
     build: .
-    ports:
-      - "8080:80"
+    restart: always
+    expose:
+      - "80"
     volumes:
       - ./public:/var/www/html
       - ./api:/var/www/html/api
     environment:
       PG_HOST: postgres
-      PG_PORT: 5432
+      PG_PORT: "5432"
       PG_DB: yada
       PG_USER: postgres
       PG_PASS: yada_password
@@ -19,11 +51,28 @@ services:
       postgres:
         condition: service_healthy
 
+  itcoge-web:
+    build: /opt/itcoge-www
+    restart: always
+    expose:
+      - "80"
+    volumes:
+      - /opt/itcoge-www/public:/var/www/html
+    container_name: itcoge-web
+
+  books-web:
+    build: /opt/books-www
+    restart: always
+    expose:
+      - "80"
+    volumes:
+      - /opt/books-www/public:/var/www/html
+    container_name: books-web
+
   postgres:
     image: postgres:15-alpine
-    container_name: yada-postgres
-    ports:
-      - "5433:5432"
+    container_name: yada-postgres-prod
+    restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: yada_password
@@ -38,3 +87,7 @@ services:
 
 volumes:
   postgres_data:
+    external: true
+    name: yada-translations_postgres_data
+  caddy_data:
+  caddy_config:

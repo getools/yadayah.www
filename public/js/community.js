@@ -89,7 +89,7 @@ Community.api = function(url, opts) {
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(opts.body);
     }
-    return fetch(url, opts).then(function(r) { return r.json(); });
+    return fetch(url, opts).then(function(r) { return r.text().then(t => { if (!t || !t.trim()) throw new Error('Empty response'); try { return JSON.parse(t); } catch(e) { throw new Error('Invalid JSON: ' + t.substring(0, 100)); } }); });
 };
 
 // ── Utility: format rich text body (links, embeds, images, bold, italic, code) ──

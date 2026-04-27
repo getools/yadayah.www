@@ -142,6 +142,8 @@ $stmt = $pdo->prepare("
     ORDER BY rank DESC
     LIMIT 20
 ");
+$cleanQ = mb_convert_encoding($cleanQ, 'UTF-8', 'UTF-8');
+$cleanQ = iconv('UTF-8', 'UTF-8//IGNORE', $cleanQ);
 $stmt->execute([$cleanQ, $cleanQ, $EXCLUDE_SERIES]);
 $contextRows = $stmt->fetchAll();
 

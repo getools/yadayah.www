@@ -582,6 +582,12 @@ foreach ($errors as $error) {
 
 echo "[" . date('c') . "] Done. Fixed: {$fixCount}\n";
 
+// Write fix summary for git-push.sh to use as commit message
+if ($fixCount > 0) {
+    $summaryFile = '/tmp/auto-fix-summary.txt';
+    file_put_contents($summaryFile, "Auto-fix: {$fixCount} error(s) fixed at " . date('Y-m-d H:i'));
+}
+
 // ── Claude API helper ──
 function callClaude(string $apiKey, string $model, string $prompt): ?string {
     $payload = json_encode([
