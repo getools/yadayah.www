@@ -56,13 +56,20 @@
                     btn.onclick = function() { openLivestreamPopover(); };
                     widget.appendChild(btn);
 
-                    if (_streamVideoId) {
+                    var thumbUrl = _streamVideoId ? 'https://img.youtube.com/vi/' + _streamVideoId + '/mqdefault.jpg' : null;
+                    if (thumbUrl) {
                         var preview = document.createElement('div');
                         preview.id = 'livestream-preview';
                         preview.title = 'Click to watch';
                         preview.onclick = function() { openLivestreamPopover(); };
-                        preview.innerHTML = '<img src="https://img.youtube.com/vi/' + _streamVideoId + '/mqdefault.jpg" alt="Live stream">'
-                            + '<div class="preview-play"></div>';
+                        var img = document.createElement('img');
+                        img.alt = 'Live stream';
+                        img.src = thumbUrl;
+                        img.onerror = function() { preview.style.display = 'none'; };
+                        preview.appendChild(img);
+                        var playBtn = document.createElement('div');
+                        playBtn.className = 'preview-play';
+                        preview.appendChild(playBtn);
                         widget.appendChild(preview);
                     }
 
