@@ -13,7 +13,7 @@
         + '#livestream-indicator .live-thumb { display:block;width:auto;height:80px;object-fit:cover; }'
         + '@keyframes livestream-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }'
         + '@keyframes livestream-pulse { 0%,100%{box-shadow:0 2px 10px rgba(192,57,43,0.4)} 50%{box-shadow:0 2px 20px rgba(192,57,43,0.6)} }'
-        + '#livestream-popover { display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:100000;justify-content:center;align-items:flex-start; }'
+        + '#livestream-popover { display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:#000;z-index:100001;justify-content:center;align-items:flex-start;margin:0;padding:0;border:0; }'
         + '#livestream-popover-inner { background:#000;border-radius:12px;overflow:hidden;width:90vw;max-width:1200px;height:96vh;margin-top:2vh;display:flex;position:relative;box-shadow:0 8px 40px rgba(0,0,0,0.5); }'
         + '#livestream-popover-inner .ls-player { flex:1;min-width:0; }'
         + '#livestream-popover-inner .ls-player iframe { width:100%;height:100%;border:none; }'
@@ -81,7 +81,7 @@
         }
         pop.style.display = 'flex';
         var ind = document.getElementById('livestream-indicator');
-        if (ind) ind.style.display = 'none';
+        if (ind) { ind.style.display = 'none'; ind.style.visibility = 'hidden'; ind.style.zIndex = '-1'; }
     }
 
     function closeLivestreamPopover() {
@@ -94,7 +94,7 @@
             if (chat) chat.src = '';
         }
         var ind = document.getElementById('livestream-indicator');
-        if (ind) ind.style.display = '';
+        if (ind) { ind.style.display = ''; ind.style.visibility = ''; ind.style.zIndex = ''; }
     }
     window._closeLivePopover = closeLivestreamPopover;
 
