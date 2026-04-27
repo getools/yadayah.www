@@ -6,9 +6,14 @@
 (function() {
     var lsStyle = document.createElement('style');
     lsStyle.textContent = ''
-        + '#livestream-indicator { position:fixed;top:12px;left:12px;z-index:99999;background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(192,57,43,0.4);animation:livestream-pulse 2s infinite; }'
+        + '#livestream-widget { position:fixed;top:12px;left:12px;z-index:99999; }'
+        + '#livestream-indicator { background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(192,57,43,0.4);animation:livestream-pulse 2s infinite; }'
         + '#livestream-indicator:hover { transform:scale(1.05);box-shadow:0 4px 16px rgba(192,57,43,0.5); }'
         + '#livestream-indicator .live-dot { width:8px;height:8px;background:#fff;border-radius:50%;animation:livestream-blink 1s infinite; }'
+        + '#livestream-preview { width:200px;height:113px;margin-top:6px;border-radius:6px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.4);cursor:pointer;position:relative;background:#000; }'
+        + '#livestream-preview img { width:100%;height:100%;object-fit:cover;display:block; }'
+        + '#livestream-preview .preview-play { position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;background:rgba(192,57,43,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center; }'
+        + '#livestream-preview .preview-play:after { content:"";display:block;width:0;height:0;border-style:solid;border-width:7px 0 7px 12px;border-color:transparent transparent transparent #fff;margin-left:2px; }'
         + '@keyframes livestream-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }'
         + '@keyframes livestream-pulse { 0%,100%{box-shadow:0 2px 10px rgba(192,57,43,0.4)} 50%{box-shadow:0 2px 20px rgba(192,57,43,0.6)} }'
         + '#livestream-popover { display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:100000;justify-content:center;align-items:center; }'
@@ -35,18 +40,33 @@
 
     function checkLivestream() {
         fetch('/api/livestream-status.php').then(function(r) { return r.json(); }).then(function(d) {
-            var existing = document.getElementById('livestream-indicator');
+            var existing = document.getElementById('livestream-widget');
             _streamFeedKey = d.feed_key || null;
 
             if (d.live) {
                 _streamVideoId = extractVideoId(d.feed_source_url);
                 if (!existing) {
+                    var widget = document.createElement('div');
+                    widget.id = 'livestream-widget';
+
                     var btn = document.createElement('button');
                     btn.id = 'livestream-indicator';
                     btn.innerHTML = '<span class="live-dot"></span> LIVE';
                     btn.title = 'Watch live stream';
                     btn.onclick = function() { openLivestreamPopover(); };
-                    document.body.appendChild(btn);
+                    widget.appendChild(btn);
+
+                    if (_streamVideoId) {
+                        var preview = document.createElement('div');
+                        preview.id = 'livestream-preview';
+                        preview.title = 'Click to watch';
+                        preview.onclick = function() { openLivestreamPopover(); };
+                        preview.innerHTML = '<img src="https://img.youtube.com/vi/' + _streamVideoId + '/mqdefault.jpg" alt="Live stream">'
+                            + '<div class="preview-play"></div>';
+                        widget.appendChild(preview);
+                    }
+
+                    document.body.appendChild(widget);
                 }
                 var ghost = document.getElementById('stream-admin-btn');
                 if (ghost) ghost.remove();
