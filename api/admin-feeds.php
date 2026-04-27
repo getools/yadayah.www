@@ -273,6 +273,14 @@ if ($method === 'POST') {
             }
         }
         if ($sets) {
+            // Log any change to feed_stream_flag so we can trace who's toggling it
+            if (array_key_exists('feed_stream_flag', $data)) {
+                $caller = $_SERVER['HTTP_REFERER'] ?? 'unknown';
+                $userKey = $_SESSION['user_key'] ?? 0;
+                $newVal = $data['feed_stream_flag'] ? 'TRUE' : 'FALSE';
+                $db->prepare("INSERT INTO yy_monitor_event (event_source, event_severity, event_message, event_detail, event_resolved_flag) VALUES ('feed_stream_flag', 'info', ?, ?, TRUE)")
+                   ->execute(["feed_stream_flag set to $newVal on feed_key=$feedKey by user $userKey", "Referer: $caller\nFull payload: " . json_encode($data)]);
+            }
             $vals[] = $feedKey;
             $db->prepare("UPDATE yy_feed SET " . implode(', ', $sets) . " WHERE feed_key = ?")->execute($vals);
         }
