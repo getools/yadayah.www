@@ -45,7 +45,7 @@ function cleanBasicsTitle(string $title): string {
 
 // Build WHERE clause using join table
 $pageKey = getPageKey($db, 'basics');
-$where = "fi.feed_item_active_flag = TRUE AND fip.page_key = ?";
+$where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
 // Grouped mode

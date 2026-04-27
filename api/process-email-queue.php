@@ -9,7 +9,6 @@ require_once __DIR__ . '/send-mail.php';
 
 $db = getDb();
 
-// Process one email at a time with row locking to prevent duplicates
 $sent = 0;
 $failed = 0;
 
@@ -29,18 +28,20 @@ for ($i = 0; $i < 10; $i++) {
     $key = $e['email_queue_key'];
     $attempts = (int)$e['attempts'] + 1;
 
-    // Mark as processing immediately to prevent other workers from picking it up
-    $db->prepare("UPDATE yy_email_queue SET attempts = ? WHERE email_queue_key = ?")->execute([$attempts, $key]);
+    // Mark as sent AND increment attempts inside the transaction
+    // This prevents any other worker from picking it up
+    $db->prepare("UPDATE yy_email_queue SET sent_dtime = NOW(), attempts = ? WHERE email_queue_key = ?")->execute([$attempts, $key]);
     $db->commit();
 
+    // Now actually send — row is already marked as sent so no other worker will touch it
     $ok = sendMail($db, $e['to_email'], $e['subject'], $e['body_html']);
 
-    if ($ok) {
-        $db->prepare("UPDATE yy_email_queue SET sent_dtime = NOW() WHERE email_queue_key = ?")->execute([$key]);
-        $sent++;
-    } else {
-        $db->prepare("UPDATE yy_email_queue SET error = 'Send failed' WHERE email_queue_key = ?")->execute([$key]);
+    if (!$ok) {
+        // Send failed — clear sent_dtime so it can be retried (up to 3 attempts)
+        $db->prepare("UPDATE yy_email_queue SET sent_dtime = NULL, error = 'Send failed' WHERE email_queue_key = ?")->execute([$key]);
         $failed++;
+    } else {
+        $sent++;
     }
 }
 

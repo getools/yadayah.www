@@ -78,6 +78,10 @@ document.body.appendChild(overlay);
 document.addEventListener('keydown', function(e) {
     if (!overlay.classList.contains('active')) return;
     if (e.key === 'Escape') VideoLightbox.close();
+    // Skip arrow nav when typing in a text field, textarea, or rich text editor (including TinyMCE iframe)
+    var el = document.activeElement || {};
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'IFRAME' || el.getAttribute && el.getAttribute('contenteditable')) return;
     if (e.key === 'ArrowLeft') VideoLightbox.nav(-1);
     if (e.key === 'ArrowRight') VideoLightbox.nav(1);
 });

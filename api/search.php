@@ -182,7 +182,7 @@ if ($total > 0) {
         ORDER BY rank DESC, v.volume_sort, p.paragraph_page, p.paragraph_number
         LIMIT ? OFFSET ?
     ");
-    $stmtParams = array_merge([$tsqParam], $allParams, [$tsqParam], [$limit, $offset]);
+    $stmtParams = array_merge([$tsqParam, $tsqParam], $allParams, [$limit, $offset]);
     $stmt->execute($stmtParams);
     $results = $stmt->fetchAll();
 }

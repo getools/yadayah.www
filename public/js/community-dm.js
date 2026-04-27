@@ -327,8 +327,14 @@ CommunityDM.onNewMessage = function(msg) {
         var container = document.getElementById('dm-messages');
         if (!container) return;
         var div = document.createElement('div');
-        div.className = 'dm-message';
-        div.innerHTML = '<div class="dm-message-bubble">' + (msg.message_body_html || Community.formatBody(msg.message_body)) + '</div>'
+        var isMine = Community.currentUser && msg.user_key === Community.currentUser.user_key;
+        div.className = 'dm-message' + (isMine ? ' mine' : '');
+        var senderHtml = '';
+        if (msg.user_name_display && !isMine) {
+            senderHtml = '<div class="dm-sender-name">' + Community.esc(msg.user_name_display) + '</div>';
+        }
+        div.innerHTML = senderHtml
+            + '<div class="dm-message-bubble">' + (msg.message_body_html || Community.formatBody(msg.message_body)) + '</div>'
             + '<div class="dm-message-time">' + Community.timeAgo(msg.message_dtime) + '</div>';
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;

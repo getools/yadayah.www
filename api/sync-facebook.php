@@ -209,11 +209,15 @@ foreach ($feeds as $feed) {
                        OR yy_feed_item.feed_item_embed_id IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_embed_id, yy_feed_item.feed_item_embed_id)
                     RETURNING (xmax = 0) AS inserted
                 ");
-                // Direct content IDs (no underscore) are reels/videos — use reel URL format
+                // Determine the best URL for embedding
+                // If we have a video/reel ID (embed_id) different from the post ID, use reel URL
                 $isDirectId = strpos($postId, '_') === false;
                 if ($isDirectId) {
                     $postUrl = 'https://www.facebook.com/reel/' . $postId;
                     if ($postType === 'photo' || $postType === 'text') $postType = 'video';
+                } elseif ($videoId && $videoId !== $postId) {
+                    // Post has an embedded reel/video — use the reel URL for proper embedding
+                    $postUrl = 'https://www.facebook.com/reel/' . $videoId;
                 } else {
                     $postUrl = 'https://www.facebook.com/' . $postId;
                 }

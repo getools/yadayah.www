@@ -115,7 +115,7 @@ while (true) {
         // Find which thread the new message is in
         if ($prevLatestDmKey > 0) {
             $stmt = $db->prepare("
-                SELECT m.thread_key, m.message_key, m.user_key, m.message_body, m.message_dtime,
+                SELECT m.thread_key, m.message_key, m.user_key, m.message_body, m.message_body_html, m.message_dtime,
                        u.user_name_display, u.user_avatar
                 FROM yy_community_dm_message m
                 LEFT JOIN yy_user u ON m.user_key = u.user_key

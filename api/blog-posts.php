@@ -23,7 +23,7 @@ $perPage = $feedRow && (int)$feedRow['feed_page_per_page'] > 0 ? (int)$feedRow['
 
 // Build WHERE clause using join table
 $pageKey = getPageKey($db, 'blog');
-$where = "fi.feed_item_active_flag = TRUE AND fip.page_key = ?";
+$where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
 $countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where");

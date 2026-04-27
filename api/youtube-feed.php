@@ -55,7 +55,7 @@ function fallbackChannelFeedKey(PDO $db): int {
 
 // Build WHERE clause from a yy_feed_page config row.
 function buildFeedPageWhere(array $cfg, int $feedKey): array {
-    $where = "feed_key = ? AND feed_item_active_flag = TRUE";
+    $where = "feed_key = ? AND feed_item_active_flag = TRUE AND feed_item_restricted_flag = FALSE";
     $params = [$feedKey];
 
     buildFeedPageFilters($where, $params, $cfg['feed_page_filter_include'] ?? '', $cfg['feed_page_filter_exclude'] ?? '', $cfg['feed_page_filter_orientation'] ?? null);
@@ -86,7 +86,7 @@ switch ($type) {
         $feedKey = $cfg ? (int)$cfg['feed_key'] : fallbackChannelFeedKey($db);
         [$where, $params] = $cfg
             ? buildFeedPageWhere($cfg, $feedKey)
-            : ["feed_key = ? AND feed_item_active_flag = TRUE", [$feedKey]];
+            : ["feed_key = ? AND feed_item_active_flag = TRUE AND feed_item_restricted_flag = FALSE", [$feedKey]];
 
         $shortsCfg = loadFeedPageForPage($db, 'shorts');
         $maxShort = $shortsCfg ? (int)($shortsCfg['feed_page_filter_duration_max'] ?? 0) : 0;
@@ -121,7 +121,7 @@ switch ($type) {
         if (!$plFeedKey) {
             jsonResponse(['videos' => [], 'total' => 0, 'hasMore' => false]);
         }
-        $where = "feed_key = ? AND feed_item_active_flag = TRUE";
+        $where = "feed_key = ? AND feed_item_active_flag = TRUE AND feed_item_restricted_flag = FALSE";
         $params = [$plFeedKey];
         serveItems($db, $where, $params, $limit, 0);
         break;

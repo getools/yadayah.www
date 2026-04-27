@@ -28,7 +28,7 @@ $offset = ($page - 1) * $perPage;
 
 // Build WHERE clause using join table
 $pageKey = getPageKey($db, 'vlog');
-$where = "fi.feed_item_active_flag = TRUE AND fip.page_key = ?";
+$where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
 // Grouped mode — sections by category with episode sort

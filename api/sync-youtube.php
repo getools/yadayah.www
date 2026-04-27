@@ -213,6 +213,29 @@ foreach ($feeds as $feed) {
     }
 }
 
+// ── Check for restricted/private videos ──
+// Spot-check items whose thumbnails return 404 (indicates private/deleted on YouTube)
+$restrictStmt = $db->query("
+    SELECT feed_item_key, feed_item_thumbnail, feed_item_external_id
+    FROM yy_feed_item
+    WHERE feed_item_active_flag = TRUE AND feed_item_restricted_flag = FALSE
+      AND feed_item_thumbnail LIKE 'https://i.ytimg.com/%'
+    ORDER BY feed_item_publish_import_dtime DESC
+    LIMIT 50
+");
+$restrictCount = 0;
+foreach ($restrictStmt->fetchAll() as $ri) {
+    $headers = @get_headers($ri['feed_item_thumbnail'], true);
+    $httpCode = $headers ? (int)substr($headers[0], 9, 3) : 0;
+    if ($httpCode === 404) {
+        $db->prepare("UPDATE yy_feed_item SET feed_item_restricted_flag = TRUE WHERE feed_item_key = ?")
+           ->execute([$ri['feed_item_key']]);
+        $restrictCount++;
+        if ($isCli) echo "Restricted: {$ri['feed_item_external_id']} (thumbnail 404)\n";
+    }
+}
+if ($restrictCount > 0 && $isCli) echo "Marked {$restrictCount} item(s) as restricted\n";
+
 // Update feed item → page associations after sync
 require_once __DIR__ . '/feed-item-pages.php';
 foreach ($feeds as $feed) {

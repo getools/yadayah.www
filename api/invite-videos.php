@@ -24,7 +24,7 @@ if ($action === 'sync') {
 
 // Build WHERE clause using join table
 $pageKey = getPageKey($db, 'invite');
-$where = "fi.feed_item_active_flag = TRUE AND fip.page_key = ?";
+$where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
 $countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where");
@@ -39,7 +39,7 @@ $stmt = $db->prepare("
     SELECT fi.feed_item_key AS feed_key, fi.feed_item_external_id AS feed_video_id,
            TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\w+\s*', '', 'g'))) AS feed_title, fi.feed_item_thumbnail AS feed_thumbnail,
            COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_create, fi.feed_item_type AS feed_type,
-           fi.feed_item_url AS feed_url
+           fi.feed_item_url AS feed_url, fi.feed_item_embed_id AS feed_embed_id
     FROM yy_feed_item fi
     JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where

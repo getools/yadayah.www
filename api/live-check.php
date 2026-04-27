@@ -199,6 +199,20 @@ function pollYouTubeVideoStatus(string $videoId, array $pushData): array {
         ];
     }
 
+    if ($status === 'upcoming') {
+        return [
+            'live' => true,
+            'upcoming' => true,
+            'title' => $snippet['title'] ?? $pushData['title'] ?? 'Upcoming',
+            'url' => $pushData['url'] ?? 'https://www.youtube.com/watch?v=' . $videoId,
+            'embed_url' => 'https://www.youtube.com/embed/' . $videoId . '?autoplay=1',
+            'thumbnail' => $snippet['thumbnails']['high']['url'] ?? $pushData['thumbnail'] ?? '',
+            'source' => 'youtube',
+            'video_id' => $videoId,
+            'scheduled_start' => $liveDetails['scheduledStartTime'] ?? null,
+        ];
+    }
+
     return ['live' => false];
 }
 
@@ -207,40 +221,64 @@ function pollYouTubeLive(): array {
     $stmt = $db->query("SELECT feed_account_id, feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_api_key IS NOT NULL");
     $feeds = $stmt->fetchAll();
 
-    foreach ($feeds as $feed) {
-        $channelId = $feed['feed_account_id'];
-        $apiKey = $feed['feed_api_key'] ?: getenv('YOUTUBE_API_KEY') ?: '';
-        if (!$apiKey || !$channelId || strpos($channelId, 'PL') === 0) continue;
+    // Check for live first, then upcoming
+    foreach (['live', 'upcoming'] as $eventType) {
+        foreach ($feeds as $feed) {
+            $channelId = $feed['feed_account_id'];
+            $apiKey = $feed['feed_api_key'] ?: getenv('YOUTUBE_API_KEY') ?: '';
+            if (!$apiKey || !$channelId || strpos($channelId, 'PL') === 0) continue;
 
-        $url = 'https://www.googleapis.com/youtube/v3/search?' . http_build_query([
-            'part' => 'snippet',
-            'channelId' => $channelId,
-            'eventType' => 'live',
-            'type' => 'video',
-            'key' => $apiKey,
-            'maxResults' => 1,
-        ]);
+            $url = 'https://www.googleapis.com/youtube/v3/search?' . http_build_query([
+                'part' => 'snippet',
+                'channelId' => $channelId,
+                'eventType' => $eventType,
+                'type' => 'video',
+                'key' => $apiKey,
+                'maxResults' => 1,
+            ]);
 
-        $ctx = stream_context_create(['http' => ['timeout' => 5]]);
-        $response = @file_get_contents($url, false, $ctx);
-        if ($response === false) continue;
+            $ctx = stream_context_create(['http' => ['timeout' => 5]]);
+            $response = @file_get_contents($url, false, $ctx);
+            if ($response === false) continue;
 
-        $data = json_decode($response, true);
-        $items = $data['items'] ?? [];
+            $data = json_decode($response, true);
+            $items = $data['items'] ?? [];
 
-        if (!empty($items)) {
-            $item = $items[0];
-            $videoId = $item['id']['videoId'] ?? '';
-            return [
-                'live' => true,
-                'title' => $item['snippet']['title'] ?? 'Live Now',
-                'url' => 'https://www.youtube.com/watch?v=' . $videoId,
-                'embed_url' => 'https://www.youtube.com/embed/' . $videoId . '?autoplay=1',
-                'thumbnail' => $item['snippet']['thumbnails']['high']['url'] ?? '',
-                'source' => 'youtube',
-                'video_id' => $videoId,
-                'started_at' => date('c'),
-            ];
+            if (!empty($items)) {
+                $item = $items[0];
+                $videoId = $item['id']['videoId'] ?? '';
+                $isUpcoming = $eventType === 'upcoming';
+
+                $result = [
+                    'live' => true,
+                    'upcoming' => $isUpcoming,
+                    'title' => $item['snippet']['title'] ?? ($isUpcoming ? 'Upcoming' : 'Live Now'),
+                    'url' => 'https://www.youtube.com/watch?v=' . $videoId,
+                    'embed_url' => 'https://www.youtube.com/embed/' . $videoId . '?autoplay=1',
+                    'thumbnail' => $item['snippet']['thumbnails']['high']['url'] ?? '',
+                    'source' => 'youtube',
+                    'video_id' => $videoId,
+                ];
+
+                if ($isUpcoming) {
+                    // Get scheduled start time from video details
+                    $detailUrl = 'https://www.googleapis.com/youtube/v3/videos?' . http_build_query([
+                        'part' => 'liveStreamingDetails',
+                        'id' => $videoId,
+                        'key' => $apiKey,
+                    ]);
+                    $detailResp = @file_get_contents($detailUrl, false, $ctx);
+                    if ($detailResp) {
+                        $detailData = json_decode($detailResp, true);
+                        $liveDetails = $detailData['items'][0]['liveStreamingDetails'] ?? [];
+                        $result['scheduled_start'] = $liveDetails['scheduledStartTime'] ?? null;
+                    }
+                } else {
+                    $result['started_at'] = date('c');
+                }
+
+                return $result;
+            }
         }
     }
 
