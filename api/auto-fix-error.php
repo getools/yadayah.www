@@ -437,6 +437,7 @@ foreach ($errors as $error) {
     // Try with progressively smaller context if the API rejects the request
     $contextLimit = 15000;
     $response = null;
+    $lastError = '';
     while ($contextLimit >= 2000) {
         $trimmedContext = $context;
         if (strlen($trimmedContext) > $contextLimit) {
@@ -445,18 +446,28 @@ foreach ($errors as $error) {
         $prompt = "You are a code-fixing agent for the Yada Yah website. Investigate this error thoroughly and fix the root cause.\n\n"
             . $trimmedContext . "\n\n" . $rules;
 
-        $response = callClaude($ANTHROPIC_KEY, $MODEL, $prompt);
-        if ($response !== null) break;
+        $result = callClaude($ANTHROPIC_KEY, $MODEL, $prompt);
+        if (isset($result['text'])) {
+            $response = $result['text'];
+            break;
+        }
 
-        // API failed — retry with half the context
+        $lastError = $result['error'] ?? 'Unknown error';
+        // Don't retry on non-retryable errors (billing, auth, overloaded)
+        if (!($result['retryable'] ?? true)) {
+            echo "  [error] Non-retryable API error — stopping\n";
+            break;
+        }
+
+        // API failed with retryable error — retry with half the context
         $prevLimit = $contextLimit;
         $contextLimit = (int)($contextLimit / 2);
         echo "  [retry] Reducing context from {$prevLimit} to {$contextLimit} bytes\n";
     }
     if (!$response) {
-        echo "  [error] Claude API call failed at all context sizes\n";
+        echo "  [error] Claude API call failed: {$lastError}\n";
         $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ?")
-           ->execute(["Auto-fix: API failed even with minimal context", $error['event_key']]);
+           ->execute(["Auto-fix: API error — " . substr($lastError, 0, 200), $error['event_key']]);
         continue;
     }
 
@@ -603,7 +614,8 @@ if ($fixCount > 0) {
 }
 
 // ── Claude API helper ──
-function callClaude(string $apiKey, string $model, string $prompt): ?string {
+// Returns ['text' => '...'] on success, ['error' => '...', 'retryable' => bool] on failure
+function callClaude(string $apiKey, string $model, string $prompt): array {
     $payload = json_encode([
         'model' => $model,
         'max_tokens' => 8192,
@@ -628,15 +640,25 @@ function callClaude(string $apiKey, string $model, string $prompt): ?string {
     curl_close($ch);
 
     if ($httpCode !== 200 || !$response) {
-        echo "  [api-error] HTTP {$httpCode}: " . substr($response ?: 'no response', 0, 200) . "\n";
-        return null;
+        $detail = substr($response ?: 'no response', 0, 300);
+        echo "  [api-error] HTTP {$httpCode}: {$detail}\n";
+        // Determine if this is retryable (context too large) vs permanent (billing, auth)
+        $retryable = true;
+        if (stripos($detail, 'credit balance') !== false || stripos($detail, 'billing') !== false) {
+            $retryable = false;
+        } elseif ($httpCode === 401 || $httpCode === 403) {
+            $retryable = false;
+        } elseif ($httpCode === 529 || $httpCode === 503) {
+            $retryable = false; // overloaded — don't retry with smaller context, just stop
+        }
+        return ['error' => "HTTP {$httpCode}: {$detail}", 'retryable' => $retryable];
     }
 
     $data = json_decode($response, true);
     if (!$data || !isset($data['content'][0]['text'])) {
         echo "  [api-error] Unexpected response format\n";
-        return null;
+        return ['error' => 'Unexpected response format', 'retryable' => false];
     }
 
-    return $data['content'][0]['text'];
+    return ['text' => $data['content'][0]['text']];
 }
