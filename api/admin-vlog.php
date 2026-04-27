@@ -129,7 +129,7 @@ if ($type === 'videos' && $method === 'GET') {
     $where = str_replace('feed_key', 'fi.feed_key', $where);
 
     $stmt = $db->prepare("
-        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import),
+        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title,
                fi.feed_item_thumbnail, fi.feed_item_url, fi.feed_item_sort, fi.feed_item_active_flag,
                fi.feed_item_category_key, fi.feed_item_episode, fi.feed_item_audio_file,
                c.category_title, c.category_sort
@@ -146,7 +146,7 @@ if ($type === 'videos' && $method === 'GET') {
         $videos[] = [
             'video_key'       => (int)$r['feed_item_key'],
             'video_id'        => $r['feed_item_external_id'],
-            'title'           => $r['COALESCE(feed_item_title_override, feed_item_title_import)'],
+            'title'           => $r['feed_item_title'],
             'thumbnail'       => $r['feed_item_thumbnail'],
             'url'             => $r['feed_item_url'],
             'sort'            => (int)$r['feed_item_sort'],
@@ -168,7 +168,7 @@ if ($type === 'video' && $method === 'PUT') {
     $params = [];
 
     if (isset($data['title'])) {
-        $fields[] = 'COALESCE(feed_item_title_override, feed_item_title_import) = ?';
+        $fields[] = 'feed_item_title_override = ?';
         $params[] = trim($data['title']);
     }
     if (array_key_exists('category_key', $data)) {

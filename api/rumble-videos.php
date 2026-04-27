@@ -34,14 +34,14 @@ $params = [$pageKey];
 // Grouped mode — sections by category with episode sort
 if (isset($_GET['grouped'])) {
     $stmt = $db->prepare("
-        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), fi.feed_item_url,
+        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, fi.feed_item_url,
                fi.feed_item_thumbnail, fi.feed_item_embed_id, fi.feed_item_duration,
-               COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime), fi.feed_item_create_dtime,
+               COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime,
                fi.feed_item_category_key, fi.feed_item_episode, fi.feed_item_audio_file
         FROM yy_feed_item fi
         JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
         WHERE $where
-        ORDER BY COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
+        ORDER BY feed_item_publish_dtime DESC NULLS LAST
     ");
     $stmt->execute($params);
     $allItems = $stmt->fetchAll();
@@ -59,13 +59,13 @@ if (isset($_GET['grouped'])) {
     foreach ($allItems as $item) {
         $ck = (int)($item['feed_item_category_key'] ?? 0);
         $groups[$ck][] = [
-            'title' => trim(preg_replace('/^[~\- ]+|[~\- ]+$/', '', trim(preg_replace('/#\w+\s*/', '', $item['COALESCE(feed_item_title_override, feed_item_title_import)'])))),
+            'title' => trim(preg_replace('/^[~\- ]+|[~\- ]+$/', '', trim(preg_replace('/#\w+\s*/', '', $item['feed_item_title'])))),
             'url' => $item['feed_item_url'],
             'thumbnail' => $item['feed_item_thumbnail'],
             'embedId' => $item['feed_item_embed_id'],
             'videoId' => $item['feed_item_external_id'],
             'duration' => $item['feed_item_duration'],
-            'date' => $item['COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime)'] ?? $item['feed_item_create_dtime'],
+            'date' => $item['feed_item_publish_dtime'] ?? $item['feed_item_create_dtime'],
             'episode' => $item['feed_item_episode'] ? (int)$item['feed_item_episode'] : null,
             'audio' => $item['feed_item_audio_file'] ?? null,
         ];
@@ -110,13 +110,13 @@ $total = (int)$countStmt->fetchColumn();
 // Fetch page
 $fetchParams = array_merge($params, [$perPage, $offset]);
 $stmt = $db->prepare("
-    SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), fi.feed_item_url,
+    SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, fi.feed_item_url,
            fi.feed_item_thumbnail, fi.feed_item_embed_id, fi.feed_item_duration,
-           COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime), fi.feed_item_create_dtime, fi.feed_item_audio_file
+           COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime, fi.feed_item_audio_file
     FROM yy_feed_item fi
     JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where
-    ORDER BY COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
+    ORDER BY feed_item_publish_dtime DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
 $stmt->execute($fetchParams);
@@ -126,13 +126,13 @@ $items = $stmt->fetchAll();
 $videos = [];
 foreach ($items as $item) {
     $videos[] = [
-        'title' => trim(preg_replace('/^[~\- ]+|[~\- ]+$/', '', trim(preg_replace('/#\w+\s*/', '', $item['COALESCE(feed_item_title_override, feed_item_title_import)'])))),
+        'title' => trim(preg_replace('/^[~\- ]+|[~\- ]+$/', '', trim(preg_replace('/#\w+\s*/', '', $item['feed_item_title'])))),
         'url' => $item['feed_item_url'],
         'thumbnail' => $item['feed_item_thumbnail'],
         'embedId' => $item['feed_item_embed_id'],
         'videoId' => $item['feed_item_external_id'],
         'duration' => $item['feed_item_duration'],
-        'date' => $item['COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime)'] ?? $item['feed_item_create_dtime'],
+        'date' => $item['feed_item_publish_dtime'] ?? $item['feed_item_create_dtime'],
         'audio' => $item['feed_item_audio_file'] ?? null,
     ];
 }
