@@ -516,7 +516,9 @@ function renderResults(data, query) {
             }
         }
         html += '</div>';
-        html += '<div class="result-snippet">' + (r.html || r.snippet || '') + '</div>';
+        var collapsed = r.snippet || r.html || '';
+        var expanded = r.html || r.snippet || '';
+        html += '<div class="result-snippet" data-collapsed="' + escAttr(collapsed) + '" data-expanded="' + escAttr(expanded) + '">' + collapsed + '</div>';
         html += '<button class="toggle-snippet" onclick="toggleSnippet(this)">Show more</button>';
         html += '</div>';
     });
@@ -573,10 +575,14 @@ function toggleSnippet(btn) {
     if (snippet.classList.contains('expanded')) {
         snippet.classList.remove('expanded');
         snippet.classList.add('overflowing');
+        var collapsed = snippet.getAttribute('data-collapsed');
+        if (collapsed) snippet.innerHTML = collapsed;
         btn.textContent = 'Show more';
     } else {
         snippet.classList.add('expanded');
         snippet.classList.remove('overflowing');
+        var expanded = snippet.getAttribute('data-expanded');
+        if (expanded) snippet.innerHTML = expanded;
         btn.textContent = 'Show less';
     }
 }
