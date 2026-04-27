@@ -43,21 +43,21 @@ function cleanBasicsTitle(string $title): string {
     return trim($title) ?: 'Basics';
 }
 
-// Build WHERE clause
-$where = "feed_key = ? AND feed_item_active_flag = TRUE";
-$params = [$feedKey];
-
-buildFeedPageFilters($where, $params, $feedRow['feed_page_filter_include'] ?? '', $feedRow['feed_page_filter_exclude'] ?? '', $feedRow['feed_page_filter_orientation'] ?? null);
+// Build WHERE clause using join table
+$pageKey = getPageKey($db, 'basics');
+$where = "fi.feed_item_active_flag = TRUE AND fip.page_key = ?";
+$params = [$pageKey];
 
 // Grouped mode
 if (isset($_GET['grouped'])) {
     $stmt = $db->prepare("
-        SELECT feed_item_external_id AS basics_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(feed_item_title, '#\\w+\\s*', '', 'g'))) AS basics_title,
-               feed_item_thumbnail AS basics_thumbnail, feed_item_publish_dtime AS basics_create,
-               feed_item_tags, feed_item_sort AS basics_sort, feed_item_category_key, feed_item_audio_file AS basics_audio
-        FROM yy_feed_item
+        SELECT fi.feed_item_external_id AS basics_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS basics_title,
+               fi.feed_item_thumbnail AS basics_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS basics_create,
+               fi.feed_item_tags, fi.feed_item_sort AS basics_sort, fi.feed_item_category_key, fi.feed_item_audio_file AS basics_audio
+        FROM yy_feed_item fi
+        JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
         WHERE $where
-        ORDER BY feed_item_sort, feed_item_publish_dtime DESC NULLS LAST
+        ORDER BY fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     ");
     $stmt->execute($params);
     $items = $stmt->fetchAll();
@@ -115,7 +115,7 @@ if (isset($_GET['grouped'])) {
 }
 
 // Flat paginated mode
-$countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item WHERE $where");
+$countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where");
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 
@@ -124,11 +124,12 @@ $offset = ($page - 1) * $PER_PAGE;
 $totalPages = max(1, (int)ceil($total / $PER_PAGE));
 
 $stmt = $db->prepare("
-    SELECT feed_item_external_id AS basics_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(feed_item_title, '#\\w+\\s*', '', 'g'))) AS basics_title,
-           feed_item_thumbnail AS basics_thumbnail, feed_item_publish_dtime AS basics_create
-    FROM yy_feed_item
+    SELECT fi.feed_item_external_id AS basics_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS basics_title,
+           fi.feed_item_thumbnail AS basics_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS basics_create
+    FROM yy_feed_item fi
+    JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where
-    ORDER BY feed_item_sort, feed_item_publish_dtime DESC NULLS LAST
+    ORDER BY fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
 $stmt->execute(array_merge($params, [$PER_PAGE, $offset]));

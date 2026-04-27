@@ -2,6 +2,122 @@
 (function() {
 'use strict';
 
+// ── Livestream banner + admin control ──
+(function() {
+    // Inject styles once
+    var lsStyle = document.createElement('style');
+    lsStyle.textContent = ''
+        + '#livestream-banner { position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#c0392b,#e74c3c);color:#fff;text-align:center;padding:8px 16px;font-size:0.9rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.3); }'
+        + '#livestream-banner a { color:#fff;text-decoration:underline; }'
+        + '#livestream-banner .live-dot { width:10px;height:10px;background:#fff;border-radius:50%;animation:livestream-blink 1s infinite; }'
+        + '@keyframes livestream-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }'
+        + 'body.has-livestream { padding-top:40px; }'
+        + '#stream-admin-btn { position:fixed;top:8px;left:8px;z-index:99998;width:36px;height:36px;border-radius:50%;border:none;background:rgba(192,57,43,0.8);color:#fff;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3); }'
+        + '#stream-admin-modal { display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;justify-content:center;align-items:center; }';
+    document.head.appendChild(lsStyle);
+
+    var _streamFeedKey = null;
+
+    function checkLivestream() {
+        fetch('/api/livestream-status.php').then(function(r) { return r.json(); }).then(function(d) {
+            var existing = document.getElementById('livestream-banner');
+            _streamFeedKey = d.feed_key || null;
+
+            if (d.live) {
+                if (!existing) {
+                    var banner = document.createElement('div');
+                    banner.id = 'livestream-banner';
+                    var url = d.feed_source_url || '#';
+                    var siteName = (d.feed_site_code || '').charAt(0).toUpperCase() + (d.feed_site_code || '').slice(1);
+                    banner.innerHTML = '<span class="live-dot"></span> LIVE NOW — <a href="' + url + '" target="_blank" rel="noopener">Watch on ' + siteName + '</a>'
+                        + '<button onclick="this.parentNode.remove();document.body.classList.remove(\'has-livestream\');" style="background:none;border:none;color:#fff;font-size:1.2rem;cursor:pointer;margin-left:8px;opacity:0.7;">&times;</button>';
+                    document.body.insertBefore(banner, document.body.firstChild);
+                    document.body.classList.add('has-livestream');
+                }
+                // Remove admin ghost button when live (banner is already visible)
+                var ghost = document.getElementById('stream-admin-btn');
+                if (ghost) ghost.remove();
+            } else {
+                if (existing) { existing.remove(); document.body.classList.remove('has-livestream'); }
+                // Check if user is admin — show ghost button
+                showAdminStreamButton(d);
+            }
+        }).catch(function() {});
+    }
+
+    function showAdminStreamButton(d) {
+        if (document.getElementById('stream-admin-btn')) return;
+        fetch('/api/community-session.php', {credentials:'include'}).then(function(r) { return r.json(); }).then(function(sess) {
+            if (!sess.user || !sess.user.roles) return;
+            var isAdmin = sess.user.roles.indexOf('admin') >= 0 || sess.user.roles.indexOf('moderator') >= 0;
+            if (!isAdmin) return;
+
+            var btn = document.createElement('button');
+            btn.id = 'stream-admin-btn';
+            btn.style.opacity = '0.4';
+            btn.innerHTML = '&#9679;<br>LIVE';
+            btn.title = 'Stream control (admin)';
+            btn.onmouseover = function() { btn.style.opacity = '0.8'; };
+            btn.onmouseout = function() { btn.style.opacity = '0.4'; };
+            btn.onclick = function() { openStreamAdminModal(); };
+            document.body.appendChild(btn);
+        }).catch(function() {});
+    }
+
+    function openStreamAdminModal() {
+        var modal = document.getElementById('stream-admin-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'stream-admin-modal';
+            modal.onclick = function(ev) { if (ev.target === modal) modal.style.display = 'none'; };
+            modal.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:400px;width:90%;text-align:center;">'
+                + '<h3 style="margin:0 0 8px;font-size:1rem;color:#31345A;">Stream Control</h3>'
+                + '<p id="stream-admin-info" style="font-size:0.85rem;color:#666;margin:0 0 20px;"></p>'
+                + '<div style="display:flex;flex-direction:column;gap:10px;">'
+                + '<button onclick="window._streamAdminAction(\'start\')" style="padding:10px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;">&#9679; Start Stream (set to now)</button>'
+                + '<button onclick="window._streamAdminAction(\'end\')" style="padding:10px;background:#888;color:#fff;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">End Stream (clear time)</button>'
+                + '<button onclick="document.getElementById(\'stream-admin-modal\').style.display=\'none\'" style="padding:10px;background:#f0f0f0;color:#333;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">Cancel</button>'
+                + '</div></div>';
+            document.body.appendChild(modal);
+        }
+        document.getElementById('stream-admin-info').textContent = _streamFeedKey ? 'Feed #' + _streamFeedKey : 'No stream-enabled feed found';
+        modal.style.display = 'flex';
+    }
+
+    window._streamAdminAction = function(action) {
+        if (!_streamFeedKey) {
+            // Find a stream-enabled feed
+            fetch('/api/livestream-status.php?all=1').then(function(r) { return r.json(); }).then(function(d) {
+                if (d.feed_key) { _streamFeedKey = d.feed_key; doStreamAction(action); }
+                else { alert('No feed with stream_flag enabled. Enable it in Admin > Feeds first.'); }
+            });
+            return;
+        }
+        doStreamAction(action);
+    };
+
+    function doStreamAction(action) {
+        var dtime = action === 'start' ? new Date().toISOString() : null;
+        fetch('/api/admin-feeds.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({feed_key: _streamFeedKey, feed_stream_dtime: dtime})
+        }).then(function(r) { return r.json(); }).then(function() {
+            document.getElementById('stream-admin-modal').style.display = 'none';
+            // Clear cache and recheck
+            fetch('/api/livestream-status.php?bust=' + Date.now()).then(function() {
+                var ghost = document.getElementById('stream-admin-btn');
+                if (ghost) ghost.remove();
+                var banner = document.getElementById('livestream-banner');
+                if (banner) { banner.remove(); document.body.classList.remove('has-livestream'); }
+                checkLivestream();
+            });
+        }).catch(function() { alert('Failed — are you logged in as admin?'); });
+    }
+
+    checkLivestream(); // Single check on page load — updates come via WebSub push
+})();
+
 // Load error reporter
 if (!document.getElementById('error-reporter-js')) {
     var s = document.createElement('script');

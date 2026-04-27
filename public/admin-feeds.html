@@ -18,6 +18,12 @@
         .badge-active { background: #d4edda; color: #155724; }
         .badge-inactive { background: #f8d7da; color: #721c24; }
         .badge-site { background: #e2e3f1; color: #383d6e; }
+        .sub-tab { padding:8px 20px;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px; }
+        .sub-tab.active { color:#31345A;border-bottom-color:#E5C86C; }
+        .feed-tab .item-row { font-size:0.82rem; }
+        .feed-tab .item-row:hover { background:#f0f4ff; }
+        .feed-tab .item-row.inactive { opacity:0.4; }
+        .feed-tab .thumb { width:100px;height:56px;object-fit:cover;border-radius:4px; }
 
         .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
         .form-overlay.open { display: flex; }
@@ -89,39 +95,67 @@
         </div>
     </div>
 
-    <h2 style="font-size:1rem;color:#31345A;margin:0 0 12px;">Feed Sources</h2>
-    <table class="feeds-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Site</th>
-                <th>Account ID</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody id="feeds-body"></tbody>
-    </table>
-
-    <h2 style="font-size:1rem;color:#31345A;margin:20px 0 12px;">Page Mappings</h2>
-    <div class="toolbar">
-        <span id="feed-count" class="feed-count"></span>
-        <button class="btn btn-primary btn-sm" onclick="addPageMapping()">+ Add Page Mapping</button>
+    <div class="sub-tabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #ddd;">
+        <button class="sub-tab active" onclick="switchFeedTab('sources')">Sources</button>
+        <button class="sub-tab" onclick="switchFeedTab('pages')">Pages</button>
+        <button class="sub-tab" onclick="switchFeedTab('items')">Items</button>
     </div>
-    <table class="feeds-table">
-        <thead>
-            <tr>
-                <th>Page</th>
-                <th>Feed Source</th>
-                <th>Include Filters</th>
-                <th>Exclude Filters</th>
-                <th>Listing Type</th>
-                <th>Orientation</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody id="page-feeds-body"></tbody>
-    </table>
+
+    <!-- Sources Tab -->
+    <div id="tab-sources" class="feed-tab">
+        <table class="feeds-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Site</th>
+                    <th>Account ID</th>
+                    <th>Status</th>
+                    <th>Stream</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="feeds-body"></tbody>
+        </table>
+    </div>
+
+    <!-- Pages Tab -->
+    <div id="tab-pages" class="feed-tab" style="display:none;">
+        <div class="toolbar">
+            <span id="feed-count" class="feed-count"></span>
+            <button class="btn btn-primary btn-sm" onclick="addPageMapping()">+ Add Page Mapping</button>
+        </div>
+        <table class="feeds-table">
+            <thead>
+                <tr>
+                    <th>Page</th>
+                    <th>Feed Source</th>
+                    <th>Include Filters</th>
+                    <th>Exclude Filters</th>
+                    <th>Listing Type</th>
+                    <th>Orientation</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="page-feeds-body"></tbody>
+        </table>
+    </div>
+
+    <!-- Items Tab -->
+    <div id="tab-items" class="feed-tab" style="display:none;">
+        <div class="toolbar">
+            <span id="items-count" class="feed-count"></span>
+            <select id="items-per-page" onchange="_itemsPerPage=parseInt(this.value)||99999;loadItems(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="99999">All</option>
+            </select>
+        </div>
+        <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
+    </div>
 </div>
 
 <!-- Sync progress overlay -->
@@ -158,7 +192,15 @@
             </div>
             <div class="field"><label>Source URL</label><input type="text" id="f-source-url" placeholder="https://..."></div>
             <div class="field"><label>API Key</label><input type="text" id="f-api-key" placeholder="API key or token"></div>
-            <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                <label style="display:inline;margin:0;white-space:nowrap;">Stream</label>
+                <input type="checkbox" id="f-stream" onchange="onFormStreamToggle()">
+                <span id="f-stream-btn-wrap" style="min-width:180px;display:inline-block;"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                <label style="display:inline;margin:0;">Active</label>
+                <input type="checkbox" id="f-active" checked>
+            </div>
 
             <h4 style="margin:16px 0 8px;border-top:1px solid #e0e0e0;padding-top:16px;">Schedule</h4>
             <div id="schedules-container"></div>
@@ -219,6 +261,224 @@
 <script>
 var API = '/api';
 var feeds = [];
+var _itemsLoaded = false;
+var _itemsPage = 1;
+var _itemsTotalPages = 1;
+var _itemsPerPage = 100;
+var _itemsSort = 'publish_dtime';
+var _itemsDir = 'desc';
+var _catFilterOpts = '<option value="">All</option>';
+var _catFilterOptsFiltered = '<option value="">All</option>';
+var _pageFilterOpts = '<option value="">All</option>';
+var _allCategories = [];
+var _allPages = [];
+
+function onPageFilterChange() {
+    var sel = document.getElementById('filter-page');
+    _savedFilters.page = sel ? sel.value : '';
+    _savedFilters.category = ''; // Reset category when page changes
+    rebuildCategoryFilter();
+    loadItems(1);
+}
+
+function rebuildCategoryFilter() {
+    var pageVal = _savedFilters.page;
+    var pageKey = pageVal ? pageVal.replace('page:', '') : '';
+    var opts = '<option value="">All</option>';
+    if (pageKey) {
+        _allCategories.forEach(function(c) {
+            if (String(c.page_key) === pageKey) {
+                opts += '<option value="cat:' + c.category_key + '">' + esc(catLabel(c)) + '</option>';
+            }
+        });
+    } else {
+        opts = _catFilterOpts;
+    }
+    _catFilterOptsFiltered = opts;
+    var catSel = document.getElementById('filter-category');
+    if (catSel) { catSel.innerHTML = opts; catSel.value = _savedFilters.category; }
+}
+var _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:''};
+
+function catLabel(c) {
+    var label = c.category_title || '';
+    if (c.category_subtitle) label += ' ~ ' + c.category_subtitle;
+    return label;
+}
+
+function buildFeedFilterDropdown() {
+    var opts = '<option value="">All</option>';
+    feeds.forEach(function(f) { opts += '<option value="' + f.feed_key + '">' + esc(f.feed_name) + '</option>'; });
+    return '<select id="filter-feed" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.feed=this.value;loadItems(1)">' + opts + '</select>';
+}
+
+function sortItems(col) {
+    if (_itemsSort === col) {
+        _itemsDir = _itemsDir === 'desc' ? 'asc' : 'desc';
+    } else {
+        _itemsSort = col;
+        _itemsDir = (col === 'feed_name' || col === 'feed_item_title' || col === 'category_title') ? 'asc' : 'desc';
+    }
+    loadItems(1);
+}
+
+function switchFeedTab(tab) {
+    document.querySelectorAll('.sub-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.feed-tab').forEach(function(p) { p.style.display = 'none'; });
+    document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
+    document.getElementById('tab-' + tab).style.display = '';
+    if (tab === 'items' && !_itemsLoaded) { _itemsLoaded = true; loadItems(1); }
+}
+
+function populateItemsFeedFilter() {
+    var sel = document.getElementById('items-feed-filter');
+    var opts = '<option value="">All Feeds</option>';
+    feeds.forEach(function(f) { opts += '<option value="' + f.feed_key + '">' + esc(f.feed_name) + '</option>'; });
+    sel.innerHTML = opts;
+}
+
+function loadItems(page) {
+    page = page || 1;
+    _itemsPage = page;
+    var ff = document.getElementById('filter-feed');
+    if (ff) _savedFilters.feed = ff.value;
+    var af = document.getElementById('filter-active');
+    if (af) _savedFilters.active = af.value;
+    var pf = document.getElementById('filter-page');
+    if (pf) _savedFilters.page = pf.value;
+    var feedKey = _savedFilters.feed;
+    var search = '';
+    // Save current filter values before re-render destroys the inputs
+    var tf = document.getElementById('filter-title');
+    var tgf = document.getElementById('filter-tags');
+    var cf = document.getElementById('filter-category');
+    var mf = document.getElementById('filter-mp3');
+    if (tf) _savedFilters.title = tf.value;
+    if (tgf) _savedFilters.tags = tgf.value;
+    if (cf) _savedFilters.category = cf.value;
+    if (mf) _savedFilters.mp3 = mf.value;
+    var ef = document.getElementById('filter-episode');
+    if (ef) _savedFilters.episode = ef.value;
+    var titleFilter = _savedFilters.title;
+    var tagsFilter = _savedFilters.tags;
+    var catFilter = _savedFilters.category;
+    var url = API + '/admin-feeds.php?items=1&page=' + page + '&limit=' + _itemsPerPage + '&sort=' + _itemsSort + '&dir=' + _itemsDir;
+    if (feedKey) url += '&feed_key=' + feedKey;
+    if (search) url += '&search=' + encodeURIComponent(search);
+    if (titleFilter) url += '&title=' + encodeURIComponent(titleFilter);
+    if (tagsFilter) url += '&tags=' + encodeURIComponent(tagsFilter);
+    var pageFilter = _savedFilters.page;
+    if (pageFilter) url += '&page_key=' + pageFilter.replace('page:','');
+    if (catFilter) {
+        if (catFilter.indexOf('cat:') === 0) url += '&category_key=' + catFilter.replace('cat:','');
+    }
+    var mp3Filter = _savedFilters.mp3;
+    if (mp3Filter) url += '&has_mp3=' + mp3Filter;
+    var episodeFilter = _savedFilters.episode;
+    if (episodeFilter) url += '&episode=' + encodeURIComponent(episodeFilter);
+    var activeFilter = _savedFilters.active;
+    if (activeFilter) url += '&active=' + activeFilter;
+    document.getElementById('items-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">Loading...</div>';
+    fetch(url, {credentials:'include'}).then(function(r) { return safeJson(r); }).then(function(d) {
+        if (d.error) { document.getElementById('items-container').innerHTML = '<div style="color:#c00;padding:12px;">' + esc(d.error) + '</div>'; return; }
+        var items = d.items || [];
+        _allItems = items;
+        _itemsTotalPages = d.total_pages || 1;
+        // Build page and category filter dropdowns (only on first load)
+        if (d.pages && _pageFilterOpts === '<option value="">All</option>') {
+            _allCategories = d.categories || [];
+            _allPages = d.pages || [];
+
+            // Page dropdown — flat list of pages
+            var pOpts = '<option value="">All</option>';
+            _allPages.forEach(function(pg) {
+                pOpts += '<option value="page:' + pg.page_key + '">' + esc(pg.page_title) + '</option>';
+            });
+            _pageFilterOpts = pOpts;
+            var pSel = document.getElementById('filter-page');
+            if (pSel) pSel.innerHTML = pOpts;
+
+            // Category dropdown — grouped by page
+            var catsByPage = {};
+            _allCategories.forEach(function(c) { var pk = c.page_key; if (!catsByPage[pk]) catsByPage[pk] = []; catsByPage[pk].push(c); });
+            var cOpts = '<option value="">All</option>';
+            _allPages.forEach(function(pg) {
+                var pgCats = catsByPage[pg.page_key] || [];
+                if (pgCats.length) {
+                    cOpts += '<option disabled style="font-weight:700;color:#31345A;">── ' + esc(pg.page_title) + ' ──</option>';
+                    pgCats.forEach(function(c) {
+                        cOpts += '<option value="cat:' + c.category_key + '">&nbsp;&nbsp;&nbsp;' + esc(catLabel(c)) + '</option>';
+                    });
+                }
+            });
+            _catFilterOpts = cOpts;
+            _catFilterOptsFiltered = _savedFilters.page ? '' : cOpts;
+            rebuildCategoryFilter();
+        }
+        document.getElementById('items-count').textContent = (d.total || items.length) + ' item(s) — page ' + (d.page || 1) + '/' + _itemsTotalPages;
+        if (!items.length) { document.getElementById('items-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No items found.</div>'; return; }
+        var ths = 'cursor:pointer;user-select:none;';
+        var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
+        var html = '<table class="feeds-table"><thead><tr>'
+            + '<th>Thumb</th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_name\')">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th>Page<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'category_title\')">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
+            + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_active_flag\')">Active' + iarr('feed_item_active_flag') + '<br><select id="filter-active" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.active=this.value;loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
+            + '<th></th>'
+            + '</tr></thead><tbody>';
+        items.forEach(function(it) {
+            var inactive = it.feed_item_active_flag === false || it.feed_item_active_flag === 'f';
+            html += '<tr class="item-row' + (inactive ? ' inactive' : '') + '">'
+                + '<td>' + (it.feed_item_url ? '<a href="' + esc(it.feed_item_url) + '" target="_blank">' : '') + '<img class="thumb" src="' + esc(it.feed_item_thumbnail || '') + '" alt="">' + (it.feed_item_url ? '</a>' : '') + '</td>'
+                + '<td style="font-size:0.75rem;color:#888;">' + esc(it.feed_name || '') + '</td>'
+                + '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.feed_item_title || '') + '</td>'
+                + '<td style="font-size:0.7rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;">' + esc(it.feed_item_tags || '') + '</td>'
+                + '<td style="font-size:0.75rem;color:#888;">' + esc(it.page_codes || '') + '</td>'
+                + '<td style="font-size:0.75rem;color:#888;">' + esc(it.category_title || '') + '</td>'
+                + '<td style="font-size:0.75rem;color:#888;">' + (it.feed_item_episode || '') + '</td>'
+                + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
+                + '<td style="text-align:center;">' + (inactive ? '<span style="color:#c00;">No</span>' : '<span style="color:#27ae60;">Yes</span>') + '</td>'
+                + '<td class="actions"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button></td>'
+                + '</tr>';
+        });
+        html += '</tbody></table>';
+        if (_itemsTotalPages > 1) {
+            var btnStyle = 'padding:4px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.82rem;';
+            var activeStyle = 'padding:4px 10px;border:1px solid #31345A;border-radius:4px;background:#31345A;color:#fff;font-size:0.82rem;';
+            html += '<div style="display:flex;gap:4px;justify-content:center;align-items:center;padding:12px 0;flex-wrap:wrap;">';
+            html += '<button ' + (page <= 1 ? 'disabled' : 'onclick="loadItems(' + (page-1) + ')"') + ' style="' + btnStyle + '">&laquo;</button>';
+            // Build page numbers: always show 1, last, current, and neighbors
+            var pages = [1];
+            for (var p = page - 2; p <= page + 2; p++) { if (p > 1 && p < _itemsTotalPages) pages.push(p); }
+            if (_itemsTotalPages > 1) pages.push(_itemsTotalPages);
+            var seen = {};
+            var unique = [];
+            pages.forEach(function(pg) { if (!seen[pg]) { seen[pg] = true; unique.push(pg); } });
+            unique.sort(function(a,b) { return a - b; });
+            for (var k = 0; k < unique.length; k++) {
+                if (k > 0 && unique[k] - unique[k-1] > 1) html += '<span style="padding:0 4px;color:#999;">...</span>';
+                html += '<button ' + (unique[k] === page ? 'style="' + activeStyle + '"' : 'onclick="loadItems(' + unique[k] + ')" style="' + btnStyle + '"') + '>' + unique[k] + '</button>';
+            }
+            html += '<button ' + (page >= _itemsTotalPages ? 'disabled' : 'onclick="loadItems(' + (page+1) + ')"') + ' style="' + btnStyle + '">&raquo;</button>';
+            html += '</div>';
+        }
+        document.getElementById('items-container').innerHTML = html;
+        // Restore filter values after re-render
+        var rt = document.getElementById('filter-title'); if (rt) rt.value = _savedFilters.title;
+        var rtg = document.getElementById('filter-tags'); if (rtg) rtg.value = _savedFilters.tags;
+        var rc = document.getElementById('filter-category'); if (rc) rc.value = _savedFilters.category;
+        var rm = document.getElementById('filter-mp3'); if (rm) rm.value = _savedFilters.mp3;
+        var rff = document.getElementById('filter-feed'); if (rff) rff.value = _savedFilters.feed;
+        var rpf = document.getElementById('filter-page'); if (rpf) rpf.value = _savedFilters.page;
+        var ref = document.getElementById('filter-episode'); if (ref) ref.value = _savedFilters.episode;
+        var raf = document.getElementById('filter-active'); if (raf) raf.value = _savedFilters.active;
+    });
+}
 var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function checkAuth() {
@@ -291,11 +551,23 @@ function renderAll() {
     for (var i = 0; i < feeds.length; i++) {
         var f = feeds[i];
         var statusBadge = f.feed_active_flag ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>';
+        var streamOn = f.feed_stream_flag === true || f.feed_stream_flag === 't';
+        var streamBtn = '';
+        if (streamOn) {
+            var streamDtime = f.feed_stream_dtime ? new Date(f.feed_stream_dtime).toLocaleString() : 'not set';
+            var isLive = f.feed_stream_dtime && (Date.now() - new Date(f.feed_stream_dtime).getTime() < 3*60*60*1000);
+            streamBtn = '<button onclick="event.stopPropagation();openStreamModal(' + f.feed_key + ',\'' + esc(f.feed_stream_dtime || '') + '\')" style="background:' + (isLive ? '#c0392b' : '#888') + ';color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;font-weight:600;white-space:nowrap;">' + (isLive ? '&#9679; LIVE ' : '&#9679; ') + streamDtime + '</button>';
+        }
+        var streamCell = '<span style="display:inline-flex;align-items:center;gap:6px;min-width:200px;">'
+            + '<input type="checkbox" ' + (streamOn ? 'checked' : '') + ' onclick="event.stopPropagation();" onchange="toggleStreamFlag(' + f.feed_key + ',this.checked)">'
+            + streamBtn
+            + '</span>';
         html += '<tr onclick="editFeedSource(' + f.feed_key + ')">'
             + '<td><strong>' + esc(f.feed_name) + '</strong></td>'
             + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
             + '<td style="font-size:0.8rem">' + (f.feed_source_url ? '<a href="' + esc(f.feed_source_url) + '" target="_blank" style="color:#31345A">' + esc(f.feed_source_url.replace(/https?:\/\/(www\.)?/, '').substring(0,40)) + '</a>' : esc(f.feed_account_id || '')) + '</td>'
             + '<td>' + statusBadge + '</td>'
+            + '<td onclick="event.stopPropagation()" style="white-space:nowrap;">' + streamCell + '</td>'
             + '<td class="actions" onclick="event.stopPropagation()">'
             + '<button onclick="editFeedSource(' + f.feed_key + ')">Edit</button>'
             + '<button onclick="syncFeed(' + f.feed_key + ')" style="background:#e8f4fd">Sync</button>'
@@ -363,6 +635,9 @@ function openFeedSourceForm(data) {
     document.getElementById('f-account-id').value = d.feed_site_id || d.feed_account_id || '';
     document.getElementById('f-source-url').value = d.feed_source_url || '';
     document.getElementById('f-api-key').value = d.feed_api_key || '';
+    var streamOn = d.feed_stream_flag === true || d.feed_stream_flag === 't';
+    document.getElementById('f-stream').checked = streamOn;
+    updateFormStreamBtn(d.feed_key, streamOn, d.feed_stream_dtime);
     document.getElementById('f-active').checked = d.feed_active_flag !== false;
 
     var container = document.getElementById('schedules-container');
@@ -427,6 +702,7 @@ function saveFeedSource() {
         feed_account_id: document.getElementById('f-account-id').value,
         feed_source_url: document.getElementById('f-source-url').value,
         feed_api_key: document.getElementById('f-api-key').value,
+        feed_stream_flag: document.getElementById('f-stream').checked,
         feed_active_flag: document.getElementById('f-active').checked,
         schedules: collectSchedules()
     };
@@ -529,6 +805,272 @@ function formatSyncResult(data) {
     if (sr.status === 'started') lines.push(sr.message || 'Running in background');
     if (data.error) lines.push('Error: ' + data.error);
     return lines.join('\n');
+}
+
+var _formStreamKey = null;
+var _formStreamDtime = null;
+
+function updateFormStreamBtn(feedKey, streamOn, dtime) {
+    _formStreamKey = feedKey;
+    _formStreamDtime = dtime;
+    var wrap = document.getElementById('f-stream-btn-wrap');
+    if (!streamOn) { wrap.innerHTML = ''; return; }
+    var streamDtime = dtime ? new Date(dtime).toLocaleString() : 'not set';
+    var isLive = dtime && (Date.now() - new Date(dtime).getTime() < 3*60*60*1000);
+    wrap.innerHTML = '<button type="button" onclick="openStreamModal(' + feedKey + ',\'' + esc(dtime || '') + '\')" style="background:' + (isLive ? '#c0392b' : '#888') + ';color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;font-weight:600;white-space:nowrap;">' + (isLive ? '&#9679; LIVE ' : '&#9679; ') + streamDtime + '</button>';
+}
+
+function onFormStreamToggle() {
+    var checked = document.getElementById('f-stream').checked;
+    updateFormStreamBtn(_formStreamKey, checked, _formStreamDtime);
+}
+
+function toggleStreamFlag(feedKey, enabled) {
+    fetch(API + '/admin-feeds.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({feed_key: feedKey, feed_stream_flag: enabled})
+    }).then(function(r) { return safeJson(r); }).then(function() { loadFeeds(); });
+}
+
+var _streamModalKey = null;
+function openStreamModal(feedKey, dtime) {
+    _streamModalKey = feedKey;
+    var overlay = document.getElementById('stream-modal');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'stream-modal';
+        overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;';
+        overlay.onclick = function(ev) { if (ev.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:400px;width:90%;text-align:center;">'
+            + '<h3 style="margin:0 0 8px;font-size:1rem;color:#31345A;">Stream Control</h3>'
+            + '<p id="stream-modal-info" style="font-size:0.85rem;color:#666;margin:0 0 20px;"></p>'
+            + '<div style="display:flex;flex-direction:column;gap:10px;">'
+            + '<button onclick="setStreamNow()" style="padding:10px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;">&#9679; Start Stream (set to now)</button>'
+            + '<button onclick="endStream()" style="padding:10px;background:#888;color:#fff;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">End Stream (clear time)</button>'
+            + '<button onclick="document.getElementById(\'stream-modal\').style.display=\'none\'" style="padding:10px;background:#f0f0f0;color:#333;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">Cancel</button>'
+            + '</div></div>';
+        document.body.appendChild(overlay);
+    }
+    document.getElementById('stream-modal-info').textContent = dtime ? 'Stream started: ' + new Date(dtime).toLocaleString() : 'No stream time set';
+    overlay.style.display = 'flex';
+}
+
+function setStreamNow() {
+    if (!_streamModalKey) return;
+    fetch(API + '/admin-feeds.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({feed_key: _streamModalKey, feed_stream_dtime: new Date().toISOString()})
+    }).then(function(r) { return safeJson(r); }).then(function() {
+        document.getElementById('stream-modal').style.display = 'none';
+        loadFeeds();
+    });
+}
+
+function endStream() {
+    if (!_streamModalKey) return;
+    fetch(API + '/admin-feeds.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({feed_key: _streamModalKey, feed_stream_dtime: null})
+    }).then(function(r) { return safeJson(r); }).then(function() {
+        document.getElementById('stream-modal').style.display = 'none';
+        // Also clear the cache
+        fetch('/api/livestream-status.php?bust=' + Date.now());
+        loadFeeds();
+    });
+}
+
+var _editItemKey = null;
+var _allItems = [];
+
+function editItem(key) {
+    // Find item from last loaded data
+    var item = _allItems.find(function(it) { return it.feed_item_key == key; });
+    if (!item) return;
+    _editItemKey = key;
+
+    var overlay = document.getElementById('item-edit-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'item-edit-overlay';
+        overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:1000;justify-content:center;align-items:flex-start;padding:40px 20px;overflow-y:auto;';
+        overlay.onclick = function(ev) { if (ev.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML = '<div style="background:#fff;border-radius:10px;width:100%;max-width:1000px;box-shadow:0 8px 32px rgba(0,0,0,0.25);">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#f8f8f8;border-radius:10px 10px 0 0;border-bottom:1px solid #ddd;">'
+            + '<h3 style="margin:0;font-size:1rem;color:#31345A;">Edit Feed Item</h3>'
+            + '<button onclick="document.getElementById(\'item-edit-overlay\').style.display=\'none\'" style="background:none;border:none;font-size:1.3rem;cursor:pointer;">&times;</button></div>'
+            + '<div id="item-edit-body" style="padding:20px;"></div></div>';
+        document.body.appendChild(overlay);
+    }
+
+    function fld(label, key, val, opts) {
+        opts = opts || {};
+        if (opts.type === 'checkbox') {
+            var ck = val === true || val === 't';
+            return '<div style="margin-bottom:8px;display:flex;align-items:center;gap:6px;"><label style="font-size:0.82rem;font-weight:600;color:#555;">' + label + '</label><input type="checkbox" data-item-field="' + key + '"' + (ck ? ' checked' : '') + '></div>';
+        }
+        if (opts.type === 'select') {
+            var so = '';
+            (opts.options || []).forEach(function(o) { so += '<option value="' + esc(o.v) + '"' + (String(val||'') === o.v ? ' selected' : '') + '>' + esc(o.l) + '</option>'; });
+            return '<div style="margin-bottom:8px;"><label style="display:block;font-weight:600;font-size:0.82rem;color:#555;margin-bottom:2px;">' + label + '</label><select data-item-field="' + key + '" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">' + so + '</select></div>';
+        }
+        var roStyle = opts.readonly ? 'background:#f5f5f5;color:#888;' : '';
+        var roAttr = opts.readonly ? ' readonly' : '';
+        var inputType = opts.type || 'text';
+        var inputVal = val != null ? String(val) : '';
+        // datetime-local needs formatted value
+        if (inputType === 'datetime-local' && inputVal) {
+            inputVal = inputVal.replace(/\+.*$/, '').replace(/Z$/, '').replace(' ', 'T').substring(0, 16);
+        }
+        return '<div style="margin-bottom:8px;"><label style="display:block;font-weight:600;font-size:0.82rem;color:#555;margin-bottom:2px;">' + label + '</label><input type="' + inputType + '" data-item-field="' + key + '" value="' + esc(inputVal) + '" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;font-family:inherit;box-sizing:border-box;' + roStyle + '"' + roAttr + '></div>';
+    }
+
+    var thumbSrc = item.feed_item_thumbnail || '';
+    var isActive = item.feed_item_active_flag === true || item.feed_item_active_flag === 't';
+
+    var html = '<div style="display:grid;grid-template-columns:200px 1fr 1fr;gap:16px;">';
+
+    // Column 1: Thumbnail + Active + Save/Cancel at bottom
+    html += '<div style="display:flex;flex-direction:column;">'
+        + (thumbSrc ? '<img src="' + esc(thumbSrc.indexOf('http')===0 ? thumbSrc : '/'+thumbSrc) + '" style="width:100%;border-radius:6px;margin-bottom:8px;" alt="">' : '<div style="width:100%;height:120px;background:#eee;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>')
+        + fld('Thumbnail', 'feed_item_thumbnail', thumbSrc)
+        + '<div style="margin-bottom:8px;"><label style="font-size:0.82rem;font-weight:600;color:#555;">Upload Image</label><input type="file" id="item-thumb-file" accept="image/*" style="font-size:0.78rem;margin-top:2px;"></div>'
+        + fld('Active', 'feed_item_active_flag', item.feed_item_active_flag, {type:'checkbox'})
+        + '<div style="margin-top:auto;padding-top:12px;">'
+        + '<button onclick="saveItem()" style="padding:8px 16px;background:#31345A;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;width:100%;margin-bottom:6px;">Save</button>'
+        + '<button onclick="document.getElementById(\'item-edit-overlay\').style.display=\'none\'" style="padding:8px 16px;background:#f0f0f0;border:none;border-radius:4px;cursor:pointer;width:100%;">Cancel</button>'
+        + '<div id="item-save-status" style="font-size:0.82rem;color:#27ae60;text-align:center;margin-top:4px;"></div>'
+        + '</div>'
+        + '</div>';
+
+    // Column 2: Imported fields
+    html += '<div>'
+        + fld('Title (imported)', 'feed_item_title_import', item.feed_item_title_import, {readonly:true})
+        + fld('Published (imported)', 'feed_item_publish_import_dtime', item.feed_item_publish_import_dtime, {readonly:true})
+        + fld('Feed', 'feed_name', item.feed_name, {readonly:true})
+        + '<div style="display:flex;gap:8px;margin-bottom:8px;"><div style="flex:1;">' + fld('ID', 'feed_item_key', item.feed_item_key, {readonly:true}) + '</div><div style="flex:2;">' + fld('External', 'feed_item_external_id', item.feed_item_external_id, {readonly:true}) + '</div></div>'
+        + fld('Type', 'feed_item_type', item.feed_item_type)
+        + fld('URL', 'feed_item_url', item.feed_item_url)
+        + '</div>';
+
+    // Column 3: Override + editable fields
+    html += '<div>'
+        + fld('Title (override)', 'feed_item_title_override', item.feed_item_title_override)
+        + fld('Published (override)', 'feed_item_publish_override_dtime', item.feed_item_publish_override_dtime, {type:'datetime-local'})
+        + fld('Tags', 'feed_item_tags', item.feed_item_tags)
+        + fld('Orientation', 'feed_item_orientation', item.feed_item_orientation, {type:'select', options:[{v:'',l:''},{v:'horizontal',l:'Horizontal'},{v:'vertical',l:'Vertical'}]})
+        + fld('Episode', 'feed_item_episode', item.feed_item_episode)
+        + fld('Sort', 'feed_item_sort', item.feed_item_sort, {type:'number'})
+        + fld('Duration', 'feed_item_duration', item.feed_item_duration, {readonly:true})
+        + '</div>';
+
+    // Page / Category assignment (spans columns 2-3 within the grid)
+    var itemPages = [];
+    try { itemPages = typeof item.page_list === 'string' ? JSON.parse(item.page_list) : (item.page_list || []); } catch(e) {}
+    if (itemPages && itemPages.length) {
+        html += '<div style="grid-column:2/4;margin-top:4px;border-top:1px solid #eee;padding-top:10px;">'
+            + '<div style="display:flex;gap:8px;margin-bottom:6px;">'
+            + '<span style="min-width:90px;font-weight:600;font-size:0.85rem;color:#555;">Page</span>'
+            + '<span style="flex:1;font-weight:600;font-size:0.85rem;color:#555;">Category</span>'
+            + '</div>';
+        // Build category options grouped by page
+        var catsByPk = {};
+        _allCategories.forEach(function(c) {
+            if (!catsByPk[c.page_key]) catsByPk[c.page_key] = [];
+            catsByPk[c.page_key].push(c);
+        });
+        itemPages.forEach(function(pg) {
+            var pgCats = catsByPk[pg.page_key] || [];
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+                + '<a href="/' + esc(pg.page_code) + '" target="_blank" style="min-width:90px;font-size:0.82rem;font-weight:600;color:#31345A;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(pg.page_title) + '</a>';
+            if (pgCats.length) {
+                html += '<select data-page-cat="' + pg.page_key + '" style="flex:1;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;">'
+                    + '<option value="">— None —</option>';
+                pgCats.forEach(function(c) {
+                    html += '<option value="' + c.category_key + '"' + (item.feed_item_category_key == c.category_key ? ' selected' : '') + '>' + esc(catLabel(c)) + '</option>';
+                });
+                html += '</select>';
+            } else {
+                html += '<span style="font-size:0.78rem;color:#999;">No categories</span>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    // MP3 upload (spans columns 2-3)
+    var audioFile = item.feed_item_audio_file;
+    html += '<div style="grid-column:2/4;margin-top:4px;border-top:1px solid #eee;padding-top:10px;">'
+        + '<label style="display:block;font-weight:600;font-size:0.85rem;color:#555;margin-bottom:6px;">MP3 Audio</label>';
+    if (audioFile) {
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+            + '<a href="/' + esc(audioFile) + '" target="_blank" style="font-size:0.82rem;">&#127911; ' + esc(audioFile) + '</a>'
+            + '<button type="button" onclick="removeItemMp3(' + key + ')" style="padding:2px 8px;font-size:0.75rem;border:1px solid #e0c0c0;border-radius:3px;background:#fff;color:#c0392b;cursor:pointer;">Remove</button>'
+            + '</div>';
+    }
+    html += '<div style="display:flex;align-items:center;gap:8px;">'
+        + '<input type="file" id="item-mp3-file" accept=".mp3" style="font-size:0.82rem;" onchange="uploadItemMp3(' + key + ')">'
+        + '<span id="item-mp3-status" style="font-size:0.78rem;color:#27ae60;"></span>'
+        + '</div></div>';
+
+    html += '</div>'; // close grid
+
+    document.getElementById('item-edit-body').innerHTML = html;
+    overlay.style.display = 'flex';
+}
+
+function saveItem() {
+    if (!_editItemKey) return;
+    var data = {feed_item_key: _editItemKey};
+    document.querySelectorAll('[data-item-field]').forEach(function(el) {
+        var f = el.getAttribute('data-item-field');
+        if (el.readOnly || el.disabled) return;
+        if (el.type === 'checkbox') data[f] = el.checked;
+        else if (el.type === 'number') data[f] = el.value ? parseInt(el.value) : null;
+        else data[f] = el.value || null;
+    });
+    // Cast booleans
+    if (typeof data.feed_item_active_flag === 'boolean') data.feed_item_active_flag = data.feed_item_active_flag;
+    // Capture category from page/category dropdowns (last non-empty selection wins)
+    var catSelects = document.querySelectorAll('[data-page-cat]');
+    var selectedCat = null;
+    catSelects.forEach(function(sel) { if (sel.value) selectedCat = parseInt(sel.value); });
+    data.feed_item_category_key = selectedCat;
+
+    fetch(API + '/admin-feeds.php?item_update=1', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r) { return safeJson(r); }).then(function(d) {
+        var st = document.getElementById('item-save-status');
+        if (d.error) { st.textContent = d.error; st.style.color = '#c00'; }
+        else { st.textContent = 'Saved!'; st.style.color = '#27ae60'; setTimeout(function() { st.textContent = ''; }, 2000); loadItems(_itemsPage); }
+    });
+}
+
+function uploadItemMp3(itemKey) {
+    var input = document.getElementById('item-mp3-file');
+    if (!input || !input.files[0]) return;
+    var fd = new FormData();
+    fd.append('audio', input.files[0]);
+    var st = document.getElementById('item-mp3-status');
+    st.textContent = 'Uploading...';
+    st.style.color = '#888';
+    fetch(API + '/admin-vlog.php?type=audio&key=' + itemKey, { method: 'POST', credentials: 'include', body: fd })
+    .then(function(r) { return safeJson(r); }).then(function(d) {
+        if (d.error) { st.textContent = d.error; st.style.color = '#c00'; }
+        else { st.textContent = 'Uploaded!'; st.style.color = '#27ae60'; loadItems(_itemsPage); editItem(itemKey); }
+    });
+}
+
+function removeItemMp3(itemKey) {
+    fetch(API + '/admin-vlog.php?type=audio&key=' + itemKey, { method: 'DELETE', credentials: 'include' })
+    .then(function(r) { return safeJson(r); }).then(function(d) {
+        if (d.error) alert(d.error);
+        else { loadItems(_itemsPage); editItem(itemKey); }
+    });
 }
 
 function syncFeed(key) {

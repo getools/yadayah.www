@@ -8,7 +8,7 @@
 .tbl tr:hover { background: #f0f4ff; }
 .tbl tr.inactive { opacity: 0.4; }
 .tbl .thumb { width: 120px; height: 68px; object-fit: cover; border-radius: 4px; }
-.tbl select, .tbl input[type="number"] { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.82rem; font-family: inherit; }
+.tbl select, .tbl input[type="number"], .tbl input[type="text"] { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.82rem; font-family: inherit; }
 .tbl select { min-width: 100px; }
 .tbl input[type="number"] { width: 60px; }
 .sub-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #ddd; }

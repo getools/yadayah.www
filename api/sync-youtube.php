@@ -147,12 +147,12 @@ foreach ($feeds as $feed) {
             }
 
             $stmt = $db->prepare("
-                INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_dtime, feed_item_active_flag, feed_item_type, feed_item_duration, feed_item_duration_seconds, feed_item_orientation, feed_item_category_key, feed_item_episode, feed_item_tags)
+                INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_active_flag, feed_item_type, feed_item_duration, feed_item_duration_seconds, feed_item_orientation, feed_item_category_key, feed_item_episode, feed_item_tags)
                 VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (feed_key, feed_item_external_id) DO UPDATE SET
-                    feed_item_title = EXCLUDED.feed_item_title,
+                    feed_item_title_import = EXCLUDED.feed_item_title_import,
                     feed_item_thumbnail = COALESCE(EXCLUDED.feed_item_thumbnail, yy_feed_item.feed_item_thumbnail),
-                    feed_item_publish_dtime = COALESCE(EXCLUDED.feed_item_publish_dtime, yy_feed_item.feed_item_publish_dtime),
+                    feed_item_publish_import_dtime = COALESCE(EXCLUDED.feed_item_publish_import_dtime, yy_feed_item.feed_item_publish_import_dtime),
                     feed_item_type = EXCLUDED.feed_item_type,
                     feed_item_duration = COALESCE(EXCLUDED.feed_item_duration, yy_feed_item.feed_item_duration),
                     feed_item_duration_seconds = COALESCE(EXCLUDED.feed_item_duration_seconds, yy_feed_item.feed_item_duration_seconds),
@@ -161,7 +161,7 @@ foreach ($feeds as $feed) {
                     feed_item_episode = COALESCE(EXCLUDED.feed_item_episode, yy_feed_item.feed_item_episode),
                     feed_item_tags = COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags),
                     feed_item_revision_dtime = NOW()
-                WHERE yy_feed_item.feed_item_title IS DISTINCT FROM EXCLUDED.feed_item_title
+                WHERE yy_feed_item.feed_item_title_import IS DISTINCT FROM EXCLUDED.feed_item_title_import
                    OR yy_feed_item.feed_item_thumbnail IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_thumbnail, yy_feed_item.feed_item_thumbnail)
                    OR yy_feed_item.feed_item_type IS DISTINCT FROM EXCLUDED.feed_item_type
                    OR yy_feed_item.feed_item_duration IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_duration, yy_feed_item.feed_item_duration)
@@ -211,6 +211,12 @@ foreach ($feeds as $feed) {
     if ($isCli) {
         echo "{$feed['feed_name']}: found=$totalFound inserted=$totalInserted updated=$totalUpdated" . ($error ? " error=$error" : '') . "\n";
     }
+}
+
+// Update feed item → page associations after sync
+require_once __DIR__ . '/feed-item-pages.php';
+foreach ($feeds as $feed) {
+    updateItemPagesForFeed($db, (int)$feed['feed_key']);
 }
 
 if (!$isCli) {

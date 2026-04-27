@@ -44,7 +44,7 @@ function buildFeedPageFilters(string &$where, array &$params, ?string $includeSt
         $clauses = [];
         foreach ($include as $term) {
             $pat = filterLikePattern($term);
-            $clauses[] = "(feed_item_tags ILIKE ? OR feed_item_title ILIKE ?)";
+            $clauses[] = "(feed_item_tags ILIKE ? OR COALESCE(feed_item_title_override, feed_item_title_import) ILIKE ?)";
             $params[] = $pat;
             $params[] = $pat;
         }
@@ -54,8 +54,21 @@ function buildFeedPageFilters(string &$where, array &$params, ?string $includeSt
     $exclude = array_filter(array_map('trim', preg_split('/[,|]/', $excludeStr ?? '')));
     foreach ($exclude as $term) {
         $pat = filterLikePattern($term);
-        $where .= " AND (feed_item_tags NOT ILIKE ? OR feed_item_tags IS NULL) AND feed_item_title NOT ILIKE ?";
+        $where .= " AND (feed_item_tags NOT ILIKE ? OR feed_item_tags IS NULL) AND COALESCE(feed_item_title_override, feed_item_title_import) NOT ILIKE ?";
         $params[] = $pat;
         $params[] = $pat;
     }
+}
+
+/**
+ * Resolve page_key from page_code.
+ */
+function getPageKey(PDO $db, string $pageCode): ?int {
+    static $cache = [];
+    if (isset($cache[$pageCode])) return $cache[$pageCode];
+    $stmt = $db->prepare("SELECT page_key FROM yy_page WHERE page_code = ?");
+    $stmt->execute([$pageCode]);
+    $key = $stmt->fetchColumn();
+    $cache[$pageCode] = $key ? (int)$key : null;
+    return $cache[$pageCode];
 }

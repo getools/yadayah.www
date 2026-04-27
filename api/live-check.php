@@ -15,16 +15,32 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     errorResponse('Method not allowed', 405);
 }
 
-// Simulate mode: /api/live-check.php?simulate=1 fakes a live stream for testing
-if (!empty($_GET['simulate'])) {
-    $sim = $_GET['simulate'];
+// Simulate/override mode: requires admin with feeds page access
+if (!empty($_GET['simulate']) || !empty($_GET['live_override'])) {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    $userKey = $_SESSION['user_key'] ?? null;
+    $hasFeedsAccess = false;
+    if ($userKey) {
+        $db = getDb();
+        $permStmt = $db->prepare("
+            SELECT us.user_setting_value FROM yy_user_setting us
+            JOIN yy_setting s ON us.setting_key = s.setting_key
+            WHERE us.user_key = ? AND s.setting_scope_code = 'admin' AND s.setting_group_code = 'pages' AND s.setting_code = 'feeds'
+        ");
+        $permStmt->execute([$userKey]);
+        $hasFeedsAccess = $permStmt->fetchColumn() === '1';
+    }
+    if (!$hasFeedsAccess) {
+        errorResponse('Requires admin with Feeds access', 403);
+    }
+
+    $sim = $_GET['simulate'] ?? $_GET['live_override'] ?? '';
     $simFile = sys_get_temp_dir() . '/yada_live_simulate.json';
     if ($sim === 'off') {
         @unlink($simFile);
         jsonResponse(['live' => false, 'simulated' => 'off']);
     }
     // Use a real recent YouTube video as a stand-in
-    $db = getDb();
     $stmt = $db->query("SELECT feed_item_external_id FROM yy_feed_item WHERE feed_key = 1 AND feed_item_active_flag = TRUE ORDER BY feed_item_publish_dtime DESC LIMIT 1");
     $videoId = $stmt->fetchColumn() ?: 'jfKfPfyJRdk';
     $result = [

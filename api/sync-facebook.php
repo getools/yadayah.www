@@ -192,17 +192,17 @@ foreach ($feeds as $feed) {
 
                 // Upsert into yy_feed_item
                 $stmt = $db->prepare("
-                    INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title, feed_item_url, feed_item_thumbnail, feed_item_publish_dtime, feed_item_active_flag, feed_item_type, feed_item_tags, feed_item_embed_id)
+                    INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_url, feed_item_thumbnail, feed_item_publish_import_dtime, feed_item_active_flag, feed_item_type, feed_item_tags, feed_item_embed_id)
                     VALUES (?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
                     ON CONFLICT (feed_key, feed_item_external_id) DO UPDATE SET
-                        feed_item_title = CASE WHEN EXCLUDED.feed_item_title = 'Facebook Post' THEN yy_feed_item.feed_item_title ELSE EXCLUDED.feed_item_title END,
+                        feed_item_title_import = CASE WHEN EXCLUDED.feed_item_title_import = 'Facebook Post' THEN yy_feed_item.feed_item_title_import ELSE EXCLUDED.feed_item_title_import END,
                         feed_item_thumbnail = COALESCE(NULLIF(EXCLUDED.feed_item_thumbnail, ''), yy_feed_item.feed_item_thumbnail),
-                        feed_item_publish_dtime = COALESCE(EXCLUDED.feed_item_publish_dtime, yy_feed_item.feed_item_publish_dtime),
+                        feed_item_publish_import_dtime = COALESCE(EXCLUDED.feed_item_publish_import_dtime, yy_feed_item.feed_item_publish_import_dtime),
                         feed_item_type = CASE WHEN EXCLUDED.feed_item_type IN ('photo','video') THEN EXCLUDED.feed_item_type ELSE yy_feed_item.feed_item_type END,
                         feed_item_tags = EXCLUDED.feed_item_tags,
                         feed_item_embed_id = COALESCE(EXCLUDED.feed_item_embed_id, yy_feed_item.feed_item_embed_id),
                         feed_item_revision_dtime = NOW()
-                    WHERE yy_feed_item.feed_item_title IS DISTINCT FROM CASE WHEN EXCLUDED.feed_item_title = 'Facebook Post' THEN yy_feed_item.feed_item_title ELSE EXCLUDED.feed_item_title END
+                    WHERE yy_feed_item.feed_item_title_import IS DISTINCT FROM CASE WHEN EXCLUDED.feed_item_title_import = 'Facebook Post' THEN yy_feed_item.feed_item_title_import ELSE EXCLUDED.feed_item_title_import END
                        OR yy_feed_item.feed_item_thumbnail IS DISTINCT FROM COALESCE(NULLIF(EXCLUDED.feed_item_thumbnail, ''), yy_feed_item.feed_item_thumbnail)
                        OR yy_feed_item.feed_item_type IS DISTINCT FROM CASE WHEN EXCLUDED.feed_item_type IN ('photo','video') THEN EXCLUDED.feed_item_type ELSE yy_feed_item.feed_item_type END
                        OR yy_feed_item.feed_item_tags IS DISTINCT FROM EXCLUDED.feed_item_tags
@@ -251,6 +251,12 @@ foreach ($feeds as $feed) {
     if ($isCli) {
         echo "{$feed['feed_name']}: found=$totalFound inserted=$totalInserted updated=$totalUpdated" . ($error ? " error=$error" : '') . "\n";
     }
+}
+
+// Update feed item → page associations after sync
+require_once __DIR__ . '/feed-item-pages.php';
+foreach ($feeds as $feed) {
+    updateItemPagesForFeed($db, (int)$feed['feed_key']);
 }
 
 if (!$isCli) {

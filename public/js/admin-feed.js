@@ -200,9 +200,13 @@ window.loadVideos = function() {
             return;
         }
         var catOpts = '<option value="">— None —</option>';
+        var catSubtitles = {};
         allCategories.forEach(function(c) {
             var catLabel = c.category_title || '';
-            if (c.category_subtitle) catLabel += ' ~ ' + c.category_subtitle;
+            if (c.category_subtitle) {
+                catLabel += ' ~ ' + c.category_subtitle;
+                catSubtitles[c.category_key] = c.category_subtitle;
+            }
             catOpts += '<option value="' + c.category_key + '">' + esc(catLabel) + '</option>';
         });
 
@@ -263,9 +267,9 @@ window.loadVideos = function() {
 
             html += '<tr class="' + (inactive ? 'inactive' : '') + '" data-vk="' + v.video_key + '">'
                 + '<td>' + (v.url ? '<a href="' + esc(v.url) + '" target="_blank" rel="noopener">' : '') + '<img class="thumb" src="' + esc(v.thumbnail || '') + '" alt="">' + (v.url ? '</a>' : '') + '</td>'
-                + '<td><input type="text" value="' + esc(v.title || '') + '" data-field="title" style="width:100%;font-size:0.82rem;" onchange="saveVideo(' + v.video_key + ')"></td>'
-                + '<td><select data-field="cat" onchange="saveVideo(' + v.video_key + ')">' + catOpts.replace('value="' + (v.category_key || '') + '"', 'value="' + (v.category_key || '') + '" selected') + '</select></td>'
-                + '<td><input type="text" value="' + esc(v.episode || '') + '" data-field="episode" style="width:60px;font-size:0.82rem;padding:4px 6px;border:1px solid #ddd;border-radius:4px;" onchange="saveVideo(' + v.video_key + ')"></td>'
+                + '<td><input type="text" value="' + esc(v.title || '') + '" data-field="title" style="width:100%;" onchange="saveVideo(' + v.video_key + ')"></td>'
+                + '<td><select data-field="cat" title="' + esc(catSubtitles[v.category_key] || '') + '" onchange="saveVideo(' + v.video_key + ')">' + catOpts.replace('value="' + (v.category_key || '') + '"', 'value="' + (v.category_key || '') + '" selected') + '</select></td>'
+                + '<td><input type="text" value="' + esc(v.episode || '') + '" data-field="episode" style="width:60px;" onchange="saveVideo(' + v.video_key + ')"></td>'
                 + '<td style="text-align:center;">'
                 + '<div style="display:flex;gap:2px;justify-content:center;margin-bottom:3px;">'
                 + '<button style="' + arrowStyle + (isFirst ? hiddenStyle : '') + '" onclick="moveVideo(' + v.video_key + ',-1)">&#9650;</button>'

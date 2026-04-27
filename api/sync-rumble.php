@@ -110,24 +110,24 @@ try {
         }
 
         $stmt = $db->prepare("
-            INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_dtime, feed_item_description, feed_item_tags, feed_item_category_key, feed_item_episode)
+            INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_description, feed_item_tags, feed_item_category_key, feed_item_episode)
             VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?)
             ON CONFLICT (feed_key, feed_item_external_id) DO UPDATE SET
-                feed_item_title = EXCLUDED.feed_item_title,
+                feed_item_title_import = EXCLUDED.feed_item_title_import,
                 feed_item_url = EXCLUDED.feed_item_url,
                 feed_item_thumbnail = EXCLUDED.feed_item_thumbnail,
                 feed_item_embed_id = EXCLUDED.feed_item_embed_id,
-                feed_item_publish_dtime = COALESCE(EXCLUDED.feed_item_publish_dtime, yy_feed_item.feed_item_publish_dtime),
+                feed_item_publish_import_dtime = COALESCE(EXCLUDED.feed_item_publish_import_dtime, yy_feed_item.feed_item_publish_import_dtime),
                 feed_item_description = COALESCE(EXCLUDED.feed_item_description, yy_feed_item.feed_item_description),
                 feed_item_tags = COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags),
                 feed_item_category_key = COALESCE(EXCLUDED.feed_item_category_key, yy_feed_item.feed_item_category_key),
                 feed_item_episode = COALESCE(EXCLUDED.feed_item_episode, yy_feed_item.feed_item_episode),
                 feed_item_revision_dtime = NOW()
-            WHERE yy_feed_item.feed_item_title IS DISTINCT FROM EXCLUDED.feed_item_title
+            WHERE yy_feed_item.feed_item_title_import IS DISTINCT FROM EXCLUDED.feed_item_title_import
                OR yy_feed_item.feed_item_url IS DISTINCT FROM EXCLUDED.feed_item_url
                OR yy_feed_item.feed_item_thumbnail IS DISTINCT FROM EXCLUDED.feed_item_thumbnail
                OR yy_feed_item.feed_item_embed_id IS DISTINCT FROM EXCLUDED.feed_item_embed_id
-               OR yy_feed_item.feed_item_publish_dtime IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_publish_dtime, yy_feed_item.feed_item_publish_dtime)
+               OR yy_feed_item.feed_item_publish_import_dtime IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_publish_import_dtime, yy_feed_item.feed_item_publish_import_dtime)
                OR yy_feed_item.feed_item_description IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_description, yy_feed_item.feed_item_description)
                OR yy_feed_item.feed_item_tags IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags)
                OR yy_feed_item.feed_item_category_key IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_category_key, yy_feed_item.feed_item_category_key)
@@ -153,12 +153,12 @@ $dedupStmt = $db->prepare("
         SELECT fi.feed_item_key
         FROM yy_feed_item fi
         INNER JOIN (
-            SELECT feed_key, feed_item_title, MIN(feed_item_key) as keep_key
+            SELECT feed_key, feed_item_title_import, MIN(feed_item_key) as keep_key
             FROM yy_feed_item
             WHERE feed_key = ? AND feed_item_active_flag = TRUE
-            GROUP BY feed_key, feed_item_title
+            GROUP BY feed_key, feed_item_title_import
             HAVING COUNT(*) > 1
-        ) dups ON fi.feed_key = dups.feed_key AND fi.feed_item_title = dups.feed_item_title AND fi.feed_item_key != dups.keep_key
+        ) dups ON fi.feed_key = dups.feed_key AND fi.feed_item_title_import = dups.feed_item_title_import AND fi.feed_item_key != dups.keep_key
     )
 ");
 $dedupStmt->execute([$feedKey]);
@@ -169,6 +169,10 @@ if ($deduped > 0 && php_sapi_name() === 'cli') echo "Deactivated {$deduped} dupl
 $status = $error ? 'error' : 'success';
 $db->prepare("UPDATE yy_feed_sync SET feed_sync_status = ?, feed_sync_items_found = ?, feed_sync_items_inserted = ?, feed_sync_items_updated = ?, feed_sync_error = ?, feed_sync_end_dtime = NOW() WHERE feed_sync_key = ?")
    ->execute([$status, $totalFound, $totalInserted, $totalUpdated, $error, $syncKey]);
+
+// Update feed item → page associations after sync
+require_once __DIR__ . '/feed-item-pages.php';
+updateItemPagesForFeed($db, $feedKey);
 
 $result = [
     'synced' => !$error,

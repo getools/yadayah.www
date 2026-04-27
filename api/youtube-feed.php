@@ -136,8 +136,8 @@ function serveItems(PDO $db, string $where, array $params, int $limit, int $offs
     $total = (int)$countStmt->fetchColumn();
 
     $stmt = $db->prepare("
-        SELECT feed_item_external_id AS id, feed_item_title AS title,
-               feed_item_publish_dtime AS published,
+        SELECT feed_item_external_id AS id, COALESCE(feed_item_title_override, feed_item_title_import) AS title,
+               COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime) AS published,
                feed_item_thumbnail AS thumbnail,
                REPLACE(feed_item_thumbnail, 'hqdefault', 'maxresdefault') AS \"thumbnailMax\",
                feed_item_duration AS duration,
@@ -145,7 +145,7 @@ function serveItems(PDO $db, string $where, array $params, int $limit, int $offs
                feed_item_audio_file AS audio
         FROM yy_feed_item
         WHERE $where
-        ORDER BY feed_item_publish_dtime DESC NULLS LAST
+        ORDER BY COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime) DESC NULLS LAST
         LIMIT ? OFFSET ?
     ");
     $stmt->execute(array_merge($params, [$limit, $offset]));

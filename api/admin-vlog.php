@@ -129,14 +129,14 @@ if ($type === 'videos' && $method === 'GET') {
     $where = str_replace('feed_key', 'fi.feed_key', $where);
 
     $stmt = $db->prepare("
-        SELECT fi.feed_item_key, fi.feed_item_external_id, fi.feed_item_title,
+        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import),
                fi.feed_item_thumbnail, fi.feed_item_url, fi.feed_item_sort, fi.feed_item_active_flag,
                fi.feed_item_category_key, fi.feed_item_episode, fi.feed_item_audio_file,
                c.category_title, c.category_sort
         FROM yy_feed_item fi
         LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
         WHERE $where
-        ORDER BY COALESCE(c.category_sort, 999), c.category_title NULLS LAST, fi.feed_item_episode NULLS LAST, fi.feed_item_publish_dtime DESC NULLS LAST
+        ORDER BY COALESCE(c.category_sort, 999), c.category_title NULLS LAST, fi.feed_item_episode NULLS LAST, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     ");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
@@ -146,7 +146,7 @@ if ($type === 'videos' && $method === 'GET') {
         $videos[] = [
             'video_key'       => (int)$r['feed_item_key'],
             'video_id'        => $r['feed_item_external_id'],
-            'title'           => $r['feed_item_title'],
+            'title'           => $r['COALESCE(feed_item_title_override, feed_item_title_import)'],
             'thumbnail'       => $r['feed_item_thumbnail'],
             'url'             => $r['feed_item_url'],
             'sort'            => (int)$r['feed_item_sort'],
@@ -168,7 +168,7 @@ if ($type === 'video' && $method === 'PUT') {
     $params = [];
 
     if (isset($data['title'])) {
-        $fields[] = 'feed_item_title = ?';
+        $fields[] = 'COALESCE(feed_item_title_override, feed_item_title_import) = ?';
         $params[] = trim($data['title']);
     }
     if (array_key_exists('category_key', $data)) {

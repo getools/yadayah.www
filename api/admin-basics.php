@@ -119,26 +119,26 @@ if ($type === 'videos' && $method === 'GET') {
     if ($cfg['include']) {
         $inc = [];
         foreach ($cfg['include'] as $term) {
-            $inc[] = "(fi.feed_item_tags ILIKE ? OR fi.feed_item_title ILIKE ?)";
+            $inc[] = "(fi.feed_item_tags ILIKE ? OR COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?)";
             $params[] = '%' . $term . '%';
             $params[] = '%' . $term . '%';
         }
         $where .= " AND (" . implode(' OR ', $inc) . ")";
     }
     foreach ($cfg['exclude'] as $term) {
-        $where .= " AND fi.feed_item_title NOT ILIKE ?";
+        $where .= " AND COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) NOT ILIKE ?";
         $params[] = '%' . $term . '%';
     }
 
     $stmt = $db->prepare("
-        SELECT fi.feed_item_key, fi.feed_item_external_id, fi.feed_item_title,
+        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import),
                fi.feed_item_thumbnail, fi.feed_item_url, fi.feed_item_sort, fi.feed_item_active_flag,
                fi.feed_item_category_key, fi.feed_item_audio_file,
                c.category_title, c.category_sort
         FROM yy_feed_item fi
         LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
         WHERE $where
-        ORDER BY COALESCE(c.category_sort, 999), fi.feed_item_sort, fi.feed_item_publish_dtime DESC NULLS LAST, fi.feed_item_title
+        ORDER BY COALESCE(c.category_sort, 999), fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)
     ");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
@@ -148,7 +148,7 @@ if ($type === 'videos' && $method === 'GET') {
         $videos[] = [
             'basics_key'            => (int)$r['feed_item_key'],
             'basics_video_id'       => $r['feed_item_external_id'],
-            'basics_title'          => $r['feed_item_title'],
+            'basics_title'          => $r['COALESCE(feed_item_title_override, feed_item_title_import)'],
             'basics_thumbnail'      => $r['feed_item_thumbnail'],
             'basics_url'            => $r['feed_item_url'],
             'basics_sort'           => (int)$r['feed_item_sort'],
@@ -169,7 +169,7 @@ if ($type === 'video' && $method === 'PUT') {
     $params = [];
 
     if (isset($data['basics_title'])) {
-        $fields[] = 'feed_item_title = ?';
+        $fields[] = 'COALESCE(feed_item_title_override, feed_item_title_import) = ?';
         $params[] = trim($data['basics_title']);
     }
     if (array_key_exists('basics_category_key', $data)) {

@@ -12,19 +12,6 @@ require_once __DIR__ . '/feed-helpers.php';
 $PER_PAGE = 24;
 $db = getDb();
 
-// Load feed config
-$feedStmt = $db->query("
-    SELECT f.feed_key, fp.feed_page_filter_include, fp.feed_page_filter_exclude
-    FROM yy_feed_page fp
-    JOIN yy_feed f ON f.feed_key = fp.feed_key
-    JOIN yy_page p ON p.page_key = fp.page_key
-    WHERE p.page_code = 'music'
-    ORDER BY fp.feed_page_sort, fp.feed_page_key
-    LIMIT 1
-");
-$feedRow = $feedStmt->fetch();
-$feedKey = $feedRow ? (int)$feedRow['feed_key'] : 4;
-
 $action = $_GET['action'] ?? '';
 
 if ($action === 'sync') {
@@ -35,19 +22,18 @@ if ($action === 'sync') {
     exit;
 }
 
-// Build WHERE clause
-$where = "feed_key = ? AND feed_item_active_flag = TRUE";
-$params = [$feedKey];
+// Build WHERE clause using join table
+$pageKey = getPageKey($db, 'music');
+$where = "fi.feed_item_active_flag = TRUE AND fip.page_key = ?";
+$params = [$pageKey];
 
-buildFeedPageFilters($where, $params, $feedRow['feed_page_filter_include'] ?? '', $feedRow['feed_page_filter_exclude'] ?? '', $feedRow['feed_page_filter_orientation'] ?? null);
-
-$countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item WHERE $where");
+$countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where");
 $countStmt->execute($params);
 $total = (int)$countStmt->fetchColumn();
 
 $limit = (int)($_GET['limit'] ?? 0);
 if ($limit > 0) {
-    $stmt = $db->prepare("SELECT feed_item_external_id AS music_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(feed_item_title, '#\\w+\\s*', '', 'g'))) AS music_title, feed_item_thumbnail AS music_thumbnail, feed_item_publish_dtime AS music_create FROM yy_feed_item WHERE $where ORDER BY feed_item_publish_dtime DESC NULLS LAST LIMIT ?");
+    $stmt = $db->prepare("SELECT fi.feed_item_external_id AS music_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS music_title, fi.feed_item_thumbnail AS music_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS music_create FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where ORDER BY COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST LIMIT ?");
     $stmt->execute(array_merge($params, [$limit]));
     jsonResponse(['videos' => $stmt->fetchAll(), 'page' => 1, 'total_pages' => 1, 'total' => $total]);
 }
@@ -57,11 +43,12 @@ $offset = ($page - 1) * $PER_PAGE;
 $totalPages = max(1, (int)ceil($total / $PER_PAGE));
 
 $stmt = $db->prepare("
-    SELECT feed_item_external_id AS music_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(feed_item_title, '#\\w+\\s*', '', 'g'))) AS music_title,
-           feed_item_thumbnail AS music_thumbnail, feed_item_publish_dtime AS music_create
-    FROM yy_feed_item
+    SELECT fi.feed_item_external_id AS music_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS music_title,
+           fi.feed_item_thumbnail AS music_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS music_create
+    FROM yy_feed_item fi
+    JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where
-    ORDER BY feed_item_publish_dtime DESC NULLS LAST
+    ORDER BY COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
 $stmt->execute(array_merge($params, [$PER_PAGE, $offset]));

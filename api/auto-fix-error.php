@@ -64,6 +64,8 @@ $extensionNoise = [
     'window.ethereum', '__firefox__', 'Can\'t find variable: __firefox__',
     'standardSelectors', // browser extension injecting into page
     'Object Not Found Matching Id', // Blazor/SignalR browser extension
+    'play method is not allowed by the user agent', // browser autoplay policy
+    'AbortError: The play() request was interrupted', // autoplay race condition
 ];
 
 // ── Known patterns that can be resolved without Claude ──
@@ -144,6 +146,16 @@ foreach ($errors as $error) {
     // Skip errors already investigated by Claude (have action_taken set)
     if (!empty($error['event_action_taken'])) {
         echo "  [already-analyzed] #{$error['event_key']}: " . substr($error['event_action_taken'], 0, 60) . "\n";
+        continue;
+    }
+
+    // Deduplicate: if another error with the same message was already fixed this run, resolve this one too
+    $msgHash = md5($msg);
+    static $fixedMessages = [];
+    if (isset($fixedMessages[$msgHash])) {
+        $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
+           ->execute(["Same issue as #{$fixedMessages[$msgHash]} — resolved together", $error['event_key']]);
+        echo "  [dedup] #{$error['event_key']} same as #{$fixedMessages[$msgHash]}\n";
         continue;
     }
 
@@ -399,6 +411,10 @@ foreach ($errors as $error) {
     }
 
     // ── Call Claude API ──
+    // Limit context to avoid exceeding API limits
+    if (strlen($context) > 15000) {
+        $context = substr($context, 0, 15000) . "\n\n[Context truncated to 15KB]";
+    }
     $prompt = "You are a code-fixing agent for the Yada Yah website. Investigate this error thoroughly and fix the root cause.\n\n"
         . $context . "\n\n"
         . "Rules:\n"
@@ -472,6 +488,7 @@ foreach ($errors as $error) {
            ->execute(["Auto-fix applied: " . basename($targetFile), $explanation]);
 
         echo "  [fixed] #{$error['event_key']} → {$targetFile} ({$bytes} bytes): {$explanation}\n";
+        $fixedMessages[$msgHash] = $error['event_key'];
         $fixCount++;
 
     } elseif ($json['action'] === 'search_replace' && !empty($json['find']) && !empty($json['replace']) && !empty($json['glob'])) {

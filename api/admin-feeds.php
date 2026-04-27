@@ -6,6 +6,134 @@ $db = getDb();
 
 $method = $_SERVER['REQUEST_METHOD'];
 
+// GET all feed items (paginated, filterable)
+if ($method === 'GET' && isset($_GET['items'])) {
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $limit = min(200, max(10, (int)($_GET['limit'] ?? 100)));
+    $offset = ($page - 1) * $limit;
+    $feedKey = (int)($_GET['feed_key'] ?? 0);
+    $search = trim($_GET['search'] ?? '');
+
+    $where = ['fi.feed_item_active_flag IS NOT NULL'];
+    $params = [];
+    if ($feedKey) { $where[] = 'fi.feed_key = ?'; $params[] = $feedKey; }
+    if ($search) { $where[] = '(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ? OR fi.feed_item_tags ILIKE ?)'; $params[] = '%'.$search.'%'; $params[] = '%'.$search.'%'; }
+    $titleFilter = trim($_GET['title'] ?? '');
+    $tagsFilter = trim($_GET['tags'] ?? '');
+    $catKey = (int)($_GET['category_key'] ?? 0);
+    if ($titleFilter) { $where[] = 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?'; $params[] = '%'.$titleFilter.'%'; }
+    if ($tagsFilter) { $where[] = 'fi.feed_item_tags ILIKE ?'; $params[] = '%'.$tagsFilter.'%'; }
+    $episodeFilter = trim($_GET['episode'] ?? '');
+    if ($episodeFilter) { $where[] = 'fi.feed_item_episode ILIKE ?'; $params[] = '%'.$episodeFilter.'%'; }
+    if ($catKey) { $where[] = 'fi.feed_item_category_key = ?'; $params[] = $catKey; }
+    $pageKey = (int)($_GET['page_key'] ?? 0);
+    if ($pageKey) {
+        // Get the feed_page config for this page to apply include/exclude filters
+        $fpStmt = $db->prepare("SELECT fp.feed_key, fp.feed_page_filter_include, fp.feed_page_filter_exclude FROM yy_feed_page fp WHERE fp.page_key = ? ORDER BY fp.feed_page_sort LIMIT 1");
+        $fpStmt->execute([$pageKey]);
+        $fpRow = $fpStmt->fetch();
+        if ($fpRow) {
+            $where[] = 'fi.feed_key = ?';
+            $params[] = (int)$fpRow['feed_key'];
+            // Apply include filters
+            $incTerms = array_filter(array_map('trim', preg_split('/[,|]/', $fpRow['feed_page_filter_include'] ?? '')));
+            if ($incTerms) {
+                $incClauses = [];
+                foreach ($incTerms as $term) {
+                    $hasTrailing = substr($term, -1) === '*';
+                    $core = trim($term, '*');
+                    $pat = $hasTrailing ? $core . '%' : '%' . $core . '%';
+                    $incClauses[] = '(fi.feed_item_tags ILIKE ? OR COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?)';
+                    $params[] = $pat;
+                    $params[] = $pat;
+                }
+                $where[] = '(' . implode(' OR ', $incClauses) . ')';
+            }
+            // Apply exclude filters
+            $excTerms = array_filter(array_map('trim', preg_split('/[,|]/', $fpRow['feed_page_filter_exclude'] ?? '')));
+            foreach ($excTerms as $term) {
+                $pat = '%' . trim($term, '*') . '%';
+                $where[] = '(fi.feed_item_tags NOT ILIKE ? OR fi.feed_item_tags IS NULL)';
+                $params[] = $pat;
+                $where[] = 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) NOT ILIKE ?';
+                $params[] = $pat;
+            }
+        } else {
+            // No feed_page row — fall back to categories under this page
+            $where[] = 'fi.feed_item_category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = ?)';
+            $params[] = $pageKey;
+        }
+    }
+    $activeFilter = trim($_GET['active'] ?? '');
+    if ($activeFilter === 'yes') { $where[] = 'fi.feed_item_active_flag = TRUE'; }
+    elseif ($activeFilter === 'no') { $where[] = 'fi.feed_item_active_flag = FALSE'; }
+    $hasMp3 = trim($_GET['has_mp3'] ?? '');
+    if ($hasMp3 === 'yes') { $where[] = "fi.feed_item_audio_file IS NOT NULL AND fi.feed_item_audio_file != ''"; }
+    elseif ($hasMp3 === 'no') { $where[] = "(fi.feed_item_audio_file IS NULL OR fi.feed_item_audio_file = '')"; }
+    $whereStr = implode(' AND ', $where);
+
+    $countStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item fi WHERE $whereStr");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+
+    $sort = trim($_GET['sort'] ?? 'publish_dtime');
+    $dir = strtoupper(trim($_GET['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+    $sortMap = [
+        'publish_dtime' => 'COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime)',
+        'feed_item_title' => 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)',
+        'feed_item_tags' => 'fi.feed_item_tags',
+        'feed_item_episode' => 'fi.feed_item_episode',
+        'feed_item_active_flag' => 'fi.feed_item_active_flag',
+        'feed_name' => 'f.feed_name',
+        'category_title' => 'c.category_title',
+    ];
+    $orderCol = $sortMap[$sort] ?? $sortMap['publish_dtime'];
+
+    $stmt = $db->prepare("
+        SELECT fi.*, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, f.feed_name, c.category_title,
+               (SELECT string_agg(DISTINCT p.page_code, ', ' ORDER BY p.page_code)
+                FROM yy_feed_item_page fip JOIN yy_page p ON fip.page_key = p.page_key
+                WHERE fip.feed_item_key = fi.feed_item_key
+               ) AS page_codes,
+               (SELECT json_agg(json_build_object('page_key', p.page_key, 'page_code', p.page_code, 'page_title', p.page_title) ORDER BY p.page_title)
+                FROM (SELECT DISTINCT ON (p.page_key) p.page_key, p.page_code, p.page_title
+                      FROM yy_feed_item_page fip JOIN yy_page p ON fip.page_key = p.page_key
+                      WHERE fip.feed_item_key = fi.feed_item_key
+                ) p) AS page_list
+        FROM yy_feed_item fi
+        JOIN yy_feed f ON fi.feed_key = f.feed_key
+        LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
+        WHERE $whereStr
+        ORDER BY $orderCol $dir NULLS LAST
+        LIMIT ? OFFSET ?
+    ");
+    $stmt->execute(array_merge($params, [$limit, $offset]));
+
+    // Category hierarchy for filter dropdown
+    $catStmt = $db->query("
+        SELECT c.category_key, c.category_title, c.category_subtitle, c.category_slug, c.category_sort, c.page_key, p.page_code, p.page_title
+        FROM yy_feed_page_category c
+        JOIN yy_page p ON c.page_key = p.page_key
+        WHERE c.category_active_flag = TRUE
+        ORDER BY p.page_title, c.category_sort, c.category_title
+    ");
+    $pagesStmt = $db->query("
+        SELECT p.page_key, p.page_code, p.page_title
+        FROM yy_page p
+        WHERE p.page_active_flag = TRUE AND p.page_key IN (SELECT DISTINCT page_key FROM yy_feed_page)
+        ORDER BY p.page_title
+    ");
+
+    jsonResponse([
+        'items' => $stmt->fetchAll(),
+        'page' => $page,
+        'total' => $total,
+        'total_pages' => max(1, (int)ceil($total / $limit)),
+        'categories' => $catStmt->fetchAll(),
+        'pages' => $pagesStmt->fetchAll(),
+    ]);
+}
+
 // GET all page feed mappings
 if ($method === 'GET' && !empty($_GET['all_page_feeds'])) {
     $stmt = $db->query("
@@ -98,6 +226,9 @@ if ($method === 'POST') {
                    $data['feed_page_filter_orientation'] ?? null,
                    (int)($data['feed_page_sort'] ?? 0),
                ]);
+            // Re-evaluate page associations
+            require_once __DIR__ . '/feed-item-pages.php';
+            updatePageItems($db, (int)$data['page_key']);
             jsonResponse(['created' => true]);
         }
 
@@ -113,6 +244,9 @@ if ($method === 'POST') {
                    (int)($data['feed_page_sort'] ?? 0),
                    (int)$data['feed_page_key'],
                ]);
+            // Re-evaluate page associations
+            require_once __DIR__ . '/feed-item-pages.php';
+            updatePageItems($db, (int)$data['page_key']);
             jsonResponse(['updated' => true]);
         }
 
@@ -122,7 +256,7 @@ if ($method === 'POST') {
     $feedKey = $data['feed_key'] ?? null;
 
     $fields = [
-        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_source_url', 'feed_api_key', 'feed_active_flag'
+        'feed_name', 'feed_site_code', 'feed_account_id', 'feed_source_url', 'feed_api_key', 'feed_active_flag', 'feed_stream_flag', 'feed_stream_dtime'
     ];
 
     if ($feedKey) {
@@ -132,7 +266,10 @@ if ($method === 'POST') {
         foreach ($fields as $f) {
             if (array_key_exists($f, $data)) {
                 $sets[] = "$f = ?";
-                $vals[] = $data[$f];
+                $v = $data[$f];
+                // Cast booleans explicitly for PostgreSQL
+                if (is_bool($v)) $v = $v ? 't' : 'f';
+                $vals[] = $v;
             }
         }
         if ($sets) {
@@ -206,6 +343,33 @@ function parseSyncCounts(array $data): int {
 }
 
 // SYNC - force refresh a feed
+// PUT: update a feed item
+if ($method === 'PUT' && isset($_GET['item_update'])) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $itemKey = (int)($data['feed_item_key'] ?? 0);
+    if (!$itemKey) errorResponse('feed_item_key required');
+    $allowed = ['feed_item_title_import','feed_item_title_override','feed_item_publish_override_dtime','feed_item_url','feed_item_thumbnail','feed_item_tags','feed_item_episode','feed_item_sort','feed_item_orientation','feed_item_type','feed_item_audio_file','feed_item_active_flag','feed_item_category_key'];
+    $sets = []; $vals = [];
+    foreach ($allowed as $f) {
+        if (array_key_exists($f, $data)) {
+            $sets[] = "$f = ?";
+            $v = $data[$f];
+            if (is_bool($v)) $v = $v ? 't' : 'f';
+            $vals[] = $v;
+        }
+    }
+    if (!$sets) errorResponse('Nothing to update');
+    $vals[] = $itemKey;
+    $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $sets) . " WHERE feed_item_key = ?")->execute($vals);
+    // Re-evaluate page associations if tags, title, or orientation changed
+    $pageRelevant = ['feed_item_tags', 'feed_item_title_override', 'feed_item_title_import', 'feed_item_orientation', 'feed_item_active_flag'];
+    if (array_intersect(array_keys($data), $pageRelevant)) {
+        require_once __DIR__ . '/feed-item-pages.php';
+        updateItemPages($db, $itemKey);
+    }
+    jsonResponse(['saved' => true]);
+}
+
 if ($method === 'PUT') {
     $data = json_decode(file_get_contents('php://input'), true);
     $feedKey = $data['feed_key'] ?? null;

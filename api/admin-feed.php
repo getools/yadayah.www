@@ -126,50 +126,21 @@ if ($type === 'category' && $method === 'DELETE') {
 
 // ── Videos / Items ──
 if ($type === 'videos' && $method === 'GET') {
-    $cfg = loadFeedConfig($db, $PAGE_CODE);
-
-    $where = "fi.feed_key = ?";
-    $params = [$cfg['feed_key']];
-
-    // Include filters
-    if ($cfg['include']) {
-        $inc = [];
-        foreach ($cfg['include'] as $term) {
-            $like = filterLikePattern($term);
-            $inc[] = "(fi.feed_item_tags ILIKE ? OR fi.feed_item_title ILIKE ?)";
-            $params[] = $like;
-            $params[] = $like;
-        }
-        $where .= " AND (" . implode(' OR ', $inc) . ")";
-    }
-    // Exclude filters
-    foreach ($cfg['exclude'] as $term) {
-        $like = filterLikePattern($term);
-        $where .= " AND fi.feed_item_title NOT ILIKE ? AND COALESCE(fi.feed_item_tags,'') NOT ILIKE ?";
-        $params[] = $like;
-        $params[] = $like;
-    }
-    // Orientation filter
-    if ($cfg['orientation']) {
-        $where .= " AND fi.feed_item_orientation = ?";
-        $params[] = $cfg['orientation'];
-    }
-
     $stmt = $db->prepare("
-        SELECT fi.feed_item_key, fi.feed_item_external_id, fi.feed_item_title,
+        SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title,
                fi.feed_item_thumbnail, fi.feed_item_url, fi.feed_item_sort, fi.feed_item_active_flag,
                fi.feed_item_category_key, fi.feed_item_episode, fi.feed_item_audio_file,
                c.category_title, c.category_sort
         FROM yy_feed_item fi
+        JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key AND fip.page_key = ?
         LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
-        WHERE $where
         ORDER BY COALESCE(c.category_sort, 999), c.category_title NULLS LAST,
                  fi.feed_item_sort,
                  CASE WHEN fi.feed_item_episode ~ '^\d+$' THEN fi.feed_item_episode::integer ELSE 2147483647 END,
                  fi.feed_item_episode NULLS LAST,
-                 fi.feed_item_publish_dtime DESC NULLS LAST, fi.feed_item_title
+                 COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)
     ");
-    $stmt->execute($params);
+    $stmt->execute([$PAGE_KEY]);
     $rows = $stmt->fetchAll();
 
     $videos = [];
@@ -199,7 +170,7 @@ if ($type === 'video' && $method === 'PUT') {
     $params = [];
 
     if (isset($data['title'])) {
-        $fields[] = 'feed_item_title = ?';
+        $fields[] = 'feed_item_title_override = ?';
         $params[] = trim($data['title']);
     }
     if (array_key_exists('category_key', $data)) {
@@ -223,12 +194,17 @@ if ($type === 'video' && $method === 'PUT') {
     $fields[] = 'feed_item_revision_dtime = NOW()';
     $params[] = $key;
     $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $fields) . " WHERE feed_item_key = ?")->execute($params);
+    // Re-evaluate page associations
+    require_once __DIR__ . '/feed-item-pages.php';
+    updateItemPages($db, $key);
     jsonResponse(['saved' => true]);
 }
 
 if ($type === 'video' && $method === 'DELETE') {
     if (!$key) errorResponse('Video key required');
     $db->prepare("UPDATE yy_feed_item SET feed_item_active_flag = FALSE, feed_item_revision_dtime = NOW() WHERE feed_item_key = ?")->execute([$key]);
+    // Remove page associations for deactivated item
+    $db->prepare("DELETE FROM yy_feed_item_page WHERE feed_item_key = ?")->execute([$key]);
     jsonResponse(['deleted' => true]);
 }
 
@@ -283,10 +259,19 @@ if ($type === 'config' && $method === 'PUT') {
 if ($type === 'sync' && ($method === 'POST' || $method === 'GET')) {
     $cfg = loadFeedConfig($db, $PAGE_CODE);
     if ($cfg['feed_key']) {
-        $_GET['feed_key'] = $cfg['feed_key'];
-        define('SYNC_CALLED_FROM_PARENT', true);
-        require __DIR__ . '/sync-youtube.php';
-        exit;
+        // Determine sync script from feed site code
+        $feedStmt = $db->prepare("SELECT feed_site_code FROM yy_feed WHERE feed_key = ?");
+        $feedStmt->execute([$cfg['feed_key']]);
+        $siteCode = strtolower($feedStmt->fetchColumn() ?: 'youtube');
+        $syncScripts = ['youtube' => 'sync-youtube.php', 'rumble' => 'sync-rumble.php', 'facebook' => 'sync-facebook.php'];
+        $syncFile = $syncScripts[$siteCode] ?? null;
+        if ($syncFile && file_exists(__DIR__ . '/' . $syncFile)) {
+            $_GET['feed_key'] = $cfg['feed_key'];
+            if (!defined('SYNC_CALLED_FROM_PARENT')) define('SYNC_CALLED_FROM_PARENT', true);
+            require __DIR__ . '/' . $syncFile;
+            exit;
+        }
+        jsonResponse(['synced' => false, 'message' => 'No sync script for site: ' . $siteCode]);
     }
     jsonResponse(['synced' => false, 'message' => 'No feed configured for ' . $PAGE_CODE]);
 }
