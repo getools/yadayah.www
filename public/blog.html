@@ -170,9 +170,10 @@
         .post-video-wrap {
             width: 100%;
             position: relative;
-            padding-bottom: 100%;
+            padding-bottom: 56.25%;
             overflow: hidden;
         }
+        .post-video-wrap.vertical { padding-bottom: 178%; }
         .post-video {
             position: absolute;
             top: 0; left: 0;
@@ -318,9 +319,23 @@ function renderPost(p, idx) {
 
     if (p.blog_video_id) {
         var videoUrl = encodeURIComponent('https://www.facebook.com/reel/' + p.blog_video_id + '/');
-        html += '<div class="post-video-wrap">'
+        var wrapId = 'vid-wrap-' + idx;
+        html += '<div class="post-video-wrap" id="' + wrapId + '">'
             + '<iframe class="post-video" src="https://www.facebook.com/plugins/video.php?href=' + videoUrl + '&width=500&show_text=false" scrolling="no" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>'
             + '</div>';
+        // Use thumbnail aspect ratio to determine orientation
+        if (p.blog_image) {
+            (function(wid, src) {
+                var probe = new Image();
+                probe.onload = function() {
+                    var wrap = document.getElementById(wid);
+                    if (wrap && this.naturalHeight > this.naturalWidth) {
+                        wrap.classList.add('vertical');
+                    }
+                };
+                probe.src = src;
+            })(wrapId, p.blog_image);
+        }
     } else if (p.blog_image) {
         html += '<a href="' + fbPostUrl(p.blog_post_id) + '" target="_blank" rel="noopener">'
             + '<img class="post-image" src="' + escHtml(p.blog_image) + '" alt="" loading="lazy">'
