@@ -61,7 +61,7 @@ if ($method === 'GET') {
 
     $stmt = $db->prepare("
         SELECT event_key, event_source, event_severity, event_message, event_detail,
-               event_action_taken, event_resolved_flag, event_dtime, event_resolved_dtime,
+               event_action_taken, event_resolve_notes, event_resolved_flag, event_dtime, event_resolved_dtime,
                event_file, event_referer, event_client_ip
         FROM yy_monitor_event
         WHERE $where
@@ -101,6 +101,18 @@ if ($method === 'POST') {
         include __DIR__ . '/auto-fix-error.php';
         $output = ob_get_clean();
         jsonResponse(['ran' => true, 'output' => $output]);
+    }
+
+    if ($action === 'add_notes') {
+        $key = (int)($_GET['key'] ?? 0);
+        $data = json_decode(file_get_contents('php://input'), true) ?: [];
+        $notes = trim($data['notes'] ?? '');
+        if (!$key || !$notes) errorResponse('key and notes required');
+        $timestamp = date('Y-m-d H:i');
+        $entry = "[{$timestamp}] {$notes}";
+        $db->prepare("UPDATE yy_monitor_event SET event_resolve_notes = CASE WHEN event_resolve_notes IS NULL THEN ? ELSE event_resolve_notes || E'\\n\\n' || ? END WHERE event_key = ?")
+           ->execute([$entry, $entry, $key]);
+        jsonResponse(['saved' => true]);
     }
 
     if ($action === 'clear') {

@@ -100,7 +100,7 @@ try {
         $limit = min((int)($input['limit'] ?? 30), 50);
         $source = $input['source'] ?? null;
 
-        $sql = "SELECT event_key, event_source, event_severity, event_message, event_detail, event_file, event_referer, event_action_taken, event_dtime
+        $sql = "SELECT event_key, event_source, event_severity, event_message, event_detail, event_file, event_referer, event_action_taken, event_resolve_notes, event_dtime
                 FROM yy_monitor_event
                 WHERE event_resolved_flag = FALSE
                   AND event_source NOT IN ('agent_op', 'honeypot', 'remote_agent')
@@ -341,10 +341,19 @@ try {
     case 'resolve_error':
         $eventKey = (int)($input['event_key'] ?? 0);
         $description = $input['description'] ?? '';
+        $notes = $input['notes'] ?? null;
         if (!$eventKey || !$description) respond(['error' => 'event_key and description required'], 400);
 
-        $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
-           ->execute(["Remote agent: $description", $eventKey]);
+        $sql = "UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ?";
+        $params = ["Remote agent: $description"];
+        if ($notes) {
+            $sql .= ", event_resolve_notes = CASE WHEN event_resolve_notes IS NULL THEN ? ELSE event_resolve_notes || E'\\n\\n' || ? END";
+            $params[] = $notes;
+            $params[] = $notes;
+        }
+        $sql .= " WHERE event_key = ?";
+        $params[] = $eventKey;
+        $db->prepare($sql)->execute($params);
         respond(['resolved' => true, 'event_key' => $eventKey]);
 
     // ── Add note without resolving ──
@@ -353,8 +362,8 @@ try {
         $note = $input['note'] ?? '';
         if (!$eventKey || !$note) respond(['error' => 'event_key and note required'], 400);
 
-        $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ?")
-           ->execute(["Remote agent note: $note", $eventKey]);
+        $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ?, event_resolve_notes = CASE WHEN event_resolve_notes IS NULL THEN ? ELSE event_resolve_notes || E'\\n\\n' || ? END WHERE event_key = ?")
+           ->execute(["Remote agent note: $note", $note, $note, $eventKey]);
         respond(['noted' => true, 'event_key' => $eventKey]);
 
     default:

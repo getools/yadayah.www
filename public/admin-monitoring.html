@@ -286,7 +286,10 @@ function renderEvents() {
         html += '<td style="font-size:0.75rem;font-family:monospace;white-space:nowrap;">' + (e.event_file ? esc(e.event_file) : '<span style="color:#ccc">—</span>') + '</td>';
         html += '<td style="font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(e.event_referer || '') + '">' + (e.event_referer ? esc(e.event_referer.replace(/^https?:\/\/[^/]+/, '')) : '<span style="color:#ccc">—</span>') + '</td>';
         html += '<td style="font-size:0.75rem;white-space:nowrap;">' + (e.event_client_ip ? esc(e.event_client_ip) : '<span style="color:#ccc">—</span>') + '</td>';
-        html += '<td style="text-align:center;">' + (e.event_action_taken ? '<button onclick="showActionDetail(' + e.event_key + ')" style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:2px 6px;" title="View action details">&#128270;</button>' : '') + '</td>';
+        html += '<td style="text-align:center;white-space:nowrap;">'
+            + (e.event_action_taken ? '<button onclick="showActionDetail(' + e.event_key + ')" style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:2px 4px;" title="View action details">&#128270;</button>' : '')
+            + (e.event_resolve_notes ? '<button onclick="showActionDetail(' + e.event_key + ')" style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:2px 4px;" title="View resolution notes">&#128221;</button>' : '')
+            + '</td>';
         html += '<td class="actions">';
         if (!resolved) html += '<button class="resolve" onclick="resolveEvent(' + e.event_key + ')">Resolve</button>';
         html += '<button class="del" onclick="deleteEvent(' + e.event_key + ')">Delete</button>';
@@ -332,22 +335,51 @@ function copyErrorDetail() {
 
 function showActionDetail(key) {
     var e = allEvents.find(function(ev) { return ev.event_key === key || ev.event_key == key; });
-    if (!e || !e.event_action_taken) return;
+    if (!e || (!e.event_action_taken && !e.event_resolve_notes)) return;
     var overlay = document.getElementById('action-detail-overlay');
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'action-detail-overlay';
         overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;justify-content:center;align-items:center;';
         overlay.onclick = function(ev) { if (ev.target === overlay) overlay.style.display = 'none'; };
-        overlay.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;position:relative;">'
+        overlay.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:800px;width:90%;max-height:80vh;overflow-y:auto;position:relative;">'
             + '<button onclick="document.getElementById(\'action-detail-overlay\').style.display=\'none\'" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:1.3rem;cursor:pointer;">&times;</button>'
-            + '<h3 style="margin:0 0 12px;font-size:1rem;color:#31345A;">Action Details</h3>'
-            + '<pre id="action-detail-text" style="white-space:pre-wrap;word-break:break-word;font-size:0.85rem;color:#333;line-height:1.5;margin:0;font-family:inherit;"></pre>'
+            + '<div id="action-detail-content"></div>'
             + '</div>';
         document.body.appendChild(overlay);
     }
-    document.getElementById('action-detail-text').textContent = e.event_action_taken;
+    var html = '';
+    if (e.event_action_taken) {
+        html += '<h3 style="margin:0 0 8px;font-size:0.9rem;color:#31345A;">Action</h3>';
+        html += '<div style="font-size:0.85rem;color:#333;line-height:1.5;margin:0 0 16px;padding:8px 12px;background:#f5f5f5;border-radius:6px;">' + esc(e.event_action_taken) + '</div>';
+    }
+    if (e.event_resolve_notes) {
+        html += '<h3 style="margin:0 0 8px;font-size:0.9rem;color:#31345A;">Resolution Notes</h3>';
+        html += '<pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85rem;color:#333;line-height:1.6;margin:0 0 16px;padding:12px;background:#f0f7ff;border:1px solid #d0e0f0;border-radius:6px;font-family:inherit;">' + esc(e.event_resolve_notes) + '</pre>';
+    }
+    html += '<div style="margin-top:12px;border-top:1px solid #eee;padding-top:12px;">';
+    html += '<textarea id="add-notes-' + e.event_key + '" placeholder="Add notes..." rows="3" style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:6px;padding:8px;font-size:0.85rem;resize:vertical;font-family:inherit;"></textarea>';
+    html += '<button onclick="saveNotes(' + e.event_key + ')" style="margin-top:6px;background:#27ae60;color:#fff;border:none;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:0.8rem;">Save Notes</button>';
+    html += '</div>';
+    document.getElementById('action-detail-content').innerHTML = html;
     overlay.style.display = 'flex';
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function saveNotes(key) {
+    var ta = document.getElementById('add-notes-' + key);
+    if (!ta || !ta.value.trim()) return;
+    fetch(API + '/admin-monitoring.php?action=add_notes&key=' + key, {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({notes: ta.value.trim()})
+    }).then(function(r) { return safeJson(r); })
+      .then(function() {
+        ta.value = '';
+        document.getElementById('action-detail-overlay').style.display = 'none';
+        loadEvents();
+      });
 }
 
 function resolveEvent(key) {
