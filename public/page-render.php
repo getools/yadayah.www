@@ -116,7 +116,7 @@ function renderDynamicPage(array $page): void {
 
 <script src="/js/site-nav.js"></script>
 <script src="/js/bg-video.js"></script>
-<script src="/js/site-footer.js?v=17"></script>
+<script src="/js/site-footer.js?v=18"></script>
 </body>
 </html>
 <?php
