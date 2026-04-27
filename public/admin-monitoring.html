@@ -366,7 +366,7 @@ function runAutoFix() {
     triggerAutoFixCycle();
 }
 
-// Timer countdown to next auto-fix run (every 30 min on :00 and :30)
+// Timer countdown — triage at :15/:45, AI agent at :00
 var _autoFixRunning = false;
 function startAutoFixTimer() {
     var el = document.getElementById('autofix-timer');
@@ -374,14 +374,18 @@ function startAutoFixTimer() {
         if (_autoFixRunning) return;
         var now = new Date();
         var mins = now.getMinutes();
-        var secsLeft = ((mins < 30 ? 30 : 60) - mins) * 60 - now.getSeconds();
-        if (secsLeft <= 0) {
-            triggerAutoFixCycle();
-            return;
+        // Next event: :00 (AI agent), :15 (triage), :30 (git push), :45 (triage)
+        var targets = [0, 15, 30, 45, 60];
+        var labels = ['AI agent', 'triage', 'git push', 'triage', 'AI agent'];
+        var nextIdx = 0;
+        for (var i = 0; i < targets.length; i++) {
+            if (mins < targets[i]) { nextIdx = i; break; }
         }
+        var secsLeft = (targets[nextIdx] - mins) * 60 - now.getSeconds();
+        if (secsLeft <= 0) secsLeft = 60;
         var m = Math.floor(secsLeft / 60);
         var s = secsLeft % 60;
-        el.textContent = 'Next run: ' + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+        el.textContent = 'Next ' + labels[nextIdx] + ': ' + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
     }
     update();
     setInterval(update, 1000);
@@ -393,23 +397,23 @@ function triggerAutoFixCycle() {
     var el = document.getElementById('autofix-timer');
     var btn = document.getElementById('autofix-btn');
     var area = document.getElementById('events-area');
-    el.textContent = 'Auto-fix running...';
+    el.textContent = 'Running triage...';
     btn.disabled = true;
     btn.textContent = 'Running...';
-    area.innerHTML = '<div style="text-align:center;padding:40px;color:#888;"><div class="spinner" style="margin:0 auto 12px;"></div>Auto-fix analyzing errors...</div>';
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:#888;"><div class="spinner" style="margin:0 auto 12px;"></div>Running triage (known patterns)...</div>';
 
+    // Step 1: Run on-server triage (resolves known patterns instantly)
     fetch(API + '/admin-monitoring.php?action=autofix', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{}'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             _autoFixRunning = false;
             btn.disabled = false;
             btn.innerHTML = '&#9881; Auto-Fix Now';
-            el.textContent = 'Just ran — refreshing...';
-            // Wait a moment then reload everything
+            el.textContent = 'Triage done — AI agent runs at :00';
             setTimeout(function() {
                 loadSummary();
                 loadEvents();
-            }, 1500);
+            }, 1000);
         })
         .catch(function() {
             _autoFixRunning = false;
