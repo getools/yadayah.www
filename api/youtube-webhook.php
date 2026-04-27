@@ -89,21 +89,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $feedKey = (int)$feed['feed_key'];
 
                         if ($isLive) {
-                            // Set livestream flag and store the live video URL
+                            // Set stream_dtime to indicate a live stream is happening now
+                            // Only update feeds where stream_flag is TRUE (manually opted in to livestream detection)
                             $liveUrl = 'https://www.youtube.com/watch?v=' . $videoId;
-                            $db->prepare("UPDATE yy_feed SET feed_stream_flag = TRUE, feed_stream_dtime = NOW(), feed_source_url = ? WHERE feed_key = ?")
+                            $db->prepare("UPDATE yy_feed SET feed_stream_dtime = NOW(), feed_source_url = ? WHERE feed_key = ? AND feed_stream_flag = TRUE")
                                ->execute([$liveUrl, $feedKey]);
                             // Clear cache
                             @unlink(sys_get_temp_dir() . '/yada_livestream_status.json');
 
                             $db->prepare("INSERT INTO yy_monitor_event (event_source, event_severity, event_message, event_detail, event_resolved_flag) VALUES ('youtube_webhook', 'info', ?, ?, TRUE)")
                                ->execute(["LIVESTREAM STARTED: $title", "Video: $videoId\nChannel: $channelId\nURL: $liveUrl"]);
-                        } else {
-                            // Not live anymore — clear the flag
-                            $db->prepare("UPDATE yy_feed SET feed_stream_flag = FALSE, feed_stream_dtime = NULL WHERE feed_key = ? AND feed_stream_flag = TRUE")
-                               ->execute([$feedKey]);
-                            @unlink(sys_get_temp_dir() . '/yada_livestream_status.json');
                         }
+                        // Never touch feed_stream_flag — it's manually controlled
+                        // stream_dtime naturally ages out after 3 hours
                     }
                 }
             }
