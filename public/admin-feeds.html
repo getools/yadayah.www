@@ -421,7 +421,6 @@ function loadItems(page) {
             rebuildCategoryFilter();
         }
         document.getElementById('items-count').textContent = (d.total || items.length) + ' item(s) — page ' + (d.page || 1) + '/' + _itemsTotalPages;
-        if (!items.length) { document.getElementById('items-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">No items found.</div>'; return; }
         var ths = 'cursor:pointer;user-select:none;';
         var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
         var html = '<table class="feeds-table"><thead><tr>'
@@ -460,6 +459,9 @@ function loadItems(page) {
                 + '<td class="actions"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button></td>'
                 + '</tr>';
         });
+        if (!items.length) {
+            html += '<tr><td colspan="11" style="text-align:center;padding:30px;color:#888;font-style:italic;">No items found.</td></tr>';
+        }
         html += '</tbody></table>';
         if (_itemsTotalPages > 1) {
             var btnStyle = 'padding:4px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.82rem;';

@@ -33,41 +33,10 @@ if ($method === 'GET' && isset($_GET['items'])) {
     if ($catKey) { $where[] = 'fi.feed_item_category_key = ?'; $params[] = $catKey; }
     $pageKey = (int)($_GET['page_key'] ?? 0);
     if ($pageKey) {
-        // Get the feed_page config for this page to apply include/exclude filters
-        $fpStmt = $db->prepare("SELECT fp.feed_key, fp.feed_page_filter_include, fp.feed_page_filter_exclude FROM yy_feed_page fp WHERE fp.page_key = ? ORDER BY fp.feed_page_sort LIMIT 1");
-        $fpStmt->execute([$pageKey]);
-        $fpRow = $fpStmt->fetch();
-        if ($fpRow) {
-            $where[] = 'fi.feed_key = ?';
-            $params[] = (int)$fpRow['feed_key'];
-            // Apply include filters
-            $incTerms = array_filter(array_map('trim', preg_split('/[,|]/', $fpRow['feed_page_filter_include'] ?? '')));
-            if ($incTerms) {
-                $incClauses = [];
-                foreach ($incTerms as $term) {
-                    $hasTrailing = substr($term, -1) === '*';
-                    $core = trim($term, '*');
-                    $pat = $hasTrailing ? $core . '%' : '%' . $core . '%';
-                    $incClauses[] = '(fi.feed_item_tags ILIKE ? OR COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?)';
-                    $params[] = $pat;
-                    $params[] = $pat;
-                }
-                $where[] = '(' . implode(' OR ', $incClauses) . ')';
-            }
-            // Apply exclude filters
-            $excTerms = array_filter(array_map('trim', preg_split('/[,|]/', $fpRow['feed_page_filter_exclude'] ?? '')));
-            foreach ($excTerms as $term) {
-                $pat = '%' . trim($term, '*') . '%';
-                $where[] = '(fi.feed_item_tags NOT ILIKE ? OR fi.feed_item_tags IS NULL)';
-                $params[] = $pat;
-                $where[] = 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) NOT ILIKE ?';
-                $params[] = $pat;
-            }
-        } else {
-            // No feed_page row — fall back to categories under this page
-            $where[] = 'fi.feed_item_category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = ?)';
-            $params[] = $pageKey;
-        }
+        // Use yy_feed_item_page join table — this is the source of truth for which items
+        // belong to which page (populated by feed-item-pages.php based on feed_page filters).
+        $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_page WHERE page_key = ?)';
+        $params[] = $pageKey;
     }
     $activeFilter = trim($_GET['active'] ?? '');
     if ($activeFilter === 'yes') { $where[] = 'fi.feed_item_active_flag = TRUE'; }
