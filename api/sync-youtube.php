@@ -155,9 +155,22 @@ foreach ($feeds as $feed) {
                 $itemTags = implode(',', $otherTags);
             }
 
+            // If title contains hashtags (or #vlog|...|... patterns), pre-compute a cleaned
+            // override that strips them out. Stored on insert; on update we only set it if
+            // the existing override was previously the auto-generated cleaned form of the
+            // OLD imported title (so manual edits are never overwritten).
+            $autoOverride = null;
+            if (preg_match('/#\w/', $cleanTitle)) {
+                $autoOverride = preg_replace('/#vlog\|[^|\s]+\|\d+/i', '', $cleanTitle); // remove #vlog|slug|episode
+                $autoOverride = preg_replace('/#[a-zA-Z][a-zA-Z0-9_-]+/', '', $autoOverride); // remove plain hashtags
+                $autoOverride = preg_replace('/\s{2,}/', ' ', $autoOverride);
+                $autoOverride = trim(preg_replace('/^[~\-\s]+|[~\-\s]+$/', '', $autoOverride));
+                if ($autoOverride === '' || $autoOverride === $cleanTitle) $autoOverride = null;
+            }
+
             $stmt = $db->prepare("
-                INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_active_flag, feed_item_type, feed_item_duration, feed_item_duration_seconds, feed_item_orientation, feed_item_category_key, feed_item_episode, feed_item_tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_title_override, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_active_flag, feed_item_type, feed_item_duration, feed_item_duration_seconds, feed_item_orientation, feed_item_category_key, feed_item_episode, feed_item_tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (feed_key, feed_item_external_id) DO UPDATE SET
                     feed_item_title_import = EXCLUDED.feed_item_title_import,
                     feed_item_thumbnail = COALESCE(EXCLUDED.feed_item_thumbnail, yy_feed_item.feed_item_thumbnail),
@@ -182,7 +195,7 @@ foreach ($feeds as $feed) {
             ");
 
             $stmt->execute([
-                $feedKey, $videoId, $cleanTitle,
+                $feedKey, $videoId, $cleanTitle, $autoOverride,
                 'https://www.youtube.com/watch?v=' . $videoId,
                 $v['thumbnail'], $videoId,
                 $v['published'] ?: null,
