@@ -111,25 +111,34 @@ foreach ($feeds as $feed) {
                 $cleanTitle = html_entity_decode($cleanTitle, ENT_QUOTES | ENT_HTML5, 'UTF-8');
             } while ($cleanTitle !== $prev);
 
-            // Auto-detect #vlog|[category]|[episode] hashtag in title or description
-            // Skip for Basics videos — they have their own category system
-            $categoryKey = null;
-            $episode = null;
+            // Auto-detect ALL #vlog|[category]|[episode] hashtags in title or description.
+            // A single item can belong to multiple categories — collect every match.
+            // Skip #vlog parsing for Basics videos — they have their own category system.
+            $categoryAssignments = []; // [['category_key' => N, 'episode' => '###'], ...]
             $searchText = $cleanTitle . "\n" . ($v['description'] ?? '');
             $isBasics = stripos($cleanTitle, '#Basics') !== false;
-            if (!$isBasics && preg_match('/#vlog\|([^|]+)\|(\d+)/i', $searchText, $htMatch)) {
-                $catSlug = strtolower(trim($htMatch[1]));
-                $episode = (int)$htMatch[2];
-                $catLookup = $db->prepare("SELECT category_key FROM yy_feed_page_category WHERE page_key = 1 AND category_slug = ?");
-                $catLookup->execute([$catSlug]);
-                $categoryKey = $catLookup->fetchColumn() ?: null;
-                if (!$categoryKey) {
-                    $catTitle = ucwords(str_replace('-', ' ', $catSlug));
-                    $catIns = $db->prepare("INSERT INTO yy_feed_page_category (page_key, category_title, category_slug, category_sort) VALUES (1, ?, ?, 0) ON CONFLICT (page_key, category_slug) DO UPDATE SET category_revision_dtime = NOW() RETURNING category_key");
-                    $catIns->execute([$catTitle, $catSlug]);
-                    $categoryKey = (int)$catIns->fetchColumn();
+            if (!$isBasics && preg_match_all('/#vlog\|([^|\s]+)\|(\d+)/i', $searchText, $htMatches, PREG_SET_ORDER)) {
+                $seenSlugs = [];
+                foreach ($htMatches as $htMatch) {
+                    $catSlug = strtolower(trim($htMatch[1]));
+                    if (isset($seenSlugs[$catSlug])) continue;
+                    $seenSlugs[$catSlug] = true;
+                    $epNum = $htMatch[2];
+                    $catLookup = $db->prepare("SELECT category_key FROM yy_feed_page_category WHERE page_key = 1 AND category_slug = ?");
+                    $catLookup->execute([$catSlug]);
+                    $catKey = $catLookup->fetchColumn() ?: null;
+                    if (!$catKey) {
+                        $catTitle = ucwords(str_replace('-', ' ', $catSlug));
+                        $catIns = $db->prepare("INSERT INTO yy_feed_page_category (page_key, category_title, category_slug, category_sort) VALUES (1, ?, ?, 0) ON CONFLICT (page_key, category_slug) DO UPDATE SET category_revision_dtime = NOW() RETURNING category_key");
+                        $catIns->execute([$catTitle, $catSlug]);
+                        $catKey = (int)$catIns->fetchColumn();
+                    }
+                    $categoryAssignments[] = ['category_key' => (int)$catKey, 'episode' => $epNum];
                 }
             }
+            // Legacy single-column fields: use first match for backwards compatibility
+            $categoryKey = $categoryAssignments[0]['category_key'] ?? null;
+            $episode = $categoryAssignments[0]['episode'] ?? null;
 
             // Build tags from hashtags found in title + description
             // Place #vlog first so the starts-with filter (#vlog*) works on the comma-separated string
@@ -189,6 +198,19 @@ foreach ($feeds as $feed) {
             if ($row) {
                 if ($row['inserted']) $totalInserted++;
                 else $totalUpdated++;
+            }
+
+            // Populate yy_feed_item_category for all detected category assignments
+            if ($categoryAssignments) {
+                $itemKeyStmt = $db->prepare("SELECT feed_item_key FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ?");
+                $itemKeyStmt->execute([$feedKey, $videoId]);
+                $itemKey = (int)($itemKeyStmt->fetchColumn() ?: 0);
+                if ($itemKey) {
+                    $catUp = $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key, feed_item_category_episode) VALUES (?, ?, ?) ON CONFLICT (feed_item_key, category_key) DO UPDATE SET feed_item_category_episode = EXCLUDED.feed_item_category_episode");
+                    foreach ($categoryAssignments as $ca) {
+                        $catUp->execute([$itemKey, $ca['category_key'], $ca['episode']]);
+                    }
+                }
             }
         }
     } catch (Exception $e) {

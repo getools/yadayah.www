@@ -31,15 +31,19 @@ $pageKey = getPageKey($db, 'vlog');
 $where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
-// Grouped mode — sections by category with episode sort
+// Grouped mode — sections by category with episode sort.
+// An item with multiple category assignments appears in EACH of its categories.
 if (isset($_GET['grouped'])) {
     $stmt = $db->prepare("
         SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, fi.feed_item_url,
                fi.feed_item_thumbnail, fi.feed_item_embed_id, fi.feed_item_duration,
                COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime,
-               fi.feed_item_category_key, fi.feed_item_episode, fi.feed_item_audio_file
+               COALESCE(fic.category_key, fi.feed_item_category_key) AS category_key,
+               COALESCE(fic.feed_item_category_episode, fi.feed_item_episode) AS episode,
+               fi.feed_item_audio_file
         FROM yy_feed_item fi
         JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
+        LEFT JOIN yy_feed_item_category fic ON fic.feed_item_key = fi.feed_item_key
         WHERE $where
         ORDER BY feed_item_publish_dtime DESC NULLS LAST
     ");
@@ -57,7 +61,7 @@ if (isset($_GET['grouped'])) {
 
     $groups = [];
     foreach ($allItems as $item) {
-        $ck = (int)($item['feed_item_category_key'] ?? 0);
+        $ck = (int)($item['category_key'] ?? 0);
         $groups[$ck][] = [
             'title' => trim(preg_replace('/^[~\- ]+|[~\- ]+$/', '', trim(preg_replace('/#\w+\s*/', '', $item['feed_item_title'])))),
             'url' => $item['feed_item_url'],
@@ -66,7 +70,7 @@ if (isset($_GET['grouped'])) {
             'videoId' => $item['feed_item_external_id'],
             'duration' => $item['feed_item_duration'],
             'date' => $item['feed_item_publish_dtime'] ?? $item['feed_item_create_dtime'],
-            'episode' => $item['feed_item_episode'] ? (int)$item['feed_item_episode'] : null,
+            'episode' => $item['episode'] ? (int)$item['episode'] : null,
             'audio' => $item['feed_item_audio_file'] ?? null,
         ];
     }

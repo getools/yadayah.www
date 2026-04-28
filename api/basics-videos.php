@@ -48,14 +48,18 @@ $pageKey = getPageKey($db, 'basics');
 $where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
-// Grouped mode
+// Grouped mode — items can appear in multiple categories via yy_feed_item_category
 if (isset($_GET['grouped'])) {
     $stmt = $db->prepare("
         SELECT fi.feed_item_external_id AS basics_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS basics_title,
                fi.feed_item_thumbnail AS basics_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS basics_create,
-               fi.feed_item_tags, fi.feed_item_sort AS basics_sort, fi.feed_item_category_key, fi.feed_item_audio_file AS basics_audio
+               fi.feed_item_tags, fi.feed_item_sort AS basics_sort,
+               COALESCE(fic.category_key, fi.feed_item_category_key) AS feed_item_category_key,
+               fi.feed_item_audio_file AS basics_audio
         FROM yy_feed_item fi
         JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
+        LEFT JOIN yy_feed_item_category fic ON fic.feed_item_key = fi.feed_item_key
+            AND fic.category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = 20)
         WHERE $where
         ORDER BY fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     ");
@@ -75,7 +79,7 @@ if (isset($_GET['grouped'])) {
         $catMeta[$c['category_key']] = $c;
     }
 
-    // Group by feed_item_category_key
+    // Group by category key — an item can appear in multiple groups via the junction table
     $groups = [];
     foreach ($items as $item) {
         $ck = (int)($item['feed_item_category_key'] ?? 0);
