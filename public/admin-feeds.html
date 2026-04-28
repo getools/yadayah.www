@@ -491,7 +491,7 @@ function loadItems(page) {
         var rpf = document.getElementById('filter-page'); if (rpf) rpf.value = _savedFilters.page;
         var ref = document.getElementById('filter-episode'); if (ref) ref.value = _savedFilters.episode;
         var raf = document.getElementById('filter-active'); if (raf) raf.value = _savedFilters.active;
-        var rkf = document.getElementById('filter-key'); if (rkf) rkf.value = _savedFilters.key;
+        var rkf = document.getElementById('filter-key'); if (rkf) rkf.value = _savedFilters.key || '';
     });
 }
 var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
