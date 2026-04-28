@@ -360,6 +360,8 @@ function loadItems(page) {
     if (mf) _savedFilters.mp3 = mf.value;
     var ef = document.getElementById('filter-episode');
     if (ef) _savedFilters.episode = ef.value;
+    var kf = document.getElementById('filter-key');
+    if (kf) _savedFilters.key = kf.value;
     var titleFilter = _savedFilters.title;
     var tagsFilter = _savedFilters.tags;
     var catFilter = _savedFilters.category;
@@ -379,6 +381,8 @@ function loadItems(page) {
     if (episodeFilter) url += '&episode=' + encodeURIComponent(episodeFilter);
     var activeFilter = _savedFilters.active;
     if (activeFilter) url += '&active=' + activeFilter;
+    var keyFilter = _savedFilters.key;
+    if (keyFilter) url += '&feed_item_key=' + encodeURIComponent(keyFilter);
     document.getElementById('items-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">Loading...</div>';
     fetch(url, {credentials:'include'}).then(function(r) { return safeJson(r); }).then(function(d) {
         if (d.error) { document.getElementById('items-container').innerHTML = '<div style="color:#c00;padding:12px;">' + esc(d.error) + '</div>'; return; }
@@ -422,6 +426,7 @@ function loadItems(page) {
         var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
         var html = '<table class="feeds-table"><thead><tr>'
             + '<th>Thumb</th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" placeholder="Key..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_name\')">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
@@ -436,6 +441,7 @@ function loadItems(page) {
             var inactive = it.feed_item_active_flag === false || it.feed_item_active_flag === 'f';
             html += '<tr class="item-row' + (inactive ? ' inactive' : '') + '">'
                 + '<td>' + (it.feed_item_url ? '<a href="' + esc(it.feed_item_url) + '" target="_blank">' : '') + '<img class="thumb" src="' + esc(it.feed_item_thumbnail || '') + '" alt="">' + (it.feed_item_url ? '</a>' : '') + '</td>'
+                + '<td style="font-size:0.7rem;color:#888;font-family:monospace;">' + it.feed_item_key + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + esc(it.feed_name || '') + '</td>'
                 + '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.feed_item_title || '') + '</td>'
                 + '<td style="font-size:0.7rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;">' + esc(it.feed_item_tags || '') + '</td>'
@@ -485,6 +491,7 @@ function loadItems(page) {
         var rpf = document.getElementById('filter-page'); if (rpf) rpf.value = _savedFilters.page;
         var ref = document.getElementById('filter-episode'); if (ref) ref.value = _savedFilters.episode;
         var raf = document.getElementById('filter-active'); if (raf) raf.value = _savedFilters.active;
+        var rkf = document.getElementById('filter-key'); if (rkf) rkf.value = _savedFilters.key;
     });
 }
 var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];

@@ -22,6 +22,11 @@ if ($method === 'GET' && isset($_GET['items'])) {
     $tagsFilter = trim($_GET['tags'] ?? '');
     $catKey = (int)($_GET['category_key'] ?? 0);
     if ($titleFilter) { $where[] = 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?'; $params[] = '%'.$titleFilter.'%'; }
+    $keyFilter = trim($_GET['feed_item_key'] ?? '');
+    if ($keyFilter !== '') {
+        if (ctype_digit($keyFilter)) { $where[] = 'fi.feed_item_key = ?'; $params[] = (int)$keyFilter; }
+        else { $where[] = 'CAST(fi.feed_item_key AS TEXT) LIKE ?'; $params[] = $keyFilter . '%'; }
+    }
     if ($tagsFilter) { $where[] = 'fi.feed_item_tags ILIKE ?'; $params[] = '%'.$tagsFilter.'%'; }
     $episodeFilter = trim($_GET['episode'] ?? '');
     if ($episodeFilter) { $where[] = 'fi.feed_item_episode ILIKE ?'; $params[] = '%'.$episodeFilter.'%'; }
@@ -80,6 +85,7 @@ if ($method === 'GET' && isset($_GET['items'])) {
     $dir = strtoupper(trim($_GET['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
     $sortMap = [
         'publish_dtime' => 'COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime)',
+        'feed_item_key' => 'fi.feed_item_key',
         'feed_item_title' => 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)',
         'feed_item_tags' => 'fi.feed_item_tags',
         'feed_item_episode' => 'fi.feed_item_episode',
