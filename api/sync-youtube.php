@@ -200,12 +200,15 @@ foreach ($feeds as $feed) {
                 else $totalUpdated++;
             }
 
-            // Populate yy_feed_item_category for all detected category assignments
+            // Always populate yy_feed_item_category, even for unchanged items —
+            // the junction table is the source of truth for multi-category assignments.
             if ($categoryAssignments) {
                 $itemKeyStmt = $db->prepare("SELECT feed_item_key FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ?");
                 $itemKeyStmt->execute([$feedKey, $videoId]);
                 $itemKey = (int)($itemKeyStmt->fetchColumn() ?: 0);
                 if ($itemKey) {
+                    // Replace all existing assignments with the freshly-parsed ones
+                    $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ?")->execute([$itemKey]);
                     $catUp = $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key, feed_item_category_episode) VALUES (?, ?, ?) ON CONFLICT (feed_item_key, category_key) DO UPDATE SET feed_item_category_episode = EXCLUDED.feed_item_category_episode");
                     foreach ($categoryAssignments as $ca) {
                         $catUp->execute([$itemKey, $ca['category_key'], $ca['episode']]);
