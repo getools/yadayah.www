@@ -99,7 +99,12 @@ if ($method === 'GET' && isset($_GET['items'])) {
                 FROM (SELECT DISTINCT ON (p.page_key) p.page_key, p.page_code, p.page_title
                       FROM yy_feed_item_page fip JOIN yy_page p ON fip.page_key = p.page_key
                       WHERE fip.feed_item_key = fi.feed_item_key
-                ) p) AS page_list
+                ) p) AS page_list,
+               (SELECT json_agg(json_build_object('category_key', cc.category_key, 'category_title', cc.category_title, 'category_slug', cc.category_slug, 'episode', fic.feed_item_category_episode, 'page_title', pp.page_title) ORDER BY pp.page_title, cc.category_sort, cc.category_title)
+                FROM yy_feed_item_category fic
+                JOIN yy_feed_page_category cc ON fic.category_key = cc.category_key
+                JOIN yy_page pp ON cc.page_key = pp.page_key
+                WHERE fic.feed_item_key = fi.feed_item_key) AS categories_list
         FROM yy_feed_item fi
         JOIN yy_feed f ON fi.feed_key = f.feed_key
         LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
@@ -366,9 +371,22 @@ if ($method === 'PUT' && isset($_GET['item_update'])) {
             $vals[] = $v;
         }
     }
-    if (!$sets) errorResponse('Nothing to update');
-    $vals[] = $itemKey;
-    $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $sets) . " WHERE feed_item_key = ?")->execute($vals);
+    if ($sets) {
+        $vals[] = $itemKey;
+        $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $sets) . " WHERE feed_item_key = ?")->execute($vals);
+    }
+    // Multi-category assignments — replace all if 'categories' array is provided
+    if (array_key_exists('categories', $data) && is_array($data['categories'])) {
+        $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ?")->execute([$itemKey]);
+        $catUp = $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key, feed_item_category_episode) VALUES (?, ?, ?) ON CONFLICT (feed_item_key, category_key) DO UPDATE SET feed_item_category_episode = EXCLUDED.feed_item_category_episode");
+        foreach ($data['categories'] as $ca) {
+            $catKey = (int)($ca['category_key'] ?? 0);
+            if (!$catKey) continue;
+            $ep = isset($ca['episode']) && $ca['episode'] !== '' ? trim((string)$ca['episode']) : null;
+            $catUp->execute([$itemKey, $catKey, $ep]);
+        }
+    }
+    if (!$sets && !array_key_exists('categories', $data)) errorResponse('Nothing to update');
     // Re-evaluate page associations if tags, title, or orientation changed
     $pageRelevant = ['feed_item_tags', 'feed_item_title_override', 'feed_item_title_import', 'feed_item_orientation', 'feed_item_active_flag'];
     if (array_intersect(array_keys($data), $pageRelevant)) {
@@ -404,11 +422,11 @@ if ($method === 'PUT') {
 
     if ($syncScript && file_exists($syncScript)) {
         if ($site === 'facebook') {
-            // Facebook is long-running — run in background
+            // Facebook is long-running — run in background, fully detached
             $logFile = sys_get_temp_dir() . '/sync_feed_' . $feedKey . '.log';
-            $cmd = "php " . escapeshellarg($syncScript) . " > " . escapeshellarg($logFile) . " 2>&1 &";
+            $cmd = "nohup php " . escapeshellarg($syncScript) . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null &";
             exec($cmd);
-            $result['sync_result'] = ['status' => 'started', 'message' => 'Sync running in background'];
+            $result['sync_result'] = ['status' => 'started', 'message' => 'Sync running in background', 'log' => $logFile];
         } else {
             // Run sync script via CLI, capture JSON output
             $output = [];

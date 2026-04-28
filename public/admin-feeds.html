@@ -440,7 +440,14 @@ function loadItems(page) {
                 + '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.feed_item_title || '') + '</td>'
                 + '<td style="font-size:0.7rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;">' + esc(it.feed_item_tags || '') + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + esc(it.page_codes || '') + '</td>'
-                + '<td style="font-size:0.75rem;color:#888;">' + esc(it.category_title || '') + '</td>'
+                + '<td style="font-size:0.75rem;color:#888;">' + (function() {
+                    var cl = it.categories_list;
+                    if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch(e) { cl = null; } }
+                    if (cl && cl.length) {
+                        return cl.map(function(c) { return esc(c.category_title) + (c.episode ? ' (' + esc(c.episode) + ')' : ''); }).join(', ');
+                    }
+                    return esc(it.category_title || '');
+                })() + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + (it.feed_item_episode || '') + '</td>'
                 + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
                 + '<td style="text-align:center;">' + (inactive ? '<span style="color:#c00;">No</span>' : '<span style="color:#27ae60;">Yes</span>') + '</td>'
@@ -703,7 +710,9 @@ function saveFeedSource() {
         feed_account_id: document.getElementById('f-account-id').value,
         feed_source_url: document.getElementById('f-source-url').value,
         feed_api_key: document.getElementById('f-api-key').value,
-        feed_stream_flag: document.getElementById('f-stream').checked,
+        // feed_stream_flag is intentionally NOT included here — it can only be
+        // changed via the explicit Stream toggle button, never bundled with
+        // other field saves. Setting it requires a deliberate user action.
         feed_active_flag: document.getElementById('f-active').checked,
         schedules: collectSchedules()
     };
@@ -976,29 +985,19 @@ function editItem(key) {
             + '<span style="min-width:90px;font-weight:600;font-size:0.85rem;color:#555;">Page</span>'
             + '<span style="flex:1;font-weight:600;font-size:0.85rem;color:#555;">Category</span>'
             + '</div>';
-        // Build category options grouped by page
-        var catsByPk = {};
-        _allCategories.forEach(function(c) {
-            if (!catsByPk[c.page_key]) catsByPk[c.page_key] = [];
-            catsByPk[c.page_key].push(c);
-        });
-        itemPages.forEach(function(pg) {
-            var pgCats = catsByPk[pg.page_key] || [];
-            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-                + '<a href="/' + esc(pg.page_code) + '" target="_blank" style="min-width:90px;font-size:0.82rem;font-weight:600;color:#31345A;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(pg.page_title) + '</a>';
-            if (pgCats.length) {
-                html += '<select data-page-cat="' + pg.page_key + '" style="flex:1;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;">'
-                    + '<option value="">— None —</option>';
-                pgCats.forEach(function(c) {
-                    html += '<option value="' + c.category_key + '"' + (item.feed_item_category_key == c.category_key ? ' selected' : '') + '>' + esc(catLabel(c)) + '</option>';
-                });
-                html += '</select>';
-            } else {
-                html += '<span style="font-size:0.78rem;color:#999;">No categories</span>';
-            }
-            html += '</div>';
-        });
-        html += '</div>';
+        // Multi-category editor: one row per currently-assigned category, plus an Add button
+        html += '<div id="cat-rows-container" style="display:flex;flex-direction:column;gap:6px;"></div>'
+            + '<button type="button" onclick="addCategoryRow()" style="margin-top:8px;padding:4px 10px;font-size:0.78rem;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;">+ Add Category</button>'
+            + '</div>';
+        // Stash the category list and current item categories on the form so addCategoryRow can use them
+        var existingCats = item.categories_list || [];
+        if (typeof existingCats === 'string') { try { existingCats = JSON.parse(existingCats); } catch(e) { existingCats = []; } }
+        // If the legacy single column is set but no junction entries, seed from it
+        if ((!existingCats || !existingCats.length) && item.feed_item_category_key) {
+            var legacy = (_allCategories || []).find(function(c){ return c.category_key == item.feed_item_category_key; });
+            if (legacy) existingCats = [{category_key: legacy.category_key, category_title: legacy.category_title, category_slug: legacy.category_slug, episode: item.feed_item_episode || ''}];
+        }
+        window._editItemCategories = existingCats || [];
     }
 
     // MP3 upload (spans columns 2-3)
@@ -1020,6 +1019,61 @@ function editItem(key) {
 
     document.getElementById('item-edit-body').innerHTML = html;
     overlay.style.display = 'flex';
+    renderCategoryRows();
+}
+
+function renderCategoryRows() {
+    var container = document.getElementById('cat-rows-container');
+    if (!container) return;
+    container.innerHTML = '';
+    var cats = window._editItemCategories || [];
+    cats.forEach(function(c) { addCategoryRow(c); });
+    if (!cats.length) addCategoryRow(); // empty row to start with
+}
+
+function addCategoryRow(preset) {
+    var container = document.getElementById('cat-rows-container');
+    if (!container) return;
+    preset = preset || {};
+    var row = document.createElement('div');
+    row.className = 'cat-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+    var sel = document.createElement('select');
+    sel.className = 'cat-row-select';
+    sel.style.cssText = 'flex:1;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;';
+    var opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '— Select category —';
+    sel.appendChild(opt);
+    var groups = {};
+    (_allCategories || []).forEach(function(c) {
+        var grp = c.page_title || c.page_code || '';
+        if (!groups[grp]) groups[grp] = [];
+        groups[grp].push(c);
+    });
+    Object.keys(groups).sort().forEach(function(grp) {
+        var og = document.createElement('optgroup');
+        og.label = grp;
+        groups[grp].forEach(function(c) {
+            var o = document.createElement('option');
+            o.value = c.category_key;
+            o.textContent = catLabel(c);
+            if (preset.category_key == c.category_key) o.selected = true;
+            og.appendChild(o);
+        });
+        sel.appendChild(og);
+    });
+    row.appendChild(sel);
+    var ep = document.createElement('input');
+    ep.type = 'text'; ep.className = 'cat-row-ep'; ep.placeholder = 'episode';
+    ep.value = preset.episode || '';
+    ep.style.cssText = 'width:90px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;';
+    row.appendChild(ep);
+    var rm = document.createElement('button');
+    rm.type = 'button'; rm.textContent = '×';
+    rm.style.cssText = 'padding:2px 8px;border:1px solid #e0c0c0;border-radius:4px;background:#fff;color:#c0392b;cursor:pointer;font-size:0.9rem;';
+    rm.onclick = function() { row.remove(); };
+    row.appendChild(rm);
+    container.appendChild(row);
 }
 
 function saveItem() {
@@ -1034,11 +1088,19 @@ function saveItem() {
     });
     // Cast booleans
     if (typeof data.feed_item_active_flag === 'boolean') data.feed_item_active_flag = data.feed_item_active_flag;
-    // Capture category from page/category dropdowns (last non-empty selection wins)
-    var catSelects = document.querySelectorAll('[data-page-cat]');
-    var selectedCat = null;
-    catSelects.forEach(function(sel) { if (sel.value) selectedCat = parseInt(sel.value); });
-    data.feed_item_category_key = selectedCat;
+    // Collect ALL category rows into an array
+    var categories = [];
+    document.querySelectorAll('.cat-row').forEach(function(row) {
+        var sel = row.querySelector('.cat-row-select');
+        var ep = row.querySelector('.cat-row-ep');
+        if (sel && sel.value) {
+            categories.push({ category_key: parseInt(sel.value), episode: (ep && ep.value || '').trim() || null });
+        }
+    });
+    data.categories = categories;
+    // Keep legacy single-column in sync with first selection for backwards compat
+    data.feed_item_category_key = categories.length ? categories[0].category_key : null;
+    if (categories.length && categories[0].episode) data.feed_item_episode = categories[0].episode;
 
     fetch(API + '/admin-feeds.php?item_update=1', {
         method: 'PUT', credentials: 'include',
