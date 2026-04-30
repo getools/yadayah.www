@@ -48,20 +48,24 @@ $pageKey = getPageKey($db, 'basics');
 $where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
 $params = [$pageKey];
 
-// Grouped mode — items can appear in multiple categories via yy_feed_item_category
+// Grouped mode — items can appear in multiple categories via yy_feed_item_category.
+// Read the Basics category from yy_feed_item_category (page-scoped, multi-category).
+// Falls back to legacy feed_item_category_key only if it points to a Basics-page category.
 if (isset($_GET['grouped'])) {
     $stmt = $db->prepare("
         SELECT fi.feed_item_external_id AS basics_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS basics_title,
                fi.feed_item_thumbnail AS basics_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS basics_create,
                fi.feed_item_tags, fi.feed_item_sort AS basics_sort,
-               COALESCE(fic.category_key, fi.feed_item_category_key) AS feed_item_category_key,
+               COALESCE(fic.category_key,
+                        CASE WHEN cc.page_key = 20 THEN fi.feed_item_category_key ELSE NULL END) AS feed_item_category_key,
                fi.feed_item_audio_file AS basics_audio
         FROM yy_feed_item fi
         JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
         LEFT JOIN yy_feed_item_category fic ON fic.feed_item_key = fi.feed_item_key
             AND fic.category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = 20)
+        LEFT JOIN yy_feed_page_category cc ON cc.category_key = fi.feed_item_category_key
         WHERE $where
-        ORDER BY fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
+        ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     ");
     $stmt->execute($params);
     $items = $stmt->fetchAll();
@@ -133,7 +137,7 @@ $stmt = $db->prepare("
     FROM yy_feed_item fi
     JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where
-    ORDER BY fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
+    ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
 $stmt->execute(array_merge($params, [$PER_PAGE, $offset]));

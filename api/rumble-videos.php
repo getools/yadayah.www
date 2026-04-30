@@ -34,18 +34,23 @@ $params = [$pageKey];
 // Grouped mode — sections by category with episode sort.
 // An item with multiple category assignments appears in EACH of its categories.
 if (isset($_GET['grouped'])) {
+    // Read the Vlog category from yy_feed_item_category (page_key=1, multi-category).
+    // Falls back to legacy feed_item_category_key only if it points to a Vlog-page category.
     $stmt = $db->prepare("
         SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, fi.feed_item_url,
                fi.feed_item_thumbnail, fi.feed_item_embed_id, fi.feed_item_duration,
                COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime,
-               COALESCE(fic.category_key, fi.feed_item_category_key) AS category_key,
+               COALESCE(fic.category_key,
+                        CASE WHEN cc.page_key = 1 THEN fi.feed_item_category_key ELSE NULL END) AS category_key,
                COALESCE(fic.feed_item_category_episode, fi.feed_item_episode) AS episode,
                fi.feed_item_audio_file
         FROM yy_feed_item fi
         JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
         LEFT JOIN yy_feed_item_category fic ON fic.feed_item_key = fi.feed_item_key
+            AND fic.category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = 1)
+        LEFT JOIN yy_feed_page_category cc ON cc.category_key = fi.feed_item_category_key
         WHERE $where
-        ORDER BY feed_item_publish_dtime DESC NULLS LAST
+        ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, feed_item_publish_dtime DESC NULLS LAST
     ");
     $stmt->execute($params);
     $allItems = $stmt->fetchAll();
@@ -120,7 +125,7 @@ $stmt = $db->prepare("
     FROM yy_feed_item fi
     JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where
-    ORDER BY feed_item_publish_dtime DESC NULLS LAST
+    ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, feed_item_publish_dtime DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
 $stmt->execute($fetchParams);
