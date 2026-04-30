@@ -448,26 +448,55 @@ function runAutoFix() {
     triggerAutoFixCycle();
 }
 
-// Timer countdown — triage at :15/:45, AI agent at :00
+// Timer countdown — AI agent at :00, triage at :15/:45, git push at :30
 var _autoFixRunning = false;
+var _lastFiredKey = null;
 function startAutoFixTimer() {
     var el = document.getElementById('autofix-timer');
     function update() {
         if (_autoFixRunning) return;
         var now = new Date();
         var mins = now.getMinutes();
-        // Next event: :00 (AI agent), :15 (triage), :30 (git push), :45 (triage)
-        var targets = [0, 15, 30, 45, 60];
-        var labels = ['AI agent', 'triage', 'git push', 'triage', 'AI agent'];
-        var nextIdx = 0;
-        for (var i = 0; i < targets.length; i++) {
-            if (mins < targets[i]) { nextIdx = i; break; }
+        var secs = now.getSeconds();
+        var totalSecs = mins * 60 + secs;
+        // Schedule (in seconds within the hour) — :00 AI agent, :15 triage, :30 git, :45 triage
+        var schedule = [
+            { sec:    0, label: 'AI agent', kind: 'ai' },
+            { sec:  900, label: 'triage',   kind: 'triage' },
+            { sec: 1800, label: 'git push', kind: 'git' },
+            { sec: 2700, label: 'triage',   kind: 'triage' },
+            { sec: 3600, label: 'AI agent', kind: 'ai' }, // wrap to next hour
+        ];
+        // Find the next event strictly AFTER now
+        var next = schedule[schedule.length - 1];
+        for (var i = 0; i < schedule.length; i++) {
+            if (schedule[i].sec > totalSecs) { next = schedule[i]; break; }
         }
-        var secsLeft = (targets[nextIdx] - mins) * 60 - now.getSeconds();
-        if (secsLeft <= 0) secsLeft = 60;
+        var secsLeft = next.sec - totalSecs;
         var m = Math.floor(secsLeft / 60);
         var s = secsLeft % 60;
-        el.textContent = 'Next ' + labels[nextIdx] + ': ' + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+        el.textContent = 'Next ' + next.label + ': ' + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+
+        // Detect a scheduled event firing — refresh events 30s after each target so we see the result
+        var prev = null;
+        for (var j = 0; j < schedule.length - 1; j++) {
+            if (schedule[j].sec <= totalSecs && totalSecs < schedule[j].sec + 60) { prev = schedule[j]; break; }
+        }
+        if (prev && prev.sec !== _lastFiredKey) {
+            _lastFiredKey = prev.sec;
+            // Show transient banner so the user sees something happened
+            if (typeof showAutoFixBanner === 'function') {
+                showAutoFixBanner('running', '<strong>Scheduled ' + prev.label + ' is running…</strong> Will refresh in ~30s.');
+            }
+            // Refresh in 30s when the cron has had time to do its work
+            setTimeout(function() {
+                loadSummary();
+                loadEvents();
+                if (typeof showAutoFixBanner === 'function') {
+                    showAutoFixBanner('info', '<strong>&#10003; Refreshed after scheduled ' + prev.label + ' run.</strong>');
+                }
+            }, 30000);
+        }
     }
     update();
     setInterval(update, 1000);
