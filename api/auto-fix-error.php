@@ -1,19 +1,29 @@
 <?php
 /**
- * Error triage agent — runs on the server via cron at :15 and :45.
- * Resolves known patterns (extension noise, transient errors, duplicates)
- * without any API calls. Novel errors are left unresolved for the remote
- * Claude Code agent (scheduled trigger, runs hourly at :00) to investigate
- * and fix via the remote-agent.php API — no Anthropic API key needed.
+ * Auto-fix runner — pattern triage + Claude Code agent for unresolved errors.
+ *
+ * Modes:
+ *   php auto-fix-error.php                — process all unresolved (no time limit)
+ *   php auto-fix-error.php <RUN_ID>       — same, but write progress JSON to
+ *                                           /tmp/autofix_run_<RUN_ID>.json so the
+ *                                           admin UI can poll live status.
  *
  * Cron: 15,45 * * * * docker exec yada-www-web-1 php /var/www/html/api/auto-fix-error.php
  */
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
-set_time_limit(300);
+set_time_limit(0); // background-safe, no PHP wall-clock limit
 
 $WEB_ROOT = '/var/www/html';
-$MAX_TRIAGE = 100;
+$MAX_TRIAGE = 1000;
+$RUN_ID = $argv[1] ?? '';
+$STATUS_FILE = $RUN_ID ? "/tmp/autofix_run_{$RUN_ID}.json" : '';
+
+function writeStatus(string $file, array $data): void {
+    if (!$file) return;
+    $data['updated'] = date('c');
+    @file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
+}
 
 // ── DB ──
 $host = getenv('PG_HOST') ?: 'localhost';
@@ -26,7 +36,8 @@ $db = new PDO("pgsql:host=$host;port=$port;dbname=$name", $user, $pass, [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
 
-echo "[" . date('c') . "] Auto-fix starting\n";
+echo "[" . date('c') . "] Auto-fix starting" . ($RUN_ID ? " (run $RUN_ID)" : '') . "\n";
+writeStatus($STATUS_FILE, ['state' => 'starting', 'started' => date('c')]);
 
 // ── Fetch unresolved errors ──
 $stmt = $db->prepare("
@@ -36,17 +47,34 @@ $stmt = $db->prepare("
       AND event_source NOT IN ('agent_op', 'honeypot')
       AND event_severity IN ('error', 'warning')
     ORDER BY event_dtime DESC
-    LIMIT 100
+    LIMIT $MAX_TRIAGE
 ");
 $stmt->execute();
 $errors = $stmt->fetchAll();
 
 if (!$errors) {
     echo "[" . date('c') . "] No unresolved errors\n";
+    writeStatus($STATUS_FILE, ['state' => 'complete', 'total' => 0, 'processed' => 0, 'started' => date('c'), 'finished' => date('c'), 'log' => 'No unresolved errors']);
     exit(0);
 }
 
 echo "[" . date('c') . "] Found " . count($errors) . " unresolved errors\n";
+$total = count($errors);
+$processed = 0;
+$counters = ['known' => 0, 'extension' => 0, 'dedup' => 0, 'code-fix' => 0, 'claude-fix' => 0, 'pending' => 0, 'already-analyzed' => 0];
+$logLines = [];
+function recordCounter(string $kind, string $line, array &$counters, array &$logLines, string $statusFile, int $processed, int $total, ?string $current = null): void {
+    $counters[$kind] = ($counters[$kind] ?? 0) + 1;
+    $logLines[] = $line;
+    writeStatus($statusFile, [
+        'state' => 'running',
+        'total' => $total,
+        'processed' => $processed,
+        'counters' => $counters,
+        'current' => $current,
+        'log_tail' => implode("\n", array_slice($logLines, -30)),
+    ]);
+}
 
 // ── Only skip errors that are definitively from browser extensions (not our code) ──
 $extensionNoise = [
@@ -136,10 +164,18 @@ $triageCount = 0;
 
 foreach ($errors as $error) {
     if ($triageCount >= $MAX_TRIAGE) break;
+    $processed++;
 
     $msg = $error['event_message'] ?? '';
     $detail = $error['event_detail'] ?? '';
     $source = $error['event_source'] ?? '';
+    $currentLabel = "#{$error['event_key']} [{$source}] " . substr($msg, 0, 80);
+
+    writeStatus($STATUS_FILE, [
+        'state' => 'running', 'total' => $total, 'processed' => $processed - 1,
+        'counters' => $counters, 'current' => $currentLabel,
+        'log_tail' => implode("\n", array_slice($logLines, -30)),
+    ]);
 
     // Skip only confirmed browser extension errors (definitively not our code)
     $isExtension = false;
@@ -152,7 +188,9 @@ foreach ($errors as $error) {
     if ($isExtension) {
         $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = 'Auto-skipped: browser extension — not our code' WHERE event_key = ?")
            ->execute([$error['event_key']]);
-        echo "  [extension] #{$error['event_key']}: " . substr($msg, 0, 80) . "\n";
+        $line = "  [extension] #{$error['event_key']}: " . substr($msg, 0, 80);
+        echo $line . "\n";
+        recordCounter('extension', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
         continue;
     }
 
@@ -165,7 +203,9 @@ foreach ($errors as $error) {
             if ($condFn === null || $condFn($error)) {
                 $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
                    ->execute([$kp['resolve'], $error['event_key']]);
-                echo "  [known] #{$error['event_key']}: " . substr($kp['resolve'], 0, 80) . "\n";
+                $line = "  [known] #{$error['event_key']}: " . substr($kp['resolve'], 0, 80);
+                echo $line . "\n";
+                recordCounter('known', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
                 $knownResolved = true;
                 break;
             }
@@ -175,7 +215,9 @@ foreach ($errors as $error) {
 
     // Skip errors already investigated by Claude (have action_taken set)
     if (!empty($error['event_action_taken'])) {
-        echo "  [already-analyzed] #{$error['event_key']}: " . substr($error['event_action_taken'], 0, 60) . "\n";
+        $line = "  [already-analyzed] #{$error['event_key']}: " . substr($error['event_action_taken'], 0, 60);
+        echo $line . "\n";
+        recordCounter('already-analyzed', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
         continue;
     }
 
@@ -185,7 +227,9 @@ foreach ($errors as $error) {
     if (isset($fixedMessages[$msgHash])) {
         $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
            ->execute(["Same issue as #{$fixedMessages[$msgHash]} — resolved together", $error['event_key']]);
-        echo "  [dedup] #{$error['event_key']} same as #{$fixedMessages[$msgHash]}\n";
+        $line = "  [dedup] #{$error['event_key']} same as #{$fixedMessages[$msgHash]}";
+        echo $line . "\n";
+        recordCounter('dedup', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
         continue;
     }
 
@@ -341,20 +385,37 @@ foreach ($errors as $error) {
         $hasAuth = file_exists('/var/www/.claude-home/.claude/.credentials.json')
                 || file_exists('/var/www/.claude-home/.config/claude/claude.json');
         if (file_exists($claudeWrapper) && $hasAuth) {
-            echo "  [claude-fix] #{$error['event_key']} {$source}: invoking Claude Code agent...\n";
+            $line = "  [claude-fix] #{$error['event_key']} {$source}: invoking Claude Code agent...";
+            echo $line . "\n";
+            recordCounter('claude-fix', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
             $cmd = escapeshellcmd($claudeWrapper) . ' ' . (int)$error['event_key'] . ' 2>&1';
             $output = [];
             $rc = 0;
             exec($cmd, $output, $rc);
             $tail = implode("\n", array_slice($output, -10));
-            echo "    rc=$rc\n    " . str_replace("\n", "\n    ", $tail) . "\n";
+            $line2 = "    rc=$rc | " . substr(str_replace("\n", ' | ', $tail), 0, 200);
+            echo $line2 . "\n";
+            $logLines[] = $line2;
             $fixedMessages[$msgHash] = $error['event_key'];
         } else {
             $reason = !file_exists($claudeWrapper) ? 'wrapper missing' : 'Claude Code not authenticated';
-            echo "  [pending] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . " ({$reason})\n";
+            $line = "  [pending] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . " ({$reason})";
+            echo $line . "\n";
+            recordCounter('pending', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
         }
     }
 }
+
+// Final status
+writeStatus($STATUS_FILE, [
+    'state' => 'complete',
+    'total' => $total,
+    'processed' => $processed,
+    'counters' => $counters,
+    'started' => $started ?? date('c'),
+    'finished' => date('c'),
+    'log_tail' => implode("\n", array_slice($logLines, -100)),
+]);
 
 echo "[" . date('c') . "] Done. Triaged: " . count($errors) . " errors\n";
 

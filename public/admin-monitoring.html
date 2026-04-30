@@ -541,52 +541,85 @@ function nextAgentRunTime() {
     return next.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 }
 
+var _autoFixPollTimer = null;
+var _autoFixRunId = null;
+
+function renderAutoFixProgress(d) {
+    var total = d.total || 0;
+    var processed = d.processed || 0;
+    var counters = d.counters || {};
+    var pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+    var current = d.current ? '<div style="font-size:0.8rem;margin-top:4px;opacity:0.85;">Currently: ' + esc(d.current) + '</div>' : '';
+    var bar = '<div style="background:rgba(0,0,0,0.08);border-radius:6px;overflow:hidden;height:8px;margin-top:8px;"><div style="background:#27ae60;width:' + pct + '%;height:100%;transition:width 0.4s;"></div></div>';
+    var counts = [];
+    if (counters['known']) counts.push('<span style="color:#1b5e20;">' + counters['known'] + ' known-pattern</span>');
+    if (counters['extension']) counts.push('<span style="color:#1b5e20;">' + counters['extension'] + ' extension noise</span>');
+    if (counters['dedup']) counts.push('<span style="color:#1b5e20;">' + counters['dedup'] + ' deduped</span>');
+    if (counters['code-fix']) counts.push('<span style="color:#0d47a1;">' + counters['code-fix'] + ' code-fixed</span>');
+    if (counters['claude-fix']) counts.push('<span style="color:#0d47a1;">' + counters['claude-fix'] + ' Claude-fixed</span>');
+    if (counters['pending']) counts.push('<span style="color:#7a5c00;">' + counters['pending'] + ' pending</span>');
+    var countLine = counts.length ? '<div style="font-size:0.78rem;margin-top:6px;">' + counts.join(' · ') + '</div>' : '';
+    var logTail = d.log_tail ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">View live log</summary><pre style="background:rgba(0,0,0,0.05);border-radius:4px;padding:8px;font-size:0.75rem;color:#333;margin:6px 0 0;white-space:pre-wrap;max-height:240px;overflow-y:auto;">' + esc(d.log_tail) + '</pre></details>' : '';
+
+    if (d.state === 'running' || d.state === 'starting') {
+        showAutoFixBanner('running',
+            '<strong>&#9881; Auto-fix running…</strong> ' + processed + ' of ' + total + ' (' + pct + '%)' + bar + countLine + current + logTail);
+    } else if (d.state === 'complete') {
+        showAutoFixBanner('success',
+            '<strong>&#10003; Auto-fix complete.</strong> Processed ' + processed + ' of ' + total + ' error' + (total===1?'':'s') + '.' + countLine + logTail);
+    } else if (d.state === 'unknown') {
+        showAutoFixBanner('error', '<strong>&#10005; Lost track of run.</strong> Status file not found.');
+    }
+}
+
+function pollAutoFixStatus() {
+    if (!_autoFixRunId) return;
+    fetch(API + '/admin-monitoring.php?action=autofix_status&run_id=' + _autoFixRunId, {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            renderAutoFixProgress(d);
+            if (d.state === 'complete' || d.state === 'unknown') {
+                clearInterval(_autoFixPollTimer);
+                _autoFixPollTimer = null;
+                _autoFixRunning = false;
+                var btn = document.getElementById('autofix-btn');
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#9881; Auto-Fix Now'; }
+                var el = document.getElementById('autofix-timer');
+                if (el) el.textContent = 'Auto-fix done';
+                // Refresh events list and summary now that everything's resolved
+                loadSummary();
+                loadEvents();
+            }
+        })
+        .catch(function(){});
+}
+
 function triggerAutoFixCycle() {
     if (_autoFixRunning) return;
     _autoFixRunning = true;
     var el = document.getElementById('autofix-timer');
     var btn = document.getElementById('autofix-btn');
-    el.textContent = 'Running triage...';
+    el.textContent = 'Starting…';
     btn.disabled = true;
     btn.textContent = 'Running...';
-    showAutoFixBanner('running', '<strong>Running on-server triage…</strong> <span style="opacity:0.75;">(known patterns, no API)</span>');
+    showAutoFixBanner('running', '<strong>&#9881; Starting auto-fix run…</strong>');
 
-    // Step 1: Run on-server triage (resolves known patterns instantly)
     fetch(API + '/admin-monitoring.php?action=autofix', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{}'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
-            _autoFixRunning = false;
-            btn.disabled = false;
-            btn.innerHTML = '&#9881; Auto-Fix Now';
-            var output = (d.output || '').trim();
-            // Parse counts from output
-            var found = 0, known = 0, ext = 0, dedup = 0, pending = 0;
-            (output.match(/Found (\d+) unresolved errors/) || []).slice(1,2).forEach(function(n){ found = parseInt(n); });
-            known = (output.match(/^\s*\[known\]/gm) || []).length;
-            ext = (output.match(/^\s*\[extension\]/gm) || []).length;
-            dedup = (output.match(/^\s*\[dedup\]/gm) || []).length;
-            pending = (output.match(/^\s*\[pending\]/gm) || []).length;
-            var resolved = known + ext + dedup;
-
-            el.textContent = 'Triage done — next AI agent at ' + nextAgentRunTime();
-
-            var summary = '';
-            if (found === 0) {
-                summary = '<strong>&#10003; All clear.</strong> No unresolved errors needed triage.';
-                showAutoFixBanner('success', summary);
-            } else {
-                summary = '<strong>&#10003; Triage complete.</strong> Found ' + found + ' unresolved error' + (found===1?'':'s') + '. ';
-                var parts = [];
-                if (resolved) parts.push('<span style="color:#1b5e20;">Resolved ' + resolved + '</span>');
-                if (pending) parts.push('<span style="color:#7a5c00;">' + pending + ' pending AI investigation (next run at ' + nextAgentRunTime() + ')</span>');
-                if (parts.length) summary += parts.join(' · ');
-                summary += '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">View triage log</summary><pre style="background:rgba(0,0,0,0.05);border-radius:4px;padding:8px;font-size:0.75rem;color:#333;margin:6px 0 0;white-space:pre-wrap;max-height:240px;overflow-y:auto;">' + esc(output) + '</pre></details>';
-                showAutoFixBanner(pending > 0 ? 'info' : 'success', summary);
+            if (d.error) {
+                showAutoFixBanner('error', '<strong>&#10005; Failed to start auto-fix:</strong> ' + esc(d.error));
+                _autoFixRunning = false;
+                btn.disabled = false;
+                btn.innerHTML = '&#9881; Auto-Fix Now';
+                return;
             }
-            setTimeout(function() {
-                loadSummary();
-                loadEvents();
-            }, 200);
+            _autoFixRunId = d.run_id;
+            // Poll every 2 seconds until complete
+            if (_autoFixPollTimer) clearInterval(_autoFixPollTimer);
+            _autoFixPollTimer = setInterval(pollAutoFixStatus, 2000);
+            // First poll immediately so user sees something fast
+            pollAutoFixStatus();
         })
         .catch(function(err) {
             _autoFixRunning = false;

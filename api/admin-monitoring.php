@@ -190,27 +190,40 @@ if ($method === 'POST') {
     }
 
     if ($action === 'autofix') {
-        // Run everything we can do on-server, in sequence:
-        //   1. Pattern triage (auto-fix-error.php)
-        //   2. Server health/sync monitor scan (cron-monitor.php)
-        //   3. Sync code changes to GitHub (git-push.sh) — picks up any fixes from the AI agent
-        // Each step's output is captured and concatenated.
-        $sections = [];
+        // Spawn auto-fix-error.php as a backgrounded job. Returns a run_id immediately;
+        // the UI polls /admin-monitoring.php?action=autofix_status&run_id=... for live progress.
+        $runId = bin2hex(random_bytes(8));
+        $statusFile = "/tmp/autofix_run_{$runId}.json";
+        $logFile = "/tmp/autofix_run_{$runId}.log";
+        @file_put_contents($statusFile, json_encode(['state' => 'starting', 'run_id' => $runId, 'started' => date('c')]));
 
-        ob_start();
-        try { include __DIR__ . '/auto-fix-error.php'; } catch (\Throwable $e) { echo "ERROR: " . $e->getMessage() . "\n"; }
-        $sections[] = "── Pattern triage ──\n" . ob_get_clean();
+        $cmd = 'nohup php ' . escapeshellarg(__DIR__ . '/auto-fix-error.php') . ' ' . escapeshellarg($runId)
+             . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null & echo $!';
+        $pidOut = [];
+        @exec($cmd, $pidOut);
+        $pid = (int)($pidOut[0] ?? 0);
 
-        ob_start();
-        try { include __DIR__ . '/cron-monitor.php'; } catch (\Throwable $e) { echo "ERROR: " . $e->getMessage() . "\n"; }
-        $sections[] = "── Server health scan ──\n" . ob_get_clean();
-
-        // Spawn git-push.sh in background — don't block the user on git operations
+        // Also kick off cron-monitor and git-push in parallel (they're independent)
+        @exec('nohup php ' . escapeshellarg(__DIR__ . '/cron-monitor.php') . ' > /tmp/autofix_cron_monitor.log 2>&1 < /dev/null &');
         @exec('/opt/yada-www/api/git-push.sh "Auto-Fix Now: manual sync" > /dev/null 2>&1 &');
-        $sections[] = "── Git sync ──\n(spawned in background)\n";
 
-        $output = implode("\n", $sections);
-        jsonResponse(['ran' => true, 'output' => $output]);
+        jsonResponse([
+            'run_id' => $runId,
+            'pid' => $pid,
+            'status_url' => '/api/admin-monitoring.php?action=autofix_status&run_id=' . $runId,
+        ]);
+    }
+
+    if ($action === 'autofix_status') {
+        $runId = preg_replace('/[^a-f0-9]/', '', $_GET['run_id'] ?? '');
+        if (!$runId) errorResponse('run_id required', 400);
+        $statusFile = "/tmp/autofix_run_{$runId}.json";
+        if (!file_exists($statusFile)) {
+            jsonResponse(['state' => 'unknown', 'run_id' => $runId]);
+        }
+        $data = json_decode(@file_get_contents($statusFile), true) ?: [];
+        $data['run_id'] = $runId;
+        jsonResponse($data);
     }
 
     if ($action === 'run_ai_agent') {
