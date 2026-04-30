@@ -226,17 +226,7 @@ if ($method === 'POST') {
         jsonResponse($data);
     }
 
-    if ($action === 'run_ai_agent') {
-        // Returns the URL to manually trigger the remote AI agent run.
-        // Browser opens this in a new tab where the user is already logged in to claude.ai.
-        // (We can't trigger the OAuth-protected /v1/code/triggers/{id}/run endpoint from PHP.)
-        jsonResponse([
-            'url' => 'https://claude.ai/code/scheduled/trig_01FhNA8EHH9hvPSHn3GmcHWj',
-            'note' => 'Open in a new tab and click Run Now to trigger the AI agent immediately.',
-        ]);
-    }
-
-    if ($action === 'add_notes') {
+if ($action === 'add_notes') {
         $key = (int)($_GET['key'] ?? 0);
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $notes = trim($data['notes'] ?? '');
