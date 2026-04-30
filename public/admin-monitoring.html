@@ -504,16 +504,24 @@ function showAutoFixBanner(state, htmlContent) {
     var b = document.getElementById('autofix-status');
     if (!b) return;
     var styles = {
-        running: 'background:#fff8dc;border-color:#e6c200;color:#7a5c00;',
-        success: 'background:#e8f5e9;border-color:#2e7d32;color:#1b5e20;',
+        running: 'background:#fff8dc;border-color:#e6c200;color:#7a5c00;box-shadow:0 2px 8px rgba(230,194,0,0.2);',
+        success: 'background:#e8f5e9;border-color:#2e7d32;color:#1b5e20;box-shadow:0 2px 8px rgba(46,125,50,0.2);',
         info:    'background:#e3f2fd;border-color:#1976d2;color:#0d47a1;',
         error:   'background:#fdecea;border-color:#c0392b;color:#7a1c0c;'
     };
     b.setAttribute('style',
-        'display:block;margin-bottom:12px;border-radius:8px;padding:12px 16px;border:1px solid;font-size:0.85rem;'
+        'display:block;margin-bottom:16px;border-radius:10px;padding:16px 20px;border:2px solid;font-size:0.9rem;position:sticky;top:0;z-index:10;'
         + (styles[state] || styles.info));
     b.innerHTML = htmlContent
-        + '<button onclick="document.getElementById(\'autofix-status\').style.display=\'none\'" style="float:right;background:none;border:none;font-size:1.1rem;cursor:pointer;color:inherit;opacity:0.6;margin-top:-4px;" title="Dismiss">&times;</button>';
+        + '<button onclick="document.getElementById(\'autofix-status\').style.display=\'none\'" style="float:right;background:none;border:none;font-size:1.3rem;cursor:pointer;color:inherit;opacity:0.6;margin-top:-6px;margin-right:-6px;" title="Dismiss">&times;</button>';
+}
+
+var _autoFixStarted = null;
+function elapsedSinceStart() {
+    if (!_autoFixStarted) return '';
+    var s = Math.floor((Date.now() - _autoFixStarted) / 1000);
+    var m = Math.floor(s / 60);
+    return m > 0 ? m + 'm ' + (s % 60) + 's' : s + 's';
 }
 
 function nextAgentRunTime() {
@@ -533,27 +541,54 @@ function renderAutoFixProgress(d) {
     var processed = d.processed || 0;
     var counters = d.counters || {};
     var pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
-    var current = d.current ? '<div style="font-size:0.8rem;margin-top:4px;opacity:0.85;">Currently: ' + esc(d.current) + '</div>' : '';
-    var bar = '<div style="background:rgba(0,0,0,0.08);border-radius:6px;overflow:hidden;height:8px;margin-top:8px;"><div style="background:#27ae60;width:' + pct + '%;height:100%;transition:width 0.4s;"></div></div>';
+    var elapsed = elapsedSinceStart();
     var counts = [];
-    if (counters['known']) counts.push('<span style="color:#1b5e20;">' + counters['known'] + ' known-pattern</span>');
-    if (counters['extension']) counts.push('<span style="color:#1b5e20;">' + counters['extension'] + ' extension noise</span>');
-    if (counters['dedup']) counts.push('<span style="color:#1b5e20;">' + counters['dedup'] + ' deduped</span>');
-    if (counters['code-fix']) counts.push('<span style="color:#0d47a1;">' + counters['code-fix'] + ' code-fixed</span>');
-    if (counters['claude-fix']) counts.push('<span style="color:#0d47a1;">' + counters['claude-fix'] + ' Claude-fixed</span>');
-    if (counters['pending']) counts.push('<span style="color:#7a5c00;">' + counters['pending'] + ' pending</span>');
-    var countLine = counts.length ? '<div style="font-size:0.78rem;margin-top:6px;">' + counts.join(' · ') + '</div>' : '';
-    var logTail = d.log_tail ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">View live log</summary><pre style="background:rgba(0,0,0,0.05);border-radius:4px;padding:8px;font-size:0.75rem;color:#333;margin:6px 0 0;white-space:pre-wrap;max-height:240px;overflow-y:auto;">' + esc(d.log_tail) + '</pre></details>' : '';
+    if (counters['known'])      counts.push('<span style="color:#1b5e20;">&#10003; ' + counters['known'] + ' pattern</span>');
+    if (counters['extension'])  counts.push('<span style="color:#1b5e20;">&#10003; ' + counters['extension'] + ' extension noise</span>');
+    if (counters['dedup'])      counts.push('<span style="color:#1b5e20;">&#10003; ' + counters['dedup'] + ' deduped</span>');
+    if (counters['code-fix'])   counts.push('<span style="color:#0d47a1;">&#128295; ' + counters['code-fix'] + ' code-fixed</span>');
+    if (counters['claude-fix']) counts.push('<span style="color:#0d47a1;">&#129302; ' + counters['claude-fix'] + ' Claude-fixed</span>');
+    if (counters['pending'])    counts.push('<span style="color:#7a5c00;">&#9201; ' + counters['pending'] + ' pending</span>');
+    var countLine = counts.length ? '<div style="font-size:0.85rem;margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;">' + counts.join('') + '</div>' : '';
+
+    var bar = '<div style="background:rgba(0,0,0,0.1);border-radius:8px;overflow:hidden;height:14px;margin-top:10px;position:relative;">'
+            + '<div style="background:linear-gradient(90deg,#3498db,#27ae60);width:' + pct + '%;height:100%;transition:width 0.4s;' + (d.state === 'running' ? 'background-size:30px 30px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.15) 0,rgba(255,255,255,0.15) 10px,transparent 10px,transparent 20px),linear-gradient(90deg,#3498db,#27ae60);animation:autofix-stripes 1s linear infinite;' : '') + '"></div>'
+            + '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);">' + processed + ' / ' + total + ' (' + pct + '%)</div>'
+            + '</div>'
+            + '<style>@keyframes autofix-stripes { from { background-position: 0 0; } to { background-position: 30px 0; } }</style>';
+
+    var current = '';
+    if (d.current) {
+        current = '<div style="margin-top:10px;padding:8px 12px;background:rgba(0,0,0,0.05);border-left:3px solid currentColor;border-radius:4px;">'
+                + '<div style="font-size:0.75rem;font-weight:600;opacity:0.7;">CURRENTLY WORKING ON</div>'
+                + '<div style="font-size:0.85rem;font-family:monospace;margin-top:2px;">' + esc(d.current) + '</div>'
+                + '</div>';
+    }
+
+    var logTail = d.log_tail ? '<details style="margin-top:10px;" open><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">&#128221; Live log (auto-updating)</summary><pre id="autofix-log-pre" style="background:#1e2230;color:#e0e6f0;border-radius:4px;padding:10px;font-size:0.72rem;margin:6px 0 0;white-space:pre-wrap;max-height:260px;overflow-y:auto;font-family:Consolas,Monaco,monospace;">' + esc(d.log_tail) + '</pre></details>' : '';
 
     if (d.state === 'running' || d.state === 'starting') {
+        var spinner = '<span style="display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:autofix-spin 0.8s linear infinite;vertical-align:-3px;margin-right:8px;"></span><style>@keyframes autofix-spin { to { transform: rotate(360deg); } }</style>';
         showAutoFixBanner('running',
-            '<strong>&#9881; Auto-fix running…</strong> ' + processed + ' of ' + total + ' (' + pct + '%)' + bar + countLine + current + logTail);
+            '<div style="font-size:1rem;font-weight:700;">' + spinner + 'Auto-Fix running' + (elapsed ? ' &middot; ' + elapsed + ' elapsed' : '') + '</div>'
+            + bar
+            + current
+            + countLine
+            + logTail);
     } else if (d.state === 'complete') {
         showAutoFixBanner('success',
-            '<strong>&#10003; Auto-fix complete.</strong> Processed ' + processed + ' of ' + total + ' error' + (total===1?'':'s') + '.' + countLine + logTail);
+            '<div style="font-size:1rem;font-weight:700;">&#10003; Auto-Fix complete' + (elapsed ? ' &middot; took ' + elapsed : '') + '</div>'
+            + '<div style="font-size:0.85rem;margin-top:4px;">Processed <strong>' + processed + '</strong> of <strong>' + total + '</strong> error' + (total===1?'':'s') + '.</div>'
+            + countLine
+            + logTail);
     } else if (d.state === 'unknown') {
         showAutoFixBanner('error', '<strong>&#10005; Lost track of run.</strong> Status file not found.');
     }
+    // Auto-scroll log to bottom
+    setTimeout(function() {
+        var pre = document.getElementById('autofix-log-pre');
+        if (pre) pre.scrollTop = pre.scrollHeight;
+    }, 30);
 }
 
 function pollAutoFixStatus() {
@@ -581,6 +616,7 @@ function pollAutoFixStatus() {
 function triggerAutoFixCycle() {
     if (_autoFixRunning) return;
     _autoFixRunning = true;
+    _autoFixStarted = Date.now();
     var el = document.getElementById('autofix-timer');
     var btn = document.getElementById('autofix-btn');
     el.textContent = 'Starting…';
