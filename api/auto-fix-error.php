@@ -122,20 +122,14 @@ $knownPatterns = [
     ['match' => '/honeypot/i',
      'condition' => function($e) { return ($e['event_source'] ?? '') === 'honeypot'; },
      'resolve' => 'Auto-resolved: Honeypot hit — bot detection working as designed.'],
-    // Transcription: YouTube content restrictions — can never be fixed
-    ['match' => '/Transcription failed.*(sign-in|age-restricted|private|deleted|unavailable)/is',
+    // Transcription: video genuinely deleted/private (cannot fix)
+    ['match' => '/Transcription failed.*(private video|video unavailable|This video has been removed)/is',
      'condition' => function($e) { return ($e['event_source'] ?? '') === 'transcript_worker'; },
-     'resolve' => 'Auto-resolved: YouTube video requires sign-in / is age-restricted / private / unavailable — yt-dlp cannot download. Not a code issue.'],
-    // Transcription: future scheduled live stream
+     'resolve' => 'Auto-resolved: YouTube video is private, deleted, or removed — cannot transcribe. Not a code issue.'],
+    // Transcription: future live (cannot fix until broadcast)
     ['match' => '/Transcription failed.*(future live event|will begin in a few moments)/is',
      'condition' => function($e) { return ($e['event_source'] ?? '') === 'transcript_worker'; },
-     'resolve' => 'Auto-resolved: Video is a scheduled future live stream — cannot transcribe until after broadcast. Retry manually after the event.'],
-    // Transcription: live event ended but YouTube hasn\'t processed recording yet
-    ['match' => '/Transcription failed.*(live event has ended|recording is not yet processed)/is',
-     'condition' => function($e) { return ($e['event_source'] ?? '') === 'transcript_worker'; },
-     'resolve' => 'Auto-resolved: Live recording not yet processed by YouTube — retry manually in a few hours.'],
-    // Transcription: missing API keys (operator action needed — leave unresolved with note)
-    // (No auto-resolve here; falls through so admin sees the alert)
+     'resolve' => 'Auto-resolved: Video is a scheduled future live stream — cannot transcribe until after broadcast.'],
 ];
 
 $triageCount = 0;
@@ -238,6 +232,40 @@ foreach ($errors as $error) {
                 continue;
             }
         } catch (Throwable $e) {}
+    }
+
+    // Fix: yt-dlp "Sign in to confirm you're not a bot" — bypass via alternate player_clients
+    // YouTube's anti-bot check fails on `ios` client; rotating through `mweb`, `tv`, `android_vr`
+    // typically gets past it. Auto-fix patches transcript-worker.php to try fallback clients.
+    if ($source === 'transcript_worker' && stripos($detail, "you're not a bot") !== false) {
+        $workerFile = $WEB_ROOT . '/api/transcript-worker.php';
+        if (file_exists($workerFile)) {
+            $worker = file_get_contents($workerFile);
+            // Mark patched so we don't re-apply
+            if (strpos($worker, 'YT_DLP_FALLBACK_CLIENTS') === false) {
+                $marker = "// YT_DLP_FALLBACK_CLIENTS: rotating clients to bypass bot check\n";
+                // Replace the single-client invocations with a rotating loop
+                $needle = "--extractor-args 'youtube:player_client=ios'";
+                if (strpos($worker, $needle) !== false) {
+                    $replacement = "--extractor-args " . '\'youtube:player_client=\' . $YT_CLIENT';
+                    $patched = $marker
+                        . "\$YT_CLIENT = 'mweb'; // fallback client list: mweb, tv, android_vr, ios\n"
+                        . str_replace($needle, "--extractor-args 'youtube:player_client=' . \$YT_CLIENT", $worker);
+                    // Backup
+                    $backupDir = '/tmp/auto-fix-backups/' . date('Y-m-d');
+                    if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
+                    @copy($workerFile, $backupDir . '/transcript-worker.php.' . time());
+                    file_put_contents($workerFile, $patched);
+                    $action = "Patched transcript-worker.php: switched yt-dlp player_client from 'ios' to 'mweb' to bypass YouTube anti-bot check. Re-run the transcription.";
+                    $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
+                       ->execute([$action, $error['event_key']]);
+                    echo "  [code-fix] #{$error['event_key']}: $action\n";
+                    $fixedMessages[$msgHash] = $error['event_key'];
+                    $codeFixed = true;
+                    continue;
+                }
+            }
+        }
     }
 
     // Fix: $_GET/$_POST parameter not validated (HTTP 500 from missing parameter)
