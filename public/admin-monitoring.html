@@ -129,6 +129,7 @@
 </div>
 
 <script src="js/admin-links.js?v=2"></script>
+<script src="js/admin-ui-state.js?v=1"></script>
 <script>
 var API = '/api';
 var allEvents = [];
@@ -159,6 +160,13 @@ function checkAuth() {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
             applyPagePermissions(d.pages);
+            // Restore saved filter selections from previous session before first load
+            if (window.adminUI) {
+                var f = adminUI.loadAll('monitoring.filters', {});
+                if (f.source !== undefined)   document.getElementById('filter-source').value = f.source;
+                if (f.severity !== undefined) document.getElementById('filter-severity').value = f.severity;
+                if (f.status !== undefined)   document.getElementById('filter-status').value = f.status;
+            }
             loadSummary();
             loadEvents();
         } else {
@@ -287,6 +295,9 @@ function loadEvents() {
     var source = document.getElementById('filter-source').value;
     var severity = document.getElementById('filter-severity').value;
     var status = document.getElementById('filter-status').value;
+    if (window.adminUI) {
+        adminUI.saveAll('monitoring.filters', { source: source, severity: severity, status: status });
+    }
 
     var url = API + '/admin-monitoring.php?limit=200';
     if (source) url += '&source=' + source;

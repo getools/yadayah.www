@@ -261,6 +261,7 @@
 </div>
 
 <script src="js/admin-links.js?v=2"></script>
+<script src="js/admin-ui-state.js?v=1"></script>
 <script>
 var API = '/api';
 var feeds = [];
@@ -268,8 +269,8 @@ var _itemsLoaded = false;
 var _itemsPage = 1;
 var _itemsTotalPages = 1;
 var _itemsPerPage = 100;
-var _itemsSort = 'publish_dtime';
-var _itemsDir = 'desc';
+var _itemsSort = (window.adminUI && adminUI.load('feeds', 'itemsSort')) || 'publish_dtime';
+var _itemsDir  = (window.adminUI && adminUI.load('feeds', 'itemsDir'))  || 'desc';
 var _catFilterOpts = '<option value="">All</option>';
 var _catFilterOptsFiltered = '<option value="">All</option>';
 var _pageFilterOpts = '<option value="">All</option>';
@@ -301,7 +302,9 @@ function rebuildCategoryFilter() {
     var catSel = document.getElementById('filter-category');
     if (catSel) { catSel.innerHTML = opts; catSel.value = _savedFilters.category; }
 }
-var _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:''};
+var _savedFilters = (window.adminUI && adminUI.loadAll('feeds.filters'))
+    || {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:'', key:''};
+function _persistFilters() { if (window.adminUI) adminUI.saveAll('feeds.filters', _savedFilters); }
 
 function catLabel(c) {
     var label = c.category_title || '';
@@ -322,6 +325,10 @@ function sortItems(col) {
         _itemsSort = col;
         _itemsDir = (col === 'feed_name' || col === 'feed_item_title' || col === 'category_title') ? 'asc' : 'desc';
     }
+    if (window.adminUI) {
+        adminUI.save('feeds', 'itemsSort', _itemsSort);
+        adminUI.save('feeds', 'itemsDir', _itemsDir);
+    }
     loadItems(1);
 }
 
@@ -330,6 +337,7 @@ function switchFeedTab(tab) {
     document.querySelectorAll('.feed-tab').forEach(function(p) { p.style.display = 'none'; });
     document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
     document.getElementById('tab-' + tab).style.display = '';
+    if (window.adminUI) adminUI.save('feeds', 'tab', tab);
     if (tab === 'items' && !_itemsLoaded) { _itemsLoaded = true; loadItems(1); }
 }
 
@@ -364,6 +372,7 @@ function loadItems(page) {
     if (ef) _savedFilters.episode = ef.value;
     var kf = document.getElementById('filter-key');
     if (kf) _savedFilters.key = kf.value;
+    _persistFilters();
     var titleFilter = _savedFilters.title;
     var tagsFilter = _savedFilters.tags;
     var catFilter = _savedFilters.category;
@@ -508,6 +517,11 @@ function checkAuth() {
             document.getElementById('user-display').textContent = d.user_name;
             applyPagePermissions(d.pages);
             loadFeeds();
+            // Restore last-used tab from previous session
+            var savedTab = window.adminUI ? adminUI.load('feeds', 'tab', 'sources') : 'sources';
+            if (savedTab && savedTab !== 'sources' && document.querySelector('.sub-tab[onclick*="' + savedTab + '"]')) {
+                switchFeedTab(savedTab);
+            }
         } else {
             document.getElementById('login-screen').classList.add('visible');
         }
@@ -1177,6 +1191,13 @@ function syncFeed(key) {
 var _transcriptItemKey = null;
 var _transcriptPollTimer = null;
 
+// Player + sync state
+var _ytPlayer = null;
+var _ytApiLoading = false;
+var _syncTimer = null;
+var _segmentSeconds = []; // parsed seconds for each transcript row, kept in render order
+var _activeRowIdx = -1;
+
 function openTranscript(itemKey) {
     _transcriptItemKey = itemKey;
     var ov = document.getElementById('transcript-overlay');
@@ -1184,9 +1205,11 @@ function openTranscript(itemKey) {
         ov = document.createElement('div');
         ov.id = 'transcript-overlay';
         ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
-        ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;max-width:1000px;width:100%;margin-top:20px;">'
-            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-            + '<h3 id="t-title" style="margin:0;font-size:1rem;color:#31345A;">Transcript</h3>'
+        ov.innerHTML = '<div id="t-card" style="background:#fff;border-radius:10px;padding:20px;max-width:1500px;width:100%;margin-top:20px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;">'
+            + '<h3 id="t-title" style="margin:0;font-size:1rem;color:#31345A;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Transcript</h3>'
+            + '<label style="font-size:0.78rem;color:#666;display:flex;align-items:center;gap:4px;white-space:nowrap;"><input type="checkbox" id="t-autoscroll" checked> Auto-scroll</label>'
+            + '<button onclick="toggleTranscriptMaximize()" id="t-max-btn" title="Maximize" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#666;padding:0 8px;">⛶</button>'
             + '<button onclick="closeTranscript()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
             + '</div>'
             + '<div id="t-progress" style="display:none;margin-bottom:12px;padding:12px;background:#f5f7fa;border-radius:6px;">'
@@ -1194,17 +1217,48 @@ function openTranscript(itemKey) {
             + '<div style="background:#e0e0e0;border-radius:4px;height:8px;overflow:hidden;"><div id="t-bar" style="background:#31345A;height:100%;width:0%;transition:width 0.3s;"></div></div>'
             + '<button onclick="cancelTranscript()" style="margin-top:8px;font-size:0.78rem;background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">Cancel</button>'
             + '</div>'
-            + '<div id="t-toolbar" style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">'
+            + '<div style="display:flex;gap:14px;align-items:flex-start;">'
+            + '<div style="flex:0 0 40%;min-width:320px;display:flex;flex-direction:column;gap:10px;">'
+            + '<div id="t-player-wrap" style="background:#000;border-radius:6px;overflow:hidden;aspect-ratio:16/9;">'
+            + '<div id="t-player-empty" style="color:#888;display:flex;align-items:center;justify-content:center;height:100%;font-size:0.85rem;">Video player loads when transcript opens</div>'
+            + '<div id="yt-player" style="width:100%;height:100%;"></div>'
+            + '</div>'
+            + '<div id="t-time-display" style="font-size:0.78rem;color:#666;font-family:monospace;">—</div>'
+            + '<div id="t-validation" style="padding:10px 12px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;">'
+            + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">'
+            + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Status</label>'
+            + '<select id="t-val-status" style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;background:#fff;">'
+            + '<option value="Pending">Pending</option>'
+            + '<option value="Approved">Approved</option>'
+            + '<option value="Errors">Errors</option>'
+            + '</select>'
+            + '</div>'
+            + '<div style="display:flex;flex-direction:column;gap:4px;">'
+            + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Note <span style="font-weight:400;color:#999;">(optional)</span></label>'
+            + '<textarea id="t-val-note" rows="3" placeholder="Notes on issues found, what was reviewed, etc." style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;resize:vertical;width:100%;box-sizing:border-box;"></textarea>'
+            + '</div>'
+            + '<div id="t-val-meta" style="font-size:0.72rem;color:#888;margin-top:6px;"></div>'
+            + '</div>'
+            + '<button onclick="doneTranscript()" style="background:#31345A;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">Done</button>'
+            + '</div>'
+            + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
+            + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
             + '<button onclick="addTranscriptRow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">+ Row</button>'
-            + '<button onclick="applyCorrectionsNow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Re-apply current correction dictionary to this transcript">Apply Corrections</button>'
-            + '<button onclick="saveTranscript()" style="background:#31345A;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;margin-left:auto;">Save</button>'
-            + '<span id="t-status" style="font-size:0.8rem;color:#888;"></span>'
+            + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '</div>'
-            + '<div id="t-rows-container" style="max-height:60vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
+            + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
-            + '<thead style="background:#f5f5f5;position:sticky;top:0;"><tr><th style="padding:8px;width:120px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:50px;"></th></tr></thead>'
+            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:90px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
             + '<tbody id="t-rows"></tbody></table></div>'
+            + '</div>'
+            + '</div>'
+            + '<style>'
+            + '#t-rows tr.t-row-active td { background:#fff3a8 !important; }'
+            + '#t-rows tr.t-row-active td input { background:#fff3a8; font-weight:600; }'
+            + '#t-rows td.t-time-cell { cursor:pointer; user-select:none; }'
+            + '#t-rows td.t-time-cell:hover { background:#e8eaf6; }'
+            + '</style>'
             + '</div>';
         document.body.appendChild(ov);
         ov.onclick = function(e) { if (e.target === ov) closeTranscript(); };
@@ -1217,7 +1271,105 @@ function closeTranscript() {
     var ov = document.getElementById('transcript-overlay');
     if (ov) ov.style.display = 'none';
     if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+    if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
+    if (_ytPlayer) {
+        try { _ytPlayer.stopVideo(); _ytPlayer.destroy(); } catch (e) {}
+        _ytPlayer = null;
+    }
+    _activeRowIdx = -1;
+    _segmentSeconds = [];
     _transcriptItemKey = null;
+}
+
+// ── Time helpers ──
+function parseSegmentToSeconds(s) {
+    if (!s) return 0;
+    var parts = String(s).split(':');
+    if (parts.length === 3) return (+parts[0]||0)*3600 + (+parts[1]||0)*60 + parseFloat(parts[2])||0;
+    if (parts.length === 2) return (+parts[0]||0)*60 + parseFloat(parts[1])||0;
+    return parseFloat(s) || 0;
+}
+function formatSeconds(s) {
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), x = s%60;
+    return (h<10?'0':'')+h+':'+(m<10?'0':'')+m+':'+(x<10?'0':'')+x;
+}
+
+// ── YouTube IFrame API loader ──
+function ensureYouTubeApi(cb) {
+    if (window.YT && window.YT.Player) { cb(); return; }
+    if (_ytApiLoading) {
+        var prev = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = function() { if (prev) prev(); cb(); };
+        return;
+    }
+    _ytApiLoading = true;
+    window.onYouTubeIframeAPIReady = cb;
+    var s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+}
+
+function initVideoPlayer(siteCode, externalId) {
+    var empty = document.getElementById('t-player-empty');
+    var ytDiv = document.getElementById('yt-player');
+    if (!externalId || (siteCode || '').toLowerCase() !== 'youtube') {
+        if (empty) empty.textContent = (siteCode || 'this source') + ' playback not supported in editor';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    ensureYouTubeApi(function() {
+        if (_ytPlayer) { try { _ytPlayer.destroy(); } catch (e) {} _ytPlayer = null; }
+        _ytPlayer = new YT.Player('yt-player', {
+            videoId: externalId,
+            width: '100%', height: '100%',
+            playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+            events: {
+                onReady: function() {
+                    if (_syncTimer) clearInterval(_syncTimer);
+                    _syncTimer = setInterval(syncTranscriptToPlayer, 250);
+                }
+            }
+        });
+    });
+}
+
+function syncTranscriptToPlayer() {
+    if (!_ytPlayer || typeof _ytPlayer.getCurrentTime !== 'function') return;
+    var t;
+    try { t = _ytPlayer.getCurrentTime(); } catch (e) { return; }
+    if (typeof t !== 'number' || isNaN(t)) return;
+    var disp = document.getElementById('t-time-display');
+    if (disp) disp.textContent = formatSeconds(t) + ' / ' + (_ytPlayer.getDuration ? formatSeconds(_ytPlayer.getDuration()) : '—');
+
+    if (!_segmentSeconds.length) return;
+    // Find the last row whose segment <= t (linear scan; lists are short enough)
+    var idx = -1;
+    for (var i = 0; i < _segmentSeconds.length; i++) {
+        if (_segmentSeconds[i] <= t) idx = i; else break;
+    }
+    if (idx === _activeRowIdx) return;
+
+    var tbody = document.getElementById('t-rows');
+    if (!tbody) return;
+    if (_activeRowIdx >= 0) {
+        var prev = tbody.querySelector('tr[data-idx="' + _activeRowIdx + '"]');
+        if (prev) prev.classList.remove('t-row-active');
+    }
+    _activeRowIdx = idx;
+    if (idx >= 0) {
+        var cur = tbody.querySelector('tr[data-idx="' + idx + '"]');
+        if (cur) {
+            cur.classList.add('t-row-active');
+            var auto = document.getElementById('t-autoscroll');
+            if (auto && auto.checked) cur.scrollIntoView({block:'nearest', behavior:'smooth'});
+        }
+    }
+}
+
+function seekVideoTo(seconds) {
+    if (!_ytPlayer || typeof _ytPlayer.seekTo !== 'function') return;
+    try { _ytPlayer.seekTo(seconds, true); _ytPlayer.playVideo(); } catch (e) {}
 }
 
 function loadTranscript() {
@@ -1228,39 +1380,109 @@ function loadTranscript() {
             document.getElementById('t-title').textContent = 'Transcript: ' + (d.item.title || '').substring(0, 80);
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
+            populateValidation(d.validation);
+            // Initialize video player once per popover open
+            if (!_ytPlayer && d.item) {
+                initVideoPlayer(d.item.feed_site_code, d.item.feed_item_external_id);
+            }
         });
+}
+
+function populateValidation(v) {
+    var sel = document.getElementById('t-val-status');
+    var note = document.getElementById('t-val-note');
+    var meta = document.getElementById('t-val-meta');
+    if (!sel || !note) return;
+    if (v) {
+        sel.value = v.validation_status || 'Pending';
+        note.value = v.validation_note || '';
+        var who = v.validation_user_code ? 'by ' + v.validation_user_code : '';
+        var when = v.validation_dtime ? new Date(v.validation_dtime).toLocaleString() : '';
+        meta.textContent = (when || who) ? ('Last set ' + when + (who ? ' ' + who : '')) : '';
+    } else {
+        sel.value = 'Pending';
+        note.value = '';
+        meta.textContent = 'Not yet validated';
+    }
+}
+
+function saveValidation() {
+    if (!_transcriptItemKey) return Promise.resolve();
+    var sel = document.getElementById('t-val-status');
+    var note = document.getElementById('t-val-note');
+    if (!sel || !note) return Promise.resolve();
+    return fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            action: 'save_validation',
+            item_key: _transcriptItemKey,
+            status: sel.value,
+            note: note.value
+        })
+    }).then(function(r){return safeJson(r);});
 }
 
 function renderTranscriptRows(rows) {
     var tbody = document.getElementById('t-rows');
     if (!tbody) return;
+    _segmentSeconds = [];
+    _activeRowIdx = -1;
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" or "+ Row" to begin.</td></tr>';
         return;
     }
     var html = '';
     rows.forEach(function(r, i) {
+        var seg = r.feed_item_transcript_segment || '00:00:00';
+        _segmentSeconds.push(parseSegmentToSeconds(seg));
         html += '<tr data-idx="' + i + '">'
-            + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(r.feed_item_transcript_segment || '00:00:00') + '" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+            + '<td class="t-time-cell" data-secs="' + parseSegmentToSeconds(seg) + '" title="Click to jump video here" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(seg) + '" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;"></td>'
             + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(r.feed_item_transcript_text || '') + '" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
-            + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
+            + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
             + '</tr>';
     });
     tbody.innerHTML = html;
+
+    // Click on time cell (but NOT the input itself) seeks the video
+    tbody.querySelectorAll('td.t-time-cell').forEach(function(td) {
+        td.addEventListener('click', function(e) {
+            if (e.target.tagName === 'INPUT') return; // let user edit the time
+            var input = td.querySelector('input[data-field="segment"]');
+            var secs = input ? parseSegmentToSeconds(input.value) : parseFloat(td.dataset.secs);
+            seekVideoTo(secs);
+        });
+    });
+
+    // Auto-save: any edit to any input fires a debounced save
+    if (!tbody.dataset.autosaveBound) {
+        tbody.addEventListener('input', function(e) {
+            if (e.target.tagName === 'INPUT') scheduleAutoSave();
+        });
+        tbody.dataset.autosaveBound = '1';
+    }
 }
 
 function addTranscriptRow() {
     var tbody = document.getElementById('t-rows');
     if (!tbody || tbody.firstChild && tbody.firstChild.cells && tbody.firstChild.cells.length === 1) tbody.innerHTML = '';
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="00:00:00" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+    tr.innerHTML = '<td class="t-time-cell" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="00:00:00" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>';
+        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>';
     tbody.appendChild(tr);
     tr.querySelector('[data-field="text"]').focus();
 }
 
 function startTranscript() {
+    var existingRows = _segmentSeconds.length;
+    if (existingRows > 0) {
+        if (!confirm('This video already has ' + existingRows + ' transcript row' + (existingRows === 1 ? '' : 's') + '.\n\nRunning Transcribe Audio again will REPLACE all of them with a fresh AI-generated transcript. Any manual edits will be lost.\n\nContinue?')) {
+            return;
+        }
+    }
+    // Cancel any pending auto-save so we don't save then immediately overwrite
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
     fetch(API + '/admin-transcript.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
@@ -1365,46 +1587,64 @@ function renderLastResultNote(job) {
     if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(wrapper, toolbar);
 }
 
+// Auto-save: debounced bulk save when user edits any row.
+var _saveTimer = null;
+var _savePending = false;
+
+function scheduleAutoSave() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _savePending = true;
+    var statusEl = document.getElementById('t-status');
+    if (statusEl) statusEl.textContent = '…editing';
+    _saveTimer = setTimeout(function() {
+        _saveTimer = null;
+        saveTranscript();
+    }, 1000);
+}
+
 function saveTranscript() {
+    if (!_transcriptItemKey) return Promise.resolve();
     var rows = [];
-    document.querySelectorAll('#t-rows tr[data-idx], #t-rows tr').forEach(function(tr) {
+    document.querySelectorAll('#t-rows tr').forEach(function(tr) {
         var seg = tr.querySelector('[data-field="segment"]');
         var txt = tr.querySelector('[data-field="text"]');
         if (seg && txt && txt.value.trim()) {
             rows.push({segment: seg.value.trim(), text: txt.value.trim()});
         }
     });
-    // Sort by segment time
     rows.sort(function(a, b) {
-        function toSec(s) { var p = s.split(':'); return (parseInt(p[0])||0)*3600 + (parseInt(p[1])||0)*60 + (parseFloat(p[2])||0); }
-        return toSec(a.segment) - toSec(b.segment);
+        return parseSegmentToSeconds(a.segment) - parseSegmentToSeconds(b.segment);
     });
     var statusEl = document.getElementById('t-status');
-    statusEl.textContent = 'Saving...';
-    fetch(API + '/admin-transcript.php', {
+    if (statusEl) statusEl.textContent = 'Saving…';
+    return fetch(API + '/admin-transcript.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({action:'save', item_key: _transcriptItemKey, rows: rows})
     }).then(function(r){return safeJson(r);}).then(function(d) {
-        if (d.error) { statusEl.textContent = 'Error: ' + d.error; }
-        else { statusEl.textContent = '✓ Saved ' + d.count + ' rows'; setTimeout(function(){statusEl.textContent='';}, 2000); loadTranscript(); }
+        _savePending = false;
+        if (d.error) { if (statusEl) statusEl.textContent = '✗ ' + d.error; return; }
+        if (statusEl) {
+            statusEl.textContent = '✓ Saved (' + d.count + ')';
+            setTimeout(function() { if (statusEl.textContent.indexOf('Saved') === 0) statusEl.textContent = ''; }, 2000);
+        }
+    }).catch(function(err) {
+        _savePending = false;
+        if (statusEl) statusEl.textContent = '✗ Save failed';
     });
 }
 
-function applyCorrectionsNow() {
-    if (!_transcriptItemKey) return;
-    var statusEl = document.getElementById('t-status');
-    statusEl.textContent = 'Applying corrections...';
-    fetch(API + '/admin-transcript.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({action:'apply_corrections_now', item_key: _transcriptItemKey})
-    }).then(function(r){return safeJson(r);}).then(function(d) {
-        if (d.error) { statusEl.textContent = 'Error: ' + d.error; return; }
-        statusEl.textContent = '✓ ' + (d.changed || 0) + ' rows updated';
-        setTimeout(function(){statusEl.textContent='';}, 2500);
-        loadTranscript();
-    });
+// Done = flush any pending row save, save the validation, then close.
+function doneTranscript() {
+    var rowSave = Promise.resolve();
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+        rowSave = saveTranscript();
+    } else if (_savePending) {
+        rowSave = new Promise(function(res){ setTimeout(res, 200); });
+    }
+    rowSave.then(saveValidation).then(closeTranscript);
 }
 
 // ── Transcript Dictionary modal (glossary + corrections) ──
@@ -1577,6 +1817,39 @@ function deleteCorrection(key) {
         method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({type:'corrections', action:'delete', key:key})
     }).then(loadCorrections);
+}
+
+// Maximize / restore the transcript popover
+function toggleTranscriptMaximize() {
+    var card = document.getElementById('t-card');
+    var ov = document.getElementById('transcript-overlay');
+    var btn = document.getElementById('t-max-btn');
+    if (!card) return;
+    var isMax = card.dataset.maximized === '1';
+    if (isMax) {
+        // Restore
+        card.style.maxWidth = '1500px';
+        card.style.width = '100%';
+        card.style.height = '';
+        card.style.marginTop = '20px';
+        card.style.borderRadius = '10px';
+        if (ov) ov.style.padding = '20px';
+        card.dataset.maximized = '0';
+        if (btn) { btn.textContent = '⛶'; btn.title = 'Maximize'; }
+    } else {
+        // Maximize edge-to-edge — kill overlay padding so card hugs the viewport
+        if (ov) ov.style.padding = '0';
+        card.style.maxWidth = '100vw';
+        card.style.width = '100vw';
+        card.style.height = '100vh';
+        card.style.marginTop = '0';
+        card.style.borderRadius = '0';
+        card.dataset.maximized = '1';
+        if (btn) { btn.textContent = '⤡'; btn.title = 'Restore'; }
+    }
+    // Tell the rows container to fill the new height
+    var rc = document.getElementById('t-rows-container');
+    if (rc) rc.style.maxHeight = isMax ? '70vh' : 'calc(100vh - 180px)';
 }
 
 // ── YouTube Cookies modal ──
