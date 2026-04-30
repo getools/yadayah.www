@@ -125,6 +125,8 @@
         <button onclick="clearResolved()">Clear Resolved</button>
     </div>
 
+    <div id="autofix-status" style="display:none;margin-bottom:12px;border-radius:8px;padding:12px 16px;border:1px solid;font-size:0.85rem;"></div>
+
     <div id="events-area"></div>
 </div>
 
@@ -321,7 +323,12 @@ function renderEvents() {
         html += '<td style="font-size:0.7rem;color:#999;font-family:monospace;">' + e.event_key + '</td>';
         html += '<td style="white-space:nowrap;font-size:0.75rem;">' + timeAgo(e.event_dtime) + '</td>';
         html += '<td><span class="source-badge">' + esc(e.event_source) + '</span></td>';
-        html += '<td><span class="badge ' + esc(e.event_severity) + '">' + esc(e.event_severity) + '</span></td>';
+        html += '<td><span class="badge ' + esc(e.event_severity) + '">' + esc(e.event_severity) + '</span>';
+        // "Pending AI" badge for unresolved errors awaiting the next AI agent run
+        if (!resolved && e.event_source !== 'agent_op' && e.event_source !== 'remote_agent' && e.event_source !== 'honeypot') {
+            html += '<br><span style="display:inline-block;margin-top:4px;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;background:#fff8dc;color:#7a5c00;border:1px solid #e6c200;" title="Awaiting AI agent investigation">&#9201; AI @ ' + nextAgentRunTime() + '</span>';
+        }
+        html += '</td>';
         var msgShort = (e.event_message || '').split(/[\n\r]/)[0].substring(0, 120);
         var hasMore = (e.event_message || '').length > msgShort.length || !!e.event_detail;
         html += '<td style="max-width:400px;cursor:' + (hasMore ? 'pointer' : 'default') + ';" ' + (hasMore ? 'onclick="showErrorDetail(' + e.event_key + ')"' : '') + '>'
@@ -466,16 +473,40 @@ function startAutoFixTimer() {
     setInterval(update, 1000);
 }
 
+function showAutoFixBanner(state, htmlContent) {
+    var b = document.getElementById('autofix-status');
+    if (!b) return;
+    var styles = {
+        running: 'background:#fff8dc;border-color:#e6c200;color:#7a5c00;',
+        success: 'background:#e8f5e9;border-color:#2e7d32;color:#1b5e20;',
+        info:    'background:#e3f2fd;border-color:#1976d2;color:#0d47a1;',
+        error:   'background:#fdecea;border-color:#c0392b;color:#7a1c0c;'
+    };
+    b.setAttribute('style',
+        'display:block;margin-bottom:12px;border-radius:8px;padding:12px 16px;border:1px solid;font-size:0.85rem;'
+        + (styles[state] || styles.info));
+    b.innerHTML = htmlContent
+        + '<button onclick="document.getElementById(\'autofix-status\').style.display=\'none\'" style="float:right;background:none;border:none;font-size:1.1rem;cursor:pointer;color:inherit;opacity:0.6;margin-top:-4px;" title="Dismiss">&times;</button>';
+}
+
+function nextAgentRunTime() {
+    // Remote AI agent runs hourly at :00
+    var d = new Date();
+    var next = new Date(d);
+    next.setMinutes(0, 0, 0);
+    next.setHours(d.getHours() + 1);
+    return next.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}
+
 function triggerAutoFixCycle() {
     if (_autoFixRunning) return;
     _autoFixRunning = true;
     var el = document.getElementById('autofix-timer');
     var btn = document.getElementById('autofix-btn');
-    var area = document.getElementById('events-area');
     el.textContent = 'Running triage...';
     btn.disabled = true;
     btn.textContent = 'Running...';
-    area.innerHTML = '<div style="text-align:center;padding:40px;color:#888;"><div class="spinner" style="margin:0 auto 12px;"></div>Running triage (known patterns)...</div>';
+    showAutoFixBanner('running', '<strong>Running on-server triage…</strong> <span style="opacity:0.75;">(known patterns, no API)</span>');
 
     // Step 1: Run on-server triage (resolves known patterns instantly)
     fetch(API + '/admin-monitoring.php?action=autofix', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{}'})
@@ -484,29 +515,42 @@ function triggerAutoFixCycle() {
             _autoFixRunning = false;
             btn.disabled = false;
             btn.innerHTML = '&#9881; Auto-Fix Now';
-            // Parse output for summary line e.g. "Done. Triaged: 1 errors"
-            var output = d.output || '';
+            var output = (d.output || '').trim();
+            // Parse counts from output
+            var found = 0, known = 0, ext = 0, dedup = 0, pending = 0;
+            (output.match(/Found (\d+) unresolved errors/) || []).slice(1,2).forEach(function(n){ found = parseInt(n); });
+            known = (output.match(/^\s*\[known\]/gm) || []).length;
+            ext = (output.match(/^\s*\[extension\]/gm) || []).length;
+            dedup = (output.match(/^\s*\[dedup\]/gm) || []).length;
+            pending = (output.match(/^\s*\[pending\]/gm) || []).length;
+            var resolved = known + ext + dedup;
+
+            el.textContent = 'Triage done — next AI agent at ' + nextAgentRunTime();
+
             var summary = '';
-            var m = output.match(/Done\.\s*([^\n]+)/);
-            if (m) summary = m[1].trim();
-            else if (output.indexOf('No unresolved') >= 0) summary = 'No unresolved errors';
-            el.textContent = 'Triage done' + (summary ? ' — ' + summary : '') + ' — AI agent runs at :00';
-            // Show the actual triage output briefly above the events list
-            var area = document.getElementById('events-area');
-            if (output.trim()) {
-                var pre = '<pre style="background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:10px;font-size:0.78rem;color:#333;margin:0 0 12px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">' + esc(output.trim()) + '</pre>';
-                area.innerHTML = pre + '<div style="text-align:center;padding:20px;color:#888;">Refreshing events...</div>';
+            if (found === 0) {
+                summary = '<strong>&#10003; All clear.</strong> No unresolved errors needed triage.';
+                showAutoFixBanner('success', summary);
+            } else {
+                summary = '<strong>&#10003; Triage complete.</strong> Found ' + found + ' unresolved error' + (found===1?'':'s') + '. ';
+                var parts = [];
+                if (resolved) parts.push('<span style="color:#1b5e20;">Resolved ' + resolved + '</span>');
+                if (pending) parts.push('<span style="color:#7a5c00;">' + pending + ' pending AI investigation (next run at ' + nextAgentRunTime() + ')</span>');
+                if (parts.length) summary += parts.join(' · ');
+                summary += '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">View triage log</summary><pre style="background:rgba(0,0,0,0.05);border-radius:4px;padding:8px;font-size:0.75rem;color:#333;margin:6px 0 0;white-space:pre-wrap;max-height:240px;overflow-y:auto;">' + esc(output) + '</pre></details>';
+                showAutoFixBanner(pending > 0 ? 'info' : 'success', summary);
             }
             setTimeout(function() {
                 loadSummary();
                 loadEvents();
-            }, 1000);
+            }, 200);
         })
-        .catch(function() {
+        .catch(function(err) {
             _autoFixRunning = false;
             btn.disabled = false;
             btn.innerHTML = '&#9881; Auto-Fix Now';
             el.textContent = 'Error — will retry next cycle';
+            showAutoFixBanner('error', '<strong>&#10005; Auto-fix request failed.</strong> ' + esc(err && err.message ? err.message : 'Network or server error.'));
             loadEvents();
         });
 }
