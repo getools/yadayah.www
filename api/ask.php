@@ -781,7 +781,19 @@ if ($curlError) {
     flush();
 } elseif ($fullResponse === '' && !$streamError) {
     if ($httpCode >= 400) {
-        $streamError = 'API error (HTTP ' . $httpCode . '). Please check API key and billing.';
+        // Try to extract the actual error message from the response body buffered in $sseBuffer
+        $apiErrorMsg = null;
+        if ($sseBuffer) {
+            $errData = json_decode(trim($sseBuffer), true);
+            if (is_array($errData)) {
+                $apiErrorMsg = $errData['error']['message'] ?? $errData['message'] ?? null;
+            }
+        }
+        if ($apiErrorMsg) {
+            $streamError = 'API error (HTTP ' . $httpCode . '): ' . $apiErrorMsg;
+        } else {
+            $streamError = 'API error (HTTP ' . $httpCode . '). Please check API key and billing.';
+        }
     } else {
         $streamError = 'No response received from AI service. Please try again.';
     }
