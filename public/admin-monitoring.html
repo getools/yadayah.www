@@ -88,6 +88,8 @@
 
     <div id="summary-area" class="summary-cards"></div>
 
+    <div id="youtube-push-area" style="margin-bottom:16px;"></div>
+
     <div class="toolbar">
         <select id="filter-source" onchange="loadEvents()">
             <option value="">All Sources</option>
@@ -113,6 +115,7 @@
             <option value="unresolved">Unresolved</option>
             <option value="">All</option>
             <option value="resolved">Resolved</option>
+            <option value="auto_fixed">Auto-Fixed</option>
         </select>
         <span class="spacer"></span>
         <button class="primary" onclick="runScan()">Run Scan Now</button>
@@ -197,7 +200,47 @@ function togglePassword() {
     input.type = input.type === 'password' ? 'text' : 'password';
 }
 
+function loadYouTubePush() {
+    fetch(API + '/admin-monitoring.php?youtube_push=1', {credentials:'include'})
+        .then(function(r){return r.json();}).then(function(d) {
+            var subs = d.subscriptions || [];
+            var push = d.last_push;
+            if (!subs.length) { document.getElementById('youtube-push-area').innerHTML = ''; return; }
+            var html = '<div style="background:#fff;border-radius:8px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><strong style="font-size:0.9rem;color:#31345A;">YouTube Push Notifications (PubSubHubbub)</strong>';
+            html += '<button onclick="renewYouTubePush()" style="font-size:0.78rem;padding:4px 10px;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff;">Renew All</button></div>';
+            html += '<table style="width:100%;font-size:0.8rem;border-collapse:collapse;">';
+            html += '<tr style="background:#f5f5f5;"><th style="padding:6px 8px;text-align:left;">Channel</th><th style="padding:6px 8px;text-align:left;">Status</th><th style="padding:6px 8px;text-align:left;">Subscribed</th><th style="padding:6px 8px;text-align:left;">Expires In</th></tr>';
+            subs.forEach(function(s) {
+                var expColor = s.expires_in_days > 2 ? '#27ae60' : (s.expires_in_days > 0 ? '#e67e22' : '#c0392b');
+                html += '<tr><td style="padding:6px 8px;">' + esc(s.name) + '</td>';
+                html += '<td style="padding:6px 8px;"><span style="font-size:0.7rem;padding:2px 6px;border-radius:3px;background:' + (s.healthy ? '#d4edda' : '#fde8e8') + ';color:' + (s.healthy ? '#155724' : '#721c24') + ';">' + esc(s.status) + '</span></td>';
+                html += '<td style="padding:6px 8px;font-size:0.78rem;color:#666;">' + (s.age_days != null ? s.age_days + ' days ago' : '—') + '</td>';
+                html += '<td style="padding:6px 8px;font-size:0.78rem;color:' + expColor + ';font-weight:600;">' + (s.expires_in_days != null ? s.expires_in_days + ' days' : '—') + '</td></tr>';
+            });
+            html += '</table>';
+            if (push) {
+                html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #eee;font-size:0.8rem;color:#666;">';
+                html += '<strong>Last push:</strong> ' + esc(push.title || 'unknown') + ' ';
+                html += '<span style="color:' + (push.live ? '#c0392b' : '#666') + ';font-weight:600;">(' + (push.live ? 'LIVE' : (push.upcoming ? 'upcoming' : 'ended')) + ')</span>';
+                if (d.last_push_age_minutes != null) html += ' &middot; ' + d.last_push_age_minutes + ' min ago';
+                html += '</div>';
+            }
+            html += '</div>';
+            document.getElementById('youtube-push-area').innerHTML = html;
+        }).catch(function(){});
+}
+
+function renewYouTubePush() {
+    fetch(API + '/youtube-push-subscribe.php?key=yada2026push&action=subscribe', {credentials:'include'})
+        .then(function(r){return r.json();}).then(function(d) {
+            alert('Renewed: ' + (d.results || []).filter(function(r){return r.success;}).length + '/' + (d.results || []).length);
+            loadYouTubePush();
+        });
+}
+
 function loadSummary() {
+    loadYouTubePush();
     fetch(API + '/admin-monitoring.php?summary=1', {credentials:'include'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
@@ -210,7 +253,7 @@ function loadSummary() {
             var html = '';
             html += '<div class="summary-card" onclick="filterByCard(\'severity\',\'error\')" title="Show all errors"><div class="num ' + (errors > 0 ? 'error' : 'ok') + '">' + errors + '</div><div class="label">Errors</div></div>';
             html += '<div class="summary-card" onclick="filterByCard(\'severity\',\'warning\')" title="Show all warnings"><div class="num ' + (warnings > 0 ? 'warning' : 'ok') + '">' + warnings + '</div><div class="label">Warnings</div></div>';
-            html += '<div class="summary-card" onclick="filterByCard(\'status\',\'resolved\')" title="Show auto-fixed"><div class="num info">' + autoFixed + '</div><div class="label">Auto-Fixed</div></div>';
+            html += '<div class="summary-card" onclick="filterByCard(\'status\',\'auto_fixed\')" title="Show auto-fixed"><div class="num info">' + autoFixed + '</div><div class="label">Auto-Fixed</div></div>';
             html += '<div class="summary-card" onclick="filterByCard(\'status\',\'unresolved\')" title="Show unresolved"><div class="num ' + (unresolved > 0 ? 'warning' : 'ok') + '">' + unresolved + '</div><div class="label">Unresolved</div></div>';
 
             (d.by_source || []).forEach(function(src) {
@@ -441,7 +484,19 @@ function triggerAutoFixCycle() {
             _autoFixRunning = false;
             btn.disabled = false;
             btn.innerHTML = '&#9881; Auto-Fix Now';
-            el.textContent = 'Triage done — AI agent runs at :00';
+            // Parse output for summary line e.g. "Done. Triaged: 1 errors"
+            var output = d.output || '';
+            var summary = '';
+            var m = output.match(/Done\.\s*([^\n]+)/);
+            if (m) summary = m[1].trim();
+            else if (output.indexOf('No unresolved') >= 0) summary = 'No unresolved errors';
+            el.textContent = 'Triage done' + (summary ? ' — ' + summary : '') + ' — AI agent runs at :00';
+            // Show the actual triage output briefly above the events list
+            var area = document.getElementById('events-area');
+            if (output.trim()) {
+                var pre = '<pre style="background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:10px;font-size:0.78rem;color:#333;margin:0 0 12px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">' + esc(output.trim()) + '</pre>';
+                area.innerHTML = pre + '<div style="text-align:center;padding:20px;color:#888;">Refreshing events...</div>';
+            }
             setTimeout(function() {
                 loadSummary();
                 loadEvents();
