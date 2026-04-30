@@ -1,9 +1,15 @@
 FROM php:8.2-apache
 
-RUN apt-get update && apt-get install -y libpq-dev ffmpeg libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev \
+RUN apt-get update && apt-get install -y libpq-dev ffmpeg libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev postgresql-client curl \
     && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
     && docker-php-ext-install pdo pdo_pgsql gd exif \
     && a2enmod rewrite \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 20 + Claude Code CLI for auto-fix agent
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @anthropic-ai/claude-code \
     && rm -rf /var/lib/apt/lists/*
 
 COPY php.ini /usr/local/etc/php/php.ini

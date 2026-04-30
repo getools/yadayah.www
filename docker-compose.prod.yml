@@ -5,6 +5,8 @@ services:
     volumes:
       - ./public:/var/www/html
       - ./api:/var/www/html/api
+      # Persist Claude Code auth across container restarts
+      - ./claude-home:/var/www/.claude-home
     environment:
       PG_HOST: postgres
       PG_PORT: 5432

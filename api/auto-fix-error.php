@@ -335,9 +335,24 @@ foreach ($errors as $error) {
     }
 
     if (!$codeFixed) {
-        // Pattern fixer can't handle this; cron-claude-fix.sh (on-server Claude Code agent) will pick it up.
-        echo "  [pending] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . "
-";
+        // Pattern fixer can't handle this — invoke Claude Code agent on-server to investigate & fix.
+        // Auth must be set up first (see /opt/yada-www/claude-home).
+        $claudeWrapper = $WEB_ROOT . '/api/claude-fix.sh';
+        $hasAuth = file_exists('/var/www/.claude-home/.claude/.credentials.json')
+                || file_exists('/var/www/.claude-home/.config/claude/claude.json');
+        if (file_exists($claudeWrapper) && $hasAuth) {
+            echo "  [claude-fix] #{$error['event_key']} {$source}: invoking Claude Code agent...\n";
+            $cmd = escapeshellcmd($claudeWrapper) . ' ' . (int)$error['event_key'] . ' 2>&1';
+            $output = [];
+            $rc = 0;
+            exec($cmd, $output, $rc);
+            $tail = implode("\n", array_slice($output, -10));
+            echo "    rc=$rc\n    " . str_replace("\n", "\n    ", $tail) . "\n";
+            $fixedMessages[$msgHash] = $error['event_key'];
+        } else {
+            $reason = !file_exists($claudeWrapper) ? 'wrapper missing' : 'Claude Code not authenticated';
+            echo "  [pending] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . " ({$reason})\n";
+        }
     }
 }
 
