@@ -326,7 +326,7 @@ function renderEvents() {
         html += '<td><span class="badge ' + esc(e.event_severity) + '">' + esc(e.event_severity) + '</span>';
         // "Pending AI" badge for unresolved errors awaiting the next AI agent run
         if (!resolved && e.event_source !== 'agent_op' && e.event_source !== 'remote_agent' && e.event_source !== 'honeypot') {
-            html += '<br><span style="display:inline-block;margin-top:4px;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;background:#fff8dc;color:#7a5c00;border:1px solid #e6c200;" title="Awaiting AI agent investigation">&#9201; AI @ ' + nextAgentRunTime() + '</span>';
+            html += '<br><span style="display:inline-block;margin-top:4px;padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:600;background:#fff8dc;color:#7a5c00;border:1px solid #e6c200;" title="The remote Claude Code agent runs hourly at the top of the hour and will investigate this error then.">Awaiting AI · next run ' + nextAgentRunTime() + '</span>';
         }
         html += '</td>';
         var msgShort = (e.event_message || '').split(/[\n\r]/)[0].substring(0, 120);
