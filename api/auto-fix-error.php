@@ -90,6 +90,52 @@ $knownPatterns = [
     ['match' => '/Unexpected token.*<!DOCTYPE/i',
      'condition' => function($e) { return ($e['event_source'] ?? '') === 'console_error'; },
      'resolve' => 'Auto-resolved: API returned HTML (403/404 page) instead of JSON — transient or IP ban cascade.'],
+    // Browser extension noise
+    ['match' => '/window\.ethereum|MetaMask|__firefox__|__gCrWeb|did not match the expected pattern/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Browser extension or browser-internal API — not our code.'],
+    ['match' => '/cdn-cgi|cloudflare/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Cloudflare internal endpoint — not our code.'],
+    ['match' => '/cancelable=false|Ignored attempt to (cancel|prevent)/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Browser intervention — not actionable.'],
+    // YouTube/iframe internal errors
+    ['match' => '/youtube\.com\/embed.*\b(403|404)\b|youtube-nocookie/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: YouTube iframe internal error — not our code.'],
+    // HTTP 400 on auth endpoints (bad form input from user)
+    ['match' => '/HTTP 400 on .*(community-auth|community-profile|auth\.php|oauth)/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: HTTP 400 on auth endpoint — invalid form input from client.'],
+    // HTTP 413 (payload too large — working as designed)
+    ['match' => '/HTTP 413/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Upload too large — server rejected as designed.'],
+    // HTTP 429 (rate limit)
+    ['match' => '/HTTP 429|rate limit|too many requests/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Rate limit triggered — working as designed.'],
+    // Image load failures for missing background videos / placeholder images
+    ['match' => '/SOURCE failed to load.*\/u\/backgrounds/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Background video failed to load — fallback image handles this.'],
+    // CSP violations from extensions
+    ['match' => '/CSP.*blocked.*(chrome-extension|moz-extension|safari-extension)/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: CSP violation from browser extension — not our code.'],
+    // Promise rejection: empty/null reason
+    ['match' => '/^\s*(\[object Object\]|null|undefined)\s*$/i', 'condition' => null,
+     'resolve' => 'Auto-resolved: Empty promise rejection — non-actionable.'],
+    // Honeypot hits (intentional bot traps)
+    ['match' => '/honeypot/i',
+     'condition' => function($e) { return ($e['event_source'] ?? '') === 'honeypot'; },
+     'resolve' => 'Auto-resolved: Honeypot hit — bot detection working as designed.'],
+    // Transcription: YouTube content restrictions — can never be fixed
+    ['match' => '/Transcription failed.*(sign-in|age-restricted|private|deleted|unavailable)/is',
+     'condition' => function($e) { return ($e['event_source'] ?? '') === 'transcript_worker'; },
+     'resolve' => 'Auto-resolved: YouTube video requires sign-in / is age-restricted / private / unavailable — yt-dlp cannot download. Not a code issue.'],
+    // Transcription: future scheduled live stream
+    ['match' => '/Transcription failed.*(future live event|will begin in a few moments)/is',
+     'condition' => function($e) { return ($e['event_source'] ?? '') === 'transcript_worker'; },
+     'resolve' => 'Auto-resolved: Video is a scheduled future live stream — cannot transcribe until after broadcast. Retry manually after the event.'],
+    // Transcription: live event ended but YouTube hasn\'t processed recording yet
+    ['match' => '/Transcription failed.*(live event has ended|recording is not yet processed)/is',
+     'condition' => function($e) { return ($e['event_source'] ?? '') === 'transcript_worker'; },
+     'resolve' => 'Auto-resolved: Live recording not yet processed by YouTube — retry manually in a few hours.'],
+    // Transcription: missing API keys (operator action needed — leave unresolved with note)
+    // (No auto-resolve here; falls through so admin sees the alert)
 ];
 
 $triageCount = 0;
@@ -152,6 +198,58 @@ foreach ($errors as $error) {
     // ── Attempt pattern-based code fixes for common PHP errors ──
     $codeFixed = false;
 
+    // Fix: Trigger function references column that doesn't exist on _rev table
+    // After ALTER TABLE on a source table, the rev trigger needs rebuilding.
+    if (preg_match('/column "(\w+)" of relation "(\w+_rev)" does not exist.*function\s+(trg_\w+_rev)\(\)/s', $msg . ' ' . $detail, $trigMatch)) {
+        $missingCol = $trigMatch[1];
+        $revTable = $trigMatch[2];
+        $trigFunc = $trigMatch[3];
+        try {
+            // Get rev table columns
+            $colStmt = $db->prepare("SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position");
+            $colStmt->execute([$revTable]);
+            $revCols = $colStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            // Get source table (strip _rev)
+            $srcTable = preg_replace('/_rev$/', '', $revTable);
+            $srcColStmt = $db->prepare("SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position");
+            $srcColStmt->execute([$srcTable]);
+            $srcCols = $srcColStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            // If src has columns rev table is missing, add them
+            $missingFromRev = array_diff($srcCols, $revCols);
+            if ($missingFromRev) {
+                foreach ($missingFromRev as $col) {
+                    $typeStmt = $db->prepare("SELECT data_type, character_maximum_length FROM information_schema.columns WHERE table_name = ? AND column_name = ?");
+                    $typeStmt->execute([$srcTable, $col]);
+                    $info = $typeStmt->fetch();
+                    if ($info) {
+                        $type = $info['data_type'];
+                        if ($info['character_maximum_length']) $type .= '(' . $info['character_maximum_length'] . ')';
+                        $db->exec("ALTER TABLE {$revTable} ADD COLUMN IF NOT EXISTS \"{$col}\" {$type}");
+                    }
+                }
+                $action = "Added missing columns to {$revTable}: " . implode(', ', $missingFromRev);
+                $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
+                   ->execute([$action, $error['event_key']]);
+                echo "  [trigger-fix] #{$error['event_key']}: {$action}\n";
+                $fixedMessages[$msgHash] = $error['event_key'];
+                $codeFixed = true;
+                continue;
+            }
+        } catch (Throwable $e) {}
+    }
+
+    // Fix: $_GET/$_POST parameter not validated (HTTP 500 from missing parameter)
+    if ($source === 'fetch_error' && preg_match('/HTTP 500 on (\/api\/[^\s?]+)/', $msg, $endpointMatch)) {
+        $endpointPath = $endpointMatch[1];
+        // Just log this for routine investigation — too risky to auto-fix
+        $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ?")
+           ->execute(["Endpoint {$endpointPath} returned 500 — needs investigation", $error['event_key']]);
+        // Don't continue — let it fall through to other handlers
+    }
+
+
     // Fix: "invalid input syntax for type integer" — a string is being passed where int is expected
     // Usually caused by a missing (int) cast on a query parameter
     if (preg_match('/invalid input syntax for type integer.*in (\/\S+?):(\d+)/s', $msg . ' ' . $detail, $sqlMatch)) {
@@ -209,112 +307,9 @@ foreach ($errors as $error) {
     }
 
     if (!$codeFixed) {
-        // ── Claude API investigation for novel errors ──
-        $apiKey = _readEnvKey('ANTHROPIC_API_KEY');
-        if ($apiKey && empty($error['event_action_taken'])) {
-            echo "  [investigating] #{$error['event_key']} via Claude API...\n";
-
-            // Build context: error info + source file + dependencies
-            $context = "Error source: {$source}\nMessage: {$msg}\n";
-            if ($detail) $context .= "Detail: " . substr($detail, 0, 3000) . "\n";
-            if ($error['event_file']) $context .= "File: {$error['event_file']}\n";
-            if ($error['event_referer']) $context .= "Page: {$error['event_referer']}\n";
-
-            // Read the source file referenced in the error
-            $errFilePath = null;
-            if (preg_match('/in (\/\S+?):(\d+)/s', $detail ?: $msg, $fileMatch)) {
-                $errFilePath = $fileMatch[1];
-                if (file_exists($errFilePath)) {
-                    $context .= "\nSource file ($errFilePath):\n```php\n" . file_get_contents($errFilePath) . "\n```\n";
-                    // Also include require'd files
-                    $srcContent = file_get_contents($errFilePath);
-                    if (preg_match_all("/require(?:_once)?\s+__DIR__\s*\.\s*'\/([^']+)'/", $srcContent, $reqMatches)) {
-                        foreach (array_unique($reqMatches[1]) as $reqFile) {
-                            $reqPath = dirname($errFilePath) . '/' . $reqFile;
-                            if (file_exists($reqPath)) {
-                                $context .= "\nRequired file ($reqPath):\n```php\n" . substr(file_get_contents($reqPath), 0, 6000) . "\n```\n";
-                            }
-                        }
-                    }
-                }
-            } elseif ($source === 'js_error' || $source === 'promise_rejection' || $source === 'console_error') {
-                // Try to find the page and its scripts
-                $ref = $error['event_referer'] ?? $error['event_file'] ?? '';
-                if (preg_match('/yadayah\.com\/([\w-]+)/', $ref, $pm)) {
-                    $htmlPath = $WEB_ROOT . '/public/' . $pm[1] . '.html';
-                    if (file_exists($htmlPath)) {
-                        $context .= "\nPage source ($htmlPath):\n```html\n" . substr(file_get_contents($htmlPath), 0, 12000) . "\n```\n";
-                    }
-                }
-            }
-
-            // Historical context
-            $recurStmt = $db->prepare("SELECT COUNT(*) FROM yy_monitor_event WHERE event_message = ? AND event_dtime > NOW() - INTERVAL '7 days'");
-            $recurStmt->execute([$msg]);
-            $recurCount = (int)$recurStmt->fetchColumn();
-            if ($recurCount > 1) {
-                $context .= "\nThis error has occurred {$recurCount} times in the last 7 days.\n";
-            }
-
-            $prompt = "You are a code-fixing agent for the Yada Yah website. Investigate this error and fix the root cause.\n\n"
-                . $context . "\n\n"
-                . "Rules:\n"
-                . "- Read the source code carefully. Trace the data flow to find the root cause.\n"
-                . "- If you can fix the code, respond with ONLY a JSON object: {\"action\":\"fix\",\"file\":\"absolute path\",\"explanation\":\"what you fixed\",\"content\":\"full corrected file content\"}\n"
-                . "- If the error is a SQL issue (missing column, type mismatch), respond: {\"action\":\"sql\",\"query\":\"SQL to run\",\"explanation\":\"what this fixes\"}\n"
-                . "- If you cannot fix it, respond: {\"action\":\"unfixable\",\"reason\":\"detailed explanation of what you found\"}\n"
-                . "- Be conservative. Only fix the specific error. Don't change working logic.\n"
-                . "- Respond with ONLY the JSON object, no markdown, no extra text.\n";
-
-            $result = _callClaudeAPI($apiKey, $prompt);
-            if ($result) {
-                $json = null;
-                if (preg_match('/\{[\s\S]*\}/', $result, $jm)) {
-                    $json = json_decode($jm[0], true);
-                }
-
-                if ($json && $json['action'] === 'fix' && !empty($json['file']) && !empty($json['content'])) {
-                    $targetFile = $json['file'];
-                    if (strpos($targetFile, $WEB_ROOT) !== 0) $targetFile = $WEB_ROOT . '/' . ltrim($targetFile, '/');
-                    if (file_exists($targetFile) || file_exists(dirname($targetFile))) {
-                        // Backup
-                        $backupDir = '/tmp/auto-fix-backups/' . date('Y-m-d');
-                        if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
-                        if (file_exists($targetFile)) @copy($targetFile, $backupDir . '/' . basename($targetFile) . '.' . time());
-
-                        file_put_contents($targetFile, $json['content']);
-                        $explanation = $json['explanation'] ?? 'Fixed by Claude';
-                        $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
-                           ->execute(["Auto-fix (Claude): $explanation", $error['event_key']]);
-                        echo "  [claude-fix] #{$error['event_key']}: $explanation\n";
-                        $fixedMessages[$msgHash] = $error['event_key'];
-                        $codeFixed = true;
-                    }
-                } elseif ($json && $json['action'] === 'sql' && !empty($json['query'])) {
-                    try {
-                        $db->exec($json['query']);
-                        $explanation = $json['explanation'] ?? 'SQL fix';
-                        $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
-                           ->execute(["Auto-fix SQL (Claude): $explanation", $error['event_key']]);
-                        echo "  [claude-sql] #{$error['event_key']}: $explanation\n";
-                        $codeFixed = true;
-                    } catch (Exception $e) {
-                        echo "  [claude-sql-error] " . $e->getMessage() . "\n";
-                    }
-                }
-
-                if (!$codeFixed) {
-                    $reason = $json['reason'] ?? $json['explanation'] ?? substr($result, 0, 1000);
-                    $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ?")
-                       ->execute(["Claude investigated: $reason", $error['event_key']]);
-                    echo "  [claude-unfixable] #{$error['event_key']}: " . substr($reason, 0, 100) . "\n";
-                }
-            } else {
-                echo "  [claude-error] API call failed for #{$error['event_key']}\n";
-            }
-        } else {
-            echo "  [pending] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . "\n";
-        }
+        // Pattern fixer can't handle this; cron-claude-fix.sh (on-server Claude Code agent) will pick it up.
+        echo "  [pending] #{$error['event_key']} {$source}: " . substr($msg, 0, 80) . "
+";
     }
 }
 
@@ -334,36 +329,3 @@ function _readEnvKey(string $name): string {
     return '';
 }
 
-// ── Helper: call Claude API ──
-function _callClaudeAPI(string $apiKey, string $prompt): ?string {
-    $payload = json_encode([
-        'model' => 'claude-sonnet-4-6',
-        'max_tokens' => 16000,
-        'messages' => [['role' => 'user', 'content' => $prompt]],
-    ]);
-
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => $payload,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'x-api-key: ' . $apiKey,
-            'anthropic-version: 2023-06-01',
-        ],
-        CURLOPT_TIMEOUT => 120,
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($httpCode !== 200 || !$response) {
-        echo "  [api-error] HTTP {$httpCode}\n";
-        return null;
-    }
-
-    $data = json_decode($response, true);
-    return $data['content'][0]['text'] ?? null;
-}

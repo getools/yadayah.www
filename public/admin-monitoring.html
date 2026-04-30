@@ -120,6 +120,7 @@
         <span class="spacer"></span>
         <button class="primary" onclick="runScan()">Run Scan Now</button>
         <button onclick="runAutoFix()" id="autofix-btn" style="background:#27ae60;color:#fff;border-color:#27ae60;">&#9881; Auto-Fix Now</button>
+        <button onclick="runAiAgentNow()" id="ai-agent-btn" style="background:#3498db;color:#fff;border-color:#3498db;" title="Trigger the remote AI agent immediately (opens claude.ai in a new tab — click Run Now there)">&#129302; Run AI Agent Now</button>
         <span id="autofix-timer" style="font-size:0.75rem;color:#888;"></span>
         <span id="scan-status" class="scan-status" style="display:none"></span>
         <button onclick="clearResolved()">Clear Resolved</button>
@@ -446,6 +447,19 @@ function deleteEvent(key) {
 
 function runAutoFix() {
     triggerAutoFixCycle();
+}
+
+function runAiAgentNow() {
+    fetch(API + '/admin-monitoring.php?action=run_ai_agent', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:'{}'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (d.url) {
+                window.open(d.url, '_blank', 'noopener');
+                showAutoFixBanner('info', '<strong>&#129302; Opened the AI agent trigger page</strong> in a new tab. Click "Run Now" there to fire the agent immediately. Results will appear here within ~30 seconds of completion (or refresh manually).');
+            } else if (d.error) {
+                showAutoFixBanner('error', '<strong>Failed to get trigger URL:</strong> ' + esc(d.error));
+            }
+        });
 }
 
 // Timer countdown — AI agent at :00, triage at :15/:45, git push at :30
