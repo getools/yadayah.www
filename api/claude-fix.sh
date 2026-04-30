@@ -12,20 +12,32 @@ set -e
 
 EVENT_KEY="${1:?event_key required}"
 LOG_DIR="/tmp/claude-fix-logs"
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+chmod 1777 "$LOG_DIR" 2>/dev/null || true
 LOG_FILE="$LOG_DIR/event_${EVENT_KEY}.log"
 
-# Path to Claude config — persistent across container restarts via host bind-mount
+# Claude credentials live on the host bind-mount at /opt/yada-www/claude-home/.claude/
+# (mapped to /var/www/.claude-home/ in the container by docker-compose.prod.yml)
 export HOME="/var/www/.claude-home"
 mkdir -p "$HOME/.claude"
+
+# Claude Code refuses --allow-dangerously-skip-permissions when run as root.
+# If we're root, re-exec as www-data (which is what Apache/PHP runs as anyway).
+if [ "$(id -u)" = "0" ]; then
+    chown -R www-data:www-data "$HOME" 2>/dev/null || true
+    exec su www-data -s /bin/bash -c "HOME=$HOME PG_HOST=${PG_HOST:-postgres} PG_PORT=${PG_PORT:-5432} PG_DB=${PG_DB:-yada} PG_USER=${PG_USER:-postgres} PG_PASS=${PG_PASS:-yada_password} bash $0 $EVENT_KEY"
+fi
 
 # Resource & safety limits
 TIMEOUT_SECS=300
 
 # Fetch error details via psql
-PGPASSWORD="${PG_PASS:-yada_password}" \
-ERR_JSON=$(psql -h "${PG_HOST:-postgres}" -U "${PG_USER:-postgres}" -d "${PG_DB:-yada}" -t -A -F'|' -c \
-    "SELECT event_source, event_severity, event_message, COALESCE(event_detail, ''), COALESCE(event_file, ''), COALESCE(event_referer, '') FROM yy_monitor_event WHERE event_key = $EVENT_KEY")
+export PGPASSWORD="${PG_PASS:-yada_password}"
+export PGHOST="${PG_HOST:-postgres}"
+export PGUSER="${PG_USER:-postgres}"
+export PGDATABASE="${PG_DB:-yada}"
+ERR_JSON=$(psql -t -A -F'|' -c \
+    "SELECT event_source, event_severity, event_message, COALESCE(event_detail, ''), COALESCE(event_file, ''), COALESCE(event_referer, '') FROM yy_monitor_event WHERE event_key = $EVENT_KEY" 2>&1)
 
 if [ -z "$ERR_JSON" ]; then
     echo "Event $EVENT_KEY not found" | tee -a "$LOG_FILE"
