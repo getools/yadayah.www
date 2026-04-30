@@ -458,7 +458,7 @@ function loadItems(page) {
                 + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
                 + '<td style="text-align:center;">' + (inactive ? '<span style="color:#c00;">No</span>' : '<span style="color:#27ae60;">Yes</span>') + '</td>'
                 + '<td class="actions" style="white-space:nowrap;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button>'
-                + ((it.feed_item_type === 'video' || it.feed_item_type === 'channel') ? '<br><button onclick="openTranscript(' + it.feed_item_key + ')" style="margin-top:4px;background:#e8eaf6;color:#31345A;border:1px solid #c5cae9;font-size:0.7rem;">Transcribe</button>' : '')
+                + (it.feed_item_type === 'video' ? '<br><button onclick="openTranscript(' + it.feed_item_key + ')" style="margin-top:4px;background:#e8eaf6;color:#31345A;border:1px solid #c5cae9;font-size:0.7rem;">Transcribe</button>' : '')
                 + '</td></tr>';
         });
         if (!items.length) {

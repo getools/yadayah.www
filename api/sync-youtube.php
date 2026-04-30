@@ -83,15 +83,13 @@ foreach ($feeds as $feed) {
 
         $totalFound = count($videos);
 
-        // Determine video type based on feed config
-        $type = $isPlaylist ? 'video' : 'channel';
+        // All YouTube items are videos — shorts are identified by duration at query time
+        // via yy_feed_page.feed_page_filter_duration_max.
+        $type = 'video';
 
         foreach ($videos as $v) {
             $videoId = $v['id'];
             if (!$videoId) continue;
-
-            // Type is just 'channel' or 'video' now — shorts are identified by duration,
-            // filtered at query time via yy_feed_page.feed_page_filter_duration_max.
             $itemType = $type;
             $durationSeconds = isset($v['duration']) ? (int)$v['duration'] : null;
             // Detect orientation: #shorts in title/description = vertical, otherwise use thumbnail aspect ratio
@@ -111,33 +109,39 @@ foreach ($feeds as $feed) {
                 $cleanTitle = html_entity_decode($cleanTitle, ENT_QUOTES | ENT_HTML5, 'UTF-8');
             } while ($cleanTitle !== $prev);
 
-            // Auto-detect ALL #vlog|[category]|[episode] hashtags in title or description.
-            // A single item can belong to multiple categories — collect every match.
-            // Skip #vlog parsing for Basics videos — they have their own category system.
-            $categoryAssignments = []; // [['category_key' => N, 'episode' => '###'], ...]
+            // Auto-detect #vlog|[slug]|[episode] → Vlog (page 1) categories
+            // and #basics|[slug]|[episode] → Basics (page 20) categories.
+            // Plain #basics or #Basics hashtags do NOT auto-categorize — that's admin-managed.
+            // A video can have categories on multiple pages; the legacy feed_item_category_key
+            // stores only the first match.
+            $categoryAssignments = []; // [['category_key' => N, 'episode' => '###', 'page_key' => P], ...]
             $searchText = $cleanTitle . "\n" . ($v['description'] ?? '');
-            $isBasics = stripos($cleanTitle, '#Basics') !== false;
-            if (!$isBasics && preg_match_all('/#vlog\|([^|\s]+)\|(\d+)/i', $searchText, $htMatches, PREG_SET_ORDER)) {
+            $tagPatterns = [
+                ['regex' => '/#vlog\|([^|\s]+)\|(\d+)/i', 'page_key' => 1],
+                ['regex' => '/#basics\|([^|\s]+)\|(\d+)/i', 'page_key' => 20],
+            ];
+            foreach ($tagPatterns as $tp) {
+                if (!preg_match_all($tp['regex'], $searchText, $htMatches, PREG_SET_ORDER)) continue;
                 $seenSlugs = [];
                 foreach ($htMatches as $htMatch) {
                     $catSlug = strtolower(trim($htMatch[1]));
-                    if (isset($seenSlugs[$catSlug])) continue;
-                    $seenSlugs[$catSlug] = true;
+                    $key = $tp['page_key'] . ':' . $catSlug;
+                    if (isset($seenSlugs[$key])) continue;
+                    $seenSlugs[$key] = true;
                     $epNum = $htMatch[2];
-                    $catLookup = $db->prepare("SELECT category_key FROM yy_feed_page_category WHERE page_key = 1 AND category_slug = ?");
-                    $catLookup->execute([$catSlug]);
+                    $catLookup = $db->prepare("SELECT category_key FROM yy_feed_page_category WHERE page_key = ? AND category_slug = ?");
+                    $catLookup->execute([$tp['page_key'], $catSlug]);
                     $catKey = $catLookup->fetchColumn() ?: null;
                     if (!$catKey) {
                         $catTitle = ucwords(str_replace('-', ' ', $catSlug));
-                        $catIns = $db->prepare("INSERT INTO yy_feed_page_category (page_key, category_title, category_slug, category_sort) VALUES (1, ?, ?, 0) ON CONFLICT (page_key, category_slug) DO UPDATE SET category_revision_dtime = NOW() RETURNING category_key");
-                        $catIns->execute([$catTitle, $catSlug]);
+                        $catIns = $db->prepare("INSERT INTO yy_feed_page_category (page_key, category_title, category_slug, category_sort) VALUES (?, ?, ?, 0) ON CONFLICT (page_key, category_slug) DO UPDATE SET category_revision_dtime = NOW() RETURNING category_key");
+                        $catIns->execute([$tp['page_key'], $catTitle, $catSlug]);
                         $catKey = (int)$catIns->fetchColumn();
                     }
-                    $categoryAssignments[] = ['category_key' => (int)$catKey, 'episode' => $epNum];
+                    $categoryAssignments[] = ['category_key' => (int)$catKey, 'episode' => $epNum, 'page_key' => $tp['page_key']];
                 }
             }
-            // Legacy single-column fields: use first match for backwards compatibility
-            $categoryKey = $categoryAssignments[0]['category_key'] ?? null;
+            // Episode number falls back to first match's episode for the legacy feed_item_episode column
             $episode = $categoryAssignments[0]['episode'] ?? null;
 
             // Build tags from hashtags found in title + description
@@ -169,8 +173,8 @@ foreach ($feeds as $feed) {
             }
 
             $stmt = $db->prepare("
-                INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_title_override, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_active_flag, feed_item_type, feed_item_duration, feed_item_duration_seconds, feed_item_orientation, feed_item_category_key, feed_item_episode, feed_item_tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_title_override, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_active_flag, feed_item_type, feed_item_duration, feed_item_duration_seconds, feed_item_orientation, feed_item_episode, feed_item_tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (feed_key, feed_item_external_id) DO UPDATE SET
                     feed_item_title_import = EXCLUDED.feed_item_title_import,
                     feed_item_thumbnail = COALESCE(EXCLUDED.feed_item_thumbnail, yy_feed_item.feed_item_thumbnail),
@@ -179,7 +183,6 @@ foreach ($feeds as $feed) {
                     feed_item_duration = COALESCE(EXCLUDED.feed_item_duration, yy_feed_item.feed_item_duration),
                     feed_item_duration_seconds = COALESCE(EXCLUDED.feed_item_duration_seconds, yy_feed_item.feed_item_duration_seconds),
                     feed_item_orientation = COALESCE(EXCLUDED.feed_item_orientation, yy_feed_item.feed_item_orientation),
-                    feed_item_category_key = COALESCE(EXCLUDED.feed_item_category_key, yy_feed_item.feed_item_category_key),
                     feed_item_episode = COALESCE(EXCLUDED.feed_item_episode, yy_feed_item.feed_item_episode),
                     feed_item_tags = COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags),
                     feed_item_revision_dtime = NOW()
@@ -187,7 +190,6 @@ foreach ($feeds as $feed) {
                    OR yy_feed_item.feed_item_thumbnail IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_thumbnail, yy_feed_item.feed_item_thumbnail)
                    OR yy_feed_item.feed_item_type IS DISTINCT FROM EXCLUDED.feed_item_type
                    OR yy_feed_item.feed_item_duration IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_duration, yy_feed_item.feed_item_duration)
-                   OR yy_feed_item.feed_item_category_key IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_category_key, yy_feed_item.feed_item_category_key)
                    OR yy_feed_item.feed_item_episode IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_episode, yy_feed_item.feed_item_episode)
                    OR yy_feed_item.feed_item_tags IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags)
                    OR yy_feed_item.feed_item_orientation IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_orientation, yy_feed_item.feed_item_orientation)
@@ -203,7 +205,6 @@ foreach ($feeds as $feed) {
                 $v['durationStr'] ?? null,
                 $durationSeconds,
                 $orientation,
-                $categoryKey,
                 $episode,
                 $itemTags,
             ]);
@@ -213,15 +214,23 @@ foreach ($feeds as $feed) {
                 else $totalUpdated++;
             }
 
-            // Always populate yy_feed_item_category, even for unchanged items —
-            // the junction table is the source of truth for multi-category assignments.
+            // Populate yy_feed_item_category, scoped per page.
+            // We only delete/replace rows for the page_keys our hashtags actually touched —
+            // this prevents #vlog hashtags from wiping out Basics-page (or other pages')
+            // category assignments that admins may have set independently.
             if ($categoryAssignments) {
                 $itemKeyStmt = $db->prepare("SELECT feed_item_key FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ?");
                 $itemKeyStmt->execute([$feedKey, $videoId]);
                 $itemKey = (int)($itemKeyStmt->fetchColumn() ?: 0);
                 if ($itemKey) {
-                    // Replace all existing assignments with the freshly-parsed ones
-                    $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ?")->execute([$itemKey]);
+                    // Collect distinct page_keys from current matches
+                    $touchedPages = array_values(array_unique(array_map(function($ca) { return (int)$ca['page_key']; }, $categoryAssignments)));
+                    // Delete only rows for those pages
+                    $placeholders = implode(',', array_fill(0, count($touchedPages), '?'));
+                    $delSql = "DELETE FROM yy_feed_item_category WHERE feed_item_key = ? AND category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key IN ($placeholders))";
+                    $delStmt = $db->prepare($delSql);
+                    $delStmt->execute(array_merge([$itemKey], $touchedPages));
+                    // Insert fresh assignments
                     $catUp = $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key, feed_item_category_episode) VALUES (?, ?, ?) ON CONFLICT (feed_item_key, category_key) DO UPDATE SET feed_item_category_episode = EXCLUDED.feed_item_category_episode");
                     foreach ($categoryAssignments as $ca) {
                         $catUp->execute([$itemKey, $ca['category_key'], $ca['episode']]);
