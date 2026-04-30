@@ -154,6 +154,7 @@
                 <option value="99999">All</option>
             </select>
             <span style="font-size:0.82rem;color:#666;">per page</span>
+            <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="openTranscriptDict()">Transcript Dictionary</button>
         </div>
         <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
     </div>
@@ -456,8 +457,9 @@ function loadItems(page) {
                 + '<td style="font-size:0.75rem;color:#888;">' + (it.feed_item_episode || '') + '</td>'
                 + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
                 + '<td style="text-align:center;">' + (inactive ? '<span style="color:#c00;">No</span>' : '<span style="color:#27ae60;">Yes</span>') + '</td>'
-                + '<td class="actions"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button></td>'
-                + '</tr>';
+                + '<td class="actions" style="white-space:nowrap;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button>'
+                + ((it.feed_item_type === 'video' || it.feed_item_type === 'channel') ? '<br><button onclick="openTranscript(' + it.feed_item_key + ')" style="margin-top:4px;background:#e8eaf6;color:#31345A;border:1px solid #c5cae9;font-size:0.7rem;">Transcribe</button>' : '')
+                + '</td></tr>';
         });
         if (!items.length) {
             html += '<tr><td colspan="11" style="text-align:center;padding:30px;color:#888;font-style:italic;">No items found.</td></tr>';
@@ -1168,6 +1170,374 @@ function syncFeed(key) {
         hideSyncProgress();
         alert('Sync failed: ' + err.message);
     });
+}
+
+// ── Transcribe popover ──
+var _transcriptItemKey = null;
+var _transcriptPollTimer = null;
+
+function openTranscript(itemKey) {
+    _transcriptItemKey = itemKey;
+    var ov = document.getElementById('transcript-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'transcript-overlay';
+        ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;max-width:1000px;width:100%;margin-top:20px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+            + '<h3 id="t-title" style="margin:0;font-size:1rem;color:#31345A;">Transcript</h3>'
+            + '<button onclick="closeTranscript()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
+            + '</div>'
+            + '<div id="t-progress" style="display:none;margin-bottom:12px;padding:12px;background:#f5f7fa;border-radius:6px;">'
+            + '<div id="t-msg" style="font-size:0.85rem;color:#555;margin-bottom:6px;">Starting...</div>'
+            + '<div style="background:#e0e0e0;border-radius:4px;height:8px;overflow:hidden;"><div id="t-bar" style="background:#31345A;height:100%;width:0%;transition:width 0.3s;"></div></div>'
+            + '<button onclick="cancelTranscript()" style="margin-top:8px;font-size:0.78rem;background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">Cancel</button>'
+            + '</div>'
+            + '<div id="t-toolbar" style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">'
+            + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<button onclick="addTranscriptRow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">+ Row</button>'
+            + '<button onclick="applyCorrectionsNow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Re-apply current correction dictionary to this transcript">Apply Corrections</button>'
+            + '<button onclick="saveTranscript()" style="background:#31345A;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;margin-left:auto;">Save</button>'
+            + '<span id="t-status" style="font-size:0.8rem;color:#888;"></span>'
+            + '</div>'
+            + '<div id="t-rows-container" style="max-height:60vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
+            + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+            + '<thead style="background:#f5f5f5;position:sticky;top:0;"><tr><th style="padding:8px;width:120px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:50px;"></th></tr></thead>'
+            + '<tbody id="t-rows"></tbody></table></div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e) { if (e.target === ov) closeTranscript(); };
+    }
+    ov.style.display = 'flex';
+    loadTranscript();
+}
+
+function closeTranscript() {
+    var ov = document.getElementById('transcript-overlay');
+    if (ov) ov.style.display = 'none';
+    if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+    _transcriptItemKey = null;
+}
+
+function loadTranscript() {
+    fetch(API + '/admin-transcript.php?item_key=' + _transcriptItemKey, {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (d.error) { alert(d.error); return; }
+            document.getElementById('t-title').textContent = 'Transcript: ' + (d.item.title || '').substring(0, 80);
+            renderTranscriptRows(d.rows || []);
+            updateJobUI(d.job);
+        });
+}
+
+function renderTranscriptRows(rows) {
+    var tbody = document.getElementById('t-rows');
+    if (!tbody) return;
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" or "+ Row" to begin.</td></tr>';
+        return;
+    }
+    var html = '';
+    rows.forEach(function(r, i) {
+        html += '<tr data-idx="' + i + '">'
+            + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(r.feed_item_transcript_segment || '00:00:00') + '" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+            + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(r.feed_item_transcript_text || '') + '" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+            + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function addTranscriptRow() {
+    var tbody = document.getElementById('t-rows');
+    if (!tbody || tbody.firstChild && tbody.firstChild.cells && tbody.firstChild.cells.length === 1) tbody.innerHTML = '';
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="00:00:00" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove()" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>';
+    tbody.appendChild(tr);
+    tr.querySelector('[data-field="text"]').focus();
+}
+
+function startTranscript() {
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'start', item_key: _transcriptItemKey})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        document.getElementById('t-progress').style.display = '';
+        document.getElementById('t-start-btn').disabled = true;
+        if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
+        _transcriptPollTimer = setInterval(pollJob, 2000);
+    });
+}
+
+function cancelTranscript() {
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'cancel', item_key: _transcriptItemKey})
+    }).then(function(){
+        if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+        document.getElementById('t-progress').style.display = 'none';
+        document.getElementById('t-start-btn').disabled = false;
+    });
+}
+
+function pollJob() {
+    fetch(API + '/admin-transcript.php?item_key=' + _transcriptItemKey, {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            updateJobUI(d.job);
+            if (d.job && (d.job.job_status === 'complete' || d.job.job_status === 'failed' || d.job.job_status === 'cancelled')) {
+                if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+                if (d.job.job_status === 'complete') {
+                    renderTranscriptRows(d.rows || []);
+                    setTimeout(function() { document.getElementById('t-progress').style.display = 'none'; }, 1500);
+                }
+                document.getElementById('t-start-btn').disabled = false;
+            }
+        });
+}
+
+function updateJobUI(job) {
+    if (!job) return;
+    var prog = document.getElementById('t-progress');
+    var msg = document.getElementById('t-msg');
+    var bar = document.getElementById('t-bar');
+    if (job.job_status === 'pending' || job.job_status === 'running') {
+        prog.style.display = '';
+        msg.textContent = job.job_message || 'Working...';
+        bar.style.width = (job.job_progress || 0) + '%';
+        document.getElementById('t-start-btn').disabled = true;
+        if (!_transcriptPollTimer) _transcriptPollTimer = setInterval(pollJob, 2000);
+    } else if (job.job_status === 'failed') {
+        prog.style.display = '';
+        msg.innerHTML = '<span style="color:#c00;">Failed: ' + esc(job.job_error || job.job_message || 'Unknown error') + '</span>';
+        bar.style.width = '100%';
+        bar.style.background = '#c0392b';
+        document.getElementById('t-start-btn').disabled = false;
+    } else if (job.job_status === 'complete') {
+        msg.textContent = '✓ ' + (job.job_message || 'Complete');
+        bar.style.width = '100%';
+        bar.style.background = '#27ae60';
+        document.getElementById('t-start-btn').disabled = false;
+    }
+}
+
+function saveTranscript() {
+    var rows = [];
+    document.querySelectorAll('#t-rows tr[data-idx], #t-rows tr').forEach(function(tr) {
+        var seg = tr.querySelector('[data-field="segment"]');
+        var txt = tr.querySelector('[data-field="text"]');
+        if (seg && txt && txt.value.trim()) {
+            rows.push({segment: seg.value.trim(), text: txt.value.trim()});
+        }
+    });
+    // Sort by segment time
+    rows.sort(function(a, b) {
+        function toSec(s) { var p = s.split(':'); return (parseInt(p[0])||0)*3600 + (parseInt(p[1])||0)*60 + (parseFloat(p[2])||0); }
+        return toSec(a.segment) - toSec(b.segment);
+    });
+    var statusEl = document.getElementById('t-status');
+    statusEl.textContent = 'Saving...';
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'save', item_key: _transcriptItemKey, rows: rows})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { statusEl.textContent = 'Error: ' + d.error; }
+        else { statusEl.textContent = '✓ Saved ' + d.count + ' rows'; setTimeout(function(){statusEl.textContent='';}, 2000); loadTranscript(); }
+    });
+}
+
+function applyCorrectionsNow() {
+    if (!_transcriptItemKey) return;
+    var statusEl = document.getElementById('t-status');
+    statusEl.textContent = 'Applying corrections...';
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'apply_corrections_now', item_key: _transcriptItemKey})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { statusEl.textContent = 'Error: ' + d.error; return; }
+        statusEl.textContent = '✓ ' + (d.changed || 0) + ' rows updated';
+        setTimeout(function(){statusEl.textContent='';}, 2500);
+        loadTranscript();
+    });
+}
+
+// ── Transcript Dictionary modal (glossary + corrections) ──
+function openTranscriptDict() {
+    var ov = document.getElementById('tdict-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'tdict-overlay';
+        ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10001;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;max-width:1100px;width:100%;margin-top:20px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
+            + '<h3 style="margin:0;font-size:1.05rem;color:#31345A;">Transcript Dictionary</h3>'
+            + '<button onclick="closeTranscriptDict()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
+            + '</div>'
+            + '<div style="display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:14px;">'
+            + '<button class="td-tab td-tab-active" data-td="glossary" onclick="switchTdTab(\'glossary\')" style="background:#31345A;color:#fff;border:none;padding:8px 16px;cursor:pointer;font-size:0.85rem;">Glossary (Whisper Prompt)</button>'
+            + '<button class="td-tab" data-td="corrections" onclick="switchTdTab(\'corrections\')" style="background:#fff;color:#31345A;border:none;padding:8px 16px;cursor:pointer;font-size:0.85rem;">Corrections</button>'
+            + '</div>'
+            + '<div id="td-glossary" class="td-pane">'
+            + '<div style="margin-bottom:10px;font-size:0.85rem;color:#555;">Terms below are sent to OpenAI Whisper as the <code>prompt</code> parameter to bias recognition toward unusual vocabulary. Limit ~224 tokens (~860 chars). Higher priority terms come first.</div>'
+            + '<div style="display:flex;gap:8px;margin-bottom:10px;">'
+            + '<input type="text" id="td-gloss-term" placeholder="Term (e.g., Yahowah)" style="flex:1;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
+            + '<input type="number" id="td-gloss-priority" placeholder="Priority" value="0" style="width:90px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
+            + '<button onclick="addGlossaryTerm()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">Add</button>'
+            + '<button onclick="previewWhisperPrompt()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;">Preview Prompt</button>'
+            + '</div>'
+            + '<div id="td-prompt-preview" style="display:none;margin-bottom:10px;padding:10px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;font-size:0.82rem;"></div>'
+            + '<div id="td-gloss-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;"></div>'
+            + '</div>'
+            + '<div id="td-corrections" class="td-pane" style="display:none;">'
+            + '<div style="margin-bottom:10px;font-size:0.85rem;color:#555;">Wrong → right substitutions are auto-applied to new transcripts and can be re-applied to existing ones. Auto-learned from admin edits.</div>'
+            + '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
+            + '<input type="text" id="td-corr-wrong" placeholder="Wrong" style="flex:1;min-width:140px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
+            + '<input type="text" id="td-corr-right" placeholder="Right" style="flex:1;min-width:140px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
+            + '<label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;"><input type="checkbox" id="td-corr-case"> Case-sensitive</label>'
+            + '<label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;"><input type="checkbox" id="td-corr-wb" checked> Word boundary</label>'
+            + '<button onclick="addCorrection()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">Add</button>'
+            + '</div>'
+            + '<div id="td-corr-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;"></div>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e) { if (e.target === ov) closeTranscriptDict(); };
+    }
+    ov.style.display = 'flex';
+    loadGlossary();
+    loadCorrections();
+}
+function closeTranscriptDict() {
+    var ov = document.getElementById('tdict-overlay');
+    if (ov) ov.style.display = 'none';
+}
+function switchTdTab(name) {
+    document.querySelectorAll('.td-tab').forEach(function(b){
+        var active = b.getAttribute('data-td') === name;
+        b.style.background = active ? '#31345A' : '#fff';
+        b.style.color = active ? '#fff' : '#31345A';
+        b.classList.toggle('td-tab-active', active);
+    });
+    document.getElementById('td-glossary').style.display = name === 'glossary' ? 'block' : 'none';
+    document.getElementById('td-corrections').style.display = name === 'corrections' ? 'block' : 'none';
+}
+function loadGlossary() {
+    fetch(API + '/admin-transcript-dict.php?type=glossary', {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            var el = document.getElementById('td-gloss-list');
+            if (!d.items || !d.items.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">No terms yet.</div>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+                + '<thead style="background:#f5f5f5;"><tr><th style="padding:6px;text-align:left;">Term</th><th style="padding:6px;width:80px;">Priority</th><th style="padding:6px;width:90px;">Active</th><th style="padding:6px;width:80px;">Added</th><th style="padding:6px;width:80px;"></th></tr></thead><tbody>';
+            d.items.forEach(function(g) {
+                var dt = (g.glossary_added_dtime || '').substring(0,10);
+                html += '<tr style="border-top:1px solid #eee;' + (g.glossary_active_flag ? '' : 'opacity:0.5;') + '">'
+                    + '<td style="padding:6px;">' + esc(g.glossary_term) + '</td>'
+                    + '<td style="padding:6px;text-align:center;">' + g.glossary_priority + '</td>'
+                    + '<td style="padding:6px;text-align:center;"><button onclick="toggleGlossary(' + g.glossary_key + ')" style="background:none;border:1px solid #ccc;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:0.78rem;">' + (g.glossary_active_flag ? 'On' : 'Off') + '</button></td>'
+                    + '<td style="padding:6px;font-size:0.78rem;color:#888;">' + dt + '</td>'
+                    + '<td style="padding:6px;text-align:center;"><button onclick="deleteGlossary(' + g.glossary_key + ')" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
+                    + '</tr>';
+            });
+            el.innerHTML = html + '</tbody></table>';
+        });
+}
+function addGlossaryTerm() {
+    var term = document.getElementById('td-gloss-term').value.trim();
+    var priority = parseInt(document.getElementById('td-gloss-priority').value) || 0;
+    if (!term) return;
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'glossary', action:'add', term:term, priority:priority})
+    }).then(function(r){return safeJson(r);}).then(function(){
+        document.getElementById('td-gloss-term').value = '';
+        loadGlossary();
+    });
+}
+function toggleGlossary(key) {
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'glossary', action:'toggle', key:key})
+    }).then(loadGlossary);
+}
+function deleteGlossary(key) {
+    if (!confirm('Delete this term?')) return;
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'glossary', action:'delete', key:key})
+    }).then(loadGlossary);
+}
+function previewWhisperPrompt() {
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'glossary', action:'preview_prompt'})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        var el = document.getElementById('td-prompt-preview');
+        el.style.display = 'block';
+        el.innerHTML = '<div style="font-weight:600;margin-bottom:4px;">Prompt sent to Whisper (' + d.terms_used + '/' + d.terms_total + ' terms, ' + d.char_count + ' chars, ~' + d.estimated_tokens + ' tokens):</div>'
+            + '<div style="font-family:monospace;background:#fff;padding:8px;border:1px solid #ddd;border-radius:4px;white-space:pre-wrap;word-break:break-word;">' + esc(d.prompt) + '</div>';
+    });
+}
+function loadCorrections() {
+    fetch(API + '/admin-transcript-dict.php?type=corrections', {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            var el = document.getElementById('td-corr-list');
+            if (!d.items || !d.items.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">No corrections yet.</div>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+                + '<thead style="background:#f5f5f5;"><tr><th style="padding:6px;text-align:left;">Wrong</th><th style="padding:6px;text-align:left;">→ Right</th><th style="padding:6px;width:60px;">Count</th><th style="padding:6px;width:60px;">Case</th><th style="padding:6px;width:60px;">WB</th><th style="padding:6px;width:90px;">Active</th><th style="padding:6px;width:80px;">Last seen</th><th style="padding:6px;width:50px;"></th></tr></thead><tbody>';
+            d.items.forEach(function(c) {
+                var dt = (c.correction_last_seen_dtime || '').substring(0,10);
+                html += '<tr style="border-top:1px solid #eee;' + (c.correction_active_flag ? '' : 'opacity:0.5;') + '">'
+                    + '<td style="padding:6px;">' + esc(c.correction_wrong) + '</td>'
+                    + '<td style="padding:6px;color:#27ae60;">' + esc(c.correction_right) + '</td>'
+                    + '<td style="padding:6px;text-align:center;">' + c.correction_count + '</td>'
+                    + '<td style="padding:6px;text-align:center;">' + (c.correction_case_sensitive ? '✓' : '') + '</td>'
+                    + '<td style="padding:6px;text-align:center;">' + (c.correction_word_boundary ? '✓' : '') + '</td>'
+                    + '<td style="padding:6px;text-align:center;"><button onclick="toggleCorrection(' + c.correction_key + ')" style="background:none;border:1px solid #ccc;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:0.78rem;">' + (c.correction_active_flag ? 'On' : 'Off') + '</button></td>'
+                    + '<td style="padding:6px;font-size:0.78rem;color:#888;">' + dt + '</td>'
+                    + '<td style="padding:6px;text-align:center;"><button onclick="deleteCorrection(' + c.correction_key + ')" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
+                    + '</tr>';
+            });
+            el.innerHTML = html + '</tbody></table>';
+        });
+}
+function addCorrection() {
+    var wrong = document.getElementById('td-corr-wrong').value.trim();
+    var right = document.getElementById('td-corr-right').value.trim();
+    if (!wrong || !right) return;
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+            type:'corrections', action:'add', wrong:wrong, right:right,
+            case_sensitive: document.getElementById('td-corr-case').checked,
+            word_boundary: document.getElementById('td-corr-wb').checked
+        })
+    }).then(function(r){return safeJson(r);}).then(function(){
+        document.getElementById('td-corr-wrong').value = '';
+        document.getElementById('td-corr-right').value = '';
+        loadCorrections();
+    });
+}
+function toggleCorrection(key) {
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'corrections', action:'toggle', key:key})
+    }).then(loadCorrections);
+}
+function deleteCorrection(key) {
+    if (!confirm('Delete this correction?')) return;
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({type:'corrections', action:'delete', key:key})
+    }).then(loadCorrections);
 }
 
 // Init
