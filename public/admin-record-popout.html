@@ -37,8 +37,19 @@
         #player-wrap {
             background: #000; border-radius: 6px; overflow: hidden;
             aspect-ratio: 16/9; margin-bottom: 10px;
+            position: relative;
         }
         #yt-player { width: 100%; height: 100%; }
+        /* Click-blocker overlay — sits on top of the YT iframe so the user
+           can't interact with it directly (play/pause/scrub). All control
+           goes through our own buttons so the recording stays in sync with
+           video position. Hidden when not recording so the user can still
+           manually interact with the player if they ever need to. */
+        #player-blocker {
+            position: absolute; inset: 0; z-index: 5;
+            cursor: not-allowed; background: transparent;
+            display: none;
+        }
         #banner {
             margin-bottom: 10px; padding: 8px 12px;
             background: #fff3a8; border: 1px solid #e0c000;
@@ -70,7 +81,10 @@
             <h1 id="title">Loading…</h1>
             <span id="time">—</span>
         </header>
-        <div id="player-wrap"><div id="yt-player"></div></div>
+        <div id="player-wrap">
+            <div id="yt-player"></div>
+            <div id="player-blocker" title="Video is locked while recording — use the buttons below"></div>
+        </div>
         <div id="banner" style="display:none;"></div>
         <div id="controls">
             <button id="continue-btn" style="display:none;" onclick="continueRecording()">▶ Continue Recording</button>
@@ -93,6 +107,11 @@
     var suppressAutoStart = false;
     var durationTimer = null;
     var initialResumeSec = 0;
+    // Position where the last recorded part ended. Used by Continue Recording
+    // to snap the video back so the next part begins exactly where the last
+    // one left off, even if the player drifted or the user happened to move
+    // it (the blocker overlay normally prevents that, but defensive anyway).
+    var lastRecordedSeconds = 0;
     // Tracks the post-Pause upload so beforeunload can warn the user if they
     // try to close the window while the part is still being POSTed. Without
     // this, a fast Pause→Close cancels the in-flight fetch silently and the
@@ -149,6 +168,7 @@
             var p = pData.partial || {};
             partCount = p.part_count || 0;
             initialResumeSec = (p.part_count > 0 && p.resume_seconds > 0) ? p.resume_seconds : 0;
+            lastRecordedSeconds = initialResumeSec;
             if (initialResumeSec > 0) {
                 $('banner').style.display = '';
                 $('banner').innerHTML = bannerText(initialResumeSec);
@@ -156,11 +176,14 @@
             } else {
                 setStatus('Loading video…');
             }
-            // Spin up player
+            // Spin up player. controls:1 keeps the YT progress bar visible
+            // (useful visual feedback) but the click-blocker overlay above it
+            // intercepts clicks during recording. disablekb:1 prevents the
+            // iframe from responding to keyboard shortcuts (space/arrows).
             ytPlayer = new YT.Player('yt-player', {
                 videoId: d.item.feed_item_external_id,
                 width: '100%', height: '100%',
-                playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 1 },
+                playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 1, disablekb: 1 },
                 events: {
                     onReady: onPlayerReady,
                     onStateChange: onPlayerStateChange,
@@ -205,12 +228,13 @@
         var rec = !!(recorder && recorder.state === 'recording');
         if (st === 1) {
             if (rec) { setStatus('🔴 Recording — capturing tab audio…'); updateControls(); return; }
-            if (suppressAutoStart) { suppressAutoStart = false; updateControls(); return; }
-            // Stream cached and live? Just begin recording without re-prompt.
+            // Stream cached and live? Begin recording NOW — at the exact
+            // moment YT reports the video is actually playing. No buffer or
+            // seek silence gets captured because the recorder didn't exist
+            // until this instant.
             if (stream && stream.getAudioTracks().length
                 && stream.getAudioTracks()[0].readyState === 'live') {
                 beginRecording();
-                setStatus('🔴 Recording — capturing tab audio…');
                 updateControls();
                 return;
             }
@@ -301,15 +325,11 @@
         try { ytPlayer.pauseVideo(); } catch (e) {}
         var s = await ensureStream(opts);
         if (!s) return;
-        // Re-check: a concurrent caller may have already started the recorder
-        // while we were awaiting the singleton promise.
         if (recorder && recorder.state === 'recording') return;
-        suppressAutoStart = true;
-        beginRecording();
-        // Now that the recorder is capturing, seek to the resume point (if any)
-        // and start playback. seekTo(t, true) on an unstarted player triggers
-        // play implicitly — that's what we want here, since the recorder is
-        // already running so no audio is missed.
+        // Seek + play — but DON'T start the recorder here. The PLAYING state
+        // change handler starts it once YT reports the audio is actually
+        // flowing. That way the 1-2 sec of buffer/seek time doesn't land as
+        // silence at the start of the first recorded part.
         try {
             ytPlayer.setPlaybackRate(1);
             if (initialResumeSec > 0) {
@@ -319,7 +339,7 @@
                 ytPlayer.playVideo();
             }
         } catch (e) {}
-        setTimeout(function(){ suppressAutoStart = false; updateControls(); }, 500);
+        setStatus('Waiting for video to start playing…');
     }
     function beginRecording() {
         var audioOnly = new MediaStream(stream.getAudioTracks());
@@ -387,6 +407,7 @@
             var d = await res.json();
             if (d.error) { setStatus('✗ ' + d.error); return; }
             partCount = (d.partial && d.partial.part_count) || partCount + 1;
+            lastRecordedSeconds = nowSec;
             $('banner').style.display = '';
             $('banner').innerHTML = bannerText(nowSec);
             pendingBlob = null;
@@ -447,6 +468,18 @@
             tryAutoStart({ userInitiated: true });
             return;
         }
+        // Snap the player back to where the last recorded part ended, so the
+        // next part picks up at exactly that point. This way even if the
+        // video position drifted (or somehow got moved despite the blocker),
+        // recording resumes seamlessly from the bookmark.
+        if (ytPlayer && ytPlayer.seekTo && lastRecordedSeconds > 0) {
+            try {
+                var current = Math.floor(ytPlayer.getCurrentTime() || 0);
+                if (Math.abs(current - lastRecordedSeconds) > 1) {
+                    ytPlayer.seekTo(lastRecordedSeconds, true);
+                }
+            } catch (e) {}
+        }
         if (ytPlayer && ytPlayer.playVideo) {
             try { ytPlayer.setPlaybackRate(1); ytPlayer.playVideo(); } catch (e) {}
         }
@@ -475,11 +508,13 @@
     // ── UI ──
     function updateControls() {
         var pauseBtn = $('pause-btn'), continueBtn = $('continue-btn'), restartBtn = $('restart-btn');
+        var blocker = $('player-blocker');
         var rec = !!(recorder && recorder.state === 'recording');
         if (rec) {
             pauseBtn.style.display = '';
             continueBtn.style.display = 'none';
             restartBtn.style.display = 'none';
+            if (blocker) blocker.style.display = 'block';
             if (durationTimer) clearInterval(durationTimer);
             durationTimer = setInterval(updateTime, 500);
         } else {
@@ -491,6 +526,7 @@
                 continueBtn.style.display = 'none';
                 restartBtn.style.display = 'none';
             }
+            if (blocker) blocker.style.display = 'none';
             if (durationTimer) { clearInterval(durationTimer); durationTimer = null; }
             updateTime();
         }
