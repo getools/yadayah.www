@@ -42,6 +42,10 @@ function readEnv(string $name): string {
 }
 
 function updateJob(PDO $db, int $jobKey, array $fields): void {
+    // Truncate job_message to fit the varchar(500) column constraint.
+    if (isset($fields['job_message']) && mb_strlen($fields['job_message']) > 500) {
+        $fields['job_message'] = mb_substr($fields['job_message'], 0, 497) . '...';
+    }
     $sets = [];
     $params = [];
     foreach ($fields as $k => $v) {
