@@ -154,7 +154,8 @@
                 <option value="99999">All</option>
             </select>
             <span style="font-size:0.82rem;color:#666;">per page</span>
-            <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="openYoutubeCookies()">YouTube Cookies</button>
+            <button id="ext-status-btn" class="btn btn-secondary btn-sm" style="margin-left:auto;background:#fff3a8;border-color:#e0c000;color:#8a6d00;font-weight:600;" onclick="openExtensionInstall()" title="Install the browser extension for live transcription">⚠ Extension: not installed</button>
+            <button class="btn btn-secondary btn-sm" onclick="openYoutubeCookies()">YouTube Cookies</button>
             <button class="btn btn-secondary btn-sm" onclick="openTranscriptDict()">Transcript Dictionary</button>
         </div>
         <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
@@ -1275,11 +1276,13 @@ function openTranscript(itemKey) {
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<label id="t-live-label" style="display:none;font-size:0.78rem;color:#666;align-items:center;gap:4px;background:#eef7ee;border:1px solid #c8e1c8;padding:4px 8px;border-radius:4px;cursor:pointer;" title="When checked, audio will auto-upload + transcribe as soon as you press Play in the embedded player. Requires the Yada Yah browser extension."><input type="checkbox" id="t-live-mode"> 🎬 Auto-transcribe while playing</label>'
+            + '<button id="t-live-install-hint" type="button" onclick="openExtensionInstall()" style="font-size:0.78rem;color:#8a6d00;background:#fff3a8;border:1px solid #e0c000;padding:4px 8px;border-radius:4px;cursor:pointer;" title="Install the browser extension for one-click live transcription">⚠ Install extension for live mode</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3/M4A/VTT/SRT to use instead of downloading from YouTube" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Upload Audio/Captions</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
             + '<a href="/admin-download-audio.bat" download title="Windows .bat that downloads YouTube audio using your browser cookies, then you upload it" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Helper .bat ↓</a>'
-            + '<a href="/admin-yada-extension.zip" download title="Browser extension: capture audio in YouTube tabs and send to server in one click" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Browser Extension ↓</a>'
+            + '<a href="/yadayah-extension.zip" download title="Browser extension: capture audio in YouTube tabs and send to server in one click" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Browser Extension ↓</a>'
             + '<button onclick="addTranscriptRow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">+ Row</button>'
             + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '</div>'
@@ -1944,6 +1947,153 @@ function toggleTranscriptMaximize() {
     // Tell the rows container to fill the new height
     var rc = document.getElementById('t-rows-container');
     if (rc) rc.style.maxHeight = isMax ? '70vh' : 'calc(100vh - 180px)';
+}
+
+// ── Live mode: extension bridge ──
+// Detects when the Yada Yah extension is installed and shows the
+// "Auto-transcribe while playing" toggle. When the toggle is on and the
+// transcript popover is open, the extension watches for the embedded
+// YouTube iframe to start playing, then auto-downloads + uploads the audio
+// and triggers server-side transcription.
+var _yyExtensionReady = false;
+window.addEventListener('message', function(e) {
+    if (e.source !== window) return;
+    var m = e.data;
+    if (!m || m.source !== 'yy-extension') return;
+
+    if (m.type === 'extensionReady') {
+        _yyExtensionReady = true;
+        var label = document.getElementById('t-live-label');
+        if (label) label.style.display = 'inline-flex';
+        var hint = document.getElementById('t-live-install-hint');
+        if (hint) hint.style.display = 'none';
+        var btn = document.getElementById('ext-status-btn');
+        if (btn) {
+            btn.textContent = '✓ Extension installed';
+            btn.style.background = '#e7f5ee';
+            btn.style.borderColor = '#27ae60';
+            btn.style.color = '#1d6b3a';
+            btn.style.fontWeight = '600';
+            btn.title = 'Yada Yah extension detected — live transcription is available';
+        }
+    }
+    if (m.type === 'autoSendArmed') {
+        var st = document.getElementById('t-status');
+        if (st) st.textContent = '🎬 Live mode armed — press ▶ Play';
+    }
+    if (m.type === 'autoSendProgress') {
+        var st = document.getElementById('t-status');
+        if (st) {
+            if (m.state === 'done') st.textContent = '✓ Audio uploaded — transcribing…';
+            else if (m.state === 'error') st.textContent = '✗ ' + (m.message || 'Live capture failed');
+            else st.textContent = '🎬 ' + (m.message || m.state);
+        }
+        // When upload completes, start polling for transcription progress
+        if (m.state === 'done' && _transcriptItemKey) {
+            if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
+            _transcriptPollTimer = setInterval(pollJob, 2000);
+            var prog = document.getElementById('t-progress');
+            if (prog) prog.style.display = '';
+        }
+    }
+});
+
+function armLiveMode() {
+    if (!_yyExtensionReady || !_transcriptItemKey) return;
+    window.postMessage({ source:'yy-page', type:'armAutoSend', itemKey: _transcriptItemKey }, '*');
+}
+function disarmLiveMode() {
+    if (!_yyExtensionReady) return;
+    window.postMessage({ source:'yy-page', type:'clearAutoSend' }, '*');
+}
+// Wire the checkbox once it's in the DOM
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 't-live-mode') {
+        if (e.target.checked) armLiveMode();
+        else disarmLiveMode();
+    }
+});
+
+// ── Extension Install modal ──
+function openExtensionInstall() {
+    var ov = document.getElementById('extinst-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'extinst-overlay';
+        ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10001;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;max-width:680px;width:100%;margin-top:30px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
+            + '<h3 style="margin:0;font-size:1.05rem;color:#31345A;">Install the Yada Yah Browser Extension</h3>'
+            + '<button onclick="closeExtensionInstall()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
+            + '</div>'
+            + '<div id="extinst-current-status" style="margin-bottom:14px;padding:10px;border-radius:6px;font-size:0.88rem;"></div>'
+            + '<div style="font-size:0.88rem;color:#444;line-height:1.55;margin-bottom:14px;">'
+            + 'The browser extension lets the admin transcript popover capture YouTube audio using <strong>your browser\'s IP and session</strong> — bypassing the bot-detection that blocks the server. With it, pressing ▶ Play in the embedded player auto-uploads + auto-transcribes the audio.'
+            + '</div>'
+            + '<ol style="font-size:0.88rem;line-height:1.7;padding-left:20px;margin:0 0 14px 0;">'
+            + '<li><a href="/yadayah-extension.zip" download style="color:#31345A;font-weight:600;">Download yadayah-extension.zip ↓</a></li>'
+            + '<li>Unzip somewhere stable on your machine — e.g. <code>C:\\Users\\Joe\\YadaExtension\\</code>. The folder you want to point Chrome at is the one that contains <code>manifest.json</code> directly (typically the <code>yadayah-extension</code> subfolder).</li>'
+            + '<li>Open Chrome\'s extensions page. Chrome blocks links to <code>chrome://</code> URLs — copy/paste the address into a new tab\'s address bar:<br>'
+            + '<span style="display:inline-flex;align-items:center;gap:6px;margin-top:4px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:4px 8px;font-family:monospace;font-size:0.88rem;">chrome://extensions <button type="button" id="extinst-copy-btn" onclick="copyExtensionsUrl(this)" style="font-family:inherit;font-size:0.78rem;padding:2px 8px;border:1px solid #ccc;background:#fff;border-radius:3px;cursor:pointer;">Copy</button></span></li>'
+            + '<li>Toggle <strong>Developer mode</strong> on (top-right of that page).</li>'
+            + '<li>Click <strong>Load unpacked</strong> → select the unzipped <code>yadayah-extension</code> folder.</li>'
+            + '<li>(Recommended) Pin the extension via the puzzle-piece icon so the popup is one click away.</li>'
+            + '<li>Refresh this admin page. The button at top-right should turn green: <em>✓ Extension installed</em>.</li>'
+            + '</ol>'
+            + '<details style="font-size:0.82rem;color:#555;margin-top:10px;"><summary style="cursor:pointer;font-weight:600;">When you need to refresh / reinstall</summary>'
+            + '<div style="margin-top:8px;line-height:1.6;">If I update the extension, re-download the zip, replace the unzipped folder, and click the <strong>↻ reload</strong> icon on the extension card at chrome://extensions. Chrome will re-prompt for any new permissions.</div>'
+            + '</details>'
+            + '<details style="font-size:0.82rem;color:#555;margin-top:8px;"><summary style="cursor:pointer;font-weight:600;">Why it\'s sideloaded instead of from the Chrome Web Store</summary>'
+            + '<div style="margin-top:8px;line-height:1.6;">The extension talks to a single private domain (yadayah.com) so it isn\'t suitable for the public store. Sideloading is the right distribution mode. Chrome may show a warning the first time about an "unpacked" extension — it\'s safe; the source is in <code>/extension/</code> on this site if you want to inspect it.</div>'
+            + '</details>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e) { if (e.target === ov) closeExtensionInstall(); };
+    }
+    // Update the current-status box each time the modal opens
+    var statusEl = document.getElementById('extinst-current-status');
+    if (statusEl) {
+        if (_yyExtensionReady) {
+            statusEl.style.cssText = 'margin-bottom:14px;padding:10px;border-radius:6px;font-size:0.88rem;background:#e7f5ee;color:#1d6b3a;border:1px solid #b6dfc6;';
+            statusEl.textContent = '✓ Extension is currently installed and active. The instructions below are for reinstalling or moving to another machine.';
+        } else {
+            statusEl.style.cssText = 'margin-bottom:14px;padding:10px;border-radius:6px;font-size:0.88rem;background:#fffbe6;color:#8a6d00;border:1px solid #ffe99e;';
+            statusEl.textContent = '⚠ Extension is not installed in this browser. Live transcription is unavailable until you complete the steps below.';
+        }
+    }
+    ov.style.display = 'flex';
+}
+function closeExtensionInstall() {
+    var ov = document.getElementById('extinst-overlay');
+    if (ov) ov.style.display = 'none';
+}
+function copyExtensionsUrl(btn) {
+    var url = 'chrome://extensions';
+    var done = function() {
+        var orig = btn.textContent;
+        btn.textContent = '✓ Copied';
+        btn.style.background = '#e7f5ee';
+        btn.style.borderColor = '#27ae60';
+        btn.style.color = '#1d6b3a';
+        setTimeout(function() {
+            btn.textContent = orig;
+            btn.style.background = '#fff';
+            btn.style.borderColor = '#ccc';
+            btn.style.color = '';
+        }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(function(){
+            // fallback below
+            var ta = document.createElement('textarea');
+            ta.value = url; document.body.appendChild(ta);
+            ta.select(); try { document.execCommand('copy'); done(); } finally { ta.remove(); }
+        });
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = url; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); done(); } finally { ta.remove(); }
+    }
 }
 
 // ── YouTube Cookies modal ──

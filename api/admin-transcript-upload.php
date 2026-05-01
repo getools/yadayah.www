@@ -67,7 +67,39 @@ if ($method === 'POST') {
     logMonitorEvent('transcript_upload', 'info',
         'Audio/caption uploaded for item ' . $itemKey . ' (.' . $ext . ', ' . $size . ' bytes)',
         'by user ' . ($user['user_code'] ?? '?'), true);
-    jsonResponse(['ok' => true, 'files' => existingFiles($UPLOAD_DIR, $itemKey)]);
+
+    $jobKey = null;
+    // If the caller asked, kick off transcription immediately. Used by the
+    // browser extension's live-mode so the user doesn't have to switch tabs
+    // and click "Transcribe Audio" after the audio finishes uploading.
+    if (!empty($_POST['auto_transcribe'])) {
+        $db = getDb();
+        // Cancel any other in-flight job for this item
+        $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW() WHERE feed_item_key = ? AND job_status IN ('pending', 'running')")
+           ->execute([$itemKey]);
+        $jobStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_job (feed_item_key, job_status, job_message, user_key) VALUES (?, 'pending', 'Auto-triggered after upload', ?) RETURNING feed_item_transcript_job_key");
+        $jobStmt->execute([$itemKey, $user['user_key']]);
+        $jobKey = (int)$jobStmt->fetchColumn();
+        $workerScript = __DIR__ . '/transcript-worker.php';
+        if (file_exists($workerScript)) {
+            $logFile = sys_get_temp_dir() . '/transcript_' . $jobKey . '.log';
+            $cmd = "nohup php " . escapeshellarg($workerScript) . " " . escapeshellarg((string)$jobKey)
+                 . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null & echo $!";
+            $pidOut = [];
+            exec($cmd, $pidOut);
+            $pid = (int)($pidOut[0] ?? 0);
+            if ($pid > 0) {
+                $db->prepare("UPDATE yy_feed_item_transcript_job SET job_worker_pid = ? WHERE feed_item_transcript_job_key = ?")
+                   ->execute([$pid, $jobKey]);
+            }
+        }
+    }
+
+    jsonResponse([
+        'ok' => true,
+        'files' => existingFiles($UPLOAD_DIR, $itemKey),
+        'transcribe_job_key' => $jobKey,
+    ]);
 }
 
 if ($method === 'DELETE') {

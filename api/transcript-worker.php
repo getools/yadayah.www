@@ -246,13 +246,19 @@ if (!$rows) {
                 if (!$usedUploadedAudio) @unlink($audioPath);
                 if (!$rows) {
                     $methodFailures[] = "whisper_api: " . ($whisperErr ?: 'API returned no segments');
-                } else {
-                    updateJob($db, $jobKey, ['job_progress' => 85, 'job_message' => 'Applying corrections...']);
-                    $rows = applyCorrectionsToRows($db, $rows);
                 }
+                // Corrections applied below for any method that produced rows
             }
         }
     }
+}
+
+// Apply correction dictionary to whatever rows we got, regardless of source.
+// This ensures uploaded VTT/SRT captions and yt-dlp captions both get the
+// same Yahowah/Towrah-style normalization that Whisper output gets.
+if ($rows) {
+    updateJob($db, $jobKey, ['job_progress' => 85, 'job_message' => 'Applying corrections...']);
+    $rows = applyCorrectionsToRows($db, $rows);
 }
 
 if (!$rows) {
