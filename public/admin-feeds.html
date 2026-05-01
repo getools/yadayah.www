@@ -1731,7 +1731,6 @@ function openRecordPopover(itemKey, opts) {
         ov.innerHTML = '<div id="r-card" style="background:#fff;border-radius:10px;padding:18px;max-width:880px;width:100%;margin-top:30px;">'
             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">'
             + '<h3 id="r-title" style="margin:0;font-size:1rem;color:#31345A;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Record</h3>'
-            + '<span id="r-time" style="font-family:monospace;font-size:0.8rem;color:#666;">—</span>'
             + '<button onclick="minimizeRecordPopover()" title="Minimize (recording continues)" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666;line-height:1;padding:0 6px;">_</button>'
             + '<button onclick="closeRecordPopover()" id="r-close-btn" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
             + '</div>'
@@ -1740,12 +1739,13 @@ function openRecordPopover(itemKey, opts) {
             + '</div>'
             + '<div id="r-resume-banner" style="display:none;margin-bottom:10px;padding:8px 12px;background:#fff3a8;border:1px solid #e0c000;border-radius:6px;font-size:0.85rem;color:#7a5c00;"></div>'
             + '<div id="r-controls" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
+            +   '<button id="r-continue-btn" onclick="continueRecordingClicked()" style="display:none;background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">▶ Continue Recording</button>'
             +   '<button id="r-record-btn" onclick="recordPopoverButtonClicked()" style="display:none;background:#c00;color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">⏸ Pause Recording</button>'
-            +   '<button id="r-finish-btn" onclick="finishAndSaveRecording()" style="display:none;background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">✓ Finish & Save Audio</button>'
-            +   '<button id="r-discard-btn" onclick="discardPartialRecording()" style="display:none;background:#fff;color:#c00;border:1px solid #c00;padding:8px 12px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Discard Partials</button>'
+            +   '<button id="r-restart-btn" onclick="restartRecordingClicked()" style="display:none;background:#fff;color:#c00;border:1px solid #c00;padding:8px 12px;border-radius:4px;cursor:pointer;font-size:0.85rem;">⟲ Restart from Beginning</button>'
             +   '<span id="r-status" style="font-size:0.85rem;color:#666;flex:1;"></span>'
+            +   '<span id="r-time" style="font-family:monospace;font-size:0.85rem;color:#666;margin-left:auto;">—</span>'
             + '</div>'
-            + '<div style="margin-top:8px;font-size:0.75rem;color:#888;">Playback is locked at 1× to ensure natural-rate audio. The browser will ask you to share THIS tab — check <strong>Share tab audio</strong>. You can stop and resume from where you left off.</div>'
+            + '<div style="margin-top:8px;font-size:0.75rem;color:#888;">Playback is locked at 1× to ensure natural-rate audio. The browser will ask you to share THIS tab — check <strong>Share tab audio</strong>.</div>'
             + '</div>';
         document.body.appendChild(ov);
         ov.onclick = function(e) { if (e.target === ov) closeRecordPopover(); };
@@ -1780,7 +1780,6 @@ function openRecordPopover(itemKey, opts) {
                     events: {
                         onReady: function(e) {
                             try { e.target.setPlaybackRate(1); } catch (err) {}
-                            // Initialize the time display: 0:00:00 / total_duration
                             try {
                                 var dur = Math.floor(e.target.getDuration() || 0);
                                 if (dur > 0) {
@@ -1788,7 +1787,11 @@ function openRecordPopover(itemKey, opts) {
                                     if (t) t.textContent = '0:00:00 / ' + formatSeconds(dur);
                                 }
                             } catch (err) {}
+                            // Pull partial state, then attempt to auto-start. If
+                            // the user-activation gesture has expired, the user
+                            // can press ▶ on the player to retry.
                             refreshRecordPopoverPartialState();
+                            setTimeout(tryAutoStartRecording, 400);
                         },
                         onStateChange: onRecPlayerStateChange,
                         onPlaybackRateChange: function(e) {
@@ -1826,8 +1829,7 @@ function refreshRecordPopoverPartialState() {
             if (parts > 0 && seconds > 0) {
                 banner.style.display = '';
                 banner.innerHTML = '⏸ ' + parts + ' part' + (parts === 1 ? '' : 's')
-                    + ' recorded so far. Last position: <strong>' + formatSeconds(seconds) + '</strong>. '
-                    + 'Press ▶ on the video to seamlessly continue recording from there, or click <strong>Finish & Save Audio</strong> below if you\'re done.';
+                    + ' recorded so far. Last position: <strong>' + formatSeconds(seconds) + '</strong>.';
                 if (status) status.textContent = '';
                 // Pre-seek the player so it's ready to resume; suppressAutoStart=false
                 // so the very next PLAY click triggers recording.
@@ -1946,24 +1948,48 @@ async function onRecPlayerStateChange(e) {
 }
 
 function recordPopoverButtonClicked() {
-    var recording = !!(_recState.recorder && _recState.recorder.state === 'recording');
-    if (recording) {
-        // Pause the video — the PAUSED state handler stops the recorder
-        try { _recState.ytPlayer.pauseVideo(); } catch (e) {}
-    } else {
-        // Restart from beginning: delete parts, seek to 0
-        if (!confirm('Discard all recorded parts and start over from 0:00?')) return;
-        var itemKey = _recState.activeItemKey;
-        fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey,
-              { method: 'DELETE', credentials: 'include' })
-            .then(function(r){ return r.json(); })
-            .then(function() {
-                if (_recState.ytPlayer && typeof _recState.ytPlayer.seekTo === 'function') {
-                    try { _recState.ytPlayer.seekTo(0, true); _recState.ytPlayer.pauseVideo(); } catch (e) {}
-                }
-                refreshRecordPopoverPartialState();
-            });
+    // ⏸ Pause Recording — pause the player; PAUSED state handler stops the recorder
+    try { _recState.ytPlayer.pauseVideo(); } catch (e) {}
+}
+function continueRecordingClicked() {
+    // Resume playback from current position; PLAYING state handler restarts the recorder
+    if (_recState.ytPlayer && typeof _recState.ytPlayer.playVideo === 'function') {
+        try { _recState.ytPlayer.setPlaybackRate(1); _recState.ytPlayer.playVideo(); } catch (e) {}
     }
+}
+function restartRecordingClicked() {
+    if (!confirm('Discard all recorded parts and start over from 0:00?')) return;
+    var itemKey = _recState.activeItemKey;
+    fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey,
+          { method: 'DELETE', credentials: 'include' })
+        .then(function(r){ return r.json(); })
+        .then(function() {
+            if (_recState.ytPlayer && typeof _recState.ytPlayer.seekTo === 'function') {
+                try { _recState.ytPlayer.seekTo(0, true); _recState.ytPlayer.pauseVideo(); } catch (e) {}
+            }
+            refreshRecordPopoverPartialState();
+            // Auto-start fresh recording from 0
+            setTimeout(function(){ tryAutoStartRecording(); }, 300);
+        });
+}
+// Try to start playback + recording immediately, using the user activation
+// from whatever click opened the popover. If browsers reject getDisplayMedia
+// (gesture expired), the user will see a permission prompt fail message and
+// can press play on the embedded player to retry — that's a fresh gesture.
+async function tryAutoStartRecording() {
+    if (_recState.recorder && _recState.recorder.state === 'recording') return;
+    var stream = await ensureCaptureStream(_recState.mode === 'batch');
+    if (!stream) {
+        // Permission expired or denied — user can click ▶ on the player which
+        // is a fresh gesture; the PLAYING handler will retry from there.
+        var st = document.getElementById('r-status');
+        if (st) st.textContent = 'Press ▶ on the video to start recording.';
+        return;
+    }
+    _recState.suppressAutoStart = true; // playVideo() below will fire PLAYING; we already started
+    beginRecording();
+    try { _recState.ytPlayer.setPlaybackRate(1); _recState.ytPlayer.playVideo(); } catch (e) {}
+    setTimeout(function(){ _recState.suppressAutoStart = false; updateRecPopoverControls(); }, 500);
 }
 function beginRecording() {
     var audioOnly = new MediaStream(_recState.stream.getAudioTracks());
@@ -2046,8 +2072,7 @@ async function refreshPopoverPartialAfterUpload(uploadResp) {
     if (p.part_count > 0 && p.resume_seconds > 0) {
         banner.style.display = '';
         banner.innerHTML = '⏸ ' + p.part_count + ' part' + (p.part_count === 1 ? '' : 's')
-            + ' recorded. Last position: <strong>' + formatSeconds(p.resume_seconds) + '</strong>. '
-            + 'Press ▶ on the video to continue, or click Finish & Save Audio.';
+            + ' recorded. Last position: <strong>' + formatSeconds(p.resume_seconds) + '</strong>.';
     } else {
         banner.style.display = 'none';
     }
@@ -2102,38 +2127,32 @@ async function discardPartialRecording() {
     }
     refreshRecordPopoverPartialState();
 }
-// Drive the contextual button below the player + the live timer based on
-// the current state of the recorder. Called from anywhere that changes
-// recording state (start/stop, partial refresh, finalize).
+// Drive contextual buttons below the player + live timer based on recorder
+// state. Three states:
+//   recording:      [⏸ Pause Recording]
+//   paused/parts:   [▶ Continue Recording] [⟲ Restart from Beginning]
+//   no parts:       (no buttons — use ▶ on the player)
 function updateRecPopoverControls() {
-    var btn = document.getElementById('r-record-btn');
-    var finishBtn = document.getElementById('r-finish-btn');
-    var discardBtn = document.getElementById('r-discard-btn');
-    if (!btn) return;
+    var pauseBtn   = document.getElementById('r-record-btn');
+    var continueBtn = document.getElementById('r-continue-btn');
+    var restartBtn = document.getElementById('r-restart-btn');
+    if (!pauseBtn) return;
     var recording = !!(_recState.recorder && _recState.recorder.state === 'recording');
     var hasParts = !!_recState.partCount;
     if (recording) {
-        btn.style.display = '';
-        btn.textContent = '⏸ Pause Recording';
-        btn.style.background = '#444';
-        btn.style.borderColor = '#444';
-        if (finishBtn) finishBtn.style.display = 'none';
-        if (discardBtn) discardBtn.style.display = 'none';
+        pauseBtn.style.display = '';
+        if (continueBtn) continueBtn.style.display = 'none';
+        if (restartBtn)  restartBtn.style.display = 'none';
         if (_recState.durationTimer) clearInterval(_recState.durationTimer);
         _recState.durationTimer = setInterval(updateRecTimeDisplay, 500);
     } else {
+        pauseBtn.style.display = 'none';
         if (hasParts) {
-            btn.style.display = '';
-            btn.textContent = '⟲ Restart from beginning';
-            btn.style.background = '#fff';
-            btn.style.color = '#c00';
-            btn.style.border = '1px solid #c00';
-            if (finishBtn) finishBtn.style.display = '';
-            if (discardBtn) discardBtn.style.display = '';
+            if (continueBtn) continueBtn.style.display = '';
+            if (restartBtn)  restartBtn.style.display = '';
         } else {
-            btn.style.display = 'none';
-            if (finishBtn) finishBtn.style.display = 'none';
-            if (discardBtn) discardBtn.style.display = 'none';
+            if (continueBtn) continueBtn.style.display = 'none';
+            if (restartBtn)  restartBtn.style.display = 'none';
         }
         if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
         updateRecTimeDisplay();
@@ -2270,17 +2289,25 @@ function renderRecordings(d) {
             var dt = new Date(it.published_dtime);
             if (!isNaN(dt)) pub = dt.toLocaleString(undefined, { year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
         }
-        // Processed column reflects MP3 state
+        // Processed column reflects MP3 state. Partial + New are clickable
+        // buttons that open the Record popover for that one item (resumes if
+        // partial, starts fresh if new).
         var processed;
+        var commonBtn = 'border:1px solid;background:#fff;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;';
         if (it.processed_status === 'complete') {
             processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>';
         } else if (it.processed_status === 'partial') {
             var recSec = it.resume_seconds || 0, totSec = it.feed_item_duration_seconds || 0;
             var pct = totSec ? Math.round((recSec/totSec)*100) : 0;
-            processed = '<span style="color:#a36100;">⏸ Partial</span><br><span style="font-size:0.7rem;color:#999;">'
-                      + formatSeconds(recSec) + (totSec ? ' / ' + formatSeconds(totSec) + ' (' + pct + '%)' : '') + '</span>';
+            processed = '<button onclick="openRecordPopover(' + it.feed_item_key + ')" '
+                      + 'title="Continue recording from ' + formatSeconds(recSec) + '" '
+                      + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;">⏸ Partial</button>'
+                      + '<div style="font-size:0.7rem;color:#999;margin-top:2px;text-align:center;">'
+                      + formatSeconds(recSec) + (totSec ? ' / ' + formatSeconds(totSec) + ' (' + pct + '%)' : '') + '</div>';
         } else {
-            processed = '<span style="color:#888;">○ New</span>';
+            processed = '<button onclick="openRecordPopover(' + it.feed_item_key + ')" '
+                      + 'title="Start recording" '
+                      + 'style="' + commonBtn + 'color:#666;border-color:#ccc;">○ New</button>';
         }
         html += '<tr id="rec-row-' + it.feed_item_key + '">'
             +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
