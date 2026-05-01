@@ -91,7 +91,7 @@ if ($method === 'GET') {
     if (!$itemKey) errorResponse('item_key required');
 
     // Get item info
-    $itemStmt = $db->prepare("SELECT feed_item_key, feed_item_external_id, COALESCE(feed_item_title_override, feed_item_title_import) AS title, feed_item_type, feed_item_url, fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key FROM yy_feed_item fi JOIN yy_feed f ON fi.feed_key = f.feed_key WHERE fi.feed_item_key = ?");
+    $itemStmt = $db->prepare("SELECT feed_item_key, feed_item_external_id, COALESCE(feed_item_title_override, feed_item_title_import) AS title, feed_item_type, feed_item_url, feed_item_duration_seconds, fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key FROM yy_feed_item fi JOIN yy_feed f ON fi.feed_key = f.feed_key WHERE fi.feed_item_key = ?");
     $itemStmt->execute([$itemKey]);
     $item = $itemStmt->fetch();
     if (!$item) errorResponse('Item not found', 404);

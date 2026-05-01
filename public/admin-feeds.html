@@ -1232,6 +1232,13 @@ function syncFeed(key) {
 // ── Transcribe popover ──
 var _transcriptItemKey = null;
 var _transcriptPollTimer = null;
+// ETA state for the Transcribe Audio progress bar.
+var _txDurationSec = 0;       // video length in seconds (from feed_item_duration_seconds)
+var _txEtaTotalSec = 0;       // estimated total pipeline time in seconds
+var _txJobStartMs = 0;        // wall-clock millis when we first saw running/pending
+var _txSmoothTimer = null;    // ticker that advances the bar between server polls
+var _txServerPct = 0;         // last % the server reported
+var _txServerPctAtMs = 0;     // wall-clock millis of that report
 
 // Player + sync state
 var _ytPlayer = null;
@@ -1318,6 +1325,8 @@ function closeTranscript() {
     var ov = document.getElementById('transcript-overlay');
     if (ov) ov.style.display = 'none';
     if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+    if (typeof stopSmoothTicker === 'function') stopSmoothTicker();
+    _txJobStartMs = 0; _txServerPct = 0;
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
     if (_ytPlayer) {
         try { _ytPlayer.stopVideo(); _ytPlayer.destroy(); } catch (e) {}
@@ -1439,6 +1448,11 @@ function loadTranscript() {
         .then(function(d) {
             if (d.error) { alert(d.error); return; }
             document.getElementById('t-title').textContent = 'Transcript: ' + (d.item.title || '').substring(0, 80);
+            // Cache video duration for ETA math in updateJobUI / smoothBarTick.
+            // ~15s of pipeline time per minute of audio + 8s overhead is empirically
+            // close (yt-dlp ~2s/min + Whisper API ~13s/min + setup).
+            _txDurationSec = parseInt(d.item.feed_item_duration_seconds, 10) || 0;
+            _txEtaTotalSec = _txDurationSec ? Math.round(_txDurationSec * 0.25 + 8) : 0;
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
             populateValidation(d.validation);
@@ -1621,6 +1635,42 @@ function cancelTranscript() {
     });
 }
 
+// Format "(ETA ~3 min)" / "(ETA ~45s)" suffix appended to job_message in the
+// progress block. Uses elapsed time vs the upfront ETA estimate; once we're
+// past the estimate it stops counting down (just shows "almost done…").
+function etaSuffix(srvPct) {
+    if (!_txEtaTotalSec || !_txJobStartMs) return '';
+    var elapsed = (Date.now() - _txJobStartMs) / 1000;
+    var remaining = _txEtaTotalSec - elapsed;
+    if (remaining <= 4) return ' — finishing up…';
+    var label = remaining >= 60
+        ? '~' + Math.ceil(remaining / 60) + ' min'
+        : '~' + Math.ceil(remaining / 5) * 5 + 's';
+    return ' (ETA ' + label + ')';
+}
+
+// Smoothly advance the bar between server polls during the Whisper phase,
+// where job_progress jumps to ~70% and stays there until rows are written.
+// The target is 95% — the last 5% is reserved for server-side completion.
+function startSmoothTicker() {
+    if (_txSmoothTimer) return;
+    _txSmoothTimer = setInterval(function() {
+        var bar = document.getElementById('t-bar');
+        var msg = document.getElementById('t-msg');
+        if (!bar || !_txEtaTotalSec || !_txJobStartMs) return;
+        var elapsed = (Date.now() - _txJobStartMs) / 1000;
+        var pct = Math.min(95, Math.max(_txServerPct, _txServerPct + (95 - _txServerPct) * (elapsed / _txEtaTotalSec)));
+        bar.style.width = pct.toFixed(1) + '%';
+        // Re-render the ETA suffix so it counts down even between polls.
+        if (msg && msg.textContent) {
+            msg.textContent = msg.textContent.replace(/ \(ETA [^)]+\)| — finishing up…/, '') + etaSuffix(_txServerPct);
+        }
+    }, 500);
+}
+function stopSmoothTicker() {
+    if (_txSmoothTimer) { clearInterval(_txSmoothTimer); _txSmoothTimer = null; }
+}
+
 function pollJob() {
     fetch(API + '/admin-transcript.php?item_key=' + _transcriptItemKey, {credentials:'include'})
         .then(function(r){return safeJson(r);})
@@ -1656,12 +1706,32 @@ function updateJobUI(job) {
     if (job.job_status === 'pending' || job.job_status === 'running') {
         // Active job — show full progress UI
         prog.style.display = '';
-        msg.textContent = job.job_message || 'Working...';
-        bar.style.width = (job.job_progress || 0) + '%';
+        // Start the wall-clock the first time we see this job active so ETA is
+        // measured from the user's perspective, not from job_dtime.
+        if (!_txJobStartMs) _txJobStartMs = Date.now();
+        var srvPct = job.job_progress || 0;
+        if (srvPct !== _txServerPct) {
+            _txServerPct = srvPct;
+            _txServerPctAtMs = Date.now();
+        }
+        msg.textContent = (job.job_message || 'Working…') + etaSuffix(srvPct);
+        // Server-driven bar for download (job_progress moves on its own as
+        // yt-dlp prints percentages); smoothed bar for Whisper phase, where
+        // job_progress is a single 70% jump that holds until rows return.
+        if (srvPct >= 65 && _txEtaTotalSec) {
+            startSmoothTicker();
+        } else {
+            stopSmoothTicker();
+            bar.style.width = srvPct + '%';
+        }
         startBtn.disabled = true;
         if (!_transcriptPollTimer) _transcriptPollTimer = setInterval(pollJob, 2000);
         renderLastResultNote(null);
     } else {
+        // Job no longer active — reset ETA/smoother state.
+        stopSmoothTicker();
+        _txJobStartMs = 0;
+        _txServerPct = 0;
         // Completed or failed — DON'T show the main progress block.
         // Show a small dismissible note above the toolbar so the user knows
         // the previous result without thinking it's still running.

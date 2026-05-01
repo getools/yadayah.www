@@ -88,7 +88,7 @@ function bailIfCancelled(PDO $db, int $jobKey, array $tempPaths = []): void {
 // Load job + item info
 $jobStmt = $db->prepare("
     SELECT j.feed_item_key, j.job_status, fi.feed_item_external_id, fi.feed_item_url, fi.feed_item_type,
-           fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key
+           fi.feed_item_duration_seconds, fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key
     FROM yy_feed_item_transcript_job j
     JOIN yy_feed_item fi ON j.feed_item_key = fi.feed_item_key
     JOIN yy_feed f ON fi.feed_key = f.feed_key
@@ -209,8 +209,34 @@ if (!$rows) {
             // Skip yt-dlp download if we already have an uploaded audio file
             $dlOutput = '';
             if (!$usedUploadedAudio) {
-                $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg . " -x --audio-format mp3 --audio-quality 5 --output " . escapeshellarg($audioPath) . " " . escapeshellarg($videoUrl) . " 2>&1";
-                $dlOutput = shell_exec($cmd);
+                // --newline forces yt-dlp to emit one progress line per update
+                // (instead of CR-overwriting the same line), so we can stream
+                // and parse it. Map yt-dlp's 0-100% download progress into the
+                // 30-65% slice of our overall job_progress.
+                $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg
+                     . " --newline -x --audio-format mp3 --audio-quality 5 --output "
+                     . escapeshellarg($audioPath) . " " . escapeshellarg($videoUrl) . " 2>&1";
+                $proc = popen($cmd, 'r');
+                if ($proc) {
+                    $lastReportedPct = -1;
+                    while (($line = fgets($proc)) !== false) {
+                        $dlOutput .= $line;
+                        // [download]  23.5% of 12.30MiB at 1.40MiB/s ETA 00:08
+                        if (preg_match('/^\[download\]\s+([\d.]+)%/', $line, $m)) {
+                            $dlPct = (float)$m[1];
+                            $jobPct = 30 + (int)round($dlPct * 0.35); // 30..65
+                            if ($jobPct !== $lastReportedPct) {
+                                $lastReportedPct = $jobPct;
+                                $msg = 'Downloading audio… ' . number_format($dlPct, 0) . '%';
+                                if (preg_match('/ETA\s+([\d:]+)/', $line, $eta)) {
+                                    $msg .= ' (ETA ' . $eta[1] . ')';
+                                }
+                                updateJob($db, $jobKey, ['job_progress' => $jobPct, 'job_message' => $msg]);
+                            }
+                        }
+                    }
+                    pclose($proc);
+                }
             }
             if (!file_exists($audioPath) || filesize($audioPath) <= 10000) {
                 // Extract the actionable ERROR line if present; otherwise use last ~400 chars
@@ -238,7 +264,7 @@ if (!$rows) {
                 }
                 $methodFailures[] = "whisper_api: $reason$hint — " . $tail;
             } else {
-                updateJob($db, $jobKey, ['job_progress' => 40, 'job_message' => 'Transcribing via Whisper API...']);
+                updateJob($db, $jobKey, ['job_progress' => 70, 'job_message' => 'Transcribing via Whisper API…']);
                 $glossaryPrompt = buildGlossaryPrompt($db);
                 $whisperErr = '';
                 if (filesize($audioPath) > 24 * 1024 * 1024) {
