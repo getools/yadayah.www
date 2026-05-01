@@ -1635,6 +1635,18 @@ function cancelTranscript() {
     });
 }
 
+// Parse a Postgres timestamp-with-timezone string into millis. Postgres
+// returns "2026-05-01 04:10:26.297251+00" which Safari and older browsers
+// won't parse — we normalize to ISO-8601 first ("…T…+00:00").
+function parseJobDtime(s) {
+    if (!s) return 0;
+    var iso = String(s).replace(' ', 'T');
+    // Convert "+00" / "-05" to "+00:00" / "-05:00" for stricter parsers.
+    iso = iso.replace(/([+-]\d{2})$/, '$1:00');
+    var t = Date.parse(iso);
+    return isNaN(t) ? 0 : t;
+}
+
 // Format "(ETA ~3 min)" / "(ETA ~45s)" suffix appended to job_message in the
 // progress block. Uses elapsed time vs the upfront ETA estimate; once we're
 // past the estimate it stops counting down (just shows "almost done…").
@@ -1706,9 +1718,13 @@ function updateJobUI(job) {
     if (job.job_status === 'pending' || job.job_status === 'running') {
         // Active job — show full progress UI
         prog.style.display = '';
-        // Start the wall-clock the first time we see this job active so ETA is
-        // measured from the user's perspective, not from job_dtime.
-        if (!_txJobStartMs) _txJobStartMs = Date.now();
+        // Seed the wall-clock from job_dtime (server timestamp) so the ETA
+        // is correct after a page reload — otherwise reload would reset the
+        // elapsed-time math and over-estimate remaining time.
+        if (!_txJobStartMs) {
+            var serverStart = parseJobDtime(job.job_dtime);
+            _txJobStartMs = serverStart || Date.now();
+        }
         var srvPct = job.job_progress || 0;
         if (srvPct !== _txServerPct) {
             _txServerPct = srvPct;
