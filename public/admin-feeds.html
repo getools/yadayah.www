@@ -2346,9 +2346,10 @@ function openSearchReplace() {
             + '<label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-regex" onchange="srToggleRegexMode()"> Use regex</label>'
             + '</div>'
             + '<div id="sr-regex-hint" style="display:none;font-size:0.78rem;color:#666;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;line-height:1.4;">POSIX-extended regex. Common tokens: <code>.</code> any char · <code>*</code>/<code>+</code>/<code>?</code> repeats · <code>|</code> alternation · <code>()</code> groups · <code>[abc]</code> char class · <code>\\d</code>/<code>\\w</code>/<code>\\s</code> · <code>\\m</code>/<code>\\M</code> word start/end · <code>^</code>/<code>$</code> line anchors · <code>\\1</code>-<code>\\9</code> backrefs in replacement. No lookahead/lookbehind.</div>'
-            + '<div style="display:flex;gap:8px;margin-top:4px;">'
+            + '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">'
             + '<button onclick="srPreview()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Preview matches</button>'
             + '<button id="sr-apply-btn" onclick="srApply()" disabled style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Apply to all matches</button>'
+            + '<button onclick="srAddCorrection()" title="Save this find/replace as a permanent Whisper correction so it auto-applies on future transcripts" style="background:#fff;border:1px solid #31345A;color:#31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">+ Add to Corrections</button>'
             + '</div>'
             + '<div id="sr-summary" style="margin-top:6px;font-size:0.85rem;color:#555;"></div>'
             + '<div id="sr-preview-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;font-size:0.82rem;"></div>'
@@ -2476,6 +2477,52 @@ function srApply() {
         if (_transcriptItemKey) loadTranscript();
     });
 }
+// Save the current Find / Replace pair as a permanent correction so future
+// Whisper transcripts auto-apply it. Picks up the same case-sensitivity and
+// whole-word flags shown in the Search & Replace UI. If the Transcript
+// Dictionary modal is open, its corrections list refreshes immediately.
+function srAddCorrection() {
+    var find    = document.getElementById('sr-find').value;
+    var replace = document.getElementById('sr-replace').value;
+    if (!find) {
+        var sum = document.getElementById('sr-summary');
+        if (sum) sum.innerHTML = '<span style="color:#c00;">Find field is empty.</span>';
+        return;
+    }
+    var caseSensitive = document.getElementById('sr-case').checked;
+    var wb            = document.getElementById('sr-wb').checked;
+    var regex         = document.getElementById('sr-regex').checked;
+    if (regex) {
+        if (!confirm('This Find pattern is set to regex mode. Corrections are stored as plain text — the regex will be saved literally and matched as a string, not as a pattern. Continue?')) return;
+    }
+    var sum = document.getElementById('sr-summary');
+    if (sum) sum.textContent = 'Adding to corrections…';
+    fetch(API + '/admin-transcript-dict.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+            type:'corrections', action:'add',
+            wrong: find, right: replace,
+            case_sensitive: caseSensitive,
+            word_boundary: wb
+        })
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d && d.error) {
+            if (sum) sum.innerHTML = '<span style="color:#c00;">✗ ' + esc(d.error) + '</span>';
+            return;
+        }
+        if (sum) sum.innerHTML = '<span style="color:#27ae60;font-weight:600;">✓ Added to corrections: "' + esc(find) + '" → "' + esc(replace) + '"</span>';
+        // If the Transcript Dictionary modal is open, refresh its list so the
+        // user sees the new row appear immediately.
+        var dict = document.getElementById('tdict-overlay');
+        if (dict && dict.style.display !== 'none' && typeof loadCorrections === 'function') {
+            loadCorrections();
+        }
+        // The "Common patterns" panel in the S&R modal is sorted by usage —
+        // reload so the new entry is visible there too.
+        if (typeof srLoadCommon === 'function') srLoadCommon();
+    });
+}
+
 function srLoadCommon() {
     var el = document.getElementById('sr-common-list');
     fetch(API + '/admin-transcript-dict.php?type=corrections&_=' + Date.now(), {credentials:'include', cache:'no-store'})
