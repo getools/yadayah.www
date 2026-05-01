@@ -6,31 +6,28 @@ window.CommunitySearch = {};
 
 var _timeout = null;
 
-// ── Init search bar ──
+// ── Init search bar (event delegation — works even if input added/removed dynamically) ──
 CommunitySearch.init = function() {
-    var input = document.getElementById('community-search');
-    if (!input) return;
-
-    input.addEventListener('input', function() {
+    document.addEventListener('input', function(e) {
+        if (!e.target || e.target.id !== 'community-search') return;
         clearTimeout(_timeout);
-        var q = this.value.trim();
+        var q = e.target.value.trim();
         if (q.length < 2) {
             CommunitySearch.hideResults();
             return;
         }
-        _timeout = setTimeout(function() {
-            CommunitySearch.search(q);
-        }, 300);
+        _timeout = setTimeout(function() { CommunitySearch.search(q); }, 300);
     });
 
-    input.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function(e) {
+        if (!e.target || e.target.id !== 'community-search') return;
         if (e.key === 'Escape') {
-            this.value = '';
+            e.target.value = '';
             CommunitySearch.hideResults();
         }
         if (e.key === 'Enter') {
             e.preventDefault();
-            var q = this.value.trim();
+            var q = e.target.value.trim();
             if (q.length >= 2) CommunitySearch.search(q);
         }
     });
@@ -38,6 +35,7 @@ CommunitySearch.init = function() {
     // Close results on outside click
     document.addEventListener('click', function(e) {
         var container = document.getElementById('search-results');
+        var input = document.getElementById('community-search');
         if (container && !container.contains(e.target) && e.target !== input) {
             CommunitySearch.hideResults();
         }
@@ -104,6 +102,15 @@ CommunitySearch.search = function(query) {
         container.innerHTML = html;
         container.style.display = '';
     });
+};
+
+// ── Trigger search from button click or external code ──
+CommunitySearch.runFromInput = function() {
+    var input = document.getElementById('community-search');
+    if (!input) return;
+    var q = input.value.trim();
+    if (q.length < 2) return;
+    CommunitySearch.search(q);
 };
 
 // ── Hide results ──

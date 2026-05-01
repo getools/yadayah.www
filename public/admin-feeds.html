@@ -2246,6 +2246,7 @@ function openSearchReplace() {
     }
     ov.style.display = 'flex';
     srLoadCommon();
+    srRefreshHistory();
     document.getElementById('sr-summary').textContent = '';
     document.getElementById('sr-preview-list').innerHTML = '';
     var apply = document.getElementById('sr-apply-btn');
@@ -2329,6 +2330,7 @@ function srApply() {
         sum.innerHTML = '<span style="color:#27ae60;font-weight:600;">✓ ' + (d.message || 'Applied') + '</span>';
         document.getElementById('sr-preview-list').innerHTML = '';
         srLoadCommon();
+        srRefreshHistory();
     });
 }
 function srLoadCommon() {
@@ -2370,6 +2372,61 @@ function srUseCommon(wrong, right, caseSensitive, wordBoundary) {
     document.getElementById('sr-regex').checked = false;
     srToggleRegexMode();
     srPreview();
+}
+function srRefreshHistory() {
+    fetch(API + '/admin-transcript-replace.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'history'})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        var undoBtn = document.getElementById('sr-undo-btn');
+        var redoBtn = document.getElementById('sr-redo-btn');
+        var meta = document.getElementById('sr-undo-meta');
+        if (!undoBtn || !redoBtn) return;
+        var u = d.next_undo, r = d.next_redo;
+        undoBtn.disabled = !u;
+        undoBtn.style.opacity = u ? '1' : '0.5';
+        if (u) undoBtn.title = 'Undo: "' + u.find + '" → "' + u.replace + '" — ' + u.count + ' rows, applied ' + (u.applied_dtime || '').replace('T',' ').substring(0,16) + ' by ' + (u.applied_by || '?');
+        else   undoBtn.title = 'Nothing to undo';
+        redoBtn.disabled = !r;
+        redoBtn.style.opacity = r ? '1' : '0.5';
+        if (r) redoBtn.title = 'Redo: "' + r.find + '" → "' + r.replace + '" — ' + r.count + ' rows, undone ' + (r.undone_dtime || '').replace('T',' ').substring(0,16) + ' by ' + (r.undone_by || '?');
+        else   redoBtn.title = 'Nothing to redo';
+        if (meta) {
+            if (u) meta.textContent = 'Last apply: "' + u.find + '" → "' + u.replace + '" (' + u.count + ' rows)';
+            else if (r) meta.textContent = 'Last undone: "' + r.find + '" → "' + r.replace + '"';
+            else meta.textContent = '';
+        }
+    });
+}
+function srUndo() {
+    if (!confirm('Undo the most recent bulk replace? Rows that were modified again after the bulk replace will not be reverted.')) return;
+    var sum = document.getElementById('sr-summary');
+    sum.textContent = 'Undoing…';
+    fetch(API + '/admin-transcript-replace.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'undo'})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { sum.textContent = '✗ ' + d.error; return; }
+        sum.innerHTML = '<span style="color:#3498db;font-weight:600;">↶ ' + (d.message || 'Undone') + '</span>';
+        document.getElementById('sr-preview-list').innerHTML = '';
+        srRefreshHistory();
+        srLoadCommon();
+    });
+}
+function srRedo() {
+    if (!confirm('Re-apply the most recent undone bulk replace?')) return;
+    var sum = document.getElementById('sr-summary');
+    sum.textContent = 'Redoing…';
+    fetch(API + '/admin-transcript-replace.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'redo'})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { sum.textContent = '✗ ' + d.error; return; }
+        sum.innerHTML = '<span style="color:#3498db;font-weight:600;">↷ ' + (d.message || 'Redone') + '</span>';
+        document.getElementById('sr-preview-list').innerHTML = '';
+        srRefreshHistory();
+        srLoadCommon();
+    });
 }
 
 // ── YouTube Cookies modal ──
