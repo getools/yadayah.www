@@ -17,6 +17,10 @@ $user = requireAuth();
 $db = getDb();
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Admin views always need the latest data — no caching at any layer.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 if ($method === 'GET') {
     $type = $_GET['type'] ?? '';
     if ($type === 'glossary') {

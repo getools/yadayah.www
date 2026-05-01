@@ -53,40 +53,7 @@ function applyCorrectionDictionary(PDO $db, string $text): string {
     return $text;
 }
 
-/**
- * Detect single-word or short-phrase substitutions between $oldText and $newText
- * and either insert or bump correction_count on yy_transcript_correction.
- *
- * Heuristic: word-by-word diff; only learn from changes of <=3 words length to
- * avoid recording sentence-level rewrites.
- */
-function autoLearnCorrections(PDO $db, string $oldText, string $newText): void {
-    $oldWords = preg_split('/(\s+)/u', $oldText, -1, PREG_SPLIT_DELIM_CAPTURE);
-    $newWords = preg_split('/(\s+)/u', $newText, -1, PREG_SPLIT_DELIM_CAPTURE);
-    if (count($oldWords) !== count($newWords)) return; // structural change, skip
-
-    $upsert = $db->prepare("
-        INSERT INTO yy_transcript_correction (correction_wrong, correction_right)
-        VALUES (?, ?)
-        ON CONFLICT (correction_wrong, correction_right) DO UPDATE
-            SET correction_count = yy_transcript_correction.correction_count + 1,
-                correction_last_seen_dtime = NOW(),
-                correction_active_flag = TRUE
-    ");
-
-    for ($i = 0; $i < count($oldWords); $i++) {
-        if (preg_match('/^\s*$/', $oldWords[$i])) continue; // skip whitespace tokens
-        $a = trim($oldWords[$i], " \t\n\r.,;:!?\"'()[]");
-        $b = trim($newWords[$i], " \t\n\r.,;:!?\"'()[]");
-        if ($a === '' || $b === '' || $a === $b) continue;
-        if (mb_strlen($a) < 2 || mb_strlen($b) < 2) continue; // skip 1-char noise
-        if (mb_strlen($a) > 60 || mb_strlen($b) > 60) continue; // skip long fragments
-        // Skip pure case changes ("yah" → "Yah") — capitalization preferences
-        // aren't useful as corrections and clutter the dictionary.
-        if (mb_strtolower($a) === mb_strtolower($b)) continue;
-        $upsert->execute([$a, $b]);
-    }
-}
+require_once __DIR__ . '/transcript-helpers.php'; // autoLearnCorrections()
 
 // ── GET: load transcript + job status ──
 if ($method === 'GET') {

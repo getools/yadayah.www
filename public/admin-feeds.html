@@ -1718,10 +1718,20 @@ function renderTranscriptRows(rows) {
         }
     });
 
-    // Auto-save: any edit to any input fires a debounced save
+    // Auto-save: only when focus leaves the input (blur). Keystrokes only
+    // update the "…editing" indicator. This prevents partially-typed words
+    // from being saved + auto-learned mid-edit.
     if (!tbody.dataset.autosaveBound) {
         tbody.addEventListener('input', function(e) {
-            if (e.target.tagName === 'INPUT') scheduleAutoSave();
+            if (e.target.tagName === 'INPUT') {
+                _savePending = true;
+                var st = document.getElementById('t-status');
+                if (st) st.textContent = '…editing';
+            }
+        });
+        // focusout bubbles (blur doesn't), so we can listen at the tbody level
+        tbody.addEventListener('focusout', function(e) {
+            if (e.target.tagName === 'INPUT' && _savePending) saveTranscript();
         });
         tbody.dataset.autosaveBound = '1';
     }
@@ -1930,19 +1940,18 @@ function renderLastResultNote(job) {
     if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(wrapper, toolbar);
 }
 
-// Auto-save: debounced bulk save when user edits any row.
-var _saveTimer = null;
+// Auto-save state. Saves are now triggered on focus-leave (focusout) of any
+// transcript input — see renderTranscriptRows. _savePending is set on input
+// and cleared inside saveTranscript so other code can check whether an
+// in-flight save is needed.
+var _saveTimer = null;        // legacy; kept for compatibility but unused
 var _savePending = false;
 
 function scheduleAutoSave() {
-    if (_saveTimer) clearTimeout(_saveTimer);
+    // Legacy entry point — used by the row delete button. Save immediately,
+    // since there's no input that will blur to trigger it.
     _savePending = true;
-    var statusEl = document.getElementById('t-status');
-    if (statusEl) statusEl.textContent = '…editing';
-    _saveTimer = setTimeout(function() {
-        _saveTimer = null;
-        saveTranscript();
-    }, 1000);
+    saveTranscript();
 }
 
 function saveTranscript() {
@@ -1977,16 +1986,12 @@ function saveTranscript() {
     });
 }
 
-// Done = flush any pending row save, save the validation, then close.
+// Done = flush any pending row save (focused field hasn't blurred yet), save
+// the validation, then close.
 function doneTranscript() {
-    var rowSave = Promise.resolve();
-    if (_saveTimer) {
-        clearTimeout(_saveTimer);
-        _saveTimer = null;
-        rowSave = saveTranscript();
-    } else if (_savePending) {
-        rowSave = new Promise(function(res){ setTimeout(res, 200); });
-    }
+    // If user clicked Done while focus was still in an input, that input's
+    // value hasn't been saved yet by focusout. Force a save up front.
+    var rowSave = _savePending ? saveTranscript() : Promise.resolve();
     var itemKey = _transcriptItemKey;
     var sel = document.getElementById('t-val-status');
     var newStatus = sel ? sel.value : null;
@@ -2056,7 +2061,7 @@ function switchTdTab(name) {
     document.getElementById('td-corrections').style.display = name === 'corrections' ? 'block' : 'none';
 }
 function loadGlossary() {
-    fetch(API + '/admin-transcript-dict.php?type=glossary', {credentials:'include'})
+    fetch(API + '/admin-transcript-dict.php?type=glossary&_=' + Date.now(), {credentials:'include', cache:'no-store'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             var el = document.getElementById('td-gloss-list');
@@ -2113,7 +2118,7 @@ function previewWhisperPrompt() {
     });
 }
 function loadCorrections() {
-    fetch(API + '/admin-transcript-dict.php?type=corrections', {credentials:'include'})
+    fetch(API + '/admin-transcript-dict.php?type=corrections&_=' + Date.now(), {credentials:'include', cache:'no-store'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             var el = document.getElementById('td-corr-list');
@@ -2333,11 +2338,13 @@ function srApply() {
         document.getElementById('sr-preview-list').innerHTML = '';
         srLoadCommon();
         srRefreshHistory();
+        // Refresh the open transcript popover so row text reflects the new state
+        if (_transcriptItemKey) loadTranscript();
     });
 }
 function srLoadCommon() {
     var el = document.getElementById('sr-common-list');
-    fetch(API + '/admin-transcript-dict.php?type=corrections', {credentials:'include'})
+    fetch(API + '/admin-transcript-dict.php?type=corrections&_=' + Date.now(), {credentials:'include', cache:'no-store'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (!d.items || !d.items.length) { el.innerHTML = '<div style="padding:14px;color:#999;text-align:center;">No saved patterns yet — bulk replacements you apply will appear here.</div>'; return; }
@@ -2413,6 +2420,7 @@ function srUndo() {
         document.getElementById('sr-preview-list').innerHTML = '';
         srRefreshHistory();
         srLoadCommon();
+        if (_transcriptItemKey) loadTranscript();
     });
 }
 function srRedo() {
@@ -2428,6 +2436,7 @@ function srRedo() {
         document.getElementById('sr-preview-list').innerHTML = '';
         srRefreshHistory();
         srLoadCommon();
+        if (_transcriptItemKey) loadTranscript();
     });
 }
 

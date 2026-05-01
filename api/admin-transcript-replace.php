@@ -10,6 +10,7 @@
  *     bumps yy_transcript_correction (auto-learn), returns affected row count
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/transcript-helpers.php'; // autoLearnCorrections()
 $user = requireAuth();
 $db = getDb();
 setCurrentUser($db, (int)$user['user_key']); // for revision triggers
@@ -158,12 +159,24 @@ if ($action === 'apply') {
         $db->prepare("UPDATE yy_transcript_bulk_replace SET bulk_replace_count = ? WHERE bulk_replace_key = ?")
            ->execute([$changed, $batchKey]);
 
-        // Auto-learn this as a correction so future fresh transcripts get the swap.
-        // Skip in regex mode — regex patterns don't make sense as literal corrections.
-        // Skip pure case changes — capitalization preferences shouldn't clutter the dictionary.
+        // Auto-learn into yy_transcript_correction. Two paths:
+        //   - Literal find/replace: store the (find, replace) pair as-is. One row,
+        //     count = number of rows changed.
+        //   - Regex/wildcard: store the actual concrete substitutions per row by
+        //     diffing old_text vs new_text token-by-token. Many rows possible.
+        // Pure case changes are skipped in both paths.
         $autoLearned = false;
         $isCaseOnly = mb_strtolower($find) === mb_strtolower($replace);
-        if (!$isRegex && !$isCaseOnly) {
+        if ($isCaseOnly) {
+            // skip — case-only doesn't belong in the dictionary
+        } elseif ($isRegex) {
+            // Per-row token diff captures the literal matched→replacement pairs
+            foreach ($rows as $r) {
+                if ($r['old_text'] === $r['new_text']) continue;
+                autoLearnCorrections($db, $r['old_text'], $r['new_text']);
+            }
+            $autoLearned = true;
+        } else {
             $db->prepare("
                 INSERT INTO yy_transcript_correction
                     (correction_wrong, correction_right, correction_count,
@@ -185,9 +198,9 @@ if ($action === 'apply') {
             'auto_learned' => $autoLearned,
             'batch_key' => $batchKey,
             'message' => 'Updated ' . $changed . ' row(s)'
-                . ($autoLearned ? '; pattern added to correction dictionary.'
-                   : ($isCaseOnly ? '. (Case-only change not added to dictionary.)'
-                                  : '. (Regex pattern not added to dictionary.)')),
+                . ($isCaseOnly ? '. (Case-only change not added to dictionary.)'
+                   : ($isRegex   ? '; concrete substitutions added to correction dictionary.'
+                                 : '; pattern added to correction dictionary.')),
         ]);
     } catch (Exception $e) {
         if ($db->inTransaction()) $db->rollBack();
