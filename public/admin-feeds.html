@@ -373,7 +373,7 @@ function transcribeBtnHtml(it) {
         bg = '#e8eaf6'; fg = '#31345A'; border = '#c5cae9';
         label = 'Transcribe'; title = 'No transcript yet — click to start';
     }
-    return '<button onclick="openTranscript(' + it.feed_item_key + ')" '
+    return '<button data-tx-key="' + it.feed_item_key + '" onclick="openTranscript(' + it.feed_item_key + ')" '
         + 'title="' + esc(title) + '" '
         + 'style="margin-top:4px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-size:0.7rem;padding:3px 8px;border-radius:4px;cursor:pointer;font-weight:600;">'
         + label + '</button>';
@@ -467,13 +467,13 @@ function loadItems(page) {
         var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
         var html = '<table class="feeds-table"><thead><tr>'
             + '<th>Thumb</th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" placeholder="Key..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_name\')">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
             + '<th>Page<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'category_title\')">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" placeholder="Filter..." style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_active_flag\')">Active' + iarr('feed_item_active_flag') + '<br><select id="filter-active" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.active=this.value;loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
             + '<th></th>'
@@ -528,14 +528,14 @@ function loadItems(page) {
         }
         document.getElementById('items-container').innerHTML = html;
         // Restore filter values after re-render
-        var rt = document.getElementById('filter-title'); if (rt) rt.value = _savedFilters.title;
-        var rtg = document.getElementById('filter-tags'); if (rtg) rtg.value = _savedFilters.tags;
-        var rc = document.getElementById('filter-category'); if (rc) rc.value = _savedFilters.category;
-        var rm = document.getElementById('filter-mp3'); if (rm) rm.value = _savedFilters.mp3;
-        var rff = document.getElementById('filter-feed'); if (rff) rff.value = _savedFilters.feed;
-        var rpf = document.getElementById('filter-page'); if (rpf) rpf.value = _savedFilters.page;
-        var ref = document.getElementById('filter-episode'); if (ref) ref.value = _savedFilters.episode;
-        var raf = document.getElementById('filter-active'); if (raf) raf.value = _savedFilters.active;
+        var rt = document.getElementById('filter-title'); if (rt) rt.value = _savedFilters.title || '';
+        var rtg = document.getElementById('filter-tags'); if (rtg) rtg.value = _savedFilters.tags || '';
+        var rc = document.getElementById('filter-category'); if (rc) rc.value = _savedFilters.category || '';
+        var rm = document.getElementById('filter-mp3'); if (rm) rm.value = _savedFilters.mp3 || '';
+        var rff = document.getElementById('filter-feed'); if (rff) rff.value = _savedFilters.feed || '';
+        var rpf = document.getElementById('filter-page'); if (rpf) rpf.value = _savedFilters.page || '';
+        var ref = document.getElementById('filter-episode'); if (ref) ref.value = _savedFilters.episode || '';
+        var raf = document.getElementById('filter-active'); if (raf) raf.value = _savedFilters.active || '';
         var rkf = document.getElementById('filter-key'); if (rkf) rkf.value = _savedFilters.key || '';
     });
 }
@@ -1315,11 +1315,20 @@ function closeTranscript() {
     _activeRowIdx = -1;
     _segmentSeconds = [];
     _transcriptItemKey = null;
-    // Refresh items list so the Transcribe button color reflects any
-    // validation-status change made inside the popover.
-    if (typeof _itemsLoaded !== 'undefined' && _itemsLoaded && typeof loadItems === 'function') {
-        loadItems(_itemsPage || 1);
-    }
+}
+
+function updateTranscribeButton(itemKey, newStatus) {
+    if (!itemKey || !_allItems) return;
+    var item = _allItems.find(function(it) { return it.feed_item_key == itemKey; });
+    if (!item) return;
+    item.transcript_validation_status = newStatus || null;
+    item.has_transcript = true;
+    var btn = document.querySelector('button[data-tx-key="' + itemKey + '"]');
+    if (!btn) return;
+    var tmp = document.createElement('span');
+    tmp.innerHTML = transcribeBtnHtml(item);
+    var fresh = tmp.firstChild;
+    if (fresh && btn.parentNode) btn.parentNode.replaceChild(fresh, btn);
 }
 
 // ── Time helpers ──
@@ -1737,7 +1746,12 @@ function doneTranscript() {
     } else if (_savePending) {
         rowSave = new Promise(function(res){ setTimeout(res, 200); });
     }
-    rowSave.then(saveValidation).then(closeTranscript);
+    var itemKey = _transcriptItemKey;
+    var sel = document.getElementById('t-val-status');
+    var newStatus = sel ? sel.value : null;
+    rowSave.then(saveValidation).then(function() {
+        updateTranscribeButton(itemKey, newStatus);
+    }).then(closeTranscript);
 }
 
 // ── Transcript Dictionary modal (glossary + corrections) ──
