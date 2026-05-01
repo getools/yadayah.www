@@ -2002,6 +2002,18 @@ function startRecordingForItem(itemKey) {
         return;
     }
     try { w.focus(); } catch (e) {}
+    // Watch for the popout closing so we can refresh the Recordings list —
+    // status (New/Partial/Complete) and recorded position may have changed.
+    var poll = setInterval(function() {
+        if (w.closed) {
+            clearInterval(poll);
+            // Only reload if the user is still on the Recordings tab.
+            var tab = document.getElementById('tab-recordings');
+            if (tab && tab.style.display !== 'none' && typeof loadRecordings === 'function') {
+                loadRecordings();
+            }
+        }
+    }, 1500);
 }
 function beginRecording() {
     var audioOnly = new MediaStream(_recState.stream.getAudioTracks());

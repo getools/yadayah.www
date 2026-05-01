@@ -192,10 +192,11 @@
             var dur = Math.floor(e.target.getDuration() || 0);
             if (dur > 0) $('time').textContent = (initialResumeSec > 0 ? fmt(initialResumeSec) : '0:00:00') + ' / ' + fmt(dur);
         } catch (err) {}
-        if (initialResumeSec > 0) {
-            setStatus('Seeking to ' + fmt(initialResumeSec) + '…');
-            try { e.target.seekTo(initialResumeSec, true); } catch (err) {}
-        }
+        // DELIBERATELY do not call seekTo() here. YT's seekTo(t, true) on an
+        // UNSTARTED player auto-starts playback — which would let video audio
+        // play out the speakers BEFORE the user has clicked Allow on the share
+        // prompt, meaning the first few seconds wouldn't be captured. The seek
+        // happens after permission is granted, in tryAutoStart() below.
         setStatus('Requesting tab share permission…');
         tryAutoStart();
     }
@@ -203,15 +204,26 @@
         var st = e && e.data;
         var rec = !!(recorder && recorder.state === 'recording');
         if (st === 1) {
-            if (rec) { updateControls(); return; }
+            if (rec) { setStatus('🔴 Recording — capturing tab audio…'); updateControls(); return; }
             if (suppressAutoStart) { suppressAutoStart = false; updateControls(); return; }
-            // Stream cached? Just begin recording without pause/replay.
-            if (stream && stream.getAudioTracks().length) {
+            // Stream cached and live? Just begin recording without re-prompt.
+            if (stream && stream.getAudioTracks().length
+                && stream.getAudioTracks()[0].readyState === 'live') {
                 beginRecording();
+                setStatus('🔴 Recording — capturing tab audio…');
                 updateControls();
                 return;
             }
-            // Otherwise pause, request permission, resume.
+            // No stream. If a prompt is pending or already shown once, pause
+            // immediately — playing audio that isn't being recorded would
+            // result in skipped audio in the saved MP3. The user has to click
+            // Continue Recording to retry.
+            if (streamAcquiring || streamPromptedOnce) {
+                try { ytPlayer.pauseVideo(); } catch (err) {}
+                return;
+            }
+            // First-time PLAYING with no stream: kick off the auto-start flow
+            // (which also pauses the video before awaiting the share dialog).
             tryAutoStart();
         } else if (st === 2) {
             if (rec) stopRecorderNow();
@@ -284,11 +296,29 @@
     // ── Recording ──
     async function tryAutoStart(opts) {
         if (recorder && recorder.state === 'recording') return;
+        // Defensive pause in case the player was started by some path other
+        // than ours (e.g. user clicking YT's play button while waiting).
+        try { ytPlayer.pauseVideo(); } catch (e) {}
         var s = await ensureStream(opts);
         if (!s) return;
+        // Re-check: a concurrent caller may have already started the recorder
+        // while we were awaiting the singleton promise.
+        if (recorder && recorder.state === 'recording') return;
         suppressAutoStart = true;
         beginRecording();
-        try { ytPlayer.setPlaybackRate(1); ytPlayer.playVideo(); } catch (e) {}
+        // Now that the recorder is capturing, seek to the resume point (if any)
+        // and start playback. seekTo(t, true) on an unstarted player triggers
+        // play implicitly — that's what we want here, since the recorder is
+        // already running so no audio is missed.
+        try {
+            ytPlayer.setPlaybackRate(1);
+            if (initialResumeSec > 0) {
+                ytPlayer.seekTo(initialResumeSec, true);
+                initialResumeSec = 0; // only seek once per popout session
+            } else {
+                ytPlayer.playVideo();
+            }
+        } catch (e) {}
         setTimeout(function(){ suppressAutoStart = false; updateControls(); }, 500);
     }
     function beginRecording() {
@@ -302,6 +332,10 @@
         recorder = rec;
         startedMs = Date.now();
         startCheckpointTimer();
+        // Authoritative status update so any stale prompt-related text
+        // ("Requesting tab share permission…", "Loading video…", etc.) is
+        // replaced once the recorder is actually running.
+        setStatus('🔴 Recording — capturing tab audio…');
         updateControls();
     }
     function startCheckpointTimer() {
