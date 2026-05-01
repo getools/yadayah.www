@@ -170,10 +170,7 @@ if (!$rows && $site === 'youtube') {
             foreach ($vttFiles as $f) @unlink($f);
             if (!$rows) $methodFailures[] = "yt_dlp_captions: VTT parsed but produced 0 rows";
         } else {
-            $captionErrLine = '';
-            if ($output && preg_match('/^ERROR:.*$/m', $output, $m)) $captionErrLine = $m[0];
-            $captionTail = $captionErrLine ?: substr(trim($output), -300);
-            $methodFailures[] = "yt_dlp_captions: yt-dlp produced no VTT — " . $captionTail;
+            $methodFailures[] = "yt_dlp_captions: yt-dlp produced no VTT — " . substr(trim($output), 0, 300);
         }
     }
 }
@@ -262,18 +259,21 @@ if (!$rows) {
                     $reason = 'video is private';
                 } elseif (stripos($haystack, 'video unavailable') !== false || stripos($haystack, 'has been removed') !== false) {
                     $reason = 'video is deleted or unavailable';
-                } elseif (stripos($haystack, 'age-restricted') !== false || stripos($haystack, 'age restricted') !== false || stripos($haystack, 'confirm your age') !== false) {
+                } elseif (stripos($haystack, 'age-restricted') !== false || stripos($haystack, 'age restricted') !== false) {
                     $reason = 'video is age-restricted';
-                } elseif (stripos($haystack, 'sign in to confirm') !== false || stripos($haystack, 'requires sign-in') !== false || stripos($haystack, 'sign in to watch') !== false) {
-                    $reason = 'video requires YouTube sign-in';
-                    $hint = ' [Fix: upload valid YouTube cookies to /tmp/youtube-cookies.txt via admin-cookies.php, or upload audio/VTT manually to /tmp/transcript_uploads/' . $itemKey . '.vtt]';
-                } elseif (stripos($haystack, 'only images are available') !== false || stripos($haystack, 'requested format is not available') !== false) {
-                    $reason = 'video has no accessible audio/video format (possibly members-only or live-only content)';
-                    $hint = ' [Fix: upload audio/VTT manually to /tmp/transcript_uploads/' . $itemKey . '.vtt]';
                 }
                 $methodFailures[] = "whisper_api: $reason$hint — " . $tail;
             } else {
-                updateJob($db, $jobKey, ['job_progress' => 70, 'job_message' => 'Transcribing via Whisper API…']);
+                // Estimate Whisper turnaround from audio file size. Whisper-1
+                // typically processes ~10-15× real-time; 64 kbps mp3 ≈ 8 KB/s,
+                // so ~6-8 seconds of API time per MB of audio. We round up and
+                // floor at 15s so very small files still show movement.
+                $audioSizeMB = filesize($audioPath) / 1024 / 1024;
+                $etaSeconds = max(15, (int)ceil($audioSizeMB * 8));
+                updateJob($db, $jobKey, [
+                    'job_progress' => 70,
+                    'job_message' => 'Transcribing via Whisper API… (ETA ~' . $etaSeconds . 's)',
+                ]);
                 $glossaryPrompt = buildGlossaryPrompt($db);
                 $whisperErr = '';
                 if (filesize($audioPath) > 24 * 1024 * 1024) {
@@ -484,8 +484,12 @@ function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, st
     $allRows = [];
     foreach ($chunks as $idx => $chunkPath) {
         bailIfCancelled($db, $jobKey, [$chunkDir]);
-        updateJob($db, $jobKey, ['job_progress' => 40 + (int)(40 * $idx / max(1, count($chunks))),
-                                  'job_message' => 'Transcribing chunk ' . ($idx + 1) . '/' . count($chunks) . '...']);
+        $chunkSizeMB = file_exists($chunkPath) ? filesize($chunkPath) / 1024 / 1024 : 5;
+        $chunkEta = max(10, (int)ceil($chunkSizeMB * 8));
+        updateJob($db, $jobKey, [
+            'job_progress' => 40 + (int)(40 * $idx / max(1, count($chunks))),
+            'job_message' => 'Transcribing chunk ' . ($idx + 1) . '/' . count($chunks) . '… (ETA ~' . $chunkEta . 's)',
+        ]);
         $chunkErr = '';
         $rows = whisperApiTranscribe($chunkPath, $apiKey, $prompt, $idx * $chunkSecs, $chunkErr);
         if (!$rows && $chunkErr) {

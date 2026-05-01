@@ -1238,6 +1238,7 @@ var _txJobStartMs = 0;        // wall-clock millis when we first saw running/pen
 var _txSmoothTimer = null;    // ticker that advances the bar between server polls
 var _txServerPct = 0;         // last % the server reported
 var _txServerPctAtMs = 0;     // wall-clock millis of that report
+var _txStageMsg = '';         // last seen job_message (used to detect stage changes)
 // Validation bookmark — auto-saved while playing so the user can pick up
 // where they left off when reviewing video against transcript.
 var _lastSavedBookmarkSec = 0;
@@ -1922,7 +1923,19 @@ function updateJobUI(job) {
             _txServerPct = srvPct;
             _txServerPctAtMs = Date.now();
         }
-        msg.textContent = (job.job_message || 'Working…') + etaSuffix(srvPct);
+        // If the worker emitted a per-stage ETA suffix like "(ETA ~45s)",
+        // parse it and reset the stage clock when the message changes so the
+        // smoother animates from the current % toward 95% over that window.
+        var newMsg = job.job_message || '';
+        var stageEtaMatch = newMsg.match(/\(ETA\s+~?(\d+)\s*s\)/i);
+        if (newMsg !== _txStageMsg) {
+            _txStageMsg = newMsg;
+            if (stageEtaMatch) {
+                _txEtaTotalSec = parseInt(stageEtaMatch[1], 10);
+                _txJobStartMs = Date.now(); // restart elapsed counter for this stage
+            }
+        }
+        msg.textContent = newMsg + etaSuffix(srvPct);
         // Server-driven bar for download (job_progress moves on its own as
         // yt-dlp prints percentages); smoothed bar for Whisper phase, where
         // job_progress is a single 70% jump that holds until rows return.
@@ -1940,6 +1953,7 @@ function updateJobUI(job) {
         stopSmoothTicker();
         _txJobStartMs = 0;
         _txServerPct = 0;
+        _txStageMsg = '';
         // Completed or failed — DON'T show the main progress block.
         // Show a small dismissible note above the toolbar so the user knows
         // the previous result without thinking it's still running.
