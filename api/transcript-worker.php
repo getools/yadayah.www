@@ -170,7 +170,10 @@ if (!$rows && $site === 'youtube') {
             foreach ($vttFiles as $f) @unlink($f);
             if (!$rows) $methodFailures[] = "yt_dlp_captions: VTT parsed but produced 0 rows";
         } else {
-            $methodFailures[] = "yt_dlp_captions: yt-dlp produced no VTT — " . substr(trim($output), 0, 300);
+            $captionErrLine = '';
+            if ($output && preg_match('/^ERROR:.*$/m', $output, $m)) $captionErrLine = $m[0];
+            $captionTail = $captionErrLine ?: substr(trim($output), -300);
+            $methodFailures[] = "yt_dlp_captions: yt-dlp produced no VTT — " . $captionTail;
         }
     }
 }
@@ -259,8 +262,14 @@ if (!$rows) {
                     $reason = 'video is private';
                 } elseif (stripos($haystack, 'video unavailable') !== false || stripos($haystack, 'has been removed') !== false) {
                     $reason = 'video is deleted or unavailable';
-                } elseif (stripos($haystack, 'age-restricted') !== false || stripos($haystack, 'age restricted') !== false) {
+                } elseif (stripos($haystack, 'age-restricted') !== false || stripos($haystack, 'age restricted') !== false || stripos($haystack, 'confirm your age') !== false) {
                     $reason = 'video is age-restricted';
+                } elseif (stripos($haystack, 'sign in to confirm') !== false || stripos($haystack, 'requires sign-in') !== false || stripos($haystack, 'sign in to watch') !== false) {
+                    $reason = 'video requires YouTube sign-in';
+                    $hint = ' [Fix: upload valid YouTube cookies to /tmp/youtube-cookies.txt via admin-cookies.php, or upload audio/VTT manually to /tmp/transcript_uploads/' . $itemKey . '.vtt]';
+                } elseif (stripos($haystack, 'only images are available') !== false || stripos($haystack, 'requested format is not available') !== false) {
+                    $reason = 'video has no accessible audio/video format (possibly members-only or live-only content)';
+                    $hint = ' [Fix: upload audio/VTT manually to /tmp/transcript_uploads/' . $itemKey . '.vtt]';
                 }
                 $methodFailures[] = "whisper_api: $reason$hint — " . $tail;
             } else {
