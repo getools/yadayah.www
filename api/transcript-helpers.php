@@ -3,7 +3,45 @@
  * Shared helpers for transcript editing flows. Used by:
  *   - admin-transcript.php       (manual per-row save → autoLearn)
  *   - admin-transcript-replace.php (bulk find/replace → autoLearn in regex mode)
+ *   - and the feed_item link helpers below
  */
+
+/**
+ * Return all feed_item_keys linked to $itemKey via yy_feed_item_link, EXCLUDING
+ * $itemKey itself. By default includes pending links (confirmed_flag IS NULL)
+ * AND confirmed links; explicitly-denied links (FALSE) are always excluded.
+ *
+ * Pass $confirmedOnly=true for callers that want strict membership only.
+ *
+ * Always returns an array of ints (possibly empty). Stable order (ascending).
+ */
+function getLinkedFeedItemKeys(PDO $db, int $itemKey, bool $confirmedOnly = false): array {
+    $confirmFilter = $confirmedOnly
+        ? "AND feed_item_link_confirmed_flag = TRUE"
+        : "AND feed_item_link_confirmed_flag IS DISTINCT FROM FALSE";
+    $stmt = $db->prepare("
+        SELECT feed_item_key_b AS k FROM yy_feed_item_link
+         WHERE feed_item_key_a = ? $confirmFilter
+        UNION
+        SELECT feed_item_key_a AS k FROM yy_feed_item_link
+         WHERE feed_item_key_b = ? $confirmFilter
+        ORDER BY k
+    ");
+    $stmt->execute([$itemKey, $itemKey]);
+    $out = [];
+    foreach ($stmt->fetchAll() as $r) $out[] = (int)$r['k'];
+    return $out;
+}
+
+/**
+ * Return [$itemKey, ...linked] for use directly in a `feed_item_key IN (...)` clause.
+ * Convenience wrapper around getLinkedFeedItemKeys() that includes the source key.
+ */
+function getFeedItemKeyCluster(PDO $db, int $itemKey, bool $confirmedOnly = false): array {
+    $linked = getLinkedFeedItemKeys($db, $itemKey, $confirmedOnly);
+    array_unshift($linked, $itemKey);
+    return array_values(array_unique($linked));
+}
 
 /**
  * Detect single-token substitutions between $oldText and $newText and

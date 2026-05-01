@@ -89,7 +89,7 @@ if ($method === 'POST') {
                     SET correction_active_flag = TRUE,
                         correction_case_sensitive = EXCLUDED.correction_case_sensitive,
                         correction_word_boundary = EXCLUDED.correction_word_boundary
-            ")->execute([$wrong, $right, !empty($data['case_sensitive']), !empty($data['word_boundary'])]);
+            ")->execute([$wrong, $right, (int)!empty($data['case_sensitive']), (int)!empty($data['word_boundary'])]);
             jsonResponse(['ok' => true]);
         }
         if ($action === 'toggle') {

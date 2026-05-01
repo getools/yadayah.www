@@ -66,14 +66,18 @@ if ($method === 'GET') {
     $item = $itemStmt->fetch();
     if (!$item) errorResponse('Item not found', 404);
 
-    // Get transcript rows
+    // Get transcript rows for this item AND any items linked to it via
+    // yy_feed_item_link (treat the cluster as one logical transcript so a
+    // duplicate-uploaded video automatically inherits the original's transcript).
+    $itemKeys = getFeedItemKeyCluster($db, $itemKey);
+    $placeholders = implode(',', array_fill(0, count($itemKeys), '?'));
     $rowsStmt = $db->prepare("
         SELECT feed_item_transcript_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort
         FROM yy_feed_item_transcript
-        WHERE feed_item_key = ?
+        WHERE feed_item_key IN ($placeholders)
         ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
     ");
-    $rowsStmt->execute([$itemKey]);
+    $rowsStmt->execute($itemKeys);
     $rows = $rowsStmt->fetchAll();
 
     // Convert intervals to display strings (HH:MM:SS)
