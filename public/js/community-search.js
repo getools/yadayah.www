@@ -73,7 +73,13 @@ CommunitySearch.search = function(query) {
     }
 
     Community.api(url).then(function(data) {
-        var results = data.results || [];
+        // API returns separate topics and replies arrays — merge them
+        var results = [];
+        (data.topics || []).forEach(function(r) { r.match_type = 'topic'; results.push(r); });
+        (data.replies || []).forEach(function(r) { r.match_type = 'reply'; results.push(r); });
+        // Fallback for any legacy shape
+        if (!results.length && data.results) results = data.results;
+
         var container = document.getElementById('search-results');
         if (!container) return;
 
@@ -86,12 +92,12 @@ CommunitySearch.search = function(query) {
         var html = '';
         results.forEach(function(r) {
             html += '<div class="search-result-item" onclick="window.location.hash=\'#topic/' + r.topic_key + '\';CommunitySearch.hideResults();">'
-                + '<div class="search-result-title">' + Community.esc(r.topic_title || r.title) + '</div>'
+                + '<div class="search-result-title">' + Community.esc(r.topic_title || r.title || '') + '</div>'
                 + '<div class="search-result-meta">'
-                + Community.esc(r.user_name_display || '') + ' &middot; ' + Community.timeAgo(r.topic_dtime || r.dtime)
+                + Community.esc(r.user_name_display || '') + ' &middot; ' + Community.timeAgo(r.topic_dtime || r.reply_dtime || r.dtime)
                 + (r.match_type === 'reply' ? ' &middot; <em>match in reply</em>' : '')
                 + '</div>'
-                + (r.snippet ? '<div class="search-result-snippet">' + Community.esc(r.snippet) + '</div>' : '')
+                + (r.snippet ? '<div class="search-result-snippet">' + r.snippet + '</div>' : '')
                 + '</div>';
         });
 
@@ -106,9 +112,11 @@ CommunitySearch.hideResults = function() {
     if (container) container.style.display = 'none';
 };
 
-// Init when DOM ready
-document.addEventListener('DOMContentLoaded', function() {
+// Init: handle both cases — DOM already ready or still loading
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { CommunitySearch.init(); });
+} else {
     CommunitySearch.init();
-});
+}
 
 })();
