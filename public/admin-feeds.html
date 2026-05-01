@@ -1310,6 +1310,11 @@ function closeTranscript() {
     _activeRowIdx = -1;
     _segmentSeconds = [];
     _transcriptItemKey = null;
+    // Refresh items list so the Transcribe button color reflects any
+    // validation-status change made inside the popover.
+    if (typeof _itemsLoaded !== 'undefined' && _itemsLoaded && typeof loadItems === 'function') {
+        loadItems(_itemsPage || 1);
+    }
 }
 
 // ── Time helpers ──

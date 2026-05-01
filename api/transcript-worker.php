@@ -193,7 +193,7 @@ if (!$rows) {
                 // Extract the actionable ERROR line if present; otherwise use last ~400 chars
                 // (yt-dlp emits progress on early lines and the real failure on the last).
                 $errLine = '';
-                if ($dlOutput && preg_match('/^ERROR:.*$/m', $dlOutput, $m)) $errLine = mb_substr($m[0], 0, 400);
+                if ($dlOutput && preg_match('/^ERROR:.*$/m', $dlOutput, $m)) $errLine = $m[0];
                 $tail = $errLine ?: substr(trim($dlOutput ?? ''), -400);
 
                 $reason = 'audio download failed';
@@ -241,7 +241,7 @@ if (!$rows) {
     updateJob($db, $jobKey, [
         'job_status' => 'failed',
         'job_progress' => 0,
-        'job_message' => mb_substr('Failed: ' . ($methodFailures[count($methodFailures)-1] ?? 'unknown'), 0, 500),
+        'job_message' => 'Failed: ' . ($methodFailures[count($methodFailures)-1] ?? 'unknown'),
         'job_error' => $detail,
         'job_completed_dtime' => date('c'),
     ]);
