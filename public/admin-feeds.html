@@ -99,6 +99,7 @@
         <button class="sub-tab active" onclick="switchFeedTab('sources')">Sources</button>
         <button class="sub-tab" onclick="switchFeedTab('pages')">Pages</button>
         <button class="sub-tab" onclick="switchFeedTab('items')">Items</button>
+        <button class="sub-tab" onclick="switchFeedTab('recordings')">Recordings</button>
     </div>
 
     <!-- Sources Tab -->
@@ -157,6 +158,43 @@
             </label>
         </div>
         <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
+    </div>
+
+    <!-- Recordings Tab — queue + batch process videos that don't have a transcript yet -->
+    <div id="tab-recordings" class="feed-tab" style="display:none;">
+        <div class="toolbar">
+            <span id="rec-count" class="feed-count"></span>
+            <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">per page
+                <select id="rec-per-page" onchange="loadRecordings(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="75">75</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="99999">All</option>
+                </select>
+            </label>
+            <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="margin-left:auto;background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
+            <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
+        </div>
+        <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
+        <table class="feeds-table" id="rec-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th style="width:36px;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
+                    <th style="width:100px;">Thumb</th>
+                    <th style="width:80px;">Key</th>
+                    <th>Title</th>
+                    <th style="width:90px;">Source</th>
+                    <th style="width:90px;">Duration</th>
+                    <th style="width:120px;">Last attempt</th>
+                </tr>
+            </thead>
+            <tbody id="rec-body"></tbody>
+        </table>
+        <div id="rec-empty" style="display:none;text-align:center;padding:30px;color:#888;">All current YouTube items already have a transcript — nothing to record.</div>
     </div>
 </div>
 
@@ -349,6 +387,7 @@ function switchFeedTab(tab) {
     document.getElementById('tab-' + tab).style.display = '';
     if (window.adminUI) adminUI.save('feeds', 'tab', tab);
     if (tab === 'items' && !_itemsLoaded) { _itemsLoaded = true; loadItems(1); }
+    if (tab === 'recordings') loadRecordings(1);
 }
 
 function populateItemsFeedFilter() {
@@ -1310,6 +1349,7 @@ function openTranscript(itemKey) {
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<button id="t-record-btn" onclick="startRecordWhileWatching()" title="Capture audio from this tab while the video plays (works without cookies). Browser will ask you to share this tab — check Share tab audio." style="background:#c00;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">🎙 Record</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3/M4A/VTT/SRT to use instead of downloading from YouTube" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Upload Audio/Captions</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
@@ -1372,6 +1412,15 @@ function closeTranscript() {
     if (_ytPlayer) {
         try { _ytPlayer.stopVideo(); _ytPlayer.destroy(); } catch (e) {}
         _ytPlayer = null;
+    }
+    // Tear down any active recording — we're not in batch mode here, so it's
+    // safe to release the screen-share stream entirely.
+    if (_recState && _recState.recorder && _recState.recorder.state === 'recording') {
+        try { _recState.recorder.stop(); } catch (e) {}
+    }
+    if (_recState && _recState.stream && _recState.mode !== 'batch') {
+        _recState.stream.getTracks().forEach(function(t){ t.stop(); });
+        _recState.stream = null;
     }
     _activeRowIdx = -1;
     _segmentSeconds = [];
@@ -1584,6 +1633,327 @@ function seekVideoTo(seconds) {
     }
     if (typeof _ytPlayer.seekTo !== 'function') return;
     try { _ytPlayer.seekTo(seconds, true); _ytPlayer.playVideo(); } catch (e) {}
+}
+
+// ── In-browser audio capture (no cookies / no proxy / no extension) ──
+// User clicks Record → browser asks them to share THIS tab + check "Share tab
+// audio" → we get a MediaStream and feed it to MediaRecorder while the YT
+// embed plays. When the video ends (YT IFrame onStateChange = 0 ENDED), we
+// stop the recorder, blob the chunks, and upload with auto_transcribe=1.
+//
+// Per browser policy, getDisplayMedia requires a user gesture, so single-item
+// recording is gated behind the Record button click. For batch processing
+// (Recordings sub-tab) the same MediaStream is reused for many videos so the
+// user only grants permission once.
+var _recState = {
+    stream: null, recorder: null, chunks: [], startedMs: 0,
+    durationTimer: null, mode: 'single', batchResolve: null
+};
+async function ensureCaptureStream(reuse) {
+    if (reuse && _recState.stream && _recState.stream.getAudioTracks().length) return _recState.stream;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert('Your browser does not support tab audio capture (getDisplayMedia).');
+        return null;
+    }
+    var stream;
+    try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: 'browser' },
+            audio: true,
+            // Browsers that support this still play audio locally so the user
+            // can hear playback while it records. We can revisit later.
+            preferCurrentTab: true
+        });
+    } catch (e) {
+        alert('Tab capture cancelled or denied: ' + (e.message || e));
+        return null;
+    }
+    if (!stream.getAudioTracks().length) {
+        alert('No audio track was captured. Make sure to check "Share tab audio" in the share dialog.');
+        stream.getTracks().forEach(function(t){ t.stop(); });
+        return null;
+    }
+    // We don't need the video track — kill it so we're not redrawing pixels.
+    stream.getVideoTracks().forEach(function(t){ t.stop(); });
+    // If user stops sharing via the browser-supplied bar, clean up.
+    stream.getAudioTracks()[0].addEventListener('ended', stopRecordWhileWatching);
+    _recState.stream = stream;
+    return stream;
+}
+async function startRecordWhileWatching() {
+    if (_recState.recorder && _recState.recorder.state === 'recording') {
+        if (!confirm('A recording is already in progress. Stop it?')) return;
+        stopRecordWhileWatching(); return;
+    }
+    _recState.mode = 'single';
+    var stream = await ensureCaptureStream(false);
+    if (!stream) return;
+    beginRecording();
+    if (_ytPlayer && typeof _ytPlayer.playVideo === 'function') {
+        try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (e) {}
+    }
+}
+function beginRecording() {
+    var audioOnly = new MediaStream(_recState.stream.getAudioTracks());
+    var mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    var rec = new MediaRecorder(audioOnly, { mimeType: mime });
+    _recState.chunks = [];
+    rec.ondataavailable = function(e){ if (e.data && e.data.size > 0) _recState.chunks.push(e.data); };
+    rec.onstop = function() { onRecorderStopped(); };
+    rec.start(1000);
+    _recState.recorder = rec;
+    _recState.startedMs = Date.now();
+    // Hook YT player end-of-video → stop recording
+    if (_ytPlayer && typeof _ytPlayer.addEventListener === 'function') {
+        try { _ytPlayer.addEventListener('onStateChange', onYtStateForRecording); } catch (e) {}
+    }
+    showRecordingUI(true);
+}
+function onYtStateForRecording(e) {
+    // YT.PlayerState.ENDED = 0
+    if ((e && e.data) === 0 && _recState.recorder && _recState.recorder.state === 'recording') {
+        stopRecordWhileWatching();
+    }
+}
+function stopRecordWhileWatching() {
+    if (!_recState.recorder) return;
+    if (_recState.recorder.state === 'recording') {
+        try { _recState.recorder.stop(); } catch (e) {}
+    } else {
+        onRecorderStopped();
+    }
+}
+async function onRecorderStopped() {
+    showRecordingUI(false);
+    var blob = new Blob(_recState.chunks, { type: 'audio/webm' });
+    _recState.chunks = [];
+    _recState.recorder = null;
+    var elapsed = Math.round((Date.now() - _recState.startedMs) / 1000);
+    var st = document.getElementById('t-status');
+    if (st) st.textContent = '⬆ Uploading ' + (blob.size/1024/1024).toFixed(1) + ' MB (' + elapsed + 's)…';
+
+    if (!_transcriptItemKey) return;
+    var fd = new FormData();
+    fd.append('item_key', String(_transcriptItemKey));
+    fd.append('file', blob, 'browser_recording_' + _transcriptItemKey + '.webm');
+    fd.append('auto_transcribe', '1');
+    try {
+        var res = await fetch(API + '/admin-transcript-upload.php', { method:'POST', credentials:'include', body: fd });
+        var d = await res.json();
+        if (d.error) {
+            if (st) st.textContent = '✗ ' + d.error;
+        } else {
+            if (st) st.textContent = '✓ Uploaded — transcribing…';
+            // Server already kicked off the worker via auto_transcribe=1
+            if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
+            _transcriptPollTimer = setInterval(pollJob, 2000);
+            var prog = document.getElementById('t-progress');
+            if (prog) prog.style.display = '';
+        }
+    } catch (err) {
+        if (st) st.textContent = '✗ Upload failed: ' + err.message;
+    }
+    // In single mode we tear the stream down here. Batch mode keeps it alive.
+    if (_recState.mode === 'single' && _recState.stream) {
+        _recState.stream.getTracks().forEach(function(t){ t.stop(); });
+        _recState.stream = null;
+    }
+    if (typeof _recState.batchResolve === 'function') {
+        var fn = _recState.batchResolve; _recState.batchResolve = null; fn();
+    }
+}
+function showRecordingUI(on) {
+    var btn = document.getElementById('t-record-btn');
+    if (!btn) return;
+    if (on) {
+        btn.textContent = '⬛ Stop Recording';
+        btn.style.background = '#444';
+        btn.onclick = stopRecordWhileWatching;
+        if (_recState.durationTimer) clearInterval(_recState.durationTimer);
+        _recState.durationTimer = setInterval(function() {
+            var s = Math.round((Date.now() - _recState.startedMs) / 1000);
+            var mm = String(Math.floor(s/60)).padStart(2,'0'), ss = String(s%60).padStart(2,'0');
+            btn.textContent = '⬛ Stop (' + mm + ':' + ss + ')';
+        }, 1000);
+    } else {
+        btn.textContent = '🎙 Record';
+        btn.style.background = '#c00';
+        btn.onclick = startRecordWhileWatching;
+        if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
+    }
+}
+
+// ── Recordings sub-tab: queue + batch process ──
+var _recItems = [];
+var _recBatchActive = false;
+var _recBatchAbort = false;
+
+function loadRecordings(page) {
+    var perPage = parseInt(document.getElementById('rec-per-page').value) || 50;
+    var url = API + '/admin-recordings.php?page=' + page + '&per_page=' + perPage + '&_=' + Date.now();
+    document.getElementById('rec-table').style.display = 'none';
+    document.getElementById('rec-empty').style.display = 'none';
+    document.getElementById('rec-count').textContent = 'Loading…';
+    fetch(url, {credentials:'include', cache:'no-store'})
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error) {
+                document.getElementById('rec-count').textContent = '✗ ' + d.error;
+                return;
+            }
+            _recItems = d.items || [];
+            renderRecordings(d);
+        });
+}
+
+function renderRecordings(d) {
+    var tbl = document.getElementById('rec-table');
+    var empty = document.getElementById('rec-empty');
+    var body = document.getElementById('rec-body');
+    var count = document.getElementById('rec-count');
+    count.textContent = d.total + ' video' + (d.total === 1 ? '' : 's') + ' need a transcript (page ' + d.page + ' of ' + d.total_pages + ')';
+    if (!_recItems.length) {
+        empty.style.display = '';
+        tbl.style.display = 'none';
+        return;
+    }
+    empty.style.display = 'none';
+    tbl.style.display = '';
+    var html = '';
+    _recItems.forEach(function(it) {
+        var thumb = it.feed_item_thumbnail
+            ? '<img src="' + esc(it.feed_item_thumbnail) + '" style="width:90px;height:auto;border-radius:3px;">'
+            : '';
+        var dur = it.feed_item_duration || (it.feed_item_duration_seconds ? formatSeconds(it.feed_item_duration_seconds) : '—');
+        var lastJob = '—';
+        if (it.last_job_status) {
+            var when = (it.last_job_dtime || '').substring(0, 10);
+            var color = it.last_job_status === 'failed' ? '#c00' : (it.last_job_status === 'cancelled' ? '#a36100' : '#666');
+            lastJob = '<span style="color:' + color + ';">' + esc(it.last_job_status) + '</span><br><span style="font-size:0.7rem;color:#999;">' + when + '</span>';
+        }
+        html += '<tr id="rec-row-' + it.feed_item_key + '">'
+            +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
+            +     '<td>' + thumb + '</td>'
+            +     '<td style="font-family:monospace;font-size:0.78rem;">' + it.feed_item_key + '</td>'
+            +     '<td><a href="' + esc(it.feed_item_url || '#') + '" target="_blank" rel="noopener" style="color:#31345A;">' + esc(it.title || '') + '</a></td>'
+            +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
+            +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
+            +     '<td style="font-size:0.78rem;">' + lastJob + '</td>'
+            +     '</tr>';
+    });
+    body.innerHTML = html;
+    document.getElementById('rec-select-all').checked = false;
+}
+function toggleAllRecordings(on) {
+    document.querySelectorAll('.rec-cb').forEach(function(cb){ cb.checked = !!on; });
+}
+function updateRecHeaderCb() {
+    var all = document.querySelectorAll('.rec-cb');
+    var checked = document.querySelectorAll('.rec-cb:checked');
+    document.getElementById('rec-select-all').checked = (all.length > 0 && checked.length === all.length);
+}
+function getSelectedRecordingKeys() {
+    return Array.prototype.map.call(document.querySelectorAll('.rec-cb:checked'), function(cb){ return parseInt(cb.value); });
+}
+
+async function processSelectedRecordings() {
+    var ids = getSelectedRecordingKeys();
+    if (!ids.length) { alert('Select at least one item with the checkboxes.'); return; }
+    var msg = 'Process ' + ids.length + ' video(s) sequentially?\n\n'
+        + 'Each video will play in the popover at 1× while audio is captured from this tab. '
+        + 'Total time ≈ sum of video durations.\n\n'
+        + 'On the first video your browser will ask you to share THIS tab — '
+        + 'check "Share tab audio". The same share session is reused for the rest, '
+        + 'so you only need to grant it once.\n\n'
+        + 'Stay on this page for the duration. Closing the page or navigating away will abort.';
+    if (!confirm(msg)) return;
+
+    _recBatchActive = true;
+    _recBatchAbort = false;
+    _recState.mode = 'batch';
+    document.getElementById('rec-process-btn').style.display = 'none';
+    document.getElementById('rec-stop-btn').style.display = '';
+    setRecBatchStatus('Asking for screen-share permission…');
+
+    var stream = await ensureCaptureStream(false);
+    if (!stream) {
+        cleanupBatch();
+        return;
+    }
+
+    for (var i = 0; i < ids.length; i++) {
+        if (_recBatchAbort) break;
+        var itemKey = ids[i];
+        setRecBatchStatus('Recording ' + (i+1) + ' of ' + ids.length + ' (item ' + itemKey + ')…');
+        markRecRow(itemKey, 'recording');
+        try {
+            await recordOneItemInline(itemKey);
+            markRecRow(itemKey, 'done');
+        } catch (e) {
+            markRecRow(itemKey, 'error', e.message || String(e));
+        }
+    }
+    cleanupBatch();
+    setRecBatchStatus(_recBatchAbort ? 'Stopped.' : '✓ Batch complete. Refreshing list…');
+    setTimeout(function(){ loadRecordings(1); }, 1500);
+}
+
+// Open the popover for one item, wait for the player to be ready, start
+// playback, record audio, wait for video end (or abort), upload+transcribe.
+function recordOneItemInline(itemKey) {
+    return new Promise(function(resolve, reject) {
+        // Open popover for this item
+        if (_transcriptItemKey !== itemKey) openTranscript(itemKey);
+        // Wait until the YT player is ready and reports a duration
+        var attempts = 0;
+        function whenReady() {
+            attempts++;
+            if (_recBatchAbort) return reject(new Error('aborted'));
+            if (_ytPlayer && typeof _ytPlayer.getDuration === 'function') {
+                var dur = 0;
+                try { dur = _ytPlayer.getDuration() || 0; } catch (e) {}
+                if (dur > 0) { return startBatchRecordingForCurrentItem(resolve, reject); }
+            }
+            if (attempts > 80) return reject(new Error('player did not load')); // ~24s
+            setTimeout(whenReady, 300);
+        }
+        whenReady();
+    });
+}
+function startBatchRecordingForCurrentItem(resolve, reject) {
+    _recState.batchResolve = resolve;
+    beginRecording();
+    try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (e) { return reject(e); }
+}
+
+function stopBatchRecording() {
+    _recBatchAbort = true;
+    if (_recState.recorder && _recState.recorder.state === 'recording') {
+        try { _recState.recorder.stop(); } catch (e) {}
+    }
+}
+function cleanupBatch() {
+    _recBatchActive = false;
+    _recState.mode = 'single';
+    document.getElementById('rec-process-btn').style.display = '';
+    document.getElementById('rec-stop-btn').style.display = 'none';
+    if (_recState.stream) {
+        _recState.stream.getTracks().forEach(function(t){ t.stop(); });
+        _recState.stream = null;
+    }
+}
+function setRecBatchStatus(msg) {
+    var el = document.getElementById('rec-batch-status');
+    if (!el) return;
+    el.style.display = '';
+    el.textContent = msg;
+}
+function markRecRow(itemKey, state, err) {
+    var row = document.getElementById('rec-row-' + itemKey);
+    if (!row) return;
+    if (state === 'recording') row.style.background = '#fff3a8';
+    else if (state === 'done')   { row.style.background = '#e7f5ee'; row.style.opacity = '0.6'; }
+    else if (state === 'error')  { row.style.background = '#fbe9e7'; row.title = err || ''; }
 }
 
 function loadTranscript() {
