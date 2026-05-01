@@ -1775,6 +1775,15 @@ function renderTranscriptRows(rows) {
                 if (st) st.textContent = '…editing';
             }
         });
+        // Focusing a transcript text input pauses the video — user is editing,
+        // continued playback would scroll past the row they're looking at.
+        // (focus doesn't bubble, focusin does.)
+        tbody.addEventListener('focusin', function(e) {
+            if (e.target.tagName !== 'INPUT' || e.target.dataset.field !== 'text') return;
+            if (_ytPlayer && typeof _ytPlayer.pauseVideo === 'function') {
+                try { _ytPlayer.pauseVideo(); } catch (err) {}
+            }
+        });
         // focusout bubbles (blur doesn't), so we can listen at the tbody level
         tbody.addEventListener('focusout', function(e) {
             if (e.target.tagName === 'INPUT' && _savePending) saveTranscript();
