@@ -1395,6 +1395,19 @@ function parseSegmentToSeconds(s) {
     if (parts.length === 2) return (+parts[0]||0)*60 + parseFloat(parts[1])||0;
     return parseFloat(s) || 0;
 }
+// Find the whole word containing the given caret position. Word characters:
+// letters, digits, underscore, plus straight + curly apostrophes (so "we're"
+// and "it's" stay intact). Returns the word substring, or '' if none.
+function findWordAt(value, pos) {
+    if (!value) return '';
+    var wordRe = /[\w’']/;
+    var start = Math.max(0, Math.min(pos, value.length));
+    var end = start;
+    while (start > 0 && wordRe.test(value[start - 1])) start--;
+    while (end < value.length && wordRe.test(value[end])) end++;
+    return value.substring(start, end);
+}
+
 function formatSeconds(s) {
     s = Math.max(0, Math.floor(s));
     var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), x = s%60;
@@ -1732,6 +1745,31 @@ function renderTranscriptRows(rows) {
         // focusout bubbles (blur doesn't), so we can listen at the tbody level
         tbody.addEventListener('focusout', function(e) {
             if (e.target.tagName === 'INPUT' && _savePending) saveTranscript();
+        });
+        // Double-click a word in the text column → open Search & Replace pre-filled.
+        // Browser default already selects the double-clicked word; we just read it.
+        tbody.addEventListener('dblclick', function(e) {
+            var input = e.target;
+            if (!input || input.tagName !== 'INPUT' || input.dataset.field !== 'text') return;
+            var sel = input.value.substring(input.selectionStart || 0, input.selectionEnd || 0);
+            sel = (sel || '').trim();
+            if (!sel) return;
+            openSearchReplaceWithFind(sel);
+        });
+        // Right-click a word → same flow. The browser positions the caret on
+        // mousedown (which precedes contextmenu), so selectionStart reflects
+        // the click position. If text is selected, use that; otherwise find
+        // the word boundaries around the caret.
+        tbody.addEventListener('contextmenu', function(e) {
+            var input = e.target;
+            if (!input || input.tagName !== 'INPUT' || input.dataset.field !== 'text') return;
+            e.preventDefault();
+            var s = input.selectionStart || 0;
+            var en = input.selectionEnd || 0;
+            var word = (en > s) ? input.value.substring(s, en) : findWordAt(input.value, s);
+            word = (word || '').trim();
+            if (!word) return;
+            openSearchReplaceWithFind(word);
         });
         tbody.dataset.autosaveBound = '1';
     }
@@ -2262,6 +2300,28 @@ function openSearchReplace() {
 function closeSearchReplace() {
     var ov = document.getElementById('sr-overlay');
     if (ov) ov.style.display = 'none';
+}
+// Open S&R modal with the find field pre-filled. Used by double-click on a
+// transcript word. Defaults: case-sensitive ON, whole-word ON, regex OFF.
+function openSearchReplaceWithFind(text) {
+    openSearchReplace();
+    // Modal HTML is created/shown synchronously above; nudge to next tick so
+    // we can safely set field values and run preview.
+    setTimeout(function() {
+        var f = document.getElementById('sr-find');
+        var r = document.getElementById('sr-replace');
+        var c = document.getElementById('sr-case');
+        var w = document.getElementById('sr-wb');
+        var x = document.getElementById('sr-regex');
+        if (f) f.value = text;
+        if (r) r.value = '';
+        if (c) c.checked = true;
+        if (w) w.checked = true;
+        if (x) x.checked = false;
+        srToggleRegexMode();
+        if (r) r.focus();      // jump to "Replace with" so user can type the fix
+        srPreview();
+    }, 30);
 }
 function srPayload() {
     var regex = document.getElementById('sr-regex').checked;

@@ -234,13 +234,15 @@ if ($method === 'POST') {
                 $insStmt->execute([$itemKey, $segment, $textTrim, $rowSort, $userKey]);
                 $newSegments[$segment] = $textTrim;
 
-                // Log diff
+                // Log diff to the audit log. We intentionally do NOT call
+                // autoLearnCorrections here — too many in-flight edits get
+                // captured as bogus correction pairs. Only Search & Replace
+                // operations (admin-transcript-replace.php) feed the dictionary.
                 $oldText = $existing[$segment] ?? null;
                 if ($oldText === null) {
                     $logStmt->execute([$itemKey, $segment, null, $textTrim, 'add', $userKey]);
                 } elseif ($oldText !== $textTrim) {
                     $logStmt->execute([$itemKey, $segment, $oldText, $textTrim, 'edit', $userKey]);
-                    autoLearnCorrections($db, $oldText, $textTrim);
                 }
             }
             // Log deletions
