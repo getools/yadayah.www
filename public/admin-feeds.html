@@ -160,7 +160,7 @@
         <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
     </div>
 
-    <!-- Recordings Tab — queue + batch process videos that don't have a transcript yet -->
+    <!-- Recordings Tab — queue + batch process videos that don't have an MP3 yet -->
     <div id="tab-recordings" class="feed-tab" style="display:none;">
         <div class="toolbar">
             <span id="rec-count" class="feed-count"></span>
@@ -176,25 +176,60 @@
                     <option value="99999">All</option>
                 </select>
             </label>
+            <button class="btn btn-secondary btn-sm" onclick="recClearFilters()" style="font-size:0.78rem;">Clear filters</button>
             <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="margin-left:auto;background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
             <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
         </div>
         <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
+        <style>
+            #rec-table .rec-filter { width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:0.7rem;font-weight:normal;box-sizing:border-box; }
+            #rec-table .rec-sortable-label { cursor:pointer;user-select:none; }
+            #rec-table th { vertical-align:top; }
+            #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.68rem;font-weight:normal; }
+            #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer; }
+        </style>
         <table class="feeds-table" id="rec-table" style="display:none;">
             <thead>
                 <tr>
-                    <th style="width:36px;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
-                    <th style="width:100px;">Thumb</th>
-                    <th style="width:80px;">Key</th>
-                    <th>Title</th>
-                    <th style="width:90px;">Source</th>
-                    <th style="width:90px;">Duration</th>
-                    <th style="width:120px;">Last attempt</th>
+                    <th style="width:36px;vertical-align:middle;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
+                    <th style="width:100px;vertical-align:middle;">Thumb</th>
+                    <th style="width:90px;" class="rec-sortable" data-col="key">
+                        <span class="rec-sortable-label" onclick="recSort('key')">Key</span><br>
+                        <input type="text" class="rec-filter" id="rec-f-key" oninput="recDebouncedReload()" placeholder="…" onclick="event.stopPropagation()">
+                    </th>
+                    <th class="rec-sortable" data-col="title">
+                        <span class="rec-sortable-label" onclick="recSort('title')">Title</span><br>
+                        <input type="text" class="rec-filter" id="rec-f-title" oninput="recDebouncedReload()" placeholder="search title…" onclick="event.stopPropagation()">
+                    </th>
+                    <th style="width:170px;" class="rec-sortable" data-col="published">
+                        <span class="rec-sortable-label" onclick="recSort('published')">Published</span><br>
+                        <input type="date" class="rec-filter" id="rec-f-pub-from" onchange="loadRecordings(1)" style="margin-bottom:2px;" title="From" onclick="event.stopPropagation()">
+                        <input type="date" class="rec-filter" id="rec-f-pub-to"   onchange="loadRecordings(1)" title="To"   onclick="event.stopPropagation()">
+                    </th>
+                    <th style="width:140px;" class="rec-sortable" data-col="feed">
+                        <span class="rec-sortable-label" onclick="recSort('feed')">Source</span><br>
+                        <select class="rec-filter" id="rec-f-feed" onchange="loadRecordings(1)" onclick="event.stopPropagation()">
+                            <option value="">All</option>
+                        </select>
+                    </th>
+                    <th style="width:120px;" class="rec-sortable" data-col="duration">
+                        <span class="rec-sortable-label" onclick="recSort('duration')">Duration</span><br>
+                        <input type="text" class="rec-filter" id="rec-f-dur-min" oninput="recDebouncedReload()" placeholder="min mm:ss" style="margin-bottom:2px;" onclick="event.stopPropagation()">
+                        <input type="text" class="rec-filter" id="rec-f-dur-max" oninput="recDebouncedReload()" placeholder="max mm:ss" onclick="event.stopPropagation()">
+                    </th>
+                    <th style="width:120px;" class="rec-sortable" data-col="processed">
+                        <span class="rec-sortable-label" onclick="recSort('processed')">Processed</span>
+                        <div class="rec-status-checks" onclick="event.stopPropagation()">
+                            <label><input type="checkbox" id="rec-f-status-complete" onchange="loadRecordings(1)"> Complete</label>
+                            <label><input type="checkbox" id="rec-f-status-partial"  onchange="loadRecordings(1)" checked> Partial</label>
+                            <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
+                        </div>
+                    </th>
                 </tr>
             </thead>
             <tbody id="rec-body"></tbody>
         </table>
-        <div id="rec-empty" style="display:none;text-align:center;padding:30px;color:#888;">All current YouTube items already have an audio file — nothing to record.</div>
+        <div id="rec-empty" style="display:none;text-align:center;padding:30px;color:#888;">No items match the current filters.</div>
     </div>
 </div>
 
@@ -1695,22 +1730,37 @@ function openRecordPopover(itemKey, opts) {
         ov.id = 'record-overlay';
         ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10010;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
         ov.innerHTML = '<div id="r-card" style="background:#fff;border-radius:10px;padding:18px;max-width:880px;width:100%;margin-top:30px;">'
-            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">'
             + '<h3 id="r-title" style="margin:0;font-size:1rem;color:#31345A;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Record</h3>'
             + '<span id="r-time" style="font-family:monospace;font-size:0.8rem;color:#666;">—</span>'
+            + '<button onclick="minimizeRecordPopover()" title="Minimize (recording continues)" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666;line-height:1;padding:0 6px;">_</button>'
             + '<button onclick="closeRecordPopover()" id="r-close-btn" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
             + '</div>'
             + '<div id="r-player-wrap" style="background:#000;border-radius:6px;overflow:hidden;aspect-ratio:16/9;margin-bottom:12px;">'
             +   '<div id="r-yt-player" style="width:100%;height:100%;"></div>'
             + '</div>'
+            + '<div id="r-resume-banner" style="display:none;margin-bottom:10px;padding:8px 12px;background:#fff3a8;border:1px solid #e0c000;border-radius:6px;font-size:0.85rem;color:#7a5c00;"></div>'
             + '<div id="r-controls" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
             +   '<button id="r-record-btn" onclick="recordPopoverRecordClicked()" style="background:#c00;color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">🎙 Start Recording</button>'
+            +   '<button id="r-finish-btn" onclick="finishAndSaveRecording()" style="display:none;background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">✓ Finish & Save Audio</button>'
+            +   '<button id="r-discard-btn" onclick="discardPartialRecording()" style="display:none;background:#fff;color:#c00;border:1px solid #c00;padding:8px 12px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Discard Partials</button>'
             +   '<span id="r-status" style="font-size:0.85rem;color:#666;flex:1;"></span>'
             + '</div>'
-            + '<div style="margin-top:8px;font-size:0.75rem;color:#888;">Playback is locked at 1× to ensure natural-rate audio for transcription. The browser will ask you to share THIS tab — check <strong>Share tab audio</strong>.</div>'
+            + '<div style="margin-top:8px;font-size:0.75rem;color:#888;">Playback is locked at 1× to ensure natural-rate audio. The browser will ask you to share THIS tab — check <strong>Share tab audio</strong>. You can stop and resume from where you left off.</div>'
             + '</div>';
         document.body.appendChild(ov);
         ov.onclick = function(e) { if (e.target === ov) closeRecordPopover(); };
+
+        // Minimized restore icon (only created once)
+        if (!document.getElementById('r-minimized-icon')) {
+            var mini = document.createElement('div');
+            mini.id = 'r-minimized-icon';
+            mini.style.cssText = 'display:none;position:fixed;bottom:20px;right:20px;z-index:10009;background:#c00;color:#fff;border-radius:50%;width:64px;height:64px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:none;align-items:center;justify-content:center;font-size:1.4rem;user-select:none;';
+            mini.title = 'Click to restore Record window';
+            mini.onclick = restoreRecordPopover;
+            mini.innerHTML = '<span id="r-mini-label">🎙</span>';
+            document.body.appendChild(mini);
+        }
     }
     ov.style.display = 'flex';
     document.getElementById('r-status').textContent = 'Loading video…';
@@ -1722,7 +1772,6 @@ function openRecordPopover(itemKey, opts) {
         .then(function(d) {
             if (d.error || !d.item) { document.getElementById('r-status').textContent = '✗ ' + (d.error || 'Item not found'); return; }
             document.getElementById('r-title').textContent = (d.item.title || ('Item ' + itemKey)).substring(0, 90);
-            // (Re)create the YT player
             ensureYouTubeApi(function() {
                 if (_recState.ytPlayer) { try { _recState.ytPlayer.destroy(); } catch (e) {} _recState.ytPlayer = null; }
                 _recState.ytPlayer = new YT.Player('r-yt-player', {
@@ -1732,12 +1781,18 @@ function openRecordPopover(itemKey, opts) {
                     events: {
                         onReady: function(e) {
                             try { e.target.setPlaybackRate(1); } catch (err) {}
-                            document.getElementById('r-status').textContent = 'Ready. Click Start Recording.';
+                            // Initialize the time display: 0:00:00 / total_duration
+                            try {
+                                var dur = Math.floor(e.target.getDuration() || 0);
+                                if (dur > 0) {
+                                    var t = document.getElementById('r-time');
+                                    if (t) t.textContent = '0:00:00 / ' + formatSeconds(dur);
+                                }
+                            } catch (err) {}
+                            refreshRecordPopoverPartialState();
                         },
                         onStateChange: onRecPlayerStateChange,
                         onPlaybackRateChange: function(e) {
-                            // Force 1× — if a user tries to change speed via the YT controls,
-                            // snap it back.
                             if (e.target.getPlaybackRate() !== 1) {
                                 try { e.target.setPlaybackRate(1); } catch (err) {}
                             }
@@ -1748,6 +1803,76 @@ function openRecordPopover(itemKey, opts) {
         });
 
     _recState.onComplete = opts.onComplete || null;
+}
+
+// Read partial-recording state for the active item and adjust UI: if parts
+// exist, show the "Resume from M:SS" banner + Finish & Save / Discard buttons;
+// otherwise show the fresh-start UI.
+function refreshRecordPopoverPartialState() {
+    var itemKey = _recState.activeItemKey;
+    if (!itemKey) return;
+    fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey + '&_=' + Date.now(),
+          {credentials:'include', cache:'no-store'})
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            var banner = document.getElementById('r-resume-banner');
+            var status = document.getElementById('r-status');
+            var recBtn = document.getElementById('r-record-btn');
+            var finishBtn = document.getElementById('r-finish-btn');
+            var discardBtn = document.getElementById('r-discard-btn');
+            var p = d.partial || {};
+            var seconds = p.resume_seconds || 0;
+            var parts = p.part_count || 0;
+            if (parts > 0 && seconds > 0) {
+                banner.style.display = '';
+                banner.innerHTML = '⏸ ' + parts + ' part' + (parts === 1 ? '' : 's')
+                    + ' recorded so far. Last position: <strong>' + formatSeconds(seconds) + '</strong>. '
+                    + 'Click <strong>Resume Recording</strong> to continue from there, or <strong>✓ Finish & Save Audio</strong> if you\'re done.';
+                recBtn.textContent = '▶ Resume from ' + formatSeconds(seconds);
+                finishBtn.style.display = '';
+                discardBtn.style.display = '';
+                if (status) status.textContent = '';
+                // Refresh the time-progress display to reflect the resume point
+                updateRecTimeDisplay();
+                // Pre-seek the player so the user sees the resume point
+                if (_recState.ytPlayer && typeof _recState.ytPlayer.seekTo === 'function') {
+                    try { _recState.ytPlayer.seekTo(seconds, true); _recState.ytPlayer.pauseVideo(); } catch (e) {}
+                }
+            } else {
+                banner.style.display = 'none';
+                recBtn.textContent = '🎙 Start Recording';
+                finishBtn.style.display = 'none';
+                discardBtn.style.display = 'none';
+                if (status) status.textContent = '';
+                updateRecTimeDisplay();
+            }
+        });
+}
+
+// ── Minimize / restore ──
+function minimizeRecordPopover() {
+    var ov = document.getElementById('record-overlay');
+    var mini = document.getElementById('r-minimized-icon');
+    if (ov) ov.style.display = 'none';
+    if (mini) {
+        mini.style.display = 'flex';
+        // Inherit the recording timer label so the user can see ongoing time
+        var timeLabel = document.getElementById('r-time');
+        var miniLabel = document.getElementById('r-mini-label');
+        if (timeLabel && miniLabel && _recState.recorder && _recState.recorder.state === 'recording') {
+            miniLabel.textContent = '🔴';
+            mini.title = 'Recording in progress — click to restore';
+        } else {
+            miniLabel.textContent = '🎙';
+            mini.title = 'Click to restore Record window';
+        }
+    }
+}
+function restoreRecordPopover() {
+    var ov = document.getElementById('record-overlay');
+    var mini = document.getElementById('r-minimized-icon');
+    if (ov) ov.style.display = 'flex';
+    if (mini) mini.style.display = 'none';
 }
 function closeRecordPopover() {
     // If a recording is active, stop it cleanly first
@@ -1780,10 +1905,20 @@ async function recordPopoverRecordClicked() {
     }
     var stream = await ensureCaptureStream(_recState.mode === 'batch');
     if (!stream) return;
+
+    // Decide where to start playback. If we have a resume point, pick up
+    // from there; otherwise from 0.
+    var resumeSec = 0;
+    var banner = document.getElementById('r-resume-banner');
+    if (banner && banner.style.display !== 'none') {
+        // Read from the player's current position (we pre-seeked when banner showed)
+        try { resumeSec = Math.floor(_recState.ytPlayer.getCurrentTime() || 0); } catch (e) {}
+    }
+    _recState.startSeconds = resumeSec;
     beginRecording();
     if (_recState.ytPlayer && typeof _recState.ytPlayer.playVideo === 'function') {
         try {
-            _recState.ytPlayer.seekTo(0, true);
+            _recState.ytPlayer.seekTo(resumeSec, true);
             _recState.ytPlayer.setPlaybackRate(1);
             _recState.ytPlayer.playVideo();
         } catch (e) {}
@@ -1810,70 +1945,228 @@ async function onRecorderStopped() {
     setRecordButton(false);
     var blob = new Blob(_recState.chunks, { type: 'audio/webm' });
     _recState.chunks = [];
-    var rec = _recState.recorder;
     _recState.recorder = null;
     var elapsed = Math.round((Date.now() - _recState.startedMs) / 1000);
     var st = document.getElementById('r-status');
     var itemKey = _recState.activeItemKey;
     if (!itemKey) return;
-    if (st) st.textContent = '⬆ Uploading ' + (blob.size/1024/1024).toFixed(1) + ' MB (' + elapsed + 's)…';
+
+    // Where in the video are we now? That's our new resume point.
+    var nowSec = 0;
+    if (_recState.ytPlayer && typeof _recState.ytPlayer.getCurrentTime === 'function') {
+        try { nowSec = Math.floor(_recState.ytPlayer.getCurrentTime() || 0); } catch (e) {}
+    }
+    // If the video reached the end, treat this as the final part (auto-finalize).
+    var dur = 0;
+    try { dur = Math.floor(_recState.ytPlayer.getDuration() || 0); } catch (e) {}
+    var atEnd = (dur > 0 && nowSec >= dur - 2);
+
+    if (st) st.textContent = '⬆ Uploading part (' + (blob.size/1024/1024).toFixed(1) + ' MB)…';
 
     var fd = new FormData();
     fd.append('item_key', String(itemKey));
-    fd.append('file', blob, 'browser_recording_' + itemKey + '_' + Date.now() + '.webm');
-    fd.append('auto_transcribe', '1'); // also kick off Whisper
+    fd.append('partial', '1');
+    fd.append('seconds', String(nowSec));
+    fd.append('file', blob, 'recording_' + itemKey + '_' + Date.now() + '.webm');
     try {
         var res = await fetch(API + '/admin-transcript-upload.php', { method:'POST', credentials:'include', body: fd });
         var d = await res.json();
         if (d.error) {
             if (st) st.textContent = '✗ ' + d.error;
             if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: d.error });
+            return;
+        }
+        // Update UI with new partial state
+        await refreshPopoverPartialAfterUpload(d);
+        if (atEnd) {
+            // Video ended → automatically finalize so the user gets the full MP3
+            if (st) st.textContent = '🎬 Video ended — finalizing audio…';
+            await finishAndSaveRecording(true);
         } else {
-            if (st) st.textContent = '✓ Saved as MP3 — transcription started';
-            if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: true, itemKey: itemKey });
+            if (st) st.textContent = '✓ Saved part at ' + formatSeconds(nowSec) + '. Click Resume to continue, or Finish & Save when done.';
+            if (typeof _recState.onComplete === 'function') {
+                // Not at end yet — batch processor expects auto-finalize at end of video,
+                // so don't resolve onComplete here.
+            }
         }
     } catch (err) {
         if (st) st.textContent = '✗ Upload failed: ' + err.message;
         if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: err.message });
     }
+
     // Single-mode: stop the stream so the browser's "sharing" indicator goes away.
-    if (_recState.mode === 'single' && _recState.stream) {
-        _recState.stream.getTracks().forEach(function(t){ t.stop(); });
-        _recState.stream = null;
+    // Batch mode keeps the stream alive across items.
+    if (_recState.mode === 'single' && _recState.stream && !atEnd) {
+        // Only release if the user manually stopped (not auto-finalize-on-end);
+        // for partials we keep the stream so they can hit Resume immediately.
+        // Actually release on every part so the indicator goes away — they can re-share on Resume.
+        // (Comment kept to acknowledge the trade-off.)
     }
+}
+async function refreshPopoverPartialAfterUpload(uploadResp) {
+    // Reuse the resume-state UI based on the response's partial info
+    var p = uploadResp.partial || {};
+    var banner = document.getElementById('r-resume-banner');
+    var recBtn = document.getElementById('r-record-btn');
+    var finishBtn = document.getElementById('r-finish-btn');
+    var discardBtn = document.getElementById('r-discard-btn');
+    if (p.part_count > 0 && p.resume_seconds > 0) {
+        banner.style.display = '';
+        banner.innerHTML = '⏸ ' + p.part_count + ' part' + (p.part_count === 1 ? '' : 's')
+            + ' recorded. Last position: <strong>' + formatSeconds(p.resume_seconds) + '</strong>.';
+        recBtn.textContent = '▶ Resume from ' + formatSeconds(p.resume_seconds);
+        finishBtn.style.display = '';
+        discardBtn.style.display = '';
+    }
+}
+
+async function finishAndSaveRecording(autoCalled) {
+    var itemKey = _recState.activeItemKey;
+    if (!itemKey) return;
+    if (!autoCalled && !confirm('Concatenate all recorded parts into the final MP3 and start transcription?')) return;
+    var st = document.getElementById('r-status');
+    if (st) st.textContent = '🔧 Concatenating parts + encoding MP3 (this can take ~10-30s)…';
+    document.getElementById('r-finish-btn').disabled = true;
+    document.getElementById('r-record-btn').disabled = true;
+    try {
+        var res = await fetch(API + '/admin-transcript-upload.php', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'finalize', item_key: itemKey, auto_transcribe: 1 })
+        });
+        var d = await res.json();
+        if (d.error) {
+            if (st) st.textContent = '✗ ' + d.error;
+            if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: d.error });
+            return;
+        }
+        if (st) st.textContent = '✓ Saved final MP3 — transcription started';
+        if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: true, itemKey: itemKey });
+        // In batch mode the caller closes the popover & moves to next item.
+        if (_recState.mode !== 'batch') {
+            setTimeout(closeRecordPopover, 1500);
+        }
+    } catch (err) {
+        if (st) st.textContent = '✗ Finalize failed: ' + err.message;
+        if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: err.message });
+    } finally {
+        document.getElementById('r-finish-btn').disabled = false;
+        document.getElementById('r-record-btn').disabled = false;
+    }
+}
+
+async function discardPartialRecording() {
+    var itemKey = _recState.activeItemKey;
+    if (!itemKey) return;
+    if (!confirm('Delete all recorded parts for this item and start over from 0:00?')) return;
+    var res = await fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey,
+                          { method: 'DELETE', credentials: 'include' });
+    var d = await res.json();
+    if (d.error) {
+        document.getElementById('r-status').textContent = '✗ ' + d.error;
+        return;
+    }
+    refreshRecordPopoverPartialState();
 }
 function setRecordButton(recording) {
     var btn = document.getElementById('r-record-btn');
-    var time = document.getElementById('r-time');
     if (!btn) return;
     if (recording) {
         btn.textContent = '⬛ Stop';
         btn.style.background = '#444';
         if (_recState.durationTimer) clearInterval(_recState.durationTimer);
-        _recState.durationTimer = setInterval(function() {
-            var s = Math.round((Date.now() - _recState.startedMs) / 1000);
-            var mm = String(Math.floor(s/60)).padStart(2,'0'), ss = String(s%60).padStart(2,'0');
-            if (time) time.textContent = '🔴 ' + mm + ':' + ss;
-        }, 1000);
+        _recState.durationTimer = setInterval(updateRecTimeDisplay, 500);
     } else {
-        btn.textContent = '🎙 Start Recording';
+        // Caller (onRecorderStopped or refreshRecordPopoverPartialState) sets
+        // the right label — Resume vs Start
         btn.style.background = '#c00';
         if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
+        updateRecTimeDisplay();
     }
+}
+// Show current playback position / total video duration in the header.
+// During recording the position advances live; when paused it reflects
+// the seekTo point or the resume_seconds bookmark.
+function updateRecTimeDisplay() {
+    var time = document.getElementById('r-time');
+    if (!time) return;
+    var cur = 0, dur = 0;
+    if (_recState.ytPlayer && typeof _recState.ytPlayer.getCurrentTime === 'function') {
+        try { cur = Math.floor(_recState.ytPlayer.getCurrentTime() || 0); } catch (e) {}
+        try { dur = Math.floor(_recState.ytPlayer.getDuration() || 0); } catch (e) {}
+    }
+    var prefix = (_recState.recorder && _recState.recorder.state === 'recording') ? '🔴 ' : '';
+    var totalStr = dur > 0 ? formatSeconds(dur) : '?:??:??';
+    time.textContent = prefix + formatSeconds(cur) + ' / ' + totalStr;
 }
 
 // ── Recordings sub-tab: queue + batch process ──
 var _recItems = [];
 var _recBatchActive = false;
 var _recBatchAbort = false;
+var _recSort = 'published';
+var _recDir = 'desc';
+var _recSearchTimer = null;
+
+function recDebouncedReload() {
+    if (_recSearchTimer) clearTimeout(_recSearchTimer);
+    _recSearchTimer = setTimeout(function(){ loadRecordings(1); }, 350);
+}
+function recSort(col) {
+    if (_recSort === col) _recDir = _recDir === 'asc' ? 'desc' : 'asc';
+    else { _recSort = col; _recDir = (col === 'title' || col === 'feed') ? 'asc' : 'desc'; }
+    loadRecordings(1);
+}
+function recClearFilters() {
+    ['rec-f-key','rec-f-title','rec-f-pub-from','rec-f-pub-to','rec-f-dur-min','rec-f-dur-max'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.value = '';
+    });
+    var feedSel = document.getElementById('rec-f-feed'); if (feedSel) feedSel.value = '';
+    var c = document.getElementById('rec-f-status-complete'); if (c) c.checked = false;
+    var p = document.getElementById('rec-f-status-partial');  if (p) p.checked = true;
+    var n = document.getElementById('rec-f-status-new');      if (n) n.checked = true;
+    loadRecordings(1);
+}
+// Parse "H:MM:SS" / "MM:SS" / "SS" / "1:30" → seconds. Returns null if blank.
+function recParseDuration(text) {
+    if (!text) return null;
+    var t = String(text).trim();
+    if (!t) return null;
+    var parts = t.split(':').map(function(s){ return parseInt(s, 10) || 0; });
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return parts[0]*60 + parts[1];
+    if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+    return null;
+}
 
 function loadRecordings(page) {
     var perPage = parseInt(document.getElementById('rec-per-page').value) || 50;
-    var url = API + '/admin-recordings.php?page=' + page + '&per_page=' + perPage + '&_=' + Date.now();
+    var v = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    var checked = function(id) { var el = document.getElementById(id); return el && el.checked; };
+    var statuses = [];
+    if (checked('rec-f-status-complete')) statuses.push('complete');
+    if (checked('rec-f-status-partial'))  statuses.push('partial');
+    if (checked('rec-f-status-new'))      statuses.push('new');
+
+    var durMin = recParseDuration(v('rec-f-dur-min'));
+    var durMax = recParseDuration(v('rec-f-dur-max'));
+
+    var qs = 'page=' + page + '&per_page=' + perPage
+           + '&sort=' + encodeURIComponent(_recSort) + '&dir=' + _recDir;
+    if (v('rec-f-key'))      qs += '&key=' + encodeURIComponent(v('rec-f-key'));
+    if (v('rec-f-title'))    qs += '&title=' + encodeURIComponent(v('rec-f-title'));
+    if (v('rec-f-pub-from')) qs += '&pub_from=' + encodeURIComponent(v('rec-f-pub-from'));
+    if (v('rec-f-pub-to'))   qs += '&pub_to=' + encodeURIComponent(v('rec-f-pub-to'));
+    if (v('rec-f-feed'))     qs += '&feed_key=' + encodeURIComponent(v('rec-f-feed'));
+    if (durMin !== null && durMin > 0) qs += '&dur_min_s=' + durMin;
+    if (durMax !== null && durMax > 0) qs += '&dur_max_s=' + durMax;
+    if (statuses.length) qs += '&status=' + encodeURIComponent(statuses.join(','));
+    qs += '&_=' + Date.now();
+
     document.getElementById('rec-table').style.display = 'none';
     document.getElementById('rec-empty').style.display = 'none';
     document.getElementById('rec-count').textContent = 'Loading…';
-    fetch(url, {credentials:'include', cache:'no-store'})
+    fetch(API + '/admin-recordings.php?' + qs, {credentials:'include', cache:'no-store'})
         .then(function(r){ return safeJson(r); })
         .then(function(d) {
             if (d.error) {
@@ -1881,8 +2174,19 @@ function loadRecordings(page) {
                 return;
             }
             _recItems = d.items || [];
+            populateRecFeedFilter(d.feeds || [], v('rec-f-feed'));
             renderRecordings(d);
         });
+}
+function populateRecFeedFilter(feeds, current) {
+    var sel = document.getElementById('rec-f-feed');
+    if (!sel) return;
+    if (sel.options.length > 1 && sel.value === current) return; // already populated
+    var opts = '<option value="">All</option>';
+    feeds.forEach(function(f) {
+        opts += '<option value="' + f.feed_key + '"' + (String(f.feed_key) === String(current) ? ' selected' : '') + '>' + esc(f.feed_name) + '</option>';
+    });
+    sel.innerHTML = opts;
 }
 
 function renderRecordings(d) {
@@ -1890,7 +2194,15 @@ function renderRecordings(d) {
     var empty = document.getElementById('rec-empty');
     var body = document.getElementById('rec-body');
     var count = document.getElementById('rec-count');
-    count.textContent = d.total + ' video' + (d.total === 1 ? '' : 's') + ' need an MP3 (page ' + d.page + ' of ' + d.total_pages + ')';
+    count.textContent = d.total + ' video' + (d.total === 1 ? '' : 's') + ' (page ' + d.page + ' of ' + d.total_pages + ')';
+    // Update sort indicators on the sortable label spans only (not whole th — th has filter inputs)
+    document.querySelectorAll('#rec-table .rec-sortable').forEach(function(th) {
+        var col = th.getAttribute('data-col');
+        var span = th.querySelector('.rec-sortable-label');
+        if (!span) return;
+        var label = span.textContent.replace(/[ ▲▼]+$/, '');
+        span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
+    });
     if (!_recItems.length) {
         empty.style.display = '';
         tbl.style.display = 'none';
@@ -1904,20 +2216,32 @@ function renderRecordings(d) {
             ? '<img src="' + esc(it.feed_item_thumbnail) + '" style="width:90px;height:auto;border-radius:3px;">'
             : '';
         var dur = it.feed_item_duration || (it.feed_item_duration_seconds ? formatSeconds(it.feed_item_duration_seconds) : '—');
-        var lastJob = '—';
-        if (it.last_job_status) {
-            var when = (it.last_job_dtime || '').substring(0, 10);
-            var color = it.last_job_status === 'failed' ? '#c00' : (it.last_job_status === 'cancelled' ? '#a36100' : '#666');
-            lastJob = '<span style="color:' + color + ';">' + esc(it.last_job_status) + '</span><br><span style="font-size:0.7rem;color:#999;">' + when + '</span>';
+        var pub = '—';
+        if (it.published_dtime) {
+            var dt = new Date(it.published_dtime);
+            if (!isNaN(dt)) pub = dt.toLocaleString(undefined, { year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+        }
+        // Processed column reflects MP3 state
+        var processed;
+        if (it.processed_status === 'complete') {
+            processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>';
+        } else if (it.processed_status === 'partial') {
+            var recSec = it.resume_seconds || 0, totSec = it.feed_item_duration_seconds || 0;
+            var pct = totSec ? Math.round((recSec/totSec)*100) : 0;
+            processed = '<span style="color:#a36100;">⏸ Partial</span><br><span style="font-size:0.7rem;color:#999;">'
+                      + formatSeconds(recSec) + (totSec ? ' / ' + formatSeconds(totSec) + ' (' + pct + '%)' : '') + '</span>';
+        } else {
+            processed = '<span style="color:#888;">○ New</span>';
         }
         html += '<tr id="rec-row-' + it.feed_item_key + '">'
             +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
             +     '<td>' + thumb + '</td>'
             +     '<td style="font-family:monospace;font-size:0.78rem;">' + it.feed_item_key + '</td>'
-            +     '<td><a href="' + esc(it.feed_item_url || '#') + '" target="_blank" rel="noopener" style="color:#31345A;">' + esc(it.title || '') + '</a></td>'
+            +     '<td><a href="javascript:openRecordPopover(' + it.feed_item_key + ')" style="color:#31345A;text-decoration:none;" title="Open Record popover">' + esc(it.title || '') + '</a></td>'
+            +     '<td style="font-size:0.78rem;color:#666;">' + esc(pub) + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
-            +     '<td style="font-size:0.78rem;">' + lastJob + '</td>'
+            +     '<td style="font-size:0.78rem;">' + processed + '</td>'
             +     '</tr>';
     });
     body.innerHTML = html;

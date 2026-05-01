@@ -1,34 +1,45 @@
 <?php
 /**
- * Upload a pre-fetched audio file or caption file for a feed item.
+ * Audio + caption upload endpoint for transcript pipeline.
  *
- * GET ?item_key=N            — return the current uploaded file's name + size, if any
- * POST multipart {item_key, file} — write to /tmp/transcript_uploads/{item_key}.{ext}
- * DELETE ?item_key=N         — wipe any uploaded file for this item
+ * GET ?item_key=N
+ *   Returns current state: ephemeral caption file (if any), durable audio
+ *   pointer (yy_feed_item.feed_item_audio_file), partial-recording state
+ *   (resume_seconds + parts list).
  *
- * Accepted extensions: vtt, srt (captions), mp3, m4a, opus, wav, ogg (audio).
- * The transcript-worker prefers files in that directory over yt-dlp for the
- * given item_key.
+ * POST multipart {item_key, file [, partial=1, seconds=N] [, auto_transcribe=1]}
+ *   - partial=1: append the file as the next recording part under
+ *     /u/audio/parts/audio_{key}_part_{N}.webm; update
+ *     yy_feed_item.feed_item_audio_resume_seconds to seconds.
+ *   - default (no partial): single complete upload; replaces the durable
+ *     audio file at /u/audio/audio_{key}_{ts}.{ext}, clears any partial state.
+ *   - auto_transcribe=1: kick off the worker after the upload lands.
+ *
+ * POST {action: 'finalize', item_key, auto_transcribe?}
+ *   Concatenates all parts via ffmpeg, transcodes to MP3, replaces
+ *   feed_item_audio_file, clears resume state, deletes parts.
+ *
+ * DELETE ?item_key=N
+ *   Wipes captions, parts, durable audio, and clears DB pointer +
+ *   resume_seconds.
  */
 require_once __DIR__ . '/config.php';
 $user = requireAuth();
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Caption files (VTT/SRT) still go to the ephemeral /tmp/ folder for the
-// worker's Method 1 path. Audio files now go to a durable public folder
-// and the path is recorded in yy_feed_item.feed_item_audio_file so the
-// item is permanently associated with its source audio.
 $UPLOAD_DIR     = sys_get_temp_dir() . '/transcript_uploads';        // captions only
-$AUDIO_DIR_ABS  = dirname(__DIR__) . '/public/u/audio';              // host: /opt/yada-www/public/u/audio
-$AUDIO_DIR_REL  = 'u/audio';                                         // stored in DB
+$AUDIO_DIR_ABS  = dirname(__DIR__) . '/public/u/audio';
+$AUDIO_DIR_REL  = 'u/audio';
+$PARTS_DIR_ABS  = $AUDIO_DIR_ABS . '/parts';
 $AUDIO_EXT      = ['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'];
 $CAPTION_EXT    = ['vtt', 'srt'];
 $ALLOWED_EXT    = array_merge($AUDIO_EXT, $CAPTION_EXT);
 
-if (!is_dir($UPLOAD_DIR)) @mkdir($UPLOAD_DIR, 0775, true);
+if (!is_dir($UPLOAD_DIR))   @mkdir($UPLOAD_DIR, 0775, true);
 if (!is_dir($AUDIO_DIR_ABS)) @mkdir($AUDIO_DIR_ABS, 0775, true);
+if (!is_dir($PARTS_DIR_ABS)) @mkdir($PARTS_DIR_ABS, 0775, true);
 
-function existingFiles(string $dir, int $itemKey): array {
+function existingCaptionFiles(string $dir, int $itemKey): array {
     $files = [];
     foreach (glob("$dir/{$itemKey}.*") as $f) {
         if (is_file($f)) {
@@ -58,17 +69,146 @@ function durableAudioInfo(PDO $db, int $itemKey): ?array {
     ];
 }
 
+function listParts(string $dir, int $itemKey): array {
+    $parts = [];
+    foreach (glob("$dir/audio_{$itemKey}_part_*.webm") as $f) {
+        if (preg_match('/_part_(\d+)\.webm$/', $f, $m)) {
+            $parts[(int)$m[1]] = $f;
+        }
+    }
+    ksort($parts);
+    return $parts; // [n => abs_path, ...]
+}
+
+function partialState(PDO $db, string $partsDir, int $itemKey): array {
+    $parts = listParts($partsDir, $itemKey);
+    $sizes = 0;
+    foreach ($parts as $f) $sizes += filesize($f);
+    $stmt = $db->prepare("SELECT feed_item_audio_resume_seconds FROM yy_feed_item WHERE feed_item_key = ?");
+    $stmt->execute([$itemKey]);
+    $resumeSec = $stmt->fetchColumn();
+    return [
+        'part_count' => count($parts),
+        'parts_size' => $sizes,
+        'resume_seconds' => $resumeSec === null || $resumeSec === false ? null : (int)$resumeSec,
+    ];
+}
+
+function spawnTranscribeJob(PDO $db, int $itemKey, int $userKey): ?int {
+    $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW() WHERE feed_item_key = ? AND job_status IN ('pending', 'running')")
+       ->execute([$itemKey]);
+    $jobStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_job (feed_item_key, job_status, job_message, user_key) VALUES (?, 'pending', 'Auto-triggered after upload', ?) RETURNING feed_item_transcript_job_key");
+    $jobStmt->execute([$itemKey, $userKey]);
+    $jobKey = (int)$jobStmt->fetchColumn();
+    $workerScript = __DIR__ . '/transcript-worker.php';
+    if (file_exists($workerScript)) {
+        $logFile = sys_get_temp_dir() . '/transcript_' . $jobKey . '.log';
+        $cmd = "nohup php " . escapeshellarg($workerScript) . " " . escapeshellarg((string)$jobKey)
+             . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null & echo $!";
+        $pidOut = [];
+        exec($cmd, $pidOut);
+        $pid = (int)($pidOut[0] ?? 0);
+        if ($pid > 0) {
+            $db->prepare("UPDATE yy_feed_item_transcript_job SET job_worker_pid = ? WHERE feed_item_transcript_job_key = ?")
+               ->execute([$pid, $jobKey]);
+        }
+    }
+    return $jobKey;
+}
+
 if ($method === 'GET') {
     $itemKey = (int)($_GET['item_key'] ?? 0);
     if (!$itemKey) errorResponse('item_key required');
     $db = getDb();
     jsonResponse([
-        'files' => existingFiles($UPLOAD_DIR, $itemKey),
+        'files' => existingCaptionFiles($UPLOAD_DIR, $itemKey),
         'audio' => durableAudioInfo($db, $itemKey),
+        'partial' => partialState($db, $PARTS_DIR_ABS, $itemKey),
     ]);
 }
 
 if ($method === 'POST') {
+    $db = getDb();
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+
+    // JSON body for non-upload actions (e.g. finalize)
+    if (stripos($contentType, 'application/json') !== false) {
+        $data = json_decode(file_get_contents('php://input'), true) ?: [];
+        $action = $data['action'] ?? '';
+        $itemKey = (int)($data['item_key'] ?? 0);
+        if (!$itemKey) errorResponse('item_key required');
+
+        if ($action === 'finalize') {
+            $parts = listParts($PARTS_DIR_ABS, $itemKey);
+            if (!$parts) errorResponse('No parts to finalize');
+            $stamp = time();
+            $finalRel = $AUDIO_DIR_REL . "/audio_{$itemKey}_{$stamp}.mp3";
+            $finalAbs = $AUDIO_DIR_ABS . "/audio_{$itemKey}_{$stamp}.mp3";
+
+            // Build ffmpeg concat list file
+            $listPath = sys_get_temp_dir() . "/concat_{$itemKey}_{$stamp}.txt";
+            $listLines = [];
+            foreach ($parts as $f) $listLines[] = "file '" . str_replace("'", "'\\''", $f) . "'";
+            file_put_contents($listPath, implode("\n", $listLines) . "\n");
+
+            // Concat (no re-encode for matching webm/opus) → intermediate webm,
+            // then transcode to mp3 for portability. Two-pass keeps codec
+            // boundaries clean across parts.
+            $intermediate = sys_get_temp_dir() . "/concat_{$itemKey}_{$stamp}.webm";
+            $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
+            if (!$ffmpeg) errorResponse('ffmpeg not available');
+            $cmd1 = escapeshellcmd($ffmpeg) . ' -y -f concat -safe 0 -i ' . escapeshellarg($listPath)
+                  . ' -c copy ' . escapeshellarg($intermediate) . ' 2>&1';
+            shell_exec($cmd1);
+            if (!file_exists($intermediate) || filesize($intermediate) < 1000) {
+                @unlink($listPath);
+                errorResponse('ffmpeg concat failed');
+            }
+            $cmd2 = escapeshellcmd($ffmpeg) . ' -y -i ' . escapeshellarg($intermediate)
+                  . ' -codec:a libmp3lame -qscale:a 4 ' . escapeshellarg($finalAbs) . ' 2>&1';
+            shell_exec($cmd2);
+            @unlink($intermediate);
+            @unlink($listPath);
+            if (!file_exists($finalAbs) || filesize($finalAbs) < 1000) {
+                errorResponse('ffmpeg transcode to mp3 failed');
+            }
+            @chmod($finalAbs, 0664);
+
+            // Wipe prior audio file (DB pointer)
+            $prevStmt = $db->prepare("SELECT feed_item_audio_file FROM yy_feed_item WHERE feed_item_key = ?");
+            $prevStmt->execute([$itemKey]);
+            $prev = $prevStmt->fetchColumn();
+            if ($prev) {
+                $prevAbs = dirname(__DIR__) . '/public/' . ltrim($prev, '/');
+                if (is_file($prevAbs)) @unlink($prevAbs);
+            }
+
+            // Update DB: set new path, clear resume state
+            $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = ?, feed_item_audio_resume_seconds = NULL WHERE feed_item_key = ?")
+               ->execute([$finalRel, $itemKey]);
+
+            // Delete parts
+            foreach ($parts as $f) @unlink($f);
+
+            $jobKey = null;
+            if (!empty($data['auto_transcribe'])) {
+                $jobKey = spawnTranscribeJob($db, $itemKey, $user['user_key']);
+            }
+            logMonitorEvent('transcript_upload', 'info',
+                'Finalized recording for item ' . $itemKey . ' (' . count($parts) . ' parts → '
+                . round(filesize($finalAbs)/1024/1024, 2) . ' MB MP3)',
+                'by user ' . ($user['user_code'] ?? '?'), true);
+            jsonResponse([
+                'ok' => true,
+                'audio' => durableAudioInfo($db, $itemKey),
+                'partial' => partialState($db, $PARTS_DIR_ABS, $itemKey),
+                'transcribe_job_key' => $jobKey,
+            ]);
+        }
+        errorResponse('Unknown action');
+    }
+
+    // Multipart upload
     $itemKey = (int)($_POST['item_key'] ?? 0);
     if (!$itemKey) errorResponse('item_key required');
     if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
@@ -83,18 +223,36 @@ if ($method === 'POST') {
     }
     if ($size > 500 * 1024 * 1024) errorResponse('File too large (>500MB)');
 
-    $db = getDb();
     $isAudio = in_array($ext, $AUDIO_EXT, true);
+    $isPartial = !empty($_POST['partial']);
+    $partialSeconds = (int)($_POST['seconds'] ?? 0);
+
+    if ($isAudio && $isPartial) {
+        // Append as next part. Browser captures webm so we save as .webm
+        // regardless of inbound extension; ffmpeg will read it correctly.
+        $existing = listParts($PARTS_DIR_ABS, $itemKey);
+        $next = $existing ? max(array_keys($existing)) + 1 : 1;
+        $partAbs = $PARTS_DIR_ABS . "/audio_{$itemKey}_part_{$next}.webm";
+        if (!@move_uploaded_file($tmp, $partAbs)) errorResponse('Failed to write part: ' . $partAbs);
+        @chmod($partAbs, 0664);
+        $db->prepare("UPDATE yy_feed_item SET feed_item_audio_resume_seconds = ? WHERE feed_item_key = ?")
+           ->execute([$partialSeconds, $itemKey]);
+        logMonitorEvent('transcript_upload', 'info',
+            'Partial recording part ' . $next . ' for item ' . $itemKey . ' (' . $partialSeconds . 's, '
+            . round($size/1024/1024, 2) . ' MB)',
+            'by user ' . ($user['user_code'] ?? '?'), true);
+        jsonResponse([
+            'ok' => true,
+            'partial' => partialState($db, $PARTS_DIR_ABS, $itemKey),
+        ]);
+    }
 
     if ($isAudio) {
-        // Durable storage + DB association. Filename includes timestamp so
-        // re-recording produces a new file (old reference is overwritten in DB
-        // and the prior file is unlinked).
+        // Single-shot full upload — replaces existing audio + clears any partials
         $stamp = time();
         $relPath  = $AUDIO_DIR_REL . "/audio_{$itemKey}_{$stamp}.{$ext}";
         $absPath  = $AUDIO_DIR_ABS . "/audio_{$itemKey}_{$stamp}.{$ext}";
 
-        // Remove any prior audio file for this item (keep DB consistent)
         $prevStmt = $db->prepare("SELECT feed_item_audio_file FROM yy_feed_item WHERE feed_item_key = ?");
         $prevStmt->execute([$itemKey]);
         $prev = $prevStmt->fetchColumn();
@@ -102,16 +260,16 @@ if ($method === 'POST') {
             $prevAbs = dirname(__DIR__) . '/public/' . ltrim($prev, '/');
             if (is_file($prevAbs)) @unlink($prevAbs);
         }
-
-        if (!@move_uploaded_file($tmp, $absPath)) {
-            errorResponse('Failed to write ' . $absPath);
-        }
+        if (!@move_uploaded_file($tmp, $absPath)) errorResponse('Failed to write ' . $absPath);
         @chmod($absPath, 0664);
 
-        $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = ? WHERE feed_item_key = ?")
+        // Wipe any leftover parts (this upload supersedes them)
+        foreach (listParts($PARTS_DIR_ABS, $itemKey) as $f) @unlink($f);
+
+        $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = ?, feed_item_audio_resume_seconds = NULL WHERE feed_item_key = ?")
            ->execute([$relPath, $itemKey]);
     } else {
-        // Captions still ephemeral — used only as Method 1 input by the worker.
+        // Captions still ephemeral
         foreach (glob("$UPLOAD_DIR/{$itemKey}.*") as $old) @unlink($old);
         $dest = "$UPLOAD_DIR/{$itemKey}.{$ext}";
         if (!@move_uploaded_file($tmp, $dest)) errorResponse('Failed to write ' . $dest);
@@ -123,36 +281,15 @@ if ($method === 'POST') {
         'by user ' . ($user['user_code'] ?? '?'), true);
 
     $jobKey = null;
-    // If the caller asked, kick off transcription immediately. Used by the
-    // browser extension's live-mode so the user doesn't have to switch tabs
-    // and click "Transcribe Audio" after the audio finishes uploading.
     if (!empty($_POST['auto_transcribe'])) {
-        $db = getDb();
-        // Cancel any other in-flight job for this item
-        $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW() WHERE feed_item_key = ? AND job_status IN ('pending', 'running')")
-           ->execute([$itemKey]);
-        $jobStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_job (feed_item_key, job_status, job_message, user_key) VALUES (?, 'pending', 'Auto-triggered after upload', ?) RETURNING feed_item_transcript_job_key");
-        $jobStmt->execute([$itemKey, $user['user_key']]);
-        $jobKey = (int)$jobStmt->fetchColumn();
-        $workerScript = __DIR__ . '/transcript-worker.php';
-        if (file_exists($workerScript)) {
-            $logFile = sys_get_temp_dir() . '/transcript_' . $jobKey . '.log';
-            $cmd = "nohup php " . escapeshellarg($workerScript) . " " . escapeshellarg((string)$jobKey)
-                 . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null & echo $!";
-            $pidOut = [];
-            exec($cmd, $pidOut);
-            $pid = (int)($pidOut[0] ?? 0);
-            if ($pid > 0) {
-                $db->prepare("UPDATE yy_feed_item_transcript_job SET job_worker_pid = ? WHERE feed_item_transcript_job_key = ?")
-                   ->execute([$pid, $jobKey]);
-            }
-        }
+        $jobKey = spawnTranscribeJob($db, $itemKey, $user['user_key']);
     }
 
     jsonResponse([
         'ok' => true,
-        'files' => existingFiles($UPLOAD_DIR, $itemKey),
+        'files' => existingCaptionFiles($UPLOAD_DIR, $itemKey),
         'audio' => durableAudioInfo($db, $itemKey),
+        'partial' => partialState($db, $PARTS_DIR_ABS, $itemKey),
         'transcribe_job_key' => $jobKey,
     ]);
 }
@@ -161,9 +298,8 @@ if ($method === 'DELETE') {
     $itemKey = (int)($_GET['item_key'] ?? 0);
     if (!$itemKey) errorResponse('item_key required');
     $count = 0;
-    // Wipe ephemeral captions
     foreach (glob("$UPLOAD_DIR/{$itemKey}.*") as $f) if (@unlink($f)) $count++;
-    // Wipe durable audio + clear DB pointer
+    foreach (listParts($PARTS_DIR_ABS, $itemKey) as $f) if (@unlink($f)) $count++;
     $db = getDb();
     $prev = $db->prepare("SELECT feed_item_audio_file FROM yy_feed_item WHERE feed_item_key = ?");
     $prev->execute([$itemKey]);
@@ -171,9 +307,9 @@ if ($method === 'DELETE') {
     if ($rel) {
         $abs = dirname(__DIR__) . '/public/' . ltrim($rel, '/');
         if (is_file($abs) && @unlink($abs)) $count++;
-        $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = NULL WHERE feed_item_key = ?")
-           ->execute([$itemKey]);
     }
+    $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = NULL, feed_item_audio_resume_seconds = NULL WHERE feed_item_key = ?")
+       ->execute([$itemKey]);
     jsonResponse(['ok' => true, 'deleted' => $count]);
 }
 
