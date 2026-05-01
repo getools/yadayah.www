@@ -1564,21 +1564,41 @@ function renderTranscriptRows(rows) {
         var seg = r.feed_item_transcript_segment || '00:00:00';
         _segmentSeconds.push(parseSegmentToSeconds(seg));
         html += '<tr data-idx="' + i + '">'
-            + '<td class="t-time-cell" data-secs="' + parseSegmentToSeconds(seg) + '" title="Click to jump video here" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(seg) + '" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;"></td>'
+            + '<td class="t-time-cell" data-secs="' + parseSegmentToSeconds(seg) + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
             + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(r.feed_item_transcript_text || '') + '" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
             + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
             + '</tr>';
     });
     tbody.innerHTML = html;
 
-    // Click on time cell (but NOT the input itself) seeks the video
+    // Single click anywhere in the time cell seeks the video; double click
+    // unlocks the input for editing. We keep the input readonly while not
+    // being edited so it doesn't swallow the click event.
     tbody.querySelectorAll('td.t-time-cell').forEach(function(td) {
         td.addEventListener('click', function(e) {
-            if (e.target.tagName === 'INPUT') return; // let user edit the time
             var input = td.querySelector('input[data-field="segment"]');
+            // If user is currently editing this cell, don't seek on every keystroke-blurring click.
+            if (input && !input.readOnly && document.activeElement === input) return;
             var secs = input ? parseSegmentToSeconds(input.value) : parseFloat(td.dataset.secs);
-            seekVideoTo(secs);
+            if (!isNaN(secs)) seekVideoTo(secs);
         });
+        td.addEventListener('dblclick', function() {
+            var input = td.querySelector('input[data-field="segment"]');
+            if (!input) return;
+            input.readOnly = false;
+            input.style.cursor = 'text';
+            input.focus();
+            input.select();
+        });
+        var seg = td.querySelector('input[data-field="segment"]');
+        if (seg) {
+            seg.addEventListener('blur', function() {
+                seg.readOnly = true;
+                seg.style.cursor = 'pointer';
+                // refresh data-secs on the cell so click-to-seek uses the new value
+                td.dataset.secs = parseSegmentToSeconds(seg.value);
+            });
+        }
     });
 
     // Auto-save: any edit to any input fires a debounced save
@@ -1594,7 +1614,7 @@ function addTranscriptRow() {
     var tbody = document.getElementById('t-rows');
     if (!tbody || tbody.firstChild && tbody.firstChild.cells && tbody.firstChild.cells.length === 1) tbody.innerHTML = '';
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="t-time-cell" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="00:00:00" data-field="segment" style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;"></td>'
+    tr.innerHTML = '<td class="t-time-cell" data-secs="0" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="00:00:00" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>';
     tbody.appendChild(tr);
