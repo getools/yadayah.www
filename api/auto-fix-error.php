@@ -133,8 +133,17 @@ $knownPatterns = [
      'resolve' => 'Auto-resolved: Transient network error.'],
     ['match' => '/Long task:/i', 'condition' => null,
      'resolve' => 'Auto-resolved: Long task detected — performance note, not a code error.'],
-    ['match' => '/bot|crawler|spider|YandexBot|Googlebot|bingbot|HeadlessChrome|PhantomJS|Lighthouse/i',
-     'condition' => function($e) { return preg_match('/bot|crawler|spider|YandexBot|Googlebot|bingbot|HeadlessChrome|PhantomJS|Lighthouse/i', $e['event_detail'] ?? ''); },
+    // Match only specific bot/crawler identifiers as whole words.
+    // Plain `bot` would match "you're not a bot" (YouTube error) etc., so we
+    // require either a known crawler name or `bot` as a hyphen/case suffix
+    // ("Googlebot", "AhrefsBot") to avoid false positives.
+    ['match' => '/\b(crawler|spider|YandexBot|Googlebot|bingbot|HeadlessChrome|PhantomJS|Lighthouse|AhrefsBot|SemrushBot|DotBot|MJ12bot)\b/',
+     'condition' => function($e) {
+         // Require the crawler hint to appear in user-agent or referer fields,
+         // not in the message body where unrelated text may match.
+         $haystack = ($e['event_referer'] ?? '') . ' ' . ($e['event_file'] ?? '');
+         return (bool)preg_match('/\b(crawler|spider|YandexBot|Googlebot|bingbot|HeadlessChrome|PhantomJS|Lighthouse|AhrefsBot|SemrushBot|DotBot|MJ12bot)\b/', $haystack);
+     },
      'resolve' => 'Auto-resolved: Error from bot/crawler — not a real user issue.'],
     ['match' => '/loadCategories error.*DOCTYPE/i', 'condition' => null,
      'resolve' => 'Auto-resolved: API returned HTML instead of JSON — caused by 403 IP ban cascade.'],
@@ -217,20 +226,36 @@ foreach ($errors as $error) {
         continue;
     }
 
-    // Check known patterns before calling Claude
+    // Server-side operational sources are NEVER auto-dismissed by client-side
+    // pattern matching. Their failures (DB errors, transcript jobs, sync jobs,
+    // billing, etc.) are real infrastructure issues that must surface to admins
+    // as-is. We only triage / claude-fix them; we do NOT silence them with
+    // patterns intended for browser noise (e.g. the YouTube "you're not a bot"
+    // text would match the bot/crawler rule and disappear silently).
+    $operationalSources = [
+        'transcript_worker', 'sync_youtube', 'sync_facebook', 'sync_rumble',
+        'sync_blog', 'sync_invite', 'sync_music', 'ai_billing',
+        'php_exception', 'php_error', 'php_fatal',
+        'cron_email', 'youtube_cookies',
+    ];
+    $isOperational = in_array($source, $operationalSources, true);
+
+    // Check known patterns before calling Claude (browser/client errors only)
     $knownResolved = false;
-    $fullText = $msg . ' ' . $detail . ' ' . ($error['event_file'] ?? '') . ' ' . ($error['event_referer'] ?? '') . ' ' . $source;
-    foreach ($knownPatterns as $kp) {
-        if (preg_match($kp['match'], $fullText)) {
-            $condFn = $kp['condition'];
-            if ($condFn === null || $condFn($error)) {
-                $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
-                   ->execute([$kp['resolve'], $error['event_key']]);
-                $line = "  [known] #{$error['event_key']}: " . substr($kp['resolve'], 0, 80);
-                echo $line . "\n";
-                recordCounter('known', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
-                $knownResolved = true;
-                break;
+    if (!$isOperational) {
+        $fullText = $msg . ' ' . $detail . ' ' . ($error['event_file'] ?? '') . ' ' . ($error['event_referer'] ?? '') . ' ' . $source;
+        foreach ($knownPatterns as $kp) {
+            if (preg_match($kp['match'], $fullText)) {
+                $condFn = $kp['condition'];
+                if ($condFn === null || $condFn($error)) {
+                    $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
+                       ->execute([$kp['resolve'], $error['event_key']]);
+                    $line = "  [known] #{$error['event_key']}: " . substr($kp['resolve'], 0, 80);
+                    echo $line . "\n";
+                    recordCounter('known', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
+                    $knownResolved = true;
+                    break;
+                }
             }
         }
     }

@@ -1275,9 +1275,14 @@ function openTranscript(itemKey) {
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3/M4A/VTT/SRT to use instead of downloading from YouTube" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Upload Audio/Captions</button>'
+            + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
+            + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
+            + '<a href="/admin-download-audio.bat" download title="Windows .bat that downloads YouTube audio using your browser cookies, then you upload it" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Download Helper .bat ↓</a>'
             + '<button onclick="addTranscriptRow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">+ Row</button>'
             + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '</div>'
+            + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
             + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:90px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
@@ -1417,11 +1422,63 @@ function loadTranscript() {
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
             populateValidation(d.validation);
+            // Show "Open on YouTube" link if this is a YouTube video
+            if (d.item && (d.item.feed_site_code || '').toLowerCase() === 'youtube' && d.item.feed_item_external_id) {
+                var yt = document.getElementById('t-yt-link');
+                if (yt) {
+                    yt.href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(d.item.feed_item_external_id);
+                    yt.style.display = '';
+                }
+            }
+            refreshUploadedSourceInfo();
             // Initialize video player once per popover open
             if (!_ytPlayer && d.item) {
                 initVideoPlayer(d.item.feed_site_code, d.item.feed_item_external_id);
             }
         });
+}
+
+function refreshUploadedSourceInfo() {
+    if (!_transcriptItemKey) return;
+    fetch(API + '/admin-transcript-upload.php?item_key=' + _transcriptItemKey, {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            var info = document.getElementById('t-upload-info');
+            if (!info) return;
+            if (!d.files || !d.files.length) { info.style.display = 'none'; info.innerHTML = ''; return; }
+            var f = d.files[0];
+            var sizeMB = (f.size / 1024 / 1024).toFixed(2);
+            info.style.display = '';
+            info.innerHTML = '📎 Using uploaded source: <strong>' + esc(f.name) + '</strong> ('
+                + sizeMB + ' MB, ' + (f.modified_dtime || '').substring(0,16).replace('T',' ') + ')'
+                + ' <button onclick="deleteUploadedSource()" style="margin-left:10px;background:none;border:1px solid #ccc;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:0.75rem;">Remove</button>';
+        });
+}
+
+function uploadTranscriptSource(input) {
+    if (!input.files || !input.files.length) return;
+    var fd = new FormData();
+    fd.append('item_key', _transcriptItemKey);
+    fd.append('file', input.files[0]);
+    var statusEl = document.getElementById('t-status');
+    if (statusEl) statusEl.textContent = 'Uploading…';
+    fetch(API + '/admin-transcript-upload.php', {method:'POST', credentials:'include', body: fd})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (d.error) { if (statusEl) statusEl.textContent = '✗ ' + d.error; return; }
+            if (statusEl) {
+                statusEl.textContent = '✓ Uploaded — click Transcribe Audio';
+                setTimeout(function(){ if (statusEl.textContent.indexOf('Uploaded') === 0) statusEl.textContent = ''; }, 4000);
+            }
+            input.value = '';
+            refreshUploadedSourceInfo();
+        });
+}
+
+function deleteUploadedSource() {
+    if (!confirm('Remove the uploaded source file? Transcribe will go back to using YouTube.')) return;
+    fetch(API + '/admin-transcript-upload.php?item_key=' + _transcriptItemKey, {method:'DELETE', credentials:'include'})
+        .then(function(){ refreshUploadedSourceInfo(); });
 }
 
 function populateValidation(v) {

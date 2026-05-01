@@ -179,16 +179,35 @@ if (!$rows) {
     if (!$openaiKey) {
         $methodFailures[] = "whisper_api: OPENAI_API_KEY not set in .env";
     } else {
-        updateJob($db, $jobKey, ['job_progress' => 20, 'job_message' => 'Downloading audio...']);
+        updateJob($db, $jobKey, ['job_progress' => 20, 'job_message' => 'Preparing audio...']);
         $audioPath = sys_get_temp_dir() . "/transcript_audio_$jobKey.mp3";
+        $usedUploadedAudio = false;
+
+        // Prefer admin-uploaded audio (from admin-transcript-upload.php) over yt-dlp.
+        // This is the workaround when YouTube blocks the server's IP.
+        $uploadedAudio = null;
+        foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac'] as $ext) {
+            $cand = "$uploadDir/{$itemKey}.{$ext}";
+            if (file_exists($cand) && filesize($cand) > 10000) { $uploadedAudio = $cand; break; }
+        }
+        if ($uploadedAudio) {
+            $audioPath = $uploadedAudio;
+            $usedUploadedAudio = true;
+            updateJob($db, $jobKey, ['job_progress' => 30, 'job_message' => 'Using uploaded audio: ' . basename($uploadedAudio)]);
+        }
+
         $ytDlp = trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');
-        if (!$ytDlp) {
+        if (!$usedUploadedAudio && !$ytDlp) {
             $methodFailures[] = "whisper_api: yt-dlp binary not found (needed to download audio)";
-        } elseif (!$videoUrl) {
+        } elseif (!$usedUploadedAudio && !$videoUrl) {
             $methodFailures[] = "whisper_api: feed_item_url is empty";
         } else {
-            $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg . " -x --audio-format mp3 --audio-quality 5 --output " . escapeshellarg($audioPath) . " " . escapeshellarg($videoUrl) . " 2>&1";
-            $dlOutput = shell_exec($cmd);
+            // Skip yt-dlp download if we already have an uploaded audio file
+            $dlOutput = '';
+            if (!$usedUploadedAudio) {
+                $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg . " -x --audio-format mp3 --audio-quality 5 --output " . escapeshellarg($audioPath) . " " . escapeshellarg($videoUrl) . " 2>&1";
+                $dlOutput = shell_exec($cmd);
+            }
             if (!file_exists($audioPath) || filesize($audioPath) <= 10000) {
                 // Extract the actionable ERROR line if present; otherwise use last ~400 chars
                 // (yt-dlp emits progress on early lines and the real failure on the last).
@@ -223,7 +242,8 @@ if (!$rows) {
                 } else {
                     $rows = whisperApiTranscribe($audioPath, $openaiKey, $glossaryPrompt, 0, $whisperErr);
                 }
-                @unlink($audioPath);
+                // Only delete the audio if we downloaded it ourselves; preserve admin uploads
+                if (!$usedUploadedAudio) @unlink($audioPath);
                 if (!$rows) {
                     $methodFailures[] = "whisper_api: " . ($whisperErr ?: 'API returned no segments');
                 } else {
