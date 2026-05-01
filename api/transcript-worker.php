@@ -137,9 +137,13 @@ $cookiesArg  = $haveCookies ? ' --cookies ' . escapeshellarg($cookiesPath) : '';
 //     fall back automatically. Avoids the `tv` client that yt-dlp picks as a
 //     last resort, which only exposes images.
 //   - Without cookies: try `ios` to evade bot-detection.
+// PO Token provider (bgutil sidecar) defeats Botguard for the `web` client.
+// Joined into the same --extractor-args so yt-dlp parses both keys.
+$potUrl = getenv('POT_PROVIDER_URL') ?: '';
+$potBgutil = $potUrl ? ';youtubepot-bgutilhttp:base_url=' . $potUrl : '';
 $playerArg   = $haveCookies
-    ? " --extractor-args 'youtube:player_client=web,mweb,web_safari'"
-    : " --extractor-args 'youtube:player_client=ios'";
+    ? " --extractor-args 'youtube:player_client=web,mweb,web_safari" . $potBgutil . "'"
+    : " --extractor-args 'youtube:player_client=ios" . $potBgutil . "'";
 
 // YouTube's modern n-challenge requires a JS solver. Deno is installed in the
 // container, and `--remote-components ejs:github` lets yt-dlp auto-fetch the

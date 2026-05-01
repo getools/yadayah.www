@@ -8,9 +8,33 @@ RUN apt-get update && apt-get install -y libpq-dev ffmpeg libpng-dev libjpeg62-t
 
 # Node.js 20 + Claude Code CLI for auto-fix agent
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get install -y nodejs unzip \
     && npm install -g @anthropic-ai/claude-code \
     && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp + Deno (the n-challenge JS solver invoked via
+# `--remote-components ejs:github` in api/transcript-worker.php). Both must
+# live in the image — installing them inside the running container would be
+# wiped on `docker compose up -d` recreates.
+RUN curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
+        -o /usr/local/bin/yt-dlp \
+    && chmod +x /usr/local/bin/yt-dlp \
+    && curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip \
+        -o /tmp/deno.zip \
+    && unzip -q /tmp/deno.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/deno \
+    && rm /tmp/deno.zip
+
+# bgutil PO Token plugin for yt-dlp (defeats Botguard "you're not a bot"
+# challenge). The HTTP server side runs as the pot-provider sidecar; this
+# is the client-side plugin that knows to call it. Installed under www-data's
+# config dir so the transcript-worker process auto-discovers it.
+RUN mkdir -p /var/www/.config/yt-dlp/plugins/bgutil \
+    && curl -fsSL https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/bgutil-ytdlp-pot-provider.zip \
+        -o /tmp/pot.zip \
+    && unzip -oq /tmp/pot.zip -d /var/www/.config/yt-dlp/plugins/bgutil \
+    && rm /tmp/pot.zip \
+    && chown -R www-data:www-data /var/www/.config
 
 COPY php.ini /usr/local/etc/php/php.ini
 
