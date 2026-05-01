@@ -1285,7 +1285,19 @@ function openTranscript(itemKey) {
             + '<div id="t-player-empty" style="color:#888;display:flex;align-items:center;justify-content:center;height:100%;font-size:0.85rem;">Video player loads when transcript opens</div>'
             + '<div id="yt-player" style="width:100%;height:100%;"></div>'
             + '</div>'
-            + '<div id="t-time-display" style="font-size:0.78rem;color:#666;font-family:monospace;">—</div>'
+            + '<div style="display:flex;align-items:center;gap:10px;">'
+            + '<div id="t-time-display" style="font-size:0.78rem;color:#666;font-family:monospace;flex:1;">—</div>'
+            + '<label style="font-size:0.74rem;color:#666;display:flex;align-items:center;gap:4px;">Speed'
+            + '<select id="t-playback-rate" onchange="setPlaybackRate(parseFloat(this.value))" style="font-size:0.78rem;padding:2px 4px;border:1px solid #ccc;border-radius:3px;background:#fff;">'
+            + '<option value="0.5">0.5×</option>'
+            + '<option value="0.75">0.75×</option>'
+            + '<option value="1" selected>1×</option>'
+            + '<option value="1.25">1.25×</option>'
+            + '<option value="1.5">1.5×</option>'
+            + '<option value="1.75">1.75×</option>'
+            + '<option value="2">2×</option>'
+            + '</select></label>'
+            + '</div>'
             + '<div id="t-validation" style="padding:10px 12px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;">'
             + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">'
             + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Status</label>'
@@ -1449,6 +1461,7 @@ function initVideoPlayer(siteCode, externalId) {
                 onReady: function() {
                     if (_syncTimer) clearInterval(_syncTimer);
                     _syncTimer = setInterval(syncTranscriptToPlayer, 250);
+                    applySavedPlaybackRate();
                 },
                 onStateChange: function(e) {
                     // Apply any pending seek once the player has actually
@@ -1512,6 +1525,25 @@ function syncTranscriptToPlayer() {
             var auto = document.getElementById('t-autoscroll');
             if (auto && auto.checked) cur.scrollIntoView({block:'nearest', behavior:'smooth'});
         }
+    }
+}
+
+function setPlaybackRate(rate) {
+    if (!rate || isNaN(rate)) return;
+    if (window.adminUI) adminUI.save('feeds.transcript', 'playbackRate', rate);
+    if (_ytPlayer && typeof _ytPlayer.setPlaybackRate === 'function') {
+        try { _ytPlayer.setPlaybackRate(rate); } catch (e) {}
+    }
+}
+
+// Apply the user's last-used speed to a freshly-ready player. Called from
+// onReady so the choice survives across videos and across reopens.
+function applySavedPlaybackRate() {
+    var saved = (window.adminUI && adminUI.load('feeds.transcript', 'playbackRate', 1)) || 1;
+    var sel = document.getElementById('t-playback-rate');
+    if (sel) sel.value = String(saved);
+    if (saved !== 1 && _ytPlayer && typeof _ytPlayer.setPlaybackRate === 'function') {
+        try { _ytPlayer.setPlaybackRate(saved); } catch (e) {}
     }
 }
 
@@ -1988,8 +2020,16 @@ function renderLastResultNote(job) {
     wrapper.style.cssText = 'background:' + bg + ';color:' + color + ';padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:0.82rem;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;';
     wrapper.innerHTML = '<div style="flex:1;">' + label + '</div>'
         + '<button onclick="this.parentNode.remove()" style="background:none;border:none;color:inherit;cursor:pointer;font-size:1.1rem;opacity:0.6;padding:0 4px;" title="Dismiss">&times;</button>';
-    var toolbar = document.getElementById('t-toolbar');
-    if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(wrapper, toolbar);
+    // Anchor the banner just after the progress block (which is the next
+    // anchor that still exists after the layout was reorganized).
+    var anchor = document.getElementById('t-progress');
+    if (anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(wrapper, anchor.nextSibling);
+    } else {
+        // Fallback: append to the popover card so the user always sees it
+        var card = document.getElementById('t-card');
+        if (card) card.appendChild(wrapper);
+    }
 }
 
 // Auto-save state. Saves are now triggered on focus-leave (focusout) of any
