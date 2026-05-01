@@ -1787,11 +1787,13 @@ function openRecordPopover(itemKey, opts) {
                                     if (t) t.textContent = '0:00:00 / ' + formatSeconds(dur);
                                 }
                             } catch (err) {}
-                            // Pull partial state, then attempt to auto-start. If
-                            // the user-activation gesture has expired, the user
-                            // can press ▶ on the player to retry.
-                            refreshRecordPopoverPartialState();
-                            setTimeout(tryAutoStartRecording, 400);
+                            // Apply partial state (seeks to resume_seconds if any),
+                            // then auto-start recording from that exact position so
+                            // a Partial click resumes seamlessly and a New click
+                            // begins from 0:00. If the user-activation gesture has
+                            // expired by then, the user can press ▶ on the player
+                            // to retry (PLAYING handler runs the same flow).
+                            refreshRecordPopoverPartialState().then(tryAutoStartRecording);
                         },
                         onStateChange: onRecPlayerStateChange,
                         onPlaybackRateChange: function(e) {
@@ -1807,45 +1809,53 @@ function openRecordPopover(itemKey, opts) {
     _recState.onComplete = opts.onComplete || null;
 }
 
-// Read partial-recording state for the active item and adjust UI: if parts
-// exist, show the "Resume from M:SS" banner + Finish & Save / Discard buttons;
-// otherwise show the fresh-start UI.
+// Resume-banner text: how much of the video has been recorded so far,
+// expressed as "Recorded up to X:XX:XX of H:MM:SS (NN%)" when the YT player
+// has the total duration; falls back to just the position if not.
+function recBannerText(seconds) {
+    var pos = formatSeconds(seconds);
+    var dur = 0;
+    try { dur = Math.floor(_recState.ytPlayer.getDuration() || 0); } catch (e) {}
+    if (dur > 0) {
+        var pct = Math.round((seconds / dur) * 100);
+        return '⏸ Recorded up to <strong>' + pos + '</strong> of ' + formatSeconds(dur) + ' (' + pct + '%)';
+    }
+    return '⏸ Recorded up to <strong>' + pos + '</strong>';
+}
+
+// Fetch partial-recording state for the active item, render the resume
+// banner, seek the player to resume_seconds (so it's positioned exactly
+// where the next part needs to begin), and resolve once the seek is settled.
+// Returns a Promise so callers can chain auto-start recording AFTER the seek.
 function refreshRecordPopoverPartialState() {
     var itemKey = _recState.activeItemKey;
-    if (!itemKey) return;
-    fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey + '&_=' + Date.now(),
-          {credentials:'include', cache:'no-store'})
+    if (!itemKey) return Promise.resolve(null);
+    return fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey + '&_=' + Date.now(),
+                 {credentials:'include', cache:'no-store'})
         .then(function(r){ return safeJson(r); })
         .then(function(d) {
             var banner = document.getElementById('r-resume-banner');
             var status = document.getElementById('r-status');
-            var recBtn = document.getElementById('r-record-btn');
-            var finishBtn = document.getElementById('r-finish-btn');
-            var discardBtn = document.getElementById('r-discard-btn');
             var p = d.partial || {};
             var seconds = p.resume_seconds || 0;
             var parts = p.part_count || 0;
             _recState.partCount = parts;
+            if (status) status.textContent = '';
             if (parts > 0 && seconds > 0) {
                 banner.style.display = '';
-                banner.innerHTML = '⏸ ' + parts + ' part' + (parts === 1 ? '' : 's')
-                    + ' recorded so far. Last position: <strong>' + formatSeconds(seconds) + '</strong>.';
-                if (status) status.textContent = '';
-                // Pre-seek the player so it's ready to resume; suppressAutoStart=false
-                // so the very next PLAY click triggers recording.
+                banner.innerHTML = recBannerText(seconds);
+                // Just seek — don't pause, don't wait. tryAutoStartRecording
+                // calls playVideo() right after, and we need to stay inside
+                // the user-activation window (≤5s from the original click)
+                // for the unmuted-autoplay check to pass.
                 if (_recState.ytPlayer && typeof _recState.ytPlayer.seekTo === 'function') {
-                    try {
-                        _recState.suppressAutoStart = true; // seekTo can momentarily play
-                        _recState.ytPlayer.seekTo(seconds, true);
-                        _recState.ytPlayer.pauseVideo();
-                        setTimeout(function(){ _recState.suppressAutoStart = false; updateRecTimeDisplay(); }, 500);
-                    } catch (e) {}
+                    try { _recState.ytPlayer.seekTo(seconds, true); } catch (e) {}
                 }
             } else {
                 banner.style.display = 'none';
-                if (status) status.textContent = '';
             }
             updateRecPopoverControls();
+            return p;
         });
 }
 
@@ -1920,9 +1930,18 @@ async function onRecPlayerStateChange(e) {
             updateRecPopoverControls();
             return;
         }
-        // Pause until the screen-share permission is granted, then resume.
+        // If the screen-share stream is already cached (from
+        // startRecordingForItem or a prior Pause), just begin recording —
+        // don't pause/replay the video. Pausing here would fire a PAUSED
+        // event that races with the recorder we just started.
+        if (_recState.stream && _recState.stream.getAudioTracks().length) {
+            beginRecording();
+            updateRecPopoverControls();
+            return;
+        }
+        // No cached stream — pause, request permission, then resume.
         try { _recState.ytPlayer.pauseVideo(); } catch (err) {}
-        var stream = await ensureCaptureStream(_recState.mode === 'batch');
+        var stream = await ensureCaptureStream(false);
         if (!stream) {
             var st = document.getElementById('r-status');
             if (st) st.textContent = '✗ Tab capture denied — try clicking ▶ again and allow tab audio sharing.';
@@ -1972,16 +1991,15 @@ function restartRecordingClicked() {
             setTimeout(function(){ tryAutoStartRecording(); }, 300);
         });
 }
-// Try to start playback + recording immediately, using the user activation
-// from whatever click opened the popover. If browsers reject getDisplayMedia
-// (gesture expired), the user will see a permission prompt fail message and
-// can press play on the embedded player to retry — that's a fresh gesture.
+// Auto-start playback + recording. Reuses the already-acquired screen-share
+// stream (acquired from the *original* click that opened the popover —
+// see startRecordingForItem). If for some reason the stream isn't there
+// yet, we still try to acquire it; user-activation from a recent click
+// usually still applies.
 async function tryAutoStartRecording() {
     if (_recState.recorder && _recState.recorder.state === 'recording') return;
-    var stream = await ensureCaptureStream(_recState.mode === 'batch');
+    var stream = await ensureCaptureStream(true); // ALWAYS reuse if present
     if (!stream) {
-        // Permission expired or denied — user can click ▶ on the player which
-        // is a fresh gesture; the PLAYING handler will retry from there.
         var st = document.getElementById('r-status');
         if (st) st.textContent = 'Press ▶ on the video to start recording.';
         return;
@@ -1990,6 +2008,29 @@ async function tryAutoStartRecording() {
     beginRecording();
     try { _recState.ytPlayer.setPlaybackRate(1); _recState.ytPlayer.playVideo(); } catch (e) {}
     setTimeout(function(){ _recState.suppressAutoStart = false; updateRecPopoverControls(); }, 500);
+}
+
+// Entry point used by the Partial/New buttons in the Recordings list.
+// For SINGLE-item recording, opens a dedicated browser window (popout) so
+// the recording survives navigation in this admin tab. The popout has its
+// own copy of the YT player + MediaRecorder + getDisplayMedia stream.
+//
+// For BATCH processing (Process Selected), keeps using the in-page popover
+// so the original tab can orchestrate the queue.
+function startRecordingForItem(itemKey) {
+    if (_recBatchActive) {
+        openRecordPopover(itemKey); // batch — stay in-page
+        return;
+    }
+    var url = '/admin-record-popout.html?item=' + itemKey;
+    var w = window.open(url, 'yy-record-' + itemKey,
+        'width=920,height=760,menubar=no,toolbar=no,location=no,status=no');
+    if (!w || w.closed || typeof w.closed === 'undefined') {
+        alert('The browser blocked the popup window. Please allow popups for this site, then click Partial/New again.\n\n' +
+              'Once allowed, the recording will open in a separate window — your admin tab can navigate freely while it records.');
+        return;
+    }
+    try { w.focus(); } catch (e) {}
 }
 function beginRecording() {
     var audioOnly = new MediaStream(_recState.stream.getAudioTracks());
@@ -2050,7 +2091,7 @@ async function onRecorderStopped() {
             if (st) st.textContent = '🎬 Video ended — finalizing audio…';
             await finishAndSaveRecording(true);
         } else {
-            if (st) st.textContent = '✓ Saved part at ' + formatSeconds(nowSec) + '. Click Resume to continue, or Finish & Save when done.';
+            if (st) st.textContent = '✓ Saved part at ' + formatSeconds(nowSec);
             if (typeof _recState.onComplete === 'function') {
                 // Not at end yet — batch processor expects auto-finalize at end of video,
                 // so don't resolve onComplete here.
@@ -2071,8 +2112,7 @@ async function refreshPopoverPartialAfterUpload(uploadResp) {
     var banner = document.getElementById('r-resume-banner');
     if (p.part_count > 0 && p.resume_seconds > 0) {
         banner.style.display = '';
-        banner.innerHTML = '⏸ ' + p.part_count + ' part' + (p.part_count === 1 ? '' : 's')
-            + ' recorded. Last position: <strong>' + formatSeconds(p.resume_seconds) + '</strong>.';
+        banner.innerHTML = recBannerText(p.resume_seconds);
     } else {
         banner.style.display = 'none';
     }
@@ -2299,13 +2339,13 @@ function renderRecordings(d) {
         } else if (it.processed_status === 'partial') {
             var recSec = it.resume_seconds || 0, totSec = it.feed_item_duration_seconds || 0;
             var pct = totSec ? Math.round((recSec/totSec)*100) : 0;
-            processed = '<button onclick="openRecordPopover(' + it.feed_item_key + ')" '
+            processed = '<button onclick="startRecordingForItem(' + it.feed_item_key + ')" '
                       + 'title="Continue recording from ' + formatSeconds(recSec) + '" '
                       + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;">⏸ Partial</button>'
                       + '<div style="font-size:0.7rem;color:#999;margin-top:2px;text-align:center;">'
                       + formatSeconds(recSec) + (totSec ? ' / ' + formatSeconds(totSec) + ' (' + pct + '%)' : '') + '</div>';
         } else {
-            processed = '<button onclick="openRecordPopover(' + it.feed_item_key + ')" '
+            processed = '<button onclick="startRecordingForItem(' + it.feed_item_key + ')" '
                       + 'title="Start recording" '
                       + 'style="' + commonBtn + 'color:#666;border-color:#ccc;">○ New</button>';
         }
@@ -2313,7 +2353,7 @@ function renderRecordings(d) {
             +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
             +     '<td>' + thumb + '</td>'
             +     '<td style="font-family:monospace;font-size:0.78rem;">' + it.feed_item_key + '</td>'
-            +     '<td><a href="javascript:openRecordPopover(' + it.feed_item_key + ')" style="color:#31345A;text-decoration:none;" title="Open Record popover">' + esc(it.title || '') + '</a></td>'
+            +     '<td><a href="javascript:startRecordingForItem(' + it.feed_item_key + ')" style="color:#31345A;text-decoration:none;" title="Open Record popover and start recording">' + esc(it.title || '') + '</a></td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(pub) + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'

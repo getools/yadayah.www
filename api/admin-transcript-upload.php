@@ -145,32 +145,30 @@ if ($method === 'POST') {
             $finalRel = $AUDIO_DIR_REL . "/audio_{$itemKey}_{$stamp}.mp3";
             $finalAbs = $AUDIO_DIR_ABS . "/audio_{$itemKey}_{$stamp}.mp3";
 
-            // Build ffmpeg concat list file
-            $listPath = sys_get_temp_dir() . "/concat_{$itemKey}_{$stamp}.txt";
-            $listLines = [];
-            foreach ($parts as $f) $listLines[] = "file '" . str_replace("'", "'\\''", $f) . "'";
-            file_put_contents($listPath, implode("\n", $listLines) . "\n");
-
-            // Concat (no re-encode for matching webm/opus) → intermediate webm,
-            // then transcode to mp3 for portability. Two-pass keeps codec
-            // boundaries clean across parts.
-            $intermediate = sys_get_temp_dir() . "/concat_{$itemKey}_{$stamp}.webm";
             $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
             if (!$ffmpeg) errorResponse('ffmpeg not available');
-            $cmd1 = escapeshellcmd($ffmpeg) . ' -y -f concat -safe 0 -i ' . escapeshellarg($listPath)
-                  . ' -c copy ' . escapeshellarg($intermediate) . ' 2>&1';
-            shell_exec($cmd1);
-            if (!file_exists($intermediate) || filesize($intermediate) < 1000) {
-                @unlink($listPath);
-                errorResponse('ffmpeg concat failed');
+
+            // Seamless concat. We use ffmpeg's `concat` filter rather than the
+            // demuxer + `-c copy` pair — the demuxer trusts the per-file
+            // timestamps from MediaRecorder which can drift across boundaries
+            // and produce audible pops. The filter decodes all parts into
+            // audio sample space, joins them, and re-encodes to MP3 in one
+            // pass. Result is identical to a single-pass recording.
+            $inputArgs = '';
+            $filterIn = '';
+            foreach (array_values($parts) as $i => $f) {
+                $inputArgs .= ' -i ' . escapeshellarg($f);
+                $filterIn .= "[{$i}:a]";
             }
-            $cmd2 = escapeshellcmd($ffmpeg) . ' -y -i ' . escapeshellarg($intermediate)
-                  . ' -codec:a libmp3lame -qscale:a 4 ' . escapeshellarg($finalAbs) . ' 2>&1';
-            shell_exec($cmd2);
-            @unlink($intermediate);
-            @unlink($listPath);
+            $filter = $filterIn . 'concat=n=' . count($parts) . ':v=0:a=1[out]';
+            $cmd = escapeshellcmd($ffmpeg) . ' -y' . $inputArgs
+                 . ' -filter_complex ' . escapeshellarg($filter)
+                 . ' -map ' . escapeshellarg('[out]')
+                 . ' -codec:a libmp3lame -qscale:a 4 -ar 44100 -ac 2 '
+                 . escapeshellarg($finalAbs) . ' 2>&1';
+            $out = shell_exec($cmd);
             if (!file_exists($finalAbs) || filesize($finalAbs) < 1000) {
-                errorResponse('ffmpeg transcode to mp3 failed');
+                errorResponse('ffmpeg concat-filter failed: ' . substr(trim($out ?? ''), -300));
             }
             @chmod($finalAbs, 0664);
 

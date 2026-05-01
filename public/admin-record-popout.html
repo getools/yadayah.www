@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Record — Yada Yah</title>
+    <style>
+        :root {
+            --primary: #31345A;
+            --green: #27ae60;
+            --red: #c00;
+            --gray: #888;
+            --amber: #a36100;
+            --bg: #f5f7fa;
+            --card: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            margin: 0;
+            background: var(--bg);
+            color: #222;
+        }
+        .card {
+            max-width: 900px;
+            margin: 14px auto;
+            background: var(--card);
+            border-radius: 10px;
+            padding: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        h1 {
+            margin: 0; font-size: 1rem; color: var(--primary);
+            flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        #player-wrap {
+            background: #000; border-radius: 6px; overflow: hidden;
+            aspect-ratio: 16/9; margin-bottom: 10px;
+        }
+        #yt-player { width: 100%; height: 100%; }
+        #banner {
+            margin-bottom: 10px; padding: 8px 12px;
+            background: #fff3a8; border: 1px solid #e0c000;
+            border-radius: 6px; font-size: 0.9rem; color: #7a5c00;
+        }
+        #controls {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 16px; border-radius: 4px; cursor: pointer;
+            font-weight: 600; font-size: 0.95rem; border: none;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #continue-btn { background: var(--green); color: #fff; }
+        #pause-btn { background: #444; color: #fff; }
+        #restart-btn { background: #fff; color: var(--red); border: 1px solid var(--red); padding: 8px 12px; font-size: 0.85rem; }
+        #status { font-size: 0.9rem; color: #666; flex: 1; }
+        #time { font-family: monospace; font-size: 0.95rem; color: #444; margin-left: auto; }
+        .hint {
+            margin-top: 10px; font-size: 0.78rem; color: #888;
+            border-top: 1px solid #eee; padding-top: 8px;
+        }
+        .hint strong { color: #444; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <header>
+            <h1 id="title">Loading…</h1>
+            <span id="time">—</span>
+        </header>
+        <div id="player-wrap"><div id="yt-player"></div></div>
+        <div id="banner" style="display:none;"></div>
+        <div id="controls">
+            <button id="continue-btn" style="display:none;" onclick="continueRecording()">▶ Continue Recording</button>
+            <button id="pause-btn" style="display:none;" onclick="pauseRecording()">⏸ Pause Recording</button>
+            <button id="restart-btn" style="display:none;" onclick="restartRecording()">⟲ Restart from Beginning</button>
+            <span id="status"></span>
+        </div>
+        <div class="hint">
+            This is a <strong>dedicated recording window</strong>. You can keep the original admin tab open and navigate it freely — recording continues here as long as this window stays open. Playback is locked at 1× to ensure natural-rate audio.
+        </div>
+    </div>
+
+    <script>
+    // ── State ──
+    var API = '/api';
+    var itemKey = parseInt(new URLSearchParams(location.search).get('item') || '0', 10);
+    var ytPlayer = null, ytReady = false;
+    var stream = null, recorder = null, chunks = [], startedMs = 0;
+    var partCount = 0;
+    var suppressAutoStart = false;
+    var durationTimer = null;
+    var initialResumeSec = 0;
+
+    if (!itemKey) { document.getElementById('status').textContent = '✗ Missing ?item=N in URL'; }
+
+    // ── Helpers ──
+    function $(id) { return document.getElementById(id); }
+    function fmt(s) {
+        s = Math.max(0, Math.floor(s || 0));
+        var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+        return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
+    }
+    function setStatus(msg) { $('status').textContent = msg || ''; }
+    function setTitle(t) { $('title').textContent = t; document.title = 'Record — ' + t; }
+
+    // ── YT IFrame API ──
+    function onYouTubeIframeAPIReady() { ytReady = true; bootstrap(); }
+
+    async function bootstrap() {
+        if (!ytReady || !itemKey) { return; }
+        try {
+            var resp = await fetch(API + '/admin-transcript.php?item_key=' + itemKey + '&_=' + Date.now(),
+                                   { credentials: 'include', cache: 'no-store' });
+            var d = await resp.json();
+            if (d.error || !d.item) throw new Error(d.error || 'Item not found');
+            setTitle((d.item.title || 'Item ' + itemKey).substring(0, 90));
+            // Read partial state
+            var pResp = await fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey + '&_=' + Date.now(),
+                                    { credentials: 'include', cache: 'no-store' });
+            var pData = await pResp.json();
+            var p = pData.partial || {};
+            partCount = p.part_count || 0;
+            initialResumeSec = (p.part_count > 0 && p.resume_seconds > 0) ? p.resume_seconds : 0;
+            if (initialResumeSec > 0) {
+                $('banner').style.display = '';
+                $('banner').innerHTML = bannerText(initialResumeSec);
+            }
+            // Spin up player
+            ytPlayer = new YT.Player('yt-player', {
+                videoId: d.item.feed_item_external_id,
+                width: '100%', height: '100%',
+                playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 1 },
+                events: {
+                    onReady: onPlayerReady,
+                    onStateChange: onPlayerStateChange,
+                    onPlaybackRateChange: function(e) {
+                        if (e.target.getPlaybackRate() !== 1) {
+                            try { e.target.setPlaybackRate(1); } catch (err) {}
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            setStatus('✗ ' + e.message);
+        }
+    }
+    function bannerText(sec) {
+        var dur = 0;
+        try { dur = Math.floor(ytPlayer && ytPlayer.getDuration ? ytPlayer.getDuration() : 0); } catch (e) {}
+        var pos = fmt(sec);
+        if (dur > 0) {
+            var pct = Math.round((sec / dur) * 100);
+            return '⏸ Recorded up to <strong>' + pos + '</strong> of ' + fmt(dur) + ' (' + pct + '%)';
+        }
+        return '⏸ Recorded up to <strong>' + pos + '</strong>';
+    }
+
+    function onPlayerReady(e) {
+        try { e.target.setPlaybackRate(1); } catch (err) {}
+        try {
+            var dur = Math.floor(e.target.getDuration() || 0);
+            if (dur > 0) $('time').textContent = '0:00:00 / ' + fmt(dur);
+        } catch (err) {}
+        if (initialResumeSec > 0) {
+            try { e.target.seekTo(initialResumeSec, true); } catch (err) {}
+        }
+        // Auto-start. We're inside the same browser activation as the
+        // window.open() that spawned this popout, so the share-screen prompt
+        // should be allowed.
+        tryAutoStart();
+    }
+    function onPlayerStateChange(e) {
+        var st = e && e.data;
+        var rec = !!(recorder && recorder.state === 'recording');
+        if (st === 1) {
+            if (rec) { updateControls(); return; }
+            if (suppressAutoStart) { suppressAutoStart = false; updateControls(); return; }
+            // Stream cached? Just begin recording without pause/replay.
+            if (stream && stream.getAudioTracks().length) {
+                beginRecording();
+                updateControls();
+                return;
+            }
+            // Otherwise pause, request permission, resume.
+            tryAutoStart();
+        } else if (st === 2) {
+            if (rec) stopRecorderNow();
+            else updateControls();
+        } else if (st === 0) {
+            if (rec) stopRecorderNow();
+            else updateControls();
+        }
+    }
+
+    // ── Capture stream ──
+    async function ensureStream() {
+        if (stream && stream.getAudioTracks().length) return stream;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            setStatus('✗ Browser does not support tab audio capture.');
+            return null;
+        }
+        var s;
+        try {
+            s = await navigator.mediaDevices.getDisplayMedia({
+                video: { displaySurface: 'browser' }, audio: true, preferCurrentTab: true
+            });
+        } catch (e) {
+            setStatus('✗ Tab capture cancelled: ' + (e.message || e));
+            return null;
+        }
+        if (!s.getAudioTracks().length) {
+            setStatus('✗ No audio track. Make sure to check Share tab audio.');
+            s.getTracks().forEach(function(t){ t.stop(); });
+            return null;
+        }
+        s.getVideoTracks().forEach(function(t){ t.stop(); });
+        s.getAudioTracks()[0].addEventListener('ended', stopRecorderNow);
+        stream = s;
+        return s;
+    }
+
+    // ── Recording ──
+    async function tryAutoStart() {
+        if (recorder && recorder.state === 'recording') return;
+        var s = await ensureStream();
+        if (!s) return;
+        suppressAutoStart = true;
+        beginRecording();
+        try { ytPlayer.setPlaybackRate(1); ytPlayer.playVideo(); } catch (e) {}
+        setTimeout(function(){ suppressAutoStart = false; updateControls(); }, 500);
+    }
+    function beginRecording() {
+        var audioOnly = new MediaStream(stream.getAudioTracks());
+        var mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+        var rec = new MediaRecorder(audioOnly, { mimeType: mime });
+        chunks = [];
+        rec.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        rec.onstop = onRecorderStopped;
+        rec.start(1000);
+        recorder = rec;
+        startedMs = Date.now();
+        updateControls();
+    }
+    function stopRecorderNow() {
+        if (recorder && recorder.state === 'recording') {
+            try { recorder.stop(); } catch (e) {}
+        }
+    }
+    async function onRecorderStopped() {
+        updateControls();
+        var blob = new Blob(chunks, { type: 'audio/webm' });
+        chunks = [];
+        recorder = null;
+        var nowSec = 0;
+        try { nowSec = Math.floor(ytPlayer.getCurrentTime() || 0); } catch (e) {}
+        var dur = 0;
+        try { dur = Math.floor(ytPlayer.getDuration() || 0); } catch (e) {}
+        var atEnd = (dur > 0 && nowSec >= dur - 2);
+
+        setStatus('⬆ Uploading part (' + (blob.size/1024/1024).toFixed(1) + ' MB)…');
+        var fd = new FormData();
+        fd.append('item_key', String(itemKey));
+        fd.append('partial', '1');
+        fd.append('seconds', String(nowSec));
+        fd.append('file', blob, 'rec_' + itemKey + '_' + Date.now() + '.webm');
+        try {
+            var res = await fetch(API + '/admin-transcript-upload.php',
+                                  { method: 'POST', credentials: 'include', body: fd });
+            var d = await res.json();
+            if (d.error) { setStatus('✗ ' + d.error); return; }
+            partCount = (d.partial && d.partial.part_count) || partCount + 1;
+            $('banner').style.display = '';
+            $('banner').innerHTML = bannerText(nowSec);
+            if (atEnd) {
+                setStatus('🎬 Video ended — finalizing audio…');
+                await finalizeNow(true);
+            } else {
+                setStatus('✓ Saved part at ' + fmt(nowSec));
+            }
+        } catch (err) {
+            setStatus('✗ Upload failed: ' + err.message);
+        }
+        updateControls();
+    }
+    async function finalizeNow(autoCalled) {
+        if (!autoCalled && !confirm('Concatenate all parts into the final MP3 and start transcription?')) return;
+        setStatus('🔧 Concatenating parts + encoding MP3…');
+        $('continue-btn').disabled = true;
+        $('restart-btn').disabled = true;
+        try {
+            var res = await fetch(API + '/admin-transcript-upload.php', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'finalize', item_key: itemKey, auto_transcribe: 1 })
+            });
+            var d = await res.json();
+            if (d.error) { setStatus('✗ ' + d.error); return; }
+            setStatus('✓ Saved final MP3 — transcription started. You can close this window.');
+            partCount = 0;
+            $('banner').style.display = 'none';
+            updateControls();
+        } catch (err) {
+            setStatus('✗ Finalize failed: ' + err.message);
+        } finally {
+            $('continue-btn').disabled = false;
+            $('restart-btn').disabled = false;
+        }
+    }
+
+    // ── Buttons ──
+    function continueRecording() {
+        if (ytPlayer && ytPlayer.playVideo) {
+            try { ytPlayer.setPlaybackRate(1); ytPlayer.playVideo(); } catch (e) {}
+        }
+    }
+    function pauseRecording() {
+        if (ytPlayer && ytPlayer.pauseVideo) {
+            try { ytPlayer.pauseVideo(); } catch (e) {}
+        }
+    }
+    async function restartRecording() {
+        if (!confirm('Discard all recorded parts and start over from 0:00?')) return;
+        try {
+            await fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey,
+                        { method: 'DELETE', credentials: 'include' });
+        } catch (e) {}
+        partCount = 0;
+        $('banner').style.display = 'none';
+        if (ytPlayer && ytPlayer.seekTo) {
+            try { ytPlayer.seekTo(0, true); ytPlayer.pauseVideo(); } catch (e) {}
+        }
+        setStatus('Restarting…');
+        setTimeout(tryAutoStart, 300);
+    }
+
+    // ── UI ──
+    function updateControls() {
+        var pauseBtn = $('pause-btn'), continueBtn = $('continue-btn'), restartBtn = $('restart-btn');
+        var rec = !!(recorder && recorder.state === 'recording');
+        if (rec) {
+            pauseBtn.style.display = '';
+            continueBtn.style.display = 'none';
+            restartBtn.style.display = 'none';
+            if (durationTimer) clearInterval(durationTimer);
+            durationTimer = setInterval(updateTime, 500);
+        } else {
+            pauseBtn.style.display = 'none';
+            if (partCount > 0) {
+                continueBtn.style.display = '';
+                restartBtn.style.display = '';
+            } else {
+                continueBtn.style.display = 'none';
+                restartBtn.style.display = 'none';
+            }
+            if (durationTimer) { clearInterval(durationTimer); durationTimer = null; }
+            updateTime();
+        }
+    }
+    function updateTime() {
+        var cur = 0, dur = 0;
+        if (ytPlayer && ytPlayer.getCurrentTime) {
+            try { cur = Math.floor(ytPlayer.getCurrentTime() || 0); } catch (e) {}
+            try { dur = Math.floor(ytPlayer.getDuration() || 0); } catch (e) {}
+        }
+        var prefix = (recorder && recorder.state === 'recording') ? '🔴 ' : '';
+        $('time').textContent = prefix + fmt(cur) + ' / ' + (dur > 0 ? fmt(dur) : '?:??:??');
+    }
+
+    // Warn user if they try to close mid-recording
+    window.addEventListener('beforeunload', function(e) {
+        if (recorder && recorder.state === 'recording') {
+            e.preventDefault();
+            e.returnValue = 'A recording is in progress. Closing this window will stop and save the current part.';
+        }
+    });
+    // On unload, if we have unstopped data, the recorder will stop — onstop
+    // may not fire reliably during unload, but the browser will keep MediaRecorder
+    // alive until the page is fully gone, which lets the upload complete in
+    // many cases. Best-effort.
+    </script>
+</body>
+</html>
