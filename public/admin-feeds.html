@@ -156,6 +156,7 @@
             <span style="font-size:0.82rem;color:#666;">per page</span>
             <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="openYoutubeCookies()">YouTube Cookies</button>
             <button class="btn btn-secondary btn-sm" onclick="openTranscriptDict()">Transcript Dictionary</button>
+            <button class="btn btn-secondary btn-sm" onclick="openSearchReplace()">Search &amp; Replace</button>
         </div>
         <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
     </div>
@@ -1247,6 +1248,11 @@ var _lastBookmarkSaveAtMs = 0;
 // queue the target seconds. The onStateChange handler applies it once the
 // player transitions to PLAYING/BUFFERING (seekTo is a no-op on UNSTARTED).
 var _pendingSeekSec = null;
+// Cached video id so seekVideoTo() can call loadVideoById({videoId, startSeconds}).
+// loadVideoById is the only reliable way to start at a specific second from
+// UNSTARTED state — seekTo() (even from onStateChange=BUFFERING) gets clobbered
+// by the initial buffer-complete event and the player resets to 0.
+var _ytVideoId = null;
 
 // Player + sync state
 var _ytPlayer = null;
@@ -1354,6 +1360,7 @@ function closeTranscript() {
     _txJobStartMs = 0; _txServerPct = 0;
     _lastSavedBookmarkSec = 0; _lastBookmarkSaveAtMs = 0;
     _pendingSeekSec = null;
+    _ytVideoId = null;
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
     if (_ytPlayer) {
         try { _ytPlayer.stopVideo(); _ytPlayer.destroy(); } catch (e) {}
@@ -1415,6 +1422,7 @@ function initVideoPlayer(siteCode, externalId) {
         return;
     }
     if (empty) empty.style.display = 'none';
+    _ytVideoId = externalId;
     ensureYouTubeApi(function() {
         if (_ytPlayer) { try { _ytPlayer.destroy(); } catch (e) {} _ytPlayer = null; }
         _ytPlayer = new YT.Player('yt-player', {
@@ -1492,17 +1500,17 @@ function syncTranscriptToPlayer() {
 }
 
 function seekVideoTo(seconds) {
-    if (!_ytPlayer || typeof _ytPlayer.seekTo !== 'function') return;
+    if (!_ytPlayer) return;
     var state = -1;
     try { state = _ytPlayer.getPlayerState(); } catch (e) {}
-    // -1 unstarted, 5 cued: seekTo() silently fails. Queue the seek and let
-    // playVideo() kick the player; onStateChange will apply it once we're
-    // PLAYING (1) or BUFFERING (3).
-    if (state === -1 || state === 5) {
-        _pendingSeekSec = seconds;
-        try { _ytPlayer.playVideo(); } catch (e) {}
+    // UNSTARTED (-1) and CUED (5): use loadVideoById so the start-second is
+    // honored on the very first buffer. seekTo() in these states gets reset
+    // to 0 when the initial buffer completes.
+    if ((state === -1 || state === 5) && _ytVideoId && typeof _ytPlayer.loadVideoById === 'function') {
+        try { _ytPlayer.loadVideoById({ videoId: _ytVideoId, startSeconds: seconds }); } catch (e) {}
         return;
     }
+    if (typeof _ytPlayer.seekTo !== 'function') return;
     try { _ytPlayer.seekTo(seconds, true); _ytPlayer.playVideo(); } catch (e) {}
 }
 
@@ -2188,6 +2196,180 @@ function toggleTranscriptMaximize() {
     // Tell the rows container to fill the new height
     var rc = document.getElementById('t-rows-container');
     if (rc) rc.style.maxHeight = isMax ? '70vh' : 'calc(100vh - 180px)';
+}
+
+// ── Search & Replace modal ──
+function openSearchReplace() {
+    var ov = document.getElementById('sr-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'sr-overlay';
+        ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10001;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;max-width:1200px;width:100%;margin-top:20px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
+            + '<h3 style="margin:0;font-size:1.05rem;color:#31345A;">Search &amp; Replace — All Transcripts</h3>'
+            + '<button onclick="closeSearchReplace()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
+            + '</div>'
+            + '<div style="display:flex;gap:14px;align-items:flex-start;">'
+            + '<div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;">'
+            + '<div style="display:flex;gap:8px;align-items:center;">'
+            + '<button id="sr-undo-btn" type="button" onclick="srUndo()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:0.85rem;opacity:0.5;">↶ Undo</button>'
+            + '<button id="sr-redo-btn" type="button" onclick="srRedo()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:0.85rem;opacity:0.5;">↷ Redo</button>'
+            + '<span id="sr-undo-meta" style="font-size:0.78rem;color:#888;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>'
+            + '</div>'
+            + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Find</label>'
+            + '<input type="text" id="sr-find" placeholder="text to search for…" style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;">'
+            + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Replace with</label>'
+            + '<input type="text" id="sr-replace" placeholder="(leave empty to delete matches)" style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;">'
+            + '<div style="display:flex;gap:14px;align-items:center;font-size:0.82rem;color:#555;flex-wrap:wrap;">'
+            + '<label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-case" checked> Case-sensitive</label>'
+            + '<label id="sr-wb-label" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-wb" checked> Whole word only</label>'
+            + '<label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-regex" onchange="srToggleRegexMode()"> Use regex</label>'
+            + '</div>'
+            + '<div id="sr-regex-hint" style="display:none;font-size:0.78rem;color:#666;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;line-height:1.4;">POSIX-extended regex. Common tokens: <code>.</code> any char · <code>*</code>/<code>+</code>/<code>?</code> repeats · <code>|</code> alternation · <code>()</code> groups · <code>[abc]</code> char class · <code>\\d</code>/<code>\\w</code>/<code>\\s</code> · <code>\\m</code>/<code>\\M</code> word start/end · <code>^</code>/<code>$</code> line anchors · <code>\\1</code>-<code>\\9</code> backrefs in replacement. No lookahead/lookbehind.</div>'
+            + '<div style="display:flex;gap:8px;margin-top:4px;">'
+            + '<button onclick="srPreview()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Preview matches</button>'
+            + '<button id="sr-apply-btn" onclick="srApply()" disabled style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Apply to all matches</button>'
+            + '</div>'
+            + '<div id="sr-summary" style="margin-top:6px;font-size:0.85rem;color:#555;"></div>'
+            + '<div id="sr-preview-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;font-size:0.82rem;"></div>'
+            + '</div>'
+            + '<div style="flex:0 0 380px;border-left:1px solid #eee;padding-left:14px;">'
+            + '<h4 style="margin:0 0 6px 0;font-size:0.95rem;color:#31345A;">Common patterns</h4>'
+            + '<div style="font-size:0.78rem;color:#666;margin-bottom:8px;">Click any row to copy it into the form. Sorted by how often the pattern has been applied previously.</div>'
+            + '<div id="sr-common-list" style="max-height:60vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;font-size:0.82rem;">Loading…</div>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e) { if (e.target === ov) closeSearchReplace(); };
+    }
+    ov.style.display = 'flex';
+    srLoadCommon();
+    document.getElementById('sr-summary').textContent = '';
+    document.getElementById('sr-preview-list').innerHTML = '';
+    var apply = document.getElementById('sr-apply-btn');
+    apply.disabled = true; apply.style.opacity = '0.5';
+}
+function closeSearchReplace() {
+    var ov = document.getElementById('sr-overlay');
+    if (ov) ov.style.display = 'none';
+}
+function srPayload() {
+    var regex = document.getElementById('sr-regex').checked;
+    return {
+        find: document.getElementById('sr-find').value,
+        replace: document.getElementById('sr-replace').value,
+        case_sensitive: document.getElementById('sr-case').checked,
+        // Word boundary doesn't apply in regex mode — user can write \m...\M themselves
+        word_boundary: !regex && document.getElementById('sr-wb').checked,
+        regex: regex
+    };
+}
+function srToggleRegexMode() {
+    var on = document.getElementById('sr-regex').checked;
+    var wbLabel = document.getElementById('sr-wb-label');
+    var hint = document.getElementById('sr-regex-hint');
+    if (wbLabel) wbLabel.style.opacity = on ? '0.4' : '1';
+    if (wbLabel) wbLabel.style.pointerEvents = on ? 'none' : '';
+    if (hint) hint.style.display = on ? 'block' : 'none';
+    var find = document.getElementById('sr-find');
+    if (find) find.placeholder = on
+        ? 'regex pattern — e.g. \\b(yah)weh\\b  or  \\d{4}'
+        : 'text to search for…';
+}
+function srPreview() {
+    var p = srPayload();
+    if (!p.find) { alert('Enter text to find first.'); return; }
+    var sum = document.getElementById('sr-summary');
+    var list = document.getElementById('sr-preview-list');
+    var apply = document.getElementById('sr-apply-btn');
+    sum.textContent = 'Searching…';
+    list.innerHTML = '';
+    fetch(API + '/admin-transcript-replace.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(Object.assign({action:'preview'}, p))
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { sum.textContent = '✗ ' + d.error; return; }
+        sum.innerHTML = '<strong>' + d.total + '</strong> row' + (d.total===1?'':'s') + ' match. ' + (d.samples.length < d.total ? 'Showing first ' + d.samples.length + ':' : '');
+        if (!d.samples.length) { list.innerHTML = '<div style="padding:14px;color:#999;text-align:center;">No matches.</div>'; apply.disabled = true; apply.style.opacity = '0.5'; return; }
+        var html = '<table style="width:100%;border-collapse:collapse;">'
+            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
+            + '<th style="padding:6px;text-align:left;width:18%;">Item / Time</th>'
+            + '<th style="padding:6px;text-align:left;">Old → New</th>'
+            + '</tr></thead><tbody>';
+        d.samples.forEach(function(s) {
+            html += '<tr style="border-top:1px solid #eee;">'
+                + '<td style="padding:6px;font-size:0.78rem;color:#666;vertical-align:top;">'
+                +   esc((s.title || '').substring(0, 50)) + '<br><span style="font-family:monospace;">'
+                +   esc(s.segment) + '</span></td>'
+                + '<td style="padding:6px;">'
+                +   '<div style="color:#a30;text-decoration:line-through;">' + esc(s.old_text) + '</div>'
+                +   '<div style="color:#1d6b3a;">' + esc(s.new_text) + '</div>'
+                + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        list.innerHTML = html;
+        if (d.total > 0) { apply.disabled = false; apply.style.opacity = '1'; }
+    });
+}
+function srApply() {
+    var p = srPayload();
+    if (!p.find) return;
+    if (!confirm('Apply this replacement across ALL matching transcript rows? Each change will be logged and added to the correction dictionary. This cannot be auto-undone.')) return;
+    var sum = document.getElementById('sr-summary');
+    var apply = document.getElementById('sr-apply-btn');
+    apply.disabled = true; apply.style.opacity = '0.5';
+    sum.textContent = 'Applying…';
+    fetch(API + '/admin-transcript-replace.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(Object.assign({action:'apply'}, p))
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { sum.textContent = '✗ ' + d.error; return; }
+        sum.innerHTML = '<span style="color:#27ae60;font-weight:600;">✓ ' + (d.message || 'Applied') + '</span>';
+        document.getElementById('sr-preview-list').innerHTML = '';
+        srLoadCommon();
+    });
+}
+function srLoadCommon() {
+    var el = document.getElementById('sr-common-list');
+    fetch(API + '/admin-transcript-dict.php?type=corrections', {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (!d.items || !d.items.length) { el.innerHTML = '<div style="padding:14px;color:#999;text-align:center;">No saved patterns yet — bulk replacements you apply will appear here.</div>'; return; }
+            var html = '<table style="width:100%;border-collapse:collapse;">'
+                + '<thead style="background:#f5f5f5;"><tr>'
+                + '<th style="padding:6px;text-align:left;">Find → Replace</th>'
+                + '<th style="padding:6px;text-align:right;width:50px;">Count</th>'
+                + '</tr></thead><tbody>';
+            d.items.slice(0, 100).forEach(function(c) {
+                html += '<tr style="border-top:1px solid #eee;cursor:pointer;" '
+                    +    'onclick="srUseCommon(' + JSON.stringify(c.correction_wrong).replace(/"/g, '&quot;') + ', '
+                    +                              JSON.stringify(c.correction_right).replace(/"/g, '&quot;') + ', '
+                    +                              (c.correction_case_sensitive ? 'true' : 'false') + ', '
+                    +                              (c.correction_word_boundary ? 'true' : 'false') + ')" '
+                    +    'title="Click to copy into form" '
+                    +    'onmouseover="this.style.background=\'#f5f7fa\'" onmouseout="this.style.background=\'\'">'
+                    + '<td style="padding:6px;">'
+                    +   '<span style="color:#a30;">' + esc(c.correction_wrong) + '</span>'
+                    +   ' <span style="color:#888;">→</span> '
+                    +   '<span style="color:#1d6b3a;">' + esc(c.correction_right) + '</span>'
+                    + '</td>'
+                    + '<td style="padding:6px;text-align:right;color:#888;">' + (c.correction_count || 0) + '</td>'
+                    + '</tr>';
+            });
+            html += '</tbody></table>';
+            el.innerHTML = html;
+        });
+}
+function srUseCommon(wrong, right, caseSensitive, wordBoundary) {
+    document.getElementById('sr-find').value = wrong;
+    document.getElementById('sr-replace').value = right;
+    document.getElementById('sr-case').checked = !!caseSensitive;
+    document.getElementById('sr-wb').checked = !!wordBoundary;
+    document.getElementById('sr-regex').checked = false;
+    srToggleRegexMode();
+    srPreview();
 }
 
 // ── YouTube Cookies modal ──
