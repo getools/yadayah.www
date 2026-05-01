@@ -1285,19 +1285,12 @@ function openTranscript(itemKey) {
             + '<div id="t-player-empty" style="color:#888;display:flex;align-items:center;justify-content:center;height:100%;font-size:0.85rem;">Video player loads when transcript opens</div>'
             + '<div id="yt-player" style="width:100%;height:100%;"></div>'
             + '</div>'
-            + '<div style="display:flex;align-items:center;gap:10px;">'
-            + '<div id="t-time-display" style="font-size:0.78rem;color:#666;font-family:monospace;flex:1;">—</div>'
-            + '<label style="font-size:0.74rem;color:#666;display:flex;align-items:center;gap:4px;">Speed'
-            + '<select id="t-playback-rate" onchange="setPlaybackRate(parseFloat(this.value))" style="font-size:0.78rem;padding:2px 4px;border:1px solid #ccc;border-radius:3px;background:#fff;">'
-            + '<option value="0.5">0.5×</option>'
-            + '<option value="0.75">0.75×</option>'
-            + '<option value="1" selected>1×</option>'
-            + '<option value="1.25">1.25×</option>'
-            + '<option value="1.5">1.5×</option>'
-            + '<option value="1.75">1.75×</option>'
-            + '<option value="2">2×</option>'
-            + '</select></label>'
+            + '<div id="t-speed-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;padding:6px 8px;">'
+            + '<span style="font-size:0.74rem;color:#666;font-weight:600;margin-right:2px;">Speed</span>'
+            + speedButtonsHtml([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4])
+            + '<span id="t-speed-note" style="font-size:0.7rem;color:#a36100;margin-left:auto;"></span>'
             + '</div>'
+            + '<div id="t-time-display" style="font-size:0.78rem;color:#666;font-family:monospace;">—</div>'
             + '<div id="t-validation" style="padding:10px 12px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;">'
             + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">'
             + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Status</label>'
@@ -1528,23 +1521,55 @@ function syncTranscriptToPlayer() {
     }
 }
 
+// Render a row of speed-pill buttons for the requested rates. The active
+// pill gets highlighted by setPlaybackRate() so the current rate is obvious.
+function speedButtonsHtml(rates) {
+    return rates.map(function(r) {
+        var label = (r === Math.floor(r) ? r.toString() : r.toString()) + '×';
+        return '<button type="button" data-rate="' + r + '" onclick="setPlaybackRate(' + r + ')" '
+            + 'style="background:#fff;border:1px solid #ccc;color:#31345A;padding:3px 8px;border-radius:14px;cursor:pointer;font-size:0.78rem;font-weight:600;min-width:38px;">'
+            + label + '</button>';
+    }).join('');
+}
+
+function highlightSpeedPill(rate) {
+    var row = document.getElementById('t-speed-row');
+    if (!row) return;
+    row.querySelectorAll('button[data-rate]').forEach(function(b) {
+        var active = parseFloat(b.dataset.rate) === parseFloat(rate);
+        b.style.background    = active ? '#31345A' : '#fff';
+        b.style.color         = active ? '#fff'    : '#31345A';
+        b.style.borderColor   = active ? '#31345A' : '#ccc';
+    });
+}
+
 function setPlaybackRate(rate) {
     if (!rate || isNaN(rate)) return;
     if (window.adminUI) adminUI.save('feeds.transcript', 'playbackRate', rate);
+    var note = document.getElementById('t-speed-note');
+    if (note) note.textContent = '';
     if (_ytPlayer && typeof _ytPlayer.setPlaybackRate === 'function') {
         try { _ytPlayer.setPlaybackRate(rate); } catch (e) {}
+        // The IFrame API silently clamps to the nearest supported rate
+        // (typically 0.25-2). Detect that and surface it so users with a 2.5+
+        // pill selected understand why playback isn't faster.
+        setTimeout(function() {
+            try {
+                var actual = _ytPlayer.getPlaybackRate ? _ytPlayer.getPlaybackRate() : rate;
+                if (Math.abs(actual - rate) > 0.01 && note) {
+                    note.textContent = '⚠ YouTube capped at ' + actual + '× (max 2× supported by embed)';
+                }
+            } catch (e) {}
+        }, 200);
     }
+    highlightSpeedPill(rate);
 }
 
 // Apply the user's last-used speed to a freshly-ready player. Called from
 // onReady so the choice survives across videos and across reopens.
 function applySavedPlaybackRate() {
     var saved = (window.adminUI && adminUI.load('feeds.transcript', 'playbackRate', 1)) || 1;
-    var sel = document.getElementById('t-playback-rate');
-    if (sel) sel.value = String(saved);
-    if (saved !== 1 && _ytPlayer && typeof _ytPlayer.setPlaybackRate === 'function') {
-        try { _ytPlayer.setPlaybackRate(saved); } catch (e) {}
-    }
+    setPlaybackRate(saved);
 }
 
 function seekVideoTo(seconds) {
