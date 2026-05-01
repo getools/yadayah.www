@@ -162,23 +162,33 @@
 
     <!-- Recordings Tab — queue + batch process videos that don't have an MP3 yet -->
     <div id="tab-recordings" class="feed-tab" style="display:none;">
-        <div class="toolbar">
-            <span id="rec-count" class="feed-count"></span>
-            <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">
-                <select id="rec-per-page" onchange="loadRecordings(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50" selected>50</option>
-                    <option value="75">75</option>
-                    <option value="100">100</option>
-                    <option value="200">200</option>
-                    <option value="500">500</option>
-                    <option value="99999">All</option>
-                </select>
-                per page
-            </label>
-            <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="margin-left:auto;background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
-            <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
+        <!-- Toolbar laid out in three sections that line up with the table
+             columns below: left = checkbox+thumb (per-page dropdown sits here),
+             middle = Key+Title+Published+Source (centered count info),
+             right = Duration+Processed (action buttons). -->
+        <div class="toolbar" style="display:flex;align-items:center;gap:8px;">
+            <div style="width:156px;flex-shrink:0;">
+                <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">
+                    <select id="rec-per-page" onchange="loadRecordings(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="75">75</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                        <option value="99999">All</option>
+                    </select>
+                    per page
+                </label>
+            </div>
+            <div style="flex:1;text-align:center;min-width:0;">
+                <span id="rec-count" class="feed-count"></span>
+            </div>
+            <div style="width:240px;flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;">
+                <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
+                <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
+            </div>
         </div>
         <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
         <style>
@@ -1731,7 +1741,6 @@ function openRecordPopover(itemKey, opts) {
         ov.innerHTML = '<div id="r-card" style="background:#fff;border-radius:10px;padding:18px;max-width:880px;width:100%;margin-top:30px;">'
             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">'
             + '<h3 id="r-title" style="margin:0;font-size:1rem;color:#31345A;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Record</h3>'
-            + '<button onclick="minimizeRecordPopover()" title="Minimize (recording continues)" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666;line-height:1;padding:0 6px;">_</button>'
             + '<button onclick="closeRecordPopover()" id="r-close-btn" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
             + '</div>'
             + '<div id="r-player-wrap" style="background:#000;border-radius:6px;overflow:hidden;aspect-ratio:16/9;margin-bottom:12px;">'
@@ -1749,17 +1758,6 @@ function openRecordPopover(itemKey, opts) {
             + '</div>';
         document.body.appendChild(ov);
         ov.onclick = function(e) { if (e.target === ov) closeRecordPopover(); };
-
-        // Minimized restore icon (only created once)
-        if (!document.getElementById('r-minimized-icon')) {
-            var mini = document.createElement('div');
-            mini.id = 'r-minimized-icon';
-            mini.style.cssText = 'display:none;position:fixed;bottom:20px;right:20px;z-index:10009;background:#c00;color:#fff;border-radius:50%;width:64px;height:64px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:none;align-items:center;justify-content:center;font-size:1.4rem;user-select:none;';
-            mini.title = 'Click to restore Record window';
-            mini.onclick = restoreRecordPopover;
-            mini.innerHTML = '<span id="r-mini-label">🎙</span>';
-            document.body.appendChild(mini);
-        }
     }
     ov.style.display = 'flex';
     document.getElementById('r-status').textContent = 'Loading video…';
@@ -1859,31 +1857,6 @@ function refreshRecordPopoverPartialState() {
         });
 }
 
-// ── Minimize / restore ──
-function minimizeRecordPopover() {
-    var ov = document.getElementById('record-overlay');
-    var mini = document.getElementById('r-minimized-icon');
-    if (ov) ov.style.display = 'none';
-    if (mini) {
-        mini.style.display = 'flex';
-        // Inherit the recording timer label so the user can see ongoing time
-        var timeLabel = document.getElementById('r-time');
-        var miniLabel = document.getElementById('r-mini-label');
-        if (timeLabel && miniLabel && _recState.recorder && _recState.recorder.state === 'recording') {
-            miniLabel.textContent = '🔴';
-            mini.title = 'Recording in progress — click to restore';
-        } else {
-            miniLabel.textContent = '🎙';
-            mini.title = 'Click to restore Record window';
-        }
-    }
-}
-function restoreRecordPopover() {
-    var ov = document.getElementById('record-overlay');
-    var mini = document.getElementById('r-minimized-icon');
-    if (ov) ov.style.display = 'flex';
-    if (mini) mini.style.display = 'none';
-}
 function closeRecordPopover() {
     // If a recording is active, stop it cleanly first
     if (_recState.recorder && _recState.recorder.state === 'recording') {
@@ -1904,8 +1877,6 @@ function closeRecordPopover() {
     }
     var ov = document.getElementById('record-overlay');
     if (ov) ov.style.display = 'none';
-    var mini = document.getElementById('r-minimized-icon');
-    if (mini) mini.style.display = 'none';
     if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
     _recState.activeItemKey = null;
 }

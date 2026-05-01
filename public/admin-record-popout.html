@@ -93,8 +93,23 @@
     var suppressAutoStart = false;
     var durationTimer = null;
     var initialResumeSec = 0;
+    // Tracks the post-Pause upload so beforeunload can warn the user if they
+    // try to close the window while the part is still being POSTed. Without
+    // this, a fast Pause→Close cancels the in-flight fetch silently and the
+    // server never persists resume_seconds.
+    var uploadInFlight = false;
+    var pendingBlob = null, pendingSeconds = 0;
+    // Periodic auto-checkpoint: every CHECKPOINT_MS while recording, we
+    // programmatically pause→upload→resume so the user can never lose more
+    // than CHECKPOINT_MS of audio if their browser ignores the unload prompt
+    // or the network drops. The user sees a brief 1-2 sec hiccup in playback
+    // when this fires; that's the cost of the safety net.
+    var CHECKPOINT_MS = 5 * 60 * 1000;
+    var checkpointTimer = null;
+    var autoCheckpointPending = false;
 
     if (!itemKey) { document.getElementById('status').textContent = '✗ Missing ?item=N in URL'; }
+    document.getElementById('status').textContent = 'Loading YouTube player API…';
 
     // ── Helpers ──
     function $(id) { return document.getElementById(id); }
@@ -107,16 +122,26 @@
     function setTitle(t) { $('title').textContent = t; document.title = 'Record — ' + t; }
 
     // ── YT IFrame API ──
-    function onYouTubeIframeAPIReady() { ytReady = true; bootstrap(); }
+    // Called by the IFrame API script once it has loaded. We also need this
+    // function defined BEFORE the API script tag — it's declared at the top
+    // of this <script> block which runs before the API loads, so the global
+    // `onYouTubeIframeAPIReady` is in place when YT fires its callback.
+    function onYouTubeIframeAPIReady() {
+        ytReady = true;
+        setStatus('Fetching video info…');
+        bootstrap();
+    }
 
     async function bootstrap() {
         if (!ytReady || !itemKey) { return; }
         try {
             var resp = await fetch(API + '/admin-transcript.php?item_key=' + itemKey + '&_=' + Date.now(),
                                    { credentials: 'include', cache: 'no-store' });
+            if (resp.status === 401) throw new Error('Not signed in to admin. Open admin-feeds.html in another tab and sign in, then reload this page.');
             var d = await resp.json();
             if (d.error || !d.item) throw new Error(d.error || 'Item not found');
             setTitle((d.item.title || 'Item ' + itemKey).substring(0, 90));
+            setStatus('Reading any saved progress…');
             // Read partial state
             var pResp = await fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey + '&_=' + Date.now(),
                                     { credentials: 'include', cache: 'no-store' });
@@ -127,6 +152,9 @@
             if (initialResumeSec > 0) {
                 $('banner').style.display = '';
                 $('banner').innerHTML = bannerText(initialResumeSec);
+                setStatus('Loading video and seeking to ' + fmt(initialResumeSec) + '…');
+            } else {
+                setStatus('Loading video…');
             }
             // Spin up player
             ytPlayer = new YT.Player('yt-player', {
@@ -162,14 +190,13 @@
         try { e.target.setPlaybackRate(1); } catch (err) {}
         try {
             var dur = Math.floor(e.target.getDuration() || 0);
-            if (dur > 0) $('time').textContent = '0:00:00 / ' + fmt(dur);
+            if (dur > 0) $('time').textContent = (initialResumeSec > 0 ? fmt(initialResumeSec) : '0:00:00') + ' / ' + fmt(dur);
         } catch (err) {}
         if (initialResumeSec > 0) {
+            setStatus('Seeking to ' + fmt(initialResumeSec) + '…');
             try { e.target.seekTo(initialResumeSec, true); } catch (err) {}
         }
-        // Auto-start. We're inside the same browser activation as the
-        // window.open() that spawned this popout, so the share-screen prompt
-        // should be allowed.
+        setStatus('Requesting tab share permission…');
         tryAutoStart();
     }
     function onPlayerStateChange(e) {
@@ -196,36 +223,68 @@
     }
 
     // ── Capture stream ──
-    async function ensureStream() {
-        if (stream && stream.getAudioTracks().length) return stream;
+    // Two layers of dedup so we never show stacked tab-share prompts:
+    //
+    //  1. streamAcquiring (singleton promise) — concurrent callers all await
+    //     the same in-flight getDisplayMedia call. Without this, onPlayerReady
+    //     + onPlayerStateChange(PLAYING) firing back-to-back each call
+    //     getDisplayMedia independently and you see two prompts at once.
+    //
+    //  2. streamPromptedOnce — once we've shown the prompt for this popout
+    //     session, we won't auto-show it again from any background path
+    //     (PLAYING state change, etc). The user has to explicitly click
+    //     Continue Recording to retry, which clears the flag. This stops a
+    //     SEQUENTIAL second prompt if the first one was cancelled or didn't
+    //     produce a valid audio track.
+    var streamAcquiring = null;
+    var streamPromptedOnce = false;
+    async function ensureStream(opts) {
+        opts = opts || {};
+        if (stream && stream.getAudioTracks().length
+            && stream.getAudioTracks()[0].readyState === 'live') {
+            return stream;
+        }
+        if (streamAcquiring) return streamAcquiring;
         if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
             setStatus('✗ Browser does not support tab audio capture.');
             return null;
         }
-        var s;
+        if (streamPromptedOnce && !opts.userInitiated) {
+            setStatus('Tab share was cancelled. Click ▶ Continue Recording to try again.');
+            return null;
+        }
+        streamPromptedOnce = true;
+        streamAcquiring = (async function() {
+            var s;
+            try {
+                s = await navigator.mediaDevices.getDisplayMedia({
+                    video: { displaySurface: 'browser' }, audio: true, preferCurrentTab: true
+                });
+            } catch (e) {
+                setStatus('✗ Tab capture cancelled: ' + (e.message || e));
+                return null;
+            }
+            if (!s.getAudioTracks().length) {
+                setStatus('✗ No audio track. Make sure to check Share tab audio.');
+                s.getTracks().forEach(function(t){ t.stop(); });
+                return null;
+            }
+            s.getVideoTracks().forEach(function(t){ t.stop(); });
+            s.getAudioTracks()[0].addEventListener('ended', stopRecorderNow);
+            stream = s;
+            return s;
+        })();
         try {
-            s = await navigator.mediaDevices.getDisplayMedia({
-                video: { displaySurface: 'browser' }, audio: true, preferCurrentTab: true
-            });
-        } catch (e) {
-            setStatus('✗ Tab capture cancelled: ' + (e.message || e));
-            return null;
+            return await streamAcquiring;
+        } finally {
+            streamAcquiring = null;
         }
-        if (!s.getAudioTracks().length) {
-            setStatus('✗ No audio track. Make sure to check Share tab audio.');
-            s.getTracks().forEach(function(t){ t.stop(); });
-            return null;
-        }
-        s.getVideoTracks().forEach(function(t){ t.stop(); });
-        s.getAudioTracks()[0].addEventListener('ended', stopRecorderNow);
-        stream = s;
-        return s;
     }
 
     // ── Recording ──
-    async function tryAutoStart() {
+    async function tryAutoStart(opts) {
         if (recorder && recorder.state === 'recording') return;
-        var s = await ensureStream();
+        var s = await ensureStream(opts);
         if (!s) return;
         suppressAutoStart = true;
         beginRecording();
@@ -242,7 +301,20 @@
         rec.start(1000);
         recorder = rec;
         startedMs = Date.now();
+        startCheckpointTimer();
         updateControls();
+    }
+    function startCheckpointTimer() {
+        if (checkpointTimer) clearInterval(checkpointTimer);
+        checkpointTimer = setInterval(function() {
+            if (recorder && recorder.state === 'recording') {
+                autoCheckpointPending = true;
+                try { ytPlayer.pauseVideo(); } catch (e) {}
+            }
+        }, CHECKPOINT_MS);
+    }
+    function stopCheckpointTimer() {
+        if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
     }
     function stopRecorderNow() {
         if (recorder && recorder.state === 'recording') {
@@ -250,6 +322,7 @@
         }
     }
     async function onRecorderStopped() {
+        stopCheckpointTimer();
         updateControls();
         var blob = new Blob(chunks, { type: 'audio/webm' });
         chunks = [];
@@ -259,8 +332,16 @@
         var dur = 0;
         try { dur = Math.floor(ytPlayer.getDuration() || 0); } catch (e) {}
         var atEnd = (dur > 0 && nowSec >= dur - 2);
+        var wasAutoCheckpoint = autoCheckpointPending;
 
-        setStatus('⬆ Uploading part (' + (blob.size/1024/1024).toFixed(1) + ' MB)…');
+        // Mark in-flight so beforeunload can guard against the user closing
+        // the window mid-POST (which silently aborts the upload).
+        pendingBlob = blob;
+        pendingSeconds = nowSec;
+        uploadInFlight = true;
+
+        setStatus((wasAutoCheckpoint ? '💾 Auto-saving progress' : '⬆ Saving recording')
+                  + ' — do NOT close the window… (' + (blob.size/1024/1024).toFixed(1) + ' MB)');
         var fd = new FormData();
         fd.append('item_key', String(itemKey));
         fd.append('partial', '1');
@@ -274,19 +355,30 @@
             partCount = (d.partial && d.partial.part_count) || partCount + 1;
             $('banner').style.display = '';
             $('banner').innerHTML = bannerText(nowSec);
+            pendingBlob = null;
             if (atEnd) {
                 setStatus('🎬 Video ended — finalizing audio…');
                 await finalizeNow(true);
+            } else if (wasAutoCheckpoint) {
+                setStatus('💾 Auto-saved at ' + fmt(nowSec) + ' — resuming…');
+                autoCheckpointPending = false;
+                // Resume playback; PLAYING handler will restart the recorder
+                // using the cached stream (no new permission prompt).
+                try { ytPlayer.playVideo(); } catch (e) {}
             } else {
-                setStatus('✓ Saved part at ' + fmt(nowSec));
+                setStatus('✓ Saved part at ' + fmt(nowSec) + ' — safe to close window.');
             }
         } catch (err) {
             setStatus('✗ Upload failed: ' + err.message);
+        } finally {
+            uploadInFlight = false;
+            autoCheckpointPending = false;
         }
         updateControls();
     }
     async function finalizeNow(autoCalled) {
         if (!autoCalled && !confirm('Concatenate all parts into the final MP3 and start transcription?')) return;
+        stopCheckpointTimer();
         setStatus('🔧 Concatenating parts + encoding MP3…');
         $('continue-btn').disabled = true;
         $('restart-btn').disabled = true;
@@ -312,6 +404,15 @@
 
     // ── Buttons ──
     function continueRecording() {
+        // User-initiated: if a prior auto-prompt was cancelled, allow a retry.
+        // Reset the once-prompted flag and explicitly request a stream so the
+        // user gets the share dialog if we don't have one yet.
+        streamPromptedOnce = false;
+        if (!stream || !stream.getAudioTracks().length
+            || stream.getAudioTracks()[0].readyState !== 'live') {
+            tryAutoStart({ userInitiated: true });
+            return;
+        }
         if (ytPlayer && ytPlayer.playVideo) {
             try { ytPlayer.setPlaybackRate(1); ytPlayer.playVideo(); } catch (e) {}
         }
@@ -333,7 +434,8 @@
             try { ytPlayer.seekTo(0, true); ytPlayer.pauseVideo(); } catch (e) {}
         }
         setStatus('Restarting…');
-        setTimeout(tryAutoStart, 300);
+        streamPromptedOnce = false;
+        setTimeout(function(){ tryAutoStart({ userInitiated: true }); }, 300);
     }
 
     // ── UI ──
@@ -383,7 +485,7 @@
     //    audio at the very end (the in-flight chunk that hadn't yet been
     //    flushed into chunks[]).
     window.addEventListener('beforeunload', function(e) {
-        if (recorder && recorder.state === 'recording') {
+        if ((recorder && recorder.state === 'recording') || uploadInFlight) {
             e.preventDefault();
             e.returnValue = '';
         }
@@ -408,5 +510,6 @@
         }
     }
     </script>
+    <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>

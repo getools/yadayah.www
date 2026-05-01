@@ -233,7 +233,12 @@ if ($method === 'POST') {
         $partAbs = $PARTS_DIR_ABS . "/audio_{$itemKey}_part_{$next}.webm";
         if (!@move_uploaded_file($tmp, $partAbs)) errorResponse('Failed to write part: ' . $partAbs);
         @chmod($partAbs, 0664);
-        $db->prepare("UPDATE yy_feed_item SET feed_item_audio_resume_seconds = ? WHERE feed_item_key = ?")
+        // Never regress: a stale or out-of-order partial upload should not
+        // overwrite a later position. Always take the MAX of the existing
+        // value and the incoming one.
+        $db->prepare("UPDATE yy_feed_item
+                          SET feed_item_audio_resume_seconds = GREATEST(COALESCE(feed_item_audio_resume_seconds, 0), ?)
+                        WHERE feed_item_key = ?")
            ->execute([$partialSeconds, $itemKey]);
         logMonitorEvent('transcript_upload', 'info',
             'Partial recording part ' . $next . ' for item ' . $itemKey . ' (' . $partialSeconds . 's, '
