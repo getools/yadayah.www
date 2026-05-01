@@ -146,7 +146,7 @@ function serveItems(PDO $db, string $where, array $params, int $limit, int $offs
                feed_item_audio_file AS audio
         FROM yy_feed_item
         WHERE $where
-        ORDER BY COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime) DESC NULLS LAST
+        ORDER BY feed_item_sort NULLS LAST, (NULLIF(regexp_replace(feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime) DESC NULLS LAST
         LIMIT ? OFFSET ?
     ");
     $stmt->execute(array_merge($params, [$limit, $offset]));

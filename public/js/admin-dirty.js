@@ -208,11 +208,29 @@ if (typeof MutationObserver !== 'undefined') {
     }).observe(document.body, { childList: true, subtree: true, characterData: true });
 }
 
+function initAndSettle() {
+    init();
+    // Re-snapshot tracked sections after async data loads complete.
+    // Many admin pages fetch data after page load and set <input>/<select> values
+    // programmatically — those changes don't fire input/change events, so the
+    // initial snapshot misses them and dirty detection breaks.
+    var refresh = function() {
+        for (var i = 0; i < _tracked.length; i++) {
+            // Only refresh if the button hasn't been clicked dirty yet
+            if (_tracked[i].button.disabled) {
+                _tracked[i].snapshot = takeSnapshot(_tracked[i].section);
+            }
+        }
+    };
+    setTimeout(refresh, 800);
+    setTimeout(refresh, 1500);
+    setTimeout(refresh, 3000);
+}
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', initAndSettle);
 } else {
-    // Delay to let admin pages render their dynamic content first
-    setTimeout(init, 500);
+    setTimeout(initAndSettle, 500);
 }
 
 })();

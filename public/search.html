@@ -375,7 +375,9 @@
             }
 
             var html = '';
-            if (data.fuzzy) {
+            if (data.did_you_mean) {
+                html += '<div class="results-info" style="color:#996600; font-style:italic;">No results for "<strong>' + escHtml(query) + '</strong>". Showing results for <a href="?q=' + encodeURIComponent(data.did_you_mean) + '" style="color:#31345A;text-decoration:underline;font-weight:600;font-style:normal;">' + escHtml(data.did_you_mean) + '</a> instead.</div>';
+            } else if (data.fuzzy) {
                 html += '<div class="results-info" style="color:#996600; font-style:italic;">No exact matches found. Showing similar results for "<strong>' + escHtml(query) + '</strong>"</div>';
             }
             html += '<div class="results-info"><strong>' + data.total.toLocaleString()
@@ -520,6 +522,6 @@
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 });})();
 </script>
-<script src="/js/site-footer.js?v=18"></script>
+<script src="/js/site-footer.js?v=127"></script>
 </body>
 </html>

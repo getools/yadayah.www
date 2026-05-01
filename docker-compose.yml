@@ -28,7 +28,6 @@ services:
     depends_on:
       - web
       - itcoge-web
-      - books-web
 
   web:
     build: .
@@ -59,15 +58,6 @@ services:
     volumes:
       - /opt/itcoge-www/public:/var/www/html
     container_name: itcoge-web
-
-  books-web:
-    build: /opt/books-www
-    restart: always
-    expose:
-      - "80"
-    volumes:
-      - /opt/books-www/public:/var/www/html
-    container_name: books-web
 
   postgres:
     image: postgres:15-alpine

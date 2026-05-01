@@ -30,7 +30,10 @@ if ($method === 'GET' && isset($_GET['items'])) {
     if ($tagsFilter) { $where[] = 'fi.feed_item_tags ILIKE ?'; $params[] = '%'.$tagsFilter.'%'; }
     $episodeFilter = trim($_GET['episode'] ?? '');
     if ($episodeFilter) { $where[] = 'fi.feed_item_episode ILIKE ?'; $params[] = '%'.$episodeFilter.'%'; }
-    if ($catKey) { $where[] = 'fi.feed_item_category_key = ?'; $params[] = $catKey; }
+    if ($catKey) {
+        $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_category WHERE category_key = ?)';
+        $params[] = $catKey;
+    }
     $pageKey = (int)($_GET['page_key'] ?? 0);
     if ($pageKey) {
         // Use yy_feed_item_page join table — this is the source of truth for which items
@@ -60,12 +63,11 @@ if ($method === 'GET' && isset($_GET['items'])) {
         'feed_item_episode' => 'fi.feed_item_episode',
         'feed_item_active_flag' => 'fi.feed_item_active_flag',
         'feed_name' => 'f.feed_name',
-        'category_title' => 'c.category_title',
     ];
     $orderCol = $sortMap[$sort] ?? $sortMap['publish_dtime'];
 
     $stmt = $db->prepare("
-        SELECT fi.*, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, f.feed_name, c.category_title,
+        SELECT fi.*, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, f.feed_name,
                (SELECT string_agg(DISTINCT p.page_code, ', ' ORDER BY p.page_code)
                 FROM yy_feed_item_page fip JOIN yy_page p ON fip.page_key = p.page_key
                 WHERE fip.feed_item_key = fi.feed_item_key
@@ -82,7 +84,6 @@ if ($method === 'GET' && isset($_GET['items'])) {
                 WHERE fic.feed_item_key = fi.feed_item_key) AS categories_list
         FROM yy_feed_item fi
         JOIN yy_feed f ON fi.feed_key = f.feed_key
-        LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
         WHERE $whereStr
         ORDER BY $orderCol $dir NULLS LAST
         LIMIT ? OFFSET ?
@@ -336,7 +337,7 @@ if ($method === 'PUT' && isset($_GET['item_update'])) {
     $data = json_decode(file_get_contents('php://input'), true);
     $itemKey = (int)($data['feed_item_key'] ?? 0);
     if (!$itemKey) errorResponse('feed_item_key required');
-    $allowed = ['feed_item_title_import','feed_item_title_override','feed_item_publish_override_dtime','feed_item_url','feed_item_thumbnail','feed_item_tags','feed_item_episode','feed_item_sort','feed_item_orientation','feed_item_type','feed_item_audio_file','feed_item_active_flag','feed_item_category_key'];
+    $allowed = ['feed_item_title_import','feed_item_title_override','feed_item_publish_override_dtime','feed_item_url','feed_item_thumbnail','feed_item_tags','feed_item_episode','feed_item_sort','feed_item_orientation','feed_item_type','feed_item_audio_file','feed_item_active_flag'];
     $sets = []; $vals = [];
     foreach ($allowed as $f) {
         if (array_key_exists($f, $data)) {

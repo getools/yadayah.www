@@ -126,6 +126,27 @@ elseif (!$rows && file_exists($uploadSrt)) $methodFailures[] = "uploaded_srt: pa
 
 bailIfCancelled($db, $jobKey);
 
+// Cookies file used to bypass YouTube's bot-detection. If present, both yt-dlp
+// invocations below get `--cookies <file>`. Admin uploads/refreshes via admin-feeds.
+// Path matches admin-cookies.php — /tmp is shared inside the same container.
+$cookiesPath = '/tmp/youtube-cookies.txt';
+$haveCookies = file_exists($cookiesPath) && filesize($cookiesPath) > 0;
+$cookiesArg  = $haveCookies ? ' --cookies ' . escapeshellarg($cookiesPath) : '';
+// Player client choice:
+//   - With cookies: prefer `web` (full formats, accepts cookies). Other clients
+//     fall back automatically. Avoids the `tv` client that yt-dlp picks as a
+//     last resort, which only exposes images.
+//   - Without cookies: try `ios` to evade bot-detection.
+$playerArg   = $haveCookies
+    ? " --extractor-args 'youtube:player_client=web,mweb,web_safari'"
+    : " --extractor-args 'youtube:player_client=ios'";
+
+// YouTube's modern n-challenge requires a JS solver. Deno is installed in the
+// container, and `--remote-components ejs:github` lets yt-dlp auto-fetch the
+// challenge-solver lib from the yt-dlp/ejs releases. Without this, all formats
+// after the n-param get stripped and only image storyboards are returned.
+$remoteComponentsArg = ' --remote-components ejs:github';
+
 // ── Method 2: yt-dlp auto-captions (host) ──
 if (!$rows && $site === 'youtube') {
     updateJob($db, $jobKey, ['job_progress' => 15, 'job_message' => 'Fetching YouTube captions...']);
@@ -136,7 +157,7 @@ if (!$rows && $site === 'youtube') {
     } elseif (!$videoId) {
         $methodFailures[] = "yt_dlp_captions: no videoId on item";
     } else {
-        $cmd = escapeshellcmd($ytDlp) . " --skip-download --write-auto-subs --sub-lang en --sub-format vtt --extractor-args 'youtube:player_client=ios' --output " . escapeshellarg("$tmpFile.%(ext)s") . " " . escapeshellarg("https://www.youtube.com/watch?v=$videoId") . " 2>&1";
+        $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg . " --skip-download --write-auto-subs --sub-lang en --sub-format vtt --output " . escapeshellarg("$tmpFile.%(ext)s") . " " . escapeshellarg("https://www.youtube.com/watch?v=$videoId") . " 2>&1";
         $output = shell_exec($cmd);
         $vttFiles = glob("$tmpFile*.vtt");
         if ($vttFiles && file_exists($vttFiles[0])) {
@@ -166,21 +187,33 @@ if (!$rows) {
         } elseif (!$videoUrl) {
             $methodFailures[] = "whisper_api: feed_item_url is empty";
         } else {
-            $cmd = escapeshellcmd($ytDlp) . " -x --audio-format mp3 --audio-quality 5 --output " . escapeshellarg($audioPath) . " --extractor-args 'youtube:player_client=ios' " . escapeshellarg($videoUrl) . " 2>&1";
+            $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg . " -x --audio-format mp3 --audio-quality 5 --output " . escapeshellarg($audioPath) . " " . escapeshellarg($videoUrl) . " 2>&1";
             $dlOutput = shell_exec($cmd);
             if (!file_exists($audioPath) || filesize($audioPath) <= 10000) {
-                // Detect common YouTube download failure modes and surface a clean reason
+                // Extract the actionable ERROR line if present; otherwise use last ~400 chars
+                // (yt-dlp emits progress on early lines and the real failure on the last).
+                $errLine = '';
+                if ($dlOutput && preg_match('/^ERROR:.*$/m', $dlOutput, $m)) $errLine = mb_substr($m[0], 0, 400);
+                $tail = $errLine ?: substr(trim($dlOutput ?? ''), -400);
+
                 $reason = 'audio download failed';
-                if (stripos($dlOutput ?? '', 'live event will begin') !== false) {
+                $hint = '';
+                $haystack = $dlOutput ?? '';
+                if (stripos($haystack, "not a bot") !== false || stripos($haystack, 'confirm you') !== false) {
+                    $reason = "YouTube bot-detection blocked this server's IP";
+                    $hint = ' [Fix: supply --cookies-from-browser, route through a residential proxy, or upload audio/VTT manually to /tmp/transcript_uploads/' . $itemKey . '.vtt]';
+                } elseif (stripos($haystack, 'live event will begin') !== false) {
                     $reason = 'video is a scheduled future live event — not yet available';
-                } elseif (stripos($dlOutput ?? '', 'live event has ended') !== false) {
+                } elseif (stripos($haystack, 'live event has ended') !== false) {
                     $reason = 'live event has ended but recording is not yet processed by YouTube';
-                } elseif (stripos($dlOutput ?? '', 'private video') !== false || stripos($dlOutput ?? '', 'unavailable') !== false) {
-                    $reason = 'video is private, deleted, or unavailable';
-                } elseif (stripos($dlOutput ?? '', 'sign in') !== false || stripos($dlOutput ?? '', 'age-restricted') !== false) {
-                    $reason = 'video requires sign-in or is age-restricted';
+                } elseif (stripos($haystack, 'private video') !== false) {
+                    $reason = 'video is private';
+                } elseif (stripos($haystack, 'video unavailable') !== false || stripos($haystack, 'has been removed') !== false) {
+                    $reason = 'video is deleted or unavailable';
+                } elseif (stripos($haystack, 'age-restricted') !== false || stripos($haystack, 'age restricted') !== false) {
+                    $reason = 'video is age-restricted';
                 }
-                $methodFailures[] = "whisper_api: $reason — " . substr(trim($dlOutput ?? ''), 0, 300);
+                $methodFailures[] = "whisper_api: $reason$hint — " . $tail;
             } else {
                 updateJob($db, $jobKey, ['job_progress' => 40, 'job_message' => 'Transcribing via Whisper API...']);
                 $glossaryPrompt = buildGlossaryPrompt($db);
@@ -208,7 +241,7 @@ if (!$rows) {
     updateJob($db, $jobKey, [
         'job_status' => 'failed',
         'job_progress' => 0,
-        'job_message' => 'Failed: ' . ($methodFailures[count($methodFailures)-1] ?? 'unknown'),
+        'job_message' => mb_substr('Failed: ' . ($methodFailures[count($methodFailures)-1] ?? 'unknown'), 0, 500),
         'job_error' => $detail,
         'job_completed_dtime' => date('c'),
     ]);

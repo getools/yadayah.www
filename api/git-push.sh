@@ -18,6 +18,15 @@ else
     MSG="Auto-fix applied changes"
 fi
 
+cd "$GIT_DIR" || exit 1
+
+# Abort any in-progress rebase and sync local master to remote before rsync.
+# This ensures our rsync'd changes are applied on top of origin rather than
+# stale local commits that would conflict on push.
+git rebase --abort 2>/dev/null || true
+git fetch origin master 2>&1
+git checkout -B master origin/master 2>&1
+
 # Sync API PHP files
 rsync -a --delete "$DEPLOY_DIR/api/" "$GIT_DIR/api/" \
     --include='*.php' --include='*.sh' --include='*/' --exclude='*'
@@ -37,8 +46,6 @@ rsync -a "$DEPLOY_DIR/public/" "$GIT_DIR/public/" \
 for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh; do
     [ -f "$DEPLOY_DIR/$f" ] && cp -f "$DEPLOY_DIR/$f" "$GIT_DIR/$f" 2>/dev/null
 done
-
-cd "$GIT_DIR" || exit 1
 
 # Check if there are any changes
 if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then

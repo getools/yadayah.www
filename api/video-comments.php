@@ -248,7 +248,7 @@ if ($method === 'POST') {
         $replyKey = $stmt->fetchColumn();
 
         // Update topic counters
-        $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1 WHERE topic_key = ?")->execute([$topicKey]);
+        $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1, topic_last_reply_dtime = NOW() WHERE topic_key = ?")->execute([$topicKey]);
 
         jsonResponse(['saved' => true, 'comment_key' => $replyKey]);
     }
@@ -331,7 +331,7 @@ if ($method === 'POST') {
         $db->prepare("UPDATE yy_community_reply SET reply_delete_dtime = NULL, reply_delete_note = NULL WHERE reply_key = ?")
            ->execute([$commentKey]);
         if ($topicKey) {
-            $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1, topic_active_flag = TRUE WHERE topic_key = ?")->execute([$topicKey]);
+            $db->prepare("UPDATE yy_community_topic SET topic_reply_count = topic_reply_count + 1, topic_active_flag = TRUE, topic_last_reply_dtime = NOW() WHERE topic_key = ?")->execute([$topicKey]);
         }
         jsonResponse(['restored' => true]);
     }

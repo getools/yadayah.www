@@ -79,28 +79,28 @@ if (file_exists($PUSH_FILE)) {
     $pushData = json_decode(file_get_contents($PUSH_FILE), true);
 }
 
-// ── 2. If push says live and it's recent, serve it (no polling needed) ──
+// ── 2. If push says live (which includes upcoming with live=true flag) and it's recent ──
 if ($pushData && !empty($pushData['live']) && $pushAge < 10800) { // 3 hours
-    // Live stream detected via push — but poll YouTube to verify it's still live
+    // Stream detected via push — but poll YouTube to verify status
     if (file_exists($CACHE_FILE) && (time() - filemtime($CACHE_FILE)) < $CACHE_TTL) {
-        // Serve cached poll result
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: public, max-age=30');
         readfile($CACHE_FILE);
         exit;
     }
 
-    // Poll to check if stream is still live
     $videoId = $pushData['video_id'] ?? '';
     if ($videoId) {
         $result = pollYouTubeVideoStatus($videoId, $pushData);
         $json = json_encode($result, JSON_UNESCAPED_UNICODE);
         file_put_contents($CACHE_FILE, $json);
 
-        // If stream ended, clear the push file
+        // If stream ended (live becomes false), clear the push file
         if (empty($result['live'])) {
-            $pushData['live'] = false;
-            file_put_contents($PUSH_FILE, json_encode($pushData));
+            file_put_contents($PUSH_FILE, json_encode(['live' => false]));
+        } else {
+            // Update push file with latest poll state (preserves upcoming → live transition)
+            file_put_contents($PUSH_FILE, $json);
         }
 
         header('Content-Type: application/json; charset=utf-8');
@@ -164,21 +164,30 @@ function isPushHealthy(string $subsFile, string $pushFile): bool {
 
 function pollYouTubeVideoStatus(string $videoId, array $pushData): array {
     $db = getDb();
-    $stmt = $db->query("SELECT feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_api_key IS NOT NULL LIMIT 1");
-    $apiKey = $stmt->fetchColumn() ?: getenv('YOUTUBE_API_KEY') ?: '';
-    if (!$apiKey) return $pushData; // Can't poll without key, return push data as-is
+    // Try every available YouTube API key (handles quota exhaustion on any single key)
+    $stmt = $db->query("SELECT feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_api_key IS NOT NULL AND feed_api_key != ''");
+    $apiKeys = array_unique(array_column($stmt->fetchAll(), 'feed_api_key'));
+    $envKey = getenv('YOUTUBE_API_KEY');
+    if ($envKey) $apiKeys[] = $envKey;
+    if (!$apiKeys) return $pushData;
 
-    $url = 'https://www.googleapis.com/youtube/v3/videos?' . http_build_query([
-        'part' => 'snippet,liveStreamingDetails',
-        'id' => $videoId,
-        'key' => $apiKey,
-    ]);
+    $data = null;
+    foreach ($apiKeys as $apiKey) {
+        $url = 'https://www.googleapis.com/youtube/v3/videos?' . http_build_query([
+            'part' => 'snippet,liveStreamingDetails',
+            'id' => $videoId,
+            'key' => $apiKey,
+        ]);
+        $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+        $response = @file_get_contents($url, false, $ctx);
+        if ($response === false) continue;
+        $parsed = json_decode($response, true);
+        if (isset($parsed['error'])) continue; // try next key (quota exhausted)
+        $data = $parsed;
+        break;
+    }
+    if (!$data) return $pushData; // all keys failed — keep existing state
 
-    $ctx = stream_context_create(['http' => ['timeout' => 5]]);
-    $response = @file_get_contents($url, false, $ctx);
-    if ($response === false) return $pushData;
-
-    $data = json_decode($response, true);
     $items = $data['items'] ?? [];
     if (empty($items)) return ['live' => false];
 
@@ -218,29 +227,43 @@ function pollYouTubeVideoStatus(string $videoId, array $pushData): array {
 
 function pollYouTubeLive(): array {
     $db = getDb();
-    $stmt = $db->query("SELECT feed_account_id, feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_api_key IS NOT NULL");
-    $feeds = $stmt->fetchAll();
+    // Only check channels explicitly flagged for live-stream monitoring
+    $stmt = $db->query("SELECT feed_account_id, feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_stream_flag = TRUE AND feed_account_id LIKE 'UC%'");
+    $streamFeeds = $stmt->fetchAll();
+    if (!$streamFeeds) return ['live' => false];
+
+    // Collect ALL available YouTube API keys as fallback (if a feed's own key is quota-exhausted)
+    $allKeysStmt = $db->query("SELECT feed_api_key FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_api_key IS NOT NULL AND feed_api_key != ''");
+    $apiKeys = array_unique(array_column($allKeysStmt->fetchAll(), 'feed_api_key'));
+    $envKey = getenv('YOUTUBE_API_KEY');
+    if ($envKey) $apiKeys[] = $envKey;
 
     // Check for live first, then upcoming
     foreach (['live', 'upcoming'] as $eventType) {
-        foreach ($feeds as $feed) {
+        foreach ($streamFeeds as $feed) {
             $channelId = $feed['feed_account_id'];
-            $apiKey = $feed['feed_api_key'] ?: getenv('YOUTUBE_API_KEY') ?: '';
-            if (!$apiKey || !$channelId || strpos($channelId, 'PL') === 0) continue;
-
-            $url = 'https://www.googleapis.com/youtube/v3/search?' . http_build_query([
-                'part' => 'snippet',
-                'channelId' => $channelId,
-                'eventType' => $eventType,
-                'type' => 'video',
-                'key' => $apiKey,
-                'maxResults' => 1,
-            ]);
-
-            $ctx = stream_context_create(['http' => ['timeout' => 5]]);
-            $response = @file_get_contents($url, false, $ctx);
+            // Try each available API key until one succeeds (handles quota exhaustion)
+            $keysToTry = array_unique(array_filter(array_merge([$feed['feed_api_key']], $apiKeys)));
+            $items = [];
+            $response = false;
+            foreach ($keysToTry as $apiKey) {
+                $url = 'https://www.googleapis.com/youtube/v3/search?' . http_build_query([
+                    'part' => 'snippet',
+                    'channelId' => $channelId,
+                    'eventType' => $eventType,
+                    'type' => 'video',
+                    'key' => $apiKey,
+                    'maxResults' => 1,
+                ]);
+                $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+                $response = @file_get_contents($url, false, $ctx);
+                if ($response === false) continue;
+                $data = json_decode($response, true);
+                if (isset($data['error'])) continue; // try next key
+                $items = $data['items'] ?? [];
+                break; // success
+            }
             if ($response === false) continue;
-
             $data = json_decode($response, true);
             $items = $data['items'] ?? [];
 

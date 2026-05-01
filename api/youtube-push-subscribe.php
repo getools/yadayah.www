@@ -44,7 +44,7 @@ if (!$channelId) {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
     }
-    $channels = $db->query("SELECT feed_account_id, feed_name FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE")->fetchAll();
+    $channels = $db->query("SELECT feed_account_id, feed_name FROM yy_feed WHERE lower(feed_site_code) = 'youtube' AND feed_active_flag = TRUE AND feed_stream_flag = TRUE")->fetchAll();
 } else {
     $channels = [['feed_account_id' => $channelId, 'feed_name' => $channelId]];
 }

@@ -527,11 +527,16 @@ Community.filterCategory = function(slug) {
         opts.parentSlug = 'comments';
     }
     CommunityTopics.loadTopics(1, slug, opts);
-    Community._skipRoute = true;
+    var newHash;
     if (Community.currentSection === 'comments') {
-        window.location.hash = '#comments';
+        newHash = '#comments';
     } else {
-        window.location.hash = slug ? '#category/' + slug : '#topics';
+        newHash = slug ? '#category/' + slug : '#topics';
+    }
+    // Only set _skipRoute if the hash will actually change (otherwise hashchange won't fire and the flag will linger)
+    if (window.location.hash !== newHash) {
+        Community._skipRoute = true;
+        window.location.hash = newHash;
     }
 };
 

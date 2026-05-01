@@ -110,8 +110,8 @@ try {
         }
 
         $stmt = $db->prepare("
-            INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_description, feed_item_tags, feed_item_category_key, feed_item_episode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?)
+            INSERT INTO yy_feed_item (feed_key, feed_item_external_id, feed_item_title_import, feed_item_url, feed_item_thumbnail, feed_item_embed_id, feed_item_publish_import_dtime, feed_item_description, feed_item_tags, feed_item_episode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)
             ON CONFLICT (feed_key, feed_item_external_id) DO UPDATE SET
                 feed_item_title_import = EXCLUDED.feed_item_title_import,
                 feed_item_url = EXCLUDED.feed_item_url,
@@ -120,7 +120,6 @@ try {
                 feed_item_publish_import_dtime = COALESCE(EXCLUDED.feed_item_publish_import_dtime, yy_feed_item.feed_item_publish_import_dtime),
                 feed_item_description = COALESCE(EXCLUDED.feed_item_description, yy_feed_item.feed_item_description),
                 feed_item_tags = COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags),
-                feed_item_category_key = COALESCE(EXCLUDED.feed_item_category_key, yy_feed_item.feed_item_category_key),
                 feed_item_episode = COALESCE(EXCLUDED.feed_item_episode, yy_feed_item.feed_item_episode),
                 feed_item_revision_dtime = NOW()
             WHERE yy_feed_item.feed_item_title_import IS DISTINCT FROM EXCLUDED.feed_item_title_import
@@ -130,15 +129,28 @@ try {
                OR yy_feed_item.feed_item_publish_import_dtime IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_publish_import_dtime, yy_feed_item.feed_item_publish_import_dtime)
                OR yy_feed_item.feed_item_description IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_description, yy_feed_item.feed_item_description)
                OR yy_feed_item.feed_item_tags IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_tags, yy_feed_item.feed_item_tags)
-               OR yy_feed_item.feed_item_category_key IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_category_key, yy_feed_item.feed_item_category_key)
                OR yy_feed_item.feed_item_episode IS DISTINCT FROM COALESCE(EXCLUDED.feed_item_episode, yy_feed_item.feed_item_episode)
             RETURNING (xmax = 0) as is_insert
         ");
-        $stmt->execute([$feedKey, $vidId, $title, $vidUrl, $thumb, $embedId, $publishDate, $description, $tags, $categoryKey, $episode]);
+        $stmt->execute([$feedKey, $vidId, $title, $vidUrl, $thumb, $embedId, $publishDate, $description, $tags, $episode]);
         $row = $stmt->fetch();
         if ($row) {
             if ($row['is_insert']) $totalInserted++;
             else $totalUpdated++;
+        }
+
+        // Write Vlog category to yy_feed_item_category (page-scoped to Vlog page).
+        // Replace only Vlog-page rows so other pages' admin assignments are untouched.
+        if ($categoryKey) {
+            $itemKeyStmt = $db->prepare("SELECT feed_item_key FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ?");
+            $itemKeyStmt->execute([$feedKey, $vidId]);
+            $itemKey = (int)($itemKeyStmt->fetchColumn() ?: 0);
+            if ($itemKey) {
+                $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ? AND category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = ?)")
+                   ->execute([$itemKey, $vlogPageKey]);
+                $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key, feed_item_category_episode) VALUES (?, ?, ?) ON CONFLICT (feed_item_key, category_key) DO UPDATE SET feed_item_category_episode = EXCLUDED.feed_item_category_episode")
+                   ->execute([$itemKey, $categoryKey, $episode ? (string)$episode : null]);
+            }
         }
     }
 } catch (\Exception $e) {
@@ -169,6 +181,11 @@ if ($deduped > 0 && php_sapi_name() === 'cli') echo "Deactivated {$deduped} dupl
 $status = $error ? 'error' : 'success';
 $db->prepare("UPDATE yy_feed_sync SET feed_sync_status = ?, feed_sync_items_found = ?, feed_sync_items_inserted = ?, feed_sync_items_updated = ?, feed_sync_error = ?, feed_sync_end_dtime = NOW() WHERE feed_sync_key = ?")
    ->execute([$status, $totalFound, $totalInserted, $totalUpdated, $error, $syncKey]);
+
+if ($error) {
+    logMonitorEvent('sync_rumble', 'error', 'Rumble sync failed: ' . $error,
+        "found=$totalFound inserted=$totalInserted updated=$totalUpdated\nfeed_sync_key=$syncKey");
+}
 
 // Update feed item → page associations after sync
 require_once __DIR__ . '/feed-item-pages.php';

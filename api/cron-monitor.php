@@ -185,12 +185,6 @@ foreach ($phpErrors as &$err) {
 }
 unset($err);
 
-// ── 2b. AI auto-fix for unresolved errors (CLI only — web uses separate Auto-Fix button) ──
-if (php_sapi_name() === 'cli' && file_exists(__DIR__ . '/ai-auto-fix.php')) {
-    require_once __DIR__ . '/ai-auto-fix.php';
-} else {
-    // Skip AI auto-fix when called from web — it has its own button and takes too long for a scan
-}
 
 foreach ($phpErrors as &$err) {
     if (!empty($err['resolved'])) continue; // already fixed by pattern

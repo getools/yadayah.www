@@ -49,7 +49,9 @@ if ($type === 'categories' && $method === 'GET') {
     global $PAGE_KEY;
     $catStmt = $db->prepare("
         SELECT c.category_key, c.category_title, c.category_subtitle, c.category_slug, c.category_sort,
-               (SELECT COUNT(*) FROM yy_feed_item fi WHERE fi.feed_item_category_key = c.category_key AND fi.feed_item_active_flag = TRUE) AS video_count
+               (SELECT COUNT(*) FROM yy_feed_item_category fic
+                JOIN yy_feed_item fi ON fi.feed_item_key = fic.feed_item_key
+                WHERE fic.category_key = c.category_key AND fi.feed_item_active_flag = TRUE) AS video_count
         FROM yy_feed_page_category c
         WHERE c.page_key = ? AND c.category_active_flag = TRUE
         ORDER BY c.category_sort, c.category_title
@@ -104,7 +106,7 @@ if ($type === 'category' && $method === 'PUT') {
 
 if ($type === 'category' && $method === 'DELETE') {
     if (!$key) errorResponse('Category key required');
-    $db->prepare("UPDATE yy_feed_item SET feed_item_category_key = NULL, feed_item_revision_dtime = NOW() WHERE feed_item_category_key = ?")->execute([$key]);
+    // yy_feed_item_category rows are removed via ON DELETE CASCADE on the FK
     $db->prepare("DELETE FROM yy_feed_page_category WHERE category_key = ?")->execute([$key]);
     jsonResponse(['deleted' => true]);
 }
@@ -130,17 +132,24 @@ if ($type === 'videos' && $method === 'GET') {
         $params[] = '%' . $term . '%';
     }
 
+    // Read the Basics category from yy_feed_item_category (page-scoped, multi-category).
     $stmt = $db->prepare("
         SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title,
                fi.feed_item_thumbnail, fi.feed_item_url, fi.feed_item_sort, fi.feed_item_active_flag,
-               fi.feed_item_category_key, fi.feed_item_audio_file,
-               c.category_title, c.category_sort
+               fi.feed_item_audio_file,
+               fic.category_key AS basics_category_key,
+               fc.category_title, fc.category_sort
         FROM yy_feed_item fi
-        LEFT JOIN yy_feed_page_category c ON fi.feed_item_category_key = c.category_key
+        LEFT JOIN yy_feed_item_category fic ON fic.feed_item_key = fi.feed_item_key
+            AND fic.category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = ?)
+        LEFT JOIN yy_feed_page_category fc ON fic.category_key = fc.category_key
         WHERE $where
-        ORDER BY COALESCE(c.category_sort, 999), fi.feed_item_sort, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)
+        ORDER BY COALESCE(fc.category_sort, 999),
+                 fi.feed_item_sort,
+                 COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST,
+                 COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)
     ");
-    $stmt->execute($params);
+    $stmt->execute(array_merge([$PAGE_KEY], $params));
     $rows = $stmt->fetchAll();
 
     $videos = [];
@@ -153,7 +162,7 @@ if ($type === 'videos' && $method === 'GET') {
             'basics_url'            => $r['feed_item_url'],
             'basics_sort'           => (int)$r['feed_item_sort'],
             'basics_active_flag'    => $r['feed_item_active_flag'] === true || $r['feed_item_active_flag'] === 't',
-            'basics_category_key'   => $r['feed_item_category_key'] ? (int)$r['feed_item_category_key'] : null,
+            'basics_category_key'   => $r['basics_category_key'] ? (int)$r['basics_category_key'] : null,
             'basics_category_title' => $r['category_title'] ?? null,
             'basics_audio_file'    => $r['feed_item_audio_file'] ?? null,
         ];
@@ -164,6 +173,7 @@ if ($type === 'videos' && $method === 'GET') {
 
 if ($type === 'video' && $method === 'PUT') {
     if (!$key) errorResponse('Video key required');
+    global $PAGE_KEY;
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
     $fields = [];
     $params = [];
@@ -171,14 +181,6 @@ if ($type === 'video' && $method === 'PUT') {
     if (isset($data['basics_title'])) {
         $fields[] = 'feed_item_title_override = ?';
         $params[] = trim($data['basics_title']);
-    }
-    if (array_key_exists('basics_category_key', $data)) {
-        $catKey = $data['basics_category_key'] ? (int)$data['basics_category_key'] : null;
-        $fields[] = 'feed_item_category_key = ?';
-        $params[] = $catKey;
-        // Keep tags in sync for backward compat
-        $fields[] = 'feed_item_tags = ?';
-        $params[] = $catKey ? ('#Basics,' . $catKey) : '#Basics';
     }
     if (isset($data['basics_sort'])) {
         $fields[] = 'feed_item_sort = ?';
@@ -188,11 +190,26 @@ if ($type === 'video' && $method === 'PUT') {
         $fields[] = 'feed_item_active_flag = ?';
         $params[] = (bool)$data['basics_active_flag'];
     }
-    if (empty($fields)) errorResponse('Nothing to update');
 
-    $fields[] = 'feed_item_revision_dtime = NOW()';
-    $params[] = $key;
-    $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $fields) . " WHERE feed_item_key = ?")->execute($params);
+    // Category goes to yy_feed_item_category (page-scoped) — not the legacy field.
+    // This keeps Basics-page categories independent of #vlog hashtag-driven categories.
+    if (array_key_exists('basics_category_key', $data)) {
+        $catKey = $data['basics_category_key'] ? (int)$data['basics_category_key'] : null;
+        // Remove any existing Basics-page category for this item
+        $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ? AND category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = ?)")
+           ->execute([$key, $PAGE_KEY]);
+        // Insert new one if a category was selected
+        if ($catKey) {
+            $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key) VALUES (?, ?) ON CONFLICT (feed_item_key, category_key) DO NOTHING")
+               ->execute([$key, $catKey]);
+        }
+    }
+
+    if ($fields) {
+        $fields[] = 'feed_item_revision_dtime = NOW()';
+        $params[] = $key;
+        $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $fields) . " WHERE feed_item_key = ?")->execute($params);
+    }
     jsonResponse(['saved' => true]);
 }
 

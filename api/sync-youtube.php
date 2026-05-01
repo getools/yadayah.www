@@ -247,6 +247,12 @@ foreach ($feeds as $feed) {
     $db->prepare("UPDATE yy_feed_sync SET feed_sync_status = ?, feed_sync_items_found = ?, feed_sync_items_inserted = ?, feed_sync_items_updated = ?, feed_sync_error = ?, feed_sync_end_dtime = NOW() WHERE feed_sync_key = ?")
        ->execute([$status, $totalFound, $totalInserted, $totalUpdated, $error, $syncKey]);
 
+    if ($error) {
+        logMonitorEvent('sync_youtube', 'error',
+            'YouTube sync failed for feed "' . $feed['feed_name'] . '": ' . $error,
+            "feed_key={$feed['feed_key']} found=$totalFound inserted=$totalInserted updated=$totalUpdated\nfeed_sync_key=$syncKey");
+    }
+
     $results[] = [
         'feed' => $feed['feed_name'],
         'found' => $totalFound,

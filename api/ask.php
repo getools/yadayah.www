@@ -802,6 +802,49 @@ if ($curlError) {
     flush();
 }
 
+// --- Detect billing/credit errors and notify error@yadayah.com (throttled to 1/hour) ---
+if ($streamError) {
+    $lc = strtolower($streamError);
+    $billingPatterns = ['credit balance', 'insufficient', 'exceeded your current quota', 'billing', 'payment required',
+                        'no funds', 'out of credits', 'budget exceeded', 'spend limit', 'plans & billing',
+                        'rate_limit_error', 'over quota'];
+    $isBillingError = false;
+    foreach ($billingPatterns as $p) {
+        if (strpos($lc, $p) !== false) { $isBillingError = true; break; }
+    }
+    if ($isBillingError) {
+        try {
+            // Throttle: skip if we've already alerted in the last hour
+            $throttleStmt = $pdo->prepare("SELECT 1 FROM yy_email_queue WHERE to_email = ? AND subject LIKE ? AND created_dtime > NOW() - INTERVAL '1 hour' LIMIT 1");
+            $throttleStmt->execute(['error@yadayah.com', '%AI billing alert%']);
+            if (!$throttleStmt->fetchColumn()) {
+                $subject = '[AI billing alert] ' . substr($modelName, 0, 50);
+                $bodyHtml = '<div style="font-family:Arial,sans-serif;max-width:600px;">'
+                    . '<h2 style="color:#c0392b;">AI provider billing/credit error</h2>'
+                    . '<p><strong>Model:</strong> ' . htmlspecialchars($modelName) . '</p>'
+                    . '<p><strong>HTTP Status:</strong> ' . (int)$httpCode . '</p>'
+                    . '<p><strong>Error message:</strong></p>'
+                    . '<pre style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;">' . htmlspecialchars($streamError) . '</pre>'
+                    . '<p style="color:#666;font-size:0.85em;">Triggered by Ask Yada at ' . date('Y-m-d H:i:s T') . '. The API key for this provider needs more credits or billing attention. <strong>Ask Yada has been automatically switched to Offline</strong> until you re-enable a model in admin. Further alerts are throttled for 1 hour.</p>'
+                    . '</div>';
+                $pdo->prepare("INSERT INTO yy_email_queue (to_email, subject, body_html) VALUES (?, ?, ?)")
+                    ->execute(['error@yadayah.com', $subject, $bodyHtml]);
+                @exec('php ' . escapeshellarg(__DIR__ . '/process-email-queue.php') . ' > /dev/null 2>&1 &');
+            }
+
+            // Auto-switch to Offline so subsequent users don't hit the same billing error
+            $offlineStmt = $pdo->prepare("UPDATE yy_setting SET setting_value = '' WHERE setting_scope_code = 'app' AND setting_code = 'ask_model'");
+            $offlineStmt->execute();
+
+            // Also log to the monitor for visibility on the admin dashboard
+            $pdo->prepare("INSERT INTO yy_monitor_event (event_source, event_severity, event_message, event_detail, event_action_taken, event_resolved_flag) VALUES ('ai_billing', 'error', ?, ?, ?, FALSE)")
+                ->execute([substr($streamError, 0, 1000), 'Model: ' . $modelName . "\nHTTP: " . $httpCode, 'Auto-switched Ask Yada to Offline']);
+        } catch (Throwable $e) {
+            // Never let notification failures break the response flow
+        }
+    }
+}
+
 // --- Update log and session ---
 try {
     $durationMs = (int)((microtime(true) - $startTime) * 1000);

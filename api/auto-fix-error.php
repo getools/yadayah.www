@@ -18,12 +18,35 @@ $WEB_ROOT = '/var/www/html';
 $MAX_TRIAGE = 1000;
 $RUN_ID = $argv[1] ?? '';
 $STATUS_FILE = $RUN_ID ? "/tmp/autofix_run_{$RUN_ID}.json" : '';
+$STARTED_AT = date('c'); // captured ONCE so 'started' is stable across status writes
 
 function writeStatus(string $file, array $data): void {
     if (!$file) return;
     $data['updated'] = date('c');
     @file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
 }
+
+// ── Concurrency lock: refuse to run if another auto-fix is already in progress ──
+$LOCK_FILE = '/tmp/autofix.lock';
+$lockFp = fopen($LOCK_FILE, 'c');
+if (!$lockFp || !flock($lockFp, LOCK_EX | LOCK_NB)) {
+    $reason = 'Another auto-fix run is already in progress (lock held). Skipping to prevent duplicates.';
+    echo "[" . date('c') . "] $reason\n";
+    if ($STATUS_FILE) {
+        writeStatus($STATUS_FILE, [
+            'state' => 'skipped',
+            'started' => $STARTED_AT, 'finished' => date('c'),
+            'total' => 0, 'processed' => 0,
+            'log_tail' => $reason,
+        ]);
+    }
+    exit(0);
+}
+// Release lock on shutdown
+register_shutdown_function(function () use ($lockFp, $LOCK_FILE) {
+    if ($lockFp) { @flock($lockFp, LOCK_UN); @fclose($lockFp); }
+    @unlink($LOCK_FILE);
+});
 
 // ── DB ──
 $host = getenv('PG_HOST') ?: 'localhost';
@@ -378,6 +401,20 @@ foreach ($errors as $error) {
         }
     }
 
+    // Sources that represent external infra/3rd-party issues — Claude can't fix these by editing code.
+    // We mark them with an explanatory action_taken instead of burning Claude credits indefinitely.
+    $infraSources = ['transcript_worker', 'sync_youtube', 'sync_facebook', 'sync_rumble', 'ai_billing'];
+
+    if (!$codeFixed && in_array($source, $infraSources, true)) {
+        $note = "Infra/external-service issue — not fixable by editing code. Source: $source. Needs manual review.";
+        $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ? AND event_action_taken IS NULL")
+           ->execute([$note, $error['event_key']]);
+        $line = "  [skip-claude] #{$error['event_key']} {$source}: external/infra issue — skipping claude-fix";
+        echo $line . "\n";
+        recordCounter('pending', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
+        continue;
+    }
+
     if (!$codeFixed) {
         // Pattern fixer can't handle this — invoke Claude Code agent on-server to investigate & fix.
         // Auth must be set up first (see /opt/yada-www/claude-home).
@@ -412,7 +449,7 @@ writeStatus($STATUS_FILE, [
     'total' => $total,
     'processed' => $processed,
     'counters' => $counters,
-    'started' => $started ?? date('c'),
+    'started' => $STARTED_AT,
     'finished' => date('c'),
     'log_tail' => implode("\n", array_slice($logLines, -100)),
 ]);

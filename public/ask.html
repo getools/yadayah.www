@@ -608,7 +608,12 @@ function sendMessage() {
 });})();
 (function(){fetch('/api/page-ask-config.php').then(function(r){return r.json();}).then(function(cfg){
     if(cfg.title){var t=document.getElementById('ask-title');if(t)t.textContent=cfg.title;}
-    if(cfg.summary){var s=document.getElementById('ask-summary');if(s)s.textContent=cfg.summary;}
+    var s=document.getElementById('ask-summary');
+    if(s){
+        var isOffline = !cfg.model;
+        var msg = isOffline ? (cfg['offline-message'] || cfg.summary || '') : (cfg.summary || '');
+        s.innerHTML = msg;
+    }
     if(cfg.placeholder){var p=document.getElementById('input');if(p)p.placeholder=cfg.placeholder;}
     var img=document.getElementById('ask-page-image');
     if(img&&cfg['page-image']){img.src='/'+cfg['page-image'].replace(/^\//,'');img.style.display='block';if(cfg['page-image-height'])img.style.maxHeight=cfg['page-image-height']+'px';}
@@ -644,6 +649,6 @@ function askSignIn() {
     setTimeout(function() { clearInterval(checkInterval); }, 120000);
 }
 </script>
-<script src="/js/site-footer.js?v=18"></script>
+<script src="/js/site-footer.js?v=127"></script>
 </body>
 </html>

@@ -136,11 +136,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $liveDetails = $items[0]['liveStreamingDetails'] ?? [];
                     $liveBroadcastContent = $snippet['liveBroadcastContent'] ?? 'none';
 
-                    if ($liveBroadcastContent === 'live') {
-                        $isLive = true;
+                    if ($liveBroadcastContent === 'live' || $liveBroadcastContent === 'upcoming') {
+                        $isLive = true; // treat upcoming as "active" for indicator purposes
+                        $isUpcoming = ($liveBroadcastContent === 'upcoming');
                         $liveData = [
-                            'live' => true,
-                            'title' => $title ?: ($snippet['title'] ?? 'Live Now'),
+                            'live' => true, // show indicator for both live and upcoming
+                            'upcoming' => $isUpcoming,
+                            'title' => $title ?: ($snippet['title'] ?? ($isUpcoming ? 'Upcoming' : 'Live Now')),
                             'url' => $link ?: ('https://www.youtube.com/watch?v=' . $videoId),
                             'embed_url' => 'https://www.youtube.com/embed/' . $videoId . '?autoplay=1',
                             'thumbnail' => $snippet['thumbnails']['high']['url'] ?? '',
@@ -148,20 +150,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'video_id' => $videoId,
                             'channel_id' => $channelId,
                             'started_at' => $liveDetails['actualStartTime'] ?? date('c'),
+                            'scheduled_start' => $liveDetails['scheduledStartTime'] ?? null,
                             'push_received' => date('c'),
                         ];
                         file_put_contents($liveStatusFile, json_encode($liveData));
-                        pushLog("LIVE STREAM DETECTED: {$title}");
+                        pushLog(($isUpcoming ? 'UPCOMING STREAM' : 'LIVE STREAM') . " DETECTED: {$title}");
 
                         // Also update the polling cache so live-check.php picks it up immediately
                         $pollingCache = sys_get_temp_dir() . '/yada_live_check.json';
                         file_put_contents($pollingCache, json_encode($liveData));
-                    } elseif ($liveBroadcastContent === 'none' || $liveBroadcastContent === 'upcoming') {
-                        // Stream ended or is upcoming — clear live status if it was ours
+
+                        // Set feed_stream_dtime to capture FIRST detection of this stream
+                        // (whether the trigger was the upcoming push or the live push — covers
+                        // scenarios where the upcoming notification was missed).
+                        // Never touch feed_stream_flag — it's manually controlled.
+                        try {
+                            // Check if this is a new stream event (different video_id than last detected)
+                            $existingFeed = $db->prepare("SELECT feed_source_url, feed_stream_dtime FROM yy_feed WHERE feed_account_id = ? AND feed_stream_flag = TRUE LIMIT 1");
+                            $existingFeed->execute([$channelId]);
+                            $existing = $existingFeed->fetch();
+
+                            $expectedUrl = 'https://www.youtube.com/watch?v=' . $videoId;
+                            $isNewStream = !$existing || strpos($existing['feed_source_url'] ?? '', $videoId) === false;
+
+                            if ($isNewStream) {
+                                // First time we've seen THIS stream — set the timestamp
+                                $db->prepare("UPDATE yy_feed SET feed_stream_dtime = NOW(), feed_source_url = ? WHERE feed_account_id = ? AND feed_stream_flag = TRUE")
+                                   ->execute([$expectedUrl, $channelId]);
+                                pushLog("Set feed_stream_dtime for new {$liveBroadcastContent} stream: {$videoId}");
+                            } else {
+                                // Same stream, just status change (upcoming → live) — only update URL if missing
+                                $db->prepare("UPDATE yy_feed SET feed_source_url = COALESCE(feed_source_url, ?) WHERE feed_account_id = ? AND feed_stream_flag = TRUE")
+                                   ->execute([$expectedUrl, $channelId]);
+                            }
+                        } catch (Throwable $e) {
+                            pushLog("Could not update feed_stream_dtime: " . $e->getMessage());
+                        }
+                    } elseif ($liveBroadcastContent === 'none') {
+                        // Stream ended or was a regular video — clear status if it was ours
                         $existing = @json_decode(@file_get_contents($liveStatusFile), true);
                         if ($existing && ($existing['video_id'] ?? '') === $videoId) {
-                            $existing['live'] = false;
-                            file_put_contents($liveStatusFile, json_encode($existing));
+                            file_put_contents($liveStatusFile, json_encode(['live' => false]));
                             // Clear polling cache too
                             $pollingCache = sys_get_temp_dir() . '/yada_live_check.json';
                             file_put_contents($pollingCache, json_encode(['live' => false]));

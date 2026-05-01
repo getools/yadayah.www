@@ -169,8 +169,10 @@
                 </div>
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Heading</label>
                 <input type="text" id="page-title" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
-                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Summary</label>
-                <textarea id="page-summary" rows="8" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;"></textarea>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;padding-top:6px;">Summary</label>
+                <textarea id="page-summary"></textarea>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;padding-top:6px;">Offline Message</label>
+                <textarea id="page-offline-message"></textarea>
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Prompt</label>
                 <input type="text" id="page-placeholder" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;">Ban Title</label>
@@ -274,8 +276,61 @@
 </div>
 
 <script src="js/admin-links.js?v=2"></script>
+<script src="js/tinymce/tinymce.min.js"></script>
 <script>
 var API = '/api';
+function initRichEditor(elementId, content) {
+    var existing = tinymce.get(elementId);
+    if (existing) existing.remove();
+
+    tinymce.init({
+        selector: '#' + elementId,
+        base_url: '/js/tinymce',
+        plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table autoresize charmap code',
+        toolbar: 'bold italic underline strikethrough | blocks fontfamily fontsize | forecolor backcolor | bullist numlist | blockquote codesample | link image media emoticons charmap | table | code fullscreen',
+        menubar: false,
+        statusbar: true,
+        branding: false,
+        promotion: false,
+        min_height: 250,
+        max_height: 600,
+        autoresize_bottom_margin: 20,
+        skin: 'oxide',
+        content_css: 'default',
+        content_style: 'body { font-family: "Maven Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.95rem; line-height: 1.6; color: #333; padding: 8px; } a { color: #31345A; }',
+        images_upload_handler: function(blobInfo) {
+            return new Promise(function(resolve, reject) {
+                var fd = new FormData();
+                fd.append('image', blobInfo.blob(), blobInfo.filename());
+                fetch('/api/community-image-upload.php', {
+                    method: 'POST', credentials: 'include', body: fd
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.url) resolve(data.url); else reject(data.error || 'Upload failed');
+                }).catch(function() { reject('Upload failed'); });
+            });
+        },
+        automatic_uploads: true,
+        setup: function(editor) {
+            editor.on('init', function() {
+                editor.setContent(content || '');
+            });
+            // Push edits back to the underlying textarea so dirty-tracking sees them
+            editor.on('input change keyup', function() {
+                editor.save();
+                var ta = document.getElementById(elementId);
+                if (ta) {
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
+                    ta.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        }
+    });
+}
+
+function getRichContent(elementId) {
+    var ed = tinymce.get(elementId);
+    return ed ? ed.getContent() : (document.getElementById(elementId).value || '');
+}
 var currentPage = 1;
 var selectedKey = null;
 var sessionsLoaded = false;
@@ -331,7 +386,8 @@ function loadModel() {
             }
             if (d.page) {
                 document.getElementById('page-title').value = d.page.title || '';
-                document.getElementById('page-summary').value = d.page.summary || '';
+                initRichEditor('page-summary', d.page.summary || '');
+                initRichEditor('page-offline-message', d.page['offline-message'] || '');
                 document.getElementById('page-placeholder').value = d.page['placeholder'] || '';
                 document.getElementById('page-ban-title').value = d.page['ban-title'] || '';
                 document.getElementById('page-ban-message').value = d.page['ban-message'] || '';
@@ -544,7 +600,8 @@ function savePageSettings(callback) {
     var data = {
         page: {
             'title': document.getElementById('page-title').value,
-            'summary': document.getElementById('page-summary').value,
+            'summary': getRichContent('page-summary'),
+            'offline-message': getRichContent('page-offline-message'),
             'placeholder': document.getElementById('page-placeholder').value,
             'ban-title': document.getElementById('page-ban-title').value,
             'ban-message': document.getElementById('page-ban-message').value,

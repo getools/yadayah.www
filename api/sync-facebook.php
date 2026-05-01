@@ -158,7 +158,7 @@ foreach ($feeds as $feed) {
                     }
                 }
 
-                // Download image locally to u/blog/ — only set $localThumb if download actually succeeded
+                // Download image locally to u/blog/ — only set $localThumb if download actually succeeded AND file exists on disk
                 $localThumb = null;
                 if ($fullPicture) {
                     $thumbFile = "img_$postId.jpg";
@@ -167,15 +167,22 @@ foreach ($feeds as $feed) {
                     if (!$downloaded) {
                         $imgData = @file_get_contents($fullPicture);
                         if ($imgData !== false && strlen($imgData) >= 1000) {
-                            file_put_contents($thumbPath, $imgData);
-                            $downloaded = true;
+                            $bytesWritten = @file_put_contents($thumbPath, $imgData);
+                            // Verify the write actually succeeded and the file exists with correct size
+                            if ($bytesWritten === strlen($imgData) && file_exists($thumbPath) && filesize($thumbPath) >= 1000) {
+                                $downloaded = true;
+                            } else {
+                                @unlink($thumbPath); // remove partial file
+                                if ($isCli) echo "  [warn] Thumbnail write failed for $postId: bytes=$bytesWritten expected=" . strlen($imgData) . "\n";
+                            }
+                        } elseif ($isCli && $imgData === false) {
+                            echo "  [warn] Thumbnail fetch failed for $postId: $fullPicture\n";
                         }
                     }
                     if ($downloaded) {
                         $localThumb = "u/blog/$thumbFile";
                     } else {
                         // Download failed — leave thumbnail null so next run retries
-                        // and keep type as text so skip-complete logic re-processes this post
                         $postType = 'text';
                     }
                 }
@@ -244,6 +251,12 @@ foreach ($feeds as $feed) {
     $db->prepare("UPDATE yy_feed_sync SET feed_sync_status = ?, feed_sync_items_found = ?, feed_sync_items_inserted = ?, feed_sync_items_updated = ?, feed_sync_error = ?, feed_sync_end_dtime = NOW() WHERE feed_sync_key = ?")
        ->execute([$status, $totalFound, $totalInserted, $totalUpdated, $error, $syncKey]);
 
+    if ($error) {
+        logMonitorEvent('sync_facebook', 'error',
+            'Facebook sync failed for feed "' . $feed['feed_name'] . '": ' . $error,
+            "feed_key={$feed['feed_key']} found=$totalFound inserted=$totalInserted updated=$totalUpdated\nfeed_sync_key=$syncKey");
+    }
+
     $results[] = [
         'feed' => $feed['feed_name'],
         'found' => $totalFound,
@@ -256,6 +269,24 @@ foreach ($feeds as $feed) {
         echo "{$feed['feed_name']}: found=$totalFound inserted=$totalInserted updated=$totalUpdated" . ($error ? " error=$error" : '') . "\n";
     }
 }
+
+// Sanity check: clear thumbnails from DB that don't exist on disk (prevents broken-image display)
+$thumbDir = __DIR__ . '/../u/blog';
+$brokenStmt = $db->query("
+    SELECT feed_item_key, feed_item_thumbnail
+    FROM yy_feed_item
+    WHERE feed_item_thumbnail LIKE 'u/blog/%'
+");
+$cleared = 0;
+foreach ($brokenStmt->fetchAll() as $row) {
+    $relPath = $row['feed_item_thumbnail'];
+    $absPath = __DIR__ . '/../' . $relPath;
+    if (!file_exists($absPath) || filesize($absPath) < 1000) {
+        $db->prepare("UPDATE yy_feed_item SET feed_item_thumbnail = NULL WHERE feed_item_key = ?")->execute([$row['feed_item_key']]);
+        $cleared++;
+    }
+}
+if ($cleared > 0 && $isCli) echo "Cleared {$cleared} thumbnail paths pointing to missing files\n";
 
 // Update feed item → page associations after sync
 require_once __DIR__ . '/feed-item-pages.php';

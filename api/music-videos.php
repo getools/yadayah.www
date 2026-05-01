@@ -33,7 +33,7 @@ $total = (int)$countStmt->fetchColumn();
 
 $limit = (int)($_GET['limit'] ?? 0);
 if ($limit > 0) {
-    $stmt = $db->prepare("SELECT fi.feed_item_external_id AS music_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS music_title, fi.feed_item_thumbnail AS music_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS music_create FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where ORDER BY COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST LIMIT ?");
+    $stmt = $db->prepare("SELECT fi.feed_item_external_id AS music_video_id, TRIM(BOTH '~ -' FROM TRIM(REGEXP_REPLACE(COALESCE(fi.feed_item_title_override, fi.feed_item_title_import), '#\\w+\\s*', '', 'g'))) AS music_title, fi.feed_item_thumbnail AS music_thumbnail, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS music_create FROM yy_feed_item fi JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key WHERE $where ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST LIMIT ?");
     $stmt->execute(array_merge($params, [$limit]));
     jsonResponse(['videos' => $stmt->fetchAll(), 'page' => 1, 'total_pages' => 1, 'total' => $total]);
 }
@@ -48,7 +48,7 @@ $stmt = $db->prepare("
     FROM yy_feed_item fi
     JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
     WHERE $where
-    ORDER BY COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
+    ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) DESC NULLS LAST
     LIMIT ? OFFSET ?
 ");
 $stmt->execute(array_merge($params, [$PER_PAGE, $offset]));

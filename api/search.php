@@ -187,7 +187,90 @@ if ($total > 0) {
     $results = $stmt->fetchAll();
 }
 
-// If no FTS results, fall back to fuzzy ILIKE search
+// If no FTS results, try fuzzy word substitution before falling back to ILIKE
+$didYouMean = null;
+if (empty($results) && count($qWords) >= 1) {
+    // For each query word, find the closest match in the vocabulary
+    $substitutedWords = [];
+    $hasSubstitution = false;
+    foreach ($qWords as $w) {
+        $clean = preg_replace('/[^a-zA-Z]/', '', $w);
+        if (strlen($clean) < 4) {
+            $substitutedWords[] = $w;
+            continue;
+        }
+        $fuzzyStmt = $pdo->prepare("
+            SELECT word, similarity(word, ?) AS sim, levenshtein(word, ?) AS lev
+            FROM yy_search_word
+            WHERE word % ?
+              AND levenshtein(word, ?) <= 3
+              AND lower(word) != lower(?)
+            ORDER BY similarity(word, ?) DESC, frequency DESC
+            LIMIT 1
+        ");
+        $fuzzyStmt->execute([$clean, $clean, $clean, $clean, $clean, $clean]);
+        $match = $fuzzyStmt->fetch();
+        if ($match && (float)$match['sim'] >= 0.4) {
+            $substitutedWords[] = $match['word'];
+            $hasSubstitution = true;
+        } else {
+            $substitutedWords[] = $w;
+        }
+    }
+
+    if ($hasSubstitution) {
+        $didYouMean = implode(' ', $substitutedWords);
+        // Retry FTS search with the corrected query
+        $fuzzyTsqParam = $didYouMean;
+        $retryStmt = $pdo->prepare("
+            SELECT v.volume_label AS volume_label,
+                   v.volume_flip_code AS flip_code,
+                   v.volume_pdf AS volume_pdf,
+                   s.series_label AS series_label,
+                   ch.chapter_name AS chapter_name,
+                   ch.chapter_number AS chapter_number,
+                   p.paragraph_page AS page,
+                   ts_rank(p.paragraph_tsv, plainto_tsquery('english', ?)) AS rank,
+                   ts_headline('english', COALESCE(p.paragraph_text_plain, ''), plainto_tsquery('english', ?),
+                       'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=20, MaxFragments=2, FragmentDelimiter= ... '
+                   ) AS snippet,
+                   p.paragraph_text_html AS html
+            FROM yy_paragraph p
+            JOIN yy_volume v ON v.volume_key = p.volume_key
+            JOIN yy_series s ON s.series_key = p.series_key
+            LEFT JOIN yy_chapter ch ON ch.chapter_key = p.chapter_key
+            WHERE p.paragraph_tsv @@ plainto_tsquery('english', ?)
+              AND p.paragraph_active_flag = true AND v.volume_active_flag = true
+              " . ($series !== null ? "AND p.series_key = ?" : "") . "
+              " . ($volume !== null ? "AND p.volume_key = ?" : "") . "
+            ORDER BY rank DESC, v.volume_sort, p.paragraph_page, p.paragraph_number
+            LIMIT ? OFFSET ?
+        ");
+        $retryParams = [$fuzzyTsqParam, $fuzzyTsqParam, $fuzzyTsqParam];
+        if ($series !== null) $retryParams[] = $series;
+        if ($volume !== null) $retryParams[] = $volume;
+        $retryParams[] = $limit;
+        $retryParams[] = $offset;
+        $retryStmt->execute($retryParams);
+        $results = $retryStmt->fetchAll();
+
+        if (!empty($results)) {
+            $countParams = [$fuzzyTsqParam];
+            if ($series !== null) $countParams[] = $series;
+            if ($volume !== null) $countParams[] = $volume;
+            $countSql = "SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key
+                         WHERE p.paragraph_tsv @@ plainto_tsquery('english', ?)
+                           AND p.paragraph_active_flag = true AND v.volume_active_flag = true"
+                         . ($series !== null ? " AND p.series_key = ?" : "")
+                         . ($volume !== null ? " AND p.volume_key = ?" : "");
+            $countStmt = $pdo->prepare($countSql);
+            $countStmt->execute($countParams);
+            $total = (int)$countStmt->fetchColumn();
+        }
+    }
+}
+
+// If still no results, fall back to fuzzy ILIKE search
 if (empty($results)) {
     $fuzzy = true;
     $likePattern = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
@@ -253,6 +336,7 @@ jsonResponse([
     'limit' => $limit,
     'pages' => max(1, (int)ceil($total / $limit)),
     'fuzzy' => $fuzzy,
+    'did_you_mean' => $didYouMean ?? null,
     'elapsed_ms' => round((microtime(true) - $_searchStart) * 1000),
     'results' => $results,
 ]);

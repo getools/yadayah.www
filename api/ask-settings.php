@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
 
     // Save page settings if provided
     if (isset($input['page']) && is_array($input['page'])) {
-        $allowed = ['title', 'summary', 'placeholder', 'ban-title', 'ban-message', 'page-image', 'page-image-height'];
+        $allowed = ['title', 'summary', 'offline-message', 'placeholder', 'ban-title', 'ban-message', 'page-image', 'page-image-height'];
         foreach ($input['page'] as $code => $val) {
             if (in_array($code, $allowed)) {
                 $stmt = $db->prepare("UPDATE yy_setting SET setting_value = ? WHERE setting_scope_code = 'page' AND setting_group_code = 'ask' AND setting_code = ?");

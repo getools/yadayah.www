@@ -2,174 +2,6 @@
 (function() {
 'use strict';
 
-// ── Livestream indicator + embedded player popover + admin control ──
-(function() {
-    var lsStyle = document.createElement('style');
-    lsStyle.textContent = ''
-        + '#livestream-indicator { position:fixed;top:12px;left:12px;z-index:99999;background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff;border:none;border-radius:8px;padding:0;font-size:0.8rem;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(192,57,43,0.4);animation:livestream-pulse 2s infinite;overflow:hidden; }'
-        + '#livestream-indicator:hover { transform:scale(1.05);box-shadow:0 4px 16px rgba(192,57,43,0.5); }'
-        + '#livestream-indicator .live-label { display:flex;align-items:center;gap:6px;padding:6px 14px; }'
-        + '#livestream-indicator .live-dot { width:8px;height:8px;background:#fff;border-radius:50%;animation:livestream-blink 1s infinite;flex-shrink:0; }'
-        + '#livestream-indicator .live-thumb { display:block;width:auto;height:80px;object-fit:cover; }'
-        + '@keyframes livestream-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }'
-        + '@keyframes livestream-pulse { 0%,100%{box-shadow:0 2px 10px rgba(192,57,43,0.4)} 50%{box-shadow:0 2px 20px rgba(192,57,43,0.6)} }'
-        + '#livestream-popover { display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:#000;z-index:100001;justify-content:center;align-items:flex-start;margin:0;padding:0;border:0; }'
-        + '#livestream-popover-inner { background:#000;border-radius:12px;overflow:hidden;width:90vw;max-width:1200px;height:96vh;margin-top:2vh;display:flex;position:relative;box-shadow:0 8px 40px rgba(0,0,0,0.5); }'
-        + '#livestream-popover-inner .ls-player { flex:1;min-width:0; }'
-        + '#livestream-popover-inner .ls-player iframe { width:100%;height:100%;border:none; }'
-        + '#livestream-popover-inner .ls-chat { width:340px;border-left:1px solid #333; }'
-        + '#livestream-popover-inner .ls-chat iframe { width:100%;height:100%;border:none; }'
-        + '#livestream-popover-close { position:absolute;top:8px;right:8px;z-index:10;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center; }'
-        + '#livestream-popover-close:hover { background:rgba(255,255,255,0.2); }'
-        + '@media (max-width:768px), (max-height:700px) { #livestream-popover { padding:0 !important;align-items:stretch !important;justify-content:stretch !important; } #livestream-popover-inner { flex-direction:column;width:100%;height:100%;margin:0 !important;border-radius:0;max-width:none; } #livestream-popover-inner .ls-player { flex:none;height:33%;min-height:140px; } #livestream-popover-inner .ls-chat { width:100%;flex:1;border-left:none;overflow:hidden; } #livestream-popover-close { top:4px;right:4px;width:28px;height:28px;font-size:1rem; } }'
-        + '#stream-admin-btn { position:fixed;top:12px;left:12px;z-index:99998;width:36px;height:36px;border-radius:50%;border:none;background:rgba(192,57,43,0.8);color:#fff;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3); }'
-        + '#stream-admin-modal { display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;justify-content:center;align-items:center; }';
-    document.head.appendChild(lsStyle);
-
-    var _streamFeedKey = null;
-    var _streamVideoId = null;
-
-    function extractVideoId(url) {
-        if (!url) return null;
-        var m = url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?&]+)/) || url.match(/embed\/([^?&]+)/);
-        return m ? m[1] : null;
-    }
-
-    function checkLivestream() {
-        fetch('/api/livestream-status.php').then(function(r) { return r.json(); }).then(function(d) {
-            var existing = document.getElementById('livestream-indicator');
-            _streamFeedKey = d.feed_key || null;
-
-            if (d.live) {
-                _streamVideoId = extractVideoId(d.feed_source_url);
-                if (!existing) {
-                    var btn = document.createElement('button');
-                    btn.id = 'livestream-indicator';
-                    btn.title = 'Watch live stream';
-                    btn.onclick = function() { openLivestreamPopover(); };
-                    var label = '<div class="live-label"><span class="live-dot"></span> LIVE</div>';
-                    var thumb = _streamVideoId ? '<img class="live-thumb" src="https://img.youtube.com/vi/' + _streamVideoId + '/mqdefault.jpg" alt="Live">' : '';
-                    btn.innerHTML = label + thumb;
-                    document.body.appendChild(btn);
-                }
-                var ghost = document.getElementById('stream-admin-btn');
-                if (ghost) ghost.remove();
-            } else {
-                if (existing) existing.remove();
-                closeLivestreamPopover();
-                showAdminStreamButton(d);
-            }
-        }).catch(function() {});
-    }
-
-    function openLivestreamPopover() {
-        var pop = document.getElementById('livestream-popover');
-        if (!pop) {
-            pop = document.createElement('div');
-            pop.id = 'livestream-popover';
-            pop.onclick = function(ev) { if (ev.target === pop) closeLivestreamPopover(); };
-            pop.innerHTML = '<div id="livestream-popover-inner">'
-                + '<button id="livestream-popover-close" onclick="window._closeLivePopover()">&times;</button>'
-                + '<div class="ls-player"><iframe id="ls-player-frame" allow="autoplay;encrypted-media" allowfullscreen></iframe></div>'
-                + '<div class="ls-chat"><iframe id="ls-chat-frame"></iframe></div>'
-                + '</div>';
-            document.body.appendChild(pop);
-        }
-        if (_streamVideoId) {
-            document.getElementById('ls-player-frame').src = 'https://www.youtube.com/embed/' + _streamVideoId + '?autoplay=1';
-            document.getElementById('ls-chat-frame').src = 'https://www.youtube.com/live_chat?v=' + _streamVideoId + '&embed_domain=' + location.hostname;
-        }
-        pop.style.display = 'flex';
-        var ind = document.getElementById('livestream-indicator');
-        if (ind) { ind.style.display = 'none'; ind.style.visibility = 'hidden'; ind.style.zIndex = '-1'; }
-    }
-
-    function closeLivestreamPopover() {
-        var pop = document.getElementById('livestream-popover');
-        if (pop) {
-            pop.style.display = 'none';
-            var player = document.getElementById('ls-player-frame');
-            var chat = document.getElementById('ls-chat-frame');
-            if (player) player.src = '';
-            if (chat) chat.src = '';
-        }
-        var ind = document.getElementById('livestream-indicator');
-        if (ind) { ind.style.display = ''; ind.style.visibility = ''; ind.style.zIndex = ''; }
-    }
-    window._closeLivePopover = closeLivestreamPopover;
-
-    function showAdminStreamButton(d) {
-        if (document.getElementById('stream-admin-btn')) return;
-        fetch('/api/community-session.php', {credentials:'include'}).then(function(r) { return r.json(); }).then(function(sess) {
-            if (!sess.user || !sess.user.roles) return;
-            var isAdmin = sess.user.roles.indexOf('admin') >= 0 || sess.user.roles.indexOf('moderator') >= 0;
-            if (!isAdmin) return;
-
-            var btn = document.createElement('button');
-            btn.id = 'stream-admin-btn';
-            btn.style.opacity = '0.4';
-            btn.innerHTML = '&#9679;<br>LIVE';
-            btn.title = 'Stream control (admin)';
-            btn.onmouseover = function() { btn.style.opacity = '0.8'; };
-            btn.onmouseout = function() { btn.style.opacity = '0.4'; };
-            btn.onclick = function() { openStreamAdminModal(); };
-            document.body.appendChild(btn);
-        }).catch(function() {});
-    }
-
-    function openStreamAdminModal() {
-        var modal = document.getElementById('stream-admin-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'stream-admin-modal';
-            modal.onclick = function(ev) { if (ev.target === modal) modal.style.display = 'none'; };
-            modal.innerHTML = '<div style="background:#fff;border-radius:10px;padding:24px;max-width:400px;width:90%;text-align:center;">'
-                + '<h3 style="margin:0 0 8px;font-size:1rem;color:#31345A;">Stream Control</h3>'
-                + '<p id="stream-admin-info" style="font-size:0.85rem;color:#666;margin:0 0 20px;"></p>'
-                + '<div style="display:flex;flex-direction:column;gap:10px;">'
-                + '<button onclick="window._streamAdminAction(\'start\')" style="padding:10px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;">&#9679; Start Stream (set to now)</button>'
-                + '<button onclick="window._streamAdminAction(\'end\')" style="padding:10px;background:#888;color:#fff;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">End Stream (clear time)</button>'
-                + '<button onclick="document.getElementById(\'stream-admin-modal\').style.display=\'none\'" style="padding:10px;background:#f0f0f0;color:#333;border:none;border-radius:6px;font-size:0.9rem;cursor:pointer;">Cancel</button>'
-                + '</div></div>';
-            document.body.appendChild(modal);
-        }
-        document.getElementById('stream-admin-info').textContent = _streamFeedKey ? 'Feed #' + _streamFeedKey : 'No stream-enabled feed found';
-        modal.style.display = 'flex';
-    }
-
-    window._streamAdminAction = function(action) {
-        if (!_streamFeedKey) {
-            // Find a stream-enabled feed
-            fetch('/api/livestream-status.php?all=1').then(function(r) { return r.json(); }).then(function(d) {
-                if (d.feed_key) { _streamFeedKey = d.feed_key; doStreamAction(action); }
-                else { alert('No feed with stream_flag enabled. Enable it in Admin > Feeds first.'); }
-            });
-            return;
-        }
-        doStreamAction(action);
-    };
-
-    function doStreamAction(action) {
-        var dtime = action === 'start' ? new Date().toISOString() : null;
-        fetch('/api/admin-feeds.php', {
-            method: 'POST', credentials: 'include',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({feed_key: _streamFeedKey, feed_stream_dtime: dtime})
-        }).then(function(r) { return r.json(); }).then(function() {
-            document.getElementById('stream-admin-modal').style.display = 'none';
-            // Clear cache and recheck
-            fetch('/api/livestream-status.php?bust=' + Date.now()).then(function() {
-                var ghost = document.getElementById('stream-admin-btn');
-                if (ghost) ghost.remove();
-                var banner = document.getElementById('livestream-banner');
-                if (banner) { banner.remove(); document.body.classList.remove('has-livestream'); }
-                checkLivestream();
-            });
-        }).catch(function() { alert('Failed — are you logged in as admin?'); });
-    }
-
-    checkLivestream(); // Single check on page load — updates come via WebSub push
-})();
 
 // Load error reporter
 if (!document.getElementById('error-reporter-js')) {
@@ -377,16 +209,16 @@ if (typeof MutationObserver !== 'undefined') {
         _liveStyleInjected = true;
         var style = document.createElement('style');
         style.textContent = ''
-            + '#live-indicator { position:fixed; top:8px; left:8px; z-index:9999; cursor:pointer; }'
-            + '#live-indicator .live-badge { display:flex; align-items:center; gap:6px; background:rgba(200,0,0,0.9); color:#fff; padding:6px 14px 6px 10px; border-radius:8px 8px 8px 0; font-size:0.8rem; font-weight:700; box-shadow:0 2px 10px rgba(200,0,0,0.4); transition:background 0.15s; position:absolute; top:0; left:0; z-index:2; }'
+            + '#live-indicator { position:fixed; top:8px; left:8px; z-index:9999; cursor:pointer; width:200px; box-shadow:0 4px 16px rgba(0,0,0,0.5); border-radius:8px; overflow:hidden; }'
+            + '#live-indicator .live-badge { position:relative; display:flex; align-items:center; justify-content:center; gap:6px; background:rgba(200,0,0,0.9); color:#fff; padding:6px 28px 6px 10px; font-size:0.85rem; font-weight:700; transition:background 0.15s; width:100%; box-sizing:border-box; }'
             + '#live-indicator:hover .live-badge { background:rgba(220,0,0,1); }'
-            + '#live-indicator:hover { background:rgba(220,0,0,1); }'
-            + ''
             + '#live-indicator .live-dot { width:10px; height:10px; background:#fff; border-radius:50%; animation:live-pulse 1.5s ease-in-out infinite; }'
             + '@keyframes live-pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }'
-            + '.live-preview { width:200px; border-radius:8px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.5); background:#000; position:relative; }'
-            + '.live-preview img { width:100%; display:block; }'
+            + '.live-preview { width:100%; background:#000; position:relative; box-sizing:border-box; }'
+            + '.live-preview img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; }'
             + '.live-preview .live-preview-title { padding:6px 8px; font-size:0.7rem; font-weight:400; color:#ccc; line-height:1.3; white-space:normal; }'
+            + '#live-indicator .live-close-x { position:absolute; top:50%; right:6px; transform:translateY(-50%); width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,0.35); color:#fff; font-size:13px; line-height:1; text-align:center; cursor:pointer; border:none; padding:0; z-index:3; transition:background 0.15s; display:flex; align-items:center; justify-content:center; }'
+            + '#live-indicator .live-close-x:hover { background:rgba(0,0,0,0.7); color:#E5C86C; }'
             + '#live-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:10001; justify-content:center; align-items:center; }'
             + '#live-overlay.active { display:flex; }'
             + '#live-container { display:flex; width:95vw; max-width:1400px; height:85vh; border-radius:10px; overflow:hidden; box-shadow:0 4px 30px rgba(0,0,0,0.6); position:relative; }'
@@ -424,73 +256,132 @@ if (typeof MutationObserver !== 'undefined') {
         overlay.classList.add('active');
     }
 
-    function checkLive() {
-        fetch('/api/live-check.php').then(function(r) { return r.json(); }).then(function(d) {
-            var existing = document.getElementById('live-indicator');
-            if (existing) existing.remove();
+    function applyState(d) {
+        // Remove ALL existing live indicators (defensive — handles edge cases
+        // where multiple may have been inserted, e.g. cached/stale versions)
+        document.querySelectorAll('#live-indicator').forEach(function(el) { el.remove(); });
 
-            if (d.live) {
-                if (!_isLive) _liveStarted = Date.now();
+        if (d && d.live) {
+            // Skip rendering if user dismissed THIS specific stream this session
+            var dismissedId = sessionStorage.getItem('yy_live_dismissed');
+            if (dismissedId && dismissedId === (d.video_id || '')) {
+                _liveData = d; // still track it for popover, but don't show indicator
                 _isLive = true;
-                _liveData = d;
-                injectLiveStyle();
-                var btn = document.createElement('div');
-                btn.id = 'live-indicator';
-                var isUpcoming = d.upcoming;
-                var badgeLabel = isUpcoming ? 'UPCOMING' : 'LIVE';
-                var titleText = d.title || (isUpcoming ? 'Upcoming' : 'Live Now');
-                btn.title = titleText;
-                var previewHtml = '';
-                var thumbUrl = d.thumbnail || (d.video_id ? 'https://i.ytimg.com/vi/' + d.video_id + '/mqdefault.jpg' : '');
-                if (thumbUrl) {
-                    var scheduleInfo = '';
-                    if (isUpcoming && d.scheduled_start) {
-                        var startDate = new Date(d.scheduled_start);
-                        scheduleInfo = '<div style="font-size:0.7rem;color:#E5C86C;margin-top:2px;">' + startDate.toLocaleString(undefined, {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) + '</div>';
-                    }
-                    previewHtml = '<div class="live-preview">'
-                        + '<img src="' + thumbUrl + '" alt="">'
-                        + '<div class="live-preview-title">' + titleText.replace(/</g, '&lt;') + '</div>'
-                        + scheduleInfo
-                        + '</div>';
-                }
-                var badgeColor = isUpcoming ? 'background:#E5C86C;color:#333;' : '';
-                btn.innerHTML = '<div class="live-badge" style="' + badgeColor + '"><span class="live-dot" style="' + (isUpcoming ? 'background:#333;' : '') + '"></span> ' + badgeLabel + '</div>' + previewHtml;
-                btn.addEventListener('click', openLivePopover);
-                document.body.appendChild(btn);
-            } else {
-                _isLive = false;
-                _liveStarted = 0;
-                _liveData = null;
+                return;
+            }
+            // If a new stream started, clear any previous dismissal
+            if (dismissedId && dismissedId !== (d.video_id || '')) {
+                sessionStorage.removeItem('yy_live_dismissed');
             }
 
-            scheduleNext();
-        }).catch(function() { scheduleNext(); });
+            if (!_isLive) _liveStarted = Date.now();
+            _isLive = true;
+            _liveData = d;
+            injectLiveStyle();
+            var btn = document.createElement('div');
+            btn.id = 'live-indicator';
+            var isUpcoming = d.upcoming;
+            var badgeLabel = isUpcoming ? 'UPCOMING' : 'LIVE';
+            var titleText = d.title || (isUpcoming ? 'Upcoming' : 'Live Now');
+            btn.title = titleText;
+            var previewHtml = '';
+            var thumbUrl = d.thumbnail || (d.video_id ? 'https://i.ytimg.com/vi/' + d.video_id + '/mqdefault.jpg' : '');
+            if (thumbUrl) {
+                var scheduleInfo = '';
+                if (isUpcoming && d.scheduled_start) {
+                    var startDate = new Date(d.scheduled_start);
+                    scheduleInfo = '<div style="font-size:0.7rem;color:#E5C86C;margin-top:2px;padding:0 8px 6px;">' + startDate.toLocaleString(undefined, {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) + '</div>';
+                }
+                previewHtml = '<div class="live-preview">'
+                    + '<img src="' + thumbUrl + '" alt="">'
+                    + '<div class="live-preview-title">' + titleText.replace(/</g, '&lt;') + '</div>'
+                    + scheduleInfo
+                    + '</div>';
+            }
+            var badgeColor = isUpcoming ? 'background:#E5C86C;color:#333;' : '';
+            btn.innerHTML = '<div class="live-badge" style="' + badgeColor + '">'
+                + '<span class="live-dot" style="' + (isUpcoming ? 'background:#333;' : '') + '"></span> ' + badgeLabel
+                + '<button class="live-close-x" title="Hide live preview" aria-label="Close">&times;</button>'
+                + '</div>' + previewHtml;
+            btn.addEventListener('click', openLivePopover);
+            document.body.appendChild(btn);
+
+            // Wire close button — must stop propagation so it doesn't open the popover
+            var closeBtn = btn.querySelector('.live-close-x');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    sessionStorage.setItem('yy_live_dismissed', d.video_id || '');
+                    btn.remove();
+                });
+            }
+        } else {
+            _isLive = false;
+            _liveStarted = 0;
+            _liveData = null;
+        }
     }
 
-    function scheduleNext() {
-        var delay;
-        if (_isLive) {
-            // During live: poll every 2 minutes to detect stream end, up to 3 hours
-            if (Date.now() - _liveStarted > MAX_LIVE_POLL) {
-                // Exceeded 3 hours — stop polling, clear live indicator
-                _isLive = false;
-                _liveStarted = 0;
-                var el = document.getElementById('live-indicator');
-                if (el) el.remove();
-                return; // Stop polling
-            }
-            delay = 120000; // 2 minutes
-        } else {
-            // Not live: check once on page load (already done), then stop
-            // Push handles new live events — no need to keep polling
+    // ── Polling for live state ──
+    // Note: SSE was attempted but Apache mpm_prefork only has 150 workers,
+    // and each long-lived SSE connection holds one — so SSE saturates the server.
+    // Lightweight polling against the cached push state file scales much better.
+    var _pollTimer = null;
+
+    // Live broadcasts only happen 10am-10pm ET. Skip outside that window.
+    function isWithinBroadcastWindow() {
+        try {
+            var fmt = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/New_York',
+                hour: 'numeric',
+                hour12: false
+            });
+            var hour = parseInt(fmt.format(new Date()), 10);
+            return hour >= 10 && hour < 22;
+        } catch(e) {
+            return true;
+        }
+    }
+
+    function pollLive() {
+        if (!isWithinBroadcastWindow()) {
+            applyState({live: false});
+            scheduleNextPoll(5 * 60 * 1000); // check window again in 5 min
             return;
         }
-        setTimeout(checkLive, delay);
+
+        fetch('/api/live-check.php')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                applyState(d);
+                // Faster poll while live (to detect end), slower otherwise
+                scheduleNextPoll(d && d.live ? 30000 : 300000);
+            })
+            .catch(function() {
+                scheduleNextPoll(300000);
+            });
+    }
+
+    function scheduleNextPoll(delay) {
+        clearTimeout(_pollTimer);
+        // Stop polling if live indicator has been showing >3 hours (stale stream)
+        if (_isLive && Date.now() - _liveStarted > MAX_LIVE_POLL) {
+            _isLive = false;
+            var el = document.getElementById('live-indicator');
+            if (el) el.remove();
+            return;
+        }
+        _pollTimer = setTimeout(pollLive, delay);
     }
 
     // Initial check on page load
-    checkLive();
+    pollLive();
+
+    // Recheck when tab becomes visible again
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') pollLive();
+    });
 })();
 
 })();

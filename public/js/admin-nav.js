@@ -14,7 +14,7 @@ if (!document.getElementById('error-reporter-js')) {
 if (!document.getElementById('admin-dirty-js')) {
     var d = document.createElement('script');
     d.id = 'admin-dirty-js';
-    d.src = '/js/admin-dirty.js?v=2';
+    d.src = '/js/admin-dirty.js?v=3';
     document.head.appendChild(d);
 }
 

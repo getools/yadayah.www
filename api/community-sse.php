@@ -50,10 +50,15 @@ $name = getenv('PG_DB')   ?: 'yada';
 $user = getenv('PG_USER') ?: 'postgres';
 $pass = getenv('PG_PASS') ?: 'yada_password';
 $dsn = "pgsql:host=$host;port=$port;dbname=$name";
-$db = new PDO($dsn, $user, $pass, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-]);
+$dbOpts = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC];
+$db = new PDO($dsn, $user, $pass, $dbOpts);
+
+function sse_reconnect_db($dsn, $user, $pass, $opts) {
+    for ($i = 0; $i < 3; $i++) {
+        try { return new PDO($dsn, $user, $pass, $opts); } catch (Exception $e) { sleep(1); }
+    }
+    return null;
+}
 
 // Track previous state to only send changes
 $prevNotif = -1;
@@ -75,30 +80,42 @@ while (true) {
         break;
     }
 
-    // Unread notification count
-    $stmt = $db->prepare("SELECT COUNT(*) FROM yy_community_notification WHERE user_key = ? AND read_flag = FALSE");
-    $stmt->execute([$userKey]);
-    $notifCount = (int)$stmt->fetchColumn();
+    try {
+        // Unread notification count
+        $stmt = $db->prepare("SELECT COUNT(*) FROM yy_community_notification WHERE user_key = ? AND read_flag = FALSE");
+        $stmt->execute([$userKey]);
+        $notifCount = (int)$stmt->fetchColumn();
 
-    // Unread DM count
-    $stmt = $db->prepare("
-        SELECT COUNT(*) FROM yy_community_dm_message m
-        JOIN yy_community_dm_participant p ON p.thread_key = m.thread_key AND p.user_key = ?
-        WHERE m.user_key != ? AND m.message_active_flag = TRUE
-          AND m.message_dtime > COALESCE(p.last_read_dtime, '1970-01-01')
-    ");
-    $stmt->execute([$userKey, $userKey]);
-    $dmCount = (int)$stmt->fetchColumn();
+        // Unread DM count
+        $stmt = $db->prepare("
+            SELECT COUNT(*) FROM yy_community_dm_message m
+            JOIN yy_community_dm_participant p ON p.thread_key = m.thread_key AND p.user_key = ?
+            WHERE m.user_key != ? AND m.message_active_flag = TRUE
+              AND m.message_dtime > COALESCE(p.last_read_dtime, '1970-01-01')
+        ");
+        $stmt->execute([$userKey, $userKey]);
+        $dmCount = (int)$stmt->fetchColumn();
 
-    // Latest DM message key (to detect new messages in open thread)
-    $stmt = $db->prepare("
-        SELECT COALESCE(MAX(m.message_key), 0)
-        FROM yy_community_dm_message m
-        JOIN yy_community_dm_participant p ON p.thread_key = m.thread_key AND p.user_key = ?
-        WHERE m.user_key != ? AND m.message_active_flag = TRUE
-    ");
-    $stmt->execute([$userKey, $userKey]);
-    $latestDmKey = (int)$stmt->fetchColumn();
+        // Latest DM message key (to detect new messages in open thread)
+        $stmt = $db->prepare("
+            SELECT COALESCE(MAX(m.message_key), 0)
+            FROM yy_community_dm_message m
+            JOIN yy_community_dm_participant p ON p.thread_key = m.thread_key AND p.user_key = ?
+            WHERE m.user_key != ? AND m.message_active_flag = TRUE
+        ");
+        $stmt->execute([$userKey, $userKey]);
+        $latestDmKey = (int)$stmt->fetchColumn();
+    } catch (PDOException $e) {
+        // Lost DB connection — attempt reconnect, otherwise let client retry
+        $db = sse_reconnect_db($dsn, $user, $pass, $dbOpts);
+        if (!$db) {
+            echo "event: reconnect\ndata: {}\n\n";
+            flush();
+            break;
+        }
+        sleep(1);
+        continue;
+    }
 
     // Send updates only when something changed
     $changed = false;
