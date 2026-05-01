@@ -200,7 +200,7 @@ if (!$rows) {
         $uploadedAudio = null;
         $rel = $job['feed_item_audio_file'] ?? null;
         if ($rel) {
-            $candAbs = dirname(__DIR__) . '/public/' . ltrim($rel, '/');
+            $candAbs = dirname(__DIR__) . '/' . ltrim($rel, '/');
             if (is_file($candAbs) && filesize($candAbs) > 10000) {
                 $uploadedAudio = $candAbs;
             }

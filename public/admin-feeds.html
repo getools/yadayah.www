@@ -164,7 +164,7 @@
     <div id="tab-recordings" class="feed-tab" style="display:none;">
         <div class="toolbar">
             <span id="rec-count" class="feed-count"></span>
-            <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">per page
+            <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">
                 <select id="rec-per-page" onchange="loadRecordings(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
                     <option value="10">10</option>
                     <option value="25">25</option>
@@ -175,8 +175,8 @@
                     <option value="500">500</option>
                     <option value="99999">All</option>
                 </select>
+                per page
             </label>
-            <button class="btn btn-secondary btn-sm" onclick="recClearFilters()" style="font-size:0.78rem;">Clear filters</button>
             <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="margin-left:auto;background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
             <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
         </div>
@@ -188,11 +188,11 @@
             #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.68rem;font-weight:normal; }
             #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer; }
         </style>
-        <table class="feeds-table" id="rec-table" style="display:none;">
+        <table class="feeds-table" id="rec-table">
             <thead>
                 <tr>
-                    <th style="width:36px;vertical-align:middle;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
-                    <th style="width:100px;vertical-align:middle;">Thumb</th>
+                    <th style="width:36px;vertical-align:top;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
+                    <th style="width:120px;">Thumb<br><button onclick="recClearFilters()" style="margin-top:4px;background:#fff;border:1px solid #ccc;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:normal;">Clear filters</button></th>
                     <th style="width:90px;" class="rec-sortable" data-col="key">
                         <span class="rec-sortable-label" onclick="recSort('key')">Key</span><br>
                         <input type="text" class="rec-filter" id="rec-f-key" oninput="recDebouncedReload()" placeholder="…" onclick="event.stopPropagation()">
@@ -229,7 +229,6 @@
             </thead>
             <tbody id="rec-body"></tbody>
         </table>
-        <div id="rec-empty" style="display:none;text-align:center;padding:30px;color:#888;">No items match the current filters.</div>
     </div>
 </div>
 
@@ -1741,7 +1740,7 @@ function openRecordPopover(itemKey, opts) {
             + '</div>'
             + '<div id="r-resume-banner" style="display:none;margin-bottom:10px;padding:8px 12px;background:#fff3a8;border:1px solid #e0c000;border-radius:6px;font-size:0.85rem;color:#7a5c00;"></div>'
             + '<div id="r-controls" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
-            +   '<button id="r-record-btn" onclick="recordPopoverRecordClicked()" style="background:#c00;color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">🎙 Start Recording</button>'
+            +   '<button id="r-record-btn" onclick="recordPopoverButtonClicked()" style="display:none;background:#c00;color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">⏸ Pause Recording</button>'
             +   '<button id="r-finish-btn" onclick="finishAndSaveRecording()" style="display:none;background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">✓ Finish & Save Audio</button>'
             +   '<button id="r-discard-btn" onclick="discardPartialRecording()" style="display:none;background:#fff;color:#c00;border:1px solid #c00;padding:8px 12px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Discard Partials</button>'
             +   '<span id="r-status" style="font-size:0.85rem;color:#666;flex:1;"></span>'
@@ -1765,7 +1764,7 @@ function openRecordPopover(itemKey, opts) {
     ov.style.display = 'flex';
     document.getElementById('r-status').textContent = 'Loading video…';
     document.getElementById('r-time').textContent = '—';
-    setRecordButton(false);
+    updateRecPopoverControls();
 
     fetch(API + '/admin-transcript.php?item_key=' + itemKey + '&_=' + Date.now(), {credentials:'include', cache:'no-store'})
         .then(function(r){ return safeJson(r); })
@@ -1823,29 +1822,28 @@ function refreshRecordPopoverPartialState() {
             var p = d.partial || {};
             var seconds = p.resume_seconds || 0;
             var parts = p.part_count || 0;
+            _recState.partCount = parts;
             if (parts > 0 && seconds > 0) {
                 banner.style.display = '';
                 banner.innerHTML = '⏸ ' + parts + ' part' + (parts === 1 ? '' : 's')
                     + ' recorded so far. Last position: <strong>' + formatSeconds(seconds) + '</strong>. '
-                    + 'Click <strong>Resume Recording</strong> to continue from there, or <strong>✓ Finish & Save Audio</strong> if you\'re done.';
-                recBtn.textContent = '▶ Resume from ' + formatSeconds(seconds);
-                finishBtn.style.display = '';
-                discardBtn.style.display = '';
+                    + 'Press ▶ on the video to seamlessly continue recording from there, or click <strong>Finish & Save Audio</strong> below if you\'re done.';
                 if (status) status.textContent = '';
-                // Refresh the time-progress display to reflect the resume point
-                updateRecTimeDisplay();
-                // Pre-seek the player so the user sees the resume point
+                // Pre-seek the player so it's ready to resume; suppressAutoStart=false
+                // so the very next PLAY click triggers recording.
                 if (_recState.ytPlayer && typeof _recState.ytPlayer.seekTo === 'function') {
-                    try { _recState.ytPlayer.seekTo(seconds, true); _recState.ytPlayer.pauseVideo(); } catch (e) {}
+                    try {
+                        _recState.suppressAutoStart = true; // seekTo can momentarily play
+                        _recState.ytPlayer.seekTo(seconds, true);
+                        _recState.ytPlayer.pauseVideo();
+                        setTimeout(function(){ _recState.suppressAutoStart = false; updateRecTimeDisplay(); }, 500);
+                    } catch (e) {}
                 }
             } else {
                 banner.style.display = 'none';
-                recBtn.textContent = '🎙 Start Recording';
-                finishBtn.style.display = 'none';
-                discardBtn.style.display = 'none';
                 if (status) status.textContent = '';
-                updateRecTimeDisplay();
             }
+            updateRecPopoverControls();
         });
 }
 
@@ -1883,45 +1881,88 @@ function closeRecordPopover() {
         try { _recState.ytPlayer.stopVideo(); _recState.ytPlayer.destroy(); } catch (e) {}
         _recState.ytPlayer = null;
     }
-    if (_recState.stream && _recState.mode !== 'batch') {
+    // Closing the popover always ends batch mode — flips Stop Batch back to Process Selected
+    if (_recBatchActive) {
+        _recBatchAbort = true;
+        cleanupBatch();
+    }
+    if (_recState.stream) {
         _recState.stream.getTracks().forEach(function(t){ t.stop(); });
         _recState.stream = null;
     }
     var ov = document.getElementById('record-overlay');
     if (ov) ov.style.display = 'none';
+    var mini = document.getElementById('r-minimized-icon');
+    if (mini) mini.style.display = 'none';
     if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
     _recState.activeItemKey = null;
 }
-function onRecPlayerStateChange(e) {
-    // YT.PlayerState.ENDED = 0
-    if ((e && e.data) === 0 && _recState.recorder && _recState.recorder.state === 'recording') {
-        stopRecordingNow();
+// Record popover state machine:
+//   - User presses ▶ on the embedded YT player → we (a) pause it momentarily,
+//     (b) acquire/reuse the screen-share stream, (c) start the MediaRecorder,
+//     (d) resume playback. So pressing play = recording starts automatically.
+//   - User pauses the player → recorder stops, current part uploads.
+//   - Video reaches the end → recorder stops, parts auto-finalize → MP3 saved.
+//   - The single button below the player is contextual:
+//     * recording in progress → "⏸ Pause Recording"
+//     * not recording, parts exist → "⟲ Restart from beginning"
+//     * not recording, no parts → button hidden (just press ▶)
+async function onRecPlayerStateChange(e) {
+    var state = e && e.data;
+    if (typeof state !== 'number') return;
+    var recording = !!(_recState.recorder && _recState.recorder.state === 'recording');
+    if (state === 1 /* PLAYING */) {
+        if (recording) { updateRecPopoverControls(); return; }
+        if (_recState.suppressAutoStart) {
+            _recState.suppressAutoStart = false;
+            updateRecPopoverControls();
+            return;
+        }
+        // Pause until the screen-share permission is granted, then resume.
+        try { _recState.ytPlayer.pauseVideo(); } catch (err) {}
+        var stream = await ensureCaptureStream(_recState.mode === 'batch');
+        if (!stream) {
+            var st = document.getElementById('r-status');
+            if (st) st.textContent = '✗ Tab capture denied — try clicking ▶ again and allow tab audio sharing.';
+            updateRecPopoverControls();
+            return;
+        }
+        beginRecording();
+        try { _recState.ytPlayer.setPlaybackRate(1); _recState.ytPlayer.playVideo(); } catch (err) {}
+        updateRecPopoverControls();
+    } else if (state === 2 /* PAUSED */) {
+        if (recording) {
+            stopRecordingNow(); // saves current part
+        } else {
+            updateRecPopoverControls();
+        }
+    } else if (state === 0 /* ENDED */) {
+        if (recording) {
+            stopRecordingNow(); // last part — onRecorderStopped will auto-finalize
+        } else {
+            updateRecPopoverControls();
+        }
     }
 }
-async function recordPopoverRecordClicked() {
-    if (_recState.recorder && _recState.recorder.state === 'recording') {
-        stopRecordingNow();
-        return;
-    }
-    var stream = await ensureCaptureStream(_recState.mode === 'batch');
-    if (!stream) return;
 
-    // Decide where to start playback. If we have a resume point, pick up
-    // from there; otherwise from 0.
-    var resumeSec = 0;
-    var banner = document.getElementById('r-resume-banner');
-    if (banner && banner.style.display !== 'none') {
-        // Read from the player's current position (we pre-seeked when banner showed)
-        try { resumeSec = Math.floor(_recState.ytPlayer.getCurrentTime() || 0); } catch (e) {}
-    }
-    _recState.startSeconds = resumeSec;
-    beginRecording();
-    if (_recState.ytPlayer && typeof _recState.ytPlayer.playVideo === 'function') {
-        try {
-            _recState.ytPlayer.seekTo(resumeSec, true);
-            _recState.ytPlayer.setPlaybackRate(1);
-            _recState.ytPlayer.playVideo();
-        } catch (e) {}
+function recordPopoverButtonClicked() {
+    var recording = !!(_recState.recorder && _recState.recorder.state === 'recording');
+    if (recording) {
+        // Pause the video — the PAUSED state handler stops the recorder
+        try { _recState.ytPlayer.pauseVideo(); } catch (e) {}
+    } else {
+        // Restart from beginning: delete parts, seek to 0
+        if (!confirm('Discard all recorded parts and start over from 0:00?')) return;
+        var itemKey = _recState.activeItemKey;
+        fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey,
+              { method: 'DELETE', credentials: 'include' })
+            .then(function(r){ return r.json(); })
+            .then(function() {
+                if (_recState.ytPlayer && typeof _recState.ytPlayer.seekTo === 'function') {
+                    try { _recState.ytPlayer.seekTo(0, true); _recState.ytPlayer.pauseVideo(); } catch (e) {}
+                }
+                refreshRecordPopoverPartialState();
+            });
     }
 }
 function beginRecording() {
@@ -1942,7 +1983,7 @@ function stopRecordingNow() {
     }
 }
 async function onRecorderStopped() {
-    setRecordButton(false);
+    updateRecPopoverControls();
     var blob = new Blob(_recState.chunks, { type: 'audio/webm' });
     _recState.chunks = [];
     _recState.recorder = null;
@@ -1994,30 +2035,23 @@ async function onRecorderStopped() {
         if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: err.message });
     }
 
-    // Single-mode: stop the stream so the browser's "sharing" indicator goes away.
-    // Batch mode keeps the stream alive across items.
-    if (_recState.mode === 'single' && _recState.stream && !atEnd) {
-        // Only release if the user manually stopped (not auto-finalize-on-end);
-        // for partials we keep the stream so they can hit Resume immediately.
-        // Actually release on every part so the indicator goes away — they can re-share on Resume.
-        // (Comment kept to acknowledge the trade-off.)
-    }
+    // Stream is kept alive so the user can resume by pressing ▶ again without
+    // re-granting permission. closeRecordPopover() releases it.
+    updateRecPopoverControls();
 }
 async function refreshPopoverPartialAfterUpload(uploadResp) {
-    // Reuse the resume-state UI based on the response's partial info
     var p = uploadResp.partial || {};
+    _recState.partCount = p.part_count || 0;
     var banner = document.getElementById('r-resume-banner');
-    var recBtn = document.getElementById('r-record-btn');
-    var finishBtn = document.getElementById('r-finish-btn');
-    var discardBtn = document.getElementById('r-discard-btn');
     if (p.part_count > 0 && p.resume_seconds > 0) {
         banner.style.display = '';
         banner.innerHTML = '⏸ ' + p.part_count + ' part' + (p.part_count === 1 ? '' : 's')
-            + ' recorded. Last position: <strong>' + formatSeconds(p.resume_seconds) + '</strong>.';
-        recBtn.textContent = '▶ Resume from ' + formatSeconds(p.resume_seconds);
-        finishBtn.style.display = '';
-        discardBtn.style.display = '';
+            + ' recorded. Last position: <strong>' + formatSeconds(p.resume_seconds) + '</strong>. '
+            + 'Press ▶ on the video to continue, or click Finish & Save Audio.';
+    } else {
+        banner.style.display = 'none';
     }
+    updateRecPopoverControls();
 }
 
 async function finishAndSaveRecording(autoCalled) {
@@ -2068,18 +2102,39 @@ async function discardPartialRecording() {
     }
     refreshRecordPopoverPartialState();
 }
-function setRecordButton(recording) {
+// Drive the contextual button below the player + the live timer based on
+// the current state of the recorder. Called from anywhere that changes
+// recording state (start/stop, partial refresh, finalize).
+function updateRecPopoverControls() {
     var btn = document.getElementById('r-record-btn');
+    var finishBtn = document.getElementById('r-finish-btn');
+    var discardBtn = document.getElementById('r-discard-btn');
     if (!btn) return;
+    var recording = !!(_recState.recorder && _recState.recorder.state === 'recording');
+    var hasParts = !!_recState.partCount;
     if (recording) {
-        btn.textContent = '⬛ Stop';
+        btn.style.display = '';
+        btn.textContent = '⏸ Pause Recording';
         btn.style.background = '#444';
+        btn.style.borderColor = '#444';
+        if (finishBtn) finishBtn.style.display = 'none';
+        if (discardBtn) discardBtn.style.display = 'none';
         if (_recState.durationTimer) clearInterval(_recState.durationTimer);
         _recState.durationTimer = setInterval(updateRecTimeDisplay, 500);
     } else {
-        // Caller (onRecorderStopped or refreshRecordPopoverPartialState) sets
-        // the right label — Resume vs Start
-        btn.style.background = '#c00';
+        if (hasParts) {
+            btn.style.display = '';
+            btn.textContent = '⟲ Restart from beginning';
+            btn.style.background = '#fff';
+            btn.style.color = '#c00';
+            btn.style.border = '1px solid #c00';
+            if (finishBtn) finishBtn.style.display = '';
+            if (discardBtn) discardBtn.style.display = '';
+        } else {
+            btn.style.display = 'none';
+            if (finishBtn) finishBtn.style.display = 'none';
+            if (discardBtn) discardBtn.style.display = 'none';
+        }
         if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
         updateRecTimeDisplay();
     }
@@ -2163,8 +2218,6 @@ function loadRecordings(page) {
     if (statuses.length) qs += '&status=' + encodeURIComponent(statuses.join(','));
     qs += '&_=' + Date.now();
 
-    document.getElementById('rec-table').style.display = 'none';
-    document.getElementById('rec-empty').style.display = 'none';
     document.getElementById('rec-count').textContent = 'Loading…';
     fetch(API + '/admin-recordings.php?' + qs, {credentials:'include', cache:'no-store'})
         .then(function(r){ return safeJson(r); })
@@ -2190,8 +2243,6 @@ function populateRecFeedFilter(feeds, current) {
 }
 
 function renderRecordings(d) {
-    var tbl = document.getElementById('rec-table');
-    var empty = document.getElementById('rec-empty');
     var body = document.getElementById('rec-body');
     var count = document.getElementById('rec-count');
     count.textContent = d.total + ' video' + (d.total === 1 ? '' : 's') + ' (page ' + d.page + ' of ' + d.total_pages + ')';
@@ -2204,12 +2255,10 @@ function renderRecordings(d) {
         span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
     });
     if (!_recItems.length) {
-        empty.style.display = '';
-        tbl.style.display = 'none';
+        body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
+        var sa = document.getElementById('rec-select-all'); if (sa) sa.checked = false;
         return;
     }
-    empty.style.display = 'none';
-    tbl.style.display = '';
     var html = '';
     _recItems.forEach(function(it) {
         var thumb = it.feed_item_thumbnail
@@ -2261,15 +2310,7 @@ function getSelectedRecordingKeys() {
 
 async function processSelectedRecordings() {
     var ids = getSelectedRecordingKeys();
-    if (!ids.length) { alert('Select at least one item with the checkboxes.'); return; }
-    var msg = 'Process ' + ids.length + ' video(s) sequentially?\n\n'
-        + 'Each video will play in the popover at 1× while audio is captured from this tab. '
-        + 'Total time ≈ sum of video durations.\n\n'
-        + 'On the first video your browser will ask you to share THIS tab — '
-        + 'check "Share tab audio". The same share session is reused for the rest, '
-        + 'so you only need to grant it once.\n\n'
-        + 'Stay on this page for the duration. Closing the page or navigating away will abort.';
-    if (!confirm(msg)) return;
+    if (!ids.length) { setRecBatchStatus('Select at least one item with the checkboxes.'); return; }
 
     _recBatchActive = true;
     _recBatchAbort = false;

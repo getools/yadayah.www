@@ -28,7 +28,7 @@ $user = requireAuth();
 $method = $_SERVER['REQUEST_METHOD'];
 
 $UPLOAD_DIR     = sys_get_temp_dir() . '/transcript_uploads';        // captions only
-$AUDIO_DIR_ABS  = dirname(__DIR__) . '/public/u/audio';
+$AUDIO_DIR_ABS  = dirname(__DIR__) . '/u/audio';
 $AUDIO_DIR_REL  = 'u/audio';
 $PARTS_DIR_ABS  = $AUDIO_DIR_ABS . '/parts';
 $AUDIO_EXT      = ['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'];
@@ -59,7 +59,7 @@ function durableAudioInfo(PDO $db, int $itemKey): ?array {
     $stmt->execute([$itemKey]);
     $rel = $stmt->fetchColumn();
     if (!$rel) return null;
-    $abs = dirname(__DIR__) . '/public/' . ltrim($rel, '/');
+    $abs = dirname(__DIR__) . '/' . ltrim($rel, '/');
     if (!is_file($abs)) return ['path' => $rel, 'missing' => true];
     return [
         'path' => $rel,
@@ -179,7 +179,7 @@ if ($method === 'POST') {
             $prevStmt->execute([$itemKey]);
             $prev = $prevStmt->fetchColumn();
             if ($prev) {
-                $prevAbs = dirname(__DIR__) . '/public/' . ltrim($prev, '/');
+                $prevAbs = dirname(__DIR__) . '/' . ltrim($prev, '/');
                 if (is_file($prevAbs)) @unlink($prevAbs);
             }
 
@@ -257,7 +257,7 @@ if ($method === 'POST') {
         $prevStmt->execute([$itemKey]);
         $prev = $prevStmt->fetchColumn();
         if ($prev) {
-            $prevAbs = dirname(__DIR__) . '/public/' . ltrim($prev, '/');
+            $prevAbs = dirname(__DIR__) . '/' . ltrim($prev, '/');
             if (is_file($prevAbs)) @unlink($prevAbs);
         }
         if (!@move_uploaded_file($tmp, $absPath)) errorResponse('Failed to write ' . $absPath);
@@ -305,7 +305,7 @@ if ($method === 'DELETE') {
     $prev->execute([$itemKey]);
     $rel = $prev->fetchColumn();
     if ($rel) {
-        $abs = dirname(__DIR__) . '/public/' . ltrim($rel, '/');
+        $abs = dirname(__DIR__) . '/' . ltrim($rel, '/');
         if (is_file($abs) && @unlink($abs)) $count++;
     }
     $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = NULL, feed_item_audio_resume_seconds = NULL WHERE feed_item_key = ?")
