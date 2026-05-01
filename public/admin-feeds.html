@@ -2102,7 +2102,17 @@ function doneTranscript() {
 }
 
 // ── Transcript Dictionary modal (glossary + corrections) ──
+// Pause the embedded YouTube player if it's running. Called by openers of
+// any modal that takes focus off the transcript editing flow so the video
+// doesn't keep playing in the background while the user works elsewhere.
+function pauseTranscriptVideo() {
+    if (_ytPlayer && typeof _ytPlayer.pauseVideo === 'function') {
+        try { _ytPlayer.pauseVideo(); } catch (e) {}
+    }
+}
+
 function openTranscriptDict() {
+    pauseTranscriptVideo();
     var ov = document.getElementById('tdict-overlay');
     if (!ov) {
         ov = document.createElement('div');
@@ -2308,6 +2318,7 @@ function toggleTranscriptMaximize() {
 
 // ── Search & Replace modal ──
 function openSearchReplace() {
+    pauseTranscriptVideo();
     var ov = document.getElementById('sr-overlay');
     if (!ov) {
         ov = document.createElement('div');
