@@ -265,6 +265,8 @@ if (!$rows) {
                     $reason = 'video is deleted or unavailable';
                 } elseif (stripos($haystack, 'age-restricted') !== false || stripos($haystack, 'age restricted') !== false) {
                     $reason = 'video is age-restricted';
+                } elseif (stripos($haystack, 'only images are available') !== false) {
+                    $reason = 'YouTube Community post or image-only item — no audio track available';
                 }
                 $methodFailures[] = "whisper_api: $reason$hint — " . $tail;
             } else {

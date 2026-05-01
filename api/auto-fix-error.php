@@ -431,12 +431,47 @@ foreach ($errors as $error) {
     $infraSources = ['transcript_worker', 'sync_youtube', 'sync_facebook', 'sync_rumble', 'ai_billing'];
 
     if (!$codeFixed && in_array($source, $infraSources, true)) {
-        $note = "Infra/external-service issue — not fixable by editing code. Source: $source. Needs manual review.";
-        $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ? AND event_action_taken IS NULL")
-           ->execute([$note, $error['event_key']]);
-        $line = "  [skip-claude] #{$error['event_key']} {$source}: external/infra issue — skipping claude-fix";
-        echo $line . "\n";
-        recordCounter('pending', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
+        // transcript_worker: $knownPatterns above are blocked by $isOperational, so handle
+        // well-known permanent failures explicitly here with specific, actionable notes.
+        $resolved = false;
+        if ($source === 'transcript_worker') {
+            $hay = $msg . ' ' . $detail;
+            $itemKeyMatch = [];
+            preg_match('/item (\d+)/', $msg, $itemKeyMatch);
+            $ik = $itemKeyMatch[1] ?? '?';
+            if (stripos($hay, 'private video') !== false || stripos($hay, 'video unavailable') !== false || stripos($hay, 'has been removed') !== false) {
+                $resolved = true;
+                $note = 'Auto-resolved: YouTube video is private, deleted, or unavailable — cannot transcribe. No code fix possible.';
+            } elseif (stripos($hay, 'live event will begin') !== false || stripos($hay, 'future live event') !== false || stripos($hay, 'will begin in a few moments') !== false) {
+                $resolved = true;
+                $note = 'Auto-resolved: Scheduled future live stream — cannot transcribe until after broadcast. Retry manually after the event.';
+            } elseif (stripos($hay, 'community post') !== false || stripos($hay, 'only images are available') !== false) {
+                $resolved = true;
+                $note = 'Auto-resolved: YouTube Community post or image-only item (no audio track) — cannot transcribe. Remove from transcription queue.';
+            } elseif (stripos($hay, 'age-restricted') !== false || stripos($hay, 'sign-in or is age-restricted') !== false) {
+                $note = "Needs human review: Age-restricted video. Upload YouTube cookies via admin-cookies.php, or manually upload audio/VTT to /tmp/transcript_uploads/{$ik}.vtt";
+            } elseif (stripos($hay, "you're not a bot") !== false || stripos($hay, 'bot-detection blocked') !== false || stripos($hay, 'confirm you') !== false) {
+                $note = "Needs human review: YouTube bot-detection blocking server IP. Upload fresh cookies via admin-cookies.php, or manually upload audio/VTT to /tmp/transcript_uploads/{$ik}.vtt";
+            } else {
+                $note = "Needs human review: transcript_worker failure (external/infra). Check transcript job details in admin panel. Source detail: " . substr($detail, 0, 200);
+            }
+        } else {
+            $note = "Infra/external-service issue — not fixable by editing code. Source: $source. Needs manual review.";
+        }
+
+        if ($resolved) {
+            $db->prepare("UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = ? WHERE event_key = ?")
+               ->execute([$note, $error['event_key']]);
+            $line = "  [known-transcript] #{$error['event_key']}: " . substr($note, 0, 80);
+            echo $line . "\n";
+            recordCounter('known', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
+        } else {
+            $db->prepare("UPDATE yy_monitor_event SET event_action_taken = ? WHERE event_key = ? AND event_action_taken IS NULL")
+               ->execute([$note, $error['event_key']]);
+            $line = "  [skip-claude] #{$error['event_key']} {$source}: " . substr($note, 0, 80);
+            echo $line . "\n";
+            recordCounter('pending', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
+        }
         continue;
     }
 
