@@ -304,6 +304,17 @@ function rebuildCategoryFilter() {
 }
 var _savedFilters = (window.adminUI && adminUI.loadAll('feeds.filters'))
     || {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:'', key:''};
+// Scrub any legacy 'undefined' / null / undefined values that older builds
+// may have written into localStorage — they would otherwise be sent to the
+// API as ?title=undefined and match no rows.
+(function scrubFilters() {
+    var dirty = false;
+    Object.keys(_savedFilters).forEach(function(k) {
+        var v = _savedFilters[k];
+        if (v == null || v === 'undefined') { _savedFilters[k] = ''; dirty = true; }
+    });
+    if (dirty && window.adminUI) adminUI.saveAll('feeds.filters', _savedFilters);
+})();
 function _persistFilters() { if (window.adminUI) adminUI.saveAll('feeds.filters', _savedFilters); }
 
 function catLabel(c) {
