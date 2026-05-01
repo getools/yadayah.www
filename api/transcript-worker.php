@@ -92,7 +92,8 @@ function bailIfCancelled(PDO $db, int $jobKey, array $tempPaths = []): void {
 // Load job + item info
 $jobStmt = $db->prepare("
     SELECT j.feed_item_key, j.job_status, fi.feed_item_external_id, fi.feed_item_url, fi.feed_item_type,
-           fi.feed_item_duration_seconds, fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key
+           fi.feed_item_duration_seconds, fi.feed_item_audio_file,
+           fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key
     FROM yy_feed_item_transcript_job j
     JOIN yy_feed_item fi ON j.feed_item_key = fi.feed_item_key
     JOIN yy_feed f ON fi.feed_key = f.feed_key
@@ -191,17 +192,29 @@ if (!$rows) {
         $audioPath = sys_get_temp_dir() . "/transcript_audio_$jobKey.mp3";
         $usedUploadedAudio = false;
 
-        // Prefer admin-uploaded audio (from admin-transcript-upload.php) over yt-dlp.
-        // This is the workaround when YouTube blocks the server's IP.
+        // Source-of-truth precedence:
+        //   1. yy_feed_item.feed_item_audio_file (durable, browser-recorded
+        //      uploads or rumble-imported MP3s)
+        //   2. /tmp/transcript_uploads/ (legacy / ephemeral admin uploads)
+        //   3. yt-dlp download (last resort, often blocked by bot detection)
         $uploadedAudio = null;
-        foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'] as $ext) {
-            $cand = "$uploadDir/{$itemKey}.{$ext}";
-            if (file_exists($cand) && filesize($cand) > 10000) { $uploadedAudio = $cand; break; }
+        $rel = $job['feed_item_audio_file'] ?? null;
+        if ($rel) {
+            $candAbs = dirname(__DIR__) . '/public/' . ltrim($rel, '/');
+            if (is_file($candAbs) && filesize($candAbs) > 10000) {
+                $uploadedAudio = $candAbs;
+            }
+        }
+        if (!$uploadedAudio) {
+            foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'] as $ext) {
+                $cand = "$uploadDir/{$itemKey}.{$ext}";
+                if (file_exists($cand) && filesize($cand) > 10000) { $uploadedAudio = $cand; break; }
+            }
         }
         if ($uploadedAudio) {
             $audioPath = $uploadedAudio;
             $usedUploadedAudio = true;
-            updateJob($db, $jobKey, ['job_progress' => 30, 'job_message' => 'Using uploaded audio: ' . basename($uploadedAudio)]);
+            updateJob($db, $jobKey, ['job_progress' => 30, 'job_message' => 'Using audio file: ' . basename($uploadedAudio)]);
         }
 
         $ytDlp = trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');

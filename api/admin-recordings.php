@@ -16,14 +16,15 @@ $page    = max(1, (int)($_GET['page'] ?? 1));
 $perPage = max(1, min(99999, (int)($_GET['per_page'] ?? 50)));
 $offset  = ($page - 1) * $perPage;
 
-// An item is needs-transcript when no row in yy_feed_item_transcript exists
-// for it OR any of its link-cluster siblings (only "denied" links — flag=FALSE
-// — are excluded from the cluster).
-$needsTranscriptWhere = "
-    NOT EXISTS (
-        SELECT 1 FROM yy_feed_item_transcript t
-         WHERE t.feed_item_key = fi.feed_item_key
-            OR t.feed_item_key IN (
+// "Needs an MP3" — the item itself has no feed_item_audio_file AND none of
+// its yy_feed_item_link siblings (excluding denied links) does either. When
+// any sibling has audio, the cluster is considered covered.
+$needsAudioWhere = "
+    fi.feed_item_audio_file IS NULL
+    AND NOT EXISTS (
+        SELECT 1 FROM yy_feed_item sib
+         WHERE sib.feed_item_audio_file IS NOT NULL
+           AND sib.feed_item_key IN (
                 SELECT feed_item_key_b FROM yy_feed_item_link
                   WHERE feed_item_key_a = fi.feed_item_key
                     AND feed_item_link_confirmed_flag IS DISTINCT FROM FALSE
@@ -31,7 +32,7 @@ $needsTranscriptWhere = "
                 SELECT feed_item_key_a FROM yy_feed_item_link
                   WHERE feed_item_key_b = fi.feed_item_key
                     AND feed_item_link_confirmed_flag IS DISTINCT FROM FALSE
-            )
+           )
     )
 ";
 
@@ -40,7 +41,7 @@ $where = "fi.feed_item_active_flag = TRUE
        AND lower(f.feed_site_code) = 'youtube'
        AND fi.feed_item_external_id IS NOT NULL
        AND fi.feed_item_external_id != ''
-       AND $needsTranscriptWhere";
+       AND $needsAudioWhere";
 
 $cntStmt = $db->prepare("SELECT COUNT(*) FROM yy_feed_item fi JOIN yy_feed f ON f.feed_key = fi.feed_key WHERE $where");
 $cntStmt->execute();

@@ -194,7 +194,7 @@
             </thead>
             <tbody id="rec-body"></tbody>
         </table>
-        <div id="rec-empty" style="display:none;text-align:center;padding:30px;color:#888;">All current YouTube items already have a transcript — nothing to record.</div>
+        <div id="rec-empty" style="display:none;text-align:center;padding:30px;color:#888;">All current YouTube items already have an audio file — nothing to record.</div>
     </div>
 </div>
 
@@ -1349,7 +1349,6 @@ function openTranscript(itemKey) {
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
-            + '<button id="t-record-btn" onclick="startRecordWhileWatching()" title="Capture audio from this tab while the video plays (works without cookies). Browser will ask you to share this tab — check Share tab audio." style="background:#c00;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">🎙 Record</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3/M4A/VTT/SRT to use instead of downloading from YouTube" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Upload Audio/Captions</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
@@ -1636,18 +1635,22 @@ function seekVideoTo(seconds) {
 }
 
 // ── In-browser audio capture (no cookies / no proxy / no extension) ──
-// User clicks Record → browser asks them to share THIS tab + check "Share tab
-// audio" → we get a MediaStream and feed it to MediaRecorder while the YT
-// embed plays. When the video ends (YT IFrame onStateChange = 0 ENDED), we
-// stop the recorder, blob the chunks, and upload with auto_transcribe=1.
+// Recording happens in a DEDICATED Record popover (openRecordPopover) — kept
+// separate from the Transcribe popover. It shows only the video and a Record
+// button; playback is forced to 1× speed because Whisper expects natural-rate
+// audio. When the video ends (onStateChange = 0 ENDED), we stop the recorder,
+// blob the chunks, and upload to admin-transcript-upload.php which writes the
+// MP3/webm to /u/audio/, sets feed_item_audio_file, and (if requested) triggers
+// the worker to transcribe from that file.
 //
-// Per browser policy, getDisplayMedia requires a user gesture, so single-item
-// recording is gated behind the Record button click. For batch processing
-// (Recordings sub-tab) the same MediaStream is reused for many videos so the
-// user only grants permission once.
+// getDisplayMedia requires a user gesture, so single recordings are gated
+// behind the Record click. For batch processing (Recordings tab → Process
+// Selected) the same MediaStream is reused for many videos so the user only
+// grants permission once.
 var _recState = {
     stream: null, recorder: null, chunks: [], startedMs: 0,
-    durationTimer: null, mode: 'single', batchResolve: null
+    durationTimer: null, mode: 'single', batchResolve: null,
+    activeItemKey: null, ytPlayer: null
 };
 async function ensureCaptureStream(reuse) {
     if (reuse && _recState.stream && _recState.stream.getAudioTracks().length) return _recState.stream;
@@ -1660,8 +1663,6 @@ async function ensureCaptureStream(reuse) {
         stream = await navigator.mediaDevices.getDisplayMedia({
             video: { displaySurface: 'browser' },
             audio: true,
-            // Browsers that support this still play audio locally so the user
-            // can hear playback while it records. We can revisit later.
             preferCurrentTab: true
         });
     } catch (e) {
@@ -1675,22 +1676,117 @@ async function ensureCaptureStream(reuse) {
     }
     // We don't need the video track — kill it so we're not redrawing pixels.
     stream.getVideoTracks().forEach(function(t){ t.stop(); });
-    // If user stops sharing via the browser-supplied bar, clean up.
-    stream.getAudioTracks()[0].addEventListener('ended', stopRecordWhileWatching);
+    stream.getAudioTracks()[0].addEventListener('ended', stopRecordingNow);
     _recState.stream = stream;
     return stream;
 }
-async function startRecordWhileWatching() {
-    if (_recState.recorder && _recState.recorder.state === 'recording') {
-        if (!confirm('A recording is already in progress. Stop it?')) return;
-        stopRecordWhileWatching(); return;
+
+// ── Dedicated Record popover ──
+// A separate window from the Transcribe popover. Just shows the YouTube
+// player + Record/Stop button. Playback is forced to 1× (no speed controls)
+// so audio is captured at natural rate. Optional `opts` allows callers to
+// hook completion (used by batch processing in the Recordings tab).
+function openRecordPopover(itemKey, opts) {
+    opts = opts || {};
+    _recState.activeItemKey = itemKey;
+    var ov = document.getElementById('record-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'record-overlay';
+        ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10010;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
+        ov.innerHTML = '<div id="r-card" style="background:#fff;border-radius:10px;padding:18px;max-width:880px;width:100%;margin-top:30px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;">'
+            + '<h3 id="r-title" style="margin:0;font-size:1rem;color:#31345A;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Record</h3>'
+            + '<span id="r-time" style="font-family:monospace;font-size:0.8rem;color:#666;">—</span>'
+            + '<button onclick="closeRecordPopover()" id="r-close-btn" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
+            + '</div>'
+            + '<div id="r-player-wrap" style="background:#000;border-radius:6px;overflow:hidden;aspect-ratio:16/9;margin-bottom:12px;">'
+            +   '<div id="r-yt-player" style="width:100%;height:100%;"></div>'
+            + '</div>'
+            + '<div id="r-controls" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
+            +   '<button id="r-record-btn" onclick="recordPopoverRecordClicked()" style="background:#c00;color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">🎙 Start Recording</button>'
+            +   '<span id="r-status" style="font-size:0.85rem;color:#666;flex:1;"></span>'
+            + '</div>'
+            + '<div style="margin-top:8px;font-size:0.75rem;color:#888;">Playback is locked at 1× to ensure natural-rate audio for transcription. The browser will ask you to share THIS tab — check <strong>Share tab audio</strong>.</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e) { if (e.target === ov) closeRecordPopover(); };
     }
-    _recState.mode = 'single';
-    var stream = await ensureCaptureStream(false);
+    ov.style.display = 'flex';
+    document.getElementById('r-status').textContent = 'Loading video…';
+    document.getElementById('r-time').textContent = '—';
+    setRecordButton(false);
+
+    fetch(API + '/admin-transcript.php?item_key=' + itemKey + '&_=' + Date.now(), {credentials:'include', cache:'no-store'})
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error || !d.item) { document.getElementById('r-status').textContent = '✗ ' + (d.error || 'Item not found'); return; }
+            document.getElementById('r-title').textContent = (d.item.title || ('Item ' + itemKey)).substring(0, 90);
+            // (Re)create the YT player
+            ensureYouTubeApi(function() {
+                if (_recState.ytPlayer) { try { _recState.ytPlayer.destroy(); } catch (e) {} _recState.ytPlayer = null; }
+                _recState.ytPlayer = new YT.Player('r-yt-player', {
+                    videoId: d.item.feed_item_external_id,
+                    width: '100%', height: '100%',
+                    playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 1 },
+                    events: {
+                        onReady: function(e) {
+                            try { e.target.setPlaybackRate(1); } catch (err) {}
+                            document.getElementById('r-status').textContent = 'Ready. Click Start Recording.';
+                        },
+                        onStateChange: onRecPlayerStateChange,
+                        onPlaybackRateChange: function(e) {
+                            // Force 1× — if a user tries to change speed via the YT controls,
+                            // snap it back.
+                            if (e.target.getPlaybackRate() !== 1) {
+                                try { e.target.setPlaybackRate(1); } catch (err) {}
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+    _recState.onComplete = opts.onComplete || null;
+}
+function closeRecordPopover() {
+    // If a recording is active, stop it cleanly first
+    if (_recState.recorder && _recState.recorder.state === 'recording') {
+        try { _recState.recorder.stop(); } catch (e) {}
+    }
+    if (_recState.ytPlayer) {
+        try { _recState.ytPlayer.stopVideo(); _recState.ytPlayer.destroy(); } catch (e) {}
+        _recState.ytPlayer = null;
+    }
+    if (_recState.stream && _recState.mode !== 'batch') {
+        _recState.stream.getTracks().forEach(function(t){ t.stop(); });
+        _recState.stream = null;
+    }
+    var ov = document.getElementById('record-overlay');
+    if (ov) ov.style.display = 'none';
+    if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
+    _recState.activeItemKey = null;
+}
+function onRecPlayerStateChange(e) {
+    // YT.PlayerState.ENDED = 0
+    if ((e && e.data) === 0 && _recState.recorder && _recState.recorder.state === 'recording') {
+        stopRecordingNow();
+    }
+}
+async function recordPopoverRecordClicked() {
+    if (_recState.recorder && _recState.recorder.state === 'recording') {
+        stopRecordingNow();
+        return;
+    }
+    var stream = await ensureCaptureStream(_recState.mode === 'batch');
     if (!stream) return;
     beginRecording();
-    if (_ytPlayer && typeof _ytPlayer.playVideo === 'function') {
-        try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (e) {}
+    if (_recState.ytPlayer && typeof _recState.ytPlayer.playVideo === 'function') {
+        try {
+            _recState.ytPlayer.seekTo(0, true);
+            _recState.ytPlayer.setPlaybackRate(1);
+            _recState.ytPlayer.playVideo();
+        } catch (e) {}
     }
 }
 function beginRecording() {
@@ -1703,82 +1799,65 @@ function beginRecording() {
     rec.start(1000);
     _recState.recorder = rec;
     _recState.startedMs = Date.now();
-    // Hook YT player end-of-video → stop recording
-    if (_ytPlayer && typeof _ytPlayer.addEventListener === 'function') {
-        try { _ytPlayer.addEventListener('onStateChange', onYtStateForRecording); } catch (e) {}
-    }
-    showRecordingUI(true);
+    setRecordButton(true);
 }
-function onYtStateForRecording(e) {
-    // YT.PlayerState.ENDED = 0
-    if ((e && e.data) === 0 && _recState.recorder && _recState.recorder.state === 'recording') {
-        stopRecordWhileWatching();
-    }
-}
-function stopRecordWhileWatching() {
-    if (!_recState.recorder) return;
-    if (_recState.recorder.state === 'recording') {
+function stopRecordingNow() {
+    if (_recState.recorder && _recState.recorder.state === 'recording') {
         try { _recState.recorder.stop(); } catch (e) {}
-    } else {
-        onRecorderStopped();
     }
 }
 async function onRecorderStopped() {
-    showRecordingUI(false);
+    setRecordButton(false);
     var blob = new Blob(_recState.chunks, { type: 'audio/webm' });
     _recState.chunks = [];
+    var rec = _recState.recorder;
     _recState.recorder = null;
     var elapsed = Math.round((Date.now() - _recState.startedMs) / 1000);
-    var st = document.getElementById('t-status');
+    var st = document.getElementById('r-status');
+    var itemKey = _recState.activeItemKey;
+    if (!itemKey) return;
     if (st) st.textContent = '⬆ Uploading ' + (blob.size/1024/1024).toFixed(1) + ' MB (' + elapsed + 's)…';
 
-    if (!_transcriptItemKey) return;
     var fd = new FormData();
-    fd.append('item_key', String(_transcriptItemKey));
-    fd.append('file', blob, 'browser_recording_' + _transcriptItemKey + '.webm');
-    fd.append('auto_transcribe', '1');
+    fd.append('item_key', String(itemKey));
+    fd.append('file', blob, 'browser_recording_' + itemKey + '_' + Date.now() + '.webm');
+    fd.append('auto_transcribe', '1'); // also kick off Whisper
     try {
         var res = await fetch(API + '/admin-transcript-upload.php', { method:'POST', credentials:'include', body: fd });
         var d = await res.json();
         if (d.error) {
             if (st) st.textContent = '✗ ' + d.error;
+            if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: d.error });
         } else {
-            if (st) st.textContent = '✓ Uploaded — transcribing…';
-            // Server already kicked off the worker via auto_transcribe=1
-            if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
-            _transcriptPollTimer = setInterval(pollJob, 2000);
-            var prog = document.getElementById('t-progress');
-            if (prog) prog.style.display = '';
+            if (st) st.textContent = '✓ Saved as MP3 — transcription started';
+            if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: true, itemKey: itemKey });
         }
     } catch (err) {
         if (st) st.textContent = '✗ Upload failed: ' + err.message;
+        if (typeof _recState.onComplete === 'function') _recState.onComplete({ ok: false, error: err.message });
     }
-    // In single mode we tear the stream down here. Batch mode keeps it alive.
+    // Single-mode: stop the stream so the browser's "sharing" indicator goes away.
     if (_recState.mode === 'single' && _recState.stream) {
         _recState.stream.getTracks().forEach(function(t){ t.stop(); });
         _recState.stream = null;
     }
-    if (typeof _recState.batchResolve === 'function') {
-        var fn = _recState.batchResolve; _recState.batchResolve = null; fn();
-    }
 }
-function showRecordingUI(on) {
-    var btn = document.getElementById('t-record-btn');
+function setRecordButton(recording) {
+    var btn = document.getElementById('r-record-btn');
+    var time = document.getElementById('r-time');
     if (!btn) return;
-    if (on) {
-        btn.textContent = '⬛ Stop Recording';
+    if (recording) {
+        btn.textContent = '⬛ Stop';
         btn.style.background = '#444';
-        btn.onclick = stopRecordWhileWatching;
         if (_recState.durationTimer) clearInterval(_recState.durationTimer);
         _recState.durationTimer = setInterval(function() {
             var s = Math.round((Date.now() - _recState.startedMs) / 1000);
             var mm = String(Math.floor(s/60)).padStart(2,'0'), ss = String(s%60).padStart(2,'0');
-            btn.textContent = '⬛ Stop (' + mm + ':' + ss + ')';
+            if (time) time.textContent = '🔴 ' + mm + ':' + ss;
         }, 1000);
     } else {
-        btn.textContent = '🎙 Record';
+        btn.textContent = '🎙 Start Recording';
         btn.style.background = '#c00';
-        btn.onclick = startRecordWhileWatching;
         if (_recState.durationTimer) { clearInterval(_recState.durationTimer); _recState.durationTimer = null; }
     }
 }
@@ -1811,7 +1890,7 @@ function renderRecordings(d) {
     var empty = document.getElementById('rec-empty');
     var body = document.getElementById('rec-body');
     var count = document.getElementById('rec-count');
-    count.textContent = d.total + ' video' + (d.total === 1 ? '' : 's') + ' need a transcript (page ' + d.page + ' of ' + d.total_pages + ')';
+    count.textContent = d.total + ' video' + (d.total === 1 ? '' : 's') + ' need an MP3 (page ' + d.page + ' of ' + d.total_pages + ')';
     if (!_recItems.length) {
         empty.style.display = '';
         tbl.style.display = 'none';
@@ -1898,32 +1977,41 @@ async function processSelectedRecordings() {
     setTimeout(function(){ loadRecordings(1); }, 1500);
 }
 
-// Open the popover for one item, wait for the player to be ready, start
-// playback, record audio, wait for video end (or abort), upload+transcribe.
+// Open the dedicated Record popover for one item, wait until the YT player
+// is ready, start the recorder + playback, resolve when the recording
+// completes (uploaded + transcribe queued).
 function recordOneItemInline(itemKey) {
     return new Promise(function(resolve, reject) {
-        // Open popover for this item
-        if (_transcriptItemKey !== itemKey) openTranscript(itemKey);
-        // Wait until the YT player is ready and reports a duration
+        openRecordPopover(itemKey, {
+            onComplete: function(result) {
+                if (result && result.ok) resolve();
+                else reject(new Error(result && result.error || 'unknown'));
+            }
+        });
         var attempts = 0;
         function whenReady() {
             attempts++;
             if (_recBatchAbort) return reject(new Error('aborted'));
-            if (_ytPlayer && typeof _ytPlayer.getDuration === 'function') {
+            if (_recState.ytPlayer && typeof _recState.ytPlayer.getDuration === 'function') {
                 var dur = 0;
-                try { dur = _ytPlayer.getDuration() || 0; } catch (e) {}
-                if (dur > 0) { return startBatchRecordingForCurrentItem(resolve, reject); }
+                try { dur = _recState.ytPlayer.getDuration() || 0; } catch (e) {}
+                if (dur > 0) {
+                    // Player ready — start record + 1× playback
+                    if (!_recState.stream) return reject(new Error('no capture stream — batch lost permission'));
+                    beginRecording();
+                    try {
+                        _recState.ytPlayer.seekTo(0, true);
+                        _recState.ytPlayer.setPlaybackRate(1);
+                        _recState.ytPlayer.playVideo();
+                    } catch (e) { return reject(e); }
+                    return;
+                }
             }
-            if (attempts > 80) return reject(new Error('player did not load')); // ~24s
+            if (attempts > 80) return reject(new Error('player did not load'));
             setTimeout(whenReady, 300);
         }
         whenReady();
     });
-}
-function startBatchRecordingForCurrentItem(resolve, reject) {
-    _recState.batchResolve = resolve;
-    beginRecording();
-    try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (e) { return reject(e); }
 }
 
 function stopBatchRecording() {
