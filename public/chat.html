@@ -123,6 +123,8 @@
         .search-bar-wrap #community-search-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 6px 14px; background: #31345A; color: #fff; border: none; border-radius: 6px; font-family: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
         .search-bar-wrap #community-search-btn:hover { background: #41446a; }
         #search-results { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border-radius: 0 0 8px 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 100; display: none; max-height: 400px; overflow-y: auto; }
+        .search-results-header { display: flex; align-items: center; padding: 12px 0; margin-bottom: 8px; border-bottom: 1px solid #eee; }
+        .search-snippet mark { background: #fff3a0; color: inherit; padding: 0 2px; border-radius: 2px; font-weight: 600; }
         .search-result-item { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
         .search-result-item:hover { background: #fafafa; }
         .search-result-item:last-child { border-bottom: none; }
@@ -654,7 +656,7 @@ window.ensureTinyMCE = function(callback) {
 <script src="/js/community-notifications.js?v=24"></script>
 <script src="/js/community-profile.js?v=21"></script>
 <script src="/js/community-dm.js?v=42"></script>
-<script src="/js/community-search.js?v=14"></script>
+<script src="/js/community-search.js?v=15"></script>
 <script src="/js/community-members.js?v=6"></script>
 <script>
 /* ── Show/hide new topic button based on auth ── */

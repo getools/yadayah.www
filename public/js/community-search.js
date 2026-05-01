@@ -75,33 +75,62 @@ CommunitySearch.search = function(query) {
         var results = [];
         (data.topics || []).forEach(function(r) { r.match_type = 'topic'; results.push(r); });
         (data.replies || []).forEach(function(r) { r.match_type = 'reply'; results.push(r); });
-        // Fallback for any legacy shape
         if (!results.length && data.results) results = data.results;
 
-        var container = document.getElementById('search-results');
-        if (!container) return;
+        // Render into the main topic list area (full results page, not dropdown)
+        var topicEl = document.getElementById('topic-list-content');
+        var dropdown = document.getElementById('search-results');
+        if (dropdown) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; }
+        if (!topicEl) return;
+
+        // Show view-topics so results are visible
+        if (typeof Community !== 'undefined' && Community.showView) Community.showView('view-topics');
 
         if (!results.length) {
-            container.innerHTML = '<div class="search-empty">No results for "' + Community.esc(query) + '"</div>';
-            container.style.display = '';
+            topicEl.innerHTML = '<div class="search-results-header">'
+                + '<button class="btn btn-sm btn-outline" onclick="CommunitySearch.clear()">&larr; Back to topics</button>'
+                + '<span style="margin-left:12px;font-size:0.9rem;color:#666;">No results for "<strong>' + Community.esc(query) + '</strong>"</span>'
+                + '</div>';
             return;
         }
 
-        var html = '';
+        var html = '<div class="search-results-header">'
+            + '<button class="btn btn-sm btn-outline" onclick="CommunitySearch.clear()">&larr; Back to topics</button>'
+            + '<span style="margin-left:12px;font-size:0.9rem;color:#666;"><strong>' + results.length + '</strong> result' + (results.length === 1 ? '' : 's') + ' for "<strong>' + Community.esc(query) + '</strong>"</span>'
+            + '</div>';
+
+        html += '<div class="search-results-list">';
         results.forEach(function(r) {
-            html += '<div class="search-result-item" onclick="window.location.hash=\'#topic/' + r.topic_key + '\';CommunitySearch.hideResults();">'
-                + '<div class="search-result-title">' + Community.esc(r.topic_title || r.title || '') + '</div>'
-                + '<div class="search-result-meta">'
-                + Community.esc(r.user_name_display || '') + ' &middot; ' + Community.timeAgo(r.topic_dtime || r.reply_dtime || r.dtime)
-                + (r.match_type === 'reply' ? ' &middot; <em>match in reply</em>' : '')
+            var url = '#topic/' + r.topic_key;
+            html += '<div class="topic-item" style="cursor:pointer;" onclick="window.location.hash=\'' + url + '\'">'
+                + '<div class="topic-info">'
+                + '<div class="topic-title">' + Community.esc(r.topic_title || r.title || '')
+                + (r.match_type === 'reply' ? ' <span style="font-size:0.72rem;color:#888;font-weight:400;">(match in reply)</span>' : '')
                 + '</div>'
-                + (r.snippet ? '<div class="search-result-snippet">' + r.snippet + '</div>' : '')
+                + '<div class="topic-meta">'
+                + Community.esc(r.user_name_display || 'Anonymous') + ' &middot; ' + Community.timeAgo(r.topic_dtime || r.reply_dtime || r.dtime)
+                + '</div>'
+                + (r.snippet ? '<div class="search-snippet" style="font-size:0.88rem;color:#555;margin-top:6px;line-height:1.5;">' + r.snippet + '</div>' : '')
+                + '</div>'
                 + '</div>';
         });
+        html += '</div>';
 
-        container.innerHTML = html;
-        container.style.display = '';
+        topicEl.innerHTML = html;
     });
+};
+
+CommunitySearch.clear = function() {
+    var input = document.getElementById('community-search');
+    if (input) input.value = '';
+    // Reload current topic list
+    if (typeof CommunityTopics !== 'undefined' && CommunityTopics.loadTopics) {
+        var opts = {};
+        if (Community.currentSection === 'comments') opts.parentSlug = 'comments';
+        CommunityTopics.loadTopics(1, Community.currentCategory, opts);
+    } else {
+        window.location.hash = '#topics';
+    }
 };
 
 // ── Trigger search from button click or external code ──

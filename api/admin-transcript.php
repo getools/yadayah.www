@@ -81,6 +81,9 @@ function autoLearnCorrections(PDO $db, string $oldText, string $newText): void {
         if ($a === '' || $b === '' || $a === $b) continue;
         if (mb_strlen($a) < 2 || mb_strlen($b) < 2) continue; // skip 1-char noise
         if (mb_strlen($a) > 60 || mb_strlen($b) > 60) continue; // skip long fragments
+        // Skip pure case changes ("yah" → "Yah") — capitalization preferences
+        // aren't useful as corrections and clutter the dictionary.
+        if (mb_strtolower($a) === mb_strtolower($b)) continue;
         $upsert->execute([$a, $b]);
     }
 }
