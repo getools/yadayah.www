@@ -125,7 +125,7 @@ if ($method === 'GET') {
     // Get current validation (one row per item via UNIQUE constraint)
     $valStmt = $db->prepare("
         SELECT v.validation_status, v.validation_note, v.validation_dtime, v.validation_user_key,
-               u.user_code AS validation_user_code
+               v.validation_bookmark_seconds, u.user_code AS validation_user_code
         FROM yy_feed_item_transcript_validation v
         LEFT JOIN yy_user u ON u.user_key = v.validation_user_key
         WHERE v.feed_item_key = ?
@@ -293,18 +293,38 @@ if ($method === 'POST') {
         if (!in_array($status, ['Pending', 'Approved', 'Errors'], true)) {
             errorResponse('status must be Pending, Approved, or Errors');
         }
-        // UPSERT — one row per item enforced by UNIQUE(feed_item_key)
+        // Approving the transcript clears any in-progress validation bookmark
+        // — the user is done with this item, so the resume marker is moot.
+        $clearBookmark = ($status === 'Approved');
         $db->prepare("
             INSERT INTO yy_feed_item_transcript_validation
-                (feed_item_key, validation_status, validation_note, validation_dtime, validation_user_key)
-            VALUES (?, ?, NULLIF(?, ''), NOW(), ?)
+                (feed_item_key, validation_status, validation_note, validation_dtime, validation_user_key, validation_bookmark_seconds)
+            VALUES (?, ?, NULLIF(?, ''), NOW(), ?, NULL)
             ON CONFLICT (feed_item_key) DO UPDATE SET
                 validation_status   = EXCLUDED.validation_status,
                 validation_note     = EXCLUDED.validation_note,
                 validation_dtime    = NOW(),
-                validation_user_key = EXCLUDED.validation_user_key
-        ")->execute([$itemKey, $status, $note, $userKey]);
+                validation_user_key = EXCLUDED.validation_user_key,
+                validation_bookmark_seconds = CASE WHEN ?::boolean THEN NULL ELSE yy_feed_item_transcript_validation.validation_bookmark_seconds END
+        ")->execute([$itemKey, $status, $note, $userKey, $clearBookmark ? 't' : 'f']);
         jsonResponse(['saved' => true]);
+    }
+
+    if ($action === 'save_bookmark') {
+        // Lightweight write — auto-fired every ~15s while the user is reviewing
+        // the video against the transcript. UPSERTs into the same validation row
+        // so closing the popover and reopening lands the user back where they
+        // were. Doesn't touch validation_status/note.
+        $sec = max(0, (int)($data['seconds'] ?? 0));
+        $db->prepare("
+            INSERT INTO yy_feed_item_transcript_validation
+                (feed_item_key, validation_status, validation_user_key, validation_bookmark_seconds)
+            VALUES (?, 'Pending', ?, ?)
+            ON CONFLICT (feed_item_key) DO UPDATE SET
+                validation_bookmark_seconds = EXCLUDED.validation_bookmark_seconds,
+                validation_user_key         = COALESCE(yy_feed_item_transcript_validation.validation_user_key, EXCLUDED.validation_user_key)
+        ")->execute([$itemKey, $userKey, $sec]);
+        jsonResponse(['saved' => true, 'seconds' => $sec]);
     }
 
     if ($action === 'apply_corrections_now') {

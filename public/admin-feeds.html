@@ -1239,6 +1239,10 @@ var _txJobStartMs = 0;        // wall-clock millis when we first saw running/pen
 var _txSmoothTimer = null;    // ticker that advances the bar between server polls
 var _txServerPct = 0;         // last % the server reported
 var _txServerPctAtMs = 0;     // wall-clock millis of that report
+// Validation bookmark — auto-saved while playing so the user can pick up
+// where they left off when reviewing video against transcript.
+var _lastSavedBookmarkSec = 0;
+var _lastBookmarkSaveAtMs = 0;
 
 // Player + sync state
 var _ytPlayer = null;
@@ -1322,11 +1326,29 @@ function openTranscript(itemKey) {
 }
 
 function closeTranscript() {
+    // Final bookmark write — capture wherever the user was when closing,
+    // even if it's been less than the 15s auto-save throttle.
+    if (_transcriptItemKey && _ytPlayer && typeof _ytPlayer.getCurrentTime === 'function') {
+        try {
+            var finalT = Math.floor(_ytPlayer.getCurrentTime() || 0);
+            if (finalT >= 1 && finalT !== _lastSavedBookmarkSec) {
+                navigator.sendBeacon
+                    ? navigator.sendBeacon(API + '/admin-transcript.php',
+                        new Blob([JSON.stringify({action:'save_bookmark', item_key: _transcriptItemKey, seconds: finalT})], {type:'application/json'}))
+                    : fetch(API + '/admin-transcript.php', {
+                        method:'POST', credentials:'include', keepalive: true,
+                        headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({action:'save_bookmark', item_key: _transcriptItemKey, seconds: finalT})
+                      }).catch(function(){});
+            }
+        } catch (e) {}
+    }
     var ov = document.getElementById('transcript-overlay');
     if (ov) ov.style.display = 'none';
     if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
     if (typeof stopSmoothTicker === 'function') stopSmoothTicker();
     _txJobStartMs = 0; _txServerPct = 0;
+    _lastSavedBookmarkSec = 0; _lastBookmarkSaveAtMs = 0;
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
     if (_ytPlayer) {
         try { _ytPlayer.stopVideo(); _ytPlayer.destroy(); } catch (e) {}
@@ -1411,6 +1433,22 @@ function syncTranscriptToPlayer() {
     if (typeof t !== 'number' || isNaN(t)) return;
     var disp = document.getElementById('t-time-display');
     if (disp) disp.textContent = formatSeconds(t) + ' / ' + (_ytPlayer.getDuration ? formatSeconds(_ytPlayer.getDuration()) : '—');
+
+    // Auto-save validation bookmark every 15s if the player has actually moved
+    // by 5+s since last save (i.e. video is playing or seeking, not paused).
+    if (_transcriptItemKey && t >= 1) {
+        var nowMs = Date.now();
+        var sec = Math.floor(t);
+        if (nowMs - _lastBookmarkSaveAtMs > 15000 && Math.abs(sec - _lastSavedBookmarkSec) >= 5) {
+            _lastBookmarkSaveAtMs = nowMs;
+            _lastSavedBookmarkSec = sec;
+            fetch(API + '/admin-transcript.php', {
+                method: 'POST', credentials: 'include',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({action:'save_bookmark', item_key: _transcriptItemKey, seconds: sec})
+            }).catch(function() { /* silent — best effort */ });
+        }
+    }
 
     if (!_segmentSeconds.length) return;
     // Find the last row whose segment <= t (linear scan; lists are short enough)
@@ -1519,6 +1557,7 @@ function populateValidation(v) {
     var sel = document.getElementById('t-val-status');
     var note = document.getElementById('t-val-note');
     var meta = document.getElementById('t-val-meta');
+    var bookmarkBox = document.getElementById('t-val-bookmark');
     if (!sel || !note) return;
     if (v) {
         sel.value = v.validation_status || 'Pending';
@@ -1531,6 +1570,48 @@ function populateValidation(v) {
         note.value = '';
         meta.textContent = 'Not yet validated';
     }
+    var bookmarkSec = v && v.validation_bookmark_seconds != null ? parseInt(v.validation_bookmark_seconds, 10) : 0;
+    _lastSavedBookmarkSec = bookmarkSec;
+    renderBookmarkResume(bookmarkSec);
+}
+
+// Render or hide the "Resume from MM:SS" button. Inserted at the top of the
+// validation panel so the user sees it right when reopening the popover.
+function renderBookmarkResume(bookmarkSec) {
+    var box = document.getElementById('t-val-bookmark');
+    if (!box) {
+        var validation = document.getElementById('t-validation');
+        if (!validation) return;
+        box = document.createElement('div');
+        box.id = 't-val-bookmark';
+        box.style.cssText = 'display:none;margin-bottom:10px;padding:8px 10px;background:#fff8d8;border:1px solid #f0d76a;border-radius:6px;font-size:0.82rem;display:flex;align-items:center;gap:8px;';
+        validation.insertBefore(box, validation.firstChild);
+    }
+    if (!bookmarkSec || bookmarkSec < 5) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+    }
+    box.style.display = 'flex';
+    box.innerHTML = '<span style="flex:1;">📍 You left off at <strong>' + formatSeconds(bookmarkSec) + '</strong></span>'
+        + '<button type="button" onclick="resumeFromBookmark(' + bookmarkSec + ')" style="background:#31345A;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;">▶ Resume</button>'
+        + '<button type="button" onclick="clearBookmark()" title="Forget this bookmark" style="background:none;border:none;color:#888;cursor:pointer;font-size:0.95rem;">×</button>';
+}
+
+function resumeFromBookmark(sec) {
+    seekVideoTo(sec);
+}
+
+function clearBookmark() {
+    if (!_transcriptItemKey) return;
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'save_bookmark', item_key: _transcriptItemKey, seconds: 0})
+    }).then(function(r){return safeJson(r);}).then(function() {
+        _lastSavedBookmarkSec = 0;
+        renderBookmarkResume(0);
+    });
 }
 
 function saveValidation() {
