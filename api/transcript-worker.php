@@ -186,7 +186,7 @@ if (!$rows) {
         // Prefer admin-uploaded audio (from admin-transcript-upload.php) over yt-dlp.
         // This is the workaround when YouTube blocks the server's IP.
         $uploadedAudio = null;
-        foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac'] as $ext) {
+        foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'] as $ext) {
             $cand = "$uploadDir/{$itemKey}.{$ext}";
             if (file_exists($cand) && filesize($cand) > 10000) { $uploadedAudio = $cand; break; }
         }

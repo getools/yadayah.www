@@ -15,7 +15,7 @@ $user = requireAuth();
 $method = $_SERVER['REQUEST_METHOD'];
 
 $UPLOAD_DIR = sys_get_temp_dir() . '/transcript_uploads';
-$ALLOWED_EXT = ['vtt', 'srt', 'mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac'];
+$ALLOWED_EXT = ['vtt', 'srt', 'mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'];
 
 if (!is_dir($UPLOAD_DIR)) @mkdir($UPLOAD_DIR, 0775, true);
 
