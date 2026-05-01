@@ -1243,6 +1243,10 @@ var _txServerPctAtMs = 0;     // wall-clock millis of that report
 // where they left off when reviewing video against transcript.
 var _lastSavedBookmarkSec = 0;
 var _lastBookmarkSaveAtMs = 0;
+// If the user clicks a timestamp / Resume before the player has started,
+// queue the target seconds. The onStateChange handler applies it once the
+// player transitions to PLAYING/BUFFERING (seekTo is a no-op on UNSTARTED).
+var _pendingSeekSec = null;
 
 // Player + sync state
 var _ytPlayer = null;
@@ -1349,6 +1353,7 @@ function closeTranscript() {
     if (typeof stopSmoothTicker === 'function') stopSmoothTicker();
     _txJobStartMs = 0; _txServerPct = 0;
     _lastSavedBookmarkSec = 0; _lastBookmarkSaveAtMs = 0;
+    _pendingSeekSec = null;
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
     if (_ytPlayer) {
         try { _ytPlayer.stopVideo(); _ytPlayer.destroy(); } catch (e) {}
@@ -1420,6 +1425,17 @@ function initVideoPlayer(siteCode, externalId) {
                 onReady: function() {
                     if (_syncTimer) clearInterval(_syncTimer);
                     _syncTimer = setInterval(syncTranscriptToPlayer, 250);
+                },
+                onStateChange: function(e) {
+                    // Apply any pending seek once the player has actually
+                    // started (1=playing, 3=buffering). Without this, a click
+                    // on a timestamp before the user has hit Play would just
+                    // start the video at 0:00 instead of the target second.
+                    if (_pendingSeekSec != null && (e.data === 1 || e.data === 3)) {
+                        var target = _pendingSeekSec;
+                        _pendingSeekSec = null;
+                        try { _ytPlayer.seekTo(target, true); } catch (err) {}
+                    }
                 }
             }
         });
@@ -1477,6 +1493,16 @@ function syncTranscriptToPlayer() {
 
 function seekVideoTo(seconds) {
     if (!_ytPlayer || typeof _ytPlayer.seekTo !== 'function') return;
+    var state = -1;
+    try { state = _ytPlayer.getPlayerState(); } catch (e) {}
+    // -1 unstarted, 5 cued: seekTo() silently fails. Queue the seek and let
+    // playVideo() kick the player; onStateChange will apply it once we're
+    // PLAYING (1) or BUFFERING (3).
+    if (state === -1 || state === 5) {
+        _pendingSeekSec = seconds;
+        try { _ytPlayer.playVideo(); } catch (e) {}
+        return;
+    }
     try { _ytPlayer.seekTo(seconds, true); _ytPlayer.playVideo(); } catch (e) {}
 }
 
