@@ -1618,6 +1618,13 @@ function startTranscript() {
         if (d.error) { alert(d.error); return; }
         document.getElementById('t-progress').style.display = '';
         document.getElementById('t-start-btn').disabled = true;
+        if (d.attached) {
+            // Server attached us to an in-flight job (started in another
+            // tab/window). Surface that briefly so it doesn't look like a
+            // fresh run that finished suspiciously fast.
+            var msg = document.getElementById('t-msg');
+            if (msg) msg.textContent = 'Attached to in-progress transcription…';
+        }
         if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
         _transcriptPollTimer = setInterval(pollJob, 2000);
     });

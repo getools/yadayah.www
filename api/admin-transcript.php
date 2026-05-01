@@ -149,9 +149,37 @@ if ($method === 'POST') {
     if (!$itemKey) errorResponse('item_key required');
 
     if ($action === 'start') {
-        // Mark any running jobs for this item as cancelled
-        $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW() WHERE feed_item_key = ? AND job_status IN ('pending', 'running')")
-           ->execute([$itemKey]);
+        // If there's already an active job for this item, attach to it instead
+        // of spawning a duplicate. Prevents two workers racing on the same
+        // item (clicking Transcribe in a second tab, double-clicking, etc.) —
+        // both would hit yt-dlp / Whisper, wasting download bandwidth and
+        // incurring the API cost twice.
+        $existing = $db->prepare("SELECT feed_item_transcript_job_key, job_status, job_worker_pid FROM yy_feed_item_transcript_job WHERE feed_item_key = ? AND job_status IN ('pending', 'running') ORDER BY job_dtime DESC LIMIT 1");
+        $existing->execute([$itemKey]);
+        $row = $existing->fetch();
+        if ($row) {
+            // Verify the worker is actually alive — if the PID is dead or
+            // recycled, treat the job as orphaned and fall through to a
+            // fresh start instead of attaching to a ghost.
+            $pid = (int)$row['job_worker_pid'];
+            $alive = false;
+            if ($pid > 0) {
+                $cmdline = @file_get_contents("/proc/$pid/cmdline");
+                $alive = ($cmdline && strpos($cmdline, 'transcript-worker') !== false);
+            }
+            if ($alive) {
+                jsonResponse([
+                    'job_key' => (int)$row['feed_item_transcript_job_key'],
+                    'status' => $row['job_status'],
+                    'worker_pid' => $pid,
+                    'attached' => true,
+                ]);
+            }
+            // Orphaned: row says running but no live worker. Flip to cancelled
+            // so the new job below is the only active one.
+            $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW(), job_message = 'Worker died — restarting' WHERE feed_item_transcript_job_key = ?")
+               ->execute([(int)$row['feed_item_transcript_job_key']]);
+        }
 
         // Create new job
         $jobStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_job (feed_item_key, job_status, job_message, user_key) VALUES (?, 'pending', 'Queued for transcription', ?) RETURNING feed_item_transcript_job_key");
