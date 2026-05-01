@@ -369,17 +369,44 @@
         $('time').textContent = prefix + fmt(cur) + ' / ' + (dur > 0 ? fmt(dur) : '?:??:??');
     }
 
-    // Warn user if they try to close mid-recording
+    // ── Closing-tab safety net ──
+    // Two-layer protection so partial recordings are never silently lost:
+    //
+    // 1. beforeunload — browser shows its built-in "Leave site?" Stay/Leave
+    //    prompt when a recording is in progress. (Browsers ignore custom
+    //    message text these days — the prompt itself is the warning.)
+    //
+    // 2. pagehide — fires after the user confirms leaving. We still have
+    //    the in-memory chunks at this point, so we use navigator.sendBeacon
+    //    to fire-and-forget upload them as a partial. The browser keeps the
+    //    request alive past page unload. Worst case we lose ~1 second of
+    //    audio at the very end (the in-flight chunk that hadn't yet been
+    //    flushed into chunks[]).
     window.addEventListener('beforeunload', function(e) {
         if (recorder && recorder.state === 'recording') {
             e.preventDefault();
-            e.returnValue = 'A recording is in progress. Closing this window will stop and save the current part.';
+            e.returnValue = '';
         }
     });
-    // On unload, if we have unstopped data, the recorder will stop — onstop
-    // may not fire reliably during unload, but the browser will keep MediaRecorder
-    // alive until the page is fully gone, which lets the upload complete in
-    // many cases. Best-effort.
+    window.addEventListener('pagehide', function() {
+        savePartialOnExit();
+    });
+    function savePartialOnExit() {
+        if (!recorder || recorder.state !== 'recording') return;
+        if (!chunks.length) return;
+        try { recorder.requestData(); } catch (e) {} // best-effort flush of in-flight buffer
+        var blob = new Blob(chunks, { type: 'audio/webm' });
+        var nowSec = 0;
+        try { nowSec = Math.floor(ytPlayer.getCurrentTime() || 0); } catch (e) {}
+        var fd = new FormData();
+        fd.append('item_key', String(itemKey));
+        fd.append('partial', '1');
+        fd.append('seconds', String(nowSec));
+        fd.append('file', blob, 'rec_unload_' + itemKey + '_' + Date.now() + '.webm');
+        if (navigator.sendBeacon) {
+            try { navigator.sendBeacon(API + '/admin-transcript-upload.php', fd); } catch (e) {}
+        }
+    }
     </script>
 </body>
 </html>
