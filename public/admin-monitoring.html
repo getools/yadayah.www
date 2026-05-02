@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Monitoring - Yada Yah Admin</title>
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/login.css">
@@ -119,6 +122,7 @@
         </select>
         <span class="spacer"></span>
         <button onclick="runAutoFix()" id="autofix-btn" class="primary" style="background:#27ae60;color:#fff;border-color:#27ae60;" title="Pattern triage + Claude Code agent on all unresolved errors, plus server health scan and git push">&#9881; Auto-Fix Now</button>
+        <button onclick="stopAutoFix()" id="autofix-stop-btn" style="display:none;background:#c0392b;color:#fff;border-color:#c0392b;" title="Stop the running auto-fix; pending Claude requests are dropped">&#9632; Stop</button>
         <span id="autofix-timer" style="font-size:0.75rem;color:#888;"></span>
         <button onclick="clearResolved()">Clear Resolved</button>
     </div>
@@ -457,7 +461,50 @@ function runAutoFix() {
     triggerAutoFixCycle();
 }
 
-// Timer countdown — AI agent at :00, triage at :15/:45, git push at :30
+function stopAutoFix() {
+    if (!_autoFixRunId) return;
+    if (!confirm('Stop the running auto-fix? Pending Claude requests will be dropped.')) return;
+    var stopBtn = document.getElementById('autofix-stop-btn');
+    if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = 'Stopping…'; }
+    fetch(API + '/admin-monitoring.php?action=autofix_stop', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ run_id: _autoFixRunId })
+    }).then(function(r){return safeJson(r);})
+      .then(function() {
+          // The next status poll will see state='cancelled' and tear everything down.
+      })
+      .catch(function(e) {
+          if (stopBtn) { stopBtn.disabled = false; stopBtn.innerHTML = '&#9632; Stop'; }
+          showAutoFixBanner('error', '<strong>&#10005; Stop request failed:</strong> ' + esc(e && e.message || ''));
+      });
+}
+
+// On page load, detect any in-flight auto-fix and switch into monitoring mode.
+function detectActiveAutoFix() {
+    fetch(API + '/admin-monitoring.php?action=autofix_active&_=' + Date.now(),
+          {credentials:'include', cache:'no-store'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (d && d.active && d.run && d.run.run_id) {
+                _autoFixRunId = d.run.run_id;
+                _autoFixRunning = true;
+                _autoFixStarted = Date.now();
+                var btn = document.getElementById('autofix-btn');
+                var stopBtn = document.getElementById('autofix-stop-btn');
+                if (btn) { btn.disabled = true; btn.innerHTML = 'Running...'; }
+                if (stopBtn) { stopBtn.style.display = ''; stopBtn.disabled = false; stopBtn.innerHTML = '&#9632; Stop'; }
+                if (_autoFixPollTimer) clearInterval(_autoFixPollTimer);
+                _autoFixPollTimer = setInterval(pollAutoFixStatus, 2000);
+                pollAutoFixStatus();
+            }
+        }).catch(function(){});
+}
+detectActiveAutoFix();
+
+// Timer countdown — AI agent at :00, triage at :15/:45.
+// (git push is no longer scheduled standalone — it runs only as part of the
+//  triage cron when actual code changes have been made.)
 var _autoFixRunning = false;
 var _lastFiredKey = null;
 function startAutoFixTimer() {
@@ -472,7 +519,6 @@ function startAutoFixTimer() {
         var schedule = [
             { sec:    0, label: 'AI agent', kind: 'ai' },
             { sec:  900, label: 'triage',   kind: 'triage' },
-            { sec: 1800, label: 'git push', kind: 'git' },
             { sec: 2700, label: 'triage',   kind: 'triage' },
             { sec: 3600, label: 'AI agent', kind: 'ai' }, // wrap to next hour
         ];
@@ -578,11 +624,21 @@ function renderAutoFixProgress(d) {
 
     var logTail = d.log_tail ? '<details style="margin-top:10px;" open><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">&#128221; Live log (auto-updating)</summary><pre id="autofix-log-pre" style="background:#1e2230;color:#e0e6f0;border-radius:4px;padding:10px;font-size:0.72rem;margin:6px 0 0;white-space:pre-wrap;max-height:260px;overflow-y:auto;font-family:Consolas,Monaco,monospace;">' + esc(d.log_tail) + '</pre></details>' : '';
 
+    // Stop button visibility — show whenever a run is in flight
+    var stopBtn = document.getElementById('autofix-stop-btn');
+    if (stopBtn) {
+        var inFlight = (d.state === 'running' || d.state === 'starting'
+                       || d.state === 'pattern_triage' || d.state === 'claude_queued');
+        stopBtn.style.display = inFlight ? '' : 'none';
+    }
+
     // Claude streaming output — always visible during the run so the user
     // can see SOMETHING is happening. Body fills with the agent's stdout as
     // it streams; until then it shows the queue-state placeholder.
     var claudeBlock = '';
-    if (d.state === 'running' || d.state === 'starting' || d.claude_output) {
+    if (d.state === 'running' || d.state === 'starting'
+        || d.state === 'pattern_triage' || d.state === 'claude_queued'
+        || d.claude_output) {
         var headerTxt = d.claude_event_key
             ? '\u{1F916} Claude working on event #' + d.claude_event_key + ' (live output)'
             : '\u{1F916} Claude output (queueing — host runner picks up next)';
@@ -599,7 +655,7 @@ function renderAutoFixProgress(d) {
             + '</details>';
     }
 
-    if (d.state === 'running' || d.state === 'starting') {
+    if (d.state === 'running' || d.state === 'starting' || d.state === 'pattern_triage') {
         var spinner = '<span style="display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:autofix-spin 0.8s linear infinite;vertical-align:-3px;margin-right:8px;"></span><style>@keyframes autofix-spin { to { transform: rotate(360deg); } }</style>';
         showAutoFixBanner('running',
             '<div style="font-size:1rem;font-weight:700;">' + spinner + 'Auto-Fix running' + (elapsed ? ' &middot; ' + elapsed + ' elapsed' : '') + '</div>'
@@ -608,6 +664,25 @@ function renderAutoFixProgress(d) {
             + current
             + countLine
             + logTail);
+    } else if (d.state === 'claude_queued') {
+        var spinner2 = '<span style="display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:autofix-spin 0.8s linear infinite;vertical-align:-3px;margin-right:8px;"></span>';
+        showAutoFixBanner('running',
+            '<div style="font-size:1rem;font-weight:700;">' + spinner2 + 'Pattern triage done — host runner processing Claude queue' + (elapsed ? ' &middot; ' + elapsed + ' elapsed' : '') + '</div>'
+            + claudeBlock
+            + bar
+            + current
+            + countLine
+            + logTail);
+    } else if (d.state === 'cancelled') {
+        showAutoFixBanner('error',
+            '<div style="font-size:1rem;font-weight:700;">&#9632; Auto-Fix cancelled' + (elapsed ? ' &middot; took ' + elapsed : '') + '</div>'
+            + '<div style="font-size:0.85rem;margin-top:4px;">Stopped by user. Pending Claude requests dropped.</div>'
+            + countLine
+            + logTail);
+    } else if (d.state === 'skipped') {
+        showAutoFixBanner('error',
+            '<div style="font-size:1rem;font-weight:700;">&#9888; Run skipped — another auto-fix is already in progress</div>'
+            + '<div style="font-size:0.85rem;margin-top:4px;">Wait for the active run to finish, or click Stop on it.</div>');
     } else if (d.state === 'complete') {
         showAutoFixBanner('success',
             '<div style="font-size:1rem;font-weight:700;">&#10003; Auto-Fix complete' + (elapsed ? ' &middot; took ' + elapsed : '') + '</div>'
@@ -630,10 +705,16 @@ function renderAutoFixProgress(d) {
 
 function pollAutoFixStatus() {
     if (!_autoFixRunId) return;
-    fetch(API + '/admin-monitoring.php?action=autofix_status&run_id=' + _autoFixRunId, {credentials:'include'})
+    fetch(API + '/admin-monitoring.php?action=autofix_status&run_id=' + _autoFixRunId + '&_=' + Date.now(),
+          {credentials:'include', cache: 'no-store'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
-            renderAutoFixProgress(d);
+            d = d || { state: 'starting' };
+            try { renderAutoFixProgress(d); } catch (e) {
+                showAutoFixBanner('error', '<strong>&#10005; Render error:</strong> ' + esc(e && e.message ? e.message : String(e)) + '<br><small>State: ' + esc(JSON.stringify(d).slice(0, 200)) + '</small>');
+                console.error('renderAutoFixProgress threw', e, d);
+                return;
+            }
             if (d.state === 'complete' || d.state === 'unknown') {
                 clearInterval(_autoFixPollTimer);
                 _autoFixPollTimer = null;
@@ -665,13 +746,28 @@ function triggerAutoFixCycle() {
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.error) {
-                showAutoFixBanner('error', '<strong>&#10005; Failed to start auto-fix:</strong> ' + esc(d.error));
-                _autoFixRunning = false;
-                btn.disabled = false;
-                btn.innerHTML = '&#9881; Auto-Fix Now';
+                // Server rejected because a run is already active —
+                // attach to the active run and start polling instead of
+                // failing. Otherwise show the error and re-enable.
+                if (d.active_run_id) {
+                    _autoFixRunId = d.active_run_id;
+                    showAutoFixBanner('running', '<strong>&#9881; Auto-fix already running.</strong> Watching the in-flight run instead of starting a new one.');
+                    var stopBtn0 = document.getElementById('autofix-stop-btn');
+                    if (stopBtn0) { stopBtn0.style.display = ''; stopBtn0.disabled = false; stopBtn0.innerHTML = '&#9632; Stop'; }
+                    if (_autoFixPollTimer) clearInterval(_autoFixPollTimer);
+                    _autoFixPollTimer = setInterval(pollAutoFixStatus, 2000);
+                    pollAutoFixStatus();
+                } else {
+                    showAutoFixBanner('error', '<strong>&#10005; Failed to start auto-fix:</strong> ' + esc(d.error));
+                    _autoFixRunning = false;
+                    btn.disabled = false;
+                    btn.innerHTML = '&#9881; Auto-Fix Now';
+                }
                 return;
             }
             _autoFixRunId = d.run_id;
+            var stopBtn0b = document.getElementById('autofix-stop-btn');
+            if (stopBtn0b) { stopBtn0b.style.display = ''; stopBtn0b.disabled = false; stopBtn0b.innerHTML = '&#9632; Stop'; }
             // Poll every 2 seconds until complete
             if (_autoFixPollTimer) clearInterval(_autoFixPollTimer);
             _autoFixPollTimer = setInterval(pollAutoFixStatus, 2000);

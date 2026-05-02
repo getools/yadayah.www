@@ -190,10 +190,32 @@ if ($method === 'POST') {
     }
 
     if ($action === 'autofix') {
+        // Server-side gate: refuse to start a new run if one is already
+        // active. Prevents the click-stacking that caused our flock-skip
+        // problem. Stale runs (>30 min without an update) are ignored.
+        $statusDir = '/var/www/html/jobs/autofix';
+        @mkdir($statusDir, 0775, true);
+        foreach (glob("$statusDir/run_*.json") as $f) {
+            if (time() - filemtime($f) > 1800) continue;
+            $existing = json_decode(@file_get_contents($f), true) ?: [];
+            $st = $existing['state'] ?? '';
+            if (in_array($st, ['starting', 'running', 'claude_queued', 'pattern_triage'], true)) {
+                preg_match('/run_([a-f0-9]+)\.json$/', $f, $m);
+                jsonResponse([
+                    'error' => 'Auto-fix is already running. Wait for it to finish or click Stop.',
+                    'active_run_id' => $m[1] ?? '',
+                    'status_url' => '/api/admin-monitoring.php?action=autofix_status&run_id=' . ($m[1] ?? ''),
+                ]);
+            }
+        }
+
         // Spawn auto-fix-error.php as a backgrounded job. Returns a run_id immediately;
         // the UI polls /admin-monitoring.php?action=autofix_status&run_id=... for live progress.
+        // Status file lives in a BIND-MOUNTED location so the host-side
+        // claude-fix-runner.sh can also write into it as it processes
+        // queued Claude events.
         $runId = bin2hex(random_bytes(8));
-        $statusFile = "/tmp/autofix_run_{$runId}.json";
+        $statusFile = "$statusDir/run_{$runId}.json";
         $logFile = "/tmp/autofix_run_{$runId}.log";
         @file_put_contents($statusFile, json_encode(['state' => 'starting', 'run_id' => $runId, 'started' => date('c')]));
 
@@ -214,6 +236,54 @@ if ($method === 'POST') {
         ]);
     }
 
+    if ($action === 'autofix_active') {
+        // Page-load probe: returns details of any in-progress run so the UI
+        // can immediately switch into "monitoring" mode (button → Stop, poll
+        // active run's status) instead of treating the page as idle.
+        session_write_close();
+        $statusDir = '/var/www/html/jobs/autofix';
+        $found = null;
+        foreach (glob("$statusDir/run_*.json") as $f) {
+            if (time() - filemtime($f) > 1800) continue;
+            $data = json_decode(@file_get_contents($f), true) ?: [];
+            $st = $data['state'] ?? '';
+            if (in_array($st, ['starting', 'running', 'claude_queued', 'pattern_triage'], true)) {
+                preg_match('/run_([a-f0-9]+)\.json$/', $f, $m);
+                $found = ['run_id' => $m[1] ?? '', 'state' => $st, 'started' => $data['started'] ?? ''];
+                break;
+            }
+        }
+        jsonResponse(['active' => $found !== null, 'run' => $found]);
+    }
+
+    if ($action === 'autofix_stop') {
+        // Cancels an in-flight run: kills the auto-fix-error.php process
+        // owning that run_id, removes any pending Claude queue files for the
+        // run, and marks the status as cancelled. Host runner finishes
+        // whatever Claude event it's currently in (no point cutting that
+        // off mid-stream) but won't pick up further requests.
+        $runId = preg_replace('/[^a-f0-9]/', '', $_POST['run_id'] ?? '');
+        if (!$runId && $body = file_get_contents('php://input')) {
+            $j = json_decode($body, true) ?: [];
+            $runId = preg_replace('/[^a-f0-9]/', '', $j['run_id'] ?? '');
+        }
+        if (!$runId) errorResponse('run_id required', 400);
+        // Kill the PHP background process for this run
+        @exec('pkill -9 -f ' . escapeshellarg("auto-fix-error.php $runId") . ' 2>&1');
+        // Drop pending Claude queue requests for this run
+        $queueDir = '/var/www/html/jobs/claude-fix';
+        foreach (glob("$queueDir/req_{$runId}_*.json") as $f) @unlink($f);
+        // Mark status as cancelled
+        $statusFile = "/var/www/html/jobs/autofix/run_{$runId}.json";
+        if (file_exists($statusFile)) {
+            $data = json_decode(@file_get_contents($statusFile), true) ?: [];
+            $data['state'] = 'cancelled';
+            $data['cancelled_at'] = date('c');
+            @file_put_contents($statusFile, json_encode($data, JSON_PRETTY_PRINT));
+        }
+        jsonResponse(['stopped' => true, 'run_id' => $runId]);
+    }
+
     if ($action === 'autofix_status') {
         // Read-only poll — release the session lock immediately so it
         // doesn't serialize against the long-running ?action=autofix POST
@@ -222,7 +292,12 @@ if ($method === 'POST') {
         session_write_close();
         $runId = preg_replace('/[^a-f0-9]/', '', $_GET['run_id'] ?? '');
         if (!$runId) errorResponse('run_id required', 400);
-        $statusFile = "/tmp/autofix_run_{$runId}.json";
+        // Try bind-mounted location first (where new runs live), fall back
+        // to /tmp for any in-flight legacy runs from before the move.
+        $statusFile = "/var/www/html/jobs/autofix/run_{$runId}.json";
+        if (!file_exists($statusFile)) {
+            $statusFile = "/tmp/autofix_run_{$runId}.json";
+        }
         if (!file_exists($statusFile)) {
             jsonResponse(['state' => 'unknown', 'run_id' => $runId]);
         }

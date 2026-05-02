@@ -110,6 +110,27 @@
     <script>
     // ── State ──
     var API = '/api';
+
+    // Surface unexpected client-side errors to the monitor so they show up in
+    // yy_monitor_event the same way other JS errors do. This page wasn't on
+    // the global error reporter, so Finalize / upload failures were silent.
+    function reportClientError(message, detail) {
+        try {
+            var payload = JSON.stringify({ errors: [{
+                type: 'fetch_error',
+                message: String(message || '').slice(0, 1000),
+                source: location.pathname,
+                stack: detail ? String(detail).slice(0, 4000) : '',
+                ua: navigator.userAgent || '',
+                page: location.href
+            }]});
+            // sendBeacon survives the page being closed mid-finalize; if it
+            // fails (Safari, very old browsers) fall back to fetch.
+            if (!(navigator.sendBeacon && navigator.sendBeacon('/api/client-error.php', new Blob([payload], { type: 'application/json' })))) {
+                fetch('/api/client-error.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function(){});
+            }
+        } catch (e) { /* never let logging break the UI */ }
+    }
     // Queue support: ?items=N1,N2,N3 for batch, or legacy ?item=N for one.
     // The popout drives the entire queue itself — admin-feeds.html just opens
     // this window once and we cycle through the videos in here, reusing the
@@ -592,8 +613,25 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'finalize', item_key: itemKey, auto_transcribe: 1 })
             });
-            var d = await res.json();
-            if (d.error) { setStatus('✗ ' + d.error); return; }
+            // Read body as text first so we can log the actual response (HTML
+            // error pages, gateway timeouts, etc.) instead of just the JSON
+            // parse error. Server-side timeouts on long ffmpeg encodes have
+            // surfaced here as "<!DOCTYPE..." HTML.
+            var bodyText = await res.text();
+            var d;
+            try { d = JSON.parse(bodyText); }
+            catch (parseErr) {
+                reportClientError(
+                    'Finalize returned non-JSON (HTTP ' + res.status + ') for item_key=' + itemKey,
+                    'response (first 2KB):\n' + bodyText.slice(0, 2000)
+                );
+                throw new Error('server returned HTTP ' + res.status + ' (non-JSON body)');
+            }
+            if (d.error) {
+                reportClientError('Finalize error for item_key=' + itemKey + ': ' + d.error, JSON.stringify(d));
+                setStatus('✗ ' + d.error);
+                return;
+            }
             partCount = 0;
             $('banner').style.display = 'none';
             updateControls();
@@ -621,6 +659,7 @@
             }
         } catch (err) {
             setStatus('✗ Finalize failed: ' + err.message);
+            reportClientError('Finalize failed for item_key=' + itemKey + ': ' + err.message, err.stack || '');
         } finally {
             stopFinalizeProgress(progressTimer);
             $('continue-btn').disabled = false;

@@ -17,7 +17,11 @@ set_time_limit(0); // background-safe, no PHP wall-clock limit
 $WEB_ROOT = '/var/www/html';
 $MAX_TRIAGE = 1000;
 $RUN_ID = $argv[1] ?? '';
-$STATUS_FILE = $RUN_ID ? "/tmp/autofix_run_{$RUN_ID}.json" : '';
+// Status file lives in a bind-mounted dir so the host-side claude-fix-runner
+// can also update it as it processes queued Claude events asynchronously.
+$STATUS_DIR = '/var/www/html/jobs/autofix';
+@mkdir($STATUS_DIR, 0775, true);
+$STATUS_FILE = $RUN_ID ? "$STATUS_DIR/run_{$RUN_ID}.json" : '';
 $STARTED_AT = date('c'); // captured ONCE so 'started' is stable across status writes
 
 function writeStatus(string $file, array $data): void {
@@ -484,91 +488,28 @@ foreach ($errors as $error) {
         $hasAuth = is_dir('/var/www/html/jobs/claude-fix')
                 || is_writable('/var/www/html/jobs');
         if (file_exists($claudeWrapper) && $hasAuth) {
-            $line = "  [claude-fix] #{$error['event_key']} {$source}: queueing for host runner...";
-            echo $line . "\n";
-            recordCounter('claude-fix', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
-            // The web container doesn't have node/claude installed — invoking
-            // claude-fix.sh inline always exited rc=127. Instead, drop a
-            // request file in the bind-mounted queue dir; a host-side cron
-            // (claude-fix-runner.sh) picks it up, runs Claude with full auth,
-            // and writes a streaming log + done marker back to the same dir.
-            // We poll the log file and surface it live in the UI.
+            // Bulk-enqueue model: drop a request file and IMMEDIATELY continue
+            // to the next event. The host-side claude-fix-runner picks up the
+            // queue asynchronously via systemd path watcher, processes events
+            // sequentially, and writes its own progress into the SAME status
+            // file. PHP's part of the run finishes in seconds, releasing the
+            // flock. UI polling sees the host runner's updates as Claude
+            // processes each event.
             $queueDir = '/var/www/html/jobs/claude-fix';
             @mkdir($queueDir, 0775, true);
-            $runId = basename($STATUS_FILE, '.json');
-            $runId = preg_replace('/^autofix_run_/', '', $runId);
-            $suffix = $runId . '_' . (int)$error['event_key'];
+            $suffix = $RUN_ID . '_' . (int)$error['event_key'];
             $reqFile = "$queueDir/req_{$suffix}.json";
-            $logFile = "$queueDir/log_{$suffix}.log";
-            $doneFile = "$queueDir/done_{$suffix}.json";
             @file_put_contents($reqFile, json_encode([
-                'run_id' => $runId,
+                'run_id' => $RUN_ID,
                 'event_key' => (int)$error['event_key'],
                 'queued_at' => date('c'),
+                'source' => $source,
+                'msg_preview' => substr($msg, 0, 120),
             ], JSON_PRETTY_PRINT));
             @chmod($reqFile, 0664);
-
-            // Poll for the host runner to finish (or timeout). Each iteration
-            // reads the streaming log so the UI textarea fills in as Claude
-            // works. Hard timeout: 10 min per event.
-            $rc = -1;
-            $claudeBuf = '';
-            $start = time();
-            $deadline = $start + 600;
-            $lastWrite = 0;
-            while (time() < $deadline) {
-                if (file_exists($logFile)) {
-                    $contents = @file_get_contents($logFile) ?: '';
-                    $claudeBuf = strlen($contents) > 16384 ? substr($contents, -16384) : $contents;
-                }
-                $now = microtime(true);
-                if ($now - $lastWrite > 1.0) {
-                    $waited = time() - $start;
-                    writeStatus($STATUS_FILE, [
-                        'state' => 'running',
-                        'total' => $total,
-                        'processed' => $processed,
-                        'counters' => $counters,
-                        'current' => $currentLabel,
-                        'log_tail' => implode("\n", array_slice($logLines, -30)),
-                        'claude_event_key' => (int)$error['event_key'],
-                        'claude_output' => $claudeBuf !== '' ? $claudeBuf
-                            : "[waiting for host runner — $waited s elapsed; cron picks up new requests within 30s]",
-                    ]);
-                    $lastWrite = $now;
-                }
-                if (file_exists($doneFile)) {
-                    $done = json_decode(@file_get_contents($doneFile), true) ?: [];
-                    $rc = (int)($done['rc'] ?? -1);
-                    // Final read of the log
-                    if (file_exists($logFile)) {
-                        $contents = @file_get_contents($logFile) ?: '';
-                        $claudeBuf = strlen($contents) > 16384 ? substr($contents, -16384) : $contents;
-                    }
-                    break;
-                }
-                sleep(1);
-            }
-            if ($rc < 0) {
-                // Timed out
-                $claudeBuf .= "\n[PHP-side timeout: 600s elapsed without done marker]";
-                @file_put_contents($doneFile, json_encode(['rc' => 124, 'timeout' => true]));
-            }
-            // Final status snapshot for this event
-            writeStatus($STATUS_FILE, [
-                'state' => 'running',
-                'total' => $total,
-                'processed' => $processed,
-                'counters' => $counters,
-                'current' => $currentLabel,
-                'log_tail' => implode("\n", array_slice($logLines, -30)),
-                'claude_event_key' => (int)$error['event_key'],
-                'claude_output' => $claudeBuf,
-            ]);
-            $tailStr = substr($claudeBuf, -800);
-            $line2 = "    rc=$rc | " . substr(str_replace("\n", ' | ', $tailStr), 0, 200);
-            echo $line2 . "\n";
-            $logLines[] = $line2;
+            $line = "  [claude-fix] #{$error['event_key']} {$source}: enqueued for host runner";
+            echo $line . "\n";
+            recordCounter('claude-fix', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
             $fixedMessages[$msgHash] = $error['event_key'];
         } else {
             $reason = !file_exists($claudeWrapper) ? 'wrapper missing' : 'Claude Code not authenticated';
@@ -579,9 +520,14 @@ foreach ($errors as $error) {
     }
 }
 
-// Final status
+// Final status. If we enqueued any Claude events, we're NOT actually done —
+// the host runner is still working. Mark the run as claude_queued so the UI
+// keeps polling, and the host runner updates this same file (and ultimately
+// flips state to 'complete') as it drains the queue.
+$claudeQueued = $counters['claude-fix'] ?? 0;
+$finalState = $claudeQueued > 0 ? 'claude_queued' : 'complete';
 writeStatus($STATUS_FILE, [
-    'state' => 'complete',
+    'state' => $finalState,
     'total' => $total,
     'processed' => $processed,
     'counters' => $counters,
