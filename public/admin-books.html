@@ -28,11 +28,17 @@
         .books-table tr.series-row .series-actions button { padding: 2px 8px; font-size: 0.72rem; border: 1px solid rgba(229,200,108,0.4); border-radius: 3px; cursor: pointer; background: transparent; color: #E5C86C; }
         .books-table tr.series-row .series-actions button:hover { background: rgba(229,200,108,0.15); }
 
-        /* Per-artifact status badges (DOCX / PDF / FLIP) */
-        .status-cell { text-align: center; font-size: 1.05rem; }
-        .status-gen  { color: #1d6b3a; font-weight: 700; }
-        .status-proc { color: #a36100; }
-        .status-miss { color: #bbb; }
+        /* Per-artifact status badges (DOCX / PDF / FLIP). Stacked: big icon
+           on top, small relative-time line below ("3h", "2d", etc). */
+        .status-cell { text-align: center; line-height: 1.1; }
+        .status-cell .status-icon { font-size: 1.05rem; }
+        .status-cell .age { font-size: 0.7rem; color: #888; margin-top: 2px; font-weight: normal; }
+        .status-gen   { color: #1d6b3a; font-weight: 700; }
+        .status-proc  { color: #a36100; font-weight: 700; }
+        .status-miss  { color: #bbb; }
+        .status-stale { color: #d77900; font-weight: 700; }
+        .status-cell.proc-pulse { animation: proc-pulse 1.2s ease-in-out infinite; }
+        @keyframes proc-pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 
         .badge-active { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #d4edda; color: #155724; }
         .badge-inactive { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #f8d7da; color: #721c24; }
@@ -186,29 +192,138 @@ function doLogin() {
 function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() { location.reload(); }); }
 function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
 
+var _pipelineRefreshTimer = null;
 function loadBooks() {
     return fetch(API + '/admin-books.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         allSeries = d.series || [];
         allVolumes = d.volumes || [];
         document.getElementById('book-count').textContent = allSeries.length + ' series, ' + allVolumes.length + ' volumes';
         renderBooks();
+        // Auto-refresh every 6 seconds while any volume's pipeline is queued
+        // or running, so the admin watches PDF/FLIP statuses flip live as the
+        // host worker picks up jobs. Stops itself once everything is settled.
+        var inFlight = allVolumes.some(function(v) {
+            var s = (v.volume_pipeline_status || '').toLowerCase();
+            var p = (v.volume_parse_status    || '').toLowerCase();
+            return PROC_STATES.indexOf(s) >= 0 || PROC_STATES.indexOf(p) >= 0;
+        });
+        if (_pipelineRefreshTimer) { clearTimeout(_pipelineRefreshTimer); _pipelineRefreshTimer = null; }
+        if (inFlight) {
+            _pipelineRefreshTimer = setTimeout(loadBooks, 6000);
+        }
     });
 }
 
-// Status badge per artifact: ✓ generated / ⏳ processing / — missing.
-// "Processing" is keyed off the volume's pipeline_status — when the host-side
-// docx→pdf→flipbook pipeline is queued/running but a particular column hasn't
-// been populated yet, we show the hourglass instead of the dash.
+// Per-artifact status cell. Combines four facts:
+//   - Does the artifact exist? (truthy `field`)
+//   - Is the pipeline currently working on this volume? (procStates)
+//   - When was it last generated? (`mtime` ISO string)
+//   - Is it stale relative to its source? (mtime < sourceMtime)
+//
+// Result is a stacked icon + small age line. Tooltip shows full timestamp.
 var PROC_STATES = ['queued', 'processing', 'running', 'pending'];
-function statusBadge(generated, pipelineStatus, label) {
-    if (generated) {
-        return '<span class="status-gen" title="' + label + ' generated">✓</span>';
+// Compact local-time stamp: YYMMDD-HH:MM (e.g. 260502-15:30). Replaces the
+// older "3h ago" relative form so the actual moment is unambiguous and
+// sortable at a glance.
+function ago(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getFullYear() % 100) + p(d.getMonth() + 1) + p(d.getDate())
+         + '-' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function fullDt(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleString(); } catch(e) { return iso; }
+}
+// Data cell: paragraph + translation counts pulled live from yy_paragraph
+// and yy_translation, plus a parse-status indicator that mirrors the docx→
+// pdf→flip pattern. "Stale" means the docx is newer than the last parse,
+// i.e. the in-database paragraphs/translations are out of sync with the
+// current source. Tooltip shows the last-parse timestamp + status message.
+function dataCell(v) {
+    var pc = v.paragraph_count_live || 0;
+    var tc = v.translation_count_live || 0;
+    var parseStatus = (v.volume_parse_status || '').toLowerCase();
+    var inProc = PROC_STATES.indexOf(parseStatus) >= 0;
+    var parseDt = v.volume_parse_dtime || null;
+    var docxDt = v.volume_docx_mtime || null;
+    var stale = false;
+    if (parseDt && docxDt) {
+        var pT = new Date(parseDt).getTime(), dT = new Date(docxDt).getTime();
+        if (pT && dT && pT < dT - 1000) stale = true;
     }
-    var s = (pipelineStatus || '').toLowerCase();
-    if (PROC_STATES.indexOf(s) >= 0) {
-        return '<span class="status-proc" title="' + label + ' processing (pipeline ' + esc(s) + ')">⏳</span>';
+    if (!parseDt && docxDt) stale = true; // never parsed but docx exists
+
+    var icon, cls, sub, tipPrefix;
+    if (inProc) {
+        icon = stale ? '⟳' : '⏳';
+        cls = 'status-proc';
+        sub = stale ? 'reparsing' : 'parsing';
+        tipPrefix = 'Paragraph + translation extraction in flight (' + esc(parseStatus) + ')';
+    } else if (parseStatus === 'error') {
+        icon = '✗'; cls = 'status-stale'; sub = 'error';
+        tipPrefix = 'Last parse errored: ' + esc(v.volume_parse_message || '');
+    } else if (stale) {
+        icon = '↻'; cls = 'status-stale'; sub = 'stale';
+        tipPrefix = 'DOCX is newer than the last parse — paragraphs/translations are out of date.';
+    } else if (pc > 0 || tc > 0) {
+        icon = '✓'; cls = 'status-gen'; sub = '';
+        tipPrefix = 'Last parsed' + (parseDt ? ' on ' + fullDt(parseDt) : '');
+    } else {
+        icon = '—'; cls = 'status-miss'; sub = '';
+        tipPrefix = 'No paragraphs or translations extracted yet';
     }
-    return '<span class="status-miss" title="' + label + ' missing">—</span>';
+    var counts = '<span style="color:#666;font-size:0.74rem;font-family:monospace;">'
+               + pc.toLocaleString() + 'p / ' + tc.toLocaleString() + 't</span>';
+    var ageLine = parseDt ? '<div class="age" title="' + esc(fullDt(parseDt)) + '">' + esc(ago(parseDt)) + '</div>' : (sub ? '<div class="age">' + esc(sub) + '</div>' : '');
+    var pulse = inProc ? ' proc-pulse' : '';
+    return '<div class="status-cell' + pulse + '" title="' + esc(tipPrefix) + '">'
+         + '<div><span class="status-icon ' + cls + '">' + icon + '</span> ' + counts + '</div>'
+         + ageLine
+         + '</div>';
+}
+
+function artifactCell(field, mtime, sourceMtime, pipelineStatus, label) {
+    var ps = (pipelineStatus || '').toLowerCase();
+    var inProc = PROC_STATES.indexOf(ps) >= 0;
+    // Pipeline is in flight AND we don't have the artifact yet — definitively
+    // "being generated right now". Pulse animation reinforces that something
+    // is actively happening.
+    if (inProc && !field) {
+        return '<div class="status-cell proc-pulse">'
+             + '<span class="status-icon status-proc" title="' + label + ' is being generated (pipeline ' + esc(ps) + ')">⏳</span>'
+             + '<div class="age">processing</div></div>';
+    }
+    if (!field) {
+        return '<div class="status-cell"><span class="status-icon status-miss" title="' + label + ' missing — no file generated">—</span></div>';
+    }
+    // Field exists — show age + stale indicator if applicable.
+    // Stale means: this artifact's mtime predates its source's mtime, i.e. the
+    // source was updated more recently and this hasn't been regenerated yet.
+    // If the pipeline is currently in flight, this gets re-decided on next refresh.
+    var stale = false;
+    if (mtime && sourceMtime) {
+        var t = new Date(mtime).getTime(), st = new Date(sourceMtime).getTime();
+        if (t && st && t < st - 1000) stale = true; // 1-sec slop
+    }
+    if (stale && inProc) {
+        return '<div class="status-cell proc-pulse">'
+             + '<span class="status-icon status-proc" title="' + label + ' is being regenerated (newer source detected)">⟳</span>'
+             + '<div class="age">regenerating</div></div>';
+    }
+    if (stale) {
+        return '<div class="status-cell">'
+             + '<span class="status-icon status-stale" title="' + label + ' is older than its source — needs regeneration. Last built: ' + fullDt(mtime) + '">↻</span>'
+             + '<div class="age">stale ' + esc(ago(mtime)) + '</div></div>';
+    }
+    var ageTxt = mtime ? ago(mtime) : '';
+    var fullTxt = mtime ? fullDt(mtime) : '';
+    return '<div class="status-cell">'
+         + '<span class="status-icon status-gen" title="' + label + ' generated' + (fullTxt ? ' on ' + fullTxt : '') + '">✓</span>'
+         + (ageTxt ? '<div class="age" title="' + esc(fullTxt) + '">' + esc(ageTxt) + '</div>' : '')
+         + '</div>';
 }
 
 function renderBooks() {
@@ -220,15 +335,16 @@ function renderBooks() {
     // group so DOCX/PDF/FLIP/Status icons line up vertically down the page.
     var html = '<table class="books-table">'
         + '<colgroup>'
-        + '<col style="width:48px;">'         // #
+        + '<col style="width:42px;">'         // #
         + '<col>'                              // Label (flex)
-        + '<col style="width:200px;">'        // Name
-        + '<col style="width:60px;">'         // Pages
-        + '<col style="width:64px;">'         // DOCX
-        + '<col style="width:64px;">'         // PDF
-        + '<col style="width:64px;">'         // FLIP
-        + '<col style="width:80px;">'         // Active
-        + '<col style="width:130px;">'        // Actions
+        + '<col style="width:160px;">'        // Name
+        + '<col style="width:54px;">'         // Pages
+        + '<col style="width:74px;">'         // DOCX
+        + '<col style="width:74px;">'         // PDF
+        + '<col style="width:74px;">'         // FLIP
+        + '<col style="width:110px;">'        // Data (paragraphs + translations)
+        + '<col style="width:74px;">'         // Active
+        + '<col style="width:120px;">'        // Actions
         + '</colgroup>'
         + '<thead><tr>'
         + '<th>#</th>'
@@ -238,6 +354,7 @@ function renderBooks() {
         + '<th class="status-cell" title="Source .docx file uploaded">DOCX</th>'
         + '<th class="status-cell" title="PDF generated from the .docx">PDF</th>'
         + '<th class="status-cell" title="FlipHTML5 flipbook built">FLIP</th>'
+        + '<th class="status-cell" title="Paragraphs + translations extracted from the .docx">Data</th>'
         + '<th>Active</th>'
         + '<th>Actions</th>'
         + '</tr></thead><tbody>';
@@ -247,7 +364,7 @@ function renderBooks() {
         var vols = allVolumes.filter(function(v) { return v.series_key == s.series_key; });
 
         html += '<tr class="series-row" onclick="editSeries(' + s.series_key + ')">'
-            + '<td colspan="9">'
+            + '<td colspan="10">'
             + '<div style="display:flex;justify-content:space-between;align-items:center;">'
             + '<span>' + esc(s.series_label) + ' <span class="series-meta">(' + vols.length + ' volume' + (vols.length !== 1 ? 's' : '') + ')</span></span>'
             + '<span class="series-actions" onclick="event.stopPropagation()">'
@@ -261,14 +378,17 @@ function renderBooks() {
         for (var vi = 0; vi < vols.length; vi++) {
             var v = vols[vi];
             var ps = v.volume_pipeline_status;
+            // Source-mtime chain: PDF's source is the DOCX; FLIP's source is
+            // the PDF (and transitively the DOCX). DOCX has no upstream.
             html += '<tr class="volume-row" onclick="editVolume(' + v.volume_key + ')">'
                 + '<td>' + (v.volume_number || '') + '</td>'
                 + '<td><strong>' + esc(v.volume_label) + '</strong></td>'
                 + '<td style="font-size:0.8rem;color:#666;">' + esc(v.volume_name || '') + '</td>'
                 + '<td>' + (v.volume_page_count || '') + '</td>'
-                + '<td class="status-cell">' + statusBadge(!!v.volume_docx, ps, 'DOCX') + '</td>'
-                + '<td class="status-cell">' + statusBadge(!!v.volume_pdf,  ps, 'PDF')  + '</td>'
-                + '<td class="status-cell">' + statusBadge(!!v.volume_flip_code, ps, 'FlipHTML5') + '</td>'
+                + '<td>' + artifactCell(!!v.volume_docx,      v.volume_docx_mtime, null,                  ps, 'DOCX')      + '</td>'
+                + '<td>' + artifactCell(!!v.volume_pdf,       v.volume_pdf_mtime,  v.volume_docx_mtime,   ps, 'PDF')       + '</td>'
+                + '<td>' + artifactCell(!!v.volume_flip_code, v.volume_flip_mtime, v.volume_pdf_mtime,    ps, 'FlipHTML5') + '</td>'
+                + '<td>' + dataCell(v) + '</td>'
                 + '<td>' + (v.volume_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>') + '</td>'
                 + '<td class="actions" onclick="event.stopPropagation()">'
                 + '<button onclick="editVolume(' + v.volume_key + ')">Edit</button>'

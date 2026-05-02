@@ -30,11 +30,28 @@ if ($method === 'GET') {
     ")->fetchAll();
 
     $volumes = $db->query("
-        SELECT v.*, s.series_label
+        SELECT v.*, s.series_label,
+               COALESCE((SELECT COUNT(*) FROM yy_paragraph p WHERE p.volume_key = v.volume_key AND p.paragraph_active_flag IS DISTINCT FROM FALSE), 0) AS paragraph_count_live,
+               COALESCE((SELECT COUNT(*) FROM yy_translation t WHERE t.volume_key = v.volume_key), 0) AS translation_count_live
         FROM yy_volume v
         JOIN yy_series s ON s.series_key = v.series_key
         ORDER BY s.series_sort, v.volume_sort, v.volume_key
     ")->fetchAll();
+
+    // Attach filesystem mtime for each artifact so the UI can show "last
+    // generated X ago" and detect when a derived file (PDF, FLIP) is older
+    // than its source (DOCX, or upstream PDF) — which means it needs a fresh
+    // regeneration even if the row says "success".
+    $publicRoot = dirname(__DIR__);
+    foreach ($volumes as &$v) {
+        $docxAbs = !empty($v['volume_docx'])      ? $publicRoot . '/books/word/' . $v['volume_docx']     : null;
+        $pdfAbs  = !empty($v['volume_pdf'])       ? $publicRoot . '/pdf/'       . $v['volume_pdf']      : null;
+        $flipAbs = !empty($v['volume_flip_code']) ? $publicRoot . '/flipbook/'  . $v['volume_flip_code'] : null;
+        $v['volume_docx_mtime'] = ($docxAbs && is_file($docxAbs)) ? date('c', filemtime($docxAbs)) : null;
+        $v['volume_pdf_mtime']  = ($pdfAbs  && is_file($pdfAbs))  ? date('c', filemtime($pdfAbs))  : null;
+        $v['volume_flip_mtime'] = ($flipAbs && is_dir($flipAbs))  ? date('c', filemtime($flipAbs)) : null;
+    }
+    unset($v);
 
     jsonResponse(['series' => $series, 'volumes' => $volumes]);
 }
@@ -79,12 +96,18 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     $docxPath = $docxDir . '/' . $docxName;
     if (!move_uploaded_file($file['tmp_name'], $docxPath)) errorResponse('Failed to save .docx file');
 
-    // Persist source filename + flag the pipeline as queued
+    // Persist source filename + flag BOTH pipelines as queued: the docx→pdf→
+    // flipbook pipeline AND the paragraph/translation extraction pipeline.
+    // The latter rebuilds yy_paragraph and yy_translation rows from the new
+    // docx so the in-app reader, search, and translation links pick up
+    // changes without requiring a manual local script run.
     $db->prepare("
         UPDATE yy_volume
            SET volume_docx = ?,
                volume_pipeline_status = 'queued',
                volume_pipeline_message = 'Awaiting host worker (libreoffice + fliphtml5)',
+               volume_parse_status = 'queued',
+               volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
                volume_revision_dtime = NOW()
          WHERE volume_key = ?
     ")->execute([$docxName, $key]);
