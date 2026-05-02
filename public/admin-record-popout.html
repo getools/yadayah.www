@@ -93,14 +93,25 @@
             <span id="status"></span>
         </div>
         <div class="hint">
-            This is a <strong>dedicated recording window</strong>. You can keep the original admin tab open and navigate it freely — recording continues here as long as this window stays open. Playback is locked at 1× to ensure natural-rate audio.
+            This is a <strong>dedicated recording window</strong>. You can keep the original admin tab open and navigate it freely — recording continues here as long as this window stays open. Playback is locked at 1× to ensure natural-rate audio. Multi-video batches play back-to-back automatically using the same screen-share permission.
         </div>
     </div>
 
     <script>
     // ── State ──
     var API = '/api';
-    var itemKey = parseInt(new URLSearchParams(location.search).get('item') || '0', 10);
+    // Queue support: ?items=N1,N2,N3 for batch, or legacy ?item=N for one.
+    // The popout drives the entire queue itself — admin-feeds.html just opens
+    // this window once and we cycle through the videos in here, reusing the
+    // single screen-share permission and YT iframe across all items.
+    var _params = new URLSearchParams(location.search);
+    var _itemsParam = _params.get('items');
+    var queue = _itemsParam
+        ? _itemsParam.split(',').map(function(s){ return parseInt(s, 10); }).filter(function(n){ return n > 0; })
+        : (_params.get('item') ? [parseInt(_params.get('item'), 10)] : []);
+    var queueIndex = 0;
+    var BATCH_MODE = queue.length > 1;
+    var itemKey = queue[0] || 0;
     var ytPlayer = null, ytReady = false;
     var stream = null, recorder = null, chunks = [], startedMs = 0;
     var partCount = 0;
@@ -127,7 +138,7 @@
     var checkpointTimer = null;
     var autoCheckpointPending = false;
 
-    if (!itemKey) { document.getElementById('status').textContent = '✗ Missing ?item=N in URL'; }
+    if (!itemKey) { document.getElementById('status').textContent = '✗ Missing ?item=N or ?items=N1,N2,N3 in URL'; }
     document.getElementById('status').textContent = 'Loading YouTube player API…';
 
     // ── Helpers ──
@@ -138,7 +149,11 @@
         return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
     }
     function setStatus(msg) { $('status').textContent = msg || ''; }
-    function setTitle(t) { $('title').textContent = t; document.title = 'Record — ' + t; }
+    function setTitle(t) {
+        var prefix = BATCH_MODE ? '[' + (queueIndex + 1) + '/' + queue.length + '] ' : '';
+        $('title').textContent = prefix + t;
+        document.title = 'Record — ' + prefix + t;
+    }
 
     // ── YT IFrame API ──
     // Called by the IFrame API script once it has loaded. We also need this
@@ -148,7 +163,7 @@
     function onYouTubeIframeAPIReady() {
         ytReady = true;
         setStatus('Fetching video info…');
-        bootstrap();
+        loadCurrentItem();
     }
 
     async function bootstrap() {
@@ -361,10 +376,20 @@
     function startCheckpointTimer() {
         if (checkpointTimer) clearInterval(checkpointTimer);
         checkpointTimer = setInterval(function() {
-            if (recorder && recorder.state === 'recording') {
-                autoCheckpointPending = true;
-                try { ytPlayer.pauseVideo(); } catch (e) {}
-            }
+            if (!recorder || recorder.state !== 'recording') return;
+            // CRITICAL: don't auto-checkpoint within 30 sec of video end.
+            // Pausing near the end and then calling playVideo() to resume
+            // will RESTART the video from 0:00 in YouTube's player — so the
+            // recorder would happily record over the start of the video,
+            // overwriting what was already saved. Let the video play out the
+            // last 30 sec naturally; the natural end-of-video handler does
+            // the right thing (auto-finalizes).
+            var pos = 0, dur = 0;
+            try { pos = ytPlayer.getCurrentTime() || 0; } catch (e) {}
+            try { dur = ytPlayer.getDuration() || 0; } catch (e) {}
+            if (dur > 0 && pos >= dur - 30) return;
+            autoCheckpointPending = true;
+            try { ytPlayer.pauseVideo(); } catch (e) {}
         }, CHECKPOINT_MS);
     }
     function stopCheckpointTimer() {
@@ -445,16 +470,62 @@
             });
             var d = await res.json();
             if (d.error) { setStatus('✗ ' + d.error); return; }
-            setStatus('✓ Saved final MP3 — transcription started. You can close this window.');
             partCount = 0;
             $('banner').style.display = 'none';
             updateControls();
+            // Batch advancement: if more items in the queue, swap the YT
+            // player to the next video without reloading the popout (which
+            // would lose our screen-share permission). Same-tab JS context
+            // means the cached stream stays alive across items.
+            if (BATCH_MODE && queueIndex < queue.length - 1) {
+                queueIndex++;
+                setStatus('✓ Saved. Loading next video (' + (queueIndex + 1) + '/' + queue.length + ')…');
+                setTimeout(loadCurrentItem, 1200);
+            } else if (BATCH_MODE) {
+                setStatus('✓ Batch complete (' + queue.length + ' video' + (queue.length === 1 ? '' : 's')
+                          + '). You can close this window.');
+            } else {
+                setStatus('✓ Saved final MP3 — transcription started. You can close this window.');
+            }
         } catch (err) {
             setStatus('✗ Finalize failed: ' + err.message);
         } finally {
             $('continue-btn').disabled = false;
             $('restart-btn').disabled = false;
         }
+    }
+    // Reset per-item state and (re-)bootstrap the YT player for queue[queueIndex].
+    // Reused on initial load and on batch advancement. Stream + once-prompted
+    // flag are intentionally NOT reset so we keep the same screen-share
+    // permission across all items.
+    async function loadCurrentItem() {
+        if (queueIndex >= queue.length) return;
+        itemKey = queue[queueIndex];
+        partCount = 0;
+        initialResumeSec = 0;
+        lastRecordedSeconds = 0;
+        autoCheckpointPending = false;
+        chunks = [];
+        pendingBlob = null;
+        pendingSeconds = 0;
+        uploadInFlight = false;
+        stopCheckpointTimer();
+        if (ytPlayer) {
+            try { ytPlayer.destroy(); } catch (e) {}
+            ytPlayer = null;
+        }
+        // YT.Player replaces the target div with an iframe; after destroy()
+        // there is no #yt-player element left, so the next new YT.Player()
+        // call needs a fresh placeholder div to bind to.
+        var wrap = document.getElementById('player-wrap');
+        var blocker = document.getElementById('player-blocker');
+        if (wrap && !document.getElementById('yt-player')) {
+            var d = document.createElement('div');
+            d.id = 'yt-player';
+            wrap.insertBefore(d, blocker);
+        }
+        $('banner').style.display = 'none';
+        await bootstrap();
     }
 
     // ── Buttons ──
@@ -490,17 +561,31 @@
         }
     }
     async function restartRecording() {
-        if (!confirm('Discard all recorded parts and start over from 0:00?')) return;
+        // Heavy guardrails: this action permanently deletes recorded audio.
+        // Show the user EXACTLY how much progress they're about to throw
+        // away, then require two separate confirmations.
+        var progressMsg = (partCount > 0)
+            ? partCount + ' recorded part' + (partCount === 1 ? '' : 's')
+              + ' (up to ' + fmt(lastRecordedSeconds) + ' of audio)'
+            : 'no recorded parts yet';
+        var msg1 = '⚠️ RESTART FROM BEGINNING — DELETE PROGRESS?\n\n'
+                 + 'This will PERMANENTLY DELETE ' + progressMsg + '.\n\n'
+                 + 'You will have to re-record from 0:00. This cannot be undone.\n\n'
+                 + 'Click OK only if you really want to throw this away and start over.';
+        if (!confirm(msg1)) return;
+        var msg2 = 'Last chance. Really delete ' + progressMsg + ' and restart from 0:00?';
+        if (!confirm(msg2)) return;
         try {
             await fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey,
                         { method: 'DELETE', credentials: 'include' });
         } catch (e) {}
         partCount = 0;
+        lastRecordedSeconds = 0;
         $('banner').style.display = 'none';
         if (ytPlayer && ytPlayer.seekTo) {
             try { ytPlayer.seekTo(0, true); ytPlayer.pauseVideo(); } catch (e) {}
         }
-        setStatus('Restarting…');
+        setStatus('Restarting from 0:00…');
         streamPromptedOnce = false;
         setTimeout(function(){ tryAutoStart({ userInitiated: true }); }, 300);
     }
@@ -510,6 +595,18 @@
         var pauseBtn = $('pause-btn'), continueBtn = $('continue-btn'), restartBtn = $('restart-btn');
         var blocker = $('player-blocker');
         var rec = !!(recorder && recorder.state === 'recording');
+        // While an upload is in flight (between pause and finalize), HIDE all
+        // action buttons. Otherwise the user can click Continue or Restart
+        // during the brief window when partCount>0 but the upload hasn't
+        // completed — leading to races where audio progress gets clobbered.
+        if (uploadInFlight) {
+            pauseBtn.style.display = 'none';
+            continueBtn.style.display = 'none';
+            restartBtn.style.display = 'none';
+            if (blocker) blocker.style.display = 'none';
+            updateTime();
+            return;
+        }
         if (rec) {
             pauseBtn.style.display = '';
             continueBtn.style.display = 'none';
