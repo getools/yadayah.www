@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Sync Check — Yada Yah</title>
+    <style>
+        :root { --primary:#31345A; --green:#27ae60; --red:#c00; --amber:#a36100; }
+        * { box-sizing: border-box; }
+        body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+               margin: 0; background: #f5f7fa; color: #222; }
+        .card { max-width: 900px; margin: 14px auto; background: #fff; border-radius: 10px;
+                padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        h1 { margin: 0; font-size: 1rem; color: var(--primary); flex: 1; min-width: 0;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #player-wrap { background: #000; border-radius: 6px; overflow: hidden;
+                       aspect-ratio: 16/9; margin-bottom: 10px; position: relative; }
+        #yt-player { width: 100%; height: 100%; }
+        #player-blocker { position: absolute; inset: 0; z-index: 5; cursor: not-allowed;
+                          background: transparent; display: block; }
+        #status { font-size: 0.92rem; color: #444; margin-bottom: 8px; }
+        #range-bar { height: 22px; background: #eee; border-radius: 4px; overflow: hidden;
+                     position: relative; margin-bottom: 12px; border: 1px solid #ccc; }
+        #range-good { position: absolute; top: 0; bottom: 0; left: 0; background: #c8e6c9; }
+        #range-bad { position: absolute; top: 0; bottom: 0; right: 0; background: #ffcdd2; }
+        #range-test { position: absolute; top: -2px; bottom: -2px; width: 3px;
+                      background: #1976d2; box-shadow: 0 0 3px #1976d2; }
+        #range-labels { display: flex; justify-content: space-between; font-size: 0.78rem;
+                        color: #666; font-family: monospace; margin-top: -8px; margin-bottom: 12px; }
+        #log { font-family: monospace; font-size: 0.78rem; background: #fafafa; border: 1px solid #eee;
+               border-radius: 4px; padding: 8px; max-height: 220px; overflow-y: auto;
+               margin-bottom: 12px; }
+        #log .line { line-height: 1.6; }
+        #log .ok { color: #1d6b3a; }
+        #log .bad { color: #c00; }
+        #log .info { color: #444; }
+        button { padding: 8px 16px; border-radius: 4px; cursor: pointer;
+                 font-weight: 600; font-size: 0.95rem; border: none; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #start-btn { background: var(--primary); color: #fff; }
+        #reset-btn { background: var(--amber); color: #fff; display: none; }
+        #close-btn { background: #fff; border: 1px solid #ccc; color: #444; }
+        .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .hint { margin-top: 12px; font-size: 0.78rem; color: #888;
+                border-top: 1px solid #eee; padding-top: 8px; }
+        .hint strong { color: #444; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <header>
+            <h1 id="title">Sync Check — loading…</h1>
+        </header>
+        <div id="player-wrap">
+            <div id="yt-player"></div>
+            <div id="player-blocker" title="Sync check in progress — do not interact"></div>
+        </div>
+        <div id="status">Initializing…</div>
+        <div id="range-bar">
+            <div id="range-good"></div>
+            <div id="range-bad"></div>
+            <div id="range-test" style="display:none;"></div>
+        </div>
+        <div id="range-labels">
+            <span id="lbl-min">0:00:00</span>
+            <span id="lbl-test"></span>
+            <span id="lbl-max">—</span>
+        </div>
+        <div id="log"></div>
+        <div class="controls">
+            <button id="start-btn" onclick="startCheck()">▶ Start Sync Check</button>
+            <button id="reset-btn" onclick="resetToPartial()">⚠ Reset MP3 to Partial at last good point</button>
+            <button id="close-btn" onclick="window.close()">Close</button>
+        </div>
+        <div class="hint">
+            <strong>Automated sync verification.</strong> The tool plays the YouTube video at sampled timestamps,
+            captures the tab audio, and compares the audio onset against the MP3 at the same timestamp. Binary
+            search narrows the desync point until the gap between the last known good and last known bad point is
+            under 30 seconds. If drift is found, the MP3 is reset to a Partial recording ending at the last good
+            point — you can then re-record from there to fix the audio.
+        </div>
+    </div>
+
+    <script>
+    var API = '/api';
+    var itemKey = parseInt(new URLSearchParams(location.search).get('item') || '0', 10);
+    var ytPlayer = null, ytReady = false;
+    var stream = null, audioCtx = null, captureNode = null, captureBuffer = null, capturing = false;
+    var streamPromptedOnce = false;
+    var TARGET_SR = 8000;          // mono 8 kHz is plenty for speech-onset detection
+    var RMS_THRESH = 0.012;        // RMS threshold for "audible" — tuned for speech
+    var ENOUGH_AUDIBLE_SEC = 0.8;  // need at least this much audible audio to compare
+    var INITIAL_CAPTURE_SEC = 10;  // start with this length; extend if not enough audible
+    var MAX_CAPTURE_SEC = 30;      // cap per the user's spec
+    var SYNC_TOLERANCE_SEC = 0.5;  // audio onset must match within this much
+    var STOP_GAP_SEC = 30;         // binary search ends when good/bad gap < this
+
+    var mp3Buffer = null;          // decoded full MP3 as AudioBuffer
+    var videoDuration = 0;
+    var lastGood = 0;              // last timestamp known to be in sync
+    var lastBad = 0;               // last timestamp known to be out of sync (0 = unknown)
+    var foundDrift = false;
+    var checkRunning = false;
+
+    function $(id) { return document.getElementById(id); }
+    function fmt(s) {
+        s = Math.max(0, Math.floor(s || 0));
+        var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), x = s%60;
+        return (h<10?'0':'')+h+':'+(m<10?'0':'')+m+':'+(x<10?'0':'')+x;
+    }
+    function setStatus(msg) { $('status').textContent = msg || ''; }
+    function logLine(msg, cls) {
+        var line = document.createElement('div');
+        line.className = 'line ' + (cls || 'info');
+        var ts = new Date().toLocaleTimeString();
+        line.textContent = '[' + ts + '] ' + msg;
+        $('log').appendChild(line);
+        $('log').scrollTop = $('log').scrollHeight;
+    }
+    function updateRangeBar() {
+        if (videoDuration <= 0) return;
+        $('range-good').style.width = (lastGood / videoDuration * 100) + '%';
+        var badStart = lastBad > 0 ? lastBad : videoDuration;
+        $('range-bad').style.left = (badStart / videoDuration * 100) + '%';
+        $('range-bad').style.right = '0';
+        $('range-bad').style.width = ((videoDuration - badStart) / videoDuration * 100) + '%';
+        $('lbl-min').textContent = fmt(lastGood) + ' (good)';
+        $('lbl-max').textContent = (lastBad > 0 ? fmt(lastBad) + ' (bad)' : fmt(videoDuration));
+    }
+
+    if (!itemKey) setStatus('✗ Missing ?item=N in URL');
+
+    // ── YT API ──
+    function onYouTubeIframeAPIReady() {
+        ytReady = true;
+        bootstrap();
+    }
+    async function bootstrap() {
+        if (!ytReady || !itemKey) return;
+        try {
+            setStatus('Fetching video info…');
+            var resp = await fetch(API + '/admin-transcript.php?item_key=' + itemKey + '&_=' + Date.now(),
+                                   { credentials: 'include', cache: 'no-store' });
+            if (resp.status === 401) throw new Error('Not signed in to admin. Sign in then reload.');
+            var d = await resp.json();
+            if (d.error || !d.item) throw new Error(d.error || 'Item not found');
+            $('title').textContent = 'Sync Check — ' + (d.item.title || 'Item ' + itemKey);
+            document.title = $('title').textContent;
+
+            // Check that there IS a complete MP3 to verify
+            var pResp = await fetch(API + '/admin-transcript-upload.php?item_key=' + itemKey + '&_=' + Date.now(),
+                                    { credentials: 'include', cache: 'no-store' });
+            var pData = await pResp.json();
+            if (!pData.audio || !pData.audio.path) {
+                throw new Error('This item has no complete MP3 to verify.');
+            }
+
+            setStatus('Decoding MP3…');
+            logLine('Loading MP3: ' + pData.audio.path);
+            var mp3Resp = await fetch('/' + pData.audio.path, { credentials: 'include', cache: 'no-store' });
+            if (!mp3Resp.ok) throw new Error('Failed to fetch MP3: HTTP ' + mp3Resp.status);
+            var ab = await mp3Resp.arrayBuffer();
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGET_SR });
+            mp3Buffer = await audioCtx.decodeAudioData(ab);
+            logLine('MP3 decoded: ' + mp3Buffer.duration.toFixed(1) + 's @ '
+                    + mp3Buffer.sampleRate + 'Hz, ' + mp3Buffer.numberOfChannels + 'ch', 'ok');
+
+            setStatus('Loading YouTube player…');
+            ytPlayer = new YT.Player('yt-player', {
+                videoId: d.item.feed_item_external_id,
+                width: '100%', height: '100%',
+                playerVars: { rel:0, modestbranding:1, playsinline:1, controls:1, disablekb:1 },
+                events: {
+                    onReady: function(e) {
+                        videoDuration = Math.floor(e.target.getDuration() || 0);
+                        if (videoDuration <= 0) {
+                            setStatus('✗ Could not get video duration');
+                            return;
+                        }
+                        try { e.target.setPlaybackRate(1); } catch (err) {}
+                        try { e.target.pauseVideo(); } catch (err) {}
+                        lastGood = 0;
+                        lastBad = 0;
+                        updateRangeBar();
+                        setStatus('Ready. MP3 is ' + mp3Buffer.duration.toFixed(0) + 's, video is '
+                                  + videoDuration + 's. Click Start Sync Check.');
+                        logLine('Video duration: ' + videoDuration + 's', 'info');
+                        logLine('MP3 duration: ' + mp3Buffer.duration.toFixed(1) + 's', 'info');
+                        if (Math.abs(mp3Buffer.duration - videoDuration) > 60) {
+                            logLine('⚠ Length mismatch > 60 sec — significant drift very likely.', 'bad');
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            setStatus('✗ ' + e.message);
+            logLine('Bootstrap error: ' + e.message, 'bad');
+        }
+    }
+
+    // ── Tab audio capture ──
+    async function ensureCaptureStream() {
+        if (stream && stream.getAudioTracks().length
+            && stream.getAudioTracks()[0].readyState === 'live') return stream;
+        if (streamPromptedOnce) {
+            setStatus('Tab share was cancelled. Click Start Sync Check to retry.');
+            return null;
+        }
+        streamPromptedOnce = true;
+        try {
+            var s = await navigator.mediaDevices.getDisplayMedia({
+                video: { displaySurface: 'browser' }, audio: true, preferCurrentTab: true
+            });
+            if (!s.getAudioTracks().length) {
+                s.getTracks().forEach(function(t){ t.stop(); });
+                throw new Error('No audio track — make sure to check Share tab audio');
+            }
+            s.getVideoTracks().forEach(function(t){ t.stop(); });
+            stream = s;
+            // Wire the capture pipeline once.
+            var src = audioCtx.createMediaStreamSource(new MediaStream(s.getAudioTracks()));
+            // ScriptProcessor is deprecated but still works everywhere; AudioWorklet
+            // would need a separate file and we want this self-contained.
+            captureNode = audioCtx.createScriptProcessor(4096, 1, 1);
+            captureNode.onaudioprocess = function(e) {
+                if (!capturing) return;
+                var input = e.inputBuffer.getChannelData(0);
+                // Copy because input buffer is reused
+                var copy = new Float32Array(input.length);
+                copy.set(input);
+                captureBuffer.push(copy);
+            };
+            src.connect(captureNode);
+            // Connect to a muted destination so onaudioprocess actually fires
+            var sink = audioCtx.createGain();
+            sink.gain.value = 0;
+            captureNode.connect(sink);
+            sink.connect(audioCtx.destination);
+            return s;
+        } catch (e) {
+            setStatus('✗ Tab capture cancelled: ' + (e.message || e));
+            return null;
+        }
+    }
+
+    async function captureYTFromTime(seconds, durationSec) {
+        // Pause, seek, wait for state PLAYING, capture for durationSec, pause.
+        return new Promise(function(resolve, reject) {
+            try { ytPlayer.pauseVideo(); } catch (e) {}
+            // Wait briefly for pause
+            setTimeout(function() {
+                try { ytPlayer.seekTo(seconds, true); } catch (e) { return reject(e); }
+                // After seek, when state goes PLAYING the audio is flowing.
+                // We start capture there and run for durationSec.
+                var capStart = null;
+                var stateHandler = function(e) {
+                    if (e.data === 1 /* PLAYING */ && !capStart) {
+                        capStart = audioCtx.currentTime;
+                        captureBuffer = [];
+                        capturing = true;
+                        setTimeout(function() {
+                            capturing = false;
+                            try { ytPlayer.pauseVideo(); } catch (er) {}
+                            ytPlayer.removeEventListener('onStateChange', stateHandler);
+                            // Merge buffers
+                            var totalLen = captureBuffer.reduce(function(s,b){ return s + b.length; }, 0);
+                            var merged = new Float32Array(totalLen);
+                            var offset = 0;
+                            captureBuffer.forEach(function(b){ merged.set(b, offset); offset += b.length; });
+                            // Resample if needed (audioCtx.sampleRate may differ from TARGET_SR
+                            // if the system declined the request)
+                            if (audioCtx.sampleRate !== TARGET_SR) {
+                                merged = resample(merged, audioCtx.sampleRate, TARGET_SR);
+                            }
+                            resolve(merged);
+                        }, durationSec * 1000);
+                    }
+                };
+                ytPlayer.addEventListener('onStateChange', stateHandler);
+                try { ytPlayer.playVideo(); } catch (e) { return reject(e); }
+                // Hard timeout in case PLAYING never fires
+                setTimeout(function() {
+                    if (!capStart) {
+                        capturing = false;
+                        try { ytPlayer.pauseVideo(); } catch (er) {}
+                        ytPlayer.removeEventListener('onStateChange', stateHandler);
+                        reject(new Error('Player did not start playing within ' + (durationSec + 5) + 's'));
+                    }
+                }, (durationSec + 5) * 1000);
+            }, 250);
+        });
+    }
+
+    function resample(input, srIn, srOut) {
+        if (srIn === srOut) return input;
+        var ratio = srIn / srOut;
+        var outLen = Math.floor(input.length / ratio);
+        var out = new Float32Array(outLen);
+        for (var i = 0; i < outLen; i++) {
+            out[i] = input[Math.floor(i * ratio)] || 0;
+        }
+        return out;
+    }
+
+    function getMP3Slice(startSec, durationSec) {
+        if (!mp3Buffer) return null;
+        var sr = mp3Buffer.sampleRate;
+        var startSamp = Math.max(0, Math.floor(startSec * sr));
+        var endSamp = Math.min(mp3Buffer.length, Math.floor((startSec + durationSec) * sr));
+        var data = mp3Buffer.getChannelData(0);
+        var slice = new Float32Array(endSamp - startSamp);
+        for (var i = 0; i < slice.length; i++) slice[i] = data[startSamp + i];
+        if (sr !== TARGET_SR) slice = resample(slice, sr, TARGET_SR);
+        return slice;
+    }
+
+    // Find the first sample where 100ms-window RMS exceeds threshold.
+    // Returns seconds from the start of the buffer, or -1 if never audible.
+    function findAudibleStart(audio, sampleRate, threshold) {
+        if (!audio || audio.length === 0) return -1;
+        var winSamp = Math.floor(sampleRate * 0.1);
+        var stepSamp = Math.floor(sampleRate * 0.05);
+        for (var i = 0; i + winSamp <= audio.length; i += stepSamp) {
+            var sum = 0;
+            for (var j = 0; j < winSamp; j++) {
+                var v = audio[i + j];
+                sum += v * v;
+            }
+            var rms = Math.sqrt(sum / winSamp);
+            if (rms > threshold) return i / sampleRate;
+        }
+        return -1;
+    }
+
+    // Total audible duration in the buffer (used to decide if capture had
+    // enough content to compare against the MP3).
+    function audibleDuration(audio, sampleRate, threshold) {
+        if (!audio || audio.length === 0) return 0;
+        var winSamp = Math.floor(sampleRate * 0.1);
+        var audibleSamp = 0;
+        for (var i = 0; i + winSamp <= audio.length; i += winSamp) {
+            var sum = 0;
+            for (var j = 0; j < winSamp; j++) {
+                var v = audio[i + j];
+                sum += v * v;
+            }
+            if (Math.sqrt(sum / winSamp) > threshold) audibleSamp += winSamp;
+        }
+        return audibleSamp / sampleRate;
+    }
+
+    // Compare YT audio at testSec vs MP3 audio at the same testSec, extending
+    // the capture window until both have at least ENOUGH_AUDIBLE_SEC of
+    // detectable speech, or we hit MAX_CAPTURE_SEC. Returns:
+    //   { inSync: bool, ytStart, mp3Start, audibleY, audibleM }
+    async function runSyncTestAt(testSec) {
+        var captureLen = INITIAL_CAPTURE_SEC;
+        while (captureLen <= MAX_CAPTURE_SEC) {
+            // Cap to remaining video / MP3 length
+            var maxFromVideo = videoDuration - testSec;
+            var maxFromMP3 = mp3Buffer.duration - testSec;
+            var actualLen = Math.min(captureLen, maxFromVideo, maxFromMP3);
+            if (actualLen < 1) {
+                return { inSync: false, reason: 'not enough audio after ' + fmt(testSec), ytStart: -1, mp3Start: -1 };
+            }
+            logLine('  capture ' + actualLen.toFixed(0) + 's @ ' + fmt(testSec));
+            var ytSlice = await captureYTFromTime(testSec, actualLen);
+            var mp3Slice = getMP3Slice(testSec, actualLen);
+            var audibleY = audibleDuration(ytSlice, TARGET_SR, RMS_THRESH);
+            var audibleM = audibleDuration(mp3Slice, TARGET_SR, RMS_THRESH);
+            logLine('  audible: video ' + audibleY.toFixed(1) + 's, mp3 ' + audibleM.toFixed(1) + 's');
+            if (audibleY >= ENOUGH_AUDIBLE_SEC && audibleM >= ENOUGH_AUDIBLE_SEC) {
+                var ytStart = findAudibleStart(ytSlice, TARGET_SR, RMS_THRESH);
+                var mp3Start = findAudibleStart(mp3Slice, TARGET_SR, RMS_THRESH);
+                var diff = Math.abs(ytStart - mp3Start);
+                var inSync = diff <= SYNC_TOLERANCE_SEC;
+                logLine('  onset: video +' + ytStart.toFixed(2) + 's, mp3 +' + mp3Start.toFixed(2)
+                        + 's, diff ' + diff.toFixed(2) + 's → '
+                        + (inSync ? 'IN SYNC' : 'OUT OF SYNC'),
+                        inSync ? 'ok' : 'bad');
+                return { inSync: inSync, ytStart: ytStart, mp3Start: mp3Start, diff: diff };
+            }
+            // Not enough audible audio — extend
+            if (actualLen >= maxFromVideo - 0.5 || actualLen >= maxFromMP3 - 0.5) {
+                // Already captured everything available — give up
+                logLine('  reached end without enough audible audio', 'bad');
+                return { inSync: false, reason: 'silence at ' + fmt(testSec), ytStart: -1, mp3Start: -1 };
+            }
+            captureLen += 10;
+        }
+        // Hit MAX_CAPTURE_SEC without enough audible audio in both streams.
+        return { inSync: false, reason: 'no detectable audio in 30s window', ytStart: -1, mp3Start: -1 };
+    }
+
+    // ── Binary search ──
+    async function startCheck() {
+        if (checkRunning) return;
+        if (!mp3Buffer || !ytPlayer || videoDuration <= 0) {
+            setStatus('✗ Not ready yet'); return;
+        }
+        $('start-btn').disabled = true;
+        $('reset-btn').style.display = 'none';
+        checkRunning = true;
+        try {
+            setStatus('Requesting tab share permission…');
+            var s = await ensureCaptureStream();
+            if (!s) { checkRunning = false; $('start-btn').disabled = false; return; }
+            // Audio context may have started suspended in some browsers
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            // First test: end of video
+            lastGood = 0;
+            lastBad = 0;
+            foundDrift = false;
+            var endProbe = Math.max(0, Math.min(videoDuration, mp3Buffer.duration) - 12);
+            setStatus('Testing END of video at ' + fmt(endProbe) + '…');
+            logLine('Test #1 — end probe at ' + fmt(endProbe));
+            var endResult = await runSyncTestAt(endProbe);
+            if (endResult.inSync) {
+                lastGood = endProbe;
+                updateRangeBar();
+                logLine('✓ End of MP3 is in sync with end of video. No reset needed.', 'ok');
+                setStatus('✅ MP3 is in sync. No drift detected.');
+                $('start-btn').disabled = false;
+                checkRunning = false;
+                return;
+            }
+            lastBad = endProbe;
+            foundDrift = true;
+            updateRangeBar();
+            logLine('✗ End is OUT OF SYNC. Starting binary search…', 'bad');
+
+            // Binary search until lastBad - lastGood < STOP_GAP_SEC
+            while (lastBad - lastGood > STOP_GAP_SEC) {
+                var test = (lastGood + lastBad) / 2;
+                setStatus('Testing midpoint at ' + fmt(test) + '… (good ' + fmt(lastGood)
+                          + ' / bad ' + fmt(lastBad) + ')');
+                logLine('Test — midpoint ' + fmt(test) + '   gap=' + (lastBad - lastGood).toFixed(0) + 's');
+                $('range-test').style.display = '';
+                $('range-test').style.left = (test / videoDuration * 100) + '%';
+                $('lbl-test').textContent = 'testing ' + fmt(test);
+                var r = await runSyncTestAt(test);
+                if (r.inSync) {
+                    lastGood = test;
+                    logLine('  → in sync; raising lower bound', 'ok');
+                } else {
+                    lastBad = test;
+                    logLine('  → out of sync; lowering upper bound', 'bad');
+                }
+                updateRangeBar();
+            }
+            $('range-test').style.display = 'none';
+            $('lbl-test').textContent = '';
+            setStatus('🎯 Drift located between ' + fmt(lastGood) + ' and ' + fmt(lastBad)
+                      + ' (gap ' + (lastBad - lastGood).toFixed(0) + 's). '
+                      + 'Reset MP3 to Partial ending at ' + fmt(lastGood) + '?');
+            logLine('Binary search done. Last good: ' + fmt(lastGood)
+                    + ', last bad: ' + fmt(lastBad) + '. Gap: '
+                    + (lastBad - lastGood).toFixed(0) + 's', 'ok');
+            $('reset-btn').style.display = '';
+        } catch (e) {
+            setStatus('✗ ' + e.message);
+            logLine('Error: ' + e.message, 'bad');
+        } finally {
+            checkRunning = false;
+            $('start-btn').disabled = false;
+        }
+    }
+
+    async function resetToPartial() {
+        if (!confirm('Reset the MP3 to a Partial recording ending at ' + fmt(lastGood) + '?\n\n'
+                   + 'This will:\n'
+                   + '• Truncate the existing MP3 to the first ' + fmt(lastGood) + '\n'
+                   + '• Save the truncated portion as a Partial\n'
+                   + '• Set the resume bookmark to ' + fmt(lastGood) + '\n'
+                   + '• Delete the rest of the MP3\n\n'
+                   + 'You can then re-record from ' + fmt(lastGood) + ' to fix the drift.')) return;
+        $('reset-btn').disabled = true;
+        try {
+            setStatus('Truncating MP3 and saving as partial…');
+            var res = await fetch(API + '/admin-transcript-sync.php', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'reset_to_partial',
+                    item_key: itemKey,
+                    resume_seconds: Math.floor(lastGood)
+                })
+            });
+            var d = await res.json();
+            if (d.error) throw new Error(d.error);
+            setStatus('✓ MP3 reset to Partial at ' + fmt(lastGood) + '. You can close this window and click Partial in the admin tab to continue recording.');
+            logLine('Reset OK. Part file: ' + d.part_file + ' (' + (d.part_size/1024/1024).toFixed(1) + ' MB)', 'ok');
+            $('reset-btn').style.display = 'none';
+        } catch (e) {
+            setStatus('✗ Reset failed: ' + e.message);
+            logLine('Reset error: ' + e.message, 'bad');
+            $('reset-btn').disabled = false;
+        }
+    }
+    </script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

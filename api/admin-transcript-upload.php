@@ -71,8 +71,11 @@ function durableAudioInfo(PDO $db, int $itemKey): ?array {
 
 function listParts(string $dir, int $itemKey): array {
     $parts = [];
-    foreach (glob("$dir/audio_{$itemKey}_part_*.webm") as $f) {
-        if (preg_match('/_part_(\d+)\.webm$/', $f, $m)) {
+    // Parts are usually .webm (from MediaRecorder) but the sync-check tool
+    // creates .mp3 parts when truncating an existing complete recording.
+    // ffmpeg's concat filter handles mixed input formats fine.
+    foreach (glob("$dir/audio_{$itemKey}_part_*.{webm,mp3,m4a,opus,wav,ogg,aac}", GLOB_BRACE) as $f) {
+        if (preg_match('/_part_(\d+)\.[a-z0-9]+$/i', $f, $m)) {
             $parts[(int)$m[1]] = $f;
         }
     }

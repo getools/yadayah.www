@@ -1669,6 +1669,32 @@ function seekVideoTo(seconds) {
     try { _ytPlayer.seekTo(seconds, true); _ytPlayer.playVideo(); } catch (e) {}
 }
 
+// Open the automated sync-check popout for a Complete item. Compares MP3
+// audio against YouTube tab audio at sampled timestamps using a binary search
+// to locate any drift point, then offers to reset the MP3 to a Partial at the
+// last known good moment.
+function verifyRecordingSync(itemKey) {
+    var url = '/admin-sync-check.html?item=' + itemKey;
+    var w = window.open(url, 'yy-sync-' + itemKey,
+        'width=920,height=820,menubar=no,toolbar=no,location=no,status=no');
+    if (!w || w.closed || typeof w.closed === 'undefined') {
+        alert('The browser blocked the popup window. Please allow popups for this site, then click 🔍 Verify again.');
+        return;
+    }
+    try { w.focus(); } catch (e) {}
+    // Refresh the Recordings list when the verify popout closes — if the user
+    // reset to Partial, the row's status will have changed.
+    var poll = setInterval(function() {
+        if (w.closed) {
+            clearInterval(poll);
+            var tab = document.getElementById('tab-recordings');
+            if (tab && tab.style.display !== 'none' && typeof loadRecordings === 'function') {
+                loadRecordings();
+            }
+        }
+    }, 1500);
+}
+
 // Entry point used by the Partial/New buttons in the Recordings list.
 // Always opens a dedicated browser window (popout) so the recording survives
 // navigation in this admin tab. The popout owns its own YT player,
@@ -1822,7 +1848,12 @@ function renderRecordings(d) {
         var processed;
         var commonBtn = 'border:1px solid;background:#fff;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;';
         if (it.processed_status === 'complete') {
-            processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>';
+            processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>'
+                      + '<button onclick="verifyRecordingSync(' + it.feed_item_key + ')" '
+                      + 'title="Run automated sync check between MP3 and YouTube audio" '
+                      + 'style="display:block;margin-top:4px;background:#fff;color:#1976d2;border:1px solid #1976d2;'
+                      + 'padding:3px 8px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:600;width:100%;">'
+                      + '🔍 Verify</button>';
         } else if (it.processed_status === 'partial') {
             var recSec = it.resume_seconds || 0, totSec = it.feed_item_duration_seconds || 0;
             var pct = totSec ? Math.round((recSec/totSec)*100) : 0;
