@@ -43,7 +43,7 @@ rsync -a "$DEPLOY_DIR/public/" "$GIT_DIR/public/" \
     --include='*.html' --exclude='*/' --exclude='*'
 
 # Sync root config files
-for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh; do
+for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh book-pipeline-worker.sh; do
     [ -f "$DEPLOY_DIR/$f" ] && cp -f "$DEPLOY_DIR/$f" "$GIT_DIR/$f" 2>/dev/null
 done
 
