@@ -132,7 +132,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
         'queued_at'   => date('c'),
     ];
     $jobFile = $jobsDir . '/' . sprintf('%010d', $key) . '_' . time() . '.json';
-    @file_put_contents($jobFile, json_encode($jobPayload, JSON_PRETTY_PRINT));
+    @file_put_contents($jobFile, json_encode($jobPayload));
 
     jsonResponse([
         'saved'       => true,
@@ -185,7 +185,7 @@ if ($method === 'POST') {
         trim($data['volume_flip_code'] ?? '') ?: null,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
-        (bool)($data['volume_active_flag'] ?? true),
+        (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
     ]);
     jsonResponse(['saved' => true, 'volume_key' => $stmt->fetchColumn()]);
 }
@@ -220,7 +220,7 @@ if ($method === 'PUT') {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (int)$data[$col]; }
     }
     foreach (['volume_active_flag', 'volume_search_flag', 'volume_parse_flag', 'volume_ask_yada_flag'] as $col) {
-        if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (bool)$data[$col]; }
+        if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (bool)$data[$col] ? 'true' : 'false'; }
     }
 
     if (empty($fields)) errorResponse('Nothing to update');
