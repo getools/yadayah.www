@@ -485,12 +485,73 @@ foreach ($errors as $error) {
             $line = "  [claude-fix] #{$error['event_key']} {$source}: invoking Claude Code agent...";
             echo $line . "\n";
             recordCounter('claude-fix', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
-            $cmd = escapeshellcmd($claudeWrapper) . ' ' . (int)$error['event_key'] . ' 2>&1';
-            $output = [];
+            // Stream Claude's stdout/stderr live into the status file so the
+            // admin UI can render it in a textarea as it happens. Without
+            // this the user just stares at "running" for 30-90 sec per event.
+            $cmd = escapeshellcmd($claudeWrapper) . ' ' . (int)$error['event_key'];
+            $descriptors = [0 => ['file', '/dev/null', 'r'],
+                            1 => ['pipe', 'w'],
+                            2 => ['redirect', 1]];
+            $pipes = [];
+            $proc = proc_open($cmd . ' 2>&1', $descriptors, $pipes);
+            $claudeBuf = '';
             $rc = 0;
-            exec($cmd, $output, $rc);
-            $tail = implode("\n", array_slice($output, -10));
-            $line2 = "    rc=$rc | " . substr(str_replace("\n", ' | ', $tail), 0, 200);
+            $lastWrite = 0;
+            if (is_resource($proc)) {
+                stream_set_blocking($pipes[1], false);
+                while (true) {
+                    $status = proc_get_status($proc);
+                    $chunk = stream_get_contents($pipes[1]);
+                    if ($chunk !== false && $chunk !== '') {
+                        $claudeBuf .= $chunk;
+                        // Trim to last 16 KB to keep status file small.
+                        if (strlen($claudeBuf) > 16384) {
+                            $claudeBuf = substr($claudeBuf, -16384);
+                        }
+                    }
+                    // Write status at most once a second to avoid spamming disk.
+                    $now = microtime(true);
+                    if ($now - $lastWrite > 1.0) {
+                        writeStatus($STATUS_FILE, [
+                            'state' => 'running',
+                            'total' => $total,
+                            'processed' => $processed,
+                            'counters' => $counters,
+                            'current' => $currentLabel,
+                            'log_tail' => implode("\n", array_slice($logLines, -30)),
+                            'claude_event_key' => (int)$error['event_key'],
+                            'claude_output' => $claudeBuf,
+                        ]);
+                        $lastWrite = $now;
+                    }
+                    if (!$status['running']) {
+                        $rc = $status['exitcode'];
+                        // Drain any final bytes after the process exits.
+                        $tail = stream_get_contents($pipes[1]);
+                        if ($tail !== false && $tail !== '') {
+                            $claudeBuf .= $tail;
+                            if (strlen($claudeBuf) > 16384) $claudeBuf = substr($claudeBuf, -16384);
+                        }
+                        break;
+                    }
+                    usleep(200000); // 200ms
+                }
+                fclose($pipes[1]);
+                proc_close($proc);
+            }
+            // Final status with full output for this event captured.
+            writeStatus($STATUS_FILE, [
+                'state' => 'running',
+                'total' => $total,
+                'processed' => $processed,
+                'counters' => $counters,
+                'current' => $currentLabel,
+                'log_tail' => implode("\n", array_slice($logLines, -30)),
+                'claude_event_key' => (int)$error['event_key'],
+                'claude_output' => $claudeBuf,
+            ]);
+            $tailStr = substr($claudeBuf, -800);
+            $line2 = "    rc=$rc | " . substr(str_replace("\n", ' | ', $tailStr), 0, 200);
             echo $line2 . "\n";
             $logLines[] = $line2;
             $fixedMessages[$msgHash] = $error['event_key'];
