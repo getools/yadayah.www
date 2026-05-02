@@ -81,7 +81,7 @@ if ($method === 'POST') {
         trim($data['volume_flip_code'] ?? '') ?: null,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
-        (bool)($data['volume_active_flag'] ?? true),
+        (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
     ]);
     jsonResponse(['saved' => true, 'volume_key' => $stmt->fetchColumn()]);
 }
@@ -116,7 +116,7 @@ if ($method === 'PUT') {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (int)$data[$col]; }
     }
     if (array_key_exists('volume_active_flag', $data)) {
-        $fields[] = "volume_active_flag = ?"; $params[] = (bool)$data['volume_active_flag'];
+        $fields[] = "volume_active_flag = ?"; $params[] = (bool)$data['volume_active_flag'] ? 'true' : 'false';
     }
 
     if (empty($fields)) errorResponse('Nothing to update');

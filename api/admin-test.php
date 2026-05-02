@@ -124,7 +124,7 @@ if ($method === 'PUT') {
     }
     if (array_key_exists('test_active_flag', $data)) {
         $fields[] = "test_active_flag = ?";
-        $params[] = (bool)$data['test_active_flag'];
+        $params[] = (bool)$data['test_active_flag'] ? 'true' : 'false';
     }
     if (array_key_exists('test_schedule_interval_minutes', $data)) {
         $fields[] = "test_schedule_interval_minutes = ?";

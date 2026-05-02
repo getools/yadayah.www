@@ -188,7 +188,7 @@ if ($type === 'video' && $method === 'PUT') {
     }
     if (isset($data['basics_active_flag'])) {
         $fields[] = 'feed_item_active_flag = ?';
-        $params[] = (bool)$data['basics_active_flag'];
+        $params[] = (bool)$data['basics_active_flag'] ? 'true' : 'false';
     }
 
     // Category goes to yy_feed_item_category (page-scoped) — not the legacy field.

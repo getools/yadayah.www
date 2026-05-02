@@ -187,7 +187,7 @@ if ($type === 'video' && $method === 'PUT') {
     }
     if (isset($data['active_flag'])) {
         $fields[] = 'feed_item_active_flag = ?';
-        $params[] = (bool)$data['active_flag'];
+        $params[] = (bool)$data['active_flag'] ? 'true' : 'false';
     }
 
     // Vlog category goes to yy_feed_item_category (page-scoped to Vlog page=1)

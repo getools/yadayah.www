@@ -52,7 +52,7 @@ if ($method === 'POST') {
         $tz,
         $defaultBg,
         (int)($data['ticker_sort'] ?? 0),
-        isset($data['ticker_active_flag']) ? (bool)$data['ticker_active_flag'] : true,
+        (bool)($data['ticker_active_flag'] ?? true) ? 'true' : 'false',
         $user['user_key'] ?? null,
     ]);
     jsonResponse(['saved' => true, 'ticker_key' => $db->lastInsertId()]);
@@ -71,7 +71,7 @@ if ($method === 'PUT') {
         $target,
         $tz,
         (int)($data['ticker_sort'] ?? 0),
-        isset($data['ticker_active_flag']) ? (bool)$data['ticker_active_flag'] : true,
+        (bool)($data['ticker_active_flag'] ?? true) ? 'true' : 'false',
         $user['user_key'] ?? null,
         $key,
     ]);
