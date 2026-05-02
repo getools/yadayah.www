@@ -129,7 +129,12 @@
                 <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()">
                 <div id="f-docx-status" style="margin-top:6px;font-size:0.82rem;"></div>
             </div>
-            <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
+            <div class="field">
+                <label style="display:block;margin-bottom:6px;"><input type="checkbox" id="f-active" checked> Active</label>
+                <label style="display:block;margin-bottom:4px;"><input type="checkbox" id="f-search-flag" checked> Include in <strong>Book Search</strong></label>
+                <label style="display:block;margin-bottom:4px;"><input type="checkbox" id="f-parse-flag" checked> Parse for <strong>translations / glossary / paragraphs</strong></label>
+                <label style="display:block;"><input type="checkbox" id="f-ask-yada-flag" checked> Include in <strong>Ask Yada</strong> context</label>
+            </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" onclick="saveVolume()">Save</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
@@ -222,16 +227,16 @@ function loadBooks() {
 //
 // Result is a stacked icon + small age line. Tooltip shows full timestamp.
 var PROC_STATES = ['queued', 'processing', 'running', 'pending'];
-// Compact local-time stamp: YYMMDD-HH:MM (e.g. 260502-15:30). Replaces the
-// older "3h ago" relative form so the actual moment is unambiguous and
-// sortable at a glance.
+// Stacked local-time stamp: YYMMDD on one line, HH:MM on the next.
+// Returns RAW HTML (with <br>) — callers must NOT pass through esc(). Output
+// is purely numeric so no escaping concerns.
 function ago(iso) {
     if (!iso) return '';
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '';
     function p(n) { return (n < 10 ? '0' : '') + n; }
     return p(d.getFullYear() % 100) + p(d.getMonth() + 1) + p(d.getDate())
-         + '-' + p(d.getHours()) + ':' + p(d.getMinutes());
+         + '<br>' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 function fullDt(iso) {
     if (!iso) return '';
@@ -275,12 +280,15 @@ function dataCell(v) {
         icon = '—'; cls = 'status-miss'; sub = '';
         tipPrefix = 'No paragraphs or translations extracted yet';
     }
-    var counts = '<span style="color:#666;font-size:0.74rem;font-family:monospace;">'
-               + pc.toLocaleString() + 'p / ' + tc.toLocaleString() + 't</span>';
-    var ageLine = parseDt ? '<div class="age" title="' + esc(fullDt(parseDt)) + '">' + esc(ago(parseDt)) + '</div>' : (sub ? '<div class="age">' + esc(sub) + '</div>' : '');
+    // Stack the cell vertically — icon on top, T/P count below, then the
+    // YYMMDD / HH:MM stack — to match the visual pattern of DOCX/PDF/FLIP.
+    var countLine = '<div class="age" style="font-family:monospace;">'
+                  + tc.toLocaleString() + 'T / ' + pc.toLocaleString() + 'P</div>';
+    var ageLine = parseDt ? '<div class="age" title="' + esc(fullDt(parseDt)) + '">' + ago(parseDt) + '</div>' : (sub ? '<div class="age">' + esc(sub) + '</div>' : '');
     var pulse = inProc ? ' proc-pulse' : '';
     return '<div class="status-cell' + pulse + '" title="' + esc(tipPrefix) + '">'
-         + '<div><span class="status-icon ' + cls + '">' + icon + '</span> ' + counts + '</div>'
+         + '<span class="status-icon ' + cls + '">' + icon + '</span>'
+         + countLine
          + ageLine
          + '</div>';
 }
@@ -316,13 +324,13 @@ function artifactCell(field, mtime, sourceMtime, pipelineStatus, label) {
     if (stale) {
         return '<div class="status-cell">'
              + '<span class="status-icon status-stale" title="' + label + ' is older than its source — needs regeneration. Last built: ' + fullDt(mtime) + '">↻</span>'
-             + '<div class="age">stale ' + esc(ago(mtime)) + '</div></div>';
+             + '<div class="age">stale<br>' + ago(mtime) + '</div></div>';
     }
     var ageTxt = mtime ? ago(mtime) : '';
     var fullTxt = mtime ? fullDt(mtime) : '';
     return '<div class="status-cell">'
          + '<span class="status-icon status-gen" title="' + label + ' generated' + (fullTxt ? ' on ' + fullTxt : '') + '">✓</span>'
-         + (ageTxt ? '<div class="age" title="' + esc(fullTxt) + '">' + esc(ageTxt) + '</div>' : '')
+         + (ageTxt ? '<div class="age" title="' + esc(fullTxt) + '">' + ageTxt + '</div>' : '')
          + '</div>';
 }
 
@@ -351,10 +359,10 @@ function renderBooks() {
         + '<th>Label</th>'
         + '<th>Name</th>'
         + '<th>Pages</th>'
-        + '<th class="status-cell" title="Source .docx file uploaded">DOCX</th>'
-        + '<th class="status-cell" title="PDF generated from the .docx">PDF</th>'
-        + '<th class="status-cell" title="FlipHTML5 flipbook built">FLIP</th>'
-        + '<th class="status-cell" title="Paragraphs + translations extracted from the .docx">Data</th>'
+        + '<th class="status-cell" style="text-align:center;" title="Source .docx file uploaded">DOCX</th>'
+        + '<th class="status-cell" style="text-align:center;" title="PDF generated from the .docx">PDF</th>'
+        + '<th class="status-cell" style="text-align:center;" title="FlipHTML5 flipbook built">FLIP</th>'
+        + '<th class="status-cell" style="text-align:center;" title="Number of Translations (T) and Paragraphs (P) pulled from the document">YY Parse</th>'
         + '<th>Active</th>'
         + '<th>Actions</th>'
         + '</tr></thead><tbody>';
@@ -416,6 +424,9 @@ function showVolumeForm(record) {
     document.getElementById('f-flip').value = r.volume_flip_code || '';
     document.getElementById('f-pdf').value = r.volume_pdf || '';
     document.getElementById('f-active').checked = r.volume_active_flag !== false;
+    document.getElementById('f-search-flag').checked   = r.volume_search_flag    !== false;
+    document.getElementById('f-parse-flag').checked    = r.volume_parse_flag     !== false;
+    document.getElementById('f-ask-yada-flag').checked = r.volume_ask_yada_flag  !== false;
 
     // DOCX status
     var docxCur = document.getElementById('f-docx-current');
@@ -461,6 +472,9 @@ function saveVolume() {
         volume_flip_code: document.getElementById('f-flip').value.trim(),
         volume_pdf: document.getElementById('f-pdf').value.trim(),
         volume_active_flag: document.getElementById('f-active').checked,
+        volume_search_flag: document.getElementById('f-search-flag').checked,
+        volume_parse_flag: document.getElementById('f-parse-flag').checked,
+        volume_ask_yada_flag: document.getElementById('f-ask-yada-flag').checked,
     };
 
     fetch(API + '/admin-books.php' + (key ? '?key=' + key : ''), {

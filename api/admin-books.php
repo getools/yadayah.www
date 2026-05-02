@@ -115,7 +115,14 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     // Drop a job file the host-side worker watches.
     // The worker runs LibreOffice (DOCX→PDF), then re-uploads to FlipHTML5,
     // then downloads the published flipbook .zip and extracts to /flipbook/<code>/.
-    $jobsDir = $publicRoot . '/../jobs/book-pipeline';
+    //
+    // Path discipline: $publicRoot is /var/www/html inside the container,
+    // which is bind-mounted to /opt/yada-www/public on the host. Anything we
+    // write under $publicRoot/jobs lands in /opt/yada-www/public/jobs which
+    // the host-side worker can read. (The previous $publicRoot . '/../jobs'
+    // resolved to /var/www/jobs in-container — NOT bind-mounted, so the
+    // worker never saw any of the queued jobs.)
+    $jobsDir = $publicRoot . '/jobs/book-pipeline';
     if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
     $jobPayload = [
         'volume_key'  => (int)$key,
@@ -212,8 +219,8 @@ if ($method === 'PUT') {
     foreach (['series_key', 'volume_number', 'volume_sort', 'volume_page_count'] as $col) {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (int)$data[$col]; }
     }
-    if (array_key_exists('volume_active_flag', $data)) {
-        $fields[] = "volume_active_flag = ?"; $params[] = (bool)$data['volume_active_flag'];
+    foreach (['volume_active_flag', 'volume_search_flag', 'volume_parse_flag', 'volume_ask_yada_flag'] as $col) {
+        if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (bool)$data[$col]; }
     }
 
     if (empty($fields)) errorResponse('Nothing to update');
