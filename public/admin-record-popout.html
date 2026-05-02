@@ -86,6 +86,7 @@
             <div id="player-blocker" title="Video is locked while recording — use the buttons below"></div>
         </div>
         <div id="banner" style="display:none;"></div>
+        <div id="audio-warn" style="display:none;margin-bottom:10px;padding:10px 14px;background:#ffebee;border:2px solid #c00;border-radius:6px;font-size:0.9rem;color:#7a0000;line-height:1.5;"></div>
         <div id="controls">
             <button id="continue-btn" style="display:none;" onclick="continueRecording()">▶ Continue Recording</button>
             <button id="pause-btn" style="display:none;" onclick="pauseRecording()">⏸ Pause Recording</button>
@@ -137,6 +138,18 @@
     var CHECKPOINT_MS = 5 * 60 * 1000;
     var checkpointTimer = null;
     var autoCheckpointPending = false;
+    // Silence watchdog: 30 seconds after recording starts, peek at the live
+    // capture stream and warn the user prominently if it has been silent the
+    // whole time. Without this they wouldn't find out until the first 5-min
+    // checkpoint upload gets rejected by the server-side validator.
+    var SILENCE_WATCHDOG_MS = 30 * 1000;
+    var SILENCE_RMS_THRESH = 0.001;     // ~−60 dB; below this is effectively silent
+    var silenceCtx = null, silenceTimer = null, silenceSamples = 0, silenceSum = 0;
+    // Volume watchdog: the YouTube player's volume slider is the gain control
+    // for the captured tab audio. Anything less than 100% reduces recording
+    // quality / level, so we force it to 100 on every player and bail out of
+    // any recording session that detects drift.
+    var volumeWatcher = null;
 
     if (!itemKey) { document.getElementById('status').textContent = '✗ Missing ?item=N or ?items=N1,N2,N3 in URL'; }
     document.getElementById('status').textContent = 'Loading YouTube player API…';
@@ -226,6 +239,10 @@
 
     function onPlayerReady(e) {
         try { e.target.setPlaybackRate(1); } catch (err) {}
+        // Force volume to 100% and unmute — the player's gain control is the
+        // source of the audio that the tab share captures, so anything other
+        // than 100% degrades the recording level.
+        try { e.target.unMute(); e.target.setVolume(100); } catch (err) {}
         try {
             var dur = Math.floor(e.target.getDuration() || 0);
             if (dur > 0) $('time').textContent = (initialResumeSec > 0 ? fmt(initialResumeSec) : '0:00:00') + ' / ' + fmt(dur);
@@ -367,11 +384,103 @@
         recorder = rec;
         startedMs = Date.now();
         startCheckpointTimer();
+        startSilenceWatchdog();
+        startVolumeWatcher();
         // Authoritative status update so any stale prompt-related text
         // ("Requesting tab share permission…", "Loading video…", etc.) is
         // replaced once the recorder is actually running.
         setStatus('🔴 Recording — capturing tab audio…');
+        $('audio-warn').style.display = 'none';
         updateControls();
+    }
+    // Watchdog: wires an AnalyserNode onto the live screen-share audio track
+    // and integrates RMS for SILENCE_WATCHDOG_MS. If the average level is
+    // below SILENCE_RMS_THRESH the user almost certainly forgot to enable
+    // tab audio in the share dialog — alert them prominently before they
+    // sit through the entire video and watch the auto-checkpoint reject.
+    function startSilenceWatchdog() {
+        stopSilenceWatchdog();
+        if (!stream || !stream.getAudioTracks().length) return;
+        try {
+            silenceCtx = new (window.AudioContext || window.webkitAudioContext)();
+            var src = silenceCtx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+            var analyser = silenceCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            src.connect(analyser);
+            var data = new Float32Array(analyser.fftSize);
+            silenceSamples = 0;
+            silenceSum = 0;
+            var startMs = Date.now();
+            silenceTimer = setInterval(function() {
+                analyser.getFloatTimeDomainData(data);
+                var s = 0;
+                for (var i = 0; i < data.length; i++) s += data[i] * data[i];
+                silenceSum += s / data.length;
+                silenceSamples++;
+                if (Date.now() - startMs >= SILENCE_WATCHDOG_MS) {
+                    var avgRms = Math.sqrt(silenceSum / Math.max(1, silenceSamples));
+                    stopSilenceWatchdog();
+                    if (avgRms < SILENCE_RMS_THRESH) {
+                        showSilenceWarning(avgRms);
+                    }
+                }
+            }, 250);
+        } catch (e) {
+            // AnalyserNode unsupported or stream disconnected — silently skip.
+        }
+    }
+    function stopSilenceWatchdog() {
+        if (silenceTimer) { clearInterval(silenceTimer); silenceTimer = null; }
+        if (silenceCtx) { try { silenceCtx.close(); } catch (e) {} silenceCtx = null; }
+    }
+    // Volume watchdog: poll the YT player's volume + mute state every 500ms
+    // while recording. Any drift away from 100%/unmuted: force back to 100%,
+    // pause the video, stop the recorder, and warn prominently. Belt-and-
+    // suspenders against the click-blocker missing some path (browser
+    // extension, focus jumping into the iframe, accidental keypress, etc).
+    function startVolumeWatcher() {
+        stopVolumeWatcher();
+        if (!ytPlayer) return;
+        try { ytPlayer.unMute(); ytPlayer.setVolume(100); } catch (e) {}
+        volumeWatcher = setInterval(function() {
+            if (!ytPlayer) return;
+            var v = 100, m = false;
+            try { v = ytPlayer.getVolume(); } catch (e) { return; }
+            try { m = ytPlayer.isMuted(); } catch (e) {}
+            if (v < 99 || m) {
+                // Force back, then halt the session so the user has to
+                // explicitly resume after they understand what changed.
+                try { ytPlayer.unMute(); ytPlayer.setVolume(100); } catch (e) {}
+                showVolumeWarning(v, m);
+                try { ytPlayer.pauseVideo(); } catch (e) {}
+                stopRecorderNow();
+            }
+        }, 500);
+    }
+    function stopVolumeWatcher() {
+        if (volumeWatcher) { clearInterval(volumeWatcher); volumeWatcher = null; }
+    }
+    function showVolumeWarning(v, muted) {
+        var w = $('audio-warn');
+        w.style.display = '';
+        w.innerHTML = '⚠ <strong>YouTube player volume changed</strong> — '
+            + (muted ? 'the player was muted' : 'volume dropped to ' + v + '%')
+            + '. Recording requires the player at 100% (the slider is the source '
+            + 'of the captured audio).<br><br>Volume has been forced back to 100% and '
+            + 'recording paused. Click ▶ Continue Recording to resume.';
+    }
+    function showSilenceWarning(rms) {
+        var w = $('audio-warn');
+        w.style.display = '';
+        w.innerHTML = '⚠ <strong>NO AUDIO DETECTED in the first 30 seconds</strong> '
+            + '(RMS ' + rms.toExponential(2) + '). The tab share is not capturing audio.<br><br>'
+            + '<strong>Most likely cause:</strong> the <em>"Also allow tab audio"</em> toggle was off when '
+            + 'you accepted the share dialog.<br><br>'
+            + '<strong>To fix:</strong> click <em>"Stop sharing"</em> at the top of the page, then click '
+            + '▶ Continue Recording — when the share dialog reappears, '
+            + 'make sure the <strong>"Also allow tab audio"</strong> toggle is ON before clicking Allow.<br><br>'
+            + 'Other things to check: this Chrome tab isn\'t muted (right-click the tab strip), the YouTube '
+            + 'player\'s speaker icon isn\'t muted, and Windows volume mixer has Chrome audible.';
     }
     function startCheckpointTimer() {
         if (checkpointTimer) clearInterval(checkpointTimer);
@@ -402,6 +511,8 @@
     }
     async function onRecorderStopped() {
         stopCheckpointTimer();
+        stopSilenceWatchdog();
+        stopVolumeWatcher();
         updateControls();
         var blob = new Blob(chunks, { type: 'audio/webm' });
         chunks = [];
