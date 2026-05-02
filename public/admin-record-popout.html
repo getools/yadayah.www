@@ -473,19 +473,27 @@
             partCount = 0;
             $('banner').style.display = 'none';
             updateControls();
+            // Surface any auto-skipped invalid parts so the user knows the
+            // MP3 has gaps where corrupt/silent recordings were dropped.
+            var skippedNote = '';
+            if (d.skipped_parts && d.skipped_parts.length) {
+                skippedNote = ' (⚠ skipped ' + d.skipped_parts.length
+                            + ' invalid part' + (d.skipped_parts.length === 1 ? '' : 's')
+                            + ': ' + d.skipped_parts.join(', ') + ')';
+            }
             // Batch advancement: if more items in the queue, swap the YT
             // player to the next video without reloading the popout (which
             // would lose our screen-share permission). Same-tab JS context
             // means the cached stream stays alive across items.
             if (BATCH_MODE && queueIndex < queue.length - 1) {
                 queueIndex++;
-                setStatus('✓ Saved. Loading next video (' + (queueIndex + 1) + '/' + queue.length + ')…');
+                setStatus('✓ Saved' + skippedNote + '. Loading next video (' + (queueIndex + 1) + '/' + queue.length + ')…');
                 setTimeout(loadCurrentItem, 1200);
             } else if (BATCH_MODE) {
                 setStatus('✓ Batch complete (' + queue.length + ' video' + (queue.length === 1 ? '' : 's')
-                          + '). You can close this window.');
+                          + ')' + skippedNote + '. You can close this window.');
             } else {
-                setStatus('✓ Saved final MP3 — transcription started. You can close this window.');
+                setStatus('✓ Saved final MP3' + skippedNote + ' — transcription started. You can close this window.');
             }
         } catch (err) {
             setStatus('✗ Finalize failed: ' + err.message);

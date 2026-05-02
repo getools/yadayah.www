@@ -69,6 +69,58 @@ function durableAudioInfo(PDO $db, int $itemKey): ?array {
     ];
 }
 
+/**
+ * Validate an audio file using ffprobe. Returns:
+ *   ['ok' => true,  'duration' => float, 'mean_db' => float|null]
+ *   ['ok' => false, 'reason' => string]
+ *
+ * Catches the two ways a recording can be useless:
+ *   - corrupt container (ffprobe returns non-zero or no audio stream)
+ *   - silent stream (mean_volume below -70 dB → recording captured nothing,
+ *     which usually means the user paused tab sharing or had wrong source)
+ *
+ * Both are auto-rejected at upload time so they never make it into a finalize.
+ */
+function validateAudioFile(string $absPath): array {
+    if (!is_file($absPath) || filesize($absPath) < 256) {
+        return ['ok' => false, 'reason' => 'file too small (' . (is_file($absPath) ? filesize($absPath) : 0) . ' bytes)'];
+    }
+    $ffprobe = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
+    if (!$ffprobe) {
+        // Best-effort: without ffprobe, accept the file. Better than blocking uploads.
+        return ['ok' => true, 'duration' => 0.0, 'mean_db' => null];
+    }
+    $cmd = escapeshellcmd($ffprobe)
+         . ' -v error -select_streams a:0 -show_entries stream=codec_type,duration'
+         . ' -of default=noprint_wrappers=1:nokey=1 '
+         . escapeshellarg($absPath) . ' 2>&1';
+    $out = trim(shell_exec($cmd) ?: '');
+    if (stripos($out, 'audio') === false) {
+        return ['ok' => false, 'reason' => 'no audio stream: ' . substr($out, 0, 200)];
+    }
+    $lines = preg_split('/\r?\n/', $out);
+    $duration = 0.0;
+    foreach ($lines as $l) {
+        $l = trim($l);
+        if ($l !== '' && $l !== 'audio' && is_numeric($l)) { $duration = (float)$l; break; }
+    }
+    // Silence check via volumedetect filter on the actual data
+    $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
+    $meanDb = null;
+    if ($ffmpeg) {
+        $cmd2 = escapeshellcmd($ffmpeg) . ' -nostdin -i ' . escapeshellarg($absPath)
+              . ' -af volumedetect -vn -sn -dn -f null - 2>&1';
+        $out2 = shell_exec($cmd2) ?: '';
+        if (preg_match('/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/', $out2, $m)) {
+            $meanDb = (float)$m[1];
+        }
+    }
+    if ($meanDb !== null && $meanDb < -70.0) {
+        return ['ok' => false, 'reason' => 'silent recording (mean ' . $meanDb . ' dB) — tab share probably did not capture audio'];
+    }
+    return ['ok' => true, 'duration' => $duration, 'mean_db' => $meanDb];
+}
+
 function listParts(string $dir, int $itemKey): array {
     $parts = [];
     // Parts are usually .webm (from MediaRecorder) but the sync-check tool
@@ -144,6 +196,33 @@ if ($method === 'POST') {
         if ($action === 'finalize') {
             $parts = listParts($PARTS_DIR_ABS, $itemKey);
             if (!$parts) errorResponse('No parts to finalize');
+            // AUTOMATED VALIDATION: probe each part before concat. Skip files
+            // that fail (corrupt header, silent, etc.) — but delete them from
+            // disk too so they don't keep blocking future finalize attempts.
+            // Without this, a single bad part halts the entire batch.
+            $validParts = [];
+            $skipped = [];
+            foreach ($parts as $idx => $f) {
+                $check = validateAudioFile($f);
+                if ($check['ok']) {
+                    $validParts[$idx] = $f;
+                } else {
+                    $skipped[] = 'part_' . $idx . ' (' . $check['reason'] . ')';
+                    @unlink($f);
+                }
+            }
+            if (!$validParts) {
+                logMonitorEvent('transcript_upload', 'error',
+                    'Finalize for item ' . $itemKey . ' had only invalid parts: ' . implode('; ', $skipped),
+                    'by user ' . ($user['user_code'] ?? '?'), false);
+                errorResponse('All recorded parts are invalid (' . implode('; ', $skipped) . '). Please re-record.');
+            }
+            if ($skipped) {
+                logMonitorEvent('transcript_upload', 'warning',
+                    'Finalize for item ' . $itemKey . ' skipped invalid parts: ' . implode('; ', $skipped),
+                    'by user ' . ($user['user_code'] ?? '?'), false);
+            }
+            $parts = $validParts;
             $stamp = time();
             $finalRel = $AUDIO_DIR_REL . "/audio_{$itemKey}_{$stamp}.mp3";
             $finalAbs = $AUDIO_DIR_ABS . "/audio_{$itemKey}_{$stamp}.mp3";
@@ -204,6 +283,7 @@ if ($method === 'POST') {
                 'audio' => durableAudioInfo($db, $itemKey),
                 'partial' => partialState($db, $PARTS_DIR_ABS, $itemKey),
                 'transcribe_job_key' => $jobKey,
+                'skipped_parts' => $skipped, // any parts auto-removed by validation
             ]);
         }
         errorResponse('Unknown action');
@@ -236,6 +316,18 @@ if ($method === 'POST') {
         $partAbs = $PARTS_DIR_ABS . "/audio_{$itemKey}_part_{$next}.webm";
         if (!@move_uploaded_file($tmp, $partAbs)) errorResponse('Failed to write part: ' . $partAbs);
         @chmod($partAbs, 0664);
+        // AUTOMATED VALIDATION: probe the file as soon as it lands. Reject
+        // and remove it if the container is corrupt or the audio is silent
+        // (mean volume < -70 dB → tab share missed the audio source). This
+        // stops bad parts from accumulating and poisoning the finalize.
+        $check = validateAudioFile($partAbs);
+        if (!$check['ok']) {
+            @unlink($partAbs);
+            logMonitorEvent('transcript_upload', 'warning',
+                'Rejected invalid part upload for item ' . $itemKey . ': ' . $check['reason'],
+                'by user ' . ($user['user_code'] ?? '?'), false);
+            errorResponse('Upload rejected — ' . $check['reason']);
+        }
         // Never regress: a stale or out-of-order partial upload should not
         // overwrite a later position. Always take the MAX of the existing
         // value and the incoming one.

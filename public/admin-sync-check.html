@@ -87,6 +87,7 @@
     var itemKey = parseInt(new URLSearchParams(location.search).get('item') || '0', 10);
     var ytPlayer = null, ytReady = false;
     var stream = null, audioCtx = null, captureNode = null, captureBuffer = null, capturing = false;
+    var workletReady = false;
     var streamPromptedOnce = false;
     var TARGET_SR = 8000;          // mono 8 kHz is plenty for speech-onset detection
     var RMS_THRESH = 0.012;        // RMS threshold for "audible" — tuned for speech
@@ -218,21 +219,22 @@
             }
             s.getVideoTracks().forEach(function(t){ t.stop(); });
             stream = s;
-            // Wire the capture pipeline once.
+            // Load + register the AudioWorklet processor (once per AudioContext).
+            // AudioWorkletNode runs on the audio thread, much lower latency than
+            // the deprecated ScriptProcessorNode and no risk of dropouts when
+            // the main thread is busy.
+            if (!workletReady) {
+                await audioCtx.audioWorklet.addModule('/sync-capture-worklet.js');
+                workletReady = true;
+            }
             var src = audioCtx.createMediaStreamSource(new MediaStream(s.getAudioTracks()));
-            // ScriptProcessor is deprecated but still works everywhere; AudioWorklet
-            // would need a separate file and we want this self-contained.
-            captureNode = audioCtx.createScriptProcessor(4096, 1, 1);
-            captureNode.onaudioprocess = function(e) {
-                if (!capturing) return;
-                var input = e.inputBuffer.getChannelData(0);
-                // Copy because input buffer is reused
-                var copy = new Float32Array(input.length);
-                copy.set(input);
-                captureBuffer.push(copy);
+            captureNode = new AudioWorkletNode(audioCtx, 'sync-capture-processor');
+            captureNode.port.onmessage = function(e) {
+                if (!capturing || !captureBuffer) return;
+                captureBuffer.push(new Float32Array(e.data));
             };
             src.connect(captureNode);
-            // Connect to a muted destination so onaudioprocess actually fires
+            // Connect to a muted destination so the worklet's process() fires.
             var sink = audioCtx.createGain();
             sink.gain.value = 0;
             captureNode.connect(sink);
@@ -259,8 +261,10 @@
                         capStart = audioCtx.currentTime;
                         captureBuffer = [];
                         capturing = true;
+                        try { captureNode.port.postMessage({ type: 'capture', on: true }); } catch (er) {}
                         setTimeout(function() {
                             capturing = false;
+                            try { captureNode.port.postMessage({ type: 'capture', on: false }); } catch (er) {}
                             try { ytPlayer.pauseVideo(); } catch (er) {}
                             ytPlayer.removeEventListener('onStateChange', stateHandler);
                             // Merge buffers
@@ -283,6 +287,7 @@
                 setTimeout(function() {
                     if (!capStart) {
                         capturing = false;
+                        try { captureNode.port.postMessage({ type: 'capture', on: false }); } catch (er) {}
                         try { ytPlayer.pauseVideo(); } catch (er) {}
                         ytPlayer.removeEventListener('onStateChange', stateHandler);
                         reject(new Error('Player did not start playing within ' + (durationSec + 5) + 's'));
