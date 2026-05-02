@@ -332,7 +332,8 @@ function showForm(ev) {
     html += '<div class="media-inputs">';
     html += '<input type="text" id="f-image-url" placeholder="Image URL" value="' + esc(ev ? ev.timeline_image : '') + '">';
     html += '<span class="or-label">or upload:</span>';
-    html += '<input type="file" id="f-image-file" accept="image/*">';
+    html += '<input type="file" id="f-image-file" accept="image/*" onchange="autoUploadTimelineImage(this)">';
+    html += '<span id="f-image-status" style="font-size:0.78rem;margin-left:6px;color:#888;"></span>';
     html += '</div></div>';
 
     // Video
@@ -389,6 +390,26 @@ function editEvent(key) {
 
 var videoUploading = false;
 var pendingVideoFile = null;
+
+function autoUploadTimelineImage(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var st = document.getElementById('f-image-status');
+    if (st) { st.textContent = 'Uploading…'; st.style.color = '#888'; }
+    var fd = new FormData();
+    fd.append('image', file);
+    fetch('/api/community-image-upload.php', { method: 'POST', credentials: 'include', body: fd })
+    .then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error || !d.url) { if (st) { st.textContent = d.error || 'Upload failed'; st.style.color = '#c00'; } return; }
+        var urlField = document.getElementById('f-image-url');
+        if (urlField) {
+            urlField.value = d.url;
+            urlField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        input.value = ''; // Clear file input so save uses the URL
+        if (st) { st.textContent = 'Uploaded — click Save'; st.style.color = '#27ae60'; }
+    }).catch(function() { if (st) { st.textContent = 'Upload failed'; st.style.color = '#c00'; } });
+}
 
 function promptVideoUpload(input) {
     var file = input.files[0];

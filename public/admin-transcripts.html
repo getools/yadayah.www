@@ -94,9 +94,8 @@
     <h1>Transcripts</h1>
 
     <div class="upload-area" id="upload-area">
-        <input type="file" id="file-input" accept=".vtt" multiple>
+        <input type="file" id="file-input" accept=".vtt" multiple onchange="if(this.files.length)uploadFiles()">
         <input type="file" id="folder-input" webkitdirectory style="display:none">
-        <button class="btn btn-primary btn-sm" onclick="uploadFiles()">Upload &amp; Process</button>
         <button class="btn btn-secondary btn-sm" onclick="document.getElementById('folder-input').click()">Select Folder</button>
         <button class="btn btn-secondary btn-sm" onclick="dedupFiles()" id="dedup-btn">Dedup</button>
         <span class="upload-status" id="upload-status"></span>

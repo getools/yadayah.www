@@ -196,8 +196,7 @@ function editLetter(key) {
         + '<div class="field-row"><label>Background Image</label><div class="field-input">'
         + imgHtml
         + '<div class="img-upload">'
-        + '<input type="file" id="f-image-file" accept="image/*" style="font-size:0.85rem">'
-        + '<button class="btn btn-secondary btn-sm" onclick="uploadImage()">Upload</button>'
+        + '<input type="file" id="f-image-file" accept="image/*" style="font-size:0.85rem" onchange="uploadImage()">'
         + '<span id="img-status" class="img-status" style="display:none">Uploaded!</span>'
         + '</div>'
         + '<div style="margin-top:4px;font-size:0.78rem;color:#888;">Current: ' + esc(l.letter_image || 'none') + '</div>'

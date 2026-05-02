@@ -39,6 +39,80 @@ if ($method === 'GET') {
     jsonResponse(['series' => $series, 'volumes' => $volumes]);
 }
 
+if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
+    if (!$key) errorResponse('Volume key required');
+    $file = $_FILES['docx'] ?? null;
+    if (!$file || $file['error'] !== UPLOAD_ERR_OK) errorResponse('No file uploaded');
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if ($ext !== 'docx') errorResponse('Only .docx files are accepted');
+
+    // Look up the volume to compose a stable filename
+    $volStmt = $db->prepare("
+        SELECT v.volume_key, v.volume_label, v.volume_name, v.volume_pdf, s.series_key,
+               COALESCE(s.series_number, 0) AS series_number, COALESCE(v.volume_number, 0) AS volume_number
+        FROM yy_volume v JOIN yy_series s ON s.series_key = v.series_key
+        WHERE v.volume_key = ?
+    ");
+    $volStmt->execute([$key]);
+    $vol = $volStmt->fetch();
+    if (!$vol) errorResponse('Volume not found', 404);
+
+    // Build a deterministic filename: prefer existing PDF basename, else compose
+    $base = '';
+    if (!empty($vol['volume_pdf'])) {
+        $base = pathinfo($vol['volume_pdf'], PATHINFO_FILENAME);
+    }
+    if (!$base) {
+        $sanitize = function($s) {
+            $s = preg_replace('/[^A-Za-z0-9 _-]/', '', $s ?? '');
+            return trim(preg_replace('/\s+/', '-', $s), '-');
+        };
+        $base = sprintf('YY-s%02dv%02d-%s', (int)$vol['series_number'], (int)$vol['volume_number'], $sanitize($vol['volume_label'] ?: $vol['volume_name'] ?: ''));
+    }
+    $docxName = $base . '.docx';
+    $pdfName  = $base . '.pdf';
+
+    // Storage paths (works in both Docker container and local dev)
+    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+    $docxDir = $publicRoot . '/books/word';
+    if (!is_dir($docxDir) && !@mkdir($docxDir, 0775, true)) errorResponse('Cannot create books/word directory');
+    $docxPath = $docxDir . '/' . $docxName;
+    if (!move_uploaded_file($file['tmp_name'], $docxPath)) errorResponse('Failed to save .docx file');
+
+    // Persist source filename + flag the pipeline as queued
+    $db->prepare("
+        UPDATE yy_volume
+           SET volume_docx = ?,
+               volume_pipeline_status = 'queued',
+               volume_pipeline_message = 'Awaiting host worker (libreoffice + fliphtml5)',
+               volume_revision_dtime = NOW()
+         WHERE volume_key = ?
+    ")->execute([$docxName, $key]);
+
+    // Drop a job file the host-side worker watches.
+    // The worker runs LibreOffice (DOCX→PDF), then re-uploads to FlipHTML5,
+    // then downloads the published flipbook .zip and extracts to /flipbook/<code>/.
+    $jobsDir = $publicRoot . '/../jobs/book-pipeline';
+    if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
+    $jobPayload = [
+        'volume_key'  => (int)$key,
+        'docx_name'   => $docxName,
+        'pdf_name'    => $pdfName,
+        'flip_code'   => null,  // Worker fills this in after upload
+        'queued_at'   => date('c'),
+    ];
+    $jobFile = $jobsDir . '/' . sprintf('%010d', $key) . '_' . time() . '.json';
+    @file_put_contents($jobFile, json_encode($jobPayload, JSON_PRETTY_PRINT));
+
+    jsonResponse([
+        'saved'       => true,
+        'docx'        => $docxName,
+        'pdf'         => $pdfName,
+        'job_queued'  => basename($jobFile),
+        'message'     => 'Uploaded. Conversion + FlipHTML5 build will run on the host (typically 1–3 minutes).',
+    ]);
+}
+
 if ($method === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
     $action = $data['action'] ?? $_GET['action'] ?? '';
@@ -81,7 +155,7 @@ if ($method === 'POST') {
         trim($data['volume_flip_code'] ?? '') ?: null,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
-        (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
+        (bool)($data['volume_active_flag'] ?? true),
     ]);
     jsonResponse(['saved' => true, 'volume_key' => $stmt->fetchColumn()]);
 }
@@ -116,7 +190,7 @@ if ($method === 'PUT') {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (int)$data[$col]; }
     }
     if (array_key_exists('volume_active_flag', $data)) {
-        $fields[] = "volume_active_flag = ?"; $params[] = (bool)$data['volume_active_flag'] ? 'true' : 'false';
+        $fields[] = "volume_active_flag = ?"; $params[] = (bool)$data['volume_active_flag'];
     }
 
     if (empty($fields)) errorResponse('Nothing to update');

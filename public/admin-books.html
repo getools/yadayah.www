@@ -108,6 +108,11 @@
             </div>
             <div class="field"><label>FlipHTML5 Code</label><input type="text" id="f-flip" placeholder="e.g. YY-s01v01-..."></div>
             <div class="field"><label>PDF Filename</label><input type="text" id="f-pdf" placeholder="e.g. YY-s01v01-..."></div>
+            <div class="field"><label>DOCX Source</label>
+                <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-bottom:6px;"></div>
+                <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()">
+                <div id="f-docx-status" style="margin-top:6px;font-size:0.82rem;"></div>
+            </div>
             <div class="field"><label><input type="checkbox" id="f-active" checked> Active</label></div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" onclick="saveVolume()">Save</button>
@@ -172,7 +177,7 @@ function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'in
 function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
 
 function loadBooks() {
-    fetch(API + '/admin-books.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+    return fetch(API + '/admin-books.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         allSeries = d.series || [];
         allVolumes = d.volumes || [];
         document.getElementById('book-count').textContent = allSeries.length + ' series, ' + allVolumes.length + ' volumes';
@@ -237,6 +242,25 @@ function showVolumeForm(record) {
     document.getElementById('f-pdf').value = r.volume_pdf || '';
     document.getElementById('f-active').checked = r.volume_active_flag !== false;
 
+    // DOCX status
+    var docxCur = document.getElementById('f-docx-current');
+    if (r.volume_docx) {
+        docxCur.innerHTML = 'Current: <a href="/books/word/' + esc(r.volume_docx) + '" target="_blank">' + esc(r.volume_docx) + '</a>';
+    } else {
+        docxCur.textContent = 'No .docx uploaded yet';
+    }
+    var docxStatus = document.getElementById('f-docx-status');
+    if (r.volume_pipeline_status) {
+        var color = r.volume_pipeline_status === 'success' ? '#27ae60'
+                  : r.volume_pipeline_status === 'error' ? '#c0392b' : '#888';
+        docxStatus.innerHTML = '<span style="color:' + color + '">Pipeline: ' + esc(r.volume_pipeline_status)
+                             + (r.volume_pipeline_message ? ' &mdash; ' + esc(r.volume_pipeline_message) : '') + '</span>';
+    } else {
+        docxStatus.textContent = '';
+    }
+    var fileInput = document.getElementById('f-docx-file');
+    if (fileInput) fileInput.value = '';
+
     var sel = document.getElementById('f-series');
     sel.innerHTML = allSeries.map(function(s) {
         return '<option value="' + s.series_key + '"' + (r.series_key == s.series_key ? ' selected' : '') + '>' + esc(s.series_label) + '</option>';
@@ -274,6 +298,34 @@ function deleteVolume(key, label) {
     if (!confirm('Delete volume "' + label + '"?')) return;
     fetch(API + '/admin-books.php?key=' + key, {method:'DELETE', credentials:'include'})
     .then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} loadBooks(); });
+}
+
+function uploadDocx() {
+    var key = document.getElementById('f-key').value;
+    if (!key) { alert('Save the volume first before uploading a .docx'); return; }
+    var fileInput = document.getElementById('f-docx-file');
+    if (!fileInput || !fileInput.files[0]) { alert('Choose a .docx file first'); return; }
+    var statusEl = document.getElementById('f-docx-status');
+    statusEl.innerHTML = '<span style="color:#888">Uploading…</span>';
+
+    var fd = new FormData();
+    fd.append('docx', fileInput.files[0]);
+    fetch(API + '/admin-books.php?action=upload_docx&key=' + key, {
+        method: 'POST', credentials: 'include', body: fd
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) {
+            statusEl.innerHTML = '<span style="color:#c0392b">' + esc(d.error) + '</span>';
+            return;
+        }
+        statusEl.innerHTML = '<span style="color:#2980b9">Queued. Conversion + FlipHTML5 build runs on the host (typically 1–3 minutes).</span>';
+        // Refresh books list so the new docx + status show up; reload the form too
+        loadBooks().then(function() {
+            var v = allVolumes.find(function(r){return r.volume_key==key;});
+            if (v) showVolumeForm(v);
+        });
+    }).catch(function() {
+        statusEl.innerHTML = '<span style="color:#c0392b">Upload failed (network)</span>';
+    });
 }
 
 // ── Series Form ──

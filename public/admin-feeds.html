@@ -1096,7 +1096,7 @@ function editItem(key) {
     html += '<div style="display:flex;flex-direction:column;">'
         + (thumbSrc ? '<img src="' + esc(thumbSrc.indexOf('http')===0 ? thumbSrc : '/'+thumbSrc) + '" style="width:100%;border-radius:6px;margin-bottom:8px;" alt="">' : '<div style="width:100%;height:120px;background:#eee;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>')
         + fld('Thumbnail', 'feed_item_thumbnail', thumbSrc)
-        + '<div style="margin-bottom:8px;"><label style="font-size:0.82rem;font-weight:600;color:#555;">Upload Image</label><input type="file" id="item-thumb-file" accept="image/*" style="font-size:0.78rem;margin-top:2px;"></div>'
+        + '<div style="margin-bottom:8px;"><label style="font-size:0.82rem;font-weight:600;color:#555;">Upload Image</label><input type="file" id="item-thumb-file" accept="image/*" style="font-size:0.78rem;margin-top:2px;" onchange="uploadItemThumb()"><span id="item-thumb-status" style="font-size:0.78rem;margin-left:6px;"></span></div>'
         + fld('Active', 'feed_item_active_flag', item.feed_item_active_flag, {type:'checkbox'})
         + '<div style="margin-top:auto;padding-top:12px;">'
         + '<button onclick="saveItem()" style="padding:8px 16px;background:#31345A;color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer;width:100%;margin-bottom:6px;">Save</button>'
@@ -1261,6 +1261,26 @@ function saveItem() {
         if (d.error) { st.textContent = d.error; st.style.color = '#c00'; }
         else { st.textContent = 'Saved!'; st.style.color = '#27ae60'; setTimeout(function() { st.textContent = ''; }, 2000); loadItems(_itemsPage); }
     });
+}
+
+function uploadItemThumb() {
+    var input = document.getElementById('item-thumb-file');
+    var st = document.getElementById('item-thumb-status');
+    if (!input || !input.files[0]) return;
+    var fd = new FormData();
+    fd.append('image', input.files[0]);
+    if (st) { st.textContent = 'Uploading…'; st.style.color = '#888'; }
+    fetch('/api/community-image-upload.php', { method: 'POST', credentials: 'include', body: fd })
+    .then(function(r) { return safeJson(r); }).then(function(d) {
+        if (d.error || !d.url) { if (st) { st.textContent = d.error || 'Upload failed'; st.style.color = '#c00'; } return; }
+        // Drop the relative URL into the thumbnail field so save persists it
+        var thumb = document.querySelector('[data-item-field="feed_item_thumbnail"]');
+        if (thumb) {
+            thumb.value = d.url.replace(/^\//, '');
+            thumb.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (st) { st.textContent = 'Uploaded — click Save'; st.style.color = '#27ae60'; }
+    }).catch(function() { if (st) { st.textContent = 'Upload failed'; st.style.color = '#c00'; } });
 }
 
 function uploadItemMp3(itemKey) {
@@ -3185,8 +3205,7 @@ function openYoutubeCookies() {
             + '<div style="font-size:0.85rem;color:#555;margin-bottom:14px;line-height:1.5;">YouTube blocks our server\'s IP from yt-dlp. To work around it, upload a cookies.txt from a browser where you\'re signed into YouTube. Cookies last several weeks; refresh when transcription starts failing again.</div>'
             + '<div id="ytc-status" style="padding:12px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;margin-bottom:14px;font-size:0.85rem;">Loading…</div>'
             + '<form id="ytc-form" onsubmit="uploadYoutubeCookies(event)" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            + '<input type="file" id="ytc-file" accept=".txt,.cookies" required style="flex:1;min-width:200px;padding:6px;border:1px solid #ccc;border-radius:4px;">'
-            + '<button type="submit" style="background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;">Upload</button>'
+            + '<input type="file" id="ytc-file" accept=".txt,.cookies" required style="flex:1;min-width:200px;padding:6px;border:1px solid #ccc;border-radius:4px;" onchange="if(this.files.length){var f=this.form;if(f&&f.requestSubmit)f.requestSubmit();else uploadYoutubeCookies({preventDefault:function(){}});}">'
             + '<button type="button" onclick="deleteYoutubeCookies()" style="background:#fff;border:1px solid #c00;color:#c00;padding:8px 12px;border-radius:4px;cursor:pointer;">Remove</button>'
             + '</form>'
             + '<div id="ytc-msg" style="margin-top:10px;font-size:0.85rem;"></div>'
@@ -3195,7 +3214,7 @@ function openYoutubeCookies() {
             + '<li>Install the Chrome extension <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener">Get cookies.txt LOCALLY</a> (the one with "LOCALLY" in the name — keeps cookies on your machine).</li>'
             + '<li>Go to <a href="https://www.youtube.com/" target="_blank" rel="noopener">youtube.com</a> while signed in.</li>'
             + '<li>Click the extension icon (or pin it from the puzzle-piece menu) → click <strong>Export</strong>. It saves <code>youtube.com_cookies.txt</code> to your Downloads.</li>'
-            + '<li>Click "Choose File" above, pick that file, click <strong>Upload</strong>.</li>'
+            + '<li>Click "Choose File" above and pick that file — it uploads automatically.</li>'
             + '</ol>'
             + '<div style="margin-top:8px;font-size:0.78rem;color:#888;">Why not just read Chrome\'s cookies directly? Chrome 127+ encrypts its cookie database with App-Bound Encryption to block malware, which also blocks yt-dlp. The extension reads cookies through Chrome\'s normal API — works every time, no closing Chrome.</div>'
             + '</details>'
