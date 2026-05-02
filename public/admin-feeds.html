@@ -1402,9 +1402,17 @@ function openTranscript(itemKey) {
             + '<span style="border-left:1px solid #ddd;height:24px;margin:0 4px;"></span>'
             + '<button onclick="openYoutubeCookies()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Manage YouTube auth cookies used by yt-dlp">YouTube Cookies</button>'
             + '<button onclick="openTranscriptDict()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Whisper glossary + correction dictionary">Transcript Dictionary</button>'
+            + '<button onclick="openTranscriptFind()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Find text within this transcript">Find</button>'
             + '<button onclick="openSearchReplace()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace with undo/redo">Search &amp; Replace</button>'
             + '</div>'
             + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
+            + '<div id="t-find-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;">'
+            + '<input id="t-find-input" type="text" placeholder="Find in transcript..." style="flex:1;min-width:200px;padding:4px 8px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;">'
+            + '<span id="t-find-count" style="font-size:0.78rem;color:#666;font-family:monospace;min-width:60px;text-align:right;">0 / 0</span>'
+            + '<button onclick="findTranscriptPrev()" title="Previous match (Shift+Enter)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:0.85rem;">&uarr;</button>'
+            + '<button onclick="findTranscriptNext()" title="Next match (Enter)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:0.85rem;">&darr;</button>'
+            + '<button onclick="closeTranscriptFind()" title="Close (Esc)" style="background:none;border:none;color:#666;cursor:pointer;font-size:1.2rem;line-height:1;padding:0 6px;">&times;</button>'
+            + '</div>'
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
             + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:90px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
@@ -1482,6 +1490,14 @@ function parseSegmentToSeconds(s) {
     if (parts.length === 3) return (+parts[0]||0)*3600 + (+parts[1]||0)*60 + parseFloat(parts[2])||0;
     if (parts.length === 2) return (+parts[0]||0)*60 + parseFloat(parts[1])||0;
     return parseFloat(s) || 0;
+}
+function formatSecondsToSegment(secs) {
+    secs = Math.max(0, Math.floor(+secs || 0));
+    var h = Math.floor(secs / 3600);
+    var m = Math.floor((secs % 3600) / 60);
+    var s = secs % 60;
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return pad(h) + ':' + pad(m) + ':' + pad(s);
 }
 // Find the whole word containing the given caret position. Word characters:
 // letters, digits, underscore, plus straight + curly apostrophes (so "we're"
@@ -1578,28 +1594,36 @@ function syncTranscriptToPlayer() {
         }
     }
 
-    if (!_segmentSeconds.length) return;
-    // Find the last row whose segment <= t (linear scan; lists are short enough)
+    var tbody = document.getElementById('t-rows');
+    if (!tbody) return;
+    var rows = tbody.querySelectorAll('tr');
+    if (!rows.length) return;
+
+    // Re-read each row's time from the DOM every tick so inline edits,
+    // newly added rows, and deletions all take effect immediately. The
+    // previously cached _segmentSeconds went stale on edit/add.
+    _segmentSeconds = [];
+    for (var i = 0; i < rows.length; i++) {
+        var seg = rows[i].querySelector('input[data-field="segment"]');
+        _segmentSeconds.push(seg ? parseSegmentToSeconds(seg.value) : NaN);
+    }
+
+    // Find the last row whose segment <= t. Scan the whole list (no early
+    // break) so out-of-order edits still resolve to a sensible active row.
     var idx = -1;
-    for (var i = 0; i < _segmentSeconds.length; i++) {
-        if (_segmentSeconds[i] <= t) idx = i; else break;
+    for (var j = 0; j < _segmentSeconds.length; j++) {
+        if (!isNaN(_segmentSeconds[j]) && _segmentSeconds[j] <= t) idx = j;
     }
     if (idx === _activeRowIdx) return;
 
-    var tbody = document.getElementById('t-rows');
-    if (!tbody) return;
-    if (_activeRowIdx >= 0) {
-        var prev = tbody.querySelector('tr[data-idx="' + _activeRowIdx + '"]');
-        if (prev) prev.classList.remove('t-row-active');
+    if (_activeRowIdx >= 0 && rows[_activeRowIdx]) {
+        rows[_activeRowIdx].classList.remove('t-row-active');
     }
     _activeRowIdx = idx;
-    if (idx >= 0) {
-        var cur = tbody.querySelector('tr[data-idx="' + idx + '"]');
-        if (cur) {
-            cur.classList.add('t-row-active');
-            var auto = document.getElementById('t-autoscroll');
-            if (auto && auto.checked) cur.scrollIntoView({block:'nearest', behavior:'smooth'});
-        }
+    if (idx >= 0 && rows[idx]) {
+        rows[idx].classList.add('t-row-active');
+        var auto = document.getElementById('t-autoscroll');
+        if (auto && auto.checked) rows[idx].scrollIntoView({block:'nearest', behavior:'smooth'});
     }
 }
 
@@ -2132,32 +2156,7 @@ function renderTranscriptRows(rows) {
     // Single click anywhere in the time cell seeks the video; double click
     // unlocks the input for editing. We keep the input readonly while not
     // being edited so it doesn't swallow the click event.
-    tbody.querySelectorAll('td.t-time-cell').forEach(function(td) {
-        td.addEventListener('click', function(e) {
-            var input = td.querySelector('input[data-field="segment"]');
-            // If user is currently editing this cell, don't seek on every keystroke-blurring click.
-            if (input && !input.readOnly && document.activeElement === input) return;
-            var secs = input ? parseSegmentToSeconds(input.value) : parseFloat(td.dataset.secs);
-            if (!isNaN(secs)) seekVideoTo(secs);
-        });
-        td.addEventListener('dblclick', function() {
-            var input = td.querySelector('input[data-field="segment"]');
-            if (!input) return;
-            input.readOnly = false;
-            input.style.cursor = 'text';
-            input.focus();
-            input.select();
-        });
-        var seg = td.querySelector('input[data-field="segment"]');
-        if (seg) {
-            seg.addEventListener('blur', function() {
-                seg.readOnly = true;
-                seg.style.cursor = 'pointer';
-                // refresh data-secs on the cell so click-to-seek uses the new value
-                td.dataset.secs = parseSegmentToSeconds(seg.value);
-            });
-        }
-    });
+    tbody.querySelectorAll('td.t-time-cell').forEach(bindTimeCellHandlers);
 
     // Auto-save: only when focus leaves the input (blur). Keystrokes only
     // update the "…editing" indicator. This prevents partially-typed words
@@ -2212,14 +2211,64 @@ function renderTranscriptRows(rows) {
     }
 }
 
+function bindTimeCellHandlers(td) {
+    td.addEventListener('click', function(e) {
+        var input = td.querySelector('input[data-field="segment"]');
+        // If user is currently editing this cell, don't seek on every keystroke-blurring click.
+        if (input && !input.readOnly && document.activeElement === input) return;
+        var secs = input ? parseSegmentToSeconds(input.value) : parseFloat(td.dataset.secs);
+        if (!isNaN(secs)) seekVideoTo(secs);
+    });
+    td.addEventListener('dblclick', function() {
+        var input = td.querySelector('input[data-field="segment"]');
+        if (!input) return;
+        input.readOnly = false;
+        input.style.cursor = 'text';
+        input.focus();
+        input.select();
+    });
+    var seg = td.querySelector('input[data-field="segment"]');
+    if (seg) {
+        seg.addEventListener('blur', function() {
+            seg.readOnly = true;
+            seg.style.cursor = 'pointer';
+            // refresh data-secs on the cell so click-to-seek uses the new value
+            td.dataset.secs = parseSegmentToSeconds(seg.value);
+        });
+    }
+}
+
 function addTranscriptRow() {
     var tbody = document.getElementById('t-rows');
     if (!tbody || tbody.firstChild && tbody.firstChild.cells && tbody.firstChild.cells.length === 1) tbody.innerHTML = '';
+
+    // Default to current video time when available; otherwise 00:00:00.
+    var defaultSecs = 0;
+    if (_ytPlayer && typeof _ytPlayer.getCurrentTime === 'function') {
+        try { defaultSecs = Math.floor(_ytPlayer.getCurrentTime() || 0); } catch (e) {}
+    }
+    var defaultSeg = formatSecondsToSegment(defaultSecs);
+
+    var entered = prompt('Time for new row (HH:MM:SS):', defaultSeg);
+    if (entered === null) return; // user cancelled
+    entered = String(entered).trim();
+    if (!entered) entered = defaultSeg;
+
+    // Accept H:M:S, M:S, or plain seconds; normalize to HH:MM:SS.
+    var secs = parseSegmentToSeconds(entered);
+    var seg = formatSecondsToSegment(secs);
+
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="t-time-cell" data-secs="0" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="00:00:00" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+    tr.innerHTML = '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + seg + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>';
     tbody.appendChild(tr);
+
+    // Bind click/dblclick/blur on the new time cell so the time is editable
+    // the same way existing rows are.
+    var newTd = tr.querySelector('td.t-time-cell');
+    if (newTd) bindTimeCellHandlers(newTd);
+
     tr.querySelector('[data-field="text"]').focus();
 }
 
@@ -2709,6 +2758,105 @@ function toggleTranscriptMaximize() {
     // Tell the rows container to fill the new height
     var rc = document.getElementById('t-rows-container');
     if (rc) rc.style.maxHeight = isMax ? '70vh' : 'calc(100vh - 180px)';
+}
+
+// ── Find within current transcript ──
+var _txFindMatches = [];
+var _txFindIdx = -1;
+
+function openTranscriptFind() {
+    var bar = document.getElementById('t-find-bar');
+    if (!bar) return;
+    bar.style.display = 'flex';
+    var input = document.getElementById('t-find-input');
+    if (!input) return;
+    if (!input.dataset.bound) {
+        input.dataset.bound = '1';
+        input.addEventListener('input', function() { runTranscriptFind(input.value); });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) findTranscriptPrev(); else findTranscriptNext();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeTranscriptFind();
+            }
+        });
+    }
+    input.focus();
+    input.select();
+    runTranscriptFind(input.value);
+}
+
+function closeTranscriptFind() {
+    var bar = document.getElementById('t-find-bar');
+    if (bar) bar.style.display = 'none';
+    _txFindMatches = [];
+    _txFindIdx = -1;
+}
+
+function runTranscriptFind(q) {
+    _txFindMatches = [];
+    _txFindIdx = -1;
+    var countEl = document.getElementById('t-find-count');
+    if (!q) {
+        if (countEl) countEl.textContent = '0 / 0';
+        return;
+    }
+    var needle = q.toLowerCase();
+    var rows = document.querySelectorAll('#t-rows tr');
+    for (var i = 0; i < rows.length; i++) {
+        var input = rows[i].querySelector('input[data-field="text"]');
+        if (!input) continue;
+        var hay = (input.value || '').toLowerCase();
+        var pos = 0;
+        while ((pos = hay.indexOf(needle, pos)) !== -1) {
+            _txFindMatches.push({ row: i, start: pos, end: pos + needle.length });
+            pos += needle.length || 1;
+        }
+    }
+    if (_txFindMatches.length) {
+        _txFindIdx = 0;
+        showTranscriptFindMatch();
+    } else if (countEl) {
+        countEl.textContent = '0 / 0';
+    }
+}
+
+function showTranscriptFindMatch() {
+    if (_txFindIdx < 0 || _txFindIdx >= _txFindMatches.length) return;
+    var m = _txFindMatches[_txFindIdx];
+    var rows = document.querySelectorAll('#t-rows tr');
+    var tr = rows[m.row];
+    if (!tr) return;
+    var input = tr.querySelector('input[data-field="text"]');
+    if (!input) return;
+    tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    input.focus({ preventScroll: true });
+    try { input.setSelectionRange(m.start, m.end); } catch (err) {}
+    var countEl = document.getElementById('t-find-count');
+    if (countEl) countEl.textContent = (_txFindIdx + 1) + ' / ' + _txFindMatches.length;
+}
+
+function findTranscriptNext() {
+    if (!_txFindMatches.length) {
+        // Re-scan in case rows changed since last query
+        var q = document.getElementById('t-find-input');
+        if (q && q.value) runTranscriptFind(q.value);
+        if (!_txFindMatches.length) return;
+    }
+    _txFindIdx = (_txFindIdx + 1) % _txFindMatches.length;
+    showTranscriptFindMatch();
+}
+
+function findTranscriptPrev() {
+    if (!_txFindMatches.length) {
+        var q = document.getElementById('t-find-input');
+        if (q && q.value) runTranscriptFind(q.value);
+        if (!_txFindMatches.length) return;
+    }
+    _txFindIdx = (_txFindIdx - 1 + _txFindMatches.length) % _txFindMatches.length;
+    showTranscriptFindMatch();
 }
 
 // ── Search & Replace modal ──
