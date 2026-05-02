@@ -134,14 +134,23 @@ bailIfCancelled($db, $jobKey);
 // Cookies file used to bypass YouTube's bot-detection. If present, both yt-dlp
 // invocations below get `--cookies <file>`. Admin uploads/refreshes via admin-feeds.
 // Path matches admin-cookies.php — /tmp is shared inside the same container.
+// Only treat the file as "have auth cookies" when it contains a YouTube session
+// token (SAPISID or __Secure-3PSID). Analytics-only cookies (_ga etc.) don't
+// help with Botguard and incorrectly trigger the web-client path which requires
+// real auth — ios client works better without auth for non-restricted videos.
 $cookiesPath = '/tmp/youtube-cookies.txt';
-$haveCookies = file_exists($cookiesPath) && filesize($cookiesPath) > 0;
+$cookiesContent = (file_exists($cookiesPath) && filesize($cookiesPath) > 0)
+    ? file_get_contents($cookiesPath) : '';
+$haveCookies = $cookiesContent !== ''
+    && (strpos($cookiesContent, 'SAPISID') !== false
+        || strpos($cookiesContent, '__Secure-3PSID') !== false);
+unset($cookiesContent);
 $cookiesArg  = $haveCookies ? ' --cookies ' . escapeshellarg($cookiesPath) : '';
 // Player client choice:
-//   - With cookies: prefer `web` (full formats, accepts cookies). Other clients
-//     fall back automatically. Avoids the `tv` client that yt-dlp picks as a
-//     last resort, which only exposes images.
-//   - Without cookies: try `ios` to evade bot-detection.
+//   - With auth cookies: prefer `web` (full formats, accepts cookies). Other
+//     clients fall back automatically. Avoids the `tv` client that yt-dlp
+//     picks as a last resort, which only exposes images.
+//   - Without auth cookies: try `ios` to evade bot-detection.
 // PO Token provider (bgutil sidecar) defeats Botguard for the `web` client.
 // Joined into the same --extractor-args so yt-dlp parses both keys.
 $potUrl = getenv('POT_PROVIDER_URL') ?: '';
@@ -175,7 +184,24 @@ if (!$rows && $site === 'youtube') {
             foreach ($vttFiles as $f) @unlink($f);
             if (!$rows) $methodFailures[] = "yt_dlp_captions: VTT parsed but produced 0 rows";
         } else {
-            $methodFailures[] = "yt_dlp_captions: yt-dlp produced no VTT — " . substr(trim($output), 0, 300);
+            // Extract the actionable ERROR line if present; fall back to first 300 chars.
+            // Mirrors what the whisper_api section does so captions failures are equally readable.
+            $captErrLine = '';
+            if ($output && preg_match('/^ERROR:.*$/m', $output, $captM)) $captErrLine = $captM[0];
+            $captTail = $captErrLine ?: substr(trim($output), 0, 300);
+            $captReason = 'yt-dlp produced no VTT';
+            if (stripos($output, 'not a bot') !== false || stripos($output, 'confirm you') !== false) {
+                $captReason = 'bot-detection blocked captions download';
+            } elseif (stripos($output, 'age-restricted') !== false || stripos($output, 'age restricted') !== false) {
+                $captReason = 'video is age-restricted';
+            } elseif (stripos($output, 'private video') !== false) {
+                $captReason = 'video is private';
+            } elseif (stripos($output, 'video unavailable') !== false || stripos($output, 'has been removed') !== false) {
+                $captReason = 'video is deleted or unavailable';
+            } elseif (stripos($output, 'no subtitles') !== false || stripos($output, 'no automatic captions') !== false) {
+                $captReason = 'no auto-captions available';
+            }
+            $methodFailures[] = "yt_dlp_captions: $captReason — " . $captTail;
         }
     }
 }
