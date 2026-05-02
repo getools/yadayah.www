@@ -243,12 +243,31 @@ if ($method === 'POST') {
                 $filterIn .= "[{$i}:a]";
             }
             $filter = $filterIn . 'concat=n=' . count($parts) . ':v=0:a=1[out]';
+            // Total duration sum so the progress endpoint can compute fraction.
+            // ffprobe is fast (just header read) so doing it on every part is cheap.
+            $ffprobe = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
+            $totalDur = 0.0;
+            if ($ffprobe) {
+                foreach ($parts as $f) {
+                    $cmdP = escapeshellcmd($ffprobe)
+                          . ' -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 '
+                          . escapeshellarg($f);
+                    $totalDur += (float)trim(shell_exec($cmdP) ?: '0');
+                }
+            }
+            $progressFile = sys_get_temp_dir() . '/finalize_' . $itemKey . '.progress';
+            $durationFile = sys_get_temp_dir() . '/finalize_' . $itemKey . '.duration';
+            @unlink($progressFile);
+            @file_put_contents($durationFile, (string)$totalDur);
             $cmd = escapeshellcmd($ffmpeg) . ' -y' . $inputArgs
                  . ' -filter_complex ' . escapeshellarg($filter)
                  . ' -map ' . escapeshellarg('[out]')
-                 . ' -codec:a libmp3lame -qscale:a 4 -ar 44100 -ac 2 '
-                 . escapeshellarg($finalAbs) . ' 2>&1';
+                 . ' -codec:a libmp3lame -qscale:a 4 -ar 44100 -ac 2'
+                 . ' -progress ' . escapeshellarg($progressFile)
+                 . ' ' . escapeshellarg($finalAbs) . ' 2>&1';
             $out = shell_exec($cmd);
+            @unlink($progressFile);
+            @unlink($durationFile);
             if (!file_exists($finalAbs) || filesize($finalAbs) < 1000) {
                 errorResponse('ffmpeg concat-filter failed: ' . substr(trim($out ?? ''), -300));
             }

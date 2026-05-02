@@ -87,6 +87,15 @@
         </div>
         <div id="banner" style="display:none;"></div>
         <div id="audio-warn" style="display:none;margin-bottom:10px;padding:10px 14px;background:#ffebee;border:2px solid #c00;border-radius:6px;font-size:0.9rem;color:#7a0000;line-height:1.5;"></div>
+        <div id="finalize-progress" style="display:none;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#444;margin-bottom:4px;">
+                <span id="finalize-progress-label">Concatenating + encoding MP3…</span>
+                <span id="finalize-progress-pct">0%</span>
+            </div>
+            <div style="height:10px;background:#eee;border-radius:5px;overflow:hidden;border:1px solid #ddd;">
+                <div id="finalize-progress-fill" style="height:100%;width:0%;background:#27ae60;transition:width 0.3s ease;"></div>
+            </div>
+        </div>
         <div id="controls">
             <button id="continue-btn" style="display:none;" onclick="continueRecording()">▶ Continue Recording</button>
             <button id="pause-btn" style="display:none;" onclick="pauseRecording()">⏸ Pause Recording</button>
@@ -573,6 +582,10 @@
         setStatus('🔧 Concatenating parts + encoding MP3…');
         $('continue-btn').disabled = true;
         $('restart-btn').disabled = true;
+        // Live progress bar driven by ffmpeg's -progress output, polled at
+        // 500ms. Captured here so we can clean it up regardless of how the
+        // fetch resolves.
+        var progressTimer = startFinalizeProgress(itemKey);
         try {
             var res = await fetch(API + '/admin-transcript-upload.php', {
                 method: 'POST', credentials: 'include',
@@ -609,9 +622,44 @@
         } catch (err) {
             setStatus('✗ Finalize failed: ' + err.message);
         } finally {
+            stopFinalizeProgress(progressTimer);
             $('continue-btn').disabled = false;
             $('restart-btn').disabled = false;
         }
+    }
+    // Live ffmpeg progress polling. Reads the server-side progress file every
+    // 500ms; updates the green bar + percentage label. Caller stops the timer
+    // when the finalize POST resolves (success OR failure).
+    function startFinalizeProgress(itemKey) {
+        var box = $('finalize-progress');
+        var fill = $('finalize-progress-fill');
+        var pct = $('finalize-progress-pct');
+        var label = $('finalize-progress-label');
+        box.style.display = '';
+        fill.style.width = '0%';
+        pct.textContent = '0%';
+        label.textContent = 'Concatenating + encoding MP3…';
+        return setInterval(async function() {
+            try {
+                var r = await fetch(API + '/admin-transcript-finalize-progress.php?item_key='
+                                    + itemKey + '&_=' + Date.now(),
+                                    { credentials: 'include', cache: 'no-store' });
+                var d = await r.json();
+                if (d.fraction == null) return;
+                var p = Math.max(0, Math.min(100, d.fraction * 100));
+                fill.style.width = p.toFixed(1) + '%';
+                pct.textContent = p.toFixed(1) + '%';
+                if (d.total_seconds > 0) {
+                    label.textContent = 'Encoding MP3 ' + fmt(d.current_seconds)
+                                      + ' / ' + fmt(d.total_seconds);
+                }
+            } catch (e) {}
+        }, 500);
+    }
+    function stopFinalizeProgress(timer) {
+        if (timer) clearInterval(timer);
+        var box = $('finalize-progress');
+        if (box) box.style.display = 'none';
     }
     // Reset per-item state and (re-)bootstrap the YT player for queue[queueIndex].
     // Reused on initial load and on batch advancement. Stream + once-prompted
