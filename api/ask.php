@@ -137,7 +137,6 @@ $stmt = $pdo->prepare("
     JOIN yy_series s ON s.series_key = p.series_key
     WHERE p.paragraph_tsv @@ plainto_tsquery('english', ?)
       AND p.paragraph_active_flag = true
-      AND v.volume_active_flag = true
       AND p.series_key != ?
     ORDER BY rank DESC
     LIMIT 20
@@ -160,7 +159,6 @@ if (count($contextRows) < 5 && $orQuery) {
         JOIN yy_series s ON s.series_key = p.series_key
         WHERE p.paragraph_tsv @@ to_tsquery('english', ?)
           AND p.paragraph_active_flag = true
-          AND v.volume_active_flag = true
           AND p.series_key != ?
         ORDER BY rank DESC
         LIMIT 20

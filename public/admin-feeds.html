@@ -559,7 +559,7 @@ function loadItems(page) {
         var ths = 'cursor:pointer;user-select:none;';
         var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
         var html = '<table class="feeds-table"><thead><tr>'
-            + '<th>Thumb</th>'
+            + '<th>Thumb<br><button onclick="itemsClearFilters()" style="margin-top:4px;background:#fff;border:1px solid #ccc;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:normal;">Clear filters</button></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_name\')">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
@@ -1768,6 +1768,12 @@ function recSort(col) {
     else { _recSort = col; _recDir = (col === 'title' || col === 'feed') ? 'asc' : 'desc'; }
     loadRecordings(1);
 }
+function itemsClearFilters() {
+    _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:'', key:''};
+    if (window.adminUI) adminUI.saveAll('feeds.filters', _savedFilters);
+    loadItems(1);
+}
+
 function recClearFilters() {
     ['rec-f-key','rec-f-title','rec-f-pub-from','rec-f-pub-to','rec-f-dur-min','rec-f-dur-max'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
