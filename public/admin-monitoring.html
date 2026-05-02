@@ -578,21 +578,24 @@ function renderAutoFixProgress(d) {
 
     var logTail = d.log_tail ? '<details style="margin-top:10px;" open><summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">&#128221; Live log (auto-updating)</summary><pre id="autofix-log-pre" style="background:#1e2230;color:#e0e6f0;border-radius:4px;padding:10px;font-size:0.72rem;margin:6px 0 0;white-space:pre-wrap;max-height:260px;overflow-y:auto;font-family:Consolas,Monaco,monospace;">' + esc(d.log_tail) + '</pre></details>' : '';
 
-    // Claude streaming output — populated by auto-fix-error.php's proc_open
-    // loop while the AI agent is actively investigating an event. Resets
-    // each time a new event passes through the claude-fix branch.
+    // Claude streaming output — always visible during the run so the user
+    // can see SOMETHING is happening. Body fills with the agent's stdout as
+    // it streams; until then it shows the queue-state placeholder.
     var claudeBlock = '';
-    if (d.claude_output) {
+    if (d.state === 'running' || d.state === 'starting' || d.claude_output) {
         var headerTxt = d.claude_event_key
             ? '\u{1F916} Claude working on event #' + d.claude_event_key + ' (live output)'
-            : '\u{1F916} Claude output (live)';
+            : '\u{1F916} Claude output (queueing — host runner picks up next)';
+        var bodyTxt = d.claude_output
+            ? d.claude_output
+            : '[no Claude work yet — pattern triage will pass first, then Claude branches will queue up here]';
         claudeBlock = '<details style="margin-top:10px;" open>'
             + '<summary style="cursor:pointer;font-weight:600;font-size:0.78rem;">' + headerTxt + '</summary>'
             + '<textarea id="autofix-claude-out" readonly '
             + 'style="width:100%;height:240px;margin-top:6px;padding:10px;background:#0e1424;color:#bce0ff;'
             + 'border:1px solid #1f2a44;border-radius:4px;font:0.74rem/1.4 Consolas,Monaco,monospace;'
             + 'white-space:pre;overflow-y:auto;resize:vertical;box-sizing:border-box;">'
-            + esc(d.claude_output) + '</textarea>'
+            + esc(bodyTxt) + '</textarea>'
             + '</details>';
     }
 

@@ -13,6 +13,11 @@
  */
 require_once __DIR__ . '/config.php';
 $user = requireAuth();
+// Release the session lock immediately — this poll endpoint is read-only and
+// must NOT block the finalize POST (or vice versa). Without this, both endpoints
+// serialize on the session file lock and the progress UI is stuck at 0% until
+// the encode completes.
+session_write_close();
 $itemKey = (int)($_GET['item_key'] ?? 0);
 if (!$itemKey) errorResponse('item_key required');
 

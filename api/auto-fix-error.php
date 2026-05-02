@@ -477,69 +477,84 @@ foreach ($errors as $error) {
 
     if (!$codeFixed) {
         // Pattern fixer can't handle this — invoke Claude Code agent on-server to investigate & fix.
-        // Auth must be set up first (see /opt/yada-www/claude-home).
+        // Auth lives on the HOST (claude-fix-runner.sh runs as user claudefix
+        // who owns /opt/yada-www/claude-home/.claude). The web container only
+        // checks that the queue infrastructure is in place.
         $claudeWrapper = $WEB_ROOT . '/api/claude-fix.sh';
-        $hasAuth = file_exists('/var/www/.claude-home/.claude/.credentials.json')
-                || file_exists('/var/www/.claude-home/.config/claude/claude.json');
+        $hasAuth = is_dir('/var/www/html/jobs/claude-fix')
+                || is_writable('/var/www/html/jobs');
         if (file_exists($claudeWrapper) && $hasAuth) {
-            $line = "  [claude-fix] #{$error['event_key']} {$source}: invoking Claude Code agent...";
+            $line = "  [claude-fix] #{$error['event_key']} {$source}: queueing for host runner...";
             echo $line . "\n";
             recordCounter('claude-fix', $line, $counters, $logLines, $STATUS_FILE, $processed, $total, $currentLabel);
-            // Stream Claude's stdout/stderr live into the status file so the
-            // admin UI can render it in a textarea as it happens. Without
-            // this the user just stares at "running" for 30-90 sec per event.
-            $cmd = escapeshellcmd($claudeWrapper) . ' ' . (int)$error['event_key'];
-            $descriptors = [0 => ['file', '/dev/null', 'r'],
-                            1 => ['pipe', 'w'],
-                            2 => ['redirect', 1]];
-            $pipes = [];
-            $proc = proc_open($cmd . ' 2>&1', $descriptors, $pipes);
+            // The web container doesn't have node/claude installed — invoking
+            // claude-fix.sh inline always exited rc=127. Instead, drop a
+            // request file in the bind-mounted queue dir; a host-side cron
+            // (claude-fix-runner.sh) picks it up, runs Claude with full auth,
+            // and writes a streaming log + done marker back to the same dir.
+            // We poll the log file and surface it live in the UI.
+            $queueDir = '/var/www/html/jobs/claude-fix';
+            @mkdir($queueDir, 0775, true);
+            $runId = basename($STATUS_FILE, '.json');
+            $runId = preg_replace('/^autofix_run_/', '', $runId);
+            $suffix = $runId . '_' . (int)$error['event_key'];
+            $reqFile = "$queueDir/req_{$suffix}.json";
+            $logFile = "$queueDir/log_{$suffix}.log";
+            $doneFile = "$queueDir/done_{$suffix}.json";
+            @file_put_contents($reqFile, json_encode([
+                'run_id' => $runId,
+                'event_key' => (int)$error['event_key'],
+                'queued_at' => date('c'),
+            ], JSON_PRETTY_PRINT));
+            @chmod($reqFile, 0664);
+
+            // Poll for the host runner to finish (or timeout). Each iteration
+            // reads the streaming log so the UI textarea fills in as Claude
+            // works. Hard timeout: 10 min per event.
+            $rc = -1;
             $claudeBuf = '';
-            $rc = 0;
+            $start = time();
+            $deadline = $start + 600;
             $lastWrite = 0;
-            if (is_resource($proc)) {
-                stream_set_blocking($pipes[1], false);
-                while (true) {
-                    $status = proc_get_status($proc);
-                    $chunk = stream_get_contents($pipes[1]);
-                    if ($chunk !== false && $chunk !== '') {
-                        $claudeBuf .= $chunk;
-                        // Trim to last 16 KB to keep status file small.
-                        if (strlen($claudeBuf) > 16384) {
-                            $claudeBuf = substr($claudeBuf, -16384);
-                        }
-                    }
-                    // Write status at most once a second to avoid spamming disk.
-                    $now = microtime(true);
-                    if ($now - $lastWrite > 1.0) {
-                        writeStatus($STATUS_FILE, [
-                            'state' => 'running',
-                            'total' => $total,
-                            'processed' => $processed,
-                            'counters' => $counters,
-                            'current' => $currentLabel,
-                            'log_tail' => implode("\n", array_slice($logLines, -30)),
-                            'claude_event_key' => (int)$error['event_key'],
-                            'claude_output' => $claudeBuf,
-                        ]);
-                        $lastWrite = $now;
-                    }
-                    if (!$status['running']) {
-                        $rc = $status['exitcode'];
-                        // Drain any final bytes after the process exits.
-                        $tail = stream_get_contents($pipes[1]);
-                        if ($tail !== false && $tail !== '') {
-                            $claudeBuf .= $tail;
-                            if (strlen($claudeBuf) > 16384) $claudeBuf = substr($claudeBuf, -16384);
-                        }
-                        break;
-                    }
-                    usleep(200000); // 200ms
+            while (time() < $deadline) {
+                if (file_exists($logFile)) {
+                    $contents = @file_get_contents($logFile) ?: '';
+                    $claudeBuf = strlen($contents) > 16384 ? substr($contents, -16384) : $contents;
                 }
-                fclose($pipes[1]);
-                proc_close($proc);
+                $now = microtime(true);
+                if ($now - $lastWrite > 1.0) {
+                    $waited = time() - $start;
+                    writeStatus($STATUS_FILE, [
+                        'state' => 'running',
+                        'total' => $total,
+                        'processed' => $processed,
+                        'counters' => $counters,
+                        'current' => $currentLabel,
+                        'log_tail' => implode("\n", array_slice($logLines, -30)),
+                        'claude_event_key' => (int)$error['event_key'],
+                        'claude_output' => $claudeBuf !== '' ? $claudeBuf
+                            : "[waiting for host runner — $waited s elapsed; cron picks up new requests within 30s]",
+                    ]);
+                    $lastWrite = $now;
+                }
+                if (file_exists($doneFile)) {
+                    $done = json_decode(@file_get_contents($doneFile), true) ?: [];
+                    $rc = (int)($done['rc'] ?? -1);
+                    // Final read of the log
+                    if (file_exists($logFile)) {
+                        $contents = @file_get_contents($logFile) ?: '';
+                        $claudeBuf = strlen($contents) > 16384 ? substr($contents, -16384) : $contents;
+                    }
+                    break;
+                }
+                sleep(1);
             }
-            // Final status with full output for this event captured.
+            if ($rc < 0) {
+                // Timed out
+                $claudeBuf .= "\n[PHP-side timeout: 600s elapsed without done marker]";
+                @file_put_contents($doneFile, json_encode(['rc' => 124, 'timeout' => true]));
+            }
+            // Final status snapshot for this event
             writeStatus($STATUS_FILE, [
                 'state' => 'running',
                 'total' => $total,

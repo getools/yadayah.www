@@ -215,6 +215,11 @@ if ($method === 'POST') {
     }
 
     if ($action === 'autofix_status') {
+        // Read-only poll — release the session lock immediately so it
+        // doesn't serialize against the long-running ?action=autofix POST
+        // that's still in PHP's polling loop holding the session file open.
+        // Without this the status JSON appears frozen until the run finishes.
+        session_write_close();
         $runId = preg_replace('/[^a-f0-9]/', '', $_GET['run_id'] ?? '');
         if (!$runId) errorResponse('run_id required', 400);
         $statusFile = "/tmp/autofix_run_{$runId}.json";

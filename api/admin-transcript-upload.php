@@ -265,6 +265,10 @@ if ($method === 'POST') {
                  . ' -codec:a libmp3lame -qscale:a 4 -ar 44100 -ac 2'
                  . ' -progress ' . escapeshellarg($progressFile)
                  . ' ' . escapeshellarg($finalAbs) . ' 2>&1';
+            // Release the session lock before ffmpeg blocks for many seconds —
+            // otherwise the JS progress-poll endpoint serializes behind us and
+            // the UI stays at 0% for the entire encode.
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
             $out = shell_exec($cmd);
             @unlink($progressFile);
             @unlink($durationFile);
