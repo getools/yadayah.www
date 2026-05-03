@@ -185,8 +185,6 @@ if (!$rows && $site === 'youtube') {
             if (!$rows) {
                 $methodFailures[] = "yt_dlp_captions: VTT parsed but produced 0 rows";
             } else {
-                file_put_contents("/tmp/dbg_cov.log", date("H:i:s") . " enter: rows=" . count($rows) . " dur=" . (int)($job["feed_item_duration_seconds"] ?? 0) . "
-", FILE_APPEND);
                 // Coverage check: if last caption ends well before the video duration,
                 // the captions are partial (e.g. YouTube auto-captions still generating
                 // for a recent upload). Fall through to Whisper instead of treating
@@ -262,6 +260,27 @@ if (!$rows) {
             foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'] as $ext) {
                 $cand = "$uploadDir/{$itemKey}.{$ext}";
                 if (file_exists($cand) && filesize($cand) > 10000) { $uploadedAudio = $cand; break; }
+            }
+        }
+        if ($uploadedAudio) {
+            // Verify the upload actually covers the full video. Browser-recorded
+            // .webm captures and partial admin uploads sometimes land here much
+            // shorter than the source video — using them silently produces a
+            // transcript that only covers the first minute or two.
+            $videoDur = (int)($job['feed_item_duration_seconds'] ?? 0);
+            $audioDur = 0;
+            $probe = shell_exec('ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ' . escapeshellarg($uploadedAudio) . ' 2>/dev/null');
+            if (is_numeric(trim($probe ?? ''))) {
+                $audioDur = (int)trim($probe);
+            } else {
+                $probe2 = shell_exec('ffmpeg -i ' . escapeshellarg($uploadedAudio) . ' -f null - 2>&1 | tail -2');
+                if ($probe2 && preg_match('/time=(\d+):(\d+):(\d+)/', $probe2, $tm)) {
+                    $audioDur = (int)$tm[1]*3600 + (int)$tm[2]*60 + (int)$tm[3];
+                }
+            }
+            if ($videoDur > 60 && $audioDur > 0 && ($audioDur / $videoDur) < 0.8) {
+                $methodFailures[] = "whisper_api: uploaded audio (" . basename($uploadedAudio) . ") is only " . round($audioDur / $videoDur * 100) . "% of video duration ($audioDur s of $videoDur s) — likely partial recording";
+                $uploadedAudio = null;
             }
         }
         if ($uploadedAudio) {

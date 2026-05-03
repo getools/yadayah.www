@@ -166,13 +166,16 @@ if ($items) {
     unset($it);
 }
 
-// All active pages — used to render the checkbox filter under the Pages
-// column header. Returns the same shape as the per-item pages.
+// Pages that actually have at least one feed_item associated with them —
+// used to render the checkbox filter under the Pages column header. Filtering
+// the active-pages list by EXISTS in yy_feed_item_page avoids cluttering
+// the UI with pages that would never narrow the result set.
 $allPagesStmt = $db->query("
-    SELECT page_key, page_code, page_title
-      FROM yy_page
-     WHERE page_active_flag IS DISTINCT FROM FALSE
-     ORDER BY page_header_sort, page_key");
+    SELECT p.page_key, p.page_code, p.page_title
+      FROM yy_page p
+     WHERE p.page_active_flag IS DISTINCT FROM FALSE
+       AND EXISTS (SELECT 1 FROM yy_feed_item_page fip WHERE fip.page_key = p.page_key)
+     ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();
 
 $feedsStmt = $db->query("

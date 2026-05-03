@@ -293,6 +293,58 @@ function dataCell(v) {
          + '</div>';
 }
 
+// FlipHTML5-specific cell. Distinguishes the four states that artifactCell
+// collapsed into a single "—":
+//   - flip_code present       → ✓ (or ↻ if stale vs. PDF, or ⏳ if regenerating)
+//   - PDF present, no code, status=error    → ✗ "failed" with tooltip
+//   - PDF present, no code, status=success  → ⌛ "skipped" (pipeline ran but
+//                                              FlipHTML5 step was disabled at the time)
+//   - PDF present, no code, no/queued status → ⌛ "pending"
+//   - No PDF, no code         → — (truly missing input)
+// The last three all flag "needs flipbook processing" so the operator knows
+// what's queued or stuck.
+function flipCell(v) {
+    var ps = (v.volume_pipeline_status || '').toLowerCase();
+    var inProc = PROC_STATES.indexOf(ps) >= 0;
+    var hasFlip = !!v.volume_flip_code;
+    var hasPdf  = !!v.volume_pdf;
+
+    // Flip artifact exists — defer to the standard stale/✓ rendering.
+    if (hasFlip) {
+        return artifactCell(true, v.volume_flip_mtime, v.volume_pdf_mtime, ps, 'FlipHTML5');
+    }
+    // No PDF yet → nothing to flip, plain missing.
+    if (!hasPdf) {
+        if (inProc) {
+            return '<div class="status-cell proc-pulse">'
+                 + '<span class="status-icon status-proc" title="Pipeline running (' + esc(ps) + ')">⏳</span>'
+                 + '<div class="age">processing</div></div>';
+        }
+        return '<div class="status-cell"><span class="status-icon status-miss" title="No PDF yet — upload DOCX first">—</span></div>';
+    }
+    // PDF exists, flip_code missing — surface the reason it's pending.
+    if (inProc) {
+        return '<div class="status-cell proc-pulse">'
+             + '<span class="status-icon status-proc" title="FlipHTML5 upload in flight (' + esc(ps) + ')">⏳</span>'
+             + '<div class="age">uploading</div></div>';
+    }
+    if (ps === 'error') {
+        var msg = v.volume_pipeline_message || 'unknown error';
+        return '<div class="status-cell">'
+             + '<span class="status-icon status-stale" title="FlipHTML5 upload failed: ' + esc(msg) + '">✗</span>'
+             + '<div class="age" style="color:#c0392b;">failed</div></div>';
+    }
+    if (ps === 'success') {
+        return '<div class="status-cell">'
+             + '<span class="status-icon" style="color:#a36100;" title="Pipeline finished but FlipHTML5 upload was skipped: ' + esc(v.volume_pipeline_message || '') + '">⌛</span>'
+             + '<div class="age" style="color:#a36100;">skipped</div></div>';
+    }
+    // Default: never tried.
+    return '<div class="status-cell">'
+         + '<span class="status-icon" style="color:#a36100;" title="PDF ready — flipbook upload pending">⌛</span>'
+         + '<div class="age" style="color:#a36100;">pending</div></div>';
+}
+
 function artifactCell(field, mtime, sourceMtime, pipelineStatus, label) {
     var ps = (pipelineStatus || '').toLowerCase();
     var inProc = PROC_STATES.indexOf(ps) >= 0;
@@ -338,10 +390,47 @@ function renderBooks() {
     var container = document.getElementById('table-container');
     if (!allSeries.length) { container.innerHTML = '<div style="text-align:center;padding:30px;color:#888">No series found.</div>'; return; }
 
+    // Banner: count volumes whose flipbook upload is pending. Categorize by
+    // reason so the operator knows where the work is. Click the banner to
+    // jump-scroll the first pending volume into view.
+    var pending = { failed: [], skipped: [], pending: [] };
+    allVolumes.forEach(function(v) {
+        if (v.volume_flip_code || !v.volume_pdf) return;
+        var ps = (v.volume_pipeline_status || '').toLowerCase();
+        if (PROC_STATES.indexOf(ps) >= 0) return; // currently processing — not "pending"
+        if (ps === 'error')        pending.failed.push(v);
+        else if (ps === 'success') pending.skipped.push(v);
+        else                       pending.pending.push(v);
+    });
+    var totalPending = pending.failed.length + pending.skipped.length + pending.pending.length;
+    var banner = '';
+    if (totalPending > 0) {
+        var firstKey = (pending.failed[0] || pending.skipped[0] || pending.pending[0]).volume_key;
+        var parts = [];
+        if (pending.failed.length)  parts.push('<span style="color:#c0392b;">✗ ' + pending.failed.length + ' failed</span>');
+        if (pending.skipped.length) parts.push('<span style="color:#a36100;">⌛ ' + pending.skipped.length + ' skipped</span>');
+        if (pending.pending.length) parts.push('<span style="color:#a36100;">⌛ ' + pending.pending.length + ' never run</span>');
+        var tipLines = [];
+        ['failed', 'skipped', 'pending'].forEach(function(cat) {
+            pending[cat].forEach(function(v) {
+                tipLines.push((cat === 'failed' ? '✗' : '⌛') + ' ' + v.volume_label
+                            + (v.volume_pipeline_message ? ' — ' + v.volume_pipeline_message : ''));
+            });
+        });
+        banner = '<div onclick="document.querySelector(\'tr[data-vol-key=&quot;' + firstKey + '&quot;]\').scrollIntoView({block:\'center\',behavior:\'smooth\'})" '
+               + 'style="margin:0 0 10px;padding:10px 14px;background:#fff8e1;border:1px solid #f5d76e;border-radius:6px;font-size:0.85rem;cursor:pointer;" '
+               + 'title="' + esc(tipLines.join('\n')) + '">'
+               + '<strong>' + totalPending + ' flipbook' + (totalPending === 1 ? '' : 's') + ' need processing:</strong> '
+               + parts.join(' &middot; ')
+               + ' <span style="color:#888;">(click to jump to first)</span>'
+               + '</div>';
+    }
+
     // ONE table for all series; series rows span the whole width and act as
     // visual section dividers. Fixed column widths are honored across every
     // group so DOCX/PDF/FLIP/Status icons line up vertically down the page.
-    var html = '<table class="books-table">'
+    var html = banner
+        + '<table class="books-table">'
         + '<colgroup>'
         + '<col style="width:42px;">'         // #
         + '<col>'                              // Label (flex)
@@ -388,14 +477,14 @@ function renderBooks() {
             var ps = v.volume_pipeline_status;
             // Source-mtime chain: PDF's source is the DOCX; FLIP's source is
             // the PDF (and transitively the DOCX). DOCX has no upstream.
-            html += '<tr class="volume-row" onclick="editVolume(' + v.volume_key + ')">'
+            html += '<tr class="volume-row" data-vol-key="' + v.volume_key + '" onclick="editVolume(' + v.volume_key + ')">'
                 + '<td>' + (v.volume_number || '') + '</td>'
                 + '<td><strong>' + esc(v.volume_label) + '</strong></td>'
                 + '<td style="font-size:0.8rem;color:#666;">' + esc(v.volume_name || '') + '</td>'
                 + '<td>' + (v.volume_page_count || '') + '</td>'
                 + '<td>' + artifactCell(!!v.volume_docx,      v.volume_docx_mtime, null,                  ps, 'DOCX')      + '</td>'
                 + '<td>' + artifactCell(!!v.volume_pdf,       v.volume_pdf_mtime,  v.volume_docx_mtime,   ps, 'PDF')       + '</td>'
-                + '<td>' + artifactCell(!!v.volume_flip_code, v.volume_flip_mtime, v.volume_pdf_mtime,    ps, 'FlipHTML5') + '</td>'
+                + '<td>' + flipCell(v) + '</td>'
                 + '<td>' + dataCell(v) + '</td>'
                 + '<td>' + (v.volume_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>') + '</td>'
                 + '<td class="actions" onclick="event.stopPropagation()">'
