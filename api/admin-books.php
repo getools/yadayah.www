@@ -106,6 +106,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
            SET volume_docx = ?,
                volume_pipeline_status = 'queued',
                volume_pipeline_message = 'Awaiting host worker (libreoffice + fliphtml5)',
+               volume_pipeline_retry_count = 0,
                volume_parse_status = 'queued',
                volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
                volume_revision_dtime = NOW()
@@ -141,6 +142,49 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
         'job_queued'  => basename($jobFile),
         'message'     => 'Uploaded. Conversion + FlipHTML5 build will run on the host (typically 1–3 minutes).',
     ]);
+}
+
+// Manual retry of a failed pipeline. Resets retry_count, flips status back
+// to 'queued', and drops a fresh job file. Used by the Books admin UI when
+// auto-retry exhausts its 3-attempt cap or when status is 'error' otherwise.
+if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
+                            || (json_decode(file_get_contents('php://input'), true)['action'] ?? '') === 'retry_pipeline')) {
+    if (!$key) {
+        $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $key = (int)($body['volume_key'] ?? 0);
+    }
+    if (!$key) errorResponse('Volume key required');
+
+    $volStmt = $db->prepare("SELECT volume_key, volume_docx, volume_pdf FROM yy_volume WHERE volume_key = ?");
+    $volStmt->execute([$key]);
+    $vol = $volStmt->fetch();
+    if (!$vol)               errorResponse('Volume not found', 404);
+    if (!$vol['volume_docx']) errorResponse('Volume has no docx — upload one before retrying');
+
+    $db->prepare("
+        UPDATE yy_volume
+           SET volume_pipeline_status = 'queued',
+               volume_pipeline_message = 'Manually requeued by admin',
+               volume_pipeline_retry_count = 0,
+               volume_revision_dtime = NOW()
+         WHERE volume_key = ?
+    ")->execute([$key]);
+
+    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+    $jobsDir    = $publicRoot . '/jobs/book-pipeline';
+    if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
+    $pdfName = $vol['volume_pdf'] ?: (pathinfo($vol['volume_docx'], PATHINFO_FILENAME) . '.pdf');
+    $jobPayload = [
+        'volume_key'   => (int)$key,
+        'docx_name'    => $vol['volume_docx'],
+        'pdf_name'     => $pdfName,
+        'flip_code'    => null,
+        'queued_at'    => date('c'),
+        'manual_retry' => true,
+    ];
+    $jobFile = $jobsDir . '/' . sprintf('%010d', $key) . '_retry_' . time() . '.json';
+    @file_put_contents($jobFile, json_encode($jobPayload, JSON_PRETTY_PRINT));
+    jsonResponse(['queued' => true, 'job' => basename($jobFile), 'message' => 'Pipeline requeued — runs on next host worker tick (≤1 min).']);
 }
 
 if ($method === 'POST') {

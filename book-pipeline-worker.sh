@@ -155,35 +155,45 @@ process_job() {
     # The conversion runs inside a transient systemd scope with hard memory
     # cap; OOMs become a clean cgroup kill (exit 137) instead of taking down
     # the whole host.
-    local tmp_out lo_output lo_rc
-    tmp_out=$(mktemp -d)
-    lo_output=$(systemd-run --scope --quiet \
-        --property=MemoryMax=$SOFFICE_MEM_MAX \
-        --property=MemorySwapMax=0 \
-        --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-        env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
-    lo_rc=${lo_rc:-0}
-    echo "$lo_output" >> /var/log/book-pipeline.log
+    # On retry (after FlipHTML5 auto-requeue) the PDF is already on disk —
+    # skip LibreOffice so retries don't waste 30-60s re-converting an
+    # unchanged docx.
+    local tmp_out="" lo_output="" lo_rc=0
+    if [ -f "$PDF_DIR/$pdf_name" ] && [ -s "$PDF_DIR/$pdf_name" ]; then
+        log "PDF already on disk — skipping LibreOffice (retry path): $PDF_DIR/$pdf_name"
+    else
+        tmp_out=$(mktemp -d)
+        lo_output=$(systemd-run --scope --quiet \
+            --property=MemoryMax=$SOFFICE_MEM_MAX \
+            --property=MemorySwapMax=0 \
+            --property=CPUQuota=$SOFFICE_CPU_QUOTA \
+            env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
+        lo_rc=${lo_rc:-0}
+        echo "$lo_output" >> /var/log/book-pipeline.log
+    fi
     if [ "$lo_rc" -ne 0 ]; then
         log "LibreOffice failed for $docx_name (exit $lo_rc)"
         update_status "$volume_key" "error" "LibreOffice conversion failed (exit $lo_rc)" "$lo_output"
         mv "$job" "$JOBS_DIR/failed/"
-        rm -rf "$tmp_out"
+        [ -n "$tmp_out" ] && rm -rf "$tmp_out"
         return
     fi
-    local generated
-    generated=$(ls "$tmp_out"/*.pdf 2>/dev/null | head -1)
-    if [ -z "$generated" ] || [ ! -f "$generated" ]; then
-        log "LibreOffice produced no PDF"
-        update_status "$volume_key" "error" "LibreOffice produced no output" "$lo_output"
-        mv "$job" "$JOBS_DIR/failed/"
-        rm -rf "$tmp_out"
-        return
+    if [ ! -f "$PDF_DIR/$pdf_name" ] || [ ! -s "$PDF_DIR/$pdf_name" ]; then
+        # Only when LibreOffice ran (skipped on retry path where PDF existed).
+        local generated
+        generated=$(ls "${tmp_out:-/nonexistent}"/*.pdf 2>/dev/null | head -1)
+        if [ -z "$generated" ] || [ ! -f "$generated" ]; then
+            log "LibreOffice produced no PDF"
+            update_status "$volume_key" "error" "LibreOffice produced no output" "$lo_output"
+            mv "$job" "$JOBS_DIR/failed/"
+            [ -n "$tmp_out" ] && rm -rf "$tmp_out"
+            return
+        fi
+        mv "$generated" "$PDF_DIR/$pdf_name"
+        chmod 644 "$PDF_DIR/$pdf_name" 2>/dev/null
+        log "PDF written: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
     fi
-    mv "$generated" "$PDF_DIR/$pdf_name"
-    chmod 644 "$PDF_DIR/$pdf_name" 2>/dev/null
-    rm -rf "$tmp_out"
-    log "PDF written: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
+    [ -n "$tmp_out" ] && rm -rf "$tmp_out"
 
     update_outputs "$volume_key" "$pdf_name" ""
     update_status "$volume_key" "running" "PDF generated; uploading to FlipHTML5"
@@ -277,8 +287,29 @@ process_job() {
                 update_status "$volume_key" "warning" "PDF + FlipHTML5 done; offline package download failed (exit $dl_rc)" "$dl_output"
             fi
         else
-            log "FlipHTML5 upload failed (exit $up_rc, no flip_code returned)"
-            update_status "$volume_key" "error" "FlipHTML5 upload failed (exit $up_rc)" "$up_output"
+            # Auto-requeue on transient FlipHTML5 failure (Puppeteer flake,
+            # site CAPTCHA, selector timing). Cap at 3 so a permanently broken
+            # upload doesn't loop forever.
+            local retry_max=3
+            local retry_now
+            retry_now=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -t -A -c \
+                "UPDATE yy_volume SET volume_pipeline_retry_count = COALESCE(volume_pipeline_retry_count, 0) + 1
+                 WHERE volume_key = $volume_key
+                 RETURNING volume_pipeline_retry_count" 2>/dev/null | tr -d '[:space:]')
+            retry_now=${retry_now:-99}
+            if [ "$retry_now" -lt "$retry_max" ]; then
+                log "FlipHTML5 upload failed (exit $up_rc) — auto-requeueing (attempt $retry_now/$retry_max)"
+                update_status "$volume_key" "queued" \
+                    "FlipHTML5 upload failed (exit $up_rc) — auto-retry $retry_now/$retry_max queued" \
+                    "$up_output"
+                # Leave the job file in JOBS_DIR for the next cron tick.
+                return 0
+            else
+                log "FlipHTML5 upload failed (exit $up_rc) — retry cap ($retry_max) reached, marking error"
+                update_status "$volume_key" "error" \
+                    "FlipHTML5 upload failed (exit $up_rc) after $retry_max retries — manual intervention required" \
+                    "$up_output"
+            fi
         fi
     else
         log "Skipping FlipHTML5 (rsshub container or fliphtml5-upload.cjs missing)"

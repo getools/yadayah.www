@@ -528,8 +528,19 @@ function showVolumeForm(record) {
     if (r.volume_pipeline_status) {
         var color = r.volume_pipeline_status === 'success' ? '#27ae60'
                   : r.volume_pipeline_status === 'error' ? '#c0392b' : '#888';
-        docxStatus.innerHTML = '<span style="color:' + color + '">Pipeline: ' + esc(r.volume_pipeline_status)
-                             + (r.volume_pipeline_message ? ' &mdash; ' + esc(r.volume_pipeline_message) : '') + '</span>';
+        var statusHtml = '<span style="color:' + color + '">Pipeline: ' + esc(r.volume_pipeline_status)
+                       + (r.volume_pipeline_message ? ' &mdash; ' + esc(r.volume_pipeline_message) : '') + '</span>';
+        // Manual Retry Pipeline button — surfaces next to the FlipHTML5
+        // failure message when auto-retry exhausted its 3-attempt cap (or any
+        // 'error'/'warning' state). Skips re-converting the docx if the PDF
+        // is already on disk, so it's cheap to click.
+        var ps = (r.volume_pipeline_status || '').toLowerCase();
+        if (ps === 'error' || ps === 'warning') {
+            statusHtml += ' <button type="button" onclick="retryPipeline(' + r.volume_key + ', this)" '
+                       + 'title="Requeue the pipeline (LibreOffice + FlipHTML5 + offline package). Runs on the next host worker tick." '
+                       + 'style="margin-left:8px;background:#fff3a8;border:1px solid #e0c000;color:#8a6d00;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;">⟳ Retry Pipeline</button>';
+        }
+        docxStatus.innerHTML = statusHtml;
     } else {
         docxStatus.textContent = '';
     }
@@ -576,6 +587,30 @@ function deleteVolume(key, label) {
     if (!confirm('Delete volume "' + label + '"?')) return;
     fetch(API + '/admin-books.php?key=' + key, {method:'DELETE', credentials:'include'})
     .then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} loadBooks(); });
+}
+
+// Manually requeue the book pipeline. Used when auto-retry exhausted its 3
+// attempts or the operator wants to kick a stuck job from the edit form.
+function retryPipeline(volumeKey, btn) {
+    if (!confirm('Requeue the book pipeline for this volume? It will run within ~1 minute on the host worker.')) return;
+    var orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Queueing…'; }
+    fetch(API + '/admin-books.php?action=retry_pipeline&key=' + volumeKey, {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action:'retry_pipeline', volume_key: volumeKey})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) {
+            alert('Retry failed: ' + d.error);
+            if (btn) { btn.disabled = false; btn.textContent = orig; }
+            return;
+        }
+        if (btn) { btn.textContent = '✓ Queued'; btn.style.background = '#d4edda'; btn.style.borderColor = '#a3d4ad'; btn.style.color = '#155724'; }
+        if (typeof loadBooks === 'function') loadBooks();
+    }).catch(function(err) {
+        alert('Retry failed: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+    });
 }
 
 function uploadDocx() {
