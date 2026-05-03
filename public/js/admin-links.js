@@ -84,7 +84,6 @@ var PAGE_SETTING_MAP = {
     'admin-word.html': 'word',
     'admin-lookups.html': 'lookups',
     'admin-ask.html': 'ask',
-    'admin-transcripts.html': 'transcripts',
     'admin-timeline.html': 'timeline',
     'admin-memorial.html': 'memorial',
     'admin-media.html': 'media',

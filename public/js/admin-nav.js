@@ -27,7 +27,6 @@ var tabs = [
     ['admin-glossary.html', 'Glossary'],
     ['admin-lookups.html', 'Lookups'],
     ['admin-ask.html', 'Ask'],
-    ['admin-transcripts.html', 'Transcripts'],
     ['admin-timeline.html', 'Timeline'],
     ['admin-memorial.html', 'Memorial'],
     ['admin-media.html', 'Media'],
