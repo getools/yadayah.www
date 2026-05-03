@@ -14,14 +14,6 @@ RewriteRule (\.git/|\.svn/|\.env|\.DS_Store|\.htpasswd|/config\.php\.|/db\.php\.
 # rule evaluation), so the LHS uses spaces and the RHS uses hyphens. Only
 # the historically-spaced PDFs are listed; unrelated /pdf/* URLs fall
 # through normally.
-#
-# Mark the response uncacheable for any /pdf/ URL containing a literal
-# space (i.e. came in as %20). Otherwise Cloudflare can pin a stale 200-OK
-# or a stale 301 mapping for hours, defeating new redirects after a rename.
-<IfModule mod_headers.c>
-    SetEnvIf Request_URI " " PDF_HAS_SPACE=1
-    Header always set Cache-Control "no-store, must-revalidate" env=PDF_HAS_SPACE
-</IfModule>
 RewriteRule "^pdf/YY-s01v01-An Intro to God-Dabarym-Words\.pdf$"           "/pdf/YY-s01v01-An-Intro-to-God-Dabarym-Words.pdf"           [R=301,L]
 RewriteRule "^pdf/YY-s01v02-An Intro to God-Mitswah-Instructions\.pdf$"    "/pdf/YY-s01v02-An-Intro-to-God-Mitswah-Instructions.pdf"    [R=301,L]
 RewriteRule "^pdf/YY-s01v03-An Intro to God-Towrah Mizmowr\.pdf$"          "/pdf/YY-s01v03-An-Intro-to-God-Towrah-Mizmowr.pdf"          [R=301,L]
