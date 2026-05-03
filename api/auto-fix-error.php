@@ -16,7 +16,15 @@ set_time_limit(0); // background-safe, no PHP wall-clock limit
 
 $WEB_ROOT = '/var/www/html';
 $MAX_TRIAGE = 1000;
+// run_id arrives as argv[1] from the admin-monitoring "Auto-Fix" button.
+// When auto-fix-error.php runs from cron there's no caller to provide one,
+// so we synthesize a stable id ourselves. Without this, claude-fix
+// requests dropped into the host queue carried run_id="" and the host
+// runner couldn't correlate them — events stayed unresolved silently.
 $RUN_ID = $argv[1] ?? '';
+if ($RUN_ID === '') {
+    $RUN_ID = 'cron_' . date('Ymd_His') . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+}
 // Status file lives in a bind-mounted dir so the host-side claude-fix-runner
 // can also update it as it processes queued Claude events asynchronously.
 $STATUS_DIR = '/var/www/html/jobs/autofix';

@@ -52,7 +52,7 @@ fi
 mkdir -p "$HOME/.claude"
 
 # Resource & safety limits
-TIMEOUT_SECS=300
+TIMEOUT_SECS=600
 
 # Fetch error details. Use direct psql if available (when running inside the
 # web container); fall back to `docker exec` against the postgres container
@@ -82,6 +82,10 @@ IFS='|' read -r SOURCE SEVERITY MESSAGE DETAIL FILE REFERER <<< "$ERR_JSON"
 # Detect environment: container (web) vs host (claude-fix-runner). The host
 # has source under /opt/yada-www/{public,api}/; the container sees the same
 # files as /var/www/html/{,api/} via bind mount. Pick the path that exists.
+# Pick CODE_ROOT by checking for the API subdirectory specifically. Plain
+# /var/www/html exists on the host too (default Apache page) but never has
+# a populated /api/ subdir there — only the container does, via the
+# /opt/yada-www/api → /var/www/html/api bind mount.
 if [ -d /var/www/html/api ]; then
     CODE_ROOT=/var/www/html
     DB_QUERY_HINT="DB writes use \`psql\` with PGPASSWORD env var (psql is in PATH)."
@@ -119,7 +123,7 @@ Be concise. End with a one-line summary: 'RESOLVED: ...' or 'UNRESOLVED: ...'.
 
 cd "$CODE_ROOT"
 
-echo "[$(date -u +%FT%TZ)] claude-fix starting for event $EVENT_KEY" >> "$LOG_FILE"
+echo "[$(date -u +%FT%TZ)] claude-fix starting event $EVENT_KEY (CODE_ROOT=$CODE_ROOT, HOME=$HOME, uid=$(id -u))" >> "$LOG_FILE"
 
 # If ANTHROPIC_API_KEY is set, use --bare so claude bypasses OAuth (which
 # may have an expired token) and authenticates strictly via the API key.
@@ -130,9 +134,20 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
     echo "[$(date -u +%FT%TZ)] using --bare + ANTHROPIC_API_KEY auth path" >> "$LOG_FILE"
 fi
 
-# Timeout-wrapped claude invocation
-timeout "$TIMEOUT_SECS" claude $CLAUDE_BARE_FLAG -p "$PROMPT" \
+# Claude's Read/Edit tools default to CWD only. When running on the host,
+# expose /opt/yada-git (commit target) and /var/log (Apache + monitor logs)
+# too. CWD is already CODE_ROOT so /opt/yada-www is implicit.
+CLAUDE_ADD_DIRS=()
+if [ "$CODE_ROOT" = "/opt/yada-www" ]; then
+    [ -d /opt/yada-git ] && CLAUDE_ADD_DIRS+=(--add-dir /opt/yada-git)
+    [ -d /var/log ]      && CLAUDE_ADD_DIRS+=(--add-dir /var/log)
+fi
+
+# Timeout-wrapped claude invocation.
+timeout "$TIMEOUT_SECS" claude $CLAUDE_BARE_FLAG \
+    "${CLAUDE_ADD_DIRS[@]}" \
     --allow-dangerously-skip-permissions \
+    -p "$PROMPT" \
     >> "$LOG_FILE" 2>&1
 RC=$?
 
