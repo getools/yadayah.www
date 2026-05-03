@@ -28,11 +28,11 @@ set -uo pipefail
 #      Python parser) runs inside a transient systemd scope with hard
 #      MemoryMax + CPUQuota. Excess gets cgroup-killed cleanly (logged as
 #      exit 137) instead of starving the box.
-MIN_FREE_MB=2300
+MIN_FREE_MB=2600
 MAX_LOAD=6.0
-SOFFICE_MEM_MAX=2200M
+SOFFICE_MEM_MAX=2600M
 SOFFICE_CPU_QUOTA=50%
-PARSER_MEM_MAX=400M
+PARSER_MEM_MAX=700M
 PARSER_CPU_QUOTA=40%
 
 # Bind-mounted by the web container (host: /opt/yada-www/public/jobs/...,
@@ -235,6 +235,9 @@ process_job() {
             # images/extensions disabled; CPUQuota lets it use one core but yield
             # under load. Inner --js-flags=--max-old-space-size=400 inside the JS
             # is the soft ceiling; this 700M is the hard ceiling.
+            # docker exec doesn't support -v; copy the PDF in, run, then clean up.
+            docker exec "$RSSHUB_CONTAINER" mkdir -p /host_pdf 2>/dev/null || true
+            docker cp "$PDF_DIR/$pdf_name" "$RSSHUB_CONTAINER:/host_pdf/$pdf_name"
             up_output=$(systemd-run --scope --quiet \
                 --property=MemoryMax=700M \
                 --property=MemorySwapMax=0 \
@@ -245,8 +248,8 @@ process_job() {
                     -e FLIP_CODE="$existing_flip" \
                     -e FLIP_EMAIL="$fhx_email" \
                     -e FLIP_PASS="$fhx_pass" \
-                    -v /opt/yada-www/public/pdf:/host_pdf:ro \
                     "$RSSHUB_CONTAINER" node /opt/yada-www/fliphtml5-upload.cjs 2>&1) || up_rc=$?
+            docker exec "$RSSHUB_CONTAINER" rm -f "/host_pdf/$pdf_name" 2>/dev/null || true
             up_rc=${up_rc:-0}
             echo "$up_output" >> /var/log/book-pipeline.log
             flip_code=$(echo "$up_output" | tail -1 | tr -d '[:space:]')
@@ -265,8 +268,9 @@ process_job() {
             local zip_dir="$FLIP_DIR/$flip_code"
             mkdir -p "$zip_dir"
             local dl_output dl_rc
-            dl_output=$(docker exec -e FLIP_CODE="$flip_code" -e OUT_DIR="/host_flip/$flip_code" \
-                -v "$FLIP_DIR:/host_flip" \
+            dl_output=$(docker exec \
+                -e FLIP_CODE="$flip_code" \
+                -e OUT_DIR="/host_flip/$flip_code" \
                 "$RSSHUB_CONTAINER" node /opt/yada-www/fliphtml5-download.cjs 2>&1) || dl_rc=$?
             dl_rc=${dl_rc:-0}
             echo "$dl_output" >> /var/log/book-pipeline.log
