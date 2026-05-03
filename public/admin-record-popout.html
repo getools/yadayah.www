@@ -100,6 +100,7 @@
             <button id="continue-btn" style="display:none;" onclick="continueRecording()">▶ Continue Recording</button>
             <button id="pause-btn" style="display:none;" onclick="pauseRecording()">⏸ Pause Recording</button>
             <button id="restart-btn" style="display:none;" onclick="restartRecording()">⟲ Restart from Beginning</button>
+            <button id="retry-upload-btn" style="display:none;background:#fff3a8;border:1px solid #e0c000;color:#8a6d00;" onclick="retryPendingUpload()">⟳ Retry Upload</button>
             <span id="status"></span>
         </div>
         <div class="hint">
@@ -572,38 +573,99 @@
 
         setStatus((wasAutoCheckpoint ? '💾 Auto-saving progress' : '⬆ Saving recording')
                   + ' — do NOT close the window… (' + (blob.size/1024/1024).toFixed(1) + ' MB)');
-        var fd = new FormData();
-        fd.append('item_key', String(itemKey));
-        fd.append('partial', '1');
-        fd.append('seconds', String(nowSec));
-        fd.append('file', blob, 'rec_' + itemKey + '_' + Date.now() + '.webm');
-        try {
-            var res = await fetch(API + '/admin-transcript-upload.php',
-                                  { method: 'POST', credentials: 'include', body: fd });
-            var d = await res.json();
-            if (d.error) { setStatus('✗ ' + d.error); return; }
-            partCount = (d.partial && d.partial.part_count) || partCount + 1;
+
+        var ok = await uploadPartialWithRetry(blob, nowSec, wasAutoCheckpoint);
+        uploadInFlight = false;
+        autoCheckpointPending = false;
+
+        if (ok) {
+            pendingBlob = null;
             lastRecordedSeconds = nowSec;
             $('banner').style.display = '';
             $('banner').innerHTML = bannerText(nowSec);
-            pendingBlob = null;
+            if ($('retry-upload-btn')) $('retry-upload-btn').style.display = 'none';
             if (atEnd) {
                 setStatus('🎬 Video ended — finalizing audio…');
                 await finalizeNow(true);
             } else if (wasAutoCheckpoint) {
                 setStatus('💾 Auto-saved at ' + fmt(nowSec) + ' — resuming…');
-                autoCheckpointPending = false;
                 // Resume playback; PLAYING handler will restart the recorder
                 // using the cached stream (no new permission prompt).
                 try { ytPlayer.playVideo(); } catch (e) {}
             } else {
                 setStatus('✓ Saved part at ' + fmt(nowSec) + ' — safe to close window.');
             }
-        } catch (err) {
-            setStatus('✗ Upload failed: ' + err.message);
-        } finally {
-            uploadInFlight = false;
-            autoCheckpointPending = false;
+        } else {
+            // pendingBlob + pendingSeconds remain set so the user can hit
+            // Retry Upload — or close and reopen the popout to resume.
+            if ($('retry-upload-btn')) $('retry-upload-btn').style.display = '';
+        }
+        updateControls();
+    }
+
+    // POST one part with bounded retries and exponential backoff. Returns true
+    // on success, false if every attempt failed. The HTTP status is checked
+    // explicitly because fetch() only rejects on network errors — a 5xx still
+    // resolves the promise, so a manual ok-guard is needed before res.json().
+    async function uploadPartialWithRetry(blob, seconds, wasAutoCheckpoint) {
+        var maxAttempts = 4;
+        var backoffs = [0, 2000, 5000, 15000]; // ms before each attempt
+        for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (backoffs[attempt - 1] > 0) {
+                setStatus('⟳ Retrying upload (attempt ' + attempt + '/' + maxAttempts + ') in '
+                          + (backoffs[attempt - 1] / 1000) + 's…');
+                await new Promise(function(r) { setTimeout(r, backoffs[attempt - 1]); });
+            }
+            var fd = new FormData();
+            fd.append('item_key', String(itemKey));
+            fd.append('partial', '1');
+            fd.append('seconds', String(seconds));
+            fd.append('file', blob, 'rec_' + itemKey + '_' + Date.now() + '.webm');
+            try {
+                var res = await fetch(API + '/admin-transcript-upload.php',
+                                      { method: 'POST', credentials: 'include', body: fd });
+                if (!res.ok) {
+                    setStatus('✗ Server returned ' + res.status + ' on attempt ' + attempt);
+                    continue; // 4xx/5xx — try again
+                }
+                var d = await res.json();
+                if (d.error) {
+                    // Application-level error from the server (e.g. file
+                    // validation). Don't retry — surface it.
+                    setStatus('✗ ' + d.error);
+                    return false;
+                }
+                partCount = (d.partial && d.partial.part_count) || partCount + 1;
+                return true;
+            } catch (err) {
+                // Network failure (DNS, connection reset, CORS, timeout).
+                setStatus('✗ Upload attempt ' + attempt + '/' + maxAttempts + ' failed: ' + err.message);
+            }
+        }
+        setStatus('✗ Upload failed after ' + maxAttempts + ' attempts. Click Retry Upload to try again.');
+        return false;
+    }
+
+    // Manual retry of a still-pending blob — exposed via the Retry Upload
+    // button that appears when uploadPartialWithRetry has exhausted attempts.
+    async function retryPendingUpload() {
+        if (!pendingBlob) {
+            setStatus('Nothing to retry.');
+            return;
+        }
+        if (uploadInFlight) return;
+        uploadInFlight = true;
+        if ($('retry-upload-btn')) $('retry-upload-btn').style.display = 'none';
+        var ok = await uploadPartialWithRetry(pendingBlob, pendingSeconds, false);
+        uploadInFlight = false;
+        if (ok) {
+            pendingBlob = null;
+            lastRecordedSeconds = pendingSeconds;
+            $('banner').style.display = '';
+            $('banner').innerHTML = bannerText(pendingSeconds);
+            setStatus('✓ Retry succeeded — saved part at ' + fmt(pendingSeconds) + '.');
+        } else {
+            if ($('retry-upload-btn')) $('retry-upload-btn').style.display = '';
         }
         updateControls();
     }
