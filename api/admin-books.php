@@ -287,10 +287,16 @@ if ($method === 'POST') {
     $rawCode = trim($data['volume_code'] ?? '');
     $code = $rawCode !== '' ? $canonCode($rawCode) : null;
 
+    // Clamp ask_rating to the 0-100 range the DB CHECK enforces. Default 50
+    // matches the column default — neutral weight, all books equal.
+    $askRating = isset($data['volume_ask_rating'])
+        ? max(0, min(100, (int)$data['volume_ask_rating']))
+        : 50;
+
     $stmt = $db->prepare("
         INSERT INTO yy_volume (series_key, volume_label, volume_name, volume_number, volume_sort,
-                               volume_code, volume_flip_code, volume_pdf, volume_page_count, volume_active_flag)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
+                               volume_code, volume_flip_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
     $stmt->execute([
         $seriesKey,
@@ -303,6 +309,7 @@ if ($method === 'POST') {
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
         (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
+        $askRating,
     ]);
     jsonResponse(['saved' => true, 'volume_key' => $stmt->fetchColumn()]);
 }
@@ -392,6 +399,12 @@ if ($method === 'PUT') {
     }
     foreach (['series_key', 'volume_number', 'volume_sort', 'volume_page_count'] as $col) {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (int)$data[$col]; }
+    }
+    // ask_rating is bounded 0-100 by a DB CHECK; clamp here too so a malformed
+    // payload returns a friendlier 400 path rather than a constraint violation.
+    if (array_key_exists('volume_ask_rating', $data)) {
+        $fields[] = "volume_ask_rating = ?";
+        $params[] = max(0, min(100, (int)$data['volume_ask_rating']));
     }
     foreach (['volume_active_flag', 'volume_search_flag', 'volume_parse_flag', 'volume_ask_yada_flag'] as $col) {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (bool)$data[$col]; }

@@ -139,6 +139,21 @@
                 <label style="display:block;margin-bottom:4px;"><input type="checkbox" id="f-parse-flag" checked> Parse for <strong>translations / glossary / paragraphs</strong></label>
                 <label style="display:block;"><input type="checkbox" id="f-ask-yada-flag" checked> Include in <strong>Ask Yada</strong> context</label>
             </div>
+            <div class="field">
+                <label>Ask Rating
+                    <span style="font-weight:400;color:#888;font-size:0.78rem;">
+                        — 0 = ignore, 50 = default, 100 = double weight relative to a 50 book
+                    </span>
+                </label>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <input type="range" id="f-ask-rating" min="0" max="100" step="1" value="50"
+                           oninput="document.getElementById('f-ask-rating-num').value = this.value"
+                           style="flex:1;">
+                    <input type="number" id="f-ask-rating-num" min="0" max="100" step="1" value="50"
+                           oninput="document.getElementById('f-ask-rating').value = Math.max(0, Math.min(100, parseInt(this.value)||0))"
+                           style="width:70px;">
+                </div>
+            </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" onclick="saveVolume()">Save</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
@@ -544,6 +559,10 @@ function showVolumeForm(record) {
     document.getElementById('f-search-flag').checked   = r.volume_search_flag    !== false;
     document.getElementById('f-parse-flag').checked    = r.volume_parse_flag     !== false;
     document.getElementById('f-ask-yada-flag').checked = r.volume_ask_yada_flag  !== false;
+    var askRating = (r.volume_ask_rating != null) ? parseInt(r.volume_ask_rating, 10) : 50;
+    if (isNaN(askRating)) askRating = 50;
+    document.getElementById('f-ask-rating').value     = askRating;
+    document.getElementById('f-ask-rating-num').value = askRating;
 
     // DOCX status
     var docxCur = document.getElementById('f-docx-current');
@@ -616,6 +635,7 @@ function saveVolume() {
         volume_search_flag: document.getElementById('f-search-flag').checked,
         volume_parse_flag: document.getElementById('f-parse-flag').checked,
         volume_ask_yada_flag: document.getElementById('f-ask-yada-flag').checked,
+        volume_ask_rating: Math.max(0, Math.min(100, parseInt(document.getElementById('f-ask-rating').value, 10) || 0)),
     };
 
     fetch(API + '/admin-books.php' + (key ? '?key=' + key : ''), {
