@@ -24,6 +24,7 @@
  *   resume_seconds.
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/finalize-helpers.php';
 $user = requireAuth();
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -39,137 +40,8 @@ if (!is_dir($UPLOAD_DIR))   @mkdir($UPLOAD_DIR, 0775, true);
 if (!is_dir($AUDIO_DIR_ABS)) @mkdir($AUDIO_DIR_ABS, 0775, true);
 if (!is_dir($PARTS_DIR_ABS)) @mkdir($PARTS_DIR_ABS, 0775, true);
 
-function existingCaptionFiles(string $dir, int $itemKey): array {
-    $files = [];
-    foreach (glob("$dir/{$itemKey}.*") as $f) {
-        if (is_file($f)) {
-            $files[] = [
-                'name' => basename($f),
-                'size' => filesize($f),
-                'modified_dtime' => date('c', filemtime($f)),
-                'extension' => strtolower(pathinfo($f, PATHINFO_EXTENSION)),
-            ];
-        }
-    }
-    return $files;
-}
-
-function durableAudioInfo(PDO $db, int $itemKey): ?array {
-    $stmt = $db->prepare("SELECT feed_item_audio_file FROM yy_feed_item WHERE feed_item_key = ?");
-    $stmt->execute([$itemKey]);
-    $rel = $stmt->fetchColumn();
-    if (!$rel) return null;
-    $abs = dirname(__DIR__) . '/' . ltrim($rel, '/');
-    if (!is_file($abs)) return ['path' => $rel, 'missing' => true];
-    return [
-        'path' => $rel,
-        'size' => filesize($abs),
-        'modified_dtime' => date('c', filemtime($abs)),
-        'extension' => strtolower(pathinfo($abs, PATHINFO_EXTENSION)),
-    ];
-}
-
-/**
- * Validate an audio file using ffprobe. Returns:
- *   ['ok' => true,  'duration' => float, 'mean_db' => float|null]
- *   ['ok' => false, 'reason' => string]
- *
- * Catches the two ways a recording can be useless:
- *   - corrupt container (ffprobe returns non-zero or no audio stream)
- *   - silent stream (mean_volume below -70 dB → recording captured nothing,
- *     which usually means the user paused tab sharing or had wrong source)
- *
- * Both are auto-rejected at upload time so they never make it into a finalize.
- */
-function validateAudioFile(string $absPath): array {
-    if (!is_file($absPath) || filesize($absPath) < 256) {
-        return ['ok' => false, 'reason' => 'file too small (' . (is_file($absPath) ? filesize($absPath) : 0) . ' bytes)'];
-    }
-    $ffprobe = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
-    if (!$ffprobe) {
-        // Best-effort: without ffprobe, accept the file. Better than blocking uploads.
-        return ['ok' => true, 'duration' => 0.0, 'mean_db' => null];
-    }
-    $cmd = escapeshellcmd($ffprobe)
-         . ' -v error -select_streams a:0 -show_entries stream=codec_type,duration'
-         . ' -of default=noprint_wrappers=1:nokey=1 '
-         . escapeshellarg($absPath) . ' 2>&1';
-    $out = trim(shell_exec($cmd) ?: '');
-    if (stripos($out, 'audio') === false) {
-        return ['ok' => false, 'reason' => 'no audio stream: ' . substr($out, 0, 200)];
-    }
-    $lines = preg_split('/\r?\n/', $out);
-    $duration = 0.0;
-    foreach ($lines as $l) {
-        $l = trim($l);
-        if ($l !== '' && $l !== 'audio' && is_numeric($l)) { $duration = (float)$l; break; }
-    }
-    // Silence check via volumedetect filter on the actual data
-    $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
-    $meanDb = null;
-    if ($ffmpeg) {
-        $cmd2 = escapeshellcmd($ffmpeg) . ' -nostdin -i ' . escapeshellarg($absPath)
-              . ' -af volumedetect -vn -sn -dn -f null - 2>&1';
-        $out2 = shell_exec($cmd2) ?: '';
-        if (preg_match('/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/', $out2, $m)) {
-            $meanDb = (float)$m[1];
-        }
-    }
-    if ($meanDb !== null && $meanDb < -70.0) {
-        return ['ok' => false, 'reason' => 'silent recording (mean ' . $meanDb . ' dB) — tab share probably did not capture audio'];
-    }
-    return ['ok' => true, 'duration' => $duration, 'mean_db' => $meanDb];
-}
-
-function listParts(string $dir, int $itemKey): array {
-    $parts = [];
-    // Parts are usually .webm (from MediaRecorder) but the sync-check tool
-    // creates .mp3 parts when truncating an existing complete recording.
-    // ffmpeg's concat filter handles mixed input formats fine.
-    foreach (glob("$dir/audio_{$itemKey}_part_*.{webm,mp3,m4a,opus,wav,ogg,aac}", GLOB_BRACE) as $f) {
-        if (preg_match('/_part_(\d+)\.[a-z0-9]+$/i', $f, $m)) {
-            $parts[(int)$m[1]] = $f;
-        }
-    }
-    ksort($parts);
-    return $parts; // [n => abs_path, ...]
-}
-
-function partialState(PDO $db, string $partsDir, int $itemKey): array {
-    $parts = listParts($partsDir, $itemKey);
-    $sizes = 0;
-    foreach ($parts as $f) $sizes += filesize($f);
-    $stmt = $db->prepare("SELECT feed_item_audio_resume_seconds FROM yy_feed_item WHERE feed_item_key = ?");
-    $stmt->execute([$itemKey]);
-    $resumeSec = $stmt->fetchColumn();
-    return [
-        'part_count' => count($parts),
-        'parts_size' => $sizes,
-        'resume_seconds' => $resumeSec === null || $resumeSec === false ? null : (int)$resumeSec,
-    ];
-}
-
-function spawnTranscribeJob(PDO $db, int $itemKey, int $userKey): ?int {
-    $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW() WHERE feed_item_key = ? AND job_status IN ('pending', 'running')")
-       ->execute([$itemKey]);
-    $jobStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_job (feed_item_key, job_status, job_message, user_key) VALUES (?, 'pending', 'Auto-triggered after upload', ?) RETURNING feed_item_transcript_job_key");
-    $jobStmt->execute([$itemKey, $userKey]);
-    $jobKey = (int)$jobStmt->fetchColumn();
-    $workerScript = __DIR__ . '/transcript-worker.php';
-    if (file_exists($workerScript)) {
-        $logFile = sys_get_temp_dir() . '/transcript_' . $jobKey . '.log';
-        $cmd = "nohup php " . escapeshellarg($workerScript) . " " . escapeshellarg((string)$jobKey)
-             . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null & echo $!";
-        $pidOut = [];
-        exec($cmd, $pidOut);
-        $pid = (int)($pidOut[0] ?? 0);
-        if ($pid > 0) {
-            $db->prepare("UPDATE yy_feed_item_transcript_job SET job_worker_pid = ? WHERE feed_item_transcript_job_key = ?")
-               ->execute([$pid, $jobKey]);
-        }
-    }
-    return $jobKey;
-}
+// Helper functions live in finalize-helpers.php (shared with the async
+// finalize-worker.php). require_once is at the top of this file.
 
 if ($method === 'GET') {
     $itemKey = (int)($_GET['item_key'] ?? 0);
@@ -194,170 +66,57 @@ if ($method === 'POST') {
         if (!$itemKey) errorResponse('item_key required');
 
         if ($action === 'finalize') {
+            // Cheap up-front check so the user gets an immediate error if
+            // there are no recorded parts to finalize.
             $parts = listParts($PARTS_DIR_ABS, $itemKey);
             if (!$parts) errorResponse('No parts to finalize');
-            // Probe each part. Crucially, we DO NOT unlink anything here —
-            // a probe failure may just mean the part is a MediaRecorder
-            // continuation fragment without its own EBML header, which is
-            // recoverable via byte-concat below. Premature deletion lost a
-            // user's full multi-hour recording in the past.
-            $validParts = [];
-            $invalidParts = [];
-            $skipped = [];
-            foreach ($parts as $idx => $f) {
-                $check = validateAudioFile($f);
-                if ($check['ok']) {
-                    $validParts[$idx] = $f;
-                } else {
-                    $invalidParts[$idx] = $f;
-                    $skipped[] = 'part_' . $idx . ' (' . $check['reason'] . ')';
-                }
-            }
 
-            $stamp = time();
-            $finalRel = $AUDIO_DIR_REL . "/audio_{$itemKey}_{$stamp}.mp3";
-            $finalAbs = $AUDIO_DIR_ABS . "/audio_{$itemKey}_{$stamp}.mp3";
+            // ASYNC pivot (2026-05-03): the encode used to run inline here,
+            // which works on local dev but Cloudflare's 100s gateway timeout
+            // kills any long encode (3h recordings = 10–25 min ffmpeg run)
+            // before we can return JSON — the UI then thinks finalize
+            // failed even though the MP3 was actually saved.
+            //
+            // Now we initialize the state file, fork finalize-worker.php,
+            // and return immediately. The popout polls
+            // admin-transcript-finalize-progress.php for status.
+            $autoTranscribe = !empty($data['auto_transcribe']) ? 1 : 0;
 
-            // Choose an encoding strategy:
-            //   1. All parts validate independently → concat-filter on the
-            //      individual files (handles distinct stop/start sessions).
-            //   2. Any part fails validation → try byte-concat recovery: cat
-            //      every part in order to a single merged.webm and probe it.
-            //      This works for MediaRecorder continuation fragments where
-            //      only part_1 carried the EBML header.
-            //   3. If recovery fails too → encode whatever validates; if
-            //      nothing does, leave parts on disk and error out so the
-            //      operator can inspect.
-            $mergedTmp = null;
-            $encodeInputs = null;
-            $strategy = '';
-            if (count($validParts) === count($parts)) {
-                $encodeInputs = array_values($validParts);
-                $strategy = 'concat-filter (' . count($validParts) . ' independently-valid parts)';
-            } else {
-                $mergedTmp = "$PARTS_DIR_ABS/merged_{$itemKey}_{$stamp}.webm";
-                $fpOut = @fopen($mergedTmp, 'wb');
-                if ($fpOut) {
-                    foreach ($parts as $f) {
-                        $fpIn = @fopen($f, 'rb');
-                        if ($fpIn) { stream_copy_to_stream($fpIn, $fpOut); fclose($fpIn); }
-                    }
-                    fclose($fpOut);
-                }
-                $mergedCheck = is_file($mergedTmp) ? validateAudioFile($mergedTmp) : ['ok' => false, 'reason' => 'merge write failed'];
-                if ($mergedCheck['ok']) {
-                    $encodeInputs = [$mergedTmp];
-                    $strategy = 'byte-concat-recovery (' . count($parts) . ' parts -> '
-                              . round(filesize($mergedTmp)/1024/1024, 2) . ' MB merged.webm; '
-                              . count($skipped) . ' would have failed independent probe)';
-                } else {
-                    @unlink($mergedTmp);
-                    $mergedTmp = null;
-                    if (!$validParts) {
-                        logMonitorEvent('transcript_upload', 'error',
-                            'Finalize for item ' . $itemKey . ' had no usable parts. Independent probe rejected all ('
-                            . count($skipped) . '); byte-concat recovery also failed: '
-                            . substr($mergedCheck['reason'] ?? '', 0, 300)
-                            . '. Parts preserved on disk for inspection.',
-                            'by user ' . ($user['user_code'] ?? '?'), false);
-                        errorResponse('No usable parts. Independent probe + byte-concat recovery both failed. Parts kept on disk for inspection.');
-                    }
-                    $encodeInputs = array_values($validParts);
-                    $strategy = 'partial (' . count($validParts) . '/' . count($parts) . ' independently valid; '
-                              . count($invalidParts) . ' skipped, byte-concat fallback failed)';
-                }
-            }
-            if ($skipped) {
-                logMonitorEvent('transcript_upload', 'warning',
-                    'Finalize for item ' . $itemKey . ' strategy=' . $strategy . '; skipped: ' . implode('; ', $skipped),
-                    'by user ' . ($user['user_code'] ?? '?'), false);
-            }
-            $parts_for_cleanup = $parts;  // delete all originals on success regardless of strategy
-            $parts = $encodeInputs;
+            writeFinalizeState($itemKey, [
+                'status'     => 'pending',
+                'message'    => 'Queued for encoder',
+                'item_key'   => $itemKey,
+                'started'    => date('c'),
+                'part_count' => count($parts),
+            ]);
 
-            $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
-            if (!$ffmpeg) errorResponse('ffmpeg not available');
-
-            // Seamless concat. We use ffmpeg's `concat` filter rather than the
-            // demuxer + `-c copy` pair — the demuxer trusts the per-file
-            // timestamps from MediaRecorder which can drift across boundaries
-            // and produce audible pops. The filter decodes all parts into
-            // audio sample space, joins them, and re-encodes to MP3 in one
-            // pass. Result is identical to a single-pass recording.
-            $inputArgs = '';
-            $filterIn = '';
-            foreach (array_values($parts) as $i => $f) {
-                $inputArgs .= ' -i ' . escapeshellarg($f);
-                $filterIn .= "[{$i}:a]";
+            $worker = __DIR__ . '/finalize-worker.php';
+            $logFile = sys_get_temp_dir() . '/finalize_' . $itemKey . '.log';
+            $cmd = 'nohup php ' . escapeshellarg($worker)
+                 . ' ' . escapeshellarg((string)$itemKey)
+                 . ' ' . escapeshellarg((string)$user['user_key'])
+                 . ' ' . escapeshellarg((string)$autoTranscribe)
+                 . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null & echo $!';
+            $pidOut = [];
+            exec($cmd, $pidOut);
+            $pid = (int)($pidOut[0] ?? 0);
+            if ($pid <= 0) {
+                writeFinalizeState($itemKey, [
+                    'status'    => 'error',
+                    'error'     => 'Failed to spawn finalize-worker',
+                    'completed' => date('c'),
+                ]);
+                errorResponse('Failed to spawn finalize-worker');
             }
-            $filter = $filterIn . 'concat=n=' . count($parts) . ':v=0:a=1[out]';
-            // Total duration sum so the progress endpoint can compute fraction.
-            // ffprobe is fast (just header read) so doing it on every part is cheap.
-            $ffprobe = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
-            $totalDur = 0.0;
-            if ($ffprobe) {
-                foreach ($parts as $f) {
-                    $cmdP = escapeshellcmd($ffprobe)
-                          . ' -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 '
-                          . escapeshellarg($f);
-                    $totalDur += (float)trim(shell_exec($cmdP) ?: '0');
-                }
-            }
-            $progressFile = sys_get_temp_dir() . '/finalize_' . $itemKey . '.progress';
-            $durationFile = sys_get_temp_dir() . '/finalize_' . $itemKey . '.duration';
-            @unlink($progressFile);
-            @file_put_contents($durationFile, (string)$totalDur);
-            $cmd = escapeshellcmd($ffmpeg) . ' -y' . $inputArgs
-                 . ' -filter_complex ' . escapeshellarg($filter)
-                 . ' -map ' . escapeshellarg('[out]')
-                 . ' -codec:a libmp3lame -qscale:a 4 -ar 44100 -ac 2'
-                 . ' -progress ' . escapeshellarg($progressFile)
-                 . ' ' . escapeshellarg($finalAbs) . ' 2>&1';
-            // Release the session lock before ffmpeg blocks for many seconds —
-            // otherwise the JS progress-poll endpoint serializes behind us and
-            // the UI stays at 0% for the entire encode.
-            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
-            $out = shell_exec($cmd);
-            @unlink($progressFile);
-            @unlink($durationFile);
-            if (!file_exists($finalAbs) || filesize($finalAbs) < 1000) {
-                // Encode failed — leave originals on disk for inspection.
-                if ($mergedTmp && is_file($mergedTmp)) @unlink($mergedTmp);
-                errorResponse('ffmpeg encode failed (strategy: ' . $strategy . '): ' . substr(trim($out ?? ''), -300));
-            }
-            @chmod($finalAbs, 0664);
+            writeFinalizeState($itemKey, ['pid' => $pid]);
 
-            // Wipe prior audio file (DB pointer)
-            $prevStmt = $db->prepare("SELECT feed_item_audio_file FROM yy_feed_item WHERE feed_item_key = ?");
-            $prevStmt->execute([$itemKey]);
-            $prev = $prevStmt->fetchColumn();
-            if ($prev) {
-                $prevAbs = dirname(__DIR__) . '/' . ltrim($prev, '/');
-                if (is_file($prevAbs)) @unlink($prevAbs);
-            }
-
-            // Update DB: set new path, clear resume state
-            $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = ?, feed_item_audio_resume_seconds = NULL WHERE feed_item_key = ?")
-               ->execute([$finalRel, $itemKey]);
-
-            // Delete originals + any byte-concat temp now that the MP3 is verified.
-            foreach ($parts_for_cleanup as $f) @unlink($f);
-            if ($mergedTmp && is_file($mergedTmp)) @unlink($mergedTmp);
-
-            $jobKey = null;
-            if (!empty($data['auto_transcribe'])) {
-                $jobKey = spawnTranscribeJob($db, $itemKey, $user['user_key']);
-            }
-            logMonitorEvent('transcript_upload', 'info',
-                'Finalized recording for item ' . $itemKey . ' (' . count($parts_for_cleanup) . ' parts -> '
-                . round(filesize($finalAbs)/1024/1024, 2) . ' MB MP3, strategy: ' . $strategy . ')',
-                'by user ' . ($user['user_code'] ?? '?'), true);
             jsonResponse([
-                'ok' => true,
-                'audio' => durableAudioInfo($db, $itemKey),
-                'partial' => partialState($db, $PARTS_DIR_ABS, $itemKey),
-                'transcribe_job_key' => $jobKey,
-                'skipped_parts' => $skipped, // any parts auto-removed by validation
+                'ok'          => true,
+                'async'       => true,
+                'status'      => 'pending',
+                'item_key'    => $itemKey,
+                'pid'         => $pid,
+                'message'     => 'Encoder started in background. Poll /api/admin-transcript-finalize-progress.php?item_key=' . $itemKey,
             ]);
         }
         errorResponse('Unknown action');

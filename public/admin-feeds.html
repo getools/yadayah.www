@@ -235,6 +235,12 @@
                             <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
                         </div>
                     </th>
+                    <th style="width:160px;">
+                        <span>Pages</span>
+                        <div id="rec-f-pages" class="rec-status-checks" onclick="event.stopPropagation()" style="max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                            <em style="font-size:0.7rem;color:#999;">loading…</em>
+                        </div>
+                    </th>
                 </tr>
             </thead>
             <tbody id="rec-body"></tbody>
@@ -1802,6 +1808,7 @@ function recClearFilters() {
     var c = document.getElementById('rec-f-status-complete'); if (c) c.checked = false;
     var p = document.getElementById('rec-f-status-partial');  if (p) p.checked = true;
     var n = document.getElementById('rec-f-status-new');      if (n) n.checked = true;
+    document.querySelectorAll('#rec-f-pages input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
     loadRecordings(1);
 }
 // Parse "H:MM:SS" / "MM:SS" / "SS" / "1:30" → seconds. Returns null if blank.
@@ -1838,6 +1845,12 @@ function loadRecordings(page) {
     if (durMin !== null && durMin > 0) qs += '&dur_min_s=' + durMin;
     if (durMax !== null && durMax > 0) qs += '&dur_max_s=' + durMax;
     if (statuses.length) qs += '&status=' + encodeURIComponent(statuses.join(','));
+    // Pages filter: collect all checked page checkboxes under the Pages column.
+    var checkedPages = Array.prototype.filter.call(
+        document.querySelectorAll('#rec-f-pages input[type=checkbox]:checked'),
+        function() { return true; }
+    ).map(function(cb){ return cb.value; });
+    if (checkedPages.length) qs += '&page_keys=' + encodeURIComponent(checkedPages.join(','));
     qs += '&_=' + Date.now();
 
     document.getElementById('rec-count').textContent = 'Loading…';
@@ -1850,8 +1863,29 @@ function loadRecordings(page) {
             }
             _recItems = d.items || [];
             populateRecFeedFilter(d.feeds || [], v('rec-f-feed'));
+            populateRecPageFilter(d.pages || [], checkedPages);
             renderRecordings(d);
         });
+}
+// Render the page checkbox list under the Pages column header. Preserves
+// the user's current selections across reloads.
+function populateRecPageFilter(pages, currentSelections) {
+    var box = document.getElementById('rec-f-pages');
+    if (!box) return;
+    if (box.dataset.populated === '1' && box.dataset.count === String(pages.length)) return;
+    box.dataset.populated = '1';
+    box.dataset.count = String(pages.length);
+    var sel = {};
+    (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
+    var html = '';
+    pages.forEach(function(p) {
+        var checked = sel[String(p.page_key)] ? ' checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
+              + '<input type="checkbox" value="' + p.page_key + '" onchange="loadRecordings(1)"' + checked + '> '
+              + esc(p.page_title || p.page_code)
+              + '</label>';
+    });
+    box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no pages</em>';
 }
 function populateRecFeedFilter(feeds, current) {
     var sel = document.getElementById('rec-f-feed');
@@ -1877,7 +1911,7 @@ function renderRecordings(d) {
         span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
     });
     if (!_recItems.length) {
-        body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
         var sa = document.getElementById('rec-select-all'); if (sa) sa.checked = false;
         return;
     }
@@ -1917,6 +1951,14 @@ function renderRecordings(d) {
                       + 'title="Start recording" '
                       + 'style="' + commonBtn + 'color:#666;border-color:#ccc;">○ New</button>';
         }
+        // Pages cell — small badges for each page the item is mapped to via
+        // yy_feed_item_page. Empty placeholder if the item isn't on any page.
+        var pageBadges = '';
+        (it.pages || []).forEach(function(p) {
+            pageBadges += '<span style="display:inline-block;background:#eef2ff;color:#31345A;border:1px solid #c8d0f0;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin:1px 2px 1px 0;" title="' + esc(p.page_code) + '">' + esc(p.page_title || p.page_code) + '</span>';
+        });
+        if (!pageBadges) pageBadges = '<span style="font-size:0.7rem;color:#bbb;">—</span>';
+
         html += '<tr id="rec-row-' + it.feed_item_key + '">'
             +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
             +     '<td>' + thumb + '</td>'
@@ -1926,6 +1968,7 @@ function renderRecordings(d) {
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
+            +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
             +     '</tr>';
     });
     body.innerHTML = html;

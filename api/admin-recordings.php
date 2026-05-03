@@ -29,6 +29,12 @@ $durMin      = isset($_GET['dur_min_s']) && $_GET['dur_min_s'] !== '' ? (int)$_G
 $durMax      = isset($_GET['dur_max_s']) && $_GET['dur_max_s'] !== '' ? (int)$_GET['dur_max_s'] : null;
 $statusRaw   = trim((string)($_GET['status'] ?? ''));
 $statuses    = $statusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $statusRaw)));
+// page_keys filter: comma-separated list of yy_page.page_key. Items shown
+// must be associated with at least one of these pages (via yy_feed_item_page).
+$pageKeysRaw = trim((string)($_GET['page_keys'] ?? ''));
+$pageKeys    = $pageKeysRaw === '' ? [] :
+    array_values(array_filter(array_map('intval',
+        array_map('trim', explode(',', $pageKeysRaw))), function($n){ return $n > 0; }));
 
 $sortMap = [
     'title'      => 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)',
@@ -59,6 +65,13 @@ if ($pubTo !== '')   { $where .= " AND COALESCE(fi.feed_item_publish_override_dt
 if ($feedKey > 0)    { $where .= " AND fi.feed_key = ?"; $params[] = $feedKey; }
 if ($durMin !== null && $durMin >= 0) { $where .= " AND fi.feed_item_duration_seconds >= ?"; $params[] = $durMin; }
 if ($durMax !== null && $durMax > 0)  { $where .= " AND fi.feed_item_duration_seconds <= ?"; $params[] = $durMax; }
+if (!empty($pageKeys)) {
+    $placeholders = implode(',', array_fill(0, count($pageKeys), '?'));
+    $where .= " AND EXISTS (SELECT 1 FROM yy_feed_item_page fip
+                              WHERE fip.feed_item_key = fi.feed_item_key
+                                AND fip.page_key IN ($placeholders))";
+    foreach ($pageKeys as $pk) $params[] = $pk;
+}
 
 // Status filter: multi-checkbox of Complete / Partial / New
 //   complete = feed_item_audio_file IS NOT NULL (or any cluster sibling has audio)
@@ -127,6 +140,41 @@ $stmt = $db->prepare("
 $stmt->execute(array_merge($params, [$perPage, $offset]));
 $items = $stmt->fetchAll();
 
+// Attach the list of pages each item is associated with (page_key, page_code,
+// page_title) so the UI can render small badges in the new "Pages" column.
+if ($items) {
+    $itemKeys = array_map(fn($r) => (int)$r['feed_item_key'], $items);
+    $ph = implode(',', array_fill(0, count($itemKeys), '?'));
+    $pgStmt = $db->prepare("
+        SELECT fip.feed_item_key, p.page_key, p.page_code, p.page_title
+          FROM yy_feed_item_page fip
+          JOIN yy_page p ON p.page_key = fip.page_key
+         WHERE fip.feed_item_key IN ($ph)
+         ORDER BY p.page_header_sort, p.page_key");
+    $pgStmt->execute($itemKeys);
+    $pagesByItem = [];
+    foreach ($pgStmt->fetchAll() as $r) {
+        $pagesByItem[(int)$r['feed_item_key']][] = [
+            'page_key'   => (int)$r['page_key'],
+            'page_code'  => $r['page_code'],
+            'page_title' => $r['page_title'],
+        ];
+    }
+    foreach ($items as &$it) {
+        $it['pages'] = $pagesByItem[(int)$it['feed_item_key']] ?? [];
+    }
+    unset($it);
+}
+
+// All active pages — used to render the checkbox filter under the Pages
+// column header. Returns the same shape as the per-item pages.
+$allPagesStmt = $db->query("
+    SELECT page_key, page_code, page_title
+      FROM yy_page
+     WHERE page_active_flag IS DISTINCT FROM FALSE
+     ORDER BY page_header_sort, page_key");
+$allPages = $allPagesStmt->fetchAll();
+
 $feedsStmt = $db->query("
     SELECT DISTINCT f.feed_key, f.feed_name
       FROM yy_feed f
@@ -143,11 +191,13 @@ jsonResponse([
     'total_pages' => max(1, (int)ceil($total / max(1, $perPage))),
     'sort' => $sort, 'dir' => strtolower($dir),
     'feeds' => $feedsStmt->fetchAll(),
+    'pages' => $allPages,
     'filters' => [
         'key' => $keyQ, 'title' => $titleQ,
         'pub_from' => $pubFrom, 'pub_to' => $pubTo,
         'feed_key' => $feedKey,
         'dur_min_s' => $durMin, 'dur_max_s' => $durMax,
         'status' => $statuses,
+        'page_keys' => $pageKeys,
     ],
 ]);

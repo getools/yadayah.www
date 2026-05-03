@@ -672,53 +672,61 @@
     async function finalizeNow(autoCalled) {
         if (!autoCalled && !confirm('Concatenate all parts into the final MP3 and start transcription?')) return;
         stopCheckpointTimer();
-        setStatus('🔧 Concatenating parts + encoding MP3…');
+        setStatus('🔧 Queuing encoder…');
         $('continue-btn').disabled = true;
         $('restart-btn').disabled = true;
-        // Live progress bar driven by ffmpeg's -progress output, polled at
-        // 500ms. Captured here so we can clean it up regardless of how the
-        // fetch resolves.
-        var progressTimer = startFinalizeProgress(itemKey);
+        $('finalize-progress').style.display = '';
+        $('finalize-progress-fill').style.width = '0%';
+        $('finalize-progress-pct').textContent = '0%';
+        $('finalize-progress-label').textContent = 'Queuing encoder…';
+
+        // Async pivot (2026-05-03): the POST returns immediately after
+        // forking finalize-worker.php — Cloudflare's 100s gateway timeout
+        // was killing long encodes (3h recordings) even though the work
+        // succeeded server-side. We now poll the progress endpoint until
+        // status='complete' or 'error'.
         try {
             var res = await fetch(API + '/admin-transcript-upload.php', {
                 method: 'POST', credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'finalize', item_key: itemKey, auto_transcribe: 1 })
             });
-            // Read body as text first so we can log the actual response (HTML
-            // error pages, gateway timeouts, etc.) instead of just the JSON
-            // parse error. Server-side timeouts on long ffmpeg encodes have
-            // surfaced here as "<!DOCTYPE..." HTML.
             var bodyText = await res.text();
             var d;
             try { d = JSON.parse(bodyText); }
             catch (parseErr) {
                 reportClientError(
-                    'Finalize returned non-JSON (HTTP ' + res.status + ') for item_key=' + itemKey,
+                    'Finalize POST returned non-JSON (HTTP ' + res.status + ') for item_key=' + itemKey,
                     'response (first 2KB):\n' + bodyText.slice(0, 2000)
                 );
                 throw new Error('server returned HTTP ' + res.status + ' (non-JSON body)');
             }
             if (d.error) {
-                reportClientError('Finalize error for item_key=' + itemKey + ': ' + d.error, JSON.stringify(d));
+                reportClientError('Finalize spawn error for item_key=' + itemKey + ': ' + d.error, JSON.stringify(d));
                 setStatus('✗ ' + d.error);
+                $('finalize-progress').style.display = 'none';
+                return;
+            }
+            // Poll for completion. Worker reports its phase via the state
+            // file; ffmpeg fraction shows up once we're in the encoding
+            // phase. No timeout here — even a 4h encode finishes eventually
+            // and the user can close the window if they want; the worker
+            // is detached and continues regardless.
+            var final = await pollFinalizeUntilDone(itemKey);
+            if (final.status === 'error') {
+                reportClientError('Finalize worker errored for item_key=' + itemKey + ': ' + (final.error || ''), JSON.stringify(final));
+                setStatus('✗ Finalize failed: ' + (final.error || 'unknown error'));
                 return;
             }
             partCount = 0;
             $('banner').style.display = 'none';
             updateControls();
-            // Surface any auto-skipped invalid parts so the user knows the
-            // MP3 has gaps where corrupt/silent recordings were dropped.
             var skippedNote = '';
-            if (d.skipped_parts && d.skipped_parts.length) {
-                skippedNote = ' (⚠ skipped ' + d.skipped_parts.length
-                            + ' invalid part' + (d.skipped_parts.length === 1 ? '' : 's')
-                            + ': ' + d.skipped_parts.join(', ') + ')';
+            if (final.skipped_parts && final.skipped_parts.length) {
+                skippedNote = ' (⚠ skipped ' + final.skipped_parts.length
+                            + ' invalid part' + (final.skipped_parts.length === 1 ? '' : 's')
+                            + ': ' + final.skipped_parts.join(', ') + ')';
             }
-            // Batch advancement: if more items in the queue, swap the YT
-            // player to the next video without reloading the popout (which
-            // would lose our screen-share permission). Same-tab JS context
-            // means the cached stream stays alive across items.
             if (BATCH_MODE && queueIndex < queue.length - 1) {
                 queueIndex++;
                 setStatus('✓ Saved' + skippedNote + '. Loading next video (' + (queueIndex + 1) + '/' + queue.length + ')…');
@@ -733,45 +741,62 @@
             setStatus('✗ Finalize failed: ' + err.message);
             reportClientError('Finalize failed for item_key=' + itemKey + ': ' + err.message, err.stack || '');
         } finally {
-            stopFinalizeProgress(progressTimer);
+            $('finalize-progress').style.display = 'none';
             $('continue-btn').disabled = false;
             $('restart-btn').disabled = false;
         }
     }
-    // Live ffmpeg progress polling. Reads the server-side progress file every
-    // 500ms; updates the green bar + percentage label. Caller stops the timer
-    // when the finalize POST resolves (success OR failure).
-    function startFinalizeProgress(itemKey) {
-        var box = $('finalize-progress');
+
+    // Poll the progress endpoint until the worker reports complete or error.
+    // Returns the final state object. Updates the progress bar in-place.
+    async function pollFinalizeUntilDone(itemKey) {
         var fill = $('finalize-progress-fill');
         var pct = $('finalize-progress-pct');
         var label = $('finalize-progress-label');
-        box.style.display = '';
-        fill.style.width = '0%';
-        pct.textContent = '0%';
-        label.textContent = 'Concatenating + encoding MP3…';
-        return setInterval(async function() {
+        var consecutiveFailures = 0;
+        while (true) {
+            await new Promise(function(r) { setTimeout(r, 500); });
+            var d;
             try {
                 var r = await fetch(API + '/admin-transcript-finalize-progress.php?item_key='
                                     + itemKey + '&_=' + Date.now(),
                                     { credentials: 'include', cache: 'no-store' });
-                var d = await r.json();
-                if (d.fraction == null) return;
-                var p = Math.max(0, Math.min(100, d.fraction * 100));
-                fill.style.width = p.toFixed(1) + '%';
-                pct.textContent = p.toFixed(1) + '%';
-                if (d.total_seconds > 0) {
-                    label.textContent = 'Encoding MP3 ' + fmt(d.current_seconds)
-                                      + ' / ' + fmt(d.total_seconds);
+                d = await r.json();
+                consecutiveFailures = 0;
+            } catch (e) {
+                // A flaky poll request shouldn't kill the wait. Cloudflare
+                // gateway hiccups have been observed mid-encode; just retry.
+                consecutiveFailures++;
+                if (consecutiveFailures > 60) { // ~30s of failures
+                    throw new Error('progress endpoint unreachable for 30s');
                 }
-            } catch (e) {}
-        }, 500);
+                continue;
+            }
+            // Update the bar based on whatever phase we're in.
+            var frac = d.fraction != null ? d.fraction : 0;
+            var p = Math.max(0, Math.min(100, frac * 100));
+            fill.style.width = p.toFixed(1) + '%';
+            pct.textContent = p.toFixed(1) + '%';
+            var phaseLabel = ({
+                pending:    'Queued for encoder…',
+                validating: 'Probing parts…',
+                encoding:   'Encoding MP3' + (d.total_seconds > 0
+                                ? ' ' + fmt(d.current_seconds || 0) + ' / ' + fmt(d.total_seconds)
+                                : '…'),
+                finalizing: 'Saving + cleaning up…',
+                complete:   'Done.',
+                error:      'Error.',
+            })[d.status] || (d.message || d.status || 'Working…');
+            label.textContent = phaseLabel;
+            if (d.status === 'complete' || d.status === 'error') return d;
+        }
     }
-    function stopFinalizeProgress(timer) {
-        if (timer) clearInterval(timer);
-        var box = $('finalize-progress');
-        if (box) box.style.display = 'none';
-    }
+    // (Old startFinalizeProgress/stopFinalizeProgress removed; replaced by
+    // pollFinalizeUntilDone() above. The old approach polled progress in
+    // parallel with a synchronous finalize POST; the new flow's POST returns
+    // immediately and the poll loop drives the entire UI through the
+    // worker's phases — pending → validating → encoding → finalizing →
+    // complete/error.)
     // Reset per-item state and (re-)bootstrap the YT player for queue[queueIndex].
     // Reused on initial load and on batch advancement. Stream + once-prompted
     // flag are intentionally NOT reset so we keep the same screen-share

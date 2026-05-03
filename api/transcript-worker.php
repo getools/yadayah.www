@@ -182,7 +182,34 @@ if (!$rows && $site === 'youtube') {
             updateJob($db, $jobKey, ['job_progress' => 70, 'job_message' => 'Parsing captions...']);
             $rows = parseVtt(file_get_contents($vttFiles[0]));
             foreach ($vttFiles as $f) @unlink($f);
-            if (!$rows) $methodFailures[] = "yt_dlp_captions: VTT parsed but produced 0 rows";
+            if (!$rows) {
+                $methodFailures[] = "yt_dlp_captions: VTT parsed but produced 0 rows";
+            } else {
+                file_put_contents("/tmp/dbg_cov.log", date("H:i:s") . " enter: rows=" . count($rows) . " dur=" . (int)($job["feed_item_duration_seconds"] ?? 0) . "
+", FILE_APPEND);
+                // Coverage check: if last caption ends well before the video duration,
+                // the captions are partial (e.g. YouTube auto-captions still generating
+                // for a recent upload). Fall through to Whisper instead of treating
+                // truncated captions as success.
+                $videoDur = (int)($job['feed_item_duration_seconds'] ?? 0);
+                if ($videoDur > 60) {
+                    $lastEnd = 0;
+                    foreach ($rows as $r) {
+                        $end = isset($r['end_seconds']) ? (int)$r['end_seconds'] : 0;
+                        if (!$end && isset($r['segment'])) {
+                            // segment is "HH:MM:SS" or interval — convert to seconds
+                            $parts = explode(':', $r['segment']);
+                            if (count($parts) === 3) $end = (int)$parts[0]*3600 + (int)$parts[1]*60 + (int)$parts[2];
+                        }
+                        if ($end > $lastEnd) $lastEnd = $end;
+                    }
+                    $coverage = $lastEnd / $videoDur;
+                    if ($coverage < 0.8) {
+                        $methodFailures[] = "yt_dlp_captions: only " . round($coverage * 100) . "% coverage ($lastEnd s of $videoDur s) — likely partial captions";
+                        $rows = []; // discard partial — fall through to Whisper
+                    }
+                }
+            }
         } else {
             // Extract the actionable ERROR line if present; fall back to first 300 chars.
             // Mirrors what the whisper_api section does so captions failures are equally readable.
