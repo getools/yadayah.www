@@ -6,6 +6,9 @@ services:
       - "1200"
     volumes:
       - ./rumble-scraper:/scraper
+      - ./public/pdf:/host_pdf:ro
+      - ./public/flipbook:/host_flip
+      - ./public/u/books-word:/host_word:ro
     environment:
       NODE_ENV: production
       CACHE_TYPE: memory
