@@ -313,9 +313,21 @@ function flipCell(v) {
     var hasFlip = !!v.volume_flip_code;
     var hasPdf  = !!v.volume_pdf;
 
-    // Flip artifact exists — defer to the standard stale/✓ rendering.
+    // flip_code is set. Two sub-cases the operator cares about:
+    //   (a) local self-hosted bundle present at /opt/yada-www/public/flipbook/<code>/
+    //       — admin-books.php sets volume_flip_mtime to that dir's filemtime
+    //       in that case. Show ✓ + timestamp like DOCX/PDF columns.
+    //   (b) flip_code present but no local bundle yet (download still pending,
+    //       or download failed). Show a distinct "remote-only" badge so the
+    //       operator can tell self-hosting is incomplete at a glance.
     if (hasFlip) {
-        return artifactCell(true, v.volume_flip_mtime, v.volume_pdf_mtime, ps, 'FlipHTML5');
+        if (v.volume_flip_mtime) {
+            // Stale check + ✓ + timestamp — same rendering as DOCX/PDF.
+            return artifactCell(true, v.volume_flip_mtime, v.volume_pdf_mtime, ps, 'FlipHTML5');
+        }
+        return '<div class="status-cell">'
+             + '<span class="status-icon" style="color:#a36100;" title="Uploaded to FlipHTML5 (' + esc(v.volume_flip_code) + ') — local offline package not yet downloaded for self-hosting">&darr;</span>'
+             + '<div class="age" style="color:#a36100;">remote</div></div>';
     }
     // No PDF yet → nothing to flip, plain missing.
     if (!hasPdf) {
