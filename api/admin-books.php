@@ -86,6 +86,12 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
         };
         $base = sprintf('YY-s%02dv%02d-%s', (int)$vol['series_number'], (int)$vol['volume_number'], $sanitize($vol['volume_label'] ?: $vol['volume_name'] ?: ''));
     }
+    // Force canonical form: no spaces, no %20, no doubled hyphens. Defends
+    // against a legacy volume_pdf that still has spaces, plus any pasted
+    // value that contains URL-encoded sequences.
+    $base = str_replace(['%20', ' '], '-', $base);
+    $base = preg_replace('/-+/', '-', $base);
+    $base = trim($base, '-');
     $docxName = $base . '.docx';
     $pdfName  = $base . '.pdf';
 

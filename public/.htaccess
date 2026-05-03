@@ -9,6 +9,35 @@ RewriteRule \.(ashx|aspx|asp|cgi|env|bak|sql|orig|save|old|swp|dist|config)$ /ap
 RewriteRule (phpmyadmin|myadmin|mysql|adminer|phpinfo|eval-stdin|vendor/phpunit|solr|actuator|telescope) /api/honeypot.php [L,NC]
 RewriteRule (\.git/|\.svn/|\.env|\.DS_Store|\.htpasswd|/config\.php\.|/db\.php\.) /api/honeypot.php [L,NC]
 
+# Legacy PDF URLs → canonical hyphenated names (301). One rule per file —
+# matches against the decoded URI (Apache decodes %20 to real space before
+# rule evaluation), so the LHS uses spaces and the RHS uses hyphens. Only
+# the historically-spaced PDFs are listed; unrelated /pdf/* URLs fall
+# through normally.
+RewriteRule "^pdf/YY-s01v01-An Intro to God-Dabarym-Words\.pdf$"           "/pdf/YY-s01v01-An-Intro-to-God-Dabarym-Words.pdf"           [R=301,L]
+RewriteRule "^pdf/YY-s01v02-An Intro to God-Mitswah-Instructions\.pdf$"    "/pdf/YY-s01v02-An-Intro-to-God-Mitswah-Instructions.pdf"    [R=301,L]
+RewriteRule "^pdf/YY-s01v03-An Intro to God-Towrah Mizmowr\.pdf$"          "/pdf/YY-s01v03-An-Intro-to-God-Towrah-Mizmowr.pdf"          [R=301,L]
+RewriteRule "^pdf/YY-s02v01-Yada Yahowah-Bare'syth-Beginning\.pdf$"        "/pdf/YY-s02v01-Yada-Yahowah-Bare'syth-Beginning.pdf"        [R=301,L]
+RewriteRule "^pdf/YY-s02v02-Yada Yahowah-'Adam-The Story of Man\.pdf$"     "/pdf/YY-s02v02-Yada-Yahowah-'Adam-The-Story-of-Man.pdf"     [R=301,L]
+RewriteRule "^pdf/YY-s02v03-Yada Yahowah-Beyth-In the Family\.pdf$"        "/pdf/YY-s02v03-Yada-Yahowah-Beyth-In-the-Family.pdf"        [R=301,L]
+RewriteRule "^pdf/YY-s02v04-Yada Yahowah-Miqra'ey-Invitations\.pdf$"       "/pdf/YY-s02v04-Yada-Yahowah-Miqra'ey-Invitations.pdf"       [R=301,L]
+RewriteRule "^pdf/YY-s02v05-Yada Yahowah-Qatsyr-Harvests\.pdf$"            "/pdf/YY-s02v05-Yada-Yahowah-Qatsyr-Harvests.pdf"            [R=301,L]
+RewriteRule "^pdf/YY-s02v06-Yada Yahowah-Mow'ed-Appointments\.pdf$"        "/pdf/YY-s02v06-Yada-Yahowah-Mow'ed-Appointments.pdf"        [R=301,L]
+RewriteRule "^pdf/YY-s02v07-Yada Yahowah-Shanah-Years\.pdf$"               "/pdf/YY-s02v07-Yada-Yahowah-Shanah-Years.pdf"               [R=301,L]
+RewriteRule "^pdf/YY-s02v08-Yada Yahowah-'Azab-Separation\.pdf$"           "/pdf/YY-s02v08-Yada-Yahowah-'Azab-Separation.pdf"           [R=301,L]
+RewriteRule "^pdf/YY-s02v09-Yada Yahowah-'Eth Tsarah-Time of Trouble\.pdf$" "/pdf/YY-s02v09-Yada-Yahowah-'Eth-Tsarah-Time-of-Trouble.pdf" [R=301,L]
+RewriteRule "^pdf/YY-s04v01-Coming Home-Qowl-A Voice\.pdf$"                "/pdf/YY-s04v01-Coming-Home-Qowl-A-Voice.pdf"                [R=301,L]
+RewriteRule "^pdf/YY-s04v02-Coming Home-Mashyach-Messiah\.pdf$"            "/pdf/YY-s04v02-Coming-Home-Mashyach-Messiah.pdf"            [R=301,L]
+RewriteRule "^pdf/YY-s04v03-Coming Home-Dowd-Beloved\.pdf$"                "/pdf/YY-s04v03-Coming-Home-Dowd-Beloved.pdf"                [R=301,L]
+RewriteRule "^pdf/YY-s04v04-Coming Home-Basar-Herald\.pdf$"                "/pdf/YY-s04v04-Coming-Home-Basar-Herald.pdf"                [R=301,L]
+RewriteRule "^pdf/YY-s06v03-Twistianity-Devils Advocate\.pdf$"             "/pdf/YY-s06v03-Twistianity-Devils-Advocate.pdf"             [R=301,L]
+RewriteRule "^pdf/YY-s07v01-God Damn Religion-Snake\.pdf$"                 "/pdf/YY-s07v01-God-Damn-Religion-Snake.pdf"                 [R=301,L]
+RewriteRule "^pdf/YY-s07v02-God Damn Religion-Satanic\.pdf$"               "/pdf/YY-s07v02-God-Damn-Religion-Satanic.pdf"               [R=301,L]
+RewriteRule "^pdf/YY-s07v03-God Damn Religion-Submission\.pdf$"            "/pdf/YY-s07v03-God-Damn-Religion-Submission.pdf"            [R=301,L]
+RewriteRule "^pdf/YY-s07v04-God Damn Religion-Slaughter\.pdf$"             "/pdf/YY-s07v04-God-Damn-Religion-Slaughter.pdf"             [R=301,L]
+RewriteRule "^pdf/YY-s07v05-God Damn Religion-Sunnah and Suratun\.pdf$"    "/pdf/YY-s07v05-God-Damn-Religion-Sunnah-and-Suratun.pdf"    [R=301,L]
+RewriteRule "^pdf/In the Company of Good and Evil\.pdf$"                   "/pdf/In-the-Company-of-Good-and-Evil.pdf"                   [R=301,L]
+
 # Strip trailing slashes (301 redirect to canonical URL without slash)
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} (.+)/$
