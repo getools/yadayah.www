@@ -871,9 +871,25 @@ function renderFlipSession(d) {
             : '')
       + '</div>'
       + '<div id="flip-paste-panel" style="display:' + (expanded ? 'block' : 'none') + ';margin-top:10px;">'
-      +   '<div style="font-size:0.78rem;color:#555;margin-bottom:6px;">'
-      +     'In Chrome on <a href="https://fliphtml5.com/dashboard/home" target="_blank" rel="noopener">fliphtml5.com</a>: open DevTools (F12) &rarr; Application &rarr; Cookies &rarr; <code>fliphtml5.com</code>. '
-      +     'Right-click a row &rarr; Copy as cURL. Or use the Cookie-Editor extension &rarr; Export &rarr; JSON. Paste below:'
+      +   '<div style="font-size:0.78rem;color:#555;margin-bottom:8px;line-height:1.5;">'
+      +     '<strong>Recommended (one click after setup):</strong> install the Yada Yah FlipHTML5 Sync extension. '
+      +     'Then while logged in to <a href="https://fliphtml5.com/dashboard/home" target="_blank" rel="noopener">fliphtml5.com</a>, '
+      +     'click the extension icon &rarr; <em>Sync session to Yada Yah</em>. No paste needed.'
+      +     '<details style="margin-top:6px;"><summary style="cursor:pointer;color:#31345A;">First-time install (~30 s)</summary>'
+      +       '<ol style="margin:4px 0 0 18px;padding:0;">'
+      +         '<li><a href="/downloads/yadayah-fliphtml5-sync.zip" download>Download the extension (.zip)</a> and unzip it.</li>'
+      +         '<li>Open <code>chrome://extensions</code> in Chrome (paste into the address bar).</li>'
+      +         '<li>Toggle <em>Developer mode</em> on (top-right).</li>'
+      +         '<li>Drag the unzipped <code>yadayah-fliphtml5-sync</code> folder onto the page (or click <em>Load unpacked</em> and select it).</li>'
+      +         '<li>Pin the extension to your toolbar (puzzle-piece icon &rarr; pin).</li>'
+      +       '</ol>'
+      +     '</details>'
+      +     '<details style="margin-top:6px;"><summary style="cursor:pointer;color:#31345A;">Manual paste (if the extension is not handy)</summary>'
+      +       '<ol style="margin:4px 0 0 18px;padding:0;">'
+      +         '<li>Install the <a href="https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener">Cookie-Editor</a> extension &rarr; click its icon on fliphtml5.com &rarr; <em>Export</em> &rarr; paste below.</li>'
+      +         '<li>Or DevTools (F12) &rarr; <em>Network</em> tab &rarr; reload &rarr; right-click any fliphtml5.com request &rarr; <em>Copy as cURL (bash)</em> &rarr; paste below.</li>'
+      +       '</ol>'
+      +     '</details>'
       +   '</div>'
       +   '<textarea id="flip-cookie-input" rows="5" placeholder="Paste cURL or JSON cookies here…" '
       +     'style="width:100%;font-family:monospace;font-size:0.78rem;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"></textarea>'
@@ -901,7 +917,8 @@ function saveFlipCookies() {
         body: JSON.stringify({action: 'save_cookies', cookies: raw}),
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { if (st) { st.textContent = '✗ ' + d.error; st.style.color = '#c00'; } return; }
-        if (st) { st.textContent = '✓ saved ' + (d.count || 0) + ' cookie(s)'; st.style.color = '#1b5e20'; }
+        var preview = d.names && d.names.length ? ' (' + d.names.slice(0, 6).join(', ') + (d.names.length > 6 ? ', …' : '') + ')' : '';
+        if (st) { st.innerHTML = '✓ saved ' + (d.count || 0) + ' cookie(s)' + esc(preview); st.style.color = '#1b5e20'; }
         if (ta) ta.value = '';
         pollFlipSession();
     }).catch(function(e) {

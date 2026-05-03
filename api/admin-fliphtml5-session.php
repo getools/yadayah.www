@@ -99,7 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'message' => 'Cookies saved (' . count($list) . ') — will be exercised on next FlipHTML5 upload',
             'updated_at' => gmdate('c'),
         ], JSON_PRETTY_PRINT));
-        jsonResponse(['saved' => true, 'count' => count($list)]);
+        $names = array_slice(array_map(function($c){ return $c['name']; }, $list), 0, 12);
+        jsonResponse(['saved' => true, 'count' => count($list), 'names' => $names]);
     }
 
     errorResponse('Unknown action: ' . $action);
@@ -112,7 +113,16 @@ errorResponse('Method not allowed', 405);
 function parseCookiesInput(string $input): array {
     $input = trim($input);
 
-    // Try JSON first — covers the EditThisCookie / Cookie-Editor exports.
+    // Netscape "cookies.txt" format — what Cookie-Editor's default Export
+    // produces. Detected by the canonical header comment OR by the first
+    // non-comment line having 7 tab-separated fields.
+    if (stripos($input, 'Netscape HTTP Cookie File') !== false
+        || preg_match('/^[^#\s].*\t.*\t.*\t.*\t.*\t.*\t/m', $input)) {
+        $list = parseNetscapeCookies($input);
+        if ($list) return $list;
+    }
+
+    // JSON — EditThisCookie / Cookie-Editor's "Export as JSON".
     if ($input !== '' && ($input[0] === '[' || $input[0] === '{')) {
         $parsed = json_decode($input, true);
         if (is_array($parsed)) {
@@ -123,7 +133,7 @@ function parseCookiesInput(string $input): array {
         }
     }
 
-    // cURL command? Extract the Cookie header.
+    // cURL command — extract -H 'Cookie: …' or --cookie '…'.
     if (preg_match("/-H\\s+['\"]?Cookie:\\s*([^'\"]+)['\"]?/i", $input, $m)) {
         return parseCookieHeader($m[1]);
     }
@@ -133,6 +143,35 @@ function parseCookiesInput(string $input): array {
 
     // Otherwise treat the whole thing as a Cookie header.
     return parseCookieHeader($input);
+}
+
+// Parse Netscape cookies.txt format. Each non-comment line:
+//   domain  domain_flag  path  secure_flag  expiry  name  value
+// Tab-separated. Fields are case-sensitive TRUE/FALSE booleans except domain
+// itself, which uses a leading "." to indicate "applies to subdomains".
+function parseNetscapeCookies(string $input): array {
+    $list = [];
+    foreach (preg_split('/\r?\n/', $input) as $line) {
+        $line = rtrim($line);
+        if ($line === '' || $line[0] === '#') continue;
+        $parts = explode("\t", $line);
+        if (count($parts) < 7) continue;
+        [$domain, $domainFlag, $path, $secureFlag, $expiry, $name, $value] = array_slice($parts, 0, 7);
+        if ($name === '') continue;
+        $cookie = [
+            'name'   => $name,
+            'value'  => $value,
+            'domain' => $domain,
+            'path'   => $path !== '' ? $path : '/',
+            'secure' => strtoupper(trim($secureFlag)) === 'TRUE',
+        ];
+        // Expiry of 0 = session cookie — skip the expires field so puppeteer
+        // treats it as a session cookie.
+        $exp = (int)$expiry;
+        if ($exp > 0) $cookie['expires'] = $exp;
+        $list[] = $cookie;
+    }
+    return $list;
 }
 
 function parseCookieHeader(string $header): array {
