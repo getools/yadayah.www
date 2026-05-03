@@ -227,7 +227,7 @@ if (function_exists('logMonitorEvent')) {
         'Finalized recording for item ' . $itemKey . ' (' . count($parts) . ' parts -> '
         . $mp3SizeMB . ' MB MP3, ' . round($mp3DurSec) . 's, strategy: ' . $strategy
         . ', encode took ' . round($encodeDur, 1) . 's)',
-        null, true);
+        '', true);
 }
 
 exit(0);

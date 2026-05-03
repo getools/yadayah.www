@@ -111,9 +111,12 @@ update_status() {
 # Update yy_volume PDF + flip_code.
 update_outputs() {
     local volume_key="$1" pdf_name="$2" flip_code="$3"
-    local sets="volume_pdf='$pdf_name'"
-    if [ -n "$flip_code" ]; then
-        sets="$sets, volume_flip_code='$flip_code'"
+    local esc_pdf esc_flip
+    esc_pdf=$(echo "$pdf_name" | sed "s/'/''/g")
+    esc_flip=$(echo "$flip_code" | sed "s/'/''/g")
+    local sets="volume_pdf='$esc_pdf'"
+    if [ -n "$esc_flip" ]; then
+        sets="$sets, volume_flip_code='$esc_flip'"
     fi
     docker exec "$PG_CONTAINER" psql -U postgres -d yada -c \
         "UPDATE yy_volume SET $sets, volume_revision_dtime=NOW() WHERE volume_key=$volume_key;" \
@@ -238,6 +241,12 @@ process_job() {
         else
             log "Triggering FlipHTML5 re-upload via $RSSHUB_CONTAINER (existing flip=${existing_flip:-NONE})"
             local up_output up_rc
+            # Detect Chrome binary path inside the container so puppeteer-real-browser
+            # can find it via CHROME_PATH (it doesn't fall back to its own cache).
+            local chrome_bin
+            chrome_bin=$(docker exec "$RSSHUB_CONTAINER" find /app/node_modules/.cache/puppeteer -name "chrome" -type f 2>/dev/null | head -1)
+            local chrome_env=()
+            [ -n "$chrome_bin" ] && chrome_env=(-e "CHROME_PATH=$chrome_bin")
             # systemd-run cgroup ceiling: 700M is enough for headless Chromium with
             # images/extensions disabled; CPUQuota lets it use one core but yield
             # under load. Inner --js-flags=--max-old-space-size=400 inside the JS
@@ -256,6 +265,7 @@ process_job() {
                     -e FLIP_CODE="$existing_flip" \
                     -e FLIP_EMAIL="$fhx_email" \
                     -e FLIP_PASS="$fhx_pass" \
+                    "${chrome_env[@]}" \
                     "$RSSHUB_CONTAINER" node /scraper/yy/fliphtml5-upload.cjs 2>&1) || up_rc=$?
             up_rc=${up_rc:-0}
             echo "$up_output" >> /var/log/book-pipeline.log
