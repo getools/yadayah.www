@@ -614,18 +614,46 @@ function saveVolume() {
         var msg = 'Files were renamed:\n\n'
                 + pending.map(function(p){ return '  ' + p.from + '  →  ' + p.to; }).join('\n')
                 + '\n\nAdd 301 redirects from the old URLs to the new ones?';
-        if (!confirm(msg)) { afterRedirects(); return; }
-        fetch(API + '/admin-books.php?action=add_redirects', {
-            method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({action:'add_redirects', pairs: pending})
-        }).then(function(r){return safeJson(r);}).then(function(rd) {
-            if (rd && rd.error) alert('Save succeeded, but failed to register redirects: ' + rd.error);
-            afterRedirects();
-        }).catch(function(err) {
-            alert('Save succeeded, but failed to register redirects: ' + err.message);
-            afterRedirects();
+        yesNoConfirm(msg, function(yes) {
+            if (!yes) { afterRedirects(); return; }
+            fetch(API + '/admin-books.php?action=add_redirects', {
+                method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({action:'add_redirects', pairs: pending})
+            }).then(function(r){return safeJson(r);}).then(function(rd) {
+                if (rd && rd.error) alert('Save succeeded, but failed to register redirects: ' + rd.error);
+                afterRedirects();
+            }).catch(function(err) {
+                alert('Save succeeded, but failed to register redirects: ' + err.message);
+                afterRedirects();
+            });
         });
     });
+}
+
+// Custom confirm modal — browser confirm() can't relabel its buttons, so
+// when we want "Yes" / "No" instead of "OK" / "Cancel" we render our own
+// overlay. Pre-formatted message preserves newlines so file-pair lists stay
+// readable. cb(true|false) is invoked when the user clicks one of the buttons.
+function yesNoConfirm(message, cb) {
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);'
+                     + 'z-index:2000;display:flex;justify-content:center;align-items:center;padding:20px;';
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#fff;border-radius:10px;max-width:600px;width:100%;'
+                       + 'box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow:hidden;';
+    card.innerHTML = '<div style="padding:18px 22px;font-size:0.9rem;white-space:pre-wrap;line-height:1.45;">'
+                   + esc(message) + '</div>'
+                   + '<div style="display:flex;gap:10px;justify-content:flex-end;padding:12px 18px;background:#f6f6f6;border-top:1px solid #e0e0e0;">'
+                   + '<button class="yn-no"  style="padding:6px 18px;border-radius:4px;border:1px solid #ccc;background:#fff;cursor:pointer;font-weight:600;">No</button>'
+                   + '<button class="yn-yes" style="padding:6px 18px;border-radius:4px;border:none;background:#31345A;color:#fff;cursor:pointer;font-weight:600;">Yes</button>'
+                   + '</div>';
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+    var done = function(v) { document.body.removeChild(ov); cb(v); };
+    card.querySelector('.yn-yes').onclick = function() { done(true);  };
+    card.querySelector('.yn-no').onclick  = function() { done(false); };
+    ov.onclick = function(e) { if (e.target === ov) done(false); };
+    setTimeout(function(){ card.querySelector('.yn-yes').focus(); }, 0);
 }
 
 function deleteVolume(key, label) {
