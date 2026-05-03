@@ -13,7 +13,7 @@
  *   status: pending | validating | encoding | finalizing | complete | error
  */
 
-if (php_sapi_name() !== 'cli') { fwrite(STDERR, "CLI only\n"); exit(2); }
+if (php_sapi_name() !== 'cli') { http_response_code(403); exit(2); }
 
 $itemKey         = (int)($argv[1] ?? 0);
 $userKey         = (int)($argv[2] ?? 0);

@@ -371,7 +371,7 @@ done
 # parser pipeline existed, or a previous parse errored). Process at most 1
 # per tick to avoid hogging the host. The next 2-min tick picks up the next.
 if [ -x /opt/yada-www/parsers/parse_volume.py ]; then
-    parse_target=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -c "SELECT volume_key FROM yy_volume WHERE volume_docx IS NOT NULL AND (volume_parse_status IS NULL OR volume_parse_status IN ('queued','error','stale')) ORDER BY CASE WHEN volume_parse_status='queued' THEN 0 ELSE 1 END, volume_key LIMIT 1")
+    parse_target=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -c "SELECT volume_key FROM yy_volume WHERE volume_docx IS NOT NULL AND (volume_parse_status IS NULL OR volume_parse_status IN ('queued','stale')) ORDER BY CASE WHEN volume_parse_status='queued' THEN 0 ELSE 1 END, volume_key LIMIT 1")
     if [ -n "$parse_target" ]; then
         log "Parse-sweep: picking up volume $parse_target"
         ps_rc=0
