@@ -218,6 +218,35 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     jsonResponse(['queued' => true, 'job' => basename($jobFile), 'message' => 'Pipeline requeued — runs on next host worker tick (≤1 min).']);
 }
 
+// Register 301 redirects in yy_redirect. Triggered by the Books admin form
+// after a rename so old DOCX / PDF URLs forward to the new canonical ones.
+// Body: {"action": "add_redirects", "pairs": [{"from": "/x", "to": "/y"}, ...]}
+if ($method === 'POST' && (($_GET['action'] ?? '') === 'add_redirects'
+                            || (json_decode(file_get_contents('php://input'), true)['action'] ?? '') === 'add_redirects')) {
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pairs = $body['pairs'] ?? [];
+    if (!is_array($pairs) || !$pairs) errorResponse('pairs array required');
+    $stmt = $db->prepare("
+        INSERT INTO yy_redirect (redirect_request, redirect_target, redirect_active_flag)
+        VALUES (?, ?, true)
+        ON CONFLICT (redirect_request) DO UPDATE SET
+            redirect_target      = EXCLUDED.redirect_target,
+            redirect_active_flag = true
+    ");
+    $added = 0;
+    foreach ($pairs as $p) {
+        $from = trim((string)($p['from'] ?? ''));
+        $to   = trim((string)($p['to']   ?? ''));
+        if (!$from || !$to || $from === $to) continue;
+        // Strip query strings — yy_redirect matches on path only.
+        $from = parse_url($from, PHP_URL_PATH) ?: $from;
+        $to   = parse_url($to,   PHP_URL_PATH) ?: $to;
+        $stmt->execute([$from, $to]);
+        $added++;
+    }
+    jsonResponse(['added' => $added]);
+}
+
 if ($method === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
     $action = $data['action'] ?? $_GET['action'] ?? '';
@@ -316,6 +345,8 @@ if ($method === 'PUT') {
         $newCode = $raw !== '' ? $raw : null;
     }
     $renamedDocx = null; $renamedPdf = null;
+    $oldDocxName = null; $oldPdfName = null;   // Surfaced to the client so it
+                                                // can prompt + register 301s.
     if ($newCode !== null) {
         $cur = $db->prepare("SELECT volume_code, volume_docx, volume_pdf FROM yy_volume WHERE volume_key = ?");
         $cur->execute([$key]);
@@ -338,8 +369,8 @@ if ($method === 'PUT') {
                 if (!@rename($oldAbs, $newAbs)) {
                     errorResponse('Filesystem rename failed: ' . $r['old'] . ' → ' . $r['new']);
                 }
-                if ($r['col'] === 'volume_docx') $renamedDocx = $r['new'];
-                if ($r['col'] === 'volume_pdf')  $renamedPdf  = $r['new'];
+                if ($r['col'] === 'volume_docx') { $renamedDocx = $r['new']; $oldDocxName = $r['old']; }
+                if ($r['col'] === 'volume_pdf')  { $renamedPdf  = $r['new']; $oldPdfName  = $r['old']; }
             }
         }
     }
@@ -369,7 +400,17 @@ if ($method === 'PUT') {
     if (empty($fields)) errorResponse('Nothing to update');
     $params[] = $key;
     $db->prepare("UPDATE yy_volume SET " . implode(', ', $fields) . " WHERE volume_key = ?")->execute($params);
-    jsonResponse(['saved' => true, 'renamed_docx' => $renamedDocx, 'renamed_pdf' => $renamedPdf]);
+    // Tell the client which paths changed (with both forms) so it can offer
+    // to register 301 redirects from the old URLs to the new ones.
+    $renames = [];
+    if ($renamedDocx) $renames[] = ['from' => '/u/books-word/' . $oldDocxName, 'to' => '/u/books-word/' . $renamedDocx];
+    if ($renamedPdf)  $renames[] = ['from' => '/pdf/'         . $oldPdfName,   'to' => '/pdf/'         . $renamedPdf];
+    jsonResponse([
+        'saved'        => true,
+        'renamed_docx' => $renamedDocx,
+        'renamed_pdf'  => $renamedPdf,
+        'renames'      => $renames,
+    ]);
 }
 
 if ($method === 'DELETE') {

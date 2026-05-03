@@ -603,7 +603,29 @@ function saveVolume() {
     fetch(API + '/admin-books.php' + (key ? '?key=' + key : ''), {
         method: key ? 'PUT' : 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
-    }).then(function(r){return safeJson(r);}).then(function(d) { if(d.error){alert(d.error);return;} closeForm(); loadBooks(); });
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        // If volume_code changed and files were renamed, the server returns
+        // a list of {from, to} pairs. Offer to register 301 redirects so any
+        // existing links to the old DOCX/PDF URLs keep working.
+        var pending = (d.renames && d.renames.length) ? d.renames : [];
+        var afterRedirects = function() { closeForm(); loadBooks(); };
+        if (!pending.length) { afterRedirects(); return; }
+        var msg = 'Files were renamed:\n\n'
+                + pending.map(function(p){ return '  ' + p.from + '  →  ' + p.to; }).join('\n')
+                + '\n\nAdd 301 redirects from the old URLs to the new ones?';
+        if (!confirm(msg)) { afterRedirects(); return; }
+        fetch(API + '/admin-books.php?action=add_redirects', {
+            method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({action:'add_redirects', pairs: pending})
+        }).then(function(r){return safeJson(r);}).then(function(rd) {
+            if (rd && rd.error) alert('Save succeeded, but failed to register redirects: ' + rd.error);
+            afterRedirects();
+        }).catch(function(err) {
+            alert('Save succeeded, but failed to register redirects: ' + err.message);
+            afterRedirects();
+        });
+    });
 }
 
 function deleteVolume(key, label) {
