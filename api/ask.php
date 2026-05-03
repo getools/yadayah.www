@@ -125,19 +125,29 @@ if (empty($_SESSION['ask_session_key'])) {
 }
 $askSessionKey = $_SESSION['ask_session_key'];
 
-// Try AND-based search first, fall back to OR if too few results
+// Try AND-based search first, fall back to OR if too few results.
+//
+// volume_ask_rating (0-100, default 50) is admin-tunable per book so some
+// volumes can be weighted more heavily than others when Ask Yada builds
+// its context. Semantics: 0 → exclude, 50 → neutral, 100 → 2x weight.
+// We multiply the text-search rank by (rating/50.0) and keep the rest of
+// the pipeline unchanged. volume_ask_yada_flag is also honored so admins
+// have a hard kill switch in addition to the rating slider.
 $stmt = $pdo->prepare("
     SELECT p.paragraph_text_plain,
            v.volume_label,
            s.series_label,
            p.paragraph_page,
-           ts_rank(p.paragraph_tsv, plainto_tsquery('english', ?)) AS rank
+           ts_rank(p.paragraph_tsv, plainto_tsquery('english', ?))
+               * (v.volume_ask_rating / 50.0) AS rank
     FROM yy_paragraph p
     JOIN yy_volume v ON v.volume_key = p.volume_key
     JOIN yy_series s ON s.series_key = p.series_key
     WHERE p.paragraph_tsv @@ plainto_tsquery('english', ?)
       AND p.paragraph_active_flag = true
       AND p.series_key != ?
+      AND v.volume_ask_yada_flag = true
+      AND v.volume_ask_rating > 0
     ORDER BY rank DESC
     LIMIT 20
 ");
@@ -153,13 +163,16 @@ if (count($contextRows) < 5 && $orQuery) {
                v.volume_label,
                s.series_label,
                p.paragraph_page,
-               ts_rank(p.paragraph_tsv, to_tsquery('english', ?)) AS rank
+               ts_rank(p.paragraph_tsv, to_tsquery('english', ?))
+                   * (v.volume_ask_rating / 50.0) AS rank
         FROM yy_paragraph p
         JOIN yy_volume v ON v.volume_key = p.volume_key
         JOIN yy_series s ON s.series_key = p.series_key
         WHERE p.paragraph_tsv @@ to_tsquery('english', ?)
           AND p.paragraph_active_flag = true
           AND p.series_key != ?
+          AND v.volume_ask_yada_flag = true
+          AND v.volume_ask_rating > 0
         ORDER BY rank DESC
         LIMIT 20
     ");
