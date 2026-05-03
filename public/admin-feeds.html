@@ -199,6 +199,12 @@
             #rec-table th { vertical-align:top; }
             #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.68rem;font-weight:normal; }
             #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer; }
+            /* Very light warm tint for rows currently in a finalize /
+               transcribe pipeline. Marks the row as "do not touch" without
+               reducing legibility. Applied per-td so border-collapse layouts
+               render the tint reliably. */
+            #rec-table tr.rec-row-inprogress td { background-color: #fff9e6; }
+            #rec-table tr.rec-row-inprogress:hover td { background-color: #fff3c7; }
         </style>
         <table class="feeds-table" id="rec-table">
             <thead>
@@ -2153,7 +2159,15 @@ function renderRecordings(d) {
 
         var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"'
                     + (inProgress ? ' disabled title="Locked while ' + inProgressTitle + '"' : '');
-        html += '<tr id="rec-row-' + it.feed_item_key + '"' + (inProgress ? ' style="opacity:0.7;"' : '') + '>'
+        // In-progress rows get a very light warm tint instead of an opacity
+        // dim — gentler on the eye and reads as a "do not touch" cue rather
+        // than as an inactive/grayed row. Background applied to <td> cells
+        // because some browsers ignore <tr>-level background on certain
+        // border-collapse layouts.
+        var rowAttrs = inProgress
+            ? ' class="rec-row-inprogress" data-inprogress="1"'
+            : '';
+        html += '<tr id="rec-row-' + it.feed_item_key + '"' + rowAttrs + '>'
             +     '<td style="text-align:center;"><input type="checkbox" ' + cbAttrs + '></td>'
             +     '<td>' + thumb + '</td>'
             +     '<td style="font-family:monospace;font-size:0.78rem;">' + it.feed_item_key + '</td>'
