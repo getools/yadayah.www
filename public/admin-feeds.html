@@ -591,9 +591,9 @@ function loadItems(page) {
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
             + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')"><span class="rec-sortable-label">Status' + iarr('status') + '</span><div id="filter-status" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">'
-                + '<label><input type="checkbox" value="active" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('active') >= 0 ? ' checked' : '') + '> Active</label>'
-                + '<label><input type="checkbox" value="restricted" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('restricted') >= 0 ? ' checked' : '') + '> Restricted</label>'
-                + '<label><input type="checkbox" value="inactive" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('inactive') >= 0 ? ' checked' : '') + '> Inactive</label>'
+                + '<label><input type="checkbox" value="active" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'active\') >= 0 ? ' checked' : '') + '> Active</label>'
+                + '<label><input type="checkbox" value="restricted" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'restricted\') >= 0 ? ' checked' : '') + '> Restricted</label>'
+                + '<label><input type="checkbox" value="inactive" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'inactive\') >= 0 ? ' checked' : '') + '> Inactive</label>'
               + '</div></th>'
             + '<th></th>'
             + '</tr></thead><tbody>';
@@ -1954,16 +1954,27 @@ function loadRecordings(page) {
 }
 // Render the page checkbox list under the Pages column header. Preserves
 // the user's current selections across reloads.
+//
+// REC_PAGE_EXCLUDE: page titles/codes to hide from this filter — recordings
+// don't usually live under landing pages like Home or DoYouYada, so showing
+// them just adds noise. Match is case-insensitive and trimmed; compared
+// against page_title and page_code.
+var REC_PAGE_EXCLUDE = ['home', 'do you yada?', 'doyouyada'];
 function populateRecPageFilter(pages, currentSelections) {
     var box = document.getElementById('rec-f-pages');
     if (!box) return;
-    if (box.dataset.populated === '1' && box.dataset.count === String(pages.length)) return;
+    var filtered = pages.filter(function(p) {
+        var t = String(p.page_title || '').trim().toLowerCase();
+        var c = String(p.page_code  || '').trim().toLowerCase();
+        return REC_PAGE_EXCLUDE.indexOf(t) === -1 && REC_PAGE_EXCLUDE.indexOf(c) === -1;
+    });
+    if (box.dataset.populated === '1' && box.dataset.count === String(filtered.length)) return;
     box.dataset.populated = '1';
-    box.dataset.count = String(pages.length);
+    box.dataset.count = String(filtered.length);
     var sel = {};
     (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
     var html = '';
-    pages.forEach(function(p) {
+    filtered.forEach(function(p) {
         var checked = sel[String(p.page_key)] ? ' checked' : '';
         html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
               + '<input type="checkbox" value="' + p.page_key + '" onchange="loadRecordings(1)"' + checked + '> '
