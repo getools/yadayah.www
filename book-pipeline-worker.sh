@@ -162,7 +162,7 @@ process_job() {
     # skip LibreOffice so retries don't waste 30-60s re-converting an
     # unchanged docx.
     local tmp_out="" lo_output="" lo_rc=0
-    if [ -f "$PDF_DIR/$pdf_name" ] && [ -s "$PDF_DIR/$pdf_name" ]; then
+    if [ -f "$PDF_DIR/$pdf_name" ] && [ -s "$PDF_DIR/$pdf_name" ] && [ ! "$docx_path" -nt "$PDF_DIR/$pdf_name" ]; then
         log "PDF already on disk — skipping LibreOffice (retry path): $PDF_DIR/$pdf_name"
     else
         tmp_out=$(mktemp -d)
@@ -363,6 +363,77 @@ shopt -s nullglob
 for j in "$JOBS_DIR"/*.json; do
     process_job "$j"
 done
+
+# ── Phase 4.5: stale-artifact sweep ──────────────────────────────
+# Auto-heal volumes whose pipeline ended in a non-final state (warning,
+# error with retries left) or whose DOCX is now newer than the PDF. Without
+# this, a docx that ran into a transient FlipHTML5 / load-gate failure sits
+# in 'warning' forever. We just write a job file and let the regular
+# process_job loop pick it up on the NEXT tick. Cap at 5 per tick.
+sweep_count=0
+sweep_rows=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -F'|' -c "
+    SELECT v.volume_key,
+           v.volume_docx,
+           v.volume_pdf,
+           COALESCE(v.volume_flip_code, ''),
+           COALESCE(v.volume_pipeline_status, ''),
+           COALESCE(v.volume_pipeline_retry_count, 0)
+      FROM yy_volume v
+     WHERE v.volume_docx IS NOT NULL
+       AND v.volume_docx <> ''
+       AND COALESCE(v.volume_pipeline_status, '') NOT IN ('queued','running')
+     ORDER BY v.volume_key
+" 2>/dev/null)
+while IFS='|' read -r vk docx pdf flip status retries; do
+    [ -z "$vk" ] && continue
+    [ "$sweep_count" -ge 5 ] && break
+
+    # Skip if a job file is already queued for this volume.
+    existing=$(ls "$JOBS_DIR"/$(printf '%010d' "$vk")_*.json 2>/dev/null | head -1)
+    [ -n "$existing" ] && continue
+
+    docx_path="$DOCX_DIR/$docx"
+    pdf_path="$PDF_DIR/$pdf"
+    needs_requeue=0
+    reason=""
+
+    case "$status" in
+        warning|error|"")
+            # Stuck in a non-final state — but only retry while under the cap
+            # (retry_count is reset to 0 by admin re-queue / docx re-upload).
+            if [ "${retries:-0}" -lt 3 ]; then
+                needs_requeue=1
+                reason="status=${status:-unset}, retry $retries/3"
+            fi
+            ;;
+        success)
+            # Re-queue if the DOCX has been updated since the PDF was built.
+            if [ -f "$docx_path" ] && [ -f "$pdf_path" ] && [ "$docx_path" -nt "$pdf_path" ]; then
+                needs_requeue=1
+                reason="DOCX newer than PDF"
+            fi
+            ;;
+    esac
+
+    [ "$needs_requeue" = "1" ] || continue
+
+    ts_now=$(date -u +%s)
+    job_file="$JOBS_DIR/$(printf '%010d' "$vk")_stalesweep_${ts_now}.json"
+    flip_field="null"
+    [ -n "$flip" ] && flip_field="\"$flip\""
+    # Escape backslash + double-quote for JSON safety; apostrophes are fine
+    # inside double-quoted JSON strings.
+    docx_esc=$(printf '%s' "$docx" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    pdf_esc=$(printf '%s' "$pdf" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    printf '{"volume_key":%s,"docx_name":"%s","pdf_name":"%s","flip_code":%s,"queued_at":"%s","auto_retry":true,"source":"stale-sweep"}\n' \
+        "$vk" "$docx_esc" "$pdf_esc" "$flip_field" "$(date -u +%FT%TZ)" > "$job_file"
+
+    docker exec "$PG_CONTAINER" psql -U postgres -d yada -c \
+        "UPDATE yy_volume SET volume_pipeline_status='queued', volume_pipeline_message='Re-queued by stale-sweep: $reason' WHERE volume_key=$vk" >/dev/null 2>&1
+
+    log "Stale-sweep: queued volume $vk ($reason)"
+    sweep_count=$((sweep_count + 1))
+done <<< "$sweep_rows"
 
 # ── Phase 5: parse-only sweep ─────────────────────────────────────
 # Pick up volumes that already have a docx but no parse output (or status

@@ -102,6 +102,10 @@
          Expands automatically when expired, with a paste-cookies form. -->
     <div id="flip-session-bar" style="display:none;margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;"></div>
 
+    <!-- FlipHTML5 match status — shows how many volumes have flip_codes
+         vs. still need PDFs uploaded to FlipHTML5. Auto-matches by name. -->
+    <div id="flip-match-bar" style="display:none;margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;background:#eef2ff;border:1px solid #c8d0f0;color:#31345A;"></div>
+
     <div id="table-container">
         <div style="text-align:center;padding:20px;color:#888">Loading...</div>
     </div>
@@ -936,6 +940,76 @@ function clearFlipCookies() {
 // First poll after auth lands; refresh every 60s while the page is open.
 setTimeout(pollFlipSession, 1500);
 setInterval(pollFlipSession, 60000);
+
+// ── FlipHTML5 match status panel ────────────────────────────────────
+// Shows how many volumes have a FlipHTML5 code vs. still need PDFs
+// uploaded. The cron matches by name hourly; the "Match now" button
+// triggers a one-off run via a host-side trigger file.
+function pollFlipMatch() {
+    fetch(API + '/admin-fliphtml5-match.php', {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(renderFlipMatch)
+        .catch(function(){});
+}
+function renderFlipMatch(d) {
+    var bar = document.getElementById('flip-match-bar');
+    if (!bar) return;
+    if (!d || d.error) { bar.style.display = 'none'; return; }
+    var total = d.total || 0, matched = d.matched || 0, unmatched = d.unmatched_count || 0;
+    var lr = d.last_run || {};
+    var lastWhen = lr.run_at ? new Date(lr.run_at).toLocaleString() : '—';
+    var lastBooks = lr.books_found != null ? lr.books_found : '?';
+    var listHtml = '';
+    if (unmatched > 0 && d.unmatched && d.unmatched.length) {
+        listHtml = '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:600;">'
+            + unmatched + ' volume' + (unmatched === 1 ? '' : 's') + ' still need a FlipHTML5 book</summary>'
+            + '<div style="font-size:0.78rem;color:#444;margin:6px 0 4px;line-height:1.5;">'
+            +   'Drop these PDFs into your FlipHTML5 dashboard (multi-file drag-drop works). The hourly match cron — or the <em>Match now</em> button — will wire each new book back to its volume by name.'
+            + '</div>'
+            + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
+            + '<thead><tr style="text-align:left;color:#666;border-bottom:1px solid #d0d7e0;">'
+            +   '<th style="padding:4px 6px;">Volume</th><th style="padding:4px 6px;">Series</th><th style="padding:4px 6px;">PDF</th>'
+            + '</tr></thead><tbody>';
+        d.unmatched.forEach(function(v) {
+            var pdfHref = '/pdf/' + encodeURIComponent(v.volume_pdf);
+            listHtml += '<tr><td style="padding:3px 6px;">' + esc(v.volume_label || v.volume_code) + '</td>'
+                + '<td style="padding:3px 6px;color:#777;">' + esc(v.series_label || '') + '</td>'
+                + '<td style="padding:3px 6px;"><a href="' + pdfHref + '" target="_blank" download>' + esc(v.volume_pdf) + '</a></td></tr>';
+        });
+        listHtml += '</tbody></table></details>';
+    }
+    bar.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      + '<strong>FlipHTML5 books:</strong> ' + matched + ' of ' + total + ' matched'
+      + (unmatched > 0 ? ' &middot; ' + unmatched + ' need a flipbook on FlipHTML5' : '')
+      + '<span style="color:#666;font-size:0.78rem;">&middot; last match run ' + esc(lastWhen) + ' (saw ' + esc(String(lastBooks)) + ' books)</span>'
+      + '<button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="triggerFlipMatch(this)">Match now</button>'
+      + '</div>'
+      + listHtml;
+    bar.style.display = '';
+}
+function triggerFlipMatch(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Triggered…'; }
+    fetch(API + '/admin-fliphtml5-match.php', {method: 'POST', credentials: 'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(){
+            // Match runs in ~30s on the host. Re-poll every 10s for ~90s
+            // so the UI refreshes once the run completes.
+            var ticks = 0;
+            var iv = setInterval(function(){
+                pollFlipMatch();
+                if (++ticks >= 9) clearInterval(iv);
+            }, 10000);
+            setTimeout(function(){
+                if (btn) { btn.disabled = false; btn.textContent = 'Match now'; }
+            }, 30000);
+        })
+        .catch(function(){
+            if (btn) { btn.disabled = false; btn.textContent = 'Match now'; }
+        });
+}
+setTimeout(pollFlipMatch, 2000);
+setInterval(pollFlipMatch, 120000);
 </script>
 <script src="/js/admin-login.js?v=8"></script>
 </body>
