@@ -63,9 +63,11 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if ($ext !== 'docx') errorResponse('Only .docx files are accepted');
 
-    // Look up the volume to compose a stable filename
+    // Look up the volume. volume_book_code is the canonical root that drives
+    // every per-book filename: docx, PDF, eventually any other artifact. If
+    // it's already set we honor it (renaming a book is intentional, not auto).
     $volStmt = $db->prepare("
-        SELECT v.volume_key, v.volume_label, v.volume_name, v.volume_pdf, s.series_key,
+        SELECT v.volume_key, v.volume_label, v.volume_name, v.volume_pdf, v.volume_book_code, s.series_key,
                COALESCE(s.series_number, 0) AS series_number, COALESCE(v.volume_number, 0) AS volume_number
         FROM yy_volume v JOIN yy_series s ON s.series_key = v.series_key
         WHERE v.volume_key = ?
@@ -74,9 +76,11 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     $vol = $volStmt->fetch();
     if (!$vol) errorResponse('Volume not found', 404);
 
-    // Build a deterministic filename: prefer existing PDF basename, else compose
+    // book_code is THE single canonical root. Derive once, normalize, keep.
     $base = '';
-    if (!empty($vol['volume_pdf'])) {
+    if (!empty($vol['volume_book_code'])) {
+        $base = $vol['volume_book_code'];
+    } elseif (!empty($vol['volume_pdf'])) {
         $base = pathinfo($vol['volume_pdf'], PATHINFO_FILENAME);
     }
     if (!$base) {
@@ -86,14 +90,15 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
         };
         $base = sprintf('YY-s%02dv%02d-%s', (int)$vol['series_number'], (int)$vol['volume_number'], $sanitize($vol['volume_label'] ?: $vol['volume_name'] ?: ''));
     }
-    // Force canonical form: no spaces, no %20, no doubled hyphens. Defends
-    // against a legacy volume_pdf that still has spaces, plus any pasted
-    // value that contains URL-encoded sequences.
+    // Force canonical form on the book_code, then derive filenames from it.
+    // Doing this here means a stale volume_pdf or volume_docx with %20 / spaces
+    // can never propagate through this code path.
     $base = str_replace(['%20', ' '], '-', $base);
     $base = preg_replace('/-+/', '-', $base);
     $base = trim($base, '-');
-    $docxName = $base . '.docx';
-    $pdfName  = $base . '.pdf';
+    $bookCode = $base;
+    $docxName = $bookCode . '.docx';
+    $pdfName  = $bookCode . '.pdf';
 
     // Storage paths (works in both Docker container and local dev)
     $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
@@ -109,7 +114,9 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     // changes without requiring a manual local script run.
     $db->prepare("
         UPDATE yy_volume
-           SET volume_docx = ?,
+           SET volume_book_code = ?,
+               volume_docx = ?,
+               volume_pdf  = COALESCE(volume_pdf, ?),
                volume_pipeline_status = 'queued',
                volume_pipeline_message = 'Awaiting host worker (libreoffice + fliphtml5)',
                volume_pipeline_retry_count = 0,
@@ -117,7 +124,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
                volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
                volume_revision_dtime = NOW()
          WHERE volume_key = ?
-    ")->execute([$docxName, $key]);
+    ")->execute([$bookCode, $docxName, $pdfName, $key]);
 
     // Drop a job file the host-side worker watches.
     // The worker runs LibreOffice (DOCX→PDF), then re-uploads to FlipHTML5,
@@ -161,11 +168,11 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     }
     if (!$key) errorResponse('Volume key required');
 
-    $volStmt = $db->prepare("SELECT volume_key, volume_docx, volume_pdf FROM yy_volume WHERE volume_key = ?");
+    $volStmt = $db->prepare("SELECT volume_key, volume_docx, volume_pdf, volume_book_code FROM yy_volume WHERE volume_key = ?");
     $volStmt->execute([$key]);
     $vol = $volStmt->fetch();
     if (!$vol)               errorResponse('Volume not found', 404);
-    if (!$vol['volume_docx']) errorResponse('Volume has no docx — upload one before retrying');
+    if (!$vol['volume_docx'] && !$vol['volume_book_code']) errorResponse('Volume has no docx — upload one before retrying');
 
     $db->prepare("
         UPDATE yy_volume
@@ -179,21 +186,27 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
     $jobsDir    = $publicRoot . '/jobs/book-pipeline';
     if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
-    // Normalize names so retries can't re-introduce %20 / spaces. Mirrors
-    // the canonical form admin's docx upload writes for new volumes.
+    // Derive everything from book_code (single source of truth). If it isn't
+    // populated yet, recover from volume_docx/volume_pdf by stripping the ext.
     $canon = function($s) {
         $s = str_replace(['%20', ' '], '-', (string)$s);
         $s = preg_replace('/-+/', '-', $s);
         return trim($s, '-');
     };
-    $docxName = $canon($vol['volume_docx']);
-    $pdfName  = $canon($vol['volume_pdf'] ?: (pathinfo($vol['volume_docx'], PATHINFO_FILENAME) . '.pdf'));
-    if ($docxName !== $vol['volume_docx'] || $pdfName !== $vol['volume_pdf']) {
-        $db->prepare("UPDATE yy_volume SET volume_docx = ?, volume_pdf = ? WHERE volume_key = ?")
-           ->execute([$docxName, $pdfName, $key]);
+    $bookCode = $vol['volume_book_code']
+        ?: pathinfo($vol['volume_docx'] ?: $vol['volume_pdf'] ?: '', PATHINFO_FILENAME);
+    $bookCode = $canon($bookCode);
+    $docxName = $bookCode . '.docx';
+    $pdfName  = $bookCode . '.pdf';
+    if ($bookCode !== $vol['volume_book_code']
+            || $docxName !== $vol['volume_docx']
+            || $pdfName  !== $vol['volume_pdf']) {
+        $db->prepare("UPDATE yy_volume SET volume_book_code = ?, volume_docx = ?, volume_pdf = ? WHERE volume_key = ?")
+           ->execute([$bookCode, $docxName, $pdfName, $key]);
     }
     $jobPayload = [
         'volume_key'   => (int)$key,
+        'book_code'    => $bookCode,
         'docx_name'    => $docxName,
         'pdf_name'     => $pdfName,
         'flip_code'    => null,
