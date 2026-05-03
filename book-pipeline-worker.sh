@@ -30,7 +30,7 @@ set -uo pipefail
 #      exit 137) instead of starving the box.
 MIN_FREE_MB=1500
 MAX_LOAD=6.0
-SOFFICE_MEM_MAX=1800M
+SOFFICE_MEM_MAX=2600M
 SOFFICE_CPU_QUOTA=50%
 PARSER_MEM_MAX=400M
 PARSER_CPU_QUOTA=40%
@@ -161,7 +161,7 @@ process_job() {
         --property=MemoryMax=$SOFFICE_MEM_MAX \
         --property=MemorySwapMax=0 \
         --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-        soffice --headless --nologo --nofirststartwizard --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
+        env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
     lo_rc=${lo_rc:-0}
     echo "$lo_output" >> /var/log/book-pipeline.log
     if [ "$lo_rc" -ne 0 ]; then

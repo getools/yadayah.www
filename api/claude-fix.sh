@@ -52,7 +52,7 @@ fi
 mkdir -p "$HOME/.claude"
 
 # Resource & safety limits
-TIMEOUT_SECS=600
+TIMEOUT_SECS=1500
 
 # Fetch error details. Use direct psql if available (when running inside the
 # web container); fall back to `docker exec` against the postgres container
