@@ -98,11 +98,15 @@ if ($method === 'GET' && isset($_GET['items'])) {
                 JOIN yy_feed_page_category cc ON fic.category_key = cc.category_key
                 JOIN yy_page pp ON cc.page_key = pp.page_key
                 WHERE fic.feed_item_key = fi.feed_item_key) AS categories_list,
-               -- Most recent validation status for this item's transcript (null = no validation yet)
+               -- Most recent validation status + reviewer's resume bookmark.
+               -- Two correlated subqueries to keep the change small; same row.
                (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
                 WHERE v.feed_item_key = fi.feed_item_key
                 ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_status,
-               -- Whether ANY transcript rows exist (helps distinguish 'never transcribed' from 'transcribed but unreviewed')
+               (SELECT v.validation_bookmark_seconds FROM yy_feed_item_transcript_validation v
+                WHERE v.feed_item_key = fi.feed_item_key
+                ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_bookmark_seconds,
+               -- Whether ANY transcript rows exist (distinguishes never-transcribed from in-review)
                EXISTS (SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS has_transcript
         FROM yy_feed_item fi
         JOIN yy_feed f ON fi.feed_key = f.feed_key

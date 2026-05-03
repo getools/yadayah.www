@@ -400,10 +400,16 @@ function rebuildCategoryFilter() {
     if (catSel) { catSel.innerHTML = opts; catSel.value = _savedFilters.category; }
 }
 var _savedFilters = (window.adminUI && adminUI.loadAll('feeds.filters'))
-    || {title:'', tags:'', category:'', mp3:'', feed:'', status:['active'], page:'', episode:'', key:''};
-// Backfill: drop legacy `active` filter and seed `status` if missing.
+    || {title:'', tags:'', category:'', mp3:'', feed:'', status:'active', page:'', episode:'', key:''};
+// Backfill: drop legacy `active` filter and normalize `status` to a single
+// string ('' = All, otherwise 'active' / 'restricted' / 'inactive'). Earlier
+// builds stored an array — collapse to the first entry, or default 'active'.
 if (typeof _savedFilters.active !== 'undefined') delete _savedFilters.active;
-if (!Array.isArray(_savedFilters.status)) _savedFilters.status = ['active'];
+if (Array.isArray(_savedFilters.status)) {
+    _savedFilters.status = _savedFilters.status.length === 1 ? _savedFilters.status[0] : '';
+} else if (typeof _savedFilters.status !== 'string') {
+    _savedFilters.status = 'active';
+}
 // Scrub any legacy 'undefined' / null / undefined values that older builds
 // may have written into localStorage — they would otherwise be sent to the
 // API as ?title=undefined and match no rows.
@@ -460,12 +466,15 @@ function populateItemsFeedFilter() {
     sel.innerHTML = opts;
 }
 
-// Color-code the Transcribe button based on the most recent validation_status
-// (null = no validation yet, Pending/Approved/Errors as user-set values).
-// has_transcript distinguishes "never transcribed" from "transcribed, awaiting review".
+// Color-code the Transcribe button based on validation_status + transcript
+// existence. The "Transcribed" and "Pending review" states are merged into
+// a single bookmark button — both mean "review in progress" and the
+// reviewer's resume bookmark (validation_bookmark_seconds) is the most
+// useful thing to surface.
 function transcribeBtnHtml(it) {
     var hasTranscript = it.has_transcript === true || it.has_transcript === 't';
     var status = it.transcript_validation_status || null;
+    var bookmark = it.transcript_bookmark_seconds;
     var bg, fg, border, label, title;
     if (status === 'Approved') {
         bg = '#d4edda'; fg = '#155724'; border = '#a3d4ad';
@@ -473,13 +482,19 @@ function transcribeBtnHtml(it) {
     } else if (status === 'Errors') {
         bg = '#f8d7da'; fg = '#721c24'; border = '#e0a0a8';
         label = '&#9888; Errors'; title = 'Transcript flagged as having errors';
-    } else if (status === 'Pending') {
-        bg = '#fff3cd'; fg = '#856404'; border = '#e6c200';
-        label = '&#9201; Pending review'; title = 'Transcript awaiting validation';
     } else if (hasTranscript) {
-        // Transcript exists but no validation row yet
-        bg = '#e3f2fd'; fg = '#0d47a1'; border = '#90caf9';
-        label = 'Transcribed'; title = 'Transcript exists, not yet validated';
+        // Merged "Transcribed" + "Pending review" — both mean a transcript
+        // exists and review is open. Always show the bookmark, even when
+        // it's 00:00 (no review activity yet).
+        bg = '#fff3cd'; fg = '#856404'; border = '#e6c200';
+        var sec = Math.max(0, Math.floor(Number(bookmark) || 0));
+        var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+        var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
+        var bookmarkText = h > 0 ? pad(h) + ':' + pad(m) + ':' + pad(x) : pad(m) + ':' + pad(x);
+        label = '&#128278; ' + bookmarkText;
+        title = sec > 0
+            ? 'Review in progress — resume at ' + bookmarkText
+            : 'Transcript exists; review not yet started';
     } else {
         // Never transcribed
         bg = '#e8eaf6'; fg = '#31345A'; border = '#c5cae9';
@@ -487,7 +502,7 @@ function transcribeBtnHtml(it) {
     }
     return '<button data-tx-key="' + it.feed_item_key + '" onclick="openTranscript(' + it.feed_item_key + ')" '
         + 'title="' + esc(title) + '" '
-        + 'style="margin-top:4px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-size:0.7rem;padding:3px 8px;border-radius:4px;cursor:pointer;font-weight:600;">'
+        + 'style="background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-size:0.7rem;padding:3px 8px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap;">'
         + label + '</button>';
 }
 
@@ -496,11 +511,9 @@ function loadItems(page) {
     _itemsPage = page;
     var ff = document.getElementById('filter-feed');
     if (ff) _savedFilters.feed = ff.value;
-    // status filter — multi-checkbox of: active, restricted, inactive
-    var sboxes = document.querySelectorAll('#filter-status input[type=checkbox]:checked');
-    if (sboxes.length || document.getElementById('filter-status')) {
-        _savedFilters.status = Array.prototype.map.call(sboxes, function(cb){ return cb.value; });
-    }
+    // status filter — single-select dropdown ('' = All / active / restricted / inactive)
+    var sf = document.getElementById('filter-status');
+    if (sf) _savedFilters.status = sf.value || '';
     var pf = document.getElementById('filter-page');
     if (pf) _savedFilters.page = pf.value;
     var feedKey = _savedFilters.feed;
@@ -536,8 +549,8 @@ function loadItems(page) {
     if (mp3Filter) url += '&has_mp3=' + mp3Filter;
     var episodeFilter = _savedFilters.episode;
     if (episodeFilter) url += '&episode=' + encodeURIComponent(episodeFilter);
-    var statusFilter = Array.isArray(_savedFilters.status) ? _savedFilters.status : [];
-    if (statusFilter.length) url += '&status=' + encodeURIComponent(statusFilter.join(','));
+    var statusFilter = typeof _savedFilters.status === 'string' ? _savedFilters.status : '';
+    if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
     var keyFilter = _savedFilters.key;
     if (keyFilter) url += '&feed_item_key=' + encodeURIComponent(keyFilter);
     document.getElementById('items-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">Loading...</div>';
@@ -582,19 +595,21 @@ function loadItems(page) {
         var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
         var html = '<table class="feeds-table"><thead><tr>'
             + '<th>Thumb<br><button onclick="itemsClearFilters()" style="margin-top:4px;background:#fff;border:1px solid #ccc;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:normal;">Clear filters</button></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_name\')">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
             + '<th>Page<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'category_title\')">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
-            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')"><span class="rec-sortable-label">Status' + iarr('status') + '</span><div id="filter-status" onclick="event.stopPropagation()" style="margin-top:3px;display:flex;flex-direction:column;gap:1px;font-size:0.68rem;font-weight:normal;">'
-                + '<label><input type="checkbox" value="active" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('active') >= 0 ? ' checked' : '') + '> Active</label>'
-                + '<label><input type="checkbox" value="restricted" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('restricted') >= 0 ? ' checked' : '') + '> Restricted</label>'
-                + '<label><input type="checkbox" value="inactive" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('inactive') >= 0 ? ' checked' : '') + '> Inactive</label>'
-              + '</div></th>'
+            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')">Status' + iarr('status') + '<br><select id="filter-status" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onStatusFilterChange()">'
+                + '<option value=""' + (_savedFilters.status === '' ? ' selected' : '') + '>All</option>'
+                + '<option value="active"' + (_savedFilters.status === 'active' ? ' selected' : '') + '>Active</option>'
+                + '<option value="restricted"' + (_savedFilters.status === 'restricted' ? ' selected' : '') + '>Restricted</option>'
+                + '<option value="inactive"' + (_savedFilters.status === 'inactive' ? ' selected' : '') + '>Inactive</option>'
+              + '</select></th>'
+            + '<th>Transcribe</th>'
             + '<th></th>'
             + '</tr></thead><tbody>';
         items.forEach(function(it) {
@@ -626,12 +641,11 @@ function loadItems(page) {
                 + '<td style="font-size:0.75rem;color:#888;">' + (it.feed_item_episode || '') + '</td>'
                 + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
                 + '<td style="text-align:center;">' + statusBadge + '</td>'
-                + '<td class="actions" style="white-space:nowrap;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button>'
-                + (it.feed_item_type === 'video' ? '<br>' + transcribeBtnHtml(it) : '')
-                + '</td></tr>';
+                + '<td style="text-align:center;">' + (it.feed_item_type === 'video' ? transcribeBtnHtml(it) : '') + '</td>'
+                + '<td class="actions" style="white-space:nowrap;text-align:right;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button></td></tr>';
         });
         if (!items.length) {
-            html += '<tr><td colspan="11" style="text-align:center;padding:30px;color:#888;font-style:italic;">No items found.</td></tr>';
+            html += '<tr><td colspan="12" style="text-align:center;padding:30px;color:#888;font-style:italic;">No items found.</td></tr>';
         }
         html += '</tbody></table>';
         if (_itemsTotalPages > 1) {
@@ -1865,15 +1879,15 @@ function recSort(col) {
     loadRecordings(1);
 }
 function itemsClearFilters() {
-    _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', status:['active'], page:'', episode:'', key:''};
+    _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', status:'active', page:'', episode:'', key:''};
     if (window.adminUI) adminUI.saveAll('feeds.filters', _savedFilters);
     loadItems(1);
 }
 
-// Sync the multi-checkbox status filter into _savedFilters and reload.
+// Sync the dropdown status filter into _savedFilters and reload.
 function onStatusFilterChange() {
-    var boxes = document.querySelectorAll('#filter-status input[type=checkbox]:checked');
-    _savedFilters.status = Array.prototype.map.call(boxes, function(cb){ return cb.value; });
+    var sel = document.getElementById('filter-status');
+    _savedFilters.status = sel ? sel.value : '';
     loadItems(1);
 }
 
