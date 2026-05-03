@@ -63,11 +63,11 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if ($ext !== 'docx') errorResponse('Only .docx files are accepted');
 
-    // Look up the volume. volume_book_code is the canonical root that drives
+    // Look up the volume. volume_code is the canonical root that drives
     // every per-book filename: docx, PDF, eventually any other artifact. If
     // it's already set we honor it (renaming a book is intentional, not auto).
     $volStmt = $db->prepare("
-        SELECT v.volume_key, v.volume_label, v.volume_name, v.volume_pdf, v.volume_book_code, s.series_key,
+        SELECT v.volume_key, v.volume_label, v.volume_name, v.volume_pdf, v.volume_code, s.series_key,
                COALESCE(s.series_number, 0) AS series_number, COALESCE(v.volume_number, 0) AS volume_number
         FROM yy_volume v JOIN yy_series s ON s.series_key = v.series_key
         WHERE v.volume_key = ?
@@ -78,8 +78,8 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
 
     // book_code is THE single canonical root. Derive once, normalize, keep.
     $base = '';
-    if (!empty($vol['volume_book_code'])) {
-        $base = $vol['volume_book_code'];
+    if (!empty($vol['volume_code'])) {
+        $base = $vol['volume_code'];
     } elseif (!empty($vol['volume_pdf'])) {
         $base = pathinfo($vol['volume_pdf'], PATHINFO_FILENAME);
     }
@@ -114,7 +114,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     // changes without requiring a manual local script run.
     $db->prepare("
         UPDATE yy_volume
-           SET volume_book_code = ?,
+           SET volume_code = ?,
                volume_docx = ?,
                volume_pdf  = COALESCE(volume_pdf, ?),
                volume_pipeline_status = 'queued',
@@ -168,11 +168,11 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     }
     if (!$key) errorResponse('Volume key required');
 
-    $volStmt = $db->prepare("SELECT volume_key, volume_docx, volume_pdf, volume_book_code FROM yy_volume WHERE volume_key = ?");
+    $volStmt = $db->prepare("SELECT volume_key, volume_docx, volume_pdf, volume_code FROM yy_volume WHERE volume_key = ?");
     $volStmt->execute([$key]);
     $vol = $volStmt->fetch();
     if (!$vol)               errorResponse('Volume not found', 404);
-    if (!$vol['volume_docx'] && !$vol['volume_book_code']) errorResponse('Volume has no docx — upload one before retrying');
+    if (!$vol['volume_docx'] && !$vol['volume_code']) errorResponse('Volume has no docx — upload one before retrying');
 
     $db->prepare("
         UPDATE yy_volume
@@ -193,15 +193,15 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
         $s = preg_replace('/-+/', '-', $s);
         return trim($s, '-');
     };
-    $bookCode = $vol['volume_book_code']
+    $bookCode = $vol['volume_code']
         ?: pathinfo($vol['volume_docx'] ?: $vol['volume_pdf'] ?: '', PATHINFO_FILENAME);
     $bookCode = $canon($bookCode);
     $docxName = $bookCode . '.docx';
     $pdfName  = $bookCode . '.pdf';
-    if ($bookCode !== $vol['volume_book_code']
+    if ($bookCode !== $vol['volume_code']
             || $docxName !== $vol['volume_docx']
             || $pdfName  !== $vol['volume_pdf']) {
-        $db->prepare("UPDATE yy_volume SET volume_book_code = ?, volume_docx = ?, volume_pdf = ? WHERE volume_key = ?")
+        $db->prepare("UPDATE yy_volume SET volume_code = ?, volume_docx = ?, volume_pdf = ? WHERE volume_key = ?")
            ->execute([$bookCode, $docxName, $pdfName, $key]);
     }
     $jobPayload = [
