@@ -11,7 +11,7 @@
         #app.container { max-width: 100%; padding: 0 16px; box-sizing: border-box; }
         .feeds-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .feeds-table th, .feeds-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
-        .feeds-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
+        .feeds-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; vertical-align: top; }
         .feeds-table tr:hover { background: #f0f4ff; cursor: pointer; }
         .feeds-table .actions { white-space: nowrap; }
         .feeds-table .actions button { padding: 3px 8px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; margin-right: 4px; }
@@ -590,10 +590,10 @@ function loadItems(page) {
             + '<th style="' + ths + '" onclick="sortItems(\'category_title\')">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
-            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')"><span class="rec-sortable-label">Status' + iarr('status') + '</span><div id="filter-status" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">'
-                + '<label><input type="checkbox" value="active" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'active\') >= 0 ? ' checked' : '') + '> Active</label>'
-                + '<label><input type="checkbox" value="restricted" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'restricted\') >= 0 ? ' checked' : '') + '> Restricted</label>'
-                + '<label><input type="checkbox" value="inactive" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'inactive\') >= 0 ? ' checked' : '') + '> Inactive</label>'
+            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')"><span class="rec-sortable-label">Status' + iarr('status') + '</span><div id="filter-status" onclick="event.stopPropagation()" style="margin-top:3px;display:flex;flex-direction:column;gap:1px;font-size:0.68rem;font-weight:normal;">'
+                + '<label><input type="checkbox" value="active" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('active') >= 0 ? ' checked' : '') + '> Active</label>'
+                + '<label><input type="checkbox" value="restricted" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('restricted') >= 0 ? ' checked' : '') + '> Restricted</label>'
+                + '<label><input type="checkbox" value="inactive" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf('inactive') >= 0 ? ' checked' : '') + '> Inactive</label>'
               + '</div></th>'
             + '<th></th>'
             + '</tr></thead><tbody>';
