@@ -266,7 +266,7 @@ process_job() {
                     -e FLIP_EMAIL="$fhx_email" \
                     -e FLIP_PASS="$fhx_pass" \
                     "${chrome_env[@]}" \
-                    "$RSSHUB_CONTAINER" node /scraper/yy/fliphtml5-upload.cjs 2>&1) || up_rc=$?
+                    "$RSSHUB_CONTAINER" /scraper/yy/fliphtml5-upload-wrapper.sh 2>&1) || up_rc=$?
             up_rc=${up_rc:-0}
             echo "$up_output" >> /var/log/book-pipeline.log
             flip_code=$(echo "$up_output" | tail -1 | tr -d '[:space:]')

@@ -1,6 +1,6 @@
 <?php
 /**
- * Parse VTT transcript files into yy_transcript table.
+ * Parse VTT transcript files into yy_transcript_20260503 table.
  * Run via CLI: php parse-transcripts.php
  * Expects files in ../transcripts/*.vtt with naming pattern: yyyyMM-Title.vtt
  */
@@ -12,7 +12,7 @@ $CHUNK_WORDS = 500;
 $db = getDb();
 
 // Clear existing data for re-import
-$db->exec('TRUNCATE yy_transcript RESTART IDENTITY');
+$db->exec('TRUNCATE yy_transcript_20260503 RESTART IDENTITY');
 echo "Cleared existing transcript data.\n";
 
 $files = glob("$TRANSCRIPTS_DIR/*.vtt");
@@ -100,7 +100,7 @@ foreach ($files as $filepath) {
 
     // Insert chunks
     $stmt = $db->prepare("
-        INSERT INTO yy_transcript (transcript_source, transcript_title, transcript_yearmonth, transcript_chunk_num, transcript_start_time, transcript_end_time, transcript_text, transcript_tsv)
+        INSERT INTO yy_transcript_20260503 (transcript_source, transcript_title, transcript_yearmonth, transcript_chunk_num, transcript_start_time, transcript_end_time, transcript_text, transcript_tsv)
         VALUES (?, ?, ?, ?, ?, ?, ?, to_tsvector('english', ?))
     ");
 

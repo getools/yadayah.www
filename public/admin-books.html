@@ -98,6 +98,10 @@
         </div>
     </div>
 
+    <!-- FlipHTML5 session status — collapses out of sight when active.
+         Expands automatically when expired, with a paste-cookies form. -->
+    <div id="flip-session-bar" style="display:none;margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;"></div>
+
     <div id="table-container">
         <div style="text-align:center;padding:20px;color:#888">Loading...</div>
     </div>
@@ -828,6 +832,93 @@ function saveSeries() {
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
 checkAuth();
+
+// ── FlipHTML5 session panel ─────────────────────────────────────────
+// Polls /api/admin-fliphtml5-session.php. When the session is healthy this
+// is collapsed; when expired (or never set) it expands with a paste-cookies
+// flow so admins can refresh without leaving the page.
+function pollFlipSession() {
+    fetch(API + '/admin-fliphtml5-session.php', {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(renderFlipSession)
+        .catch(function(){});
+}
+function renderFlipSession(d) {
+    var bar = document.getElementById('flip-session-bar');
+    if (!bar) return;
+    if (!d || d.error) { bar.style.display = 'none'; return; }
+    var state = d.state || 'unknown';
+    var palette = state === 'active'
+        ? {bg:'#e8f5e9', border:'#a5d6a7', fg:'#1b5e20', label:'Active'}
+        : state === 'pending'
+        ? {bg:'#fff8e1', border:'#ffe082', fg:'#7c5e00', label:'Pending'}
+        : state === 'expired'
+        ? {bg:'#fdecea', border:'#f5b7b1', fg:'#a33',    label:'Expired — refresh required'}
+        : {bg:'#eceff1', border:'#cfd8dc', fg:'#37474f', label:'Unknown — no session yet'};
+    bar.style.cssText = 'margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;'
+        + 'background:' + palette.bg + ';border:1px solid ' + palette.border + ';color:' + palette.fg + ';';
+    var saved = d.cookies_saved_at ? (' &middot; cookies saved ' + new Date(d.cookies_saved_at).toLocaleString()) : '';
+    var msg = d.message ? (' &middot; ' + esc(d.message)) : '';
+    var expanded = state !== 'active';
+    bar.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      + '<strong>FlipHTML5 session:</strong> ' + esc(palette.label)
+      + '<span style="color:#666;font-size:0.78rem;">' + msg + saved + '</span>'
+      + '<button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="toggleFlipPanel()">'
+      +   (expanded ? 'Hide' : 'Refresh session') + '</button>'
+      + (d.cookies_present
+            ? '<button class="btn btn-secondary btn-sm" onclick="clearFlipCookies()">Clear</button>'
+            : '')
+      + '</div>'
+      + '<div id="flip-paste-panel" style="display:' + (expanded ? 'block' : 'none') + ';margin-top:10px;">'
+      +   '<div style="font-size:0.78rem;color:#555;margin-bottom:6px;">'
+      +     'In Chrome on <a href="https://fliphtml5.com/dashboard/home" target="_blank" rel="noopener">fliphtml5.com</a>: open DevTools (F12) &rarr; Application &rarr; Cookies &rarr; <code>fliphtml5.com</code>. '
+      +     'Right-click a row &rarr; Copy as cURL. Or use the Cookie-Editor extension &rarr; Export &rarr; JSON. Paste below:'
+      +   '</div>'
+      +   '<textarea id="flip-cookie-input" rows="5" placeholder="Paste cURL or JSON cookies here…" '
+      +     'style="width:100%;font-family:monospace;font-size:0.78rem;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"></textarea>'
+      +   '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;">'
+      +     '<button class="btn btn-primary btn-sm" onclick="saveFlipCookies()">Save cookies</button>'
+      +     '<span id="flip-save-status" style="font-size:0.8rem;"></span>'
+      +   '</div>'
+      + '</div>';
+    bar.style.display = '';
+}
+function toggleFlipPanel() {
+    var panel = document.getElementById('flip-paste-panel');
+    if (!panel) return;
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+function saveFlipCookies() {
+    var ta = document.getElementById('flip-cookie-input');
+    var st = document.getElementById('flip-save-status');
+    var raw = ta ? ta.value : '';
+    if (!raw.trim()) { if (st) st.textContent = 'Paste cookies first'; return; }
+    if (st) { st.textContent = 'Saving…'; st.style.color = '#666'; }
+    fetch(API + '/admin-fliphtml5-session.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'save_cookies', cookies: raw}),
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) { if (st) { st.textContent = '✗ ' + d.error; st.style.color = '#c00'; } return; }
+        if (st) { st.textContent = '✓ saved ' + (d.count || 0) + ' cookie(s)'; st.style.color = '#1b5e20'; }
+        if (ta) ta.value = '';
+        pollFlipSession();
+    }).catch(function(e) {
+        if (st) { st.textContent = '✗ ' + (e && e.message); st.style.color = '#c00'; }
+    });
+}
+function clearFlipCookies() {
+    if (!confirm('Clear saved FlipHTML5 cookies? Next upload will fall back to form login (likely to fail).')) return;
+    fetch(API + '/admin-fliphtml5-session.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'clear_cookies'}),
+    }).then(function(){ pollFlipSession(); });
+}
+// First poll after auth lands; refresh every 60s while the page is open.
+setTimeout(pollFlipSession, 1500);
+setInterval(pollFlipSession, 60000);
 </script>
 <script src="/js/admin-login.js?v=8"></script>
 </body>

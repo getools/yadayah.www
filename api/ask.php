@@ -196,49 +196,69 @@ foreach ($contextRows as $row) {
     $contextBlock .= "[{$row['series_label']} / {$row['volume_label']}, p.{$row['paragraph_page']}]\n{$text}\n\n";
 }
 
-// --- Search video transcripts ---
-$tStmt = $pdo->prepare("
-    SELECT transcript_title, transcript_yearmonth, transcript_text,
-           ts_rank(transcript_tsv, plainto_tsquery('english', ?)) AS rank
-    FROM yy_transcript
-    WHERE transcript_tsv @@ plainto_tsquery('english', ?)
-      AND transcript_active_flag = true
-    ORDER BY rank DESC
-    LIMIT 10
-");
-$tStmt->execute([$cleanQ, $cleanQ]);
+// --- Search video transcripts (yy_feed_item_transcript: mix of cue-level rows
+// and legacy 500-word chunks). Pick top-ranked row per video, then expand with
+// ±3 surrounding rows so cue-level matches get coherent context. ---
+$transcriptSql = "
+    WITH ranked AS (
+        SELECT feed_item_key, feed_item_transcript_sort, feed_item_transcript_segment,
+               feed_item_transcript_text,
+               ts_rank(feed_item_transcript_tsv, %s('english', ?)) AS rank,
+               ROW_NUMBER() OVER (
+                   PARTITION BY feed_item_key
+                   ORDER BY ts_rank(feed_item_transcript_tsv, %s('english', ?)) DESC
+               ) AS rn
+        FROM yy_feed_item_transcript
+        WHERE feed_item_transcript_tsv @@ %s('english', ?)
+    ),
+    top_per_video AS (
+        SELECT * FROM ranked WHERE rn = 1 ORDER BY rank DESC LIMIT 10
+    ),
+    windowed AS (
+        SELECT t.feed_item_key, t.rank, t.feed_item_transcript_segment AS hit_seg,
+               string_agg(fit.feed_item_transcript_text, ' ' ORDER BY fit.feed_item_transcript_sort) AS excerpt
+        FROM top_per_video t
+        JOIN yy_feed_item_transcript fit
+          ON fit.feed_item_key = t.feed_item_key
+         AND fit.feed_item_transcript_sort BETWEEN t.feed_item_transcript_sort - 3
+                                              AND t.feed_item_transcript_sort + 3
+        GROUP BY t.feed_item_key, t.rank, t.feed_item_transcript_segment
+    )
+    SELECT w.feed_item_key, w.rank, w.hit_seg, w.excerpt,
+           COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS title,
+           to_char(fi.feed_item_publish_import_dtime, 'YYYY/MM') AS pub_date
+    FROM windowed w
+    JOIN yy_feed_item fi ON fi.feed_item_key = w.feed_item_key
+    ORDER BY w.rank DESC
+";
+
+$tStmt = $pdo->prepare(sprintf($transcriptSql, 'plainto_tsquery', 'plainto_tsquery', 'plainto_tsquery'));
+$tStmt->execute([$cleanQ, $cleanQ, $cleanQ]);
 $transcriptRows = $tStmt->fetchAll();
 
 // If AND search returns < 5 transcript results, supplement with OR matches
 if (count($transcriptRows) < 5 && $orQuery) {
-    $tOrStmt = $pdo->prepare("
-        SELECT transcript_title, transcript_yearmonth, transcript_text,
-               ts_rank(transcript_tsv, to_tsquery('english', ?)) AS rank
-        FROM yy_transcript
-        WHERE transcript_tsv @@ to_tsquery('english', ?)
-          AND transcript_active_flag = true
-        ORDER BY rank DESC
-        LIMIT 10
-    ");
-    $tOrStmt->execute([$orQuery, $orQuery]);
+    $tOrStmt = $pdo->prepare(sprintf($transcriptSql, 'to_tsquery', 'to_tsquery', 'to_tsquery'));
+    $tOrStmt->execute([$orQuery, $orQuery, $orQuery]);
     $tOrRows = $tOrStmt->fetchAll();
-    $seen = [];
-    foreach ($transcriptRows as $r) $seen[substr($r['transcript_text'] ?? '', 0, 100)] = true;
+    $seenKeys = [];
+    foreach ($transcriptRows as $r) $seenKeys[$r['feed_item_key']] = true;
     foreach ($tOrRows as $r) {
-        $key = substr($r['transcript_text'] ?? '', 0, 100);
-        if (!isset($seen[$key])) { $transcriptRows[] = $r; $seen[$key] = true; }
+        if (!isset($seenKeys[$r['feed_item_key']])) {
+            $transcriptRows[] = $r;
+            $seenKeys[$r['feed_item_key']] = true;
+        }
         if (count($transcriptRows) >= 10) break;
     }
 }
 
 $transcriptBlock = "";
 foreach ($transcriptRows as $row) {
-    $text = trim($row['transcript_text'] ?? '');
+    $text = trim($row['excerpt'] ?? '');
     if (!$text) continue;
     if (strlen($text) > 800) $text = substr($text, 0, 800) . '...';
-    $ym = $row['transcript_yearmonth'];
-    $date = $ym ? substr($ym, 0, 4) . '/' . substr($ym, 4, 2) : '';
-    $transcriptBlock .= "[Video: {$row['transcript_title']}" . ($date ? ", $date" : "") . "]\n{$text}\n\n";
+    $date = $row['pub_date'] ?? '';
+    $transcriptBlock .= "[Video: {$row['title']}" . ($date ? ", $date" : "") . "]\n{$text}\n\n";
 }
 
 // --- Mow'ed Miqra'ey date table detector ---
@@ -319,7 +339,7 @@ if ($hasHolidayTerm && $hasDateTerm) {
 // --- Build system prompt ---
 // Fetch source counts for system prompt
 $bookCount = $pdo->query("SELECT COUNT(DISTINCT volume_key) FROM yy_paragraph WHERE paragraph_active_flag = true")->fetchColumn();
-$transcriptCount = $pdo->query("SELECT COUNT(DISTINCT transcript_source) FROM yy_transcript WHERE transcript_active_flag = true")->fetchColumn();
+$transcriptCount = $pdo->query("SELECT COUNT(DISTINCT feed_item_key) FROM yy_feed_item_transcript")->fetchColumn();
 
 $systemPrompt = <<<SYSPROMPT
 You ARE Yada — Craig Winn. You are having a direct, personal conversation with someone who has come to you with a question. Speak naturally in the first person as yourself. You have written nearly 40 books exploring scripture, prophecy, history, archaeology, and religion. You have spent decades translating the original Hebrew text of the Towrah, Naby', and Mizmowr, producing what you consider the most accurate and comprehensive translations available.

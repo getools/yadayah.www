@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // List all files with database status and upload time
     $db = getDb();
     $parsed = [];
-    $stmt = $db->query("SELECT DISTINCT transcript_source FROM yy_transcript");
+    $stmt = $db->query("SELECT DISTINCT transcript_source FROM yy_transcript_20260503");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $parsed[$row['transcript_source']] = true;
     }
@@ -64,7 +64,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'dedup') {
         if (isset($hashes[$hash])) {
             // Duplicate — remove this one
             unlink($path);
-            $db->prepare("DELETE FROM yy_transcript WHERE transcript_source = ?")->execute([$name]);
+            $db->prepare("DELETE FROM yy_transcript_20260503 WHERE transcript_source = ?")->execute([$name]);
             $db->prepare("DELETE FROM yy_transcript_upload WHERE filename = ?")->execute([$name]);
             $removed++;
         } else {
@@ -92,12 +92,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Check if already in database
             $reprocess = $input['reprocess'] ?? false;
-            $check = $db->prepare("SELECT COUNT(*) FROM yy_transcript WHERE transcript_source = ?");
+            $check = $db->prepare("SELECT COUNT(*) FROM yy_transcript_20260503 WHERE transcript_source = ?");
             $check->execute([$filename]);
             if ($check->fetchColumn() > 0) {
                 if (!$reprocess) { $results[] = ['file' => $filename, 'skipped' => true, 'reason' => 'Already in database']; continue; }
                 // Remove old records before reprocessing
-                $del = $db->prepare("DELETE FROM yy_transcript WHERE transcript_source = ?");
+                $del = $db->prepare("DELETE FROM yy_transcript_20260503 WHERE transcript_source = ?");
                 $del->execute([$filename]);
             }
 
@@ -151,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Insert chunks
-            $stmt = $db->prepare("INSERT INTO yy_transcript (transcript_source, transcript_title, transcript_yearmonth, transcript_chunk_num, transcript_start_time, transcript_end_time, transcript_text, transcript_tsv) VALUES (?, ?, ?, ?, ?, ?, ?, to_tsvector('english', ?))");
+            $stmt = $db->prepare("INSERT INTO yy_transcript_20260503 (transcript_source, transcript_title, transcript_yearmonth, transcript_chunk_num, transcript_start_time, transcript_end_time, transcript_text, transcript_tsv) VALUES (?, ?, ?, ?, ?, ?, ?, to_tsvector('english', ?))");
             foreach ($chunks as $i => $chunk) {
                 $stmt->execute([$filename, $title, $yearmonth, $i + 1, $chunk['start'], $chunk['end'], $chunk['text'], $chunk['text']]);
             }
@@ -204,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     if (!unlink($path)) errorResponse('Failed to delete file');
     // Also remove from database
     $db = getDb();
-    $stmt = $db->prepare("DELETE FROM yy_transcript WHERE transcript_source = ?");
+    $stmt = $db->prepare("DELETE FROM yy_transcript_20260503 WHERE transcript_source = ?");
     $stmt->execute([$name]);
     $db->prepare("DELETE FROM yy_transcript_upload WHERE filename = ?")->execute([$name]);
     jsonResponse(['deleted' => $name, 'db_removed' => $stmt->rowCount()]);
