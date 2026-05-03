@@ -41,9 +41,21 @@ if ($method === 'GET' && isset($_GET['items'])) {
         $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_page WHERE page_key = ?)';
         $params[] = $pageKey;
     }
-    $activeFilter = trim($_GET['active'] ?? '');
-    if ($activeFilter === 'yes') { $where[] = 'fi.feed_item_active_flag = TRUE'; }
-    elseif ($activeFilter === 'no') { $where[] = 'fi.feed_item_active_flag = FALSE'; }
+    // Status filter — multi-checkbox of: active, restricted, inactive
+    //   active     = active_flag = TRUE  AND restricted_flag IS NOT TRUE
+    //   restricted = restricted_flag = TRUE
+    //   inactive   = active_flag = FALSE OR restricted_flag = TRUE
+    $statusRaw = trim($_GET['status'] ?? '');
+    if ($statusRaw !== '') {
+        $picks = array_filter(array_map('trim', explode(',', $statusRaw)));
+        $ors = [];
+        foreach ($picks as $s) {
+            if ($s === 'active')     $ors[] = '(fi.feed_item_active_flag = TRUE AND COALESCE(fi.feed_item_restricted_flag, FALSE) = FALSE)';
+            elseif ($s === 'restricted') $ors[] = 'fi.feed_item_restricted_flag = TRUE';
+            elseif ($s === 'inactive')   $ors[] = '(fi.feed_item_active_flag = FALSE OR fi.feed_item_restricted_flag = TRUE)';
+        }
+        if ($ors) $where[] = '(' . implode(' OR ', $ors) . ')';
+    }
     $hasMp3 = trim($_GET['has_mp3'] ?? '');
     if ($hasMp3 === 'yes') { $where[] = "fi.feed_item_audio_file IS NOT NULL AND fi.feed_item_audio_file != ''"; }
     elseif ($hasMp3 === 'no') { $where[] = "(fi.feed_item_audio_file IS NULL OR fi.feed_item_audio_file = '')"; }
@@ -63,6 +75,10 @@ if ($method === 'GET' && isset($_GET['items'])) {
         'feed_item_episode' => 'fi.feed_item_episode',
         'feed_item_active_flag' => 'fi.feed_item_active_flag',
         'feed_name' => 'f.feed_name',
+        'status' => "CASE
+                       WHEN fi.feed_item_restricted_flag = TRUE THEN 2
+                       WHEN fi.feed_item_active_flag = FALSE THEN 1
+                       ELSE 0 END",
     ];
     $orderCol = $sortMap[$sort] ?? $sortMap['publish_dtime'];
 

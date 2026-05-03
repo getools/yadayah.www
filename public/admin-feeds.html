@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/login.css">
     <style>
+        /* Override the 1100px cap from app.css — feeds tables benefit from full screen width. */
+        #app.container { max-width: 100%; padding: 0 16px; box-sizing: border-box; }
         .feeds-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .feeds-table th, .feeds-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
         .feeds-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; font-size: 0.8rem; }
@@ -235,6 +237,14 @@
                             <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
                         </div>
                     </th>
+                    <th style="width:110px;">
+                        <span>Status</span>
+                        <div id="rec-f-istatus" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">
+                            <label><input type="checkbox" id="rec-f-istatus-active"     value="active"     onchange="loadRecordings(1)" checked> Active</label>
+                            <label><input type="checkbox" id="rec-f-istatus-restricted" value="restricted" onchange="loadRecordings(1)"> Restricted</label>
+                            <label><input type="checkbox" id="rec-f-istatus-inactive"   value="inactive"   onchange="loadRecordings(1)"> Inactive</label>
+                        </div>
+                    </th>
                     <th style="width:160px;">
                         <span>Pages</span>
                         <div id="rec-f-pages" class="rec-status-checks" onclick="event.stopPropagation()" style="max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
@@ -390,7 +400,10 @@ function rebuildCategoryFilter() {
     if (catSel) { catSel.innerHTML = opts; catSel.value = _savedFilters.category; }
 }
 var _savedFilters = (window.adminUI && adminUI.loadAll('feeds.filters'))
-    || {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:'', key:''};
+    || {title:'', tags:'', category:'', mp3:'', feed:'', status:['active'], page:'', episode:'', key:''};
+// Backfill: drop legacy `active` filter and seed `status` if missing.
+if (typeof _savedFilters.active !== 'undefined') delete _savedFilters.active;
+if (!Array.isArray(_savedFilters.status)) _savedFilters.status = ['active'];
 // Scrub any legacy 'undefined' / null / undefined values that older builds
 // may have written into localStorage — they would otherwise be sent to the
 // API as ?title=undefined and match no rows.
@@ -483,8 +496,11 @@ function loadItems(page) {
     _itemsPage = page;
     var ff = document.getElementById('filter-feed');
     if (ff) _savedFilters.feed = ff.value;
-    var af = document.getElementById('filter-active');
-    if (af) _savedFilters.active = af.value;
+    // status filter — multi-checkbox of: active, restricted, inactive
+    var sboxes = document.querySelectorAll('#filter-status input[type=checkbox]:checked');
+    if (sboxes.length || document.getElementById('filter-status')) {
+        _savedFilters.status = Array.prototype.map.call(sboxes, function(cb){ return cb.value; });
+    }
     var pf = document.getElementById('filter-page');
     if (pf) _savedFilters.page = pf.value;
     var feedKey = _savedFilters.feed;
@@ -520,8 +536,8 @@ function loadItems(page) {
     if (mp3Filter) url += '&has_mp3=' + mp3Filter;
     var episodeFilter = _savedFilters.episode;
     if (episodeFilter) url += '&episode=' + encodeURIComponent(episodeFilter);
-    var activeFilter = _savedFilters.active;
-    if (activeFilter) url += '&active=' + activeFilter;
+    var statusFilter = Array.isArray(_savedFilters.status) ? _savedFilters.status : [];
+    if (statusFilter.length) url += '&status=' + encodeURIComponent(statusFilter.join(','));
     var keyFilter = _savedFilters.key;
     if (keyFilter) url += '&feed_item_key=' + encodeURIComponent(keyFilter);
     document.getElementById('items-container').innerHTML = '<div style="text-align:center;padding:20px;color:#888">Loading...</div>';
@@ -574,12 +590,25 @@ function loadItems(page) {
             + '<th style="' + ths + '" onclick="sortItems(\'category_title\')">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_active_flag\')">Active' + iarr('feed_item_active_flag') + '<br><select id="filter-active" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.active=this.value;loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
+            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')"><span class="rec-sortable-label">Status' + iarr('status') + '</span><div id="filter-status" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">'
+                + '<label><input type="checkbox" value="active" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'active\') >= 0 ? ' checked' : '') + '> Active</label>'
+                + '<label><input type="checkbox" value="restricted" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'restricted\') >= 0 ? ' checked' : '') + '> Restricted</label>'
+                + '<label><input type="checkbox" value="inactive" onchange="onStatusFilterChange()"' + (_savedFilters.status && _savedFilters.status.indexOf(\'inactive\') >= 0 ? ' checked' : '') + '> Inactive</label>'
+              + '</div></th>'
             + '<th></th>'
             + '</tr></thead><tbody>';
         items.forEach(function(it) {
             var inactive = it.feed_item_active_flag === false || it.feed_item_active_flag === 'f';
-            html += '<tr class="item-row' + (inactive ? ' inactive' : '') + '">'
+            var restricted = it.feed_item_restricted_flag === true || it.feed_item_restricted_flag === 't';
+            var statusBadge;
+            if (restricted) {
+                statusBadge = '<span style="display:inline-block;background:#fdecea;color:#a33;border:1px solid #f5b7b1;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Restricted</span>';
+            } else if (inactive) {
+                statusBadge = '<span style="display:inline-block;background:#f8d7da;color:#721c24;border:1px solid #f1aeb5;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Inactive</span>';
+            } else {
+                statusBadge = '<span style="display:inline-block;background:#d4edda;color:#155724;border:1px solid #b1d8b9;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Active</span>';
+            }
+            html += '<tr class="item-row' + (inactive || restricted ? ' inactive' : '') + '">'
                 + '<td>' + (it.feed_item_url ? '<a href="' + esc(it.feed_item_url) + '" target="_blank">' : '') + '<img class="thumb" src="' + esc(it.feed_item_thumbnail || '') + '" alt="">' + (it.feed_item_url ? '</a>' : '') + '</td>'
                 + '<td style="font-size:0.7rem;color:#888;font-family:monospace;">' + it.feed_item_key + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + esc(it.feed_name || '') + '</td>'
@@ -596,7 +625,7 @@ function loadItems(page) {
                 })() + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + (it.feed_item_episode || '') + '</td>'
                 + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
-                + '<td style="text-align:center;">' + (inactive ? '<span style="color:#c00;">No</span>' : '<span style="color:#27ae60;">Yes</span>') + '</td>'
+                + '<td style="text-align:center;">' + statusBadge + '</td>'
                 + '<td class="actions" style="white-space:nowrap;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button>'
                 + (it.feed_item_type === 'video' ? '<br>' + transcribeBtnHtml(it) : '')
                 + '</td></tr>';
@@ -634,7 +663,6 @@ function loadItems(page) {
         var rff = document.getElementById('filter-feed'); if (rff) rff.value = _savedFilters.feed || '';
         var rpf = document.getElementById('filter-page'); if (rpf) rpf.value = _savedFilters.page || '';
         var ref = document.getElementById('filter-episode'); if (ref) ref.value = _savedFilters.episode || '';
-        var raf = document.getElementById('filter-active'); if (raf) raf.value = _savedFilters.active || '';
         var rkf = document.getElementById('filter-key'); if (rkf) rkf.value = _savedFilters.key || '';
     });
 }
@@ -1795,8 +1823,15 @@ function recSort(col) {
     loadRecordings(1);
 }
 function itemsClearFilters() {
-    _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', active:'', page:'', episode:'', key:''};
+    _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', status:['active'], page:'', episode:'', key:''};
     if (window.adminUI) adminUI.saveAll('feeds.filters', _savedFilters);
+    loadItems(1);
+}
+
+// Sync the multi-checkbox status filter into _savedFilters and reload.
+function onStatusFilterChange() {
+    var boxes = document.querySelectorAll('#filter-status input[type=checkbox]:checked');
+    _savedFilters.status = Array.prototype.map.call(boxes, function(cb){ return cb.value; });
     loadItems(1);
 }
 
@@ -1808,6 +1843,9 @@ function recClearFilters() {
     var c = document.getElementById('rec-f-status-complete'); if (c) c.checked = false;
     var p = document.getElementById('rec-f-status-partial');  if (p) p.checked = true;
     var n = document.getElementById('rec-f-status-new');      if (n) n.checked = true;
+    var ia = document.getElementById('rec-f-istatus-active');     if (ia) ia.checked = true;
+    var ir = document.getElementById('rec-f-istatus-restricted'); if (ir) ir.checked = false;
+    var ii = document.getElementById('rec-f-istatus-inactive');   if (ii) ii.checked = false;
     document.querySelectorAll('#rec-f-pages input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
     loadRecordings(1);
 }
@@ -1845,6 +1883,11 @@ function loadRecordings(page) {
     if (durMin !== null && durMin > 0) qs += '&dur_min_s=' + durMin;
     if (durMax !== null && durMax > 0) qs += '&dur_max_s=' + durMax;
     if (statuses.length) qs += '&status=' + encodeURIComponent(statuses.join(','));
+    // Item status filter (Active / Restricted / Inactive) — uses ?item_status=
+    var iStatuses = Array.prototype.map.call(
+        document.querySelectorAll('#rec-f-istatus input[type=checkbox]:checked'),
+        function(cb){ return cb.value; });
+    if (iStatuses.length) qs += '&item_status=' + encodeURIComponent(iStatuses.join(','));
     // Pages filter: collect all checked page checkboxes under the Pages column.
     var checkedPages = Array.prototype.filter.call(
         document.querySelectorAll('#rec-f-pages input[type=checkbox]:checked'),
@@ -1911,7 +1954,7 @@ function renderRecordings(d) {
         span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
     });
     if (!_recItems.length) {
-        body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
+        body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
         var sa = document.getElementById('rec-select-all'); if (sa) sa.checked = false;
         return;
     }
@@ -1959,6 +2002,16 @@ function renderRecordings(d) {
         });
         if (!pageBadges) pageBadges = '<span style="font-size:0.7rem;color:#bbb;">—</span>';
 
+        // Status cell — Active / Restricted / Inactive badge.
+        var iStatusBadge;
+        if (it.item_status === 'restricted') {
+            iStatusBadge = '<span style="display:inline-block;background:#fdecea;color:#a33;border:1px solid #f5b7b1;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Restricted</span>';
+        } else if (it.item_status === 'inactive') {
+            iStatusBadge = '<span style="display:inline-block;background:#f8d7da;color:#721c24;border:1px solid #f1aeb5;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Inactive</span>';
+        } else {
+            iStatusBadge = '<span style="display:inline-block;background:#d4edda;color:#155724;border:1px solid #b1d8b9;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Active</span>';
+        }
+
         html += '<tr id="rec-row-' + it.feed_item_key + '">'
             +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
             +     '<td>' + thumb + '</td>'
@@ -1968,6 +2021,7 @@ function renderRecordings(d) {
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
+            +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
             +     '</tr>';
     });

@@ -106,7 +106,7 @@ switch ($type) {
         } else {
             // Fallback: channel feed, legacy feed_item_type='short' flag
             $feedKey = fallbackChannelFeedKey($db);
-            $where = "feed_key = ? AND feed_item_active_flag = TRUE AND feed_item_type = 'short'";
+            $where = "feed_key = ? AND feed_item_active_flag = TRUE AND feed_item_restricted_flag = FALSE AND feed_item_type = 'short'";
             $params = [$feedKey];
         }
         serveItems($db, $where, $params, $limit, 0);

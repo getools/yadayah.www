@@ -11,6 +11,8 @@
  *     &dur_min_s=N   — duration_seconds >= N
  *     &dur_max_s=N   — duration_seconds <= N
  *     &status=...    — comma-separated subset of: complete, partial, new
+ *     &item_status=  — comma-separated subset of: active, restricted, inactive
+ *     &page_keys=    — comma-separated yy_page.page_key list
  */
 require_once __DIR__ . '/config.php';
 $user = requireAuth();
@@ -35,6 +37,12 @@ $pageKeysRaw = trim((string)($_GET['page_keys'] ?? ''));
 $pageKeys    = $pageKeysRaw === '' ? [] :
     array_values(array_filter(array_map('intval',
         array_map('trim', explode(',', $pageKeysRaw))), function($n){ return $n > 0; }));
+// item_status filter: comma-separated subset of: active, restricted, inactive
+//   active     = active_flag = TRUE  AND restricted_flag IS NOT TRUE
+//   restricted = restricted_flag = TRUE
+//   inactive   = active_flag = FALSE OR restricted_flag = TRUE
+$itemStatusRaw = trim((string)($_GET['item_status'] ?? ''));
+$itemStatuses  = $itemStatusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $itemStatusRaw)));
 
 $sortMap = [
     'title'      => 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)',
@@ -51,12 +59,25 @@ $sort = $_GET['sort'] ?? 'published';
 $sortCol = $sortMap[$sort] ?? $sortMap['published'];
 $dir = strtolower($_GET['dir'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
 
-$where = "fi.feed_item_active_flag = TRUE
-       AND fi.feed_item_type = 'video'
+$where = "fi.feed_item_type = 'video'
        AND lower(f.feed_site_code) = 'youtube'
        AND fi.feed_item_external_id IS NOT NULL
        AND fi.feed_item_external_id != ''";
 $params = [];
+
+// Apply item_status filter. Default (no checkboxes checked) = active-only,
+// matching prior behavior where the recordings list was implicitly active=TRUE.
+if (empty($itemStatuses)) {
+    $where .= " AND fi.feed_item_active_flag = TRUE AND COALESCE(fi.feed_item_restricted_flag, FALSE) = FALSE";
+} else {
+    $isOrs = [];
+    foreach ($itemStatuses as $s) {
+        if ($s === 'active')     $isOrs[] = '(fi.feed_item_active_flag = TRUE AND COALESCE(fi.feed_item_restricted_flag, FALSE) = FALSE)';
+        elseif ($s === 'restricted') $isOrs[] = 'fi.feed_item_restricted_flag = TRUE';
+        elseif ($s === 'inactive')   $isOrs[] = '(fi.feed_item_active_flag = FALSE OR fi.feed_item_restricted_flag = TRUE)';
+    }
+    if ($isOrs) $where .= " AND (" . implode(' OR ', $isOrs) . ")";
+}
 
 if ($keyQ !== '')   { $where .= " AND CAST(fi.feed_item_key AS TEXT) LIKE ?"; $params[] = $keyQ . '%'; }
 if ($titleQ !== '') { $where .= " AND COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?"; $params[] = '%' . $titleQ . '%'; }
@@ -122,6 +143,13 @@ $stmt = $db->prepare("
            COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS published_dtime,
            fi.feed_item_audio_file,
            fi.feed_item_audio_resume_seconds AS resume_seconds,
+           fi.feed_item_active_flag,
+           fi.feed_item_restricted_flag,
+           CASE
+             WHEN fi.feed_item_restricted_flag = TRUE THEN 'restricted'
+             WHEN fi.feed_item_active_flag = FALSE   THEN 'inactive'
+             ELSE 'active'
+           END AS item_status,
            f.feed_site_code,
            f.feed_key,
            f.feed_name,
@@ -174,7 +202,6 @@ $allPagesStmt = $db->query("
     SELECT p.page_key, p.page_code, p.page_title
       FROM yy_page p
      WHERE p.page_active_flag IS DISTINCT FROM FALSE
-       AND p.page_code IN ('vlog','invite','doyouyada','basics','shorts','music')
        AND EXISTS (SELECT 1 FROM yy_feed_item_page fip WHERE fip.page_key = p.page_key)
      ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();
@@ -202,6 +229,7 @@ jsonResponse([
         'feed_key' => $feedKey,
         'dur_min_s' => $durMin, 'dur_max_s' => $durMax,
         'status' => $statuses,
+        'item_status' => $itemStatuses,
         'page_keys' => $pageKeys,
     ],
 ]);
