@@ -33,18 +33,12 @@
     return false;
   }
 
-  // POSTs to /api/client-error.php in the format that endpoint expects:
-  //   { errors: [{ type, message, source, line, col, stack, page, ua }, ...] }
-  // The previous URL ("/api/log-error") was non-existent and caused Apache
-  // to hit LimitInternalRecursion (10 internal redirects) — every JS error
-  // triggered a 500 + redirect storm that locked admin-feeds and similar
-  // pages. Fixed 2026-05-03.
   function sendError(payload) {
     try {
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/client-error.php', true);
+      xhr.open('POST', '/api/log-error', true);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.send(JSON.stringify({ errors: [payload] }));
+      xhr.send(JSON.stringify(payload));
     } catch (e) {
       // Never throw from error reporter
     }
@@ -61,8 +55,8 @@
       type:    'js_error',
       message: message,
       source:  source,
-      line:    event.lineno,
-      col:     event.colno,
+      lineno:  event.lineno,
+      colno:   event.colno,
       stack:   event.error && event.error.stack ? event.error.stack : null,
       page:    window.location.pathname + window.location.hash,
       ua:      navigator.userAgent

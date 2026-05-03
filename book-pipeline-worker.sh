@@ -32,7 +32,7 @@ MIN_FREE_MB=1500
 MAX_LOAD=6.0
 SOFFICE_MEM_MAX=2600M
 SOFFICE_CPU_QUOTA=50%
-PARSER_MEM_MAX=800M
+PARSER_MEM_MAX=400M
 PARSER_CPU_QUOTA=40%
 
 # Bind-mounted by the web container (host: /opt/yada-www/public/jobs/...,

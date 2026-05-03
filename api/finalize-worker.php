@@ -54,7 +54,7 @@ $abort = function(string $err) use ($itemKey) {
     if (function_exists('logMonitorEvent')) {
         @logMonitorEvent('transcript_upload', 'error',
             'Finalize worker failed for item ' . $itemKey . ': ' . substr($err, 0, 400),
-            '', false);
+            null, false);
     }
     exit(1);
 };
