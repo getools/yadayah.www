@@ -420,18 +420,24 @@ function renderBooks() {
                             + (v.volume_pipeline_message ? ' — ' + v.volume_pipeline_message : ''));
             });
         });
-        // Comma-separated list of volume_keys the Reprocess All button should requeue.
-        var reproKeys = []
-            .concat(pending.failed.map(function(v){ return v.volume_key; }))
-            .concat(pending.skipped.map(function(v){ return v.volume_key; }))
-            .concat(pending.pending.map(function(v){ return v.volume_key; }));
+        // Reprocess only retries the volumes that actually failed (status=error).
+        // Skipped + never-run categories are reachable through the per-row
+        // Retry Pipeline button on the edit form, but the banner button is
+        // intentionally narrow so a single click can't kick a 30+ volume
+        // re-run when only a handful are broken.
+        var reproKeys = pending.failed.map(function(v){ return v.volume_key; });
+        var btnHtml = '';
+        if (reproKeys.length) {
+            btnHtml = '<button id="reprocess-all-btn" onclick="reprocessFailed([' + reproKeys.join(',') + '])" '
+                    + 'title="Requeue only the volumes whose pipeline reported error" '
+                    + 'style="margin-left:auto;padding:5px 12px;background:#31345A;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.8rem;">'
+                    + 'Reprocess</button>';
+        }
         banner = '<div style="margin:0 0 10px;padding:10px 14px;background:#fff8e1;border:1px solid #f5d76e;border-radius:6px;font-size:0.85rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;" '
                + 'title="' + esc(tipLines.join('\n')) + '">'
                + '<span><strong>' + totalPending + ' flipbook' + (totalPending === 1 ? '' : 's') + ' need processing:</strong> '
                + parts.join(' &middot; ') + '</span>'
-               + '<button id="reprocess-all-btn" onclick="reprocessAllPending([' + reproKeys.join(',') + '])" '
-               + 'style="margin-left:auto;padding:5px 12px;background:#31345A;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.8rem;">'
-               + 'Reprocess All</button>'
+               + btnHtml
                + '</div>';
     }
 
@@ -686,15 +692,15 @@ function retryPipeline(volumeKey, btn) {
     });
 }
 
-// Bulk reprocess every volume the banner flagged (skipped + failed + never-run).
-// Calls retry_pipeline serially with a short pause between each — the host
-// worker processes one book at a time, and bursting requests would just
-// queue up identical job files. Confirms once up front, surfaces overall
-// progress in the button text, and reloads the books list when done.
-function reprocessAllPending(volumeKeys) {
+// Bulk reprocess every volume whose pipeline status is 'error'. Calls
+// retry_pipeline serially with a short pause between each — the host worker
+// processes one book at a time, and bursting requests would just queue up
+// identical job files. Confirms once up front, surfaces overall progress in
+// the button text, and reloads the books list when done.
+function reprocessFailed(volumeKeys) {
     if (!volumeKeys || !volumeKeys.length) return;
     var n = volumeKeys.length;
-    if (!confirm('Requeue ' + n + ' flipbook' + (n === 1 ? '' : 's') + '? Each runs through DOCX → PDF → FlipHTML5 again on the host worker (one at a time, ~2-5 min each).')) return;
+    if (!confirm('Requeue ' + n + ' failed flipbook' + (n === 1 ? '' : 's') + '? Each runs through DOCX → PDF → FlipHTML5 again on the host worker (one at a time, ~2-5 min each).')) return;
     var btn = document.getElementById('reprocess-all-btn');
     var orig = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.style.cursor = 'wait'; }
