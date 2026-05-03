@@ -115,6 +115,63 @@
     // Surface unexpected client-side errors to the monitor so they show up in
     // yy_monitor_event the same way other JS errors do. This page wasn't on
     // the global error reporter, so Finalize / upload failures were silent.
+    // ── Recording-active lock ───────────────────────────────────────
+    // While this popout is open and bound to a particular feed_item, ping
+    // /api/admin-recording-heartbeat.php every 5s. The Recordings tab uses
+    // this to mark the row as locked (very light tint, disabled checkbox,
+    // disabled New button) so a second operator can't kick off a parallel
+    // recording on the same video.
+    //
+    // The heartbeat file's mtime is the freshness signal — server-side
+    // checks "mtime within last 15s = locked". If this window crashes /
+    // network drops, the lock auto-expires after 15s of no heartbeat. The
+    // explicit release call (on pagehide and on item-advance) is just a
+    // best-effort fast-path.
+    var _recLockHeldFor = null;     // item_key currently being heartbeated
+    var _recHbTimer = null;
+    function pingRecordingLock(key) {
+        try {
+            fetch(API + '/admin-recording-heartbeat.php', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'heartbeat', item_key: key }),
+                keepalive: true,
+            }).catch(function(){});
+        } catch (e) {}
+    }
+    function acquireRecordingLock(key) {
+        if (_recLockHeldFor === key) return; // already holding this item's lock
+        if (_recLockHeldFor !== null) releaseRecordingLock();
+        _recLockHeldFor = key;
+        pingRecordingLock(key); // immediate first ping so the lock is visible right away
+        if (_recHbTimer) clearInterval(_recHbTimer);
+        _recHbTimer = setInterval(function() {
+            if (_recLockHeldFor) pingRecordingLock(_recLockHeldFor);
+        }, 5000);
+    }
+    function releaseRecordingLock() {
+        if (_recHbTimer) { clearInterval(_recHbTimer); _recHbTimer = null; }
+        var key = _recLockHeldFor;
+        _recLockHeldFor = null;
+        if (!key) return;
+        var payload = JSON.stringify({ action: 'release', item_key: key });
+        // sendBeacon survives the page being closed (used by pagehide).
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(API + '/admin-recording-heartbeat.php',
+                    new Blob([payload], { type: 'application/json' }));
+                return;
+            }
+        } catch (e) {}
+        try {
+            fetch(API + '/admin-recording-heartbeat.php', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload, keepalive: true,
+            }).catch(function(){});
+        } catch (e) {}
+    }
+
     function reportClientError(message, detail) {
         try {
             var payload = JSON.stringify({ errors: [{
@@ -804,6 +861,9 @@
     async function loadCurrentItem() {
         if (queueIndex >= queue.length) return;
         itemKey = queue[queueIndex];
+        // Re-point the heartbeat lock to the new current item (releases the
+        // previous one in batch mode).
+        acquireRecordingLock(itemKey);
         partCount = 0;
         initialResumeSec = 0;
         lastRecordedSeconds = 0;
@@ -962,6 +1022,10 @@
     });
     window.addEventListener('pagehide', function() {
         savePartialOnExit();
+        // Release the recording-active lock immediately on close. If the
+        // beacon doesn't make it through (rare), the server's 15-second
+        // staleness expiry kicks in next.
+        releaseRecordingLock();
     });
     function savePartialOnExit() {
         if (!recorder || recorder.state !== 'recording') return;

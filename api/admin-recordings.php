@@ -216,6 +216,7 @@ if ($items) {
     foreach ($items as &$it) {
         $key = (int)$it['feed_item_key'];
         $reasons = [];
+
         $stateFile = sys_get_temp_dir() . "/finalize_$key.state";
         if (is_file($stateFile)) {
             $st = json_decode((string)@file_get_contents($stateFile), true) ?: [];
@@ -227,6 +228,23 @@ if ($items) {
         if (!empty($activeJobByItem[$key])) {
             $reasons[] = 'transcribe:' . $activeJobByItem[$key];
         }
+        // Recording-popout heartbeat: a lock that's only valid while the
+        // popout window for this item is actually open. The popout pings
+        // /api/admin-recording-heartbeat.php every ~5s; the file's mtime
+        // is our freshness check. A stale heartbeat (> 15s) means the
+        // window crashed or closed — we silently let the lock expire.
+        $hbFile = sys_get_temp_dir() . "/recording_active_$key";
+        if (is_file($hbFile)) {
+            clearstatcache(true, $hbFile);
+            $age = time() - (int)@filemtime($hbFile);
+            if ($age <= 15) {
+                $reasons[] = "recording_active:{$age}s_ago";
+            } else {
+                // Stale — clean up so it doesn't sit on disk forever.
+                @unlink($hbFile);
+            }
+        }
+
         $it['in_progress']        = !empty($reasons);
         $it['in_progress_reason'] = implode(', ', $reasons);
     }
