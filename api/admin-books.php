@@ -300,9 +300,12 @@ if ($method === 'PUT') {
     if (!$key) errorResponse('Volume key required');
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
 
-    $fields = []; $params = [];
-    // volume_code goes through the same canonical normalization as the
-    // INSERT path so a typo with %20 / spaces is repaired before save.
+    // ── If volume_code is changing, also rename DOCX + PDF on disk ──
+    // Read the old row first so we can compute the rename source paths and
+    // bail if the destination already exists. The rename happens BEFORE the
+    // UPDATE so a filesystem failure doesn't leave the DB pointing at a
+    // file that doesn't exist.
+    $newCode = null;
     if (array_key_exists('volume_code', $data)) {
         $raw = trim((string)($data['volume_code'] ?? ''));
         if ($raw !== '') {
@@ -310,10 +313,50 @@ if ($method === 'PUT') {
             $raw = preg_replace('/-+/', '-', $raw);
             $raw = trim($raw, '-');
         }
-        $fields[] = "volume_code = ?";
-        $params[] = $raw !== '' ? $raw : null;
+        $newCode = $raw !== '' ? $raw : null;
     }
-    foreach (['volume_label', 'volume_name', 'volume_flip_code', 'volume_pdf'] as $col) {
+    $renamedDocx = null; $renamedPdf = null;
+    if ($newCode !== null) {
+        $cur = $db->prepare("SELECT volume_code, volume_docx, volume_pdf FROM yy_volume WHERE volume_key = ?");
+        $cur->execute([$key]);
+        $oldRow = $cur->fetch();
+        if ($oldRow && $newCode !== $oldRow['volume_code']) {
+            $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+            $renames = [
+                ['dir' => $publicRoot . '/u/books-word', 'old' => $oldRow['volume_docx'], 'new' => $newCode . '.docx', 'col' => 'volume_docx'],
+                ['dir' => $publicRoot . '/pdf',          'old' => $oldRow['volume_pdf'],  'new' => $newCode . '.pdf',  'col' => 'volume_pdf'],
+            ];
+            foreach ($renames as $r) {
+                if (!$r['old']) continue;                          // nothing to rename
+                if ($r['old'] === $r['new']) continue;             // already canonical
+                $oldAbs = $r['dir'] . '/' . $r['old'];
+                $newAbs = $r['dir'] . '/' . $r['new'];
+                if (!file_exists($oldAbs)) continue;               // source missing; just update DB
+                if (file_exists($newAbs)) {
+                    errorResponse('Cannot rename ' . $r['old'] . ' → ' . $r['new'] . ': destination already exists');
+                }
+                if (!@rename($oldAbs, $newAbs)) {
+                    errorResponse('Filesystem rename failed: ' . $r['old'] . ' → ' . $r['new']);
+                }
+                if ($r['col'] === 'volume_docx') $renamedDocx = $r['new'];
+                if ($r['col'] === 'volume_pdf')  $renamedPdf  = $r['new'];
+            }
+        }
+    }
+
+    $fields = []; $params = [];
+    if (array_key_exists('volume_code', $data)) {
+        $fields[] = "volume_code = ?";
+        $params[] = $newCode;
+    }
+    // If we successfully renamed files above, force the DB columns to match.
+    // The client's payload values for these columns are ignored when a
+    // rename fired, otherwise honored.
+    if ($renamedDocx !== null) { $fields[] = "volume_docx = ?"; $params[] = $renamedDocx; }
+    if ($renamedPdf  !== null) { $fields[] = "volume_pdf  = ?"; $params[] = $renamedPdf;  }
+    foreach (['volume_label', 'volume_name', 'volume_flip_code', 'volume_pdf', 'volume_docx'] as $col) {
+        if ($col === 'volume_pdf'  && $renamedPdf  !== null) continue;
+        if ($col === 'volume_docx' && $renamedDocx !== null) continue;
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = trim($data[$col] ?? '') ?: null; }
     }
     foreach (['series_key', 'volume_number', 'volume_sort', 'volume_page_count'] as $col) {
@@ -326,7 +369,7 @@ if ($method === 'PUT') {
     if (empty($fields)) errorResponse('Nothing to update');
     $params[] = $key;
     $db->prepare("UPDATE yy_volume SET " . implode(', ', $fields) . " WHERE volume_key = ?")->execute($params);
-    jsonResponse(['saved' => true]);
+    jsonResponse(['saved' => true, 'renamed_docx' => $renamedDocx, 'renamed_pdf' => $renamedPdf]);
 }
 
 if ($method === 'DELETE') {
