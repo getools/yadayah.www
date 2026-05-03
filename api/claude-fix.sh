@@ -16,6 +16,30 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
 chmod 1777 "$LOG_DIR" 2>/dev/null || true
 LOG_FILE="$LOG_DIR/event_${EVENT_KEY}.log"
 
+# claude-fix.sh must NOT run as root. The scheduler (claude-fix-runner.sh)
+# drops to user 'claudefix' via systemd-run --uid before invoking us. If
+# we somehow get here as root, refuse loudly — never try to "fix" it by
+# chown'ing $HOME. On 2026-05-02 a previous version of this script ran
+# `chown -R www-data:www-data "$HOME"` as root, with HOME defaulted to
+# /root (systemd doesn't auto-set HOME for User=root services). That
+# trashed every file in /root, broke key-based SSH for hours, and required
+# console recovery. NEVER do that. If this branch is hit, exit and let the
+# operator investigate why HOME/uid propagation broke.
+if [ "$(id -u)" = "0" ]; then
+    echo "claude-fix.sh refuses to run as root. Invoke via claude-fix-runner.sh, which drops to claudefix via systemd-run --uid." >&2
+    exit 2
+fi
+
+# Hard guard: even as a non-root user, refuse to operate with HOME pointing
+# at a system-critical path. Belt-and-suspenders against any future re-exec
+# logic that might forget to set HOME explicitly.
+case "${HOME:-}" in
+    ''|'/'|/root|/root/*|/etc|/etc/*|/var|/var/*|/usr|/usr/*|/home)
+        echo "claude-fix.sh refuses to operate with HOME='${HOME:-<unset>}'. Set HOME to /opt/yada-www/claude-home before invoking." >&2
+        exit 2
+        ;;
+esac
+
 # Claude credentials live on the host bind-mount at /opt/yada-www/claude-home/.claude/
 # (mapped to /var/www/.claude-home/ in the container by docker-compose.prod.yml).
 # Honor externally-set HOME — the host-side claude-fix-runner.sh sets HOME to
@@ -26,13 +50,6 @@ if [ -z "${HOME:-}" ] || [ ! -d "${HOME}/.claude" ]; then
     export HOME="/var/www/.claude-home"
 fi
 mkdir -p "$HOME/.claude"
-
-# Claude Code refuses --allow-dangerously-skip-permissions when run as root.
-# If we're root, re-exec as www-data (which is what Apache/PHP runs as anyway).
-if [ "$(id -u)" = "0" ]; then
-    chown -R www-data:www-data "$HOME" 2>/dev/null || true
-    exec su www-data -s /bin/bash -c "HOME=$HOME PG_HOST=${PG_HOST:-postgres} PG_PORT=${PG_PORT:-5432} PG_DB=${PG_DB:-yada} PG_USER=${PG_USER:-postgres} PG_PASS=${PG_PASS:-yada_password} bash $0 $EVENT_KEY"
-fi
 
 # Resource & safety limits
 TIMEOUT_SECS=300

@@ -196,36 +196,84 @@ if ($method === 'POST') {
         if ($action === 'finalize') {
             $parts = listParts($PARTS_DIR_ABS, $itemKey);
             if (!$parts) errorResponse('No parts to finalize');
-            // AUTOMATED VALIDATION: probe each part before concat. Skip files
-            // that fail (corrupt header, silent, etc.) — but delete them from
-            // disk too so they don't keep blocking future finalize attempts.
-            // Without this, a single bad part halts the entire batch.
+            // Probe each part. Crucially, we DO NOT unlink anything here —
+            // a probe failure may just mean the part is a MediaRecorder
+            // continuation fragment without its own EBML header, which is
+            // recoverable via byte-concat below. Premature deletion lost a
+            // user's full multi-hour recording in the past.
             $validParts = [];
+            $invalidParts = [];
             $skipped = [];
             foreach ($parts as $idx => $f) {
                 $check = validateAudioFile($f);
                 if ($check['ok']) {
                     $validParts[$idx] = $f;
                 } else {
+                    $invalidParts[$idx] = $f;
                     $skipped[] = 'part_' . $idx . ' (' . $check['reason'] . ')';
-                    @unlink($f);
                 }
             }
-            if (!$validParts) {
-                logMonitorEvent('transcript_upload', 'error',
-                    'Finalize for item ' . $itemKey . ' had only invalid parts: ' . implode('; ', $skipped),
-                    'by user ' . ($user['user_code'] ?? '?'), false);
-                errorResponse('All recorded parts are invalid (' . implode('; ', $skipped) . '). Please re-record.');
-            }
-            if ($skipped) {
-                logMonitorEvent('transcript_upload', 'warning',
-                    'Finalize for item ' . $itemKey . ' skipped invalid parts: ' . implode('; ', $skipped),
-                    'by user ' . ($user['user_code'] ?? '?'), false);
-            }
-            $parts = $validParts;
+
             $stamp = time();
             $finalRel = $AUDIO_DIR_REL . "/audio_{$itemKey}_{$stamp}.mp3";
             $finalAbs = $AUDIO_DIR_ABS . "/audio_{$itemKey}_{$stamp}.mp3";
+
+            // Choose an encoding strategy:
+            //   1. All parts validate independently → concat-filter on the
+            //      individual files (handles distinct stop/start sessions).
+            //   2. Any part fails validation → try byte-concat recovery: cat
+            //      every part in order to a single merged.webm and probe it.
+            //      This works for MediaRecorder continuation fragments where
+            //      only part_1 carried the EBML header.
+            //   3. If recovery fails too → encode whatever validates; if
+            //      nothing does, leave parts on disk and error out so the
+            //      operator can inspect.
+            $mergedTmp = null;
+            $encodeInputs = null;
+            $strategy = '';
+            if (count($validParts) === count($parts)) {
+                $encodeInputs = array_values($validParts);
+                $strategy = 'concat-filter (' . count($validParts) . ' independently-valid parts)';
+            } else {
+                $mergedTmp = "$PARTS_DIR_ABS/merged_{$itemKey}_{$stamp}.webm";
+                $fpOut = @fopen($mergedTmp, 'wb');
+                if ($fpOut) {
+                    foreach ($parts as $f) {
+                        $fpIn = @fopen($f, 'rb');
+                        if ($fpIn) { stream_copy_to_stream($fpIn, $fpOut); fclose($fpIn); }
+                    }
+                    fclose($fpOut);
+                }
+                $mergedCheck = is_file($mergedTmp) ? validateAudioFile($mergedTmp) : ['ok' => false, 'reason' => 'merge write failed'];
+                if ($mergedCheck['ok']) {
+                    $encodeInputs = [$mergedTmp];
+                    $strategy = 'byte-concat-recovery (' . count($parts) . ' parts -> '
+                              . round(filesize($mergedTmp)/1024/1024, 2) . ' MB merged.webm; '
+                              . count($skipped) . ' would have failed independent probe)';
+                } else {
+                    @unlink($mergedTmp);
+                    $mergedTmp = null;
+                    if (!$validParts) {
+                        logMonitorEvent('transcript_upload', 'error',
+                            'Finalize for item ' . $itemKey . ' had no usable parts. Independent probe rejected all ('
+                            . count($skipped) . '); byte-concat recovery also failed: '
+                            . substr($mergedCheck['reason'] ?? '', 0, 300)
+                            . '. Parts preserved on disk for inspection.',
+                            'by user ' . ($user['user_code'] ?? '?'), false);
+                        errorResponse('No usable parts. Independent probe + byte-concat recovery both failed. Parts kept on disk for inspection.');
+                    }
+                    $encodeInputs = array_values($validParts);
+                    $strategy = 'partial (' . count($validParts) . '/' . count($parts) . ' independently valid; '
+                              . count($invalidParts) . ' skipped, byte-concat fallback failed)';
+                }
+            }
+            if ($skipped) {
+                logMonitorEvent('transcript_upload', 'warning',
+                    'Finalize for item ' . $itemKey . ' strategy=' . $strategy . '; skipped: ' . implode('; ', $skipped),
+                    'by user ' . ($user['user_code'] ?? '?'), false);
+            }
+            $parts_for_cleanup = $parts;  // delete all originals on success regardless of strategy
+            $parts = $encodeInputs;
 
             $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
             if (!$ffmpeg) errorResponse('ffmpeg not available');
@@ -273,7 +321,9 @@ if ($method === 'POST') {
             @unlink($progressFile);
             @unlink($durationFile);
             if (!file_exists($finalAbs) || filesize($finalAbs) < 1000) {
-                errorResponse('ffmpeg concat-filter failed: ' . substr(trim($out ?? ''), -300));
+                // Encode failed — leave originals on disk for inspection.
+                if ($mergedTmp && is_file($mergedTmp)) @unlink($mergedTmp);
+                errorResponse('ffmpeg encode failed (strategy: ' . $strategy . '): ' . substr(trim($out ?? ''), -300));
             }
             @chmod($finalAbs, 0664);
 
@@ -290,16 +340,17 @@ if ($method === 'POST') {
             $db->prepare("UPDATE yy_feed_item SET feed_item_audio_file = ?, feed_item_audio_resume_seconds = NULL WHERE feed_item_key = ?")
                ->execute([$finalRel, $itemKey]);
 
-            // Delete parts
-            foreach ($parts as $f) @unlink($f);
+            // Delete originals + any byte-concat temp now that the MP3 is verified.
+            foreach ($parts_for_cleanup as $f) @unlink($f);
+            if ($mergedTmp && is_file($mergedTmp)) @unlink($mergedTmp);
 
             $jobKey = null;
             if (!empty($data['auto_transcribe'])) {
                 $jobKey = spawnTranscribeJob($db, $itemKey, $user['user_key']);
             }
             logMonitorEvent('transcript_upload', 'info',
-                'Finalized recording for item ' . $itemKey . ' (' . count($parts) . ' parts → '
-                . round(filesize($finalAbs)/1024/1024, 2) . ' MB MP3)',
+                'Finalized recording for item ' . $itemKey . ' (' . count($parts_for_cleanup) . ' parts -> '
+                . round(filesize($finalAbs)/1024/1024, 2) . ' MB MP3, strategy: ' . $strategy . ')',
                 'by user ' . ($user['user_code'] ?? '?'), true);
             jsonResponse([
                 'ok' => true,

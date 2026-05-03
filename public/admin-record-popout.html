@@ -410,7 +410,17 @@
         chunks = [];
         rec.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
         rec.onstop = onRecorderStopped;
-        rec.start(1000);
+        // No timeslice. With a timeslice argument, MediaRecorder emits a
+        // burst of continuation fragments (only the first carries an EBML
+        // header) — joining them into a Blob is supposed to reconstitute a
+        // valid file, but in practice we've seen parts arrive on the server
+        // missing their header (likely a race when the recorder is stopped
+        // mid-burst by the silence/volume watchdogs or a tab close). With no
+        // timeslice, dataavailable fires exactly once on stop and the chunk
+        // is a complete, self-contained webm — guaranteed valid for ffprobe
+        // and the concat filter. Crash-resilience for this is provided by
+        // beforeunload calling rec.requestData() to force a final flush.
+        rec.start();
         recorder = rec;
         startedMs = Date.now();
         startCheckpointTimer();
