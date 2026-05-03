@@ -174,6 +174,7 @@ $allPagesStmt = $db->query("
     SELECT p.page_key, p.page_code, p.page_title
       FROM yy_page p
      WHERE p.page_active_flag IS DISTINCT FROM FALSE
+       AND p.page_code IN ('vlog','invite','doyouyada','basics','shorts','music')
        AND EXISTS (SELECT 1 FROM yy_feed_item_page fip WHERE fip.page_key = p.page_key)
      ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();
