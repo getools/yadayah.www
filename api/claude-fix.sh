@@ -82,12 +82,12 @@ IFS='|' read -r SOURCE SEVERITY MESSAGE DETAIL FILE REFERER <<< "$ERR_JSON"
 # Detect environment: container (web) vs host (claude-fix-runner). The host
 # has source under /opt/yada-www/{public,api}/; the container sees the same
 # files as /var/www/html/{,api/} via bind mount. Pick the path that exists.
-if [ -d /var/www/html ]; then
+if [ -d /var/www/html/api ]; then
     CODE_ROOT=/var/www/html
     DB_QUERY_HINT="DB writes use \`psql\` with PGPASSWORD env var (psql is in PATH)."
 else
-    CODE_ROOT=/opt/yada-www/public
-    DB_QUERY_HINT="DB writes use \`docker exec -e PGPASSWORD=\$PGPASSWORD yada-postgres-prod psql -U postgres -d yada -c '...'\` (psql is NOT directly on the host PATH)."
+    CODE_ROOT=/opt/yada-www
+    DB_QUERY_HINT="DB writes use \`psql\` with PG_HOST/PG_USER/PG_PASS env vars set (psql is in PATH)."
 fi
 
 PROMPT="You are an autonomous code-fix agent for the Yada Yah website (PHP/PostgreSQL).
