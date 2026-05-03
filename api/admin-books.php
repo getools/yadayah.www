@@ -44,7 +44,7 @@ if ($method === 'GET') {
     // regeneration even if the row says "success".
     $publicRoot = dirname(__DIR__);
     foreach ($volumes as &$v) {
-        $docxAbs = !empty($v['volume_docx'])      ? $publicRoot . '/books/word/' . $v['volume_docx']     : null;
+        $docxAbs = !empty($v['volume_docx'])      ? $publicRoot . '/u/books-word/' . $v['volume_docx']     : null;
         $pdfAbs  = !empty($v['volume_pdf'])       ? $publicRoot . '/pdf/'       . $v['volume_pdf']      : null;
         $flipAbs = !empty($v['volume_flip_code']) ? $publicRoot . '/flipbook/'  . $v['volume_flip_code'] : null;
         $v['volume_docx_mtime'] = ($docxAbs && is_file($docxAbs)) ? date('c', filemtime($docxAbs)) : null;
@@ -91,8 +91,8 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
 
     // Storage paths (works in both Docker container and local dev)
     $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
-    $docxDir = $publicRoot . '/books/word';
-    if (!is_dir($docxDir) && !@mkdir($docxDir, 0775, true)) errorResponse('Cannot create books/word directory');
+    $docxDir = $publicRoot . '/u/books-word';
+    if (!is_dir($docxDir) && !@mkdir($docxDir, 0775, true)) errorResponse('Cannot create u/books-word directory');
     $docxPath = $docxDir . '/' . $docxName;
     if (!move_uploaded_file($file['tmp_name'], $docxPath)) errorResponse('Failed to save .docx file');
 

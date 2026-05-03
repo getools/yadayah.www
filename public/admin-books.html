@@ -525,7 +525,7 @@ function showVolumeForm(record) {
     // DOCX status
     var docxCur = document.getElementById('f-docx-current');
     if (r.volume_docx) {
-        docxCur.innerHTML = 'Current: <a href="/books/word/' + esc(r.volume_docx) + '" target="_blank">' + esc(r.volume_docx) + '</a>';
+        docxCur.innerHTML = 'Current: <a href="/u/books-word/' + esc(r.volume_docx) + '" target="_blank">' + esc(r.volume_docx) + '</a>';
     } else {
         docxCur.textContent = 'No .docx uploaded yet';
     }

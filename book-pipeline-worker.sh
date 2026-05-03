@@ -39,7 +39,7 @@ PARSER_CPU_QUOTA=40%
 # container: /var/www/html/jobs/...). admin-books.php drops job files here
 # whenever a docx is uploaded.
 JOBS_DIR=/opt/yada-www/public/jobs/book-pipeline
-DOCX_DIR=/opt/yada-www/public/books/word
+DOCX_DIR=/opt/yada-www/public/u/books-word
 PDF_DIR=/opt/yada-www/public/pdf
 FLIP_DIR=/opt/yada-www/public/flipbook
 LOCK=/var/lock/book-pipeline-worker.lock
