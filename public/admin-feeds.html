@@ -148,7 +148,7 @@
         <div class="toolbar">
             <span id="items-count" class="feed-count"></span>
             <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">per page
-                <select id="items-per-page" onchange="_itemsPerPage=parseInt(this.value)||99999;loadItems(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
+                <select id="items-per-page" onchange="_itemsPerPage=parseInt(this.value)||99999;if(window.adminUI)adminUI.save('feeds','itemsPerPage',_itemsPerPage);loadItems(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100" selected>100</option>
@@ -363,9 +363,9 @@
 var API = '/api';
 var feeds = [];
 var _itemsLoaded = false;
-var _itemsPage = 1;
+var _itemsPage = (window.adminUI && parseInt(adminUI.load('feeds', 'itemsPage'), 10)) || 1;
 var _itemsTotalPages = 1;
-var _itemsPerPage = 100;
+var _itemsPerPage = (window.adminUI && parseInt(adminUI.load('feeds', 'itemsPerPage'), 10)) || 100;
 var _itemsSort = (window.adminUI && adminUI.load('feeds', 'itemsSort')) || 'publish_dtime';
 var _itemsDir  = (window.adminUI && adminUI.load('feeds', 'itemsDir'))  || 'desc';
 var _catFilterOpts = '<option value="">All</option>';
@@ -455,8 +455,8 @@ function switchFeedTab(tab) {
     document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
     document.getElementById('tab-' + tab).style.display = '';
     if (window.adminUI) adminUI.save('feeds', 'tab', tab);
-    if (tab === 'items' && !_itemsLoaded) { _itemsLoaded = true; loadItems(1); }
-    if (tab === 'recordings') loadRecordings(1);
+    if (tab === 'items' && !_itemsLoaded) { _itemsLoaded = true; loadItems(_itemsPage); }
+    if (tab === 'recordings') loadRecordings(_recPage);
 }
 
 function populateItemsFeedFilter() {
@@ -507,8 +507,12 @@ function transcribeBtnHtml(it) {
 }
 
 function loadItems(page) {
-    page = page || 1;
+    page = page || _itemsPage || 1;
     _itemsPage = page;
+    if (window.adminUI) adminUI.save('feeds', 'itemsPage', _itemsPage);
+    // Hydrate the per-page select to match the restored value (only matters on first call).
+    var pps = document.getElementById('items-per-page');
+    if (pps && parseInt(pps.value, 10) !== _itemsPerPage) pps.value = String(_itemsPerPage);
     var ff = document.getElementById('filter-feed');
     if (ff) _savedFilters.feed = ff.value;
     // status filter — single-select dropdown ('' = All / active / restricted / inactive)
@@ -1865,9 +1869,11 @@ function startRecordingForItem(itemKey) {
 var _recItems = [];
 var _recBatchActive = false;
 var _recBatchAbort = false;
-var _recSort = 'published';
-var _recDir = 'desc';
+var _recSort = (window.adminUI && adminUI.load('feeds', 'recSort')) || 'published';
+var _recDir  = (window.adminUI && adminUI.load('feeds', 'recDir'))  || 'desc';
+var _recPage = (window.adminUI && parseInt(adminUI.load('feeds', 'recPage'), 10)) || 1;
 var _recSearchTimer = null;
+var _recRestored = false;
 
 function recDebouncedReload() {
     if (_recSearchTimer) clearTimeout(_recSearchTimer);
@@ -1876,7 +1882,54 @@ function recDebouncedReload() {
 function recSort(col) {
     if (_recSort === col) _recDir = _recDir === 'asc' ? 'desc' : 'asc';
     else { _recSort = col; _recDir = (col === 'title' || col === 'feed') ? 'asc' : 'desc'; }
+    if (window.adminUI) {
+        adminUI.save('feeds', 'recSort', _recSort);
+        adminUI.save('feeds', 'recDir', _recDir);
+    }
     loadRecordings(1);
+}
+
+// Persist + restore Recordings tab filter state (text/date/duration inputs,
+// the two checkbox groups, the page-keys checkboxes, and per-page) so a
+// page refresh / new session lands the admin where they left off.
+function _persistRecFilters() {
+    if (!window.adminUI) return;
+    var v = function(id){ var el=document.getElementById(id); return el?el.value:''; };
+    var c = function(id){ var el=document.getElementById(id); return el?!!el.checked:false; };
+    var pageKeys = Array.prototype.map.call(
+        document.querySelectorAll('#rec-f-pages input[type=checkbox]:checked'),
+        function(cb){ return cb.value; });
+    adminUI.save('feeds', 'recFilters', {
+        key: v('rec-f-key'), title: v('rec-f-title'),
+        pubFrom: v('rec-f-pub-from'), pubTo: v('rec-f-pub-to'),
+        feed: v('rec-f-feed'), durMin: v('rec-f-dur-min'), durMax: v('rec-f-dur-max'),
+        sComplete: c('rec-f-status-complete'), sPartial: c('rec-f-status-partial'), sNew: c('rec-f-status-new'),
+        iActive: c('rec-f-istatus-active'), iRestricted: c('rec-f-istatus-restricted'), iInactive: c('rec-f-istatus-inactive'),
+        pageKeys: pageKeys,
+        perPage: parseInt((document.getElementById('rec-per-page')||{}).value, 10) || 50,
+    });
+}
+function _restoreRecFiltersFromStorage() {
+    if (!window.adminUI || _recRestored) return;
+    _recRestored = true;
+    var saved = adminUI.load('feeds', 'recFilters', null);
+    if (!saved) return;
+    var setVal = function(id, val) { var el=document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; };
+    var setChk = function(id, val) { var el=document.getElementById(id); if (el && val !== undefined) el.checked = !!val; };
+    setVal('rec-f-key', saved.key); setVal('rec-f-title', saved.title);
+    setVal('rec-f-pub-from', saved.pubFrom); setVal('rec-f-pub-to', saved.pubTo);
+    setVal('rec-f-feed', saved.feed);
+    setVal('rec-f-dur-min', saved.durMin); setVal('rec-f-dur-max', saved.durMax);
+    setChk('rec-f-status-complete', saved.sComplete);
+    setChk('rec-f-status-partial', saved.sPartial);
+    setChk('rec-f-status-new', saved.sNew);
+    setChk('rec-f-istatus-active', saved.iActive);
+    setChk('rec-f-istatus-restricted', saved.iRestricted);
+    setChk('rec-f-istatus-inactive', saved.iInactive);
+    if (saved.perPage) setVal('rec-per-page', String(saved.perPage));
+    // Page-key checkboxes are populated lazily by populateRecPageFilter; the
+    // saved list is threaded through loadRecordings -> populateRecPageFilter.
+    if (Array.isArray(saved.pageKeys)) window._recRestoredPageKeys = saved.pageKeys;
 }
 function itemsClearFilters() {
     _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', status:'active', page:'', episode:'', key:''};
@@ -1918,6 +1971,10 @@ function recParseDuration(text) {
 }
 
 function loadRecordings(page) {
+    _restoreRecFiltersFromStorage(); // hydrates DOM inputs once on first call
+    page = page || _recPage || 1;
+    _recPage = page;
+    if (window.adminUI) adminUI.save('feeds', 'recPage', _recPage);
     var perPage = parseInt(document.getElementById('rec-per-page').value) || 50;
     var v = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
     var checked = function(id) { var el = document.getElementById(id); return el && el.checked; };
@@ -1944,12 +2001,17 @@ function loadRecordings(page) {
         document.querySelectorAll('#rec-f-istatus input[type=checkbox]:checked'),
         function(cb){ return cb.value; });
     if (iStatuses.length) qs += '&item_status=' + encodeURIComponent(iStatuses.join(','));
-    // Pages filter: collect all checked page checkboxes under the Pages column.
-    var checkedPages = Array.prototype.filter.call(
+    // Pages filter: collect all checked page checkboxes. On the first load
+    // those checkboxes haven't been rendered yet, so fall back to the saved
+    // selection from localStorage.
+    var checkedPages = Array.prototype.map.call(
         document.querySelectorAll('#rec-f-pages input[type=checkbox]:checked'),
-        function() { return true; }
-    ).map(function(cb){ return cb.value; });
+        function(cb){ return cb.value; });
+    if (!checkedPages.length && Array.isArray(window._recRestoredPageKeys)) {
+        checkedPages = window._recRestoredPageKeys.slice();
+    }
     if (checkedPages.length) qs += '&page_keys=' + encodeURIComponent(checkedPages.join(','));
+    if (window.adminUI) _persistRecFilters();
     qs += '&_=' + Date.now();
 
     document.getElementById('rec-count').textContent = 'Loading…';
@@ -2041,7 +2103,17 @@ function renderRecordings(d) {
         // partial, starts fresh if new).
         var processed;
         var commonBtn = 'border:1px solid;background:#fff;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;';
-        if (it.processed_status === 'complete') {
+        // Server-set in_progress means a finalize / transcribe pipeline is
+        // actively running for this item. Render a locked-out badge so a
+        // second operator can't kick off conflicting work on the same video.
+        var inProgress = !!it.in_progress;
+        var inProgressTitle = inProgress ? esc(it.in_progress_reason || 'processing') : '';
+        if (inProgress) {
+            processed = '<button disabled title="Locked while ' + inProgressTitle + '" '
+                      + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;background:#fff8e1;cursor:not-allowed;opacity:0.85;">⏳ Processing</button>'
+                      + '<div style="font-size:0.65rem;color:#a36100;margin-top:2px;text-align:center;font-weight:normal;">'
+                      + inProgressTitle + '</div>';
+        } else if (it.processed_status === 'complete') {
             processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>'
                       + '<button onclick="verifyRecordingSync(' + it.feed_item_key + ')" '
                       + 'title="Run automated sync check between MP3 and YouTube audio" '
@@ -2079,8 +2151,10 @@ function renderRecordings(d) {
             iStatusBadge = '<span style="display:inline-block;background:#d4edda;color:#155724;border:1px solid #b1d8b9;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Active</span>';
         }
 
-        html += '<tr id="rec-row-' + it.feed_item_key + '">'
-            +     '<td style="text-align:center;"><input type="checkbox" class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"></td>'
+        var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"'
+                    + (inProgress ? ' disabled title="Locked while ' + inProgressTitle + '"' : '');
+        html += '<tr id="rec-row-' + it.feed_item_key + '"' + (inProgress ? ' style="opacity:0.7;"' : '') + '>'
+            +     '<td style="text-align:center;"><input type="checkbox" ' + cbAttrs + '></td>'
             +     '<td>' + thumb + '</td>'
             +     '<td style="font-family:monospace;font-size:0.78rem;">' + it.feed_item_key + '</td>'
             +     '<td><a href="javascript:startRecordingForItem(' + it.feed_item_key + ')" style="color:#31345A;text-decoration:none;" title="Open Record popover and start recording">' + esc(it.title || '') + '</a></td>'
@@ -2096,7 +2170,10 @@ function renderRecordings(d) {
     document.getElementById('rec-select-all').checked = false;
 }
 function toggleAllRecordings(on) {
-    document.querySelectorAll('.rec-cb').forEach(function(cb){ cb.checked = !!on; });
+    // Skip disabled (in-progress) checkboxes — toggling them does nothing
+    // visually but would mislead getSelectedRecordingKeys consumers if they
+    // ever read .checked instead of :checked.
+    document.querySelectorAll('.rec-cb:not([disabled])').forEach(function(cb){ cb.checked = !!on; });
 }
 function updateRecHeaderCb() {
     var all = document.querySelectorAll('.rec-cb');

@@ -192,6 +192,45 @@ if ($items) {
         $it['pages'] = $pagesByItem[(int)$it['feed_item_key']] ?? [];
     }
     unset($it);
+
+    // Mark items currently being processed by a finalize / transcribe
+    // pipeline so the Recordings tab UI can disable selection and prevent
+    // two operators from kicking off conflicting work on the same video.
+    // Two signals:
+    //   - finalize state file at /tmp/finalize_<key>.state with status
+    //     other than complete/error (validating/encoding/finalizing)
+    //   - any pending/running row in yy_feed_item_transcript_job
+    $jobStmt = $db->prepare("
+        SELECT feed_item_key, STRING_AGG(job_status, ',') AS statuses
+        FROM yy_feed_item_transcript_job
+        WHERE feed_item_key IN ($ph)
+          AND job_status IN ('pending', 'running')
+        GROUP BY feed_item_key
+    ");
+    $jobStmt->execute($itemKeys);
+    $activeJobByItem = [];
+    foreach ($jobStmt->fetchAll() as $r) {
+        $activeJobByItem[(int)$r['feed_item_key']] = $r['statuses'];
+    }
+
+    foreach ($items as &$it) {
+        $key = (int)$it['feed_item_key'];
+        $reasons = [];
+        $stateFile = sys_get_temp_dir() . "/finalize_$key.state";
+        if (is_file($stateFile)) {
+            $st = json_decode((string)@file_get_contents($stateFile), true) ?: [];
+            $finStatus = $st['status'] ?? '';
+            if ($finStatus !== '' && !in_array($finStatus, ['complete', 'error', 'idle'], true)) {
+                $reasons[] = "finalize:$finStatus";
+            }
+        }
+        if (!empty($activeJobByItem[$key])) {
+            $reasons[] = 'transcribe:' . $activeJobByItem[$key];
+        }
+        $it['in_progress']        = !empty($reasons);
+        $it['in_progress_reason'] = implode(', ', $reasons);
+    }
+    unset($it);
 }
 
 // Pages that actually have at least one feed_item associated with them —
