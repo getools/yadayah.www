@@ -1194,8 +1194,9 @@ function editItem(key) {
             + '<button type="button" onclick="removeItemMp3(' + key + ')" style="padding:2px 8px;font-size:0.75rem;border:1px solid #e0c0c0;border-radius:3px;background:#fff;color:#c0392b;cursor:pointer;">Remove</button>'
             + '</div>';
     }
-    html += '<div style="display:flex;align-items:center;gap:8px;">'
+    html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
         + '<input type="file" id="item-mp3-file" accept=".mp3" style="font-size:0.82rem;" onchange="uploadItemMp3(' + key + ')">'
+        + '<button type="button" onclick="autoDownloadItemAudio(' + key + ')" id="item-yt-dl-btn" title="Run yt-dlp on the URL and save the MP3" style="padding:4px 10px;font-size:0.78rem;border:1px solid #2980b9;border-radius:4px;background:#fff;color:#2980b9;cursor:pointer;">&#128190; Auto-download from URL</button>'
         + '<span id="item-mp3-status" style="font-size:0.78rem;color:#27ae60;"></span>'
         + '</div></div>';
 
@@ -1315,6 +1316,47 @@ function uploadItemThumb() {
         }
         if (st) { st.textContent = 'Uploaded — click Save'; st.style.color = '#27ae60'; }
     }).catch(function() { if (st) { st.textContent = 'Upload failed'; st.style.color = '#c00'; } });
+}
+
+// Auto-download audio for a feed item via yt-dlp (background worker on host).
+// Polls the status JSON until complete, updating the inline status text.
+function autoDownloadItemAudio(itemKey) {
+    var btn = document.getElementById('item-yt-dl-btn');
+    var st = document.getElementById('item-mp3-status');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'wait'; }
+    if (st) { st.textContent = 'Spawning worker…'; st.style.color = '#888'; }
+
+    fetch('/api/admin-audio-download.php?key=' + itemKey, { method: 'POST', credentials: 'include' })
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            if (d.error) {
+                if (st) { st.textContent = d.error; st.style.color = '#c00'; }
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
+                return;
+            }
+            // Poll status every 2s
+            var poll = setInterval(function() {
+                fetch('/api/admin-audio-download.php?key=' + itemKey, { credentials: 'include' })
+                    .then(function(r) { return safeJson(r); })
+                    .then(function(s) {
+                        if (!s) return;
+                        var msg = (s.message || '') + (s.progress != null ? ' (' + s.progress + '%)' : '');
+                        if (st) { st.textContent = msg; st.style.color = s.state === 'error' ? '#c00' : (s.state === 'success' ? '#27ae60' : '#888'); }
+                        if (s.state === 'success' || s.state === 'error') {
+                            clearInterval(poll);
+                            if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
+                            if (s.state === 'success') {
+                                // Reload the item so the new audio link appears
+                                setTimeout(function() { editItem(itemKey); }, 500);
+                            }
+                        }
+                    });
+            }, 2000);
+        })
+        .catch(function() {
+            if (st) { st.textContent = 'Network error'; st.style.color = '#c00'; }
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
+        });
 }
 
 function uploadItemMp3(itemKey) {
