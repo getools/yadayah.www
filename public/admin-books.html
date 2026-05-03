@@ -122,8 +122,12 @@
                 <div class="field"><label>Sort</label><input type="number" id="f-sort" value="0"></div>
                 <div class="field"><label>Pages</label><input type="number" id="f-pages" value="0"></div>
             </div>
+            <div class="field"><label>Book Code <span style="font-weight:400;color:#888;font-size:0.78rem;">(canonical root — drives DOCX + PDF filenames)</span></label>
+                <input type="text" id="f-code" placeholder="e.g. YY-s01v01-An-Intro-to-God-Dabarym-Words">
+                <div style="font-size:0.74rem;color:#888;margin-top:3px;">Allowed: letters, digits, hyphens, apostrophes. Spaces and %20 are auto-converted to hyphens on save.</div>
+            </div>
             <div class="field"><label>FlipHTML5 Code</label><input type="text" id="f-flip" placeholder="e.g. YY-s01v01-..."></div>
-            <div class="field"><label>PDF Filename</label><input type="text" id="f-pdf" placeholder="e.g. YY-s01v01-..."></div>
+            <div class="field"><label>PDF Filename</label><input type="text" id="f-pdf" placeholder="auto-derived from Book Code"></div>
             <div class="field"><label>DOCX Source</label>
                 <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-bottom:6px;"></div>
                 <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()">
@@ -515,6 +519,7 @@ function showVolumeForm(record) {
     document.getElementById('f-number').value = r.volume_number || 0;
     document.getElementById('f-sort').value = r.volume_sort || 0;
     document.getElementById('f-pages').value = r.volume_page_count || 0;
+    document.getElementById('f-code').value = r.volume_code || '';
     document.getElementById('f-flip').value = r.volume_flip_code || '';
     document.getElementById('f-pdf').value = r.volume_pdf || '';
     document.getElementById('f-active').checked = r.volume_active_flag !== false;
@@ -567,6 +572,18 @@ function saveVolume() {
     var label = document.getElementById('f-label').value.trim();
     if (!label) { alert('Label is required'); return; }
 
+    // Canonicalize the book code on the client side: replace %20 / spaces
+    // with hyphens, collapse doubled hyphens, trim leading/trailing hyphens.
+    // The server does the same but doing it here keeps the user's input box
+    // in sync with what actually gets stored.
+    var rawCode = document.getElementById('f-code').value.trim();
+    var code = rawCode
+        .replace(/%20/g, '-')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    if (code !== rawCode) document.getElementById('f-code').value = code;
+
     var payload = {
         series_key: parseInt(document.getElementById('f-series').value),
         volume_label: label,
@@ -574,6 +591,7 @@ function saveVolume() {
         volume_number: parseInt(document.getElementById('f-number').value) || 0,
         volume_sort: parseInt(document.getElementById('f-sort').value) || 0,
         volume_page_count: parseInt(document.getElementById('f-pages').value) || 0,
+        volume_code: code,
         volume_flip_code: document.getElementById('f-flip').value.trim(),
         volume_pdf: document.getElementById('f-pdf').value.trim(),
         volume_active_flag: document.getElementById('f-active').checked,

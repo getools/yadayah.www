@@ -246,10 +246,22 @@ if ($method === 'POST') {
     if (!$label) errorResponse('Volume label is required');
     if (!$seriesKey) errorResponse('Series is required');
 
+    // Canonicalize volume_code on the way in: replace %20 / spaces with -,
+    // collapse doubled hyphens, strip leading/trailing hyphens. Mirrors the
+    // upload_docx and retry_pipeline normalization so the column never holds
+    // a non-canonical value regardless of how a row was created.
+    $canonCode = function($s) {
+        $s = str_replace(['%20', ' '], '-', (string)$s);
+        $s = preg_replace('/-+/', '-', $s);
+        return trim($s, '-');
+    };
+    $rawCode = trim($data['volume_code'] ?? '');
+    $code = $rawCode !== '' ? $canonCode($rawCode) : null;
+
     $stmt = $db->prepare("
         INSERT INTO yy_volume (series_key, volume_label, volume_name, volume_number, volume_sort,
-                               volume_flip_code, volume_pdf, volume_page_count, volume_active_flag)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
+                               volume_code, volume_flip_code, volume_pdf, volume_page_count, volume_active_flag)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
     $stmt->execute([
         $seriesKey,
@@ -257,6 +269,7 @@ if ($method === 'POST') {
         trim($data['volume_name'] ?? '') ?: $label,
         (int)($data['volume_number'] ?? 0),
         (int)($data['volume_sort'] ?? 0),
+        $code,
         trim($data['volume_flip_code'] ?? '') ?: null,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
@@ -288,6 +301,18 @@ if ($method === 'PUT') {
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
 
     $fields = []; $params = [];
+    // volume_code goes through the same canonical normalization as the
+    // INSERT path so a typo with %20 / spaces is repaired before save.
+    if (array_key_exists('volume_code', $data)) {
+        $raw = trim((string)($data['volume_code'] ?? ''));
+        if ($raw !== '') {
+            $raw = str_replace(['%20', ' '], '-', $raw);
+            $raw = preg_replace('/-+/', '-', $raw);
+            $raw = trim($raw, '-');
+        }
+        $fields[] = "volume_code = ?";
+        $params[] = $raw !== '' ? $raw : null;
+    }
     foreach (['volume_label', 'volume_name', 'volume_flip_code', 'volume_pdf'] as $col) {
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = trim($data[$col] ?? '') ?: null; }
     }
