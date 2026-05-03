@@ -179,10 +179,22 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
     $jobsDir    = $publicRoot . '/jobs/book-pipeline';
     if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
-    $pdfName = $vol['volume_pdf'] ?: (pathinfo($vol['volume_docx'], PATHINFO_FILENAME) . '.pdf');
+    // Normalize names so retries can't re-introduce %20 / spaces. Mirrors
+    // the canonical form admin's docx upload writes for new volumes.
+    $canon = function($s) {
+        $s = str_replace(['%20', ' '], '-', (string)$s);
+        $s = preg_replace('/-+/', '-', $s);
+        return trim($s, '-');
+    };
+    $docxName = $canon($vol['volume_docx']);
+    $pdfName  = $canon($vol['volume_pdf'] ?: (pathinfo($vol['volume_docx'], PATHINFO_FILENAME) . '.pdf'));
+    if ($docxName !== $vol['volume_docx'] || $pdfName !== $vol['volume_pdf']) {
+        $db->prepare("UPDATE yy_volume SET volume_docx = ?, volume_pdf = ? WHERE volume_key = ?")
+           ->execute([$docxName, $pdfName, $key]);
+    }
     $jobPayload = [
         'volume_key'   => (int)$key,
-        'docx_name'    => $vol['volume_docx'],
+        'docx_name'    => $docxName,
         'pdf_name'     => $pdfName,
         'flip_code'    => null,
         'queued_at'    => date('c'),
