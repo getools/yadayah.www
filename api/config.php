@@ -63,7 +63,7 @@ function requireAuth(): array {
     }
     return [
         'user_key' => $_SESSION['user_key'],
-        'user_code' => $_SESSION['user_code'],
+        'user_code' => $_SESSION['user_code'] ?? '',
         'user_name' => $_SESSION['user_name'] ?? $_SESSION['user_code'],
     ];
 }
