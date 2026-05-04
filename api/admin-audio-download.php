@@ -90,13 +90,14 @@ if ($method === 'POST') {
     // doesn't serialize behind us while the worker runs.
     if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
 
+    require_once __DIR__ . '/spawn-helpers.php';
     $worker = __DIR__ . '/admin-audio-download-worker.php';
     $logFile = sys_get_temp_dir() . "/audio_dl_{$key}.log";
-    $cmd = 'nohup php ' . escapeshellarg($worker) . ' ' . escapeshellarg((string)$key)
-         . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null & echo $!';
-    $out = [];
-    exec($cmd, $out);
-    $pid = (int)($out[0] ?? 0);
+    // yt-dlp audio downloads should finish in <5min CPU; 15min cap protects
+    // against runaway loops. 800MB virt = ~250MB RSS, plenty for yt-dlp.
+    $pid = spawnCappedWorker($worker, [(string)$key], $logFile, [
+        'cpu_secs' => 900, 'mem_mb' => 800, 'nice' => 10,
+    ]);
     writeStatus($statusFile, ['pid' => $pid, 'message' => 'Worker started (pid ' . $pid . ')']);
 
     jsonResponse(['queued' => true, 'pid' => $pid, 'status_url' => '/api/admin-audio-download.php?key=' . $key]);

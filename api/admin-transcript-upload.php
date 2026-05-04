@@ -90,16 +90,16 @@ if ($method === 'POST') {
                 'part_count' => count($parts),
             ]);
 
+            require_once __DIR__ . '/spawn-helpers.php';
             $worker = __DIR__ . '/finalize-worker.php';
             $logFile = sys_get_temp_dir() . '/finalize_' . $itemKey . '.log';
-            $cmd = 'nohup php ' . escapeshellarg($worker)
-                 . ' ' . escapeshellarg((string)$itemKey)
-                 . ' ' . escapeshellarg((string)$user['user_key'])
-                 . ' ' . escapeshellarg((string)$autoTranscribe)
-                 . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null & echo $!';
-            $pidOut = [];
-            exec($cmd, $pidOut);
-            $pid = (int)($pidOut[0] ?? 0);
+            // 3-hour recordings can encode for ~30min CPU on libmp3lame -q4;
+            // 40min cap leaves headroom but still kills truly stuck ffmpeg.
+            $pid = spawnCappedWorker($worker, [
+                (string)$itemKey, (string)$user['user_key'], (string)$autoTranscribe,
+            ], $logFile, [
+                'cpu_secs' => 2400, 'mem_mb' => 1500, 'nice' => 10,
+            ]);
             if ($pid <= 0) {
                 writeFinalizeState($itemKey, [
                     'status'    => 'error',

@@ -2,6 +2,14 @@ services:
   rsshub:
     image: diygod/rsshub:chromium-bundled
     restart: always
+    # Chrome is the highest-leak risk on the box (we hit 240 zombie chromes
+    # once when cron-fliphtml5-match.sh leaked procs). Container caps mean
+    # the leak can't melt the host even if process cleanup fails. pids_limit
+    # acts as a fork-bomb circuit breaker — Chrome with many tabs uses ~50
+    # PIDs; 256 leaves room while still catching runaways early.
+    mem_limit: 800m
+    cpus: 0.75
+    pids_limit: 256
     expose:
       - "1200"
     volumes:
@@ -21,6 +29,9 @@ services:
   caddy:
     image: caddy:2
     restart: always
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
     ports:
       - "80:80"
       - "443:443"
@@ -36,6 +47,15 @@ services:
   web:
     build: .
     restart: always
+    # Hard cap so a runaway worker (yt-dlp, ffmpeg, embed-paragraphs) can't
+    # peg the host or trip Hostinger's abuse heuristic. cpus=1.5 lets workers
+    # use 1.5 cores while user-facing PHP-FPM still has scheduling headroom
+    # on the remaining 0.5. mem_limit=2g matches the per-worker ulimit -v
+    # (1.5g) plus headroom for FPM master + concurrent requests. Sized for
+    # a 4GB / 2-core VPS — bump alongside any instance upgrade.
+    mem_limit: 2g
+    cpus: 1.5
+    pids_limit: 512
     expose:
       - "80"
     volumes:
@@ -57,6 +77,9 @@ services:
   itcoge-web:
     build: /opt/itcoge-www
     restart: always
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
     expose:
       - "80"
     volumes:
@@ -67,6 +90,13 @@ services:
     image: postgres:15-alpine
     container_name: yada-postgres-prod
     restart: always
+    # 1g cap leaves room for the OS page cache to absorb large queries
+    # (the new live-count UPDATE triggers fire on every paragraph insert,
+    # which is bursty during parser runs). Bump if pg_stat_statements
+    # shows hot-set spilling to disk.
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: yada_password

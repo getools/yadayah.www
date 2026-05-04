@@ -122,12 +122,11 @@ if (!function_exists('spawnTranscribeJob')) {
         $jobKey = (int)$jobStmt->fetchColumn();
         $workerScript = __DIR__ . '/transcript-worker.php';
         if (file_exists($workerScript)) {
+            require_once __DIR__ . '/spawn-helpers.php';
             $logFile = sys_get_temp_dir() . '/transcript_' . $jobKey . '.log';
-            $cmd = "nohup php " . escapeshellarg($workerScript) . " " . escapeshellarg((string)$jobKey)
-                 . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null & echo $!";
-            $pidOut = [];
-            exec($cmd, $pidOut);
-            $pid = (int)($pidOut[0] ?? 0);
+            $pid = spawnCappedWorker($workerScript, [(string)$jobKey], $logFile, [
+                'cpu_secs' => 2400, 'mem_mb' => 2000, 'nice' => 10,
+            ]);
             if ($pid > 0) {
                 $db->prepare("UPDATE yy_feed_item_transcript_job SET job_worker_pid = ? WHERE feed_item_transcript_job_key = ?")
                    ->execute([$pid, $jobKey]);

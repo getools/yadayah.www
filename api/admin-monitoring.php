@@ -219,14 +219,15 @@ if ($method === 'POST') {
         $logFile = "/tmp/autofix_run_{$runId}.log";
         @file_put_contents($statusFile, json_encode(['state' => 'starting', 'run_id' => $runId, 'started' => date('c')]));
 
-        $cmd = 'nohup php ' . escapeshellarg(__DIR__ . '/auto-fix-error.php') . ' ' . escapeshellarg($runId)
-             . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null & echo $!';
-        $pidOut = [];
-        @exec($cmd, $pidOut);
-        $pid = (int)($pidOut[0] ?? 0);
+        require_once __DIR__ . '/spawn-helpers.php';
+        $pid = spawnCappedWorker(__DIR__ . '/auto-fix-error.php', [$runId], $logFile, [
+            'cpu_secs' => 600, 'mem_mb' => 800, 'nice' => 10,
+        ]);
 
         // Also kick off cron-monitor and git-push in parallel (they're independent)
-        @exec('nohup php ' . escapeshellarg(__DIR__ . '/cron-monitor.php') . ' > /tmp/autofix_cron_monitor.log 2>&1 < /dev/null &');
+        spawnCappedWorker(__DIR__ . '/cron-monitor.php', [], '/tmp/autofix_cron_monitor.log', [
+            'cpu_secs' => 300, 'mem_mb' => 500, 'nice' => 15,
+        ]);
         @exec('/opt/yada-www/api/git-push.sh "Auto-Fix Now: manual sync" > /dev/null 2>&1 &');
 
         jsonResponse([

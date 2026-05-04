@@ -424,10 +424,14 @@ if ($method === 'PUT') {
 
     if ($syncScript && file_exists($syncScript)) {
         if ($site === 'facebook') {
-            // Facebook is long-running — run in background, fully detached
+            // Facebook is long-running — run in background, fully detached.
+            // Capped at 15min CPU / 800MB virt so a stuck Facebook sync can't
+            // peg the box.
+            require_once __DIR__ . '/spawn-helpers.php';
             $logFile = sys_get_temp_dir() . '/sync_feed_' . $feedKey . '.log';
-            $cmd = "nohup php " . escapeshellarg($syncScript) . " > " . escapeshellarg($logFile) . " 2>&1 < /dev/null &";
-            exec($cmd);
+            spawnCappedWorker($syncScript, [], $logFile, [
+                'cpu_secs' => 900, 'mem_mb' => 800, 'nice' => 10,
+            ]);
             $result['sync_result'] = ['status' => 'started', 'message' => 'Sync running in background', 'log' => $logFile];
         } else {
             // Run sync script via CLI, capture JSON output

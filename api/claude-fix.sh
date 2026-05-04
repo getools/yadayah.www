@@ -125,13 +125,15 @@ cd "$CODE_ROOT"
 
 echo "[$(date -u +%FT%TZ)] claude-fix starting event $EVENT_KEY (CODE_ROOT=$CODE_ROOT, HOME=$HOME, uid=$(id -u))" >> "$LOG_FILE"
 
-# If ANTHROPIC_API_KEY is set, use --bare so claude bypasses OAuth (which
-# may have an expired token) and authenticates strictly via the API key.
-# Without --bare, claude tries OAuth first and fails with "Not logged in".
-CLAUDE_BARE_FLAG=""
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-    CLAUDE_BARE_FLAG="--bare"
-    echo "[$(date -u +%FT%TZ)] using --bare + ANTHROPIC_API_KEY auth path" >> "$LOG_FILE"
+# Auto-fix authenticates via the OAuth/subscription session in $HOME/.claude.
+# It must NEVER use the Anthropic API key (workspace billing is reserved for
+# Ask Yada). Strip any inherited ANTHROPIC_API_KEY so a stray env var can't
+# silently re-enable the API path.
+unset ANTHROPIC_API_KEY CLAUDE_USE_API_KEY
+if [ ! -s "$HOME/.claude/.credentials.json" ]; then
+    echo "[$(date -u +%FT%TZ)] OAuth credentials missing at $HOME/.claude/.credentials.json — refusing to run." >> "$LOG_FILE"
+    echo "[$(date -u +%FT%TZ)] Refresh via: sudo -u claudefix HOME=$HOME claude login" >> "$LOG_FILE"
+    exit 2
 fi
 
 # Claude's Read/Edit tools default to CWD only. When running on the host,
@@ -143,8 +145,9 @@ if [ "$CODE_ROOT" = "/opt/yada-www" ]; then
     [ -d /var/log ]      && CLAUDE_ADD_DIRS+=(--add-dir /var/log)
 fi
 
-# Timeout-wrapped claude invocation.
-timeout "$TIMEOUT_SECS" claude $CLAUDE_BARE_FLAG \
+# Timeout-wrapped claude invocation. NO --bare flag — that would force the
+# API-key auth path; we want OAuth/subscription auth only.
+timeout "$TIMEOUT_SECS" claude \
     "${CLAUDE_ADD_DIRS[@]}" \
     --allow-dangerously-skip-permissions \
     -p "$PROMPT" \

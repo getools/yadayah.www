@@ -131,31 +131,38 @@ process_one() {
     # only resolves inside the container network. From the host we need the
     # bridge IP, which we look up dynamically via docker inspect each run
     # (the IP can change between container restarts).
-    local pg_ip api_key
+    local pg_ip
     pg_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' yada-postgres-prod 2>/dev/null)
     [ -z "$pg_ip" ] && pg_ip=postgres
-    # Pull the Anthropic API key from /opt/yada-www/.env (root-readable) so
-    # we can pass it into the systemd-run scope via --setenv. Without this,
-    # claude tries OAuth first and the OAuth token has expired (May 1 → 38h
-    # past TTL). The API key + claude --bare bypass OAuth entirely.
-    api_key=$(grep '^ANTHROPIC_API_KEY=' /opt/yada-www/.env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d '[:space:]')
-    {
-        echo "[$(date +%H:%M:%S)] Starting claude-fix.sh for event $event_key (pg=$pg_ip, api_key=${api_key:+set})"
-        systemd-run --scope --quiet \
-            --uid=claudefix --gid=claudefix \
-            --setenv=HOME=/opt/yada-www/claude-home \
-            --setenv=ANTHROPIC_API_KEY="$api_key" \
-            --setenv=CLAUDE_USE_API_KEY=1 \
-            --setenv=PG_HOST="$pg_ip" --setenv=PG_PORT=5432 \
-            --setenv=PG_DB=yada --setenv=PG_USER=postgres --setenv=PG_PASS=yada_password \
-            --property=MemoryMax=1200M \
-            --property=MemorySwapMax=0 \
-            --property=CPUQuota=70% \
-            timeout 1620 bash "$CLAUDE_FIX" "$event_key"
-        rc=$?
-        echo "[$(date +%H:%M:%S)] claude-fix.sh exited with rc=$rc"
-    } >> "$log_file" 2>&1
-    rc=${rc:-1}
+    # Auto-fix MUST authenticate via the OAuth/subscription session at
+    # /opt/yada-www/claude-home/.claude/. It must NEVER fall back to the
+    # Anthropic API key — that drains the workspace API budget reserved for
+    # Ask Yada. If OAuth is expired, fail fast: refresh via `claude login`
+    # as the claudefix user instead of patching this script.
+    local creds=/opt/yada-www/claude-home/.claude/.credentials.json
+    if [ ! -s "$creds" ]; then
+        {
+            echo "[$(date +%H:%M:%S)] OAuth credentials missing at $creds — refusing to run."
+            echo "[$(date +%H:%M:%S)] Refresh by running 'sudo -u claudefix HOME=/opt/yada-www/claude-home claude login' on the host."
+        } >> "$log_file" 2>&1
+        rc=2
+    else
+        {
+            echo "[$(date +%H:%M:%S)] Starting claude-fix.sh for event $event_key (pg=$pg_ip, auth=oauth)"
+            systemd-run --scope --quiet \
+                --uid=claudefix --gid=claudefix \
+                --setenv=HOME=/opt/yada-www/claude-home \
+                --setenv=PG_HOST="$pg_ip" --setenv=PG_PORT=5432 \
+                --setenv=PG_DB=yada --setenv=PG_USER=postgres --setenv=PG_PASS=yada_password \
+                --property=MemoryMax=1200M \
+                --property=MemorySwapMax=0 \
+                --property=CPUQuota=70% \
+                timeout 1620 bash "$CLAUDE_FIX" "$event_key"
+            rc=$?
+            echo "[$(date +%H:%M:%S)] claude-fix.sh exited with rc=$rc"
+        } >> "$log_file" 2>&1
+        rc=${rc:-1}
+    fi
 
     cat > "$done_file" <<EOF
 {"run_id":"$run_id","event_key":$event_key,"rc":$rc,"finished":"$(date -Iseconds)"}
