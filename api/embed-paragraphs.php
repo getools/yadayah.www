@@ -29,6 +29,24 @@ if (!_embedProvider()) {
     exit(1);
 }
 
+// Defensive prelude: deactivate any junk paragraph rows the parser may have
+// re-introduced (NULL / whitespace-only / <5 letters). parse_volume.py runs
+// the same UPDATE after each per-volume insert, but doing it here too means
+// a stale upstream parser can't poison Ask Yada retrieval — the next embed
+// pass always cleans up first. Idempotent; touches 0 rows in steady state.
+$junked = $db->exec("
+    UPDATE yy_paragraph
+       SET paragraph_active_flag = false
+     WHERE paragraph_active_flag = true
+       AND (
+            paragraph_text_plain IS NULL
+         OR trim(paragraph_text_plain) = ''
+         OR length(regexp_replace(coalesce(paragraph_text_plain, ''),
+                                  '[^a-zA-Z]', '', 'g')) < 5
+       )
+");
+if ($junked > 0) fprintf(STDERR, "[embed-paragraphs] deactivated %d junk paragraphs first\n", $junked);
+
 $BATCH = (int)(getenv('EMBED_BATCH') ?: 64);
 $MIN_LEN = 30;  // skip near-empty paragraphs (TOC entries, page headers, etc.)
 $MAX_LEN = 4000;
