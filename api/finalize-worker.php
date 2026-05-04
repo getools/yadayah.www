@@ -165,16 +165,33 @@ writeFinalizeState($itemKey, [
 ]);
 
 $encodeStart = microtime(true);
-$out = shell_exec($cmd);
+// exec() captures the exit code; shell_exec() drops it. ffmpeg's exit code
+// is the source of truth — it's 0 only when the encode succeeded and the
+// output file is fully flushed. Without this, a successful encode that
+// looked stat-cached as "missing" would falsely abort (event 4558).
+$outLines = [];
+$rc = -1;
+@exec($cmd, $outLines, $rc);
+$out = implode("\n", $outLines);
 $encodeDur = microtime(true) - $encodeStart;
 
 @unlink($progressFile);
 @unlink($durationFile);
 
-if (!file_exists($finalAbs) || filesize($finalAbs) < 1000) {
+// Always invalidate the stat cache for the just-written path before
+// inspecting it — PHP otherwise serves cached results and a brand-new
+// file can read as missing/zero-byte.
+clearstatcache(true, $finalAbs);
+$finalSize = is_file($finalAbs) ? (int)filesize($finalAbs) : 0;
+
+// True success requires both: ffmpeg reported clean exit AND the file is
+// non-trivially sized. We check the rc first so transient stat-cache
+// misses don't masquerade as encode errors.
+if ($rc !== 0 || $finalSize < 1000) {
     if ($mergedTmp && is_file($mergedTmp)) @unlink($mergedTmp);
     $abort('ffmpeg encode failed (strategy: ' . $strategy . ', took '
-         . round($encodeDur, 1) . 's): ' . substr(trim($out ?? ''), -300));
+         . round($encodeDur, 1) . 's, rc=' . $rc . ', size=' . $finalSize
+         . '): ' . substr(trim($out ?? ''), -300));
 }
 @chmod($finalAbs, 0664);
 
