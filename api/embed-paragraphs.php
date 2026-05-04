@@ -20,14 +20,12 @@ require_once __DIR__ . '/ask-rag.php';
 
 $db = getDb();
 
-// Voyage API key: env first, fall back to yy_setting (mirrors ask.php's lookup).
-$voyageKey = getenv('VOYAGE_API_KEY') ?: '';
-if (!$voyageKey) {
-    $row = $db->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'voyage-api-key'")->fetchColumn();
-    $voyageKey = $row ?: '';
-}
-if (!$voyageKey) {
-    fwrite(STDERR, "VOYAGE_API_KEY not set in .env or yy_setting — abort\n");
+// Provider auto-selected by ask-rag.php (Voyage if VOYAGE_API_KEY set, else
+// OpenAI text-embedding-3-small at 1024-d). _embedProvider() reads from
+// process env or /var/www/html/.env, so we don't need to load the .env
+// ourselves — just confirm a provider was found.
+if (!_embedProvider()) {
+    fwrite(STDERR, "No embedding provider key found in env or .env (need VOYAGE_API_KEY or OPENAI_API_KEY) — abort\n");
     exit(1);
 }
 
@@ -37,7 +35,10 @@ $MAX_LEN = 4000;
 
 // Pull a page of un-embedded paragraphs. We re-query each iteration so any
 // concurrent activity (live ask.php traffic embedding things, parser
-// re-runs, etc.) is naturally handled.
+// re-runs, etc.) is naturally handled. BATCH and MIN_LEN are inlined (cast
+// to int) instead of bound — PDO + Postgres + parameterized LIMIT can
+// silently misbehave under certain emulated-prepare modes; integers from
+// our own code are safe to inline.
 $selectSql = "
     SELECT p.paragraph_key, p.paragraph_text_plain, p.volume_key, p.series_key,
            p.paragraph_page, v.volume_label, s.series_label
@@ -46,16 +47,15 @@ $selectSql = "
     JOIN yy_series    s ON s.series_key = p.series_key
     WHERE p.paragraph_active_flag = true
       AND v.volume_ask_yada_flag  = true
-      AND length(coalesce(p.paragraph_text_plain, '')) >= :min
+      AND length(coalesce(p.paragraph_text_plain, '')) >= " . (int)$MIN_LEN . "
       AND NOT EXISTS (
           SELECT 1 FROM yy_ask_embedding e
           WHERE e.source_type = 'paragraph'
             AND e.source_key  = p.paragraph_key
       )
     ORDER BY p.paragraph_key
-    LIMIT :lim
+    LIMIT " . (int)$BATCH . "
 ";
-$select = $db->prepare($selectSql);
 
 $totalRemaining = $db->query("
     SELECT COUNT(*)
@@ -76,10 +76,7 @@ $done = 0; $failed = 0; $skipped = 0;
 $startMs = (int)(microtime(true) * 1000);
 
 while (true) {
-    $select->bindValue(':min', $MIN_LEN, PDO::PARAM_INT);
-    $select->bindValue(':lim', $BATCH,   PDO::PARAM_INT);
-    $select->execute();
-    $rows = $select->fetchAll();
+    $rows = $db->query($selectSql)->fetchAll();
     if (!$rows) break;
 
     $texts = [];
@@ -107,7 +104,7 @@ while (true) {
         continue;
     }
 
-    $embeddings = generateEmbeddingsBatch($texts, $voyageKey);
+    $embeddings = generateEmbeddingsBatch($texts);
     if (!$embeddings || count($embeddings) !== count($valid)) {
         fwrite(STDERR, "[embed-paragraphs] batch failed (got " . (is_array($embeddings) ? count($embeddings) : 'null') . " of " . count($valid) . "), retrying after 5s\n");
         $failed += count($valid);
