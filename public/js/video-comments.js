@@ -190,6 +190,23 @@ VideoComments._doLoad = function() {
 };
 
 var _submitting = false;
+// Restore the compose UI to a usable state after a submit settles, win or
+// lose. Without this, on any path that didn't re-render the compose area
+// (network error, server-returned error, or a load() that resolves with
+// user=null and renders the sign-in bar instead) the button stays
+// disabled "Posting..." and the user has to refresh the page to post
+// again. Bug report: "I can only do one, then I have to refresh the page
+// to post another."
+function _resetComposeUI(clearInput) {
+    _submitting = false;
+    var btn = document.querySelector('.vc-submit-btn');
+    if (btn) { btn.disabled = false; btn.textContent = _saveText; }
+    if (clearInput) {
+        var input = document.getElementById('vc-input');
+        if (input) input.value = '';
+    }
+}
+
 VideoComments.submit = function() {
     if (_submitting) return;
     var input = document.getElementById('vc-input');
@@ -204,10 +221,21 @@ VideoComments.submit = function() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'add', video_id: _currentVideoId, video_source: _currentVideoSource, page_code: _currentPageCode, video_title: _currentVideoTitle, thumbnail: _currentThumbnail, body: body })
     }).then(function(r) { return r.json(); }).then(function(data) {
-        _submitting = false;
-        if (data.error) { alert(data.error); return; }
+        if (data.error) {
+            alert(data.error);
+            _resetComposeUI(false);  // keep typed text so user can retry
+            return;
+        }
+        // Success: clear the textarea and re-enable the button BEFORE
+        // VideoComments.load() rebuilds the comments list. If load() ever
+        // fails or renders the sign-in bar instead of compose, the user
+        // is still left with a working compose area.
+        _resetComposeUI(true);
         VideoComments.load();
-    }).catch(function() { _submitting = false; });
+    }).catch(function(err) {
+        alert('Comment failed to post — please retry.');
+        _resetComposeUI(false);
+    });
 };
 
 VideoComments.like = function(ck) {
