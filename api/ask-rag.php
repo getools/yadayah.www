@@ -121,44 +121,6 @@ function generateEmbeddingsBatch(array $texts, string $apiKey = '', int $timeout
 }
 
 /**
- * Generate embeddings for up to 128 texts in one call. Returns an array of
- * embeddings aligned to the input order, or null on failure. Voyage caps at
- * 128 inputs / 320k tokens per request — caller must chunk.
- */
-function generateEmbeddingsBatch(array $texts, string $apiKey, int $timeout = 60): ?array {
-    if (!$texts || !$apiKey) return null;
-    $payload = array_map(function($t) { return mb_substr(trim($t), 0, 4000); }, $texts);
-    $ch = curl_init('https://api.voyageai.com/v1/embeddings');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $apiKey,
-        ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'model' => 'voyage-3-lite',
-            'input' => $payload,
-            'input_type' => 'document',
-        ]),
-        CURLOPT_TIMEOUT => $timeout,
-    ]);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err = curl_error($ch);
-    curl_close($ch);
-    if ($httpCode !== 200 || !$response) {
-        fwrite(STDERR, "[voyage] http={$httpCode} err={$err} body=" . substr((string)$response, 0, 300) . "\n");
-        return null;
-    }
-    $data = json_decode($response, true);
-    if (!isset($data['data']) || !is_array($data['data'])) return null;
-    // Voyage returns items with an "index" field — sort to align with input order.
-    usort($data['data'], function($a, $b) { return ($a['index'] ?? 0) <=> ($b['index'] ?? 0); });
-    return array_map(function($d) { return $d['embedding'] ?? null; }, $data['data']);
-}
-
-/**
  * Store an embedding in yy_ask_embedding.
  */
 function storeEmbedding(PDO $db, string $sourceType, ?int $sourceKey, string $text, array $embedding, array $metadata = []): void {
