@@ -59,6 +59,20 @@ $abort = function(string $err) use ($itemKey) {
     exit(1);
 };
 
+// Refuse to finalize an item that no longer exists. Without this guard
+// we waste a full encode on parts that belong to a deleted feed_item —
+// the subsequent UPDATE silently affects 0 rows and the only artifact is
+// an orphan MP3 nothing references. Caused event 4558: item deleted at
+// 00:45, finalize kicked off at 01:08, ffmpeg ran 60s, then DB write
+// went to /dev/null.
+$existsStmt = $db->prepare("SELECT 1 FROM yy_feed_item WHERE feed_item_key = ?");
+$existsStmt->execute([$itemKey]);
+if (!$existsStmt->fetchColumn()) {
+    // Best-effort cleanup of the orphaned parts so they don't accumulate.
+    foreach (listParts($PARTS_DIR_ABS, $itemKey) as $f) @unlink($f);
+    $abort('Item ' . $itemKey . ' was deleted before finalize ran. Parts removed.');
+}
+
 $parts = listParts($PARTS_DIR_ABS, $itemKey);
 if (!$parts) $abort('No parts to finalize');
 
