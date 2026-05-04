@@ -474,18 +474,7 @@
                             }
                         }
                     }
-                    if (record.volume_flip_code) {
-                        var hdrUrl = '/' + encodeURIComponent(record.volume_flip_code) + '/' + (record.translation_page ? '#p=' + (record.translation_page + 6) : '');
-                        var hdrLink = document.createElement('a');
-                        hdrLink.href = hdrUrl;
-                        hdrLink.target = '_blank';
-                        hdrLink.textContent = citeName + ref;
-                        hdrLink.style.color = 'inherit';
-                        hdrLink.style.textDecoration = 'none';
-                        breakDiv.appendChild(hdrLink);
-                    } else {
-                        breakDiv.textContent = citeName + ref;
-                    }
+                    breakDiv.textContent = citeName + ref;
                     resultsDiv.appendChild(breakDiv);
                     lastCiteBookId = record.translation_cite_book_key;
                     lastChapter = record.translation_cite_chapter;
@@ -498,18 +487,17 @@
                 var page = record.translation_page;
                 var bookPage;
                 var chapterName = record.chapter_name || '';
-                // Link to the named-path flipbook bundle that lives at
-                // /<volume_file>/ (e.g. /YY-s01v01-An-Intro-to-God-Dabarym-Words/).
-                // We used to link to the flip_code numeric path served from
-                // book.yadayah.com / books-www, but that bookshelf was retired —
-                // the translation_book named path covers every volume that has
-                // a flipbook on disk, and the FlipHTML5 viewer there honors
-                // the #p=N anchor the same way.
+                // The volume_file in the DB has spaces and apostrophes
+                // (e.g. "YY-s02v01-Yada Yahowah-Bare'syth-Beginning"), but
+                // the on-disk flipbook directories strip apostrophes and
+                // turn spaces into hyphens. Slugify to match.
+                var pageLabel = page ? ' - Page ' + page : '';
                 if (record.translation_book) {
-                    var url = '/' + encodeURIComponent(record.translation_book) + '/' + (page ? '#p=' + (page + 6) : '');
-                    bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?') + '</a>';
+                    var slug = record.translation_book.replace(/['‘’]/g, '').replace(/\s+/g, '-');
+                    var url = '/' + encodeURIComponent(slug) + '/' + (page ? '#p=' + (page + 6) : '');
+                    bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + pageLabel + '</a>';
                 } else {
-                    bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?');
+                    bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + pageLabel;
                 }
 
                 // Pre-embed word links into HTML before DOM insertion
