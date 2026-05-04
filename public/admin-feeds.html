@@ -1586,7 +1586,15 @@ function closeTranscript() {
     }
     _activeRowIdx = -1;
     _segmentSeconds = [];
+    var closedItemKey = _transcriptItemKey;
     _transcriptItemKey = null;
+    // Refresh the Items list so the Transcribe column reflects the latest
+    // bookmark + validation_status (closeTranscript may have just written
+    // a final bookmark via sendBeacon). Done after a tick so the beacon
+    // request reaches the server before we re-fetch.
+    if (closedItemKey && _itemsLoaded && typeof loadItems === 'function') {
+        setTimeout(function() { loadItems(_itemsPage); }, 250);
+    }
 }
 
 function updateTranscribeButton(itemKey, newStatus) {
