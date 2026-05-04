@@ -245,6 +245,30 @@ if ($items) {
             }
         }
 
+        // Fallback: actually-uploading-parts detection. The popout uploads a
+        // new audio_<key>_part_N.webm every checkpoint (typically 5 min, but
+        // can be sooner if the user pauses). If any part file for this item
+        // has been modified in the last 60s, it's being actively recorded —
+        // even if the popout's heartbeat code is missing (e.g. a window
+        // opened before the heartbeat code was deployed and still running
+        // cached old JS). This catches that without requiring popout reload.
+        $partsGlob = '/opt/yada-www/public/u/audio/parts/audio_' . $key . '_part_*.webm';
+        $newest = 0;
+        foreach (glob($partsGlob) as $pf) {
+            $m = @filemtime($pf);
+            if ($m && $m > $newest) $newest = $m;
+        }
+        if ($newest > 0) {
+            $partAge = time() - $newest;
+            if ($partAge <= 60 && !in_array("recording_active:{$partAge}s_ago", $reasons, true)) {
+                // Only add if we didn't already mark via heartbeat (avoid
+                // double-tagging the same row).
+                if (!preg_grep('/^recording_active:/', $reasons)) {
+                    $reasons[] = "recording_parts:{$partAge}s_ago";
+                }
+            }
+        }
+
         $it['in_progress']        = !empty($reasons);
         $it['in_progress_reason'] = implode(', ', $reasons);
     }
