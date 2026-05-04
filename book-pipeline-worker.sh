@@ -170,7 +170,7 @@ process_job() {
             --property=MemoryMax=$SOFFICE_MEM_MAX \
             --property=MemorySwapMax=0 \
             --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-            env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
+            timeout 600 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
         lo_rc=${lo_rc:-0}
         echo "$lo_output" >> /var/log/book-pipeline.log
     fi
