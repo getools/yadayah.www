@@ -1,8 +1,10 @@
 <?php
 /**
- * Per-user admin UI state — generic key/value persistence backing the
- * /js/admin-state.js auto-persist helper. Lets filter values, sort columns,
- * active tabs, page numbers, etc. survive across refreshes AND browsers.
+ * Per-user session state — generic key/value persistence backing the
+ * /js/session-state.js auto-persist helper. Lets filter values, sort
+ * columns, active tabs, page numbers, etc. survive across refreshes AND
+ * browsers. Named "session-state" (not "admin-state") because the public
+ * side may use the same table for its own per-user UI state.
  *
  * GET  ?scope=feeds              → { items: { name1: value1, name2: value2, … } }
  * POST { scope, name, value }    → upsert one key
@@ -25,9 +27,9 @@ $scopeFromQuery = trim((string)($_GET['scope'] ?? ''));
 if ($method === 'GET') {
     if ($scopeFromQuery === '') errorResponse('scope required');
     $stmt = $db->prepare("
-        SELECT user_admin_state_name AS name, user_admin_state_value AS value
-          FROM yy_user_admin_state
-         WHERE user_key = ? AND user_admin_state_scope = ?
+        SELECT user_session_state_name AS name, user_session_state_value AS value
+          FROM yy_user_session_state
+         WHERE user_key = ? AND user_session_state_scope = ?
     ");
     $stmt->execute([$userKey, $scopeFromQuery]);
     $items = [];
@@ -57,18 +59,18 @@ if ($method === 'POST') {
     }
 
     $upsertStmt = $db->prepare("
-        INSERT INTO yy_user_admin_state
-            (user_key, user_admin_state_scope, user_admin_state_name,
-             user_admin_state_value, user_admin_state_revision_dtime)
+        INSERT INTO yy_user_session_state
+            (user_key, user_session_state_scope, user_session_state_name,
+             user_session_state_value, user_session_state_revision_dtime)
         VALUES (?, ?, ?, ?, NOW())
-        ON CONFLICT (user_key, user_admin_state_scope, user_admin_state_name)
+        ON CONFLICT (user_key, user_session_state_scope, user_session_state_name)
         DO UPDATE SET
-            user_admin_state_value = EXCLUDED.user_admin_state_value,
-            user_admin_state_revision_dtime = NOW()
+            user_session_state_value = EXCLUDED.user_session_state_value,
+            user_session_state_revision_dtime = NOW()
     ");
     $deleteStmt = $db->prepare("
-        DELETE FROM yy_user_admin_state
-         WHERE user_key = ? AND user_admin_state_scope = ? AND user_admin_state_name = ?
+        DELETE FROM yy_user_session_state
+         WHERE user_key = ? AND user_session_state_scope = ? AND user_session_state_name = ?
     ");
 
     $written = 0;
@@ -93,10 +95,10 @@ if ($method === 'DELETE') {
     if ($scopeFromQuery === '') errorResponse('scope required');
     $name = trim((string)($_GET['name'] ?? ''));
     if ($name === '') {
-        $stmt = $db->prepare("DELETE FROM yy_user_admin_state WHERE user_key=? AND user_admin_state_scope=?");
+        $stmt = $db->prepare("DELETE FROM yy_user_session_state WHERE user_key=? AND user_session_state_scope=?");
         $stmt->execute([$userKey, $scopeFromQuery]);
     } else {
-        $stmt = $db->prepare("DELETE FROM yy_user_admin_state WHERE user_key=? AND user_admin_state_scope=? AND user_admin_state_name=?");
+        $stmt = $db->prepare("DELETE FROM yy_user_session_state WHERE user_key=? AND user_session_state_scope=? AND user_session_state_name=?");
         $stmt->execute([$userKey, $scopeFromQuery, $name]);
     }
     jsonResponse(['deleted' => $stmt->rowCount()]);
