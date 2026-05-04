@@ -249,28 +249,12 @@ if ($items) {
             }
         }
 
-        // Fallback: actually-uploading-parts detection. The popout uploads a
-        // new audio_<key>_part_N.webm every checkpoint (~5 min apart). If
-        // any part file for this item has been modified in the last 6
-        // minutes, the recording is still in flight — even if the popout
-        // is missing the heartbeat code (e.g. a window opened before the
-        // heartbeat deploy and still running cached old JS). 360s is
-        // wider than the 5-min checkpoint interval so we don't flicker
-        // off between uploads.
-        $partsGlob = '/opt/yada-www/public/u/audio/parts/audio_' . $key . '_part_*.webm';
-        $newest = 0;
-        foreach (glob($partsGlob) as $pf) {
-            $m = @filemtime($pf);
-            if ($m && $m > $newest) $newest = $m;
-        }
-        if ($newest > 0) {
-            $partAge = time() - $newest;
-            if ($partAge <= 360 && !preg_grep('/^recording_active:/', $reasons)) {
-                // Only add if we didn't already mark via heartbeat — avoids
-                // double-tagging the same row when both signals fire.
-                $reasons[] = "recording_parts:{$partAge}s_ago";
-            }
-        }
+        // (Parts-mtime fallback removed 2026-05-04. It was added for a
+        // window when popouts lacked the heartbeat code, but it caused a
+        // 6-minute delay between popout-close and the row clearing —
+        // operators expected the lock to release immediately on close.
+        // The heartbeat is now reliable for every popout opened post-
+        // deploy, so the fallback is no longer needed and was harmful.)
 
         $it['in_progress']        = !empty($reasons);
         $it['in_progress_reason'] = implode(', ', $reasons);
