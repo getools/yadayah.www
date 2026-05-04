@@ -1843,6 +1843,42 @@ function verifyRecordingSync(itemKey) {
 // Always opens a dedicated browser window (popout) so the recording survives
 // navigation in this admin tab. The popout owns its own YT player,
 // MediaRecorder, and getDisplayMedia stream — no in-page popover anymore.
+// Click handler for the Processed-column button when the item is in_progress.
+// Two cases, distinguished by the in_progress_reason string:
+//   - reason includes "recording_active:..."  → another popout is open right
+//     now; we strictly block. OK-only dialog.
+//   - otherwise (finalize:..., transcribe:...) → finalize/transcribe worker
+//     running but no live recording. Offer a force-unlock that kills the
+//     worker(s) and lets this user proceed.
+function handleLockedRecordingClick(itemKey, reason) {
+    var rs = String(reason || '');
+    if (rs.indexOf('recording_active') !== -1) {
+        alert('This video is actively being recorded right now.\n\n'
+            + 'Another admin has the recording window open. You cannot access it until they finish or close their window.');
+        return;
+    }
+    var msg = 'This video is locked because a server-side process is still running for it:\n\n  '
+            + rs + '\n\n'
+            + 'Forcing the unlock will KILL that process (mid-encode or mid-transcribe), '
+            + 'cancel any pending transcription, and let you start a fresh recording.\n\n'
+            + 'Force unlock and start recording now?';
+    if (!confirm(msg)) return;
+    fetch(API + '/admin-recording-force-unlock.php', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_key: itemKey })
+    }).then(function(r){ return r.json(); }).then(function(d) {
+        if (d.error) { alert('Force unlock failed: ' + d.error); return; }
+        // After unlock, kick off the recording flow for this item just like
+        // the New / Partial buttons would. The Recordings list also reloads
+        // in a moment so the row's tint clears.
+        if (typeof loadRecordings === 'function') setTimeout(loadRecordings, 800);
+        startRecordingForItem(itemKey);
+    }).catch(function(err) {
+        alert('Force unlock failed: ' + err.message);
+    });
+}
+
 function startRecordingForItem(itemKey) {
     if (_recBatchActive) {
         alert('A batch recording is already running in another popout window.\n\nFinish or close that one before starting a new single recording.');
@@ -2113,12 +2149,17 @@ function renderRecordings(d) {
         // actively running for this item. Render a locked-out badge so a
         // second operator can't kick off conflicting work on the same video.
         var inProgress = !!it.in_progress;
-        var inProgressTitle = inProgress ? esc(it.in_progress_reason || 'processing') : '';
+        var inProgressReason = inProgress ? (it.in_progress_reason || 'processing') : '';
         if (inProgress) {
-            processed = '<button disabled title="Locked while ' + inProgressTitle + '" '
-                      + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;background:#fff8e1;cursor:not-allowed;opacity:0.85;">⏳ Processing</button>'
+            // Clickable button — clicking triggers handleLockedRecordingClick,
+            // which shows an OK-only "actively recording" dialog if a popout
+            // is currently holding the heartbeat lock, OR a force-unlock /
+            // cancel confirm if only finalize / transcribe is running.
+            processed = '<button onclick="handleLockedRecordingClick(' + it.feed_item_key + ', ' + JSON.stringify(inProgressReason).replace(/"/g, '&quot;') + ')" '
+                      + 'title="Click for details — locked: ' + esc(inProgressReason) + '" '
+                      + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;background:#fff8e1;">⏳ Processing</button>'
                       + '<div style="font-size:0.65rem;color:#a36100;margin-top:2px;text-align:center;font-weight:normal;">'
-                      + inProgressTitle + '</div>';
+                      + esc(inProgressReason) + '</div>';
         } else if (it.processed_status === 'complete') {
             processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>'
                       + '<button onclick="verifyRecordingSync(' + it.feed_item_key + ')" '
