@@ -251,9 +251,9 @@
                             <label><input type="checkbox" id="rec-f-istatus-inactive"   value="inactive"   onchange="loadRecordings(1)"> Inactive</label>
                         </div>
                     </th>
-                    <th style="width:160px;">
+                    <th style="width:260px;">
                         <span>Pages</span>
-                        <div id="rec-f-pages" class="rec-status-checks" onclick="event.stopPropagation()" style="max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                        <div id="rec-f-pages" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
                             <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
                     </th>
@@ -2199,7 +2199,7 @@ function renderRecordings(d) {
         }
 
         var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"'
-                    + (inProgress ? ' disabled title="Locked while ' + inProgressTitle + '"' : '');
+                    + (inProgress ? ' disabled title="Locked while ' + esc(inProgressReason) + '"' : '');
         // In-progress rows get a very light warm tint instead of an opacity
         // dim — gentler on the eye and reads as a "do not touch" cue rather
         // than as an inactive/grayed row. Background applied to <td> cells
