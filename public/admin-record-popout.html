@@ -115,47 +115,48 @@
     // Surface unexpected client-side errors to the monitor so they show up in
     // yy_monitor_event the same way other JS errors do. This page wasn't on
     // the global error reporter, so Finalize / upload failures were silent.
-    // ── Recording-active lock ───────────────────────────────────────
-    // While this popout is open and bound to a particular feed_item, ping
-    // /api/admin-recording-heartbeat.php every 5s. The Recordings tab uses
-    // this to mark the row as locked (very light tint, disabled checkbox,
-    // disabled New button) so a second operator can't kick off a parallel
-    // recording on the same video.
+    // ── Recording-active lock (whole-batch) ─────────────────────────
+    // The moment this popout opens, lock EVERY item in the queue — not
+    // just the currently-recording one. Otherwise a second operator
+    // could grab one of the items further down our queue while we're
+    // still on item 3, causing a collision when we eventually advance
+    // to it. The heartbeat covers the full queue every 5s; the server
+    // marks each item as locked-by the user_code from the auth session.
     //
-    // The heartbeat file's mtime is the freshness signal — server-side
-    // checks "mtime within last 15s = locked". If this window crashes /
-    // network drops, the lock auto-expires after 15s of no heartbeat. The
-    // explicit release call (on pagehide and on item-advance) is just a
-    // best-effort fast-path.
-    var _recLockHeldFor = null;     // item_key currently being heartbeated
+    // The heartbeat file's mtime is the freshness signal (15s server-
+    // side window). If this window crashes / network drops, every lock
+    // in the batch auto-expires within 15s. The explicit release on
+    // pagehide is just a best-effort fast-path.
     var _recHbTimer = null;
-    function pingRecordingLock(key) {
+    var _recLockedKeys = [];   // every item_key the popout is currently locking
+    function pingRecordingLocks(keys) {
+        if (!keys || !keys.length) return;
         try {
             fetch(API + '/admin-recording-heartbeat.php', {
                 method: 'POST', credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'heartbeat', item_key: key }),
+                body: JSON.stringify({ action: 'heartbeat', item_keys: keys }),
                 keepalive: true,
             }).catch(function(){});
         } catch (e) {}
     }
-    function acquireRecordingLock(key) {
-        if (_recLockHeldFor === key) return; // already holding this item's lock
-        if (_recLockHeldFor !== null) releaseRecordingLock();
-        _recLockHeldFor = key;
-        pingRecordingLock(key); // immediate first ping so the lock is visible right away
+    function acquireBatchLock(keys) {
+        // Idempotent — adding the same keys is fine, the server just
+        // touches existing files. We replace the locked set on each call
+        // because items can be added (rare) or finished (advanced past).
+        _recLockedKeys = (keys || []).slice();
+        pingRecordingLocks(_recLockedKeys);
         if (_recHbTimer) clearInterval(_recHbTimer);
         _recHbTimer = setInterval(function() {
-            if (_recLockHeldFor) pingRecordingLock(_recLockHeldFor);
+            if (_recLockedKeys.length) pingRecordingLocks(_recLockedKeys);
         }, 5000);
     }
-    function releaseRecordingLock() {
+    function releaseBatchLock() {
         if (_recHbTimer) { clearInterval(_recHbTimer); _recHbTimer = null; }
-        var key = _recLockHeldFor;
-        _recLockHeldFor = null;
-        if (!key) return;
-        var payload = JSON.stringify({ action: 'release', item_key: key });
-        // sendBeacon survives the page being closed (used by pagehide).
+        var keys = _recLockedKeys.slice();
+        _recLockedKeys = [];
+        if (!keys.length) return;
+        var payload = JSON.stringify({ action: 'release', item_keys: keys });
         try {
             if (navigator.sendBeacon) {
                 navigator.sendBeacon(API + '/admin-recording-heartbeat.php',
@@ -170,6 +171,34 @@
                 body: payload, keepalive: true,
             }).catch(function(){});
         } catch (e) {}
+    }
+    // After a single item finishes (popout advanced to the next), drop
+    // its lock so other operators can record/process THAT one
+    // immediately while we work on the next.
+    function dropFinishedItemLock(key) {
+        var i = _recLockedKeys.indexOf(key);
+        if (i === -1) return;
+        _recLockedKeys.splice(i, 1);
+        try {
+            fetch(API + '/admin-recording-heartbeat.php', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'release', item_keys: [key] }),
+                keepalive: true,
+            }).catch(function(){});
+        } catch (e) {}
+    }
+    // Legacy aliases retained because earlier in this file other code
+    // calls acquireRecordingLock(itemKey) / releaseRecordingLock(). They
+    // now feed into the batch primitives.
+    function acquireRecordingLock(key) {
+        // Single-item recording (legacy ?item=N URL): lock just that key.
+        // For batch (?items=N1,N2,...) the popout calls acquireBatchLock
+        // up front from loadCurrentItem-time logic below.
+        if (_recLockedKeys.length === 0) acquireBatchLock([key]);
+    }
+    function releaseRecordingLock() {
+        releaseBatchLock();
     }
 
     function reportClientError(message, detail) {
@@ -264,6 +293,10 @@
     function onYouTubeIframeAPIReady() {
         ytReady = true;
         setStatus('Fetching video info…');
+        // Lock the entire queue immediately — not just the first item.
+        // Once Process Selected is clicked nobody else should be able to
+        // grab any of the videos in this batch.
+        if (queue.length) acquireBatchLock(queue);
         loadCurrentItem();
     }
 
@@ -785,6 +818,9 @@
                             + ': ' + final.skipped_parts.join(', ') + ')';
             }
             if (BATCH_MODE && queueIndex < queue.length - 1) {
+                // Item just finished — release ITS lock so other operators
+                // can interact with it. The remaining queue keeps its locks.
+                dropFinishedItemLock(queue[queueIndex]);
                 queueIndex++;
                 setStatus('✓ Saved' + skippedNote + '. Loading next video (' + (queueIndex + 1) + '/' + queue.length + ')…');
                 setTimeout(loadCurrentItem, 1200);
