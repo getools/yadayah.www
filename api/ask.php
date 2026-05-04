@@ -188,6 +188,37 @@ if (count($contextRows) < 5 && $orQuery) {
     }
 }
 
+// Vector-similarity pass: pull semantically related paragraphs even when
+// the keyword index missed them (e.g. question asks "salvation" and the
+// book uses "redemption"). Same volume_ask_rating weighting applies via
+// searchSimilarParagraphs(). Merged into $contextRows by paragraph-text
+// prefix so duplicates with the keyword path don't bloat the prompt.
+try {
+    require_once __DIR__ . '/ask-rag.php';
+    $voyageKey = getenv('VOYAGE_API_KEY') ?: '';
+    if (!$voyageKey) {
+        $vkStmt = $pdo->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'voyage-api-key'");
+        $voyageKey = $vkStmt->fetchColumn() ?: '';
+    }
+    if ($voyageKey) {
+        $qEmbedding = generateEmbedding($cleanQ, $voyageKey);
+        if ($qEmbedding) {
+            $vecRows = searchSimilarParagraphs($pdo, $qEmbedding, 10);
+            $seen2 = [];
+            foreach ($contextRows as $r) $seen2[substr($r['paragraph_text_plain'] ?? '', 0, 100)] = true;
+            foreach ($vecRows as $r) {
+                $key2 = substr($r['paragraph_text_plain'] ?? '', 0, 100);
+                if (isset($seen2[$key2])) continue;
+                $contextRows[] = $r;
+                $seen2[$key2] = true;
+                if (count($contextRows) >= 30) break;
+            }
+        }
+    }
+} catch (Exception $e) {
+    // Vector path is supplementary — never break the keyword fallback.
+}
+
 $contextBlock = "";
 foreach ($contextRows as $row) {
     $text = trim($row['paragraph_text_plain'] ?? '');
