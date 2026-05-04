@@ -30,10 +30,15 @@ if (!_embedProvider()) {
 }
 
 // Defensive prelude: deactivate any junk paragraph rows the parser may have
-// re-introduced (NULL / whitespace-only / <5 letters). parse_volume.py runs
-// the same UPDATE after each per-volume insert, but doing it here too means
-// a stale upstream parser can't poison Ask Yada retrieval — the next embed
-// pass always cleans up first. Idempotent; touches 0 rows in steady state.
+// re-introduced. A row is JUNK if NULL/empty/whitespace-only, has no
+// letters at all, or is a fragment with <5 letters AND no terminal
+// punctuation. The terminal-punct exception keeps short real sentences
+// like "Wow!" / "Yes!" / "ago." active — those are valid one-word
+// paragraphs in the source docx.
+//
+// parse_volume.py runs the same UPDATE per-volume after each INSERT;
+// doing it here too means a stale upstream parser can't poison Ask Yada
+// retrieval. Idempotent; touches 0 rows in steady state.
 $junked = $db->exec("
     UPDATE yy_paragraph
        SET paragraph_active_flag = false
@@ -41,8 +46,11 @@ $junked = $db->exec("
        AND (
             paragraph_text_plain IS NULL
          OR trim(paragraph_text_plain) = ''
-         OR length(regexp_replace(coalesce(paragraph_text_plain, ''),
-                                  '[^a-zA-Z]', '', 'g')) < 5
+         OR paragraph_text_plain !~ '[a-zA-Z]'
+         OR (
+              length(regexp_replace(paragraph_text_plain, '[^a-zA-Z]', '', 'g')) < 5
+              AND trim(paragraph_text_plain) !~ '[.!?]\s*\$'
+            )
        )
 ");
 if ($junked > 0) fprintf(STDERR, "[embed-paragraphs] deactivated %d junk paragraphs first\n", $junked);
