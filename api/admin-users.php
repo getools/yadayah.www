@@ -29,7 +29,7 @@ switch ($method) {
         }
 
         $settings = $db->query("
-            SELECT setting_key, setting_code FROM yy_setting
+            SELECT setting_key, setting_code, setting_label FROM yy_setting
             WHERE setting_scope_code = 'admin' AND setting_group_code = 'pages'
             ORDER BY setting_sort
         ")->fetchAll();
@@ -65,6 +65,7 @@ switch ($method) {
                 $u['page_settings'][] = [
                     'setting_key' => (int)$s['setting_key'],
                     'setting_code' => $s['setting_code'],
+                    'setting_label' => $s['setting_label'],
                     'enabled' => $val === '1',
                 ];
             }

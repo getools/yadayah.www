@@ -165,7 +165,7 @@
     </div>
 </div>
 
-<script src="js/admin-links.js?v=3"></script>
+<script src="js/admin-links.js?v=4"></script>
 <script>
 var API = '/api';
 var allUsers = [];
@@ -367,7 +367,7 @@ function showForm(user) {
         });
         for (var i = 0; i < settings.length; i++) {
             var s = settings[i];
-            var label = s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1);
+            var label = s.setting_label || (s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1));
             permsHtml += '<label><input type="checkbox" data-sk="' + s.setting_key + '"'
                 + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>';
         }

@@ -80,18 +80,34 @@
 // Admin page permission filtering
 // Maps nav link href to yy_setting.setting_code
 var PAGE_SETTING_MAP = {
+    'admin-site.html': 'site',
     'admin-translation.html': 'translation',
+    'admin-series.html': 'series',
+    'admin-books.html': 'books',
     'admin-word.html': 'word',
+    'admin-glossary.html': 'glossary',
     'admin-lookups.html': 'lookups',
     'admin-ask.html': 'ask',
     'admin-timeline.html': 'timeline',
     'admin-memorial.html': 'memorial',
     'admin-media.html': 'media',
-    'admin-misc.html': 'misc',
-    'admin-backgrounds.html': 'backgrounds',
-    'admin-users.html': 'users',
+    'admin-music.html': 'music',
+    'admin-chat.html': 'chat',
+    'admin-comments.html': 'comments',
+    'admin-invite.html': 'invite',
+    'admin-doyouyada.html': 'doyouyada',
     'admin-basics.html': 'basics',
-    'admin-links.html': 'links'
+    'admin-vlog.html': 'vlog',
+    'admin-backgrounds.html': 'backgrounds',
+    'admin-feeds.html': 'feeds',
+    'admin-pages.html': 'pages',
+    'admin-redirects.html': 'redirects',
+    'admin-links.html': 'links',
+    'admin-resources.html': 'resources',
+    'admin-users.html': 'users',
+    'admin-test.html': 'test',
+    'admin-monitoring.html': 'monitoring',
+    'admin-misc.html': 'misc'
 };
 
 function applyPagePermissions(pages) {

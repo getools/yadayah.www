@@ -29,10 +29,14 @@ if ($method === 'GET') {
         ORDER BY s.series_sort, s.series_key
     ")->fetchAll();
 
+    // paragraph_count_live / translation_count_live are now denormalized
+    // columns on yy_volume, kept in sync by statement-level triggers on
+    // yy_paragraph and yy_translation. Was: two correlated COUNT(*) subqueries
+    // per row over ~100K paragraph rows + ~14K translation rows.
     $volumes = $db->query("
         SELECT v.*, s.series_label,
-               COALESCE((SELECT COUNT(*) FROM yy_paragraph p WHERE p.volume_key = v.volume_key AND p.paragraph_active_flag IS DISTINCT FROM FALSE), 0) AS paragraph_count_live,
-               COALESCE((SELECT COUNT(*) FROM yy_translation t WHERE t.volume_key = v.volume_key), 0) AS translation_count_live
+               v.volume_paragraph_count_live AS paragraph_count_live,
+               v.volume_translation_count_live AS translation_count_live
         FROM yy_volume v
         JOIN yy_series s ON s.series_key = v.series_key
         ORDER BY s.series_sort, v.volume_sort, v.volume_key
