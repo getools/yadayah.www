@@ -495,12 +495,18 @@
                 var recordDiv = document.createElement('div');
                 recordDiv.className = 'record';
                 var bookName = record.translation_book.replace(/^YY-/i, '');
-                var flipCode = record.volume_flip_code;
                 var page = record.translation_page;
                 var bookPage;
                 var chapterName = record.chapter_name || '';
-                if (flipCode) {
-                    var url = '/' + encodeURIComponent(flipCode) + '/' + (page ? '#p=' + (page + 6) : '');
+                // Link to the named-path flipbook bundle that lives at
+                // /<volume_file>/ (e.g. /YY-s01v01-An-Intro-to-God-Dabarym-Words/).
+                // We used to link to the flip_code numeric path served from
+                // book.yadayah.com / books-www, but that bookshelf was retired —
+                // the translation_book named path covers every volume that has
+                // a flipbook on disk, and the FlipHTML5 viewer there honors
+                // the #p=N anchor the same way.
+                if (record.translation_book) {
+                    var url = '/' + encodeURIComponent(record.translation_book) + '/' + (page ? '#p=' + (page + 6) : '');
                     bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?') + '</a>';
                 } else {
                     bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + ' - Page ' + (page || '?');
