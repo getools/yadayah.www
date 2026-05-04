@@ -2,15 +2,9 @@ services:
   web:
     build: .
     restart: always
-    # Hard cap so a runaway worker (yt-dlp, ffmpeg, embed-paragraphs) cannot
-    # peg the host or get the box flagged for abuse. cpus=1.5 lets workers
-    # use 1.5 cores while user-facing PHP-FPM still has scheduling headroom
-    # on the remaining 0.5. mem_limit=2g matches the per-worker ulimit -v
-    # (1.5g) plus headroom for FPM master + concurrent requests. Sized for
-    # a 4GB / 2-core VPS; bump alongside an instance upgrade.
-    mem_limit: 2g
-    cpus: 1.5
-    pids_limit: 512
+    # NO container-level mem/cpu caps on the web tier — see docker-compose.yml
+    # for rationale. Per-worker ulimits in api/spawn-helpers.php + the
+    # cpu-watchdog cron are the surgical tool that protects the box.
     volumes:
       - ./public:/var/www/html
       - ./api:/var/www/html/api
@@ -77,13 +71,8 @@ services:
     image: pgvector/pgvector:pg15
     container_name: yada-postgres-prod
     restart: always
-    # Postgres benefits from a generous shared_buffers (PG defaults work
-    # within whatever cgroup it gets). 1g cap leaves room for the OS page
-    # cache to absorb large queries; bump if pg_stat_statements shows
-    # hot-set spilling to disk.
-    mem_limit: 1g
-    cpus: 1.0
-    pids_limit: 256
+    # NO container-level caps on Postgres — see docker-compose.yml for
+    # rationale.
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: yada_password

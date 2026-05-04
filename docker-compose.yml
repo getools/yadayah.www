@@ -47,15 +47,12 @@ services:
   web:
     build: .
     restart: always
-    # Hard cap so a runaway worker (yt-dlp, ffmpeg, embed-paragraphs) can't
-    # peg the host or trip Hostinger's abuse heuristic. cpus=1.5 lets workers
-    # use 1.5 cores while user-facing PHP-FPM still has scheduling headroom
-    # on the remaining 0.5. mem_limit=2g matches the per-worker ulimit -v
-    # (1.5g) plus headroom for FPM master + concurrent requests. Sized for
-    # a 4GB / 2-core VPS — bump alongside any instance upgrade.
-    mem_limit: 2g
-    cpus: 1.5
-    pids_limit: 512
+    # NO container-level mem/cpu caps on the web tier — this is the
+    # user-facing PHP-FPM, and we don't want to throttle real traffic. The
+    # per-worker ulimits in api/spawn-helpers.php (cpu_secs + mem_mb) and
+    # cpu-watchdog.sh kill runaway workers individually instead, so a
+    # buggy job can't escape but legitimate requests still get full use of
+    # the host's resources during traffic spikes.
     expose:
       - "80"
     volumes:
@@ -90,13 +87,11 @@ services:
     image: postgres:15-alpine
     container_name: yada-postgres-prod
     restart: always
-    # 1g cap leaves room for the OS page cache to absorb large queries
-    # (the new live-count UPDATE triggers fire on every paragraph insert,
-    # which is bursty during parser runs). Bump if pg_stat_statements
-    # shows hot-set spilling to disk.
-    mem_limit: 1g
-    cpus: 1.0
-    pids_limit: 256
+    # NO container-level caps on Postgres — it's the data tier, and a heavy
+    # query (REINDEX, VACUUM FULL, parser bulk-insert with the new live-count
+    # triggers) should be free to use whatever shared_buffers / page cache
+    # the host can spare. Caps would just push the working set onto disk
+    # and make user queries slow.
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: yada_password
