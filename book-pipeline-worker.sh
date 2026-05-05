@@ -36,7 +36,7 @@ MAX_LOAD=10.0
 # cgroup-cap each heavy step, so the pre-flight just needs to keep the
 # host from going completely flat — 1G headroom + 10.0 load is enough.
 SOFFICE_MEM_MAX=5500M
-SOFFICE_CPU_QUOTA=25%
+SOFFICE_CPU_QUOTA=40%
 PARSER_MEM_MAX=800M
 PARSER_CPU_QUOTA=40%
 
