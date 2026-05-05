@@ -17,6 +17,11 @@ services:
       - ./public/pdf:/host_pdf:ro
       - ./public/flipbook:/host_flip
       - ./public/u/books-word:/host_word:ro
+      # Custom fonts for DOCX->PDF conversion. Drop new .ttf/.otf into
+      # /usr/local/share/fonts/yada/ on the host, then run
+      # /opt/yada-www/onlyoffice-fonts-refresh.sh to regenerate the
+      # ONLYOFFICE AllFonts.js cache. No container restart needed.
+      - /usr/local/share/fonts/yada:/usr/share/fonts/truetype/yada-custom:ro
       - ./public/jobs:/host_jobs
     environment:
       NODE_ENV: production
@@ -104,9 +109,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # ONLYOFFICE Document Server — used by book-pipeline-worker.sh as a
+  # primary DOCX->PDF path. Keeps a tighter memory profile than LibreOffice
+  # on Yada Yah's complex DOCXs (s02v01/v06/v07 OOM-killed soffice at 7+GB;
+  # ONLYOFFICE plateaus around 800MB). Internal-only; conversion endpoint
+  # is /ConvertService.ashx authenticated by JWT.
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    restart: always
+    mem_limit: 1500m
+    cpus: 1.5
+    pids_limit: 256
+    expose:
+      - 80
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_log:/var/log/onlyoffice
+      - onlyoffice_lib:/var/lib/onlyoffice
+      - onlyoffice_db:/var/lib/postgresql
+      - ./public/u/books-word:/host_word:ro
+    environment:
+      JWT_ENABLED: 'true'
+      JWT_SECRET: '78a30d906dc3820165ceff4b5aaa411e17f7b346f83714b08550d62329ec594d'
+      JWT_HEADER: 'Authorization'
+
+
 volumes:
   postgres_data:
     external: true
     name: yada-translations_postgres_data
   caddy_data:
   caddy_config:
+  onlyoffice_data:
+  onlyoffice_log:
+  onlyoffice_lib:
+  onlyoffice_db:
