@@ -46,16 +46,22 @@ fi
 
 PSQL="docker exec -i yada-postgres-prod psql -U postgres -d yada -t -A"
 
-# Pick ONE volume that needs retry. Order by volume_pipeline_dtime so the
-# longest-stuck candidate is tried first (gives recently-failed ones a
-# breather to clear rate limits).
+# Pick ONE volume that needs retry. Order by volume_revision_dtime ASC so
+# the longest-untouched candidate is tried first (gives recently-failed
+# rows a breather to clear rate limits). volume_revision_dtime updates on
+# every retry attempt because the wrapper writes pipeline_status/message,
+# so it doubles as "time since last tried".
+#
+# Was: `ORDER BY volume_pipeline_dtime NULLS FIRST` — a column that doesn't
+# exist in the schema. The query silently failed with "column does not
+# exist" and the cron has been a no-op since the column was renamed.
 VOLUME_KEY=$($PSQL <<'SQL' | tr -d '[:space:]'
 SELECT v.volume_key
 FROM yy_volume v
 WHERE v.volume_flip_code IS NOT NULL
   AND COALESCE(v.volume_pipeline_status,'') = 'warning'
   AND COALESCE(v.volume_pipeline_message,'') ILIKE '%FlipHTML5 download failed%'
-ORDER BY v.volume_pipeline_dtime NULLS FIRST
+ORDER BY v.volume_revision_dtime ASC NULLS FIRST
 LIMIT 1
 SQL
 )

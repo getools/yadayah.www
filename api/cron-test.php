@@ -118,6 +118,27 @@ foreach ($tests as $test) {
                 $detail = $result['detail'] ?? '';
                 break;
 
+            case 'index_integrity':
+                $result = runIndexIntegrityCheck($db, $config);
+                $status = $result['status'];
+                $message = $result['message'];
+                $detail = $result['detail'] ?? '';
+                break;
+
+            case 'backup_freshness':
+                $result = runBackupFreshnessCheck($db, $config);
+                $status = $result['status'];
+                $message = $result['message'];
+                $detail = $result['detail'] ?? '';
+                break;
+
+            case 'recent_run':
+                $result = runRecentRunCheck($db, $config);
+                $status = $result['status'];
+                $message = $result['message'];
+                $detail = $result['detail'] ?? '';
+                break;
+
             default:
                 $status = 'skip';
                 $message = "Unknown test type: {$type}";
@@ -310,4 +331,178 @@ function runContentCheck(array $config): array {
     }
 
     return ['status' => 'pass', 'message' => "HTTP {$httpStatus} OK — all checks passed", 'http_status' => $httpStatus];
+}
+
+/**
+ * Verify every B-tree index in the public schema is internally consistent.
+ *
+ * Runs amcheck's bt_index_check (light, shared lock only) over every valid
+ * btree index. Catches the kind of index/heap divergence we hit on
+ * 2026-05-05 where 6 indexes silently allowed duplicate INSERTs and lied
+ * to the query planner. Adds ~1-2s per 1000 rows; fine to run daily.
+ *
+ * Requires: CREATE EXTENSION amcheck (one-time, already done on prod).
+ *
+ * Config (all optional):
+ *   - schema:      schema to scan (default 'public')
+ *   - exclude:     array of index name patterns (regex) to skip
+ */
+function runIndexIntegrityCheck(PDO $db, array $config): array {
+    $schema = $config['schema'] ?? 'public';
+    $excludePatterns = $config['exclude'] ?? [];
+
+    $stmt = $db->prepare("
+        SELECT n.nspname || '.' || c.relname AS qualified_name, c.relname AS short_name
+          FROM pg_index i
+          JOIN pg_class c ON c.oid = i.indexrelid
+          JOIN pg_class t ON t.oid = i.indrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_am am ON am.oid = c.relam
+         WHERE am.amname = 'btree'
+           AND i.indisvalid
+           AND t.relkind = 'r'
+           AND n.nspname = ?
+         ORDER BY n.nspname, c.relname
+    ");
+    $stmt->execute([$schema]);
+    $indexes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $checked = 0;
+    $skipped = 0;
+    $failures = [];
+
+    foreach ($indexes as $idx) {
+        $skip = false;
+        foreach ($excludePatterns as $pat) {
+            if (@preg_match("/$pat/", $idx['short_name'])) { $skip = true; break; }
+        }
+        if ($skip) { $skipped++; continue; }
+
+        try {
+            $check = $db->prepare("SELECT bt_index_check(?::regclass)");
+            $check->execute([$idx['qualified_name']]);
+            $check->fetchAll();
+            $checked++;
+        } catch (PDOException $e) {
+            $failures[] = $idx['qualified_name'] . ': ' . $e->getMessage();
+        }
+    }
+
+    if (empty($failures)) {
+        return [
+            'status' => 'pass',
+            'message' => "{$checked} indexes OK" . ($skipped ? " ({$skipped} skipped)" : ''),
+        ];
+    }
+
+    return [
+        'status' => 'fail',
+        'message' => count($failures) . " corrupt index(es): "
+                   . implode('; ', array_map(fn($f) => preg_replace('/\s+/', ' ', substr($f, 0, 120)), array_slice($failures, 0, 3))),
+        'detail' => implode("\n\n", $failures),
+    ];
+}
+
+/**
+ * Verify a recent successful database backup exists.
+ *
+ * Catches silent failures of the daily 03:00 pg_dump cron. By default checks
+ * for any .sql.gz / .dump file modified within the last 30 hours under the
+ * configured backup directory.
+ *
+ * Config:
+ *   - dir:        backup directory (default: /backups/yada/ in container,
+ *                 mapped from host)
+ *   - max_age_h:  max acceptable age in hours (default 30)
+ *   - min_bytes:  minimum acceptable backup size (default 1 MB) to catch
+ *                 truncated dumps
+ *   - patterns:   filename glob (default '*.sql.gz')
+ */
+function runBackupFreshnessCheck(PDO $db, array $config): array {
+    $dir = $config['dir'] ?? '/backups/yada';
+    $maxAgeH = (int)($config['max_age_h'] ?? 30);
+    $minBytes = (int)($config['min_bytes'] ?? 1048576);
+    $pattern = $config['patterns'] ?? '*.sql.gz';
+
+    if (!is_dir($dir)) {
+        return ['status' => 'fail', 'message' => "Backup dir not found: {$dir}"];
+    }
+
+    $files = glob(rtrim($dir, '/') . '/' . $pattern) ?: [];
+    if (!$files) {
+        return ['status' => 'fail', 'message' => "No backup files matching '{$pattern}' in {$dir}"];
+    }
+
+    // Most recent file by mtime
+    usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
+    $latest = $files[0];
+    $ageH = (time() - filemtime($latest)) / 3600;
+    $size = filesize($latest);
+    $name = basename($latest);
+
+    if ($ageH > $maxAgeH) {
+        return [
+            'status' => 'fail',
+            'message' => "Latest backup {$name} is " . round($ageH, 1) . "h old (max " . $maxAgeH . "h)",
+        ];
+    }
+    if ($size < $minBytes) {
+        return [
+            'status' => 'fail',
+            'message' => "Latest backup {$name} is only " . round($size / 1024 / 1024, 2) . " MB (min " . round($minBytes / 1024 / 1024, 2) . " MB)",
+        ];
+    }
+
+    return [
+        'status' => 'pass',
+        'message' => "{$name}: " . round($size / 1024 / 1024, 1) . " MB, " . round($ageH, 1) . "h old",
+    ];
+}
+
+/**
+ * Verify another scheduled job has run recently.
+ *
+ * Used as a meta-test: confirm cron-page-health, cron-fliphtml5-match etc.
+ * are still firing. The signal is either a logfile mtime or a DB row
+ * timestamp. Either parameter set works; whichever is present is checked.
+ *
+ * Config (one of):
+ *   - log_file + max_age_h:   stat the log file, fail if older than max_age_h
+ *   - sql_query + max_age_h:  run a query that returns one timestamp column,
+ *                             fail if older than max_age_h
+ */
+function runRecentRunCheck(PDO $db, array $config): array {
+    $maxAgeH = (float)($config['max_age_h'] ?? 25);
+
+    if (!empty($config['log_file'])) {
+        $f = $config['log_file'];
+        if (!is_file($f)) {
+            return ['status' => 'fail', 'message' => "Log file missing: {$f}"];
+        }
+        $ageH = (time() - filemtime($f)) / 3600;
+        if ($ageH > $maxAgeH) {
+            return ['status' => 'fail', 'message' => basename($f) . " last touched " . round($ageH, 1) . "h ago (max {$maxAgeH}h)"];
+        }
+        return ['status' => 'pass', 'message' => basename($f) . " touched " . round($ageH, 1) . "h ago"];
+    }
+
+    if (!empty($config['sql_query'])) {
+        $q = $config['sql_query'];
+        if (!preg_match('/^\s*SELECT\s/i', $q)) {
+            return ['status' => 'fail', 'message' => 'recent_run sql_query must be SELECT'];
+        }
+        $stmt = $db->query($q);
+        $row = $stmt->fetch(PDO::FETCH_NUM);
+        $ts = $row[0] ?? null;
+        if ($ts === null) {
+            return ['status' => 'fail', 'message' => 'sql_query returned no rows / NULL timestamp'];
+        }
+        $ageH = (time() - strtotime($ts)) / 3600;
+        if ($ageH > $maxAgeH) {
+            return ['status' => 'fail', 'message' => "Last run {$ts} ({$ageH}h ago, max {$maxAgeH}h)"];
+        }
+        return ['status' => 'pass', 'message' => "Last run " . round($ageH, 1) . "h ago"];
+    }
+
+    return ['status' => 'fail', 'message' => 'recent_run needs log_file or sql_query in config'];
 }

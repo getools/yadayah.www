@@ -23,8 +23,13 @@ function runFeedFreshnessCheck(PDO $db, array $config): array {
     $feed = $feed->fetch();
     if (!$feed) return ['status' => 'fail', 'message' => "Feed {$feedKey} not found"];
 
-    // Get our latest imported item
-    $latestStmt = $db->prepare("SELECT MAX(feed_item_publish_dtime) FROM yy_feed_item WHERE feed_key = ?");
+    // Get our latest imported item. Column was renamed
+    // feed_item_publish_dtime -> feed_item_publish_import_dtime; the override
+    // sibling holds admin-set publish dates and should also win when present.
+    $latestStmt = $db->prepare("
+        SELECT MAX(COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime))
+          FROM yy_feed_item WHERE feed_key = ?
+    ");
     $latestStmt->execute([$feedKey]);
     $latestImported = $latestStmt->fetchColumn();
 
