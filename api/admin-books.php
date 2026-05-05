@@ -436,8 +436,14 @@ if ($method === 'PUT') {
         $fields[] = "volume_ask_rating = ?";
         $params[] = max(0, min(100, (int)$data['volume_ask_rating']));
     }
+    // PDO_PGSQL coerces PHP bool false to '' which Postgres rejects as a
+    // boolean. Explicit 'true'/'false' strings match what admin-basics /
+    // admin-vlog / admin-test do.
     foreach (['volume_active_flag', 'volume_search_flag', 'volume_parse_flag', 'volume_ask_yada_flag'] as $col) {
-        if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (bool)$data[$col]; }
+        if (array_key_exists($col, $data)) {
+            $fields[] = "$col = ?";
+            $params[] = (bool)$data[$col] ? 'true' : 'false';
+        }
     }
 
     if (empty($fields)) errorResponse('Nothing to update');
