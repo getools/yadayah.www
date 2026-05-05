@@ -51,6 +51,7 @@ LOCK=/var/lock/book-pipeline-worker.lock
 PG_CONTAINER=yada-postgres-prod
 WEB_CONTAINER=yada-www-web-1
 RSSHUB_CONTAINER=yada-www-rsshub-1
+ONLYOFFICE_CONTAINER=yada-www-onlyoffice-1
 
 mkdir -p "$JOBS_DIR" "$DOCX_DIR" "$PDF_DIR" "$FLIP_DIR" "$JOBS_DIR/done" "$JOBS_DIR/failed"
 
@@ -133,6 +134,71 @@ update_outputs() {
         > /dev/null 2>&1
 }
 
+# Try ONLYOFFICE Document Server for DOCX→PDF first. ~12-20s per volume,
+# ~800MB peak memory (vs LibreOffice's 4-7GB on heavy docs). Returns 0 on
+# success with PDF written to $2; non-zero on any failure (caller falls
+# back to the LibreOffice 2-step bridge below).
+#
+# Side effect: stages a strip-vanish-paragraphs copy of the docx in
+# $DOCX_DIR briefly (~30s) so ONLYOFFICE can fetch it via internal
+# http://web/... URL, then removes it.
+convert_via_onlyoffice() {
+    local docx_path="$1" pdf_dest="$2"
+
+    # Container running?
+    if ! docker ps --format '{{.Names}}' | grep -q "^${ONLYOFFICE_CONTAINER}$"; then
+        return 1
+    fi
+    # JWT secret readable?
+    if [ ! -s /opt/yada-www/.oojwt ]; then
+        return 2
+    fi
+
+    local jwt; jwt=$(cat /opt/yada-www/.oojwt)
+
+    # Strip vanished TC paragraphs to a staging file under the web docroot —
+    # ONLYOFFICE doesn't honor w:vanish on paragraph marks the way Word does
+    # and renders them as phantom blank lines without this preprocessing.
+    local stage_name="_oo-stage-$$-$(basename "$docx_path")"
+    local stage_path="$DOCX_DIR/$stage_name"
+    if ! python3 /opt/yada-www/docx-strip-vanish.py "$docx_path" "$stage_path" >> /var/log/book-pipeline.log 2>&1; then
+        rm -f "$stage_path"
+        return 3
+    fi
+    chmod 644 "$stage_path"
+
+    # Make sure the in-container helper script is current (idempotent on
+    # subsequent runs — survives container recreates this way).
+    docker cp /opt/yada-www/oo-convert.py "$ONLYOFFICE_CONTAINER":/tmp/oo-convert.py >/dev/null 2>&1
+
+    local oo_rc=0 oo_output
+    oo_output=$(docker exec -e JWT_SECRET="$jwt" "$ONLYOFFICE_CONTAINER" \
+        python3 /tmp/oo-convert.py "$stage_name" 2>&1) || oo_rc=$?
+    oo_rc=${oo_rc:-0}
+    echo "$oo_output" >> /var/log/book-pipeline.log
+
+    rm -f "$stage_path"
+
+    if [ "$oo_rc" -ne 0 ]; then
+        log "ONLYOFFICE convert failed (rc=$oo_rc) — falling back to LibreOffice"
+        return 4
+    fi
+
+    # Pull the PDF out of the container into the destination.
+    if ! docker exec "$ONLYOFFICE_CONTAINER" cat /tmp/oo-out.pdf > "$pdf_dest" 2>/dev/null; then
+        log "ONLYOFFICE: docker cp of result failed — falling back to LibreOffice"
+        rm -f "$pdf_dest"
+        return 5
+    fi
+    if [ ! -s "$pdf_dest" ]; then
+        log "ONLYOFFICE produced empty PDF — falling back to LibreOffice"
+        rm -f "$pdf_dest"
+        return 6
+    fi
+    chmod 644 "$pdf_dest" 2>/dev/null
+    return 0
+}
+
 # Process a single job file.
 process_job() {
     local job="$1"
@@ -165,20 +231,21 @@ process_job() {
         return
     fi
 
-    # ── Phase 1: LibreOffice headless conversion ──
-    # Capture LibreOffice's combined output so the actual error message can
-    # be embedded in the monitor event (and not just left in the rotating
-    # /var/log/book-pipeline.log where the admin has to go hunt for it).
-    # The conversion runs inside a transient systemd scope with hard memory
-    # cap; OOMs become a clean cgroup kill (exit 137) instead of taking down
-    # the whole host.
+    # ── Phase 1: DOCX → PDF ──
+    # Primary path: ONLYOFFICE Document Server (12-20s, ~800MB peak).
+    # Fallback: LibreOffice 2-step DOCX→ODT→PDF bridge (10-60min, plateaus
+    # at 1.2-2GB — slower but a known-good safety net).
     # On retry (after FlipHTML5 auto-requeue) the PDF is already on disk —
-    # skip LibreOffice so retries don't waste 30-60s re-converting an
+    # skip conversion so retries don't waste cycles re-converting an
     # unchanged docx.
     local tmp_out="" lo_output="" lo_rc=0
     if [ -f "$PDF_DIR/$pdf_name" ] && [ -s "$PDF_DIR/$pdf_name" ] && [ ! "$docx_path" -nt "$PDF_DIR/$pdf_name" ]; then
-        log "PDF already on disk — skipping LibreOffice (retry path): $PDF_DIR/$pdf_name"
+        log "PDF already on disk — skipping conversion (retry path): $PDF_DIR/$pdf_name"
+    elif convert_via_onlyoffice "$docx_path" "$PDF_DIR/$pdf_name"; then
+        log "ONLYOFFICE wrote PDF: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
     else
+        # ── LibreOffice fallback (2-step bridge) ──
+        log "Falling back to LibreOffice 2-step bridge for $docx_name"
         tmp_out=$(mktemp -d)
         local odt_tmp; odt_tmp=$(mktemp -d)
         # ────────────────────────────────────────────────────────────────
