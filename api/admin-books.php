@@ -449,6 +449,34 @@ if ($method === 'PUT') {
     if (empty($fields)) errorResponse('Nothing to update');
     $params[] = $key;
     $db->prepare("UPDATE yy_volume SET " . implode(', ', $fields) . " WHERE volume_key = ?")->execute($params);
+
+    // Path A: if the admin pasted a flip_code (uploaded the PDF to FlipHTML5
+    // by hand) and the rendered package isn't yet on disk, flip the volume
+    // into 'download-pending'. cron-flipbook-retry.sh runs every 5 min,
+    // sees this status, and pulls the .zip → unzips to /flipbook/<code>/.
+    // The Puppeteer upload step is intentionally bypassed for this path —
+    // FlipHTML5's Vue dynamic file-input doesn't bridge cleanly to
+    // headless Chrome's FileChooser, so we let the human handle the click
+    // and automate everything else.
+    $autoTriggered = false;
+    if (array_key_exists('volume_flip_code', $data)) {
+        $flipCode = trim($data['volume_flip_code'] ?? '');
+        if ($flipCode !== '') {
+            $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+            $flipDir = $publicRoot . '/flipbook/' . $flipCode;
+            if (!is_dir($flipDir) || !glob($flipDir . '/*')) {
+                $db->prepare("
+                    UPDATE yy_volume
+                       SET volume_pipeline_status  = 'download-pending',
+                           volume_pipeline_message = 'Awaiting host download of FlipHTML5 package (cron picks up within 5 min)',
+                           volume_revision_dtime   = NOW()
+                     WHERE volume_key = ?
+                ")->execute([$key]);
+                $autoTriggered = true;
+            }
+        }
+    }
+
     // Tell the client which paths changed (with both forms) so it can offer
     // to register 301 redirects from the old URLs to the new ones.
     $renames = [];
@@ -459,6 +487,7 @@ if ($method === 'PUT') {
         'renamed_docx' => $renamedDocx,
         'renamed_pdf'  => $renamedPdf,
         'renames'      => $renames,
+        'flip_download_queued' => $autoTriggered,
     ]);
 }
 

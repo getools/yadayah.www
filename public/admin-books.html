@@ -134,7 +134,10 @@
                 <input type="text" id="f-code" placeholder="e.g. YY-s01v01-An-Intro-to-God-Dabarym-Words">
                 <div style="font-size:0.74rem;color:#888;margin-top:3px;">Allowed: letters, digits, hyphens, apostrophes. Spaces and %20 are auto-converted to hyphens on save.</div>
             </div>
-            <div class="field"><label>FlipHTML5 Code</label><input type="text" id="f-flip" placeholder="e.g. YY-s01v01-..."></div>
+            <div class="field"><label>FlipHTML5 Code
+                    <span style="font-weight:400;color:#888;font-size:0.78rem;">— manually upload the PDF at fliphtml5.com, paste the resulting code here; server downloads + extracts within 5 min</span>
+                </label>
+                <input type="text" id="f-flip" placeholder="e.g. fkmu (the slug from fliphtml5.com/...../fkmu/)"></div>
             <div class="field"><label>PDF Filename</label><input type="text" id="f-pdf" placeholder="auto-derived from Book Code"></div>
             <div class="field"><label>DOCX Source</label>
                 <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-bottom:6px;"></div>
@@ -663,6 +666,15 @@ function saveVolume() {
         headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { alert(d.error); return; }
+        // Brief toast if the server queued a flip-package download as a
+        // result of this save (admin pasted a fresh flip_code).
+        if (d.flip_download_queued) {
+            var st = document.createElement('div');
+            st.textContent = '✓ FlipHTML5 download queued — server picks it up within 5 min';
+            st.style.cssText = 'position:fixed;top:14px;right:14px;background:#27ae60;color:#fff;padding:8px 14px;border-radius:6px;font-size:0.85rem;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+            document.body.appendChild(st);
+            setTimeout(function(){ if (st.parentNode) st.parentNode.removeChild(st); }, 5000);
+        }
         // If volume_code changed and files were renamed, the server returns
         // a list of {from, to} pairs. Offer to register 301 redirects so any
         // existing links to the old DOCX/PDF URLs keep working.
