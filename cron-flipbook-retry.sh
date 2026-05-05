@@ -59,9 +59,19 @@ VOLUME_KEY=$($PSQL <<'SQL' | tr -d '[:space:]'
 SELECT v.volume_key
 FROM yy_volume v
 WHERE v.volume_flip_code IS NOT NULL
-  AND COALESCE(v.volume_pipeline_status,'') = 'warning'
-  AND COALESCE(v.volume_pipeline_message,'') ILIKE '%FlipHTML5 download failed%'
-ORDER BY v.volume_revision_dtime ASC NULLS FIRST
+  AND v.volume_flip_code <> ''
+  AND (
+        -- Path A trigger: admin pasted a flip_code via Books admin form,
+        -- server flipped status to 'download-pending'. Picks up newly-supplied
+        -- codes near-realtime (cron is */5).
+        COALESCE(v.volume_pipeline_status,'') = 'download-pending'
+        -- Original retry path: previous wrapper run failed transiently
+        -- (FlipHTML5 throttle, render still in progress, rsshub down, etc.).
+     OR ( COALESCE(v.volume_pipeline_status,'') = 'warning'
+          AND COALESCE(v.volume_pipeline_message,'') ILIKE '%FlipHTML5 download failed%' )
+      )
+ORDER BY (CASE WHEN COALESCE(v.volume_pipeline_status,'') = 'download-pending' THEN 0 ELSE 1 END),
+         v.volume_revision_dtime ASC NULLS FIRST
 LIMIT 1
 SQL
 )
