@@ -239,6 +239,78 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     jsonResponse(['queued' => true, 'job' => basename($jobFile), 'message' => 'Pipeline requeued — runs on next host worker tick (≤1 min).']);
 }
 
+// Force a fresh PDF render. Same as retry_pipeline but DELETES the existing
+// PDF on disk first — book-pipeline-worker.sh's "PDF already on disk" skip
+// uses file-existence + mtime, so without this delete a regenerate request
+// would no-op into the existing stale PDF.
+if ($method === 'POST' && (($_GET['action'] ?? '') === 'regenerate_pdf'
+                            || (json_decode(file_get_contents('php://input'), true)['action'] ?? '') === 'regenerate_pdf')) {
+    if (!$key) {
+        $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $key  = (int)($body['volume_key'] ?? 0);
+    }
+    if (!$key) errorResponse('Volume key required');
+
+    $volStmt = $db->prepare("SELECT volume_key, volume_docx, volume_pdf, volume_code FROM yy_volume WHERE volume_key = ?");
+    $volStmt->execute([$key]);
+    $vol = $volStmt->fetch();
+    if (!$vol) errorResponse('Volume not found', 404);
+    if (!$vol['volume_docx']) errorResponse('Volume has no docx — upload one before regenerating', 400);
+
+    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+    $docxAbs    = $publicRoot . '/u/books-word/' . $vol['volume_docx'];
+    if (!is_file($docxAbs)) {
+        $db->prepare("UPDATE yy_volume SET volume_pipeline_status='waiting-docx', volume_pipeline_message='DOCX file missing — re-upload before regenerating' WHERE volume_key=?")
+           ->execute([$key]);
+        errorResponse('DOCX file missing on disk: ' . basename($docxAbs) . ' — upload before regenerating', 400);
+    }
+
+    // Delete the existing PDF (if any). Worker sees missing PDF and will
+    // run LibreOffice / ONLYOFFICE bridge fresh.
+    $deletedPdf = null;
+    if (!empty($vol['volume_pdf'])) {
+        $pdfAbs = $publicRoot . '/pdf/' . $vol['volume_pdf'];
+        if (is_file($pdfAbs)) {
+            if (@unlink($pdfAbs)) $deletedPdf = $vol['volume_pdf'];
+        }
+    }
+
+    $db->prepare("
+        UPDATE yy_volume
+           SET volume_pipeline_status      = 'queued',
+               volume_pipeline_message     = 'Manual PDF regeneration — existing PDF deleted',
+               volume_pipeline_retry_count = 0,
+               volume_revision_dtime       = NOW()
+         WHERE volume_key = ?
+    ")->execute([$key]);
+
+    $jobsDir = $publicRoot . '/jobs/book-pipeline';
+    if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
+    $canon = function($s) {
+        $s = str_replace(['%20', ' '], '-', (string)$s);
+        $s = preg_replace('/-+/', '-', $s);
+        return trim($s, '-');
+    };
+    $bookCode = $canon($vol['volume_code'] ?: pathinfo($vol['volume_docx'], PATHINFO_FILENAME));
+    $jobPayload = [
+        'volume_key'      => (int)$key,
+        'book_code'       => $bookCode,
+        'docx_name'       => $bookCode . '.docx',
+        'pdf_name'        => $bookCode . '.pdf',
+        'flip_code'       => null,
+        'queued_at'       => date('c'),
+        'force_regenerate'=> true,
+    ];
+    $jobFile = $jobsDir . '/' . sprintf('%010d', $key) . '_regen_' . time() . '.json';
+    @file_put_contents($jobFile, json_encode($jobPayload, JSON_PRETTY_PRINT));
+    jsonResponse([
+        'queued'      => true,
+        'job'         => basename($jobFile),
+        'deleted_pdf' => $deletedPdf,
+        'message'     => 'PDF regeneration queued — runs on next host worker tick (≤10 min).',
+    ]);
+}
+
 // Register 301 redirects in yy_redirect. Triggered by the Books admin form
 // after a rename so old DOCX / PDF URLs forward to the new canonical ones.
 // Body: {"action": "add_redirects", "pairs": [{"from": "/x", "to": "/y"}, ...]}

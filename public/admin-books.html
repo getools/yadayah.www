@@ -610,6 +610,16 @@ function showVolumeForm(record) {
                        + 'title="Requeue the pipeline (LibreOffice + FlipHTML5 + offline package). Runs on the next host worker tick." '
                        + 'style="margin-left:8px;background:#fff3a8;border:1px solid #e0c000;color:#8a6d00;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;">⟳ Retry Pipeline</button>';
         }
+        // Regenerate PDF — always available when there's a docx on the
+        // volume. Deletes the existing PDF and forces a fresh LibreOffice /
+        // ONLYOFFICE render. Useful when the PDF on disk is stale (docx
+        // was edited without re-uploading) or rendered with an old
+        // pipeline (pre-bridge / pre-swap).
+        if (r.volume_docx) {
+            statusHtml += ' <button type="button" onclick="regeneratePdf(' + r.volume_key + ', this)" '
+                       + 'title="Delete the existing PDF and re-render from the current DOCX. Runs on the next host worker tick (≤10 min)." '
+                       + 'style="margin-left:6px;background:#fff;border:1px solid #c5cae9;color:#31345A;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;">↻ Regenerate PDF</button>';
+        }
         docxStatus.innerHTML = statusHtml;
     } else {
         docxStatus.textContent = '';
@@ -752,6 +762,33 @@ function retryPipeline(volumeKey, btn) {
         if (typeof loadBooks === 'function') loadBooks();
     }).catch(function(err) {
         alert('Retry failed: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+    });
+}
+
+// Force-delete the existing PDF and re-render from the current DOCX.
+// Different from Retry Pipeline: that one keeps a stale PDF (worker
+// skips LibreOffice when the PDF exists). This deletes first so the
+// rebuild is unconditional. Ideal when the docx was edited but not
+// re-uploaded, or when you want to test a new render path.
+function regeneratePdf(volumeKey, btn) {
+    if (!confirm('Delete the existing PDF and regenerate it from the current DOCX?\n\nThe FlipHTML5 step will be left as-is (only re-paste a flip_code if you want a fresh flipbook too).')) return;
+    var orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Queueing…'; }
+    fetch(API + '/admin-books.php?action=regenerate_pdf&key=' + volumeKey, {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action:'regenerate_pdf', volume_key: volumeKey})
+    }).then(function(r){return r.json();}).then(function(d) {
+        if (d.error) {
+            alert('Regenerate failed: ' + d.error);
+            if (btn) { btn.disabled = false; btn.textContent = orig; }
+            return;
+        }
+        if (btn) { btn.textContent = d.deleted_pdf ? '✓ PDF deleted, queued' : '✓ Queued'; btn.style.background = '#d4edda'; btn.style.borderColor = '#a3d4ad'; btn.style.color = '#155724'; }
+        if (typeof loadBooks === 'function') loadBooks();
+    }).catch(function(err) {
+        alert('Regenerate failed: ' + err.message);
         if (btn) { btn.disabled = false; btn.textContent = orig; }
     });
 }
