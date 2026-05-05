@@ -497,7 +497,7 @@ sweep_rows=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -F'|' -c "
       FROM yy_volume v
      WHERE v.volume_docx IS NOT NULL
        AND v.volume_docx <> ''
-       AND COALESCE(v.volume_pipeline_status, '') NOT IN ('queued','running')
+       AND COALESCE(v.volume_pipeline_status, '') NOT IN ('running','waiting-docx')
      ORDER BY v.volume_key
 " 2>/dev/null)
 while IFS='|' read -r vk docx pdf flip status retries; do
@@ -505,7 +505,10 @@ while IFS='|' read -r vk docx pdf flip status retries; do
     [ "$sweep_count" -ge 5 ] && break
 
     # Skip if a job file is already queued for this volume.
-    existing=$(ls "$JOBS_DIR"/$(printf '%010d' "$vk")_*.json 2>/dev/null | head -1)
+    # Using `find` not `ls` because nullglob is enabled and an unmatched
+    # glob would leave `ls` with no args, listing CWD instead of returning
+    # empty — which made every volume falsely look like it had a queued job.
+    existing=$(find "$JOBS_DIR" -maxdepth 1 -name "$(printf '%010d' "$vk")_*.json" -print -quit 2>/dev/null)
     [ -n "$existing" ] && continue
 
     docx_path="$DOCX_DIR/$docx"
@@ -514,7 +517,7 @@ while IFS='|' read -r vk docx pdf flip status retries; do
     reason=""
 
     case "$status" in
-        warning|error|"")
+        warning|error|queued|"")
             # Stuck in a non-final state — but only retry while under the cap
             # (retry_count is reset to 0 by admin re-queue / docx re-upload).
             if [ "${retries:-0}" -lt 3 ]; then
