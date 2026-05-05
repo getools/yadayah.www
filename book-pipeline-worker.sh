@@ -378,10 +378,16 @@ process_job() {
     log "Job done volume_key=$volume_key"
 }
 
-# Process all queued jobs
+# Process at most ONE job per invocation. Each job runs LibreOffice
+# (DOCX→PDF) then Puppeteer/Chrome (FlipHTML5 upload + download). Both
+# are RAM-heavy on a 7.8G host — running two simultaneously would race
+# the systemd-run cgroups and the FlipHTML5 login session. Cron ticks
+# every 2 min, so the next queued job picks up on the next tick.
 shopt -s nullglob
 for j in "$JOBS_DIR"/*.json; do
     process_job "$j"
+    log "Processed one job — yielding to next cron tick (single-volume-per-run policy)"
+    break
 done
 
 # ── Phase 4.5: stale-artifact sweep ──────────────────────────────
