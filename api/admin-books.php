@@ -392,10 +392,19 @@ if ($method === 'PUT') {
                 $newAbs = $r['dir'] . '/' . $r['new'];
                 if (!file_exists($oldAbs)) continue;               // source missing; just update DB
                 if (file_exists($newAbs)) {
-                    errorResponse('Cannot rename ' . $r['old'] . ' → ' . $r['new'] . ': destination already exists');
+                    errorResponse('Cannot rename ' . $r['old'] . ' → ' . $r['new'] . ': destination already exists', 500);
                 }
                 if (!@rename($oldAbs, $newAbs)) {
-                    errorResponse('Filesystem rename failed: ' . $r['old'] . ' → ' . $r['new']);
+                    // 500 so errorResponse logs the failure to yy_monitor_event;
+                    // include the writable-by-PHP probe so the cause is in the
+                    // admin event detail (typical case: dir not writable to www-data).
+                    $writable = is_writable($r['dir']) ? 'yes' : 'no';
+                    $owner = function_exists('posix_getpwuid') ? (posix_getpwuid(fileowner($oldAbs))['name'] ?? '?') : (string)fileowner($oldAbs);
+                    errorResponse(
+                        'Filesystem rename failed: ' . $r['old'] . ' → ' . $r['new']
+                        . ' (dir writable: ' . $writable . ', file owner: ' . $owner . ')',
+                        500
+                    );
                 }
                 if ($r['col'] === 'volume_docx') { $renamedDocx = $r['new']; $oldDocxName = $r['old']; }
                 if ($r['col'] === 'volume_pdf')  { $renamedPdf  = $r['new']; $oldPdfName  = $r['old']; }

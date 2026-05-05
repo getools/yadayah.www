@@ -54,6 +54,15 @@ function jsonResponse($data, int $status = 200): void {
 }
 
 function errorResponse(string $message, int $status = 400): void {
+    // Surface unexpected server-side failures (5xx) in Monitoring. 4xx
+    // errors are normal user-input rejections and would just create noise.
+    if ($status >= 500 && function_exists('logMonitorEvent')) {
+        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+        $caller = !empty($bt[0]['file']) ? basename($bt[0]['file']) . ':' . ($bt[0]['line'] ?? '') : '';
+        @logMonitorEvent('admin_error', 'error', $message,
+            'Caller: ' . $caller . ' Status: ' . $status,
+            false);
+    }
     jsonResponse(['error' => $message], $status);
 }
 

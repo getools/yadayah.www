@@ -17,11 +17,6 @@ services:
       - ./public/pdf:/host_pdf:ro
       - ./public/flipbook:/host_flip
       - ./public/u/books-word:/host_word:ro
-      # Custom fonts for DOCX->PDF conversion. Drop new .ttf/.otf into
-      # /usr/local/share/fonts/yada/ on the host, then run
-      # /opt/yada-www/onlyoffice-fonts-refresh.sh to regenerate the
-      # ONLYOFFICE AllFonts.js cache. No container restart needed.
-      - /usr/local/share/fonts/yada:/usr/share/fonts/truetype/yada-custom:ro
       - ./public/jobs:/host_jobs
     environment:
       NODE_ENV: production
@@ -128,6 +123,11 @@ services:
       - onlyoffice_lib:/var/lib/onlyoffice
       - onlyoffice_db:/var/lib/postgresql
       - ./public/u/books-word:/host_word:ro
+      # Custom fonts for DOCX->PDF rendering. Drop new .ttf/.otf into
+      # /usr/local/share/fonts/yada/ on the host, then run
+      # /opt/yada-www/onlyoffice-fonts-refresh.sh to refresh AllFonts.js.
+      # No container restart needed for new fonts to become visible.
+      - /usr/local/share/fonts/yada:/usr/share/fonts/truetype/yada-custom:ro
     environment:
       JWT_ENABLED: 'true'
       JWT_SECRET: '78a30d906dc3820165ceff4b5aaa411e17f7b346f83714b08550d62329ec594d'
