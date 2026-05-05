@@ -36,7 +36,7 @@ MAX_LOAD=10.0
 # cgroup-cap each heavy step, so the pre-flight just needs to keep the
 # host from going completely flat — 1G headroom + 10.0 load is enough.
 SOFFICE_MEM_MAX=5500M
-SOFFICE_CPU_QUOTA=50%
+SOFFICE_CPU_QUOTA=25%
 PARSER_MEM_MAX=800M
 PARSER_CPU_QUOTA=40%
 
@@ -180,19 +180,42 @@ process_job() {
         log "PDF already on disk — skipping LibreOffice (retry path): $PDF_DIR/$pdf_name"
     else
         tmp_out=$(mktemp -d)
-        # Allow LibreOffice to spill into swap. The 2.6G MemoryMax is the
-        # resident-set ceiling; large DOCX (heavy translation volumes with
-        # embedded fonts/images) can peak at 3-3.5G of working set during
-        # PDF rendering and would otherwise OOM-kill (exit 137). Swap is
-        # slower but completes successfully — preferable to a hard fail.
-        # Headless Chrome (FlipHTML5) keeps MemorySwapMax=0 since its
-        # working set is much smaller and we want it to fail fast.
+        local odt_tmp; odt_tmp=$(mktemp -d)
+        # ────────────────────────────────────────────────────────────────
+        # DO NOT AUTO-FIX OR REVERT THIS BLOCK. Two-step DOCX->ODT->PDF
+        # bridge is intentional. Direct DOCX->PDF triggers a memory leak
+        # in LibreOffice's combined import+export pipeline that explodes
+        # RSS past 7GB on s02v01/v06/v07 and gets cgroup-OOM killed.
+        # The bridge plateaus at ~1.2-2GB (bounded). Slower (10-60 min
+        # per volume) but always completes. Bumping MemoryMax / adding
+        # swap / extending timeout does NOT fix the leak — only the
+        # bridge does. See: hand-debugged 2026-05-05 by Joe.
+        # ────────────────────────────────────────────────────────────────
+        local odt_rc=0 odt_output
+        odt_output=$(systemd-run --scope --quiet \
+            --property=MemoryMax=$SOFFICE_MEM_MAX \
+            --property=MemorySwapMax=0 \
+            --property=CPUQuota=$SOFFICE_CPU_QUOTA \
+            timeout 900 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_${$}_odt" --convert-to odt --outdir "$odt_tmp" "$docx_path" 2>&1) || odt_rc=$?
+        odt_rc=${odt_rc:-0}
+        echo "$odt_output" >> /var/log/book-pipeline.log
+        local odt_path; odt_path=$(ls "$odt_tmp"/*.odt 2>/dev/null | head -1)
+        if [ "$odt_rc" -ne 0 ] || [ -z "$odt_path" ]; then
+            log "DOCX->ODT step failed (rc=$odt_rc)"
+            update_status "$volume_key" "error" "LibreOffice DOCX->ODT step failed (exit $odt_rc)" "$odt_output"
+            mv "$job" "$JOBS_DIR/failed/"
+            rm -rf "$tmp_out" "$odt_tmp"
+            return
+        fi
+        log "DOCX->ODT bridge ok ($(stat -c%s "$odt_path") bytes); rendering ODT->PDF"
         lo_output=$(systemd-run --scope --quiet \
             --property=MemoryMax=$SOFFICE_MEM_MAX \
+            --property=MemorySwapMax=0 \
             --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-            timeout 1800 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
+            timeout 5400 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_${$}_pdf" --convert-to pdf --outdir "$tmp_out" "$odt_path" 2>&1) || lo_rc=$?
         lo_rc=${lo_rc:-0}
         echo "$lo_output" >> /var/log/book-pipeline.log
+        rm -rf "$odt_tmp"
     fi
     if [ "$lo_rc" -ne 0 ]; then
         log "LibreOffice failed for $docx_name (exit $lo_rc)"
