@@ -526,10 +526,20 @@ while IFS='|' read -r vk docx pdf flip status retries; do
             fi
             ;;
         success)
-            # Re-queue if the DOCX has been updated since the PDF was built.
-            if [ -f "$docx_path" ] && [ -f "$pdf_path" ] && [ "$docx_path" -nt "$pdf_path" ]; then
-                needs_requeue=1
-                reason="DOCX newer than PDF"
+            # Re-queue when the on-disk artifacts disagree with 'success':
+            #   - PDF missing entirely (manual cleanup, accidental delete,
+            #     or a prior render that produced nothing)
+            #   - DOCX is newer than the PDF (admin uploaded a new revision
+            #     of the docx since the last successful render)
+            # Both end with the same fix: run LibreOffice/ONLYOFFICE again.
+            if [ -f "$docx_path" ]; then
+                if [ ! -f "$pdf_path" ]; then
+                    needs_requeue=1
+                    reason="PDF missing on disk"
+                elif [ "$docx_path" -nt "$pdf_path" ]; then
+                    needs_requeue=1
+                    reason="DOCX newer than PDF"
+                fi
             fi
             ;;
     esac
