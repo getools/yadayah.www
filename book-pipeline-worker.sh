@@ -155,8 +155,12 @@ process_job() {
 
     local docx_path="$DOCX_DIR/$docx_name"
     if [ ! -f "$docx_path" ]; then
-        log "DOCX not found: $docx_path"
-        update_status "$volume_key" "error" "DOCX file not found: $docx_name"
+        # Missing DOCX is a setup gap, not a worker error — repeated retries
+        # can never recover (only an admin re-upload can). Use status
+        # 'waiting-docx' so the volume shows clearly in the books admin UI
+        # and the FlipHTML5 retry loop in process_job below leaves it alone.
+        log "DOCX not found: $docx_path — waiting for admin upload, not retrying"
+        update_status "$volume_key" "waiting-docx" "DOCX file not found: $docx_name — re-upload via Admin → Books"
         mv "$job" "$JOBS_DIR/failed/"
         return
     fi

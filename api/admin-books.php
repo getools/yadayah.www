@@ -178,6 +178,23 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'retry_pipeline'
     if (!$vol)               errorResponse('Volume not found', 404);
     if (!$vol['volume_docx'] && !$vol['volume_code']) errorResponse('Volume has no docx — upload one before retrying');
 
+    // Refuse to queue a retry if the docx file isn't actually on disk.
+    // The pipeline can never recover from a missing source — only an admin
+    // re-upload can. Set the volume status so the books admin UI surfaces
+    // it clearly, then bail.
+    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+    $docxAbs    = $publicRoot . '/u/books-word/' . ($vol['volume_docx'] ?: ($vol['volume_code'] . '.docx'));
+    if (!is_file($docxAbs)) {
+        $db->prepare("
+            UPDATE yy_volume
+               SET volume_pipeline_status = 'waiting-docx',
+                   volume_pipeline_message = 'DOCX file missing on disk — re-upload before retrying',
+                   volume_revision_dtime = NOW()
+             WHERE volume_key = ?
+        ")->execute([$key]);
+        errorResponse('DOCX file missing on disk: ' . basename($docxAbs) . ' — upload it before retrying', 400);
+    }
+
     $db->prepare("
         UPDATE yy_volume
            SET volume_pipeline_status = 'queued',
