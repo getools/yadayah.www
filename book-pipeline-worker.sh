@@ -28,8 +28,13 @@ set -uo pipefail
 #      Python parser) runs inside a transient systemd scope with hard
 #      MemoryMax + CPUQuota. Excess gets cgroup-killed cleanly (logged as
 #      exit 137) instead of starving the box.
-MIN_FREE_MB=1500
-MAX_LOAD=6.0
+MIN_FREE_MB=1000
+MAX_LOAD=10.0
+# Originally 1500 / 6.0, but on a 7.8G host with 4G swap the gate was
+# tripping on transient transcript-worker spikes ~20×/day, deferring
+# legitimate book-pipeline work for hours. The systemd-run scopes already
+# cgroup-cap each heavy step, so the pre-flight just needs to keep the
+# host from going completely flat — 1G headroom + 10.0 load is enough.
 SOFFICE_MEM_MAX=2600M
 SOFFICE_CPU_QUOTA=50%
 PARSER_MEM_MAX=800M
@@ -71,11 +76,16 @@ if awk -v l="$load_now" -v m="$MAX_LOAD" 'BEGIN{exit !(l>m)}'; then
 fi
 log "Pre-flight OK: ${free_mb}MB free, load ${load_now}"
 
-# Catch-all error trap: anything that triggers ERR (a failing command outside
-# a conditional, a syntax error, an undefined variable etc.) gets logged to
-# yy_monitor_event so the admin notices even if nothing reaches update_status.
+# Catch-all error trap. Only fires on conditions that genuinely indicate a
+# broken worker, NOT on routine non-zero returns:
+#   - 127: command not found (missing binary, $PATH issue)
+#   - 137: SIGKILL (OOM-killed, cgroup limit, or `kill -9`)
+#   - 139: SIGSEGV (segfault — actually broken)
+#   - 134: SIGABRT (abort)
+# Routine non-zero exits from `mv`, `docker exec psql`, etc. were creating
+# yy_monitor_event noise that buried real failures.
 set -E
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then log_monitor_event "book_pipeline" "error" "Worker shell trap fired (exit $rc)" "line $LINENO: ${BASH_COMMAND:-unknown command}"; fi' ERR
+trap 'rc=$?; case "$rc" in 127|134|137|139) log_monitor_event "book_pipeline" "error" "Worker shell trap fired (exit $rc — fatal signal/missing binary)" "line $LINENO: ${BASH_COMMAND:-unknown command}";; esac' ERR
 
 # Insert a row into yy_monitor_event so failures surface in the central
 # events monitor (/admin-monitor.html) alongside Apache, sync, and DB issues.
@@ -166,9 +176,15 @@ process_job() {
         log "PDF already on disk — skipping LibreOffice (retry path): $PDF_DIR/$pdf_name"
     else
         tmp_out=$(mktemp -d)
+        # Allow LibreOffice to spill into swap. The 2.6G MemoryMax is the
+        # resident-set ceiling; large DOCX (heavy translation volumes with
+        # embedded fonts/images) can peak at 3-3.5G of working set during
+        # PDF rendering and would otherwise OOM-kill (exit 137). Swap is
+        # slower but completes successfully — preferable to a hard fail.
+        # Headless Chrome (FlipHTML5) keeps MemorySwapMax=0 since its
+        # working set is much smaller and we want it to fail fast.
         lo_output=$(systemd-run --scope --quiet \
             --property=MemoryMax=$SOFFICE_MEM_MAX \
-            --property=MemorySwapMax=0 \
             --property=CPUQuota=$SOFFICE_CPU_QUOTA \
             timeout 600 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
         lo_rc=${lo_rc:-0}
