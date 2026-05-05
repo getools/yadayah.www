@@ -128,7 +128,7 @@
             <div class="form-row">
                 <div class="field"><label>Volume #</label><input type="number" id="f-number" value="0"></div>
                 <div class="field"><label>Sort</label><input type="number" id="f-sort" value="0"></div>
-                <div class="field"><label>Pages</label><input type="number" id="f-pages" value="0"></div>
+                <div class="field"><label>Pages <span style="font-weight:400;color:#888;font-size:0.72rem;">(auto)</span></label><input type="number" id="f-pages" value="0" readonly title="Derived from the docx parser — not editable" style="background:#f5f5f5;color:#666;cursor:not-allowed;"></div>
             </div>
             <div class="field"><label>Book Code <span style="font-weight:400;color:#888;font-size:0.78rem;">(canonical root — drives DOCX + PDF filenames)</span></label>
                 <input type="text" id="f-code" placeholder="e.g. YY-s01v01-An-Intro-to-God-Dabarym-Words">
@@ -660,7 +660,8 @@ function saveVolume() {
         volume_name: document.getElementById('f-name').value.trim(),
         volume_number: parseInt(document.getElementById('f-number').value) || 0,
         volume_sort: parseInt(document.getElementById('f-sort').value) || 0,
-        volume_page_count: parseInt(document.getElementById('f-pages').value) || 0,
+        // volume_page_count is derived from the parser; never sent from the
+        // form so an accidentally-edited value can't overwrite it.
         volume_code: code,
         volume_flip_code: document.getElementById('f-flip').value.trim(),
         volume_pdf: document.getElementById('f-pdf').value.trim(),
