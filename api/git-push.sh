@@ -43,6 +43,7 @@ rsync -a "$DEPLOY_DIR/public/" "$GIT_DIR/public/" \
     --include='*.html' --exclude='*/' --exclude='*'
 
 # Sync rumble-scraper scripts (shell and Node.js)
+mkdir -p "$GIT_DIR/rumble-scraper/yy"
 rsync -a --delete "$DEPLOY_DIR/rumble-scraper/yy/" "$GIT_DIR/rumble-scraper/yy/" \
     --include='*.sh' --include='*.cjs' --include='*.js' --include='*/' --exclude='*'
 
