@@ -175,6 +175,8 @@ function checkFacebookFeed(string $publicUrl, string $accountId): array {
                 SELECT feed_sync_status, feed_sync_end_dtime, feed_sync_items_found
                 FROM yy_feed_sync
                 WHERE feed_key = (SELECT feed_key FROM yy_feed WHERE feed_account_id = ? LIMIT 1)
+                  AND feed_sync_status = 'success'
+                  AND feed_sync_end_dtime IS NOT NULL
                 ORDER BY feed_sync_key DESC LIMIT 1
             ");
             $stmt->execute([$accountId]);
