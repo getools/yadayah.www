@@ -9,8 +9,8 @@
 #   4. Download published flipbook .zip and extract to /opt/yada-www/public/flipbook/<code>/
 #   5. Update yy_volume.volume_pdf, .volume_flip_code, and .volume_pipeline_*
 #
-# Crontab (every 2 minutes):
-#   */2 * * * * /opt/yada-www/book-pipeline-worker.sh >> /var/log/book-pipeline.log 2>&1
+# Crontab (every 15 minutes):
+#   */15 * * * * /opt/yada-www/book-pipeline-worker.sh >> /var/log/book-pipeline.log 2>&1
 #
 # Requirements on host:
 #   - libreoffice (apt install libreoffice --no-install-recommends)
@@ -382,7 +382,7 @@ process_job() {
 # (DOCX→PDF) then Puppeteer/Chrome (FlipHTML5 upload + download). Both
 # are RAM-heavy on a 7.8G host — running two simultaneously would race
 # the systemd-run cgroups and the FlipHTML5 login session. Cron ticks
-# every 2 min, so the next queued job picks up on the next tick.
+# every 15 min, so the next queued volume picks up on the next tick.
 shopt -s nullglob
 for j in "$JOBS_DIR"/*.json; do
     process_job "$j"
