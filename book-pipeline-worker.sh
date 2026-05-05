@@ -35,7 +35,7 @@ MAX_LOAD=10.0
 # legitimate book-pipeline work for hours. The systemd-run scopes already
 # cgroup-cap each heavy step, so the pre-flight just needs to keep the
 # host from going completely flat — 1G headroom + 10.0 load is enough.
-SOFFICE_MEM_MAX=2600M
+SOFFICE_MEM_MAX=5500M
 SOFFICE_CPU_QUOTA=50%
 PARSER_MEM_MAX=800M
 PARSER_CPU_QUOTA=40%
@@ -190,7 +190,7 @@ process_job() {
         lo_output=$(systemd-run --scope --quiet \
             --property=MemoryMax=$SOFFICE_MEM_MAX \
             --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-            timeout 600 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
+            timeout 1800 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_$$" --convert-to pdf --outdir "$tmp_out" "$docx_path" 2>&1) || lo_rc=$?
         lo_rc=${lo_rc:-0}
         echo "$lo_output" >> /var/log/book-pipeline.log
     fi
