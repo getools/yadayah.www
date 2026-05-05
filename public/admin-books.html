@@ -384,7 +384,10 @@ function flipCell(v) {
          + '<div class="age" style="color:#a36100;">pending</div></div>';
 }
 
-function artifactCell(field, mtime, sourceMtime, pipelineStatus, label) {
+// downloadHref: optional URL — when provided AND the artifact exists,
+// the ✓/↻ icon is wrapped in a click-to-download <a>. Stops propagation
+// so the row's edit-volume click handler doesn't fire.
+function artifactCell(field, mtime, sourceMtime, pipelineStatus, label, downloadHref) {
     var ps = (pipelineStatus || '').toLowerCase();
     var inProc = PROC_STATES.indexOf(ps) >= 0;
     // Pipeline is in flight AND we don't have the artifact yet — definitively
@@ -412,15 +415,24 @@ function artifactCell(field, mtime, sourceMtime, pipelineStatus, label) {
              + '<span class="status-icon status-proc" title="' + label + ' is being regenerated (newer source detected)">⟳</span>'
              + '<div class="age">regenerating</div></div>';
     }
+    function wrapIcon(iconHtml, title) {
+        if (!downloadHref) return iconHtml;
+        return '<a href="' + esc(downloadHref) + '" download '
+             + 'onclick="event.stopPropagation()" '
+             + 'title="' + esc(title) + ' — click to download" '
+             + 'style="text-decoration:none;color:inherit;">' + iconHtml + '</a>';
+    }
     if (stale) {
+        var staleTitle = label + ' is older than its source — needs regeneration. Last built: ' + fullDt(mtime);
         return '<div class="status-cell">'
-             + '<span class="status-icon status-stale" title="' + label + ' is older than its source — needs regeneration. Last built: ' + fullDt(mtime) + '">↻</span>'
+             + wrapIcon('<span class="status-icon status-stale" title="' + esc(staleTitle) + '">↻</span>', staleTitle)
              + '<div class="age">stale<br>' + ago(mtime) + '</div></div>';
     }
     var ageTxt = mtime ? ago(mtime) : '';
     var fullTxt = mtime ? fullDt(mtime) : '';
+    var freshTitle = label + ' generated' + (fullTxt ? ' on ' + fullTxt : '');
     return '<div class="status-cell">'
-         + '<span class="status-icon status-gen" title="' + label + ' generated' + (fullTxt ? ' on ' + fullTxt : '') + '">✓</span>'
+         + wrapIcon('<span class="status-icon status-gen" title="' + esc(freshTitle) + '">✓</span>', freshTitle)
          + (ageTxt ? '<div class="age" title="' + esc(fullTxt) + '">' + ageTxt + '</div>' : '')
          + '</div>';
 }
@@ -532,8 +544,8 @@ function renderBooks() {
                 + '<td><strong>' + esc(v.volume_label) + '</strong></td>'
                 + '<td style="font-size:0.8rem;color:#666;">' + esc(v.volume_name || '') + '</td>'
                 + '<td>' + (v.volume_page_count || '') + '</td>'
-                + '<td>' + artifactCell(!!v.volume_docx,      v.volume_docx_mtime, null,                  ps, 'DOCX')      + '</td>'
-                + '<td>' + artifactCell(!!v.volume_pdf,       v.volume_pdf_mtime,  v.volume_docx_mtime,   ps, 'PDF')       + '</td>'
+                + '<td>' + artifactCell(!!v.volume_docx,      v.volume_docx_mtime, null,                  ps, 'DOCX',      v.volume_docx ? '/u/books-word/' + encodeURIComponent(v.volume_docx) : null) + '</td>'
+                + '<td>' + artifactCell(!!v.volume_pdf,       v.volume_pdf_mtime,  v.volume_docx_mtime,   ps, 'PDF',       v.volume_pdf  ? '/pdf/' + encodeURIComponent(v.volume_pdf)         : null) + '</td>'
                 + '<td>' + flipCell(v) + '</td>'
                 + '<td>' + dataCell(v) + '</td>'
                 + '<td>' + (v.volume_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>') + '</td>'
