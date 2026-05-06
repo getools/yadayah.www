@@ -127,9 +127,18 @@
             // Global search bar (rendered just below the site header) shares
             // the page-heading group in admin so the operator can tune both
             // bands together. bg accepts any rgba()/hex; height is the
-            // total band height in px.
+            // total band height in px. Set both as CSS vars on <html>
+            // (used by the prototype's stylesheet) AND directly on the
+            // .search-band element if present — the direct path is a
+            // belt-and-suspenders fallback in case of any CSS cascade
+            // issue that would silently swallow the var().
             if (data.page_heading_search_bg_color) root.style.setProperty('--search-band-bg', data.page_heading_search_bg_color);
             if (data.page_heading_search_height)   root.style.setProperty('--search-band-height', data.page_heading_search_height + 'px');
+            var bandEl = document.querySelector('.search-band');
+            if (bandEl) {
+                if (data.page_heading_search_bg_color) bandEl.style.background = data.page_heading_search_bg_color;
+                if (data.page_heading_search_height)   bandEl.style.minHeight  = data.page_heading_search_height + 'px';
+            }
 
             reveal();
         })

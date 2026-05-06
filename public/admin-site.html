@@ -44,11 +44,17 @@
         .px-wrap, .em-wrap { display: flex; align-items: center; gap: 8px; }
         .px-wrap input, .em-wrap input { width: 120px; }
         .unit-label { font-size: 0.85rem; color: #888; }
-        /* Two-cell row layout for paired inputs like Margin: Top [ ] Bottom [ ] */
-        .setting-pair { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        /* Tighter inputs for Text Size + Search Height per spec — 100px feels
+           right for short numeric values where 120px reads as too wide. */
+        input.input-narrow { width: 100px !important; }
+        /* Paired inputs ("Margin: Top [ ] Bottom [ ]"). Each label sits
+           immediately to the left of its input via .pair-cell with a 6px
+           gap; cells separated by a larger 22px gap so the visual grouping
+           reads as two pairs rather than four discrete fields. */
+        .setting-pair { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+        .setting-pair .pair-cell { display: inline-flex; align-items: center; gap: 6px; }
         .setting-pair .pair-label {
             font-weight: 600; font-size: 0.85rem; color: #555;
-            min-width: 56px;
         }
         .setting-pair .px-wrap input { width: 90px; }
         #save-status { font-size: 0.875rem; color: #27ae60; }
@@ -106,7 +112,7 @@
             </div>
             <div class="setting-row">
                 <label>Text Size</label>
-                <div class="setting-input"><div class="em-wrap"><input type="number" id="input-ph-text-size" value="" step="0.1" min="0.1" max="10"><span class="unit-label">em</span></div></div>
+                <div class="setting-input"><div class="em-wrap"><input type="number" id="input-ph-text-size" class="input-narrow" value="" step="0.1" min="0.1" max="10"><span class="unit-label">em</span></div></div>
             </div>
             <div class="setting-row">
                 <label>Background Opacity</label>
@@ -118,30 +124,38 @@
                 </div>
             </div>
             <div class="setting-row">
-                <label>Search Background</label>
-                <div class="setting-input"><div class="rgba-picker" data-id="ph-search-bg"></div></div>
-            </div>
-            <div class="setting-row">
-                <label>Search Height</label>
-                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-search-height" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
-            </div>
-            <div class="setting-row">
                 <label>Margin</label>
                 <div class="setting-input setting-pair">
-                    <span class="pair-label">Top</span>
-                    <div class="px-wrap"><input type="number" id="input-ph-margin-top" value="" step="1" min="0"><span class="unit-label">px</span></div>
-                    <span class="pair-label">Bottom</span>
-                    <div class="px-wrap"><input type="number" id="input-ph-margin-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    <span class="pair-cell">
+                        <span class="pair-label">Top</span>
+                        <div class="px-wrap"><input type="number" id="input-ph-margin-top" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    </span>
+                    <span class="pair-cell">
+                        <span class="pair-label">Bottom</span>
+                        <div class="px-wrap"><input type="number" id="input-ph-margin-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    </span>
                 </div>
             </div>
             <div class="setting-row">
                 <label>Padding</label>
                 <div class="setting-input setting-pair">
-                    <span class="pair-label">Top</span>
-                    <div class="px-wrap"><input type="number" id="input-ph-padding-top" value="" step="1" min="0"><span class="unit-label">px</span></div>
-                    <span class="pair-label">Bottom</span>
-                    <div class="px-wrap"><input type="number" id="input-ph-padding-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    <span class="pair-cell">
+                        <span class="pair-label">Top</span>
+                        <div class="px-wrap"><input type="number" id="input-ph-padding-top" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    </span>
+                    <span class="pair-cell">
+                        <span class="pair-label">Bottom</span>
+                        <div class="px-wrap"><input type="number" id="input-ph-padding-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    </span>
                 </div>
+            </div>
+            <div class="setting-row">
+                <label>Search Background</label>
+                <div class="setting-input"><div class="rgba-picker" data-id="ph-search-bg"></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Search Height</label>
+                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-search-height" class="input-narrow" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
             </div>
         </div>
         <div class="section-box">

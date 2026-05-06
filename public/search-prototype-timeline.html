@@ -403,28 +403,41 @@
            so the operator can retune both bands without touching code. */
         .search-band {
             background: var(--search-band-bg, #0A333A);
-            margin: 0 -20px;
-            padding: 12px 0;
+            /* Body has `display: flex` + `padding: 20px`, which makes
+               flex items size to (viewport - 40) and any negative margin
+               or `calc(50% - 50vw)` trick gets distorted by scrollbar
+               width and flex's own constraint logic — leaving visible
+               unpainted strips at the body padding. Position-based
+               escape works regardless: width:100vw, then
+               position:relative + left:50% + translateX(-50%) recenters
+               the now-too-wide box so its midpoint lines up with the
+               midpoint of the visible viewport. */
+            width: 100vw;
+            position: relative;
+            left: 50%;
+            transform: translateX(-50%);
             min-height: var(--search-band-height, auto);
-            /* Vertically center the form within the band when admin sets a
-               Search Height larger than the form's natural height. Column
-               flex makes the cross axis horizontal (so the container still
-               stretches full-width) and the main axis vertical, where
-               justify-content:center does the centering. */
             display: flex;
-            flex-direction: column;
-            justify-content: center;
+            align-items: center;
         }
         .search-container {
-            max-width: 1024px; margin: 0 auto; padding: 0 20px;
+            width: 100%;
+            max-width: 1024px;
+            margin: 0 auto;
+            padding: 12px 20px;
+            box-sizing: border-box;
         }
         .search-row {
             display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-            margin-bottom: 8px;
+            margin: 0;
         }
-        .search-row.row-two { margin-bottom: 0; }
+        /* Inter-row gap lives ON row 2, not below row 1, so when row 2 is
+           hidden (Site scope) row 1 has no leftover bottom margin —
+           previously that 8px caused the centered container to look
+           top-heavy: more apparent space below the visible row than above. */
+        .search-row.row-two:not([hidden]) { margin-top: 8px; }
         .search-row input[type="text"] {
-            flex: 1; min-width: 200px; padding: 9px 14px;
+            flex: 1; min-width: 200px; padding: 6px 14px;
             font-size: 1rem; border: 2px solid #ccc; border-radius: 6px;
             outline: none; transition: border-color 0.2s;
         }
@@ -635,7 +648,7 @@
             .result-video .thumb { flex: 0 0 auto; max-width: 100%; }
         }
     </style>
-<script src="/js/site-nav.js"></script>
+<script src="/js/site-nav.js?v=3"></script>
     <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
@@ -1154,6 +1167,11 @@ function setScope(s) {
     });
     document.getElementById('filters-books').hidden = (s !== 'books');
     document.getElementById('filters-video').hidden = (s !== 'video');
+    // Hide row 2 entirely in Site scope so the inter-row top margin (8px)
+    // doesn't sit inside the centered container and skew the visual
+    // centering. CSS rule: `.search-row.row-two:not([hidden]) { margin-top:8px }`.
+    var rowTwo = document.querySelector('.search-row.row-two');
+    if (rowTwo) rowTwo.hidden = (s === 'site');
     document.getElementById('search-input').placeholder = SCOPE_META[s].placeholder;
 }
 
