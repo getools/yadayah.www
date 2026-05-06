@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Maven+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        html { height: 100%; }
+        body {
+            font-family: 'Maven Pro', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Site header */
+        header {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 0;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            margin: -20px -20px 0 -20px;
+            position: relative; overflow: hidden;
+        }
+        header .header-video {
+            position: absolute; top: 50%; left: 50%;
+            min-width: 100%; min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover; z-index: 0;
+        }
+        header .header-inner {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; max-width: 1140px; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
+        header nav .nav-row {
+            display: flex; flex-direction: row; justify-content: center;
+            gap: 0 30px; padding: 4px 0; flex-wrap: wrap;
+        }
+        header nav a {
+            text-decoration: none; color: #E5C86C;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1em; font-weight: 700;
+        }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+
+
+
+        /* ── Sub-toolbar ── */
+        .sub-toolbar {
+            display: flex; justify-content: center; align-items: center;
+            gap: 30px; padding: 8px 0;
+            background: var(--toolbar-bg, #0A333A);
+            margin: 0 -20px;
+        }
+        .sub-toolbar a {
+            text-decoration: none; color: var(--toolbar-text, #8ED0EC);
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 0.95em; font-weight: 700;
+        }
+        .sub-toolbar a:hover { color: #fff; }
+        .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 5px; }
+        /* Timeline container */
+        .timeline-wrap {
+            width: 100%;
+            max-width: 1100px;
+            margin: 20px auto;
+            position: relative;
+            padding: 10px 0;
+            flex: 0 0 auto;
+            box-sizing: border-box;
+        }
+        html, body { overflow-x: hidden; }
+
+        /* Vertical center line */
+        .timeline-wrap::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #000;
+            transform: translateX(-50%);
+        }
+
+        /* Single event */
+        .tl-event {
+            display: flex;
+            width: 100%;
+            position: absolute;
+            left: 0;
+        }
+
+        /* Circle on the center line – color set per card */
+        .tl-event::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 28px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+        }
+        .tl-event.tl-gold::before { background: var(--color-row-a, #e5a800); border: 3px solid color-mix(in srgb, var(--color-row-a, #e5a800) 70%, #000); }
+        .tl-event.tl-blue::before { background: var(--color-row-b, #283dd8); border: 3px solid color-mix(in srgb, var(--color-row-b, #283dd8) 70%, #000); }
+
+        /* Left-side events */
+        .tl-event.tl-left .tl-card {
+            margin-right: auto;
+            margin-left: 0;
+            width: 45%;
+        }
+        .tl-event.tl-left .tl-spacer { width: 55%; }
+
+        /* Right-side events */
+        .tl-event.tl-right .tl-spacer { width: 55%; order: -1; }
+        .tl-event.tl-right .tl-card {
+            margin-left: auto;
+            margin-right: 0;
+            width: 45%;
+        }
+
+        /* Card styling */
+        .tl-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+            transition: box-shadow 0.2s;
+            position: relative;
+            z-index: 1;
+        }
+        .tl-card:hover {
+            box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+        }
+
+        .tl-card-header {
+            padding: 10px 16px;
+            border-radius: 8px 8px 0 0;
+        }
+        .tl-event.tl-gold .tl-card-header { background: var(--color-row-a, #e5a800); }
+        .tl-event.tl-blue .tl-card-header { background: var(--color-row-b, #283dd8); }
+        .tl-headline {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #fff;
+            margin: 0;
+            line-height: 1.3;
+        }
+        .tl-date-yah {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            margin-top: 3px;
+        }
+        .tl-date-ce {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.7);
+            margin-top: 1px;
+        }
+
+        .tl-card-body {
+            padding: 15px 16px;
+        }
+        .tl-image {
+            width: 100%;
+            height: auto;
+            display: block;
+            margin-top: 0;
+            margin-bottom: 0;
+            border-radius: 5px;
+        }
+        .tl-image.has-video { cursor: pointer; }
+        .tl-image.has-video:hover { opacity: 0.85; }
+        .tl-media-wrap { position: relative; }
+        .tl-video { width: 100%; border-radius: 5px; display: block; }
+        .tl-media-wrap + .tl-summary { margin-top: 10px; }
+        .tl-image + .tl-summary { margin-top: 10px; }
+        .tl-summary {
+            font-size: 0.9rem;
+            line-height: 1.28;
+            color: #555;
+            margin: 0;
+        }
+        .tl-summary p { margin: 0 0 8px 0; }
+        .tl-summary p:last-child { margin-bottom: 0; }
+
+        .tl-loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+            font-size: 1rem;
+        }
+        .tl-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        /* Triangle connectors – arrow from center line pointing into card */
+        .tl-event.tl-left .tl-card::after {
+            content: '';
+            position: absolute;
+            top: 27px;
+            right: -14px;
+            width: 0;
+            height: 0;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+        .tl-event.tl-gold.tl-left .tl-card::after { border-left: 14px solid var(--color-row-a, #e5a800); }
+        .tl-event.tl-blue.tl-left .tl-card::after { border-left: 14px solid var(--color-row-b, #283dd8); }
+
+        .tl-event.tl-right .tl-card::before {
+            content: '';
+            position: absolute;
+            top: 27px;
+            left: -14px;
+            width: 0;
+            height: 0;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+        .tl-event.tl-gold.tl-right .tl-card::before { border-right: 14px solid var(--color-row-a, #e5a800); }
+        .tl-event.tl-blue.tl-right .tl-card::before { border-right: 14px solid var(--color-row-b, #283dd8); }
+
+        /* Mobile: single column */
+        @media (max-width: 768px) {
+            .tickers-grid.multi {
+                grid-template-columns: 1fr;
+            }
+            .tickers-grid.multi .countdown-bar {
+                justify-content: center;
+            }
+            .tickers-grid.multi .ticker-content {
+                max-width: 400px;
+                margin: 0 auto;
+            }
+            .timeline-wrap::before {
+                left: 20px;
+            }
+            .tl-event {
+                position: relative !important;
+                top: auto !important;
+                margin-bottom: var(--tl-spacing, 30px);
+            }
+            .tl-event::before {
+                left: 20px;
+                top: 20px;
+            }
+            .tl-event.tl-left .tl-card,
+            .tl-event.tl-right .tl-card {
+                width: calc(100% - 50px);
+                margin-left: 50px;
+                margin-right: 0;
+            }
+            .tl-event .tl-spacer { display: none; }
+            .tl-event.tl-left .tl-card::after,
+            .tl-event.tl-right .tl-card::before {
+                display: none;
+            }
+            .timeline-wrap {
+                height: auto !important;
+            }
+        }
+
+        .page-title {
+            text-align: center;
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: 2rem;
+            color: #025149;
+            margin: 15px 0 0;
+            letter-spacing: 1px;
+        }
+
+        .tickers-container {
+            width: 100%;
+            margin: 0 -20px;
+            width: calc(100% + 40px);
+        }
+        .tickers-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .tickers-grid.multi {
+            max-width: 100%;
+            grid-template-columns: 1fr 1fr;
+        }
+        /* Center ticker content over the 1100px timeline columns */
+        .tickers-grid.multi .countdown-bar {
+            display: flex;
+        }
+        .tickers-grid.multi .countdown-bar:nth-child(odd) {
+            justify-content: flex-end;
+        }
+        .tickers-grid.multi .countdown-bar:nth-child(even) {
+            justify-content: flex-start;
+        }
+        .tickers-grid.multi .ticker-content {
+            width: 100%;
+            max-width: 550px;
+            text-align: center;
+        }
+        /* Odd last ticker spans full width, center over whole timeline */
+        .tickers-grid.multi .countdown-bar:last-child:nth-child(odd) {
+            grid-column: 1 / -1;
+        }
+        .tickers-grid.multi .countdown-bar:last-child:nth-child(odd) .ticker-content {
+            max-width: 550px;
+            margin: 0 auto;
+        }
+        .countdown-bar {
+            color: #e5c86c;
+        }
+        .ticker-content {
+            padding: 16px;
+            text-align: center;
+            width: 100%;
+        }
+        .countdown-label {
+            font-family: 'Julius Sans One', sans-serif;
+            font-size: var(--ticker-heading-size, 1.1em);
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+            color: rgba(255,255,255,0.85);
+        }
+        .countdown-sublabel {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: var(--ticker-subheading-size, 0.85em);
+            color: var(--ticker-subheading-color, rgba(255,255,255,0.65));
+            margin-bottom: 8px;
+        }
+        .countdown-timer {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .countdown-unit {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 70px;
+        }
+        .countdown-value {
+            font-family: 'Maven Pro', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .countdown-name {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.6);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        /* Multi-ticker sizes handled above */
+        /* Reduced sizes for multiple tickers */
+        .tickers-grid.multi .countdown-label { font-size: 0.715rem; }
+        .tickers-grid.multi .countdown-sublabel { font-size: 0.6rem; }
+        .tickers-grid.multi .countdown-value { font-size: 1.43rem; }
+        .tickers-grid.multi .countdown-name { font-size: 0.4875rem; }
+        .tickers-grid.multi .countdown-timer { gap: 14px; justify-content: center; }
+        .tickers-grid.multi .countdown-unit { min-width: 50px; }
+        .tickers-grid.multi .ticker-content { padding: 16px 10px; }
+        @media (max-width: 480px) {
+            .countdown-timer { gap: 12px; }
+            .countdown-value { font-size: 1.6rem; }
+            .countdown-unit { min-width: 55px; }
+            .tickers-grid.multi { grid-template-columns: 1fr; }
+            .tickers-grid.multi .countdown-bar:last-child:nth-child(odd) {
+                max-width: 100%;
+            }
+        }
+
+            color: #E5C86C;
+            z-index: 10;
+        }
+    </style>
+<script src="/js/site-nav.js"></script>
+    <link rel="stylesheet" href="/css/page-heading.css?v=2">
+</head>
+<body>
+    <header>
+    <video class="header-video" autoplay muted loop playsinline>
+    </video>
+    <div class="header-inner">
+        <div class="header-logos">
+            <a href="/"><img src="/images/yy-logo-80x90.png" alt="Yada Yah"></a>
+        </div>
+        <nav>
+            <div class="nav-row">
+                <a href="books">Books</a>
+                <a href="blog">Blog</a>
+                <a href="resources">Resources</a>
+                <a href="/Craig_Winn">Winn</a>
+                <a href="/timeline">Timeline</a>
+            </div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="/media">Media</a>
+                <a href="/music">Music</a>
+                <a href="/ask">Ask</a>
+            </div>
+        </nav>
+    </div>
+</header>
+
+
+    <div class="tickers-container">
+        <div class="tickers-grid" id="tickers-grid"></div>
+    </div>
+
+    <div class="page-heading-wrap"><h1 class="page-heading" id="page-heading">Timeline</h1></div>
+
+    <div class="timeline-wrap" id="timeline">
+        <div class="tl-loading">Loading timeline...</div>
+    </div>
+
+<script>
+var API = 'api';
+var TL_SPACING = 30;
+var tickerTargets = [];
+
+function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function renderTimeline(events) {
+    var container = document.getElementById('timeline');
+    if (!events.length) {
+        container.innerHTML = '<div class="tl-empty">No timeline events found.</div>';
+        return;
+    }
+
+    var html = '';
+    for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var side = (i % 2 === 0) ? 'tl-left' : 'tl-right';
+        var color = (i % 2 === 0) ? 'tl-gold' : 'tl-blue';
+
+        var anchorId = ev.timeline_jump ? ev.timeline_jump : '';
+        html += '<div class="tl-event ' + side + ' ' + color + '"' + (anchorId ? ' id="' + esc(anchorId) + '"' : '') + '>';
+        html += '<div class="tl-card">';
+
+        // Header with headline and dates
+        html += '<div class="tl-card-header">';
+        html += '<div class="tl-headline">' + esc(ev.timeline_headline) + '</div>';
+        if (ev.timeline_date_yah) {
+            html += '<div class="tl-date-yah">' + esc(ev.timeline_date_yah) + '</div>';
+        }
+        if (ev.timeline_date_ce) {
+            html += '<div class="tl-date-ce">' + esc(ev.timeline_date_ce) + '</div>';
+        }
+        html += '</div>';
+
+        // Body with image/video and summary
+        html += '<div class="tl-card-body">';
+        if (ev.timeline_image) {
+            var imgSrc = ev.timeline_image;
+            if (imgSrc && imgSrc.charAt(0) !== '/' && imgSrc.indexOf('://') === -1) imgSrc = '/' + imgSrc;
+            if (ev.timeline_video) {
+                var vidSrc = ev.timeline_video;
+                if (vidSrc && vidSrc.charAt(0) !== '/' && vidSrc.indexOf('://') === -1) vidSrc = '/' + vidSrc;
+                html += '<div class="tl-media-wrap" data-video="' + esc(vidSrc) + '">';
+                html += '<img class="tl-image has-video" src="' + esc(imgSrc) + '" alt="" loading="lazy">';
+                html += '</div>';
+            } else {
+                html += '<img class="tl-image" src="' + esc(imgSrc) + '" alt="" loading="lazy">';
+            }
+        }
+        if (ev.timeline_summary) {
+            html += '<div class="tl-summary">' + ev.timeline_summary + '</div>';
+        }
+        html += '</div>';
+
+        html += '</div>';
+        html += '<div class="tl-spacer"></div>';
+        html += '</div>';
+    }
+    container.innerHTML = html;
+    positionTimeline();
+    // Reposition whenever any card resizes (images loading, etc.)
+    var _repoTimer = null;
+    function debouncedReposition() {
+        if (_repoTimer) clearTimeout(_repoTimer);
+        _repoTimer = setTimeout(positionTimeline, 50);
+    }
+    if (window.ResizeObserver) {
+        var ro = new ResizeObserver(debouncedReposition);
+        var cards = container.querySelectorAll('.tl-card');
+        for (var j = 0; j < cards.length; j++) ro.observe(cards[j]);
+    }
+    // Also reposition after images load as belt-and-suspenders
+    var imgs = container.querySelectorAll('img');
+    for (var j = 0; j < imgs.length; j++) {
+        imgs[j].addEventListener('load', debouncedReposition);
+    }
+    // Attach video click handlers
+    var videoImgs = container.querySelectorAll('.tl-image.has-video');
+    for (var k = 0; k < videoImgs.length; k++) {
+        (function(img) {
+            img.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var wrap = img.parentElement;
+                var src = wrap.getAttribute('data-video');
+                var video = document.createElement('video');
+                video.className = 'tl-video';
+                video.controls = true;
+                video.src = src;
+                wrap.replaceChild(video, img);
+                video.play();
+                setTimeout(positionTimeline, 300);
+            });
+        })(videoImgs[k]);
+    }
+}
+
+function positionTimeline() {
+    if (window.innerWidth <= 768) return;
+    var events = document.querySelectorAll('.tl-event');
+    if (!events.length) return;
+
+    var leftBottom = -TL_SPACING, rightBottom = -TL_SPACING;
+    var lastTop = -TL_SPACING;
+
+    for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var color = (i % 2 === 0) ? 'tl-gold' : 'tl-blue';
+
+        ev.classList.remove('tl-left', 'tl-right', 'tl-gold', 'tl-blue');
+
+        // Place on whichever column has the most room
+        var side, top;
+        if (leftBottom <= rightBottom) {
+            side = 'tl-left';
+            top = leftBottom + TL_SPACING;
+        } else {
+            side = 'tl-right';
+            top = rightBottom + TL_SPACING;
+        }
+
+        var minTop = lastTop + TL_SPACING;
+        if (top < minTop) top = minTop;
+
+        ev.classList.add(side, color);
+        ev.style.top = top + 'px';
+
+        var cardH = ev.querySelector('.tl-card').offsetHeight;
+        if (side === 'tl-left') {
+            leftBottom = top + cardH;
+        } else {
+            rightBottom = top + cardH;
+        }
+        lastTop = top;
+    }
+
+    document.getElementById('timeline').style.height =
+        Math.max(leftBottom, rightBottom) + 40 + 'px';
+}
+window.addEventListener('resize', positionTimeline);
+
+// Load tickers from database
+fetch(API + '/tickers.php')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var grid = document.getElementById('tickers-grid');
+        var tickers = data.tickers || [];
+        if (tickers.length === 0) return;
+        if (tickers.length > 1) grid.classList.add('multi');
+
+        var html = '';
+        for (var i = 0; i < tickers.length; i++) {
+            var t = tickers[i];
+            var id = 'ticker-' + t.ticker_key;
+            html += '<div class="countdown-bar" style="background:' + esc(t.ticker_bg) + ';color:' + esc(t.ticker_color_countdown) + '">'
+                + '<div class="ticker-content">'
+                + '<div class="countdown-label" style="color:' + esc(t.ticker_color_heading) + '">' + esc(t.ticker_heading) + '</div>'
+                + (t.ticker_subheading ? '<div class="countdown-sublabel">' + esc(t.ticker_subheading) + '</div>' : '')
+                + '<div class="countdown-timer">'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-days">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Days</span></div>'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-hours">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Hours</span></div>'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-mins">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Minutes</span></div>'
+                + '<div class="countdown-unit"><span class="countdown-value" id="' + id + '-secs">--</span><span class="countdown-name" style="color:' + esc(t.ticker_color_description) + '">Seconds</span></div>'
+                + '</div></div></div>';
+            tickerTargets.push({ id: id, target: new Date(t.ticker_target).getTime() });
+        }
+        grid.innerHTML = html;
+    });
+
+// Countdown timer - updates all tickers
+(function() {
+    function tick() {
+        for (var i = 0; i < tickerTargets.length; i++) {
+            var t = tickerTargets[i];
+            var diff = t.target - Date.now();
+            if (diff <= 0) diff = 0;
+            var d = Math.floor(diff / 86400000);
+            var h = Math.floor((diff % 86400000) / 3600000);
+            var m = Math.floor((diff % 3600000) / 60000);
+            var s = Math.floor((diff % 60000) / 1000);
+            var el;
+            el = document.getElementById(t.id + '-days'); if (el) el.textContent = d;
+            el = document.getElementById(t.id + '-hours'); if (el) el.textContent = h;
+            el = document.getElementById(t.id + '-mins'); if (el) el.textContent = m;
+            el = document.getElementById(t.id + '-secs'); if (el) el.textContent = s;
+        }
+    }
+    setInterval(tick, 1000);
+})();
+
+// Load page config from DB
+fetch(API + '/page-timeline-config.php')
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) {
+        var root = document.documentElement;
+        if (cfg['color-row-a'])            root.style.setProperty('--color-row-a', cfg['color-row-a']);
+        if (cfg['color-row-b'])            root.style.setProperty('--color-row-b', cfg['color-row-b']);
+        if (cfg['heading'])                document.getElementById('page-heading').textContent = cfg['heading'];
+        if (cfg['spacing-vertical'])       { TL_SPACING = parseInt(cfg['spacing-vertical']) || TL_SPACING; root.style.setProperty('--tl-spacing', TL_SPACING + 'px'); positionTimeline(); }
+        if (cfg['ticker-heading-size'])    root.style.setProperty('--ticker-heading-size', cfg['ticker-heading-size'] + 'em');
+        if (cfg['ticker-subheading-color']) root.style.setProperty('--ticker-subheading-color', cfg['ticker-subheading-color']);
+        if (cfg['ticker-subheading-size']) root.style.setProperty('--ticker-subheading-size', cfg['ticker-subheading-size'] + 'em');
+    });
+
+// Load timeline data
+fetch(API + '/timeline.php')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.error) {
+            document.getElementById('timeline').innerHTML = '<div class="tl-empty">' + esc(d.error) + '</div>';
+            return;
+        }
+        renderTimeline(d.events);
+        // Scroll to hash anchor after layout settles
+        if (window.location.hash) {
+            setTimeout(function() {
+                var el = document.getElementById(window.location.hash.substring(1));
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 500);
+        }
+    })
+    .catch(function(err) {
+        document.getElementById('timeline').innerHTML = '<div class="tl-empty">Error loading timeline.</div>';
+    });
+</script>
+
+    <footer></footer>
+<script src="/js/bg-video.js"></script>
+<script>
+(function(){fetch('/api/site-config.php').then(function(r){return r.json();}).then(function(cfg){
+    var r=document.documentElement;
+    if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
+    if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
+    document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+});})();
+</script>
+<script src="/js/site-footer.js?v=127"></script>
+</body>
+</html>

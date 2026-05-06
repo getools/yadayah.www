@@ -10,8 +10,10 @@
        "below the header" once embedded site-wide. */
     .search-container { max-width: 1024px; margin: 16px auto 0; padding: 0 20px; }
 
-    /* Two-row layout requested by the user. Row 1: text + mode + button.
-       Row 2: scope toggle (Books/Video) + scope-specific dropdowns. */
+    /* Layout. Row 1 (always visible): scope picker · text · mode · button.
+       Row 2 (conditionally visible): scope-specific filter dropdowns. The
+       row collapses to zero height in Site mode so the page doesn't reserve
+       the space when there's nothing to show. */
     .search-row {
         display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
         margin-bottom: 8px;
@@ -37,27 +39,72 @@
         padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.875rem;
     }
 
-    /* ── Scope toggle (Books / Video) ── */
-    .scope-toggle {
-        display: inline-flex; align-items: center; gap: 0;
-        background: #eef0f4; border-radius: 999px; padding: 3px;
-        font-size: 0.85rem; font-weight: 600; user-select: none;
+    /* ── Scope picker (Site / Books / Video) ──
+       Custom dropdown so each option can carry an icon. Native <select>
+       can't render SVG/inline-block content per option, and a styled
+       <button>+menu gives us the "graphic dropdown" the user wanted
+       without dragging in a date-picker library. */
+    .scope-picker {
+        position: relative; display: inline-flex; align-items: stretch;
+        font-size: 0.95rem; user-select: none; flex: 0 0 auto;
     }
-    .scope-toggle button {
-        background: transparent; border: 0; cursor: pointer; color: #555;
-        padding: 6px 16px; border-radius: 999px; font: inherit;
-        transition: background-color 0.15s, color 0.15s;
+    .scope-picker .scope-current {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 12px 8px 12px;
+        background: #31345A; color: #fff; border: 0; cursor: pointer;
+        border-radius: 6px 0 0 6px; font: inherit; font-weight: 600;
+        line-height: 1; min-width: 116px;
+        transition: background-color 0.15s;
     }
-    .scope-toggle button[aria-pressed="true"] {
-        background: #31345A; color: #fff;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    .scope-picker .scope-current:hover { background: #4a4e7a; }
+    .scope-picker .scope-current .icon {
+        width: 18px; height: 18px; flex: 0 0 18px;
     }
-    .scope-toggle button:focus-visible { outline: 2px solid #5b8def; outline-offset: 2px; }
+    .scope-picker .scope-current .label { flex: 1; text-align: left; }
+    .scope-picker .scope-current .chevron {
+        width: 12px; height: 12px; flex: 0 0 12px; opacity: 0.85;
+        transition: transform 0.15s;
+    }
+    .scope-picker.open .scope-current .chevron { transform: rotate(180deg); }
+    .scope-picker .scope-current:focus-visible { outline: 2px solid #5b8def; outline-offset: 2px; }
 
-    /* Book / Video scope-only filter rows. The hidden one is `display:none`
-       so it doesn't take up width in the flex row. */
-    .scope-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .scope-filters[hidden] { display: none; }
+    .scope-picker .scope-menu {
+        position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+        background: #fff; border: 1px solid #d0d4dd; border-radius: 6px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+        min-width: 100%; padding: 4px; display: none;
+    }
+    .scope-picker.open .scope-menu { display: block; }
+    .scope-picker .scope-option {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 14px; border-radius: 4px; cursor: pointer;
+        font-weight: 500; color: #333; white-space: nowrap;
+    }
+    .scope-picker .scope-option:hover { background: #eef2ff; }
+    .scope-picker .scope-option .icon { width: 18px; height: 18px; flex: 0 0 18px; color: #31345A; }
+    .scope-picker .scope-option[aria-selected="true"] {
+        background: #31345A; color: #fff;
+    }
+    .scope-picker .scope-option[aria-selected="true"] .icon { color: #fff; }
+
+    /* When the scope picker sits in front of the search box, drop the
+       input's left rounding so it visually attaches to the picker. */
+    .search-row .scope-picker + input[type="text"] {
+        border-top-left-radius: 0; border-bottom-left-radius: 0;
+        border-left: 0;
+    }
+
+    /* The collapsible filter strip below row 1. We animate height/opacity
+       so toggling between Books and Video doesn't pop the layout. */
+    .scope-filters {
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        overflow: hidden; max-height: 200px; opacity: 1;
+        transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;
+    }
+    .scope-filters[hidden] {
+        display: flex !important; max-height: 0; opacity: 0;
+        margin-bottom: 0; pointer-events: none;
+    }
 
     /* ── Results ── */
     .results-info {
@@ -66,6 +113,19 @@
         display: flex; justify-content: space-between; align-items: center;
     }
     .results-info strong { color: #31345A; }
+    /* Site-mode section header: "Books · 12 matches"   See all → */
+    .site-section {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 8px; margin: 18px 0 10px; padding-bottom: 6px;
+        border-bottom: 2px solid #31345A;
+    }
+    .site-section .heading { font-size: 1rem; font-weight: 700; color: #31345A; display: inline-flex; align-items: center; gap: 8px; }
+    .site-section .heading .icon { width: 18px; height: 18px; }
+    .site-section .heading .count { font-weight: 500; color: #777; font-size: 0.9rem; }
+    .site-section .see-all {
+        font-size: 0.85rem; cursor: pointer; color: #2563eb; text-decoration: underline;
+    }
+    .site-section .see-all:hover { color: #1d4ed8; }
     .clear-search { color: #31345A; cursor: pointer; font-size: 0.9rem; text-decoration: underline; white-space: nowrap; }
 
     .result-card {
@@ -215,9 +275,32 @@
 
 <div class="search-container">
     <form id="search-form" onsubmit="doSearch(1); return false;">
-        <!-- Row 1: search text, mode, button -->
+        <!-- Row 1: scope picker · text · mode · button -->
         <div class="search-row">
-            <input type="text" id="search-input" placeholder="Search books and video transcripts…" autocomplete="off">
+            <div class="scope-picker" id="scope-picker" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <button type="button" class="scope-current" onclick="toggleScopeMenu()" aria-label="Search scope">
+                    <span class="icon" id="scope-current-icon" aria-hidden="true"></span>
+                    <span class="label" id="scope-current-label">Site</span>
+                    <svg class="chevron" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+                <div class="scope-menu" role="listbox" aria-label="Search scope options">
+                    <div class="scope-option" role="option" data-scope="site"  aria-selected="true"  onclick="setScope('site')">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+                        Site
+                    </div>
+                    <div class="scope-option" role="option" data-scope="books" aria-selected="false" onclick="setScope('books')">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></svg>
+                        Books
+                    </div>
+                    <div class="scope-option" role="option" data-scope="video" aria-selected="false" onclick="setScope('video')">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l5-2.5z" fill="currentColor"/></svg>
+                        Video
+                    </div>
+                </div>
+            </div>
+            <input type="text" id="search-input" placeholder="Search the site…" autocomplete="off">
             <div class="filter-group">
                 <select id="search-mode">
                     <option value="all">All Words</option>
@@ -228,14 +311,10 @@
             <button type="submit" class="search-btn">Search</button>
         </div>
 
-        <!-- Row 2: scope toggle + scope-specific filters -->
+        <!-- Row 2: scope-specific filters. Hidden by default (Site mode);
+             reveals when the user picks Books or Video. -->
         <div class="search-row row-two">
-            <div class="scope-toggle" role="tablist" aria-label="Search scope">
-                <button type="button" id="scope-books" aria-pressed="true"  onclick="setScope('books')">Books</button>
-                <button type="button" id="scope-video" aria-pressed="false" onclick="setScope('video')">Video</button>
-            </div>
-
-            <div class="scope-filters" id="filters-books">
+            <div class="scope-filters" id="filters-books" hidden>
                 <div class="filter-group">
                     <label for="filter-series">Series:</label>
                     <select id="filter-series" onchange="onSeriesChange()">
@@ -284,10 +363,15 @@
 'use strict';
 
 // ── State ───────────────────────────────────────────────────────────
-var scope = 'books';
+var scope = 'site';        // 'site' | 'books' | 'video'  — Site is default
 var currentPage = 1;
 var booksFilters = { series: [], volumes: [] };  // /api/search-filters.php
 var videoFilters = { groups: [], categories: [] }; // /api/search-video-filters.php
+
+// Used by Site mode to render two clearly-separated sections without
+// inheriting any scope-specific filter state. We always fetch the top
+// SITE_SECTION_LIMIT of each kind for the mixed view.
+var SITE_SECTION_LIMIT = 10;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 function esc(s) {
@@ -397,19 +481,53 @@ function onGroupChange() {
     wrap.hidden = false;
 }
 
-// ── Scope toggle ────────────────────────────────────────────────────
+// ── Scope picker ────────────────────────────────────────────────────
+// The picker is a button that opens a small SVG-icon menu. Each scope
+// has its own placeholder + filter-row visibility. Site is the default
+// and shows no filter row — the row collapses out via CSS transition.
+var SCOPE_META = {
+    site:  { label: 'Site',  placeholder: 'Search the site…' },
+    books: { label: 'Books', placeholder: 'Search books…' },
+    video: { label: 'Video', placeholder: 'Search video transcripts…' },
+};
+
+function toggleScopeMenu() {
+    var picker = document.getElementById('scope-picker');
+    var open = !picker.classList.contains('open');
+    picker.classList.toggle('open', open);
+    picker.setAttribute('aria-expanded', String(open));
+}
+
+document.addEventListener('click', function (e) {
+    var picker = document.getElementById('scope-picker');
+    if (!picker) return;
+    if (picker.classList.contains('open') && !picker.contains(e.target)) {
+        picker.classList.remove('open');
+        picker.setAttribute('aria-expanded', 'false');
+    }
+});
+
 function setScope(s) {
-    if (s === scope) return;
     scope = s;
-    document.getElementById('scope-books').setAttribute('aria-pressed', String(s === 'books'));
-    document.getElementById('scope-video').setAttribute('aria-pressed', String(s === 'video'));
+    var picker = document.getElementById('scope-picker');
+    picker.classList.remove('open');
+    picker.setAttribute('aria-expanded', 'false');
+
+    // Update the picker button (label + icon) to match the menu option.
+    var menuOption = picker.querySelector('[data-scope="' + s + '"]');
+    document.getElementById('scope-current-label').textContent = SCOPE_META[s].label;
+    var icon = document.getElementById('scope-current-icon');
+    icon.innerHTML = menuOption ? menuOption.querySelector('.icon').outerHTML : '';
+    Array.prototype.forEach.call(picker.querySelectorAll('[role="option"]'), function (el) {
+        el.setAttribute('aria-selected', String(el.dataset.scope === s));
+    });
+
+    // Show/hide the relevant filter strip below row 1. CSS transitions the
+    // whole strip's max-height + opacity so the row doesn't pop.
     document.getElementById('filters-books').hidden = (s !== 'books');
     document.getElementById('filters-video').hidden = (s !== 'video');
-    // Don't auto-search on toggle — user clicks Search to commit.
-    var input = document.getElementById('search-input');
-    input.placeholder = (s === 'video')
-        ? 'Search video transcripts…'
-        : 'Search books…';
+
+    document.getElementById('search-input').placeholder = SCOPE_META[s].placeholder;
 }
 
 // ── Search ──────────────────────────────────────────────────────────
@@ -420,7 +538,34 @@ function doSearch(page) {
         document.getElementById('results-area').innerHTML = '';
         return;
     }
-    return scope === 'video' ? searchVideo(q) : searchBooks(q);
+    if (scope === 'site')  return searchSite(q);
+    if (scope === 'video') return searchVideo(q);
+    return searchBooks(q);
+}
+
+// Site mode: parallel-fetch top-N from books AND transcripts and render
+// each in its own labeled section. Pagination doesn't make sense across
+// two heterogeneous result sets — the per-section "See all" links flip
+// the scope and re-search so the user lands in the dedicated paginated
+// view of whichever side they care about.
+function searchSite(q) {
+    var mode = document.getElementById('search-mode').value;
+    var area = document.getElementById('results-area');
+    area.innerHTML = '<div class="loading">Searching the site…</div>';
+
+    var booksUrl = '/api/search.php?q=' + encodeURIComponent(q)
+                 + '&mode=' + encodeURIComponent(mode)
+                 + '&limit=' + SITE_SECTION_LIMIT;
+    var videoUrl = '/api/search-transcripts.php?q=' + encodeURIComponent(q)
+                 + '&mode=' + encodeURIComponent(mode)
+                 + '&limit=' + SITE_SECTION_LIMIT;
+
+    return Promise.all([
+        fetch(booksUrl).then(function (r) { return r.json(); }).catch(function () { return null; }),
+        fetch(videoUrl).then(function (r) { return r.json(); }).catch(function () { return null; }),
+    ]).then(function (out) {
+        renderSiteResults(q, mode, out[0], out[1]);
+    });
 }
 
 function searchBooks(q) {
@@ -460,15 +605,9 @@ function searchVideo(q) {
 }
 
 // ── Render: books ───────────────────────────────────────────────────
-function renderBookResults(q, mode, data) {
-    var area = document.getElementById('results-area');
-    if (!data || !data.results || data.results.length === 0) {
-        area.innerHTML = '<div class="no-results">No matches for <strong>' + esc(q) + '</strong> in books.</div>';
-        return;
-    }
-    var html = '<div class="results-info"><span><strong>' + data.total + '</strong> book matches for <strong>' + esc(q) + '</strong></span>'
-             + '<a class="clear-search" onclick="clearSearch()">Clear</a></div>';
-    data.results.forEach(function (r) {
+function booksResultsHtml(results) {
+    var html = '';
+    results.forEach(function (r) {
         var location = '';
         if (r.chapter_number) location += 'Ch ' + r.chapter_number;
         if (r.chapter_name)   location += (location ? ' · ' : '') + esc(r.chapter_name);
@@ -502,20 +641,26 @@ function renderBookResults(q, mode, data) {
               + '</div>'
               + '</div>';
     });
+    return html;
+}
+
+function renderBookResults(q, mode, data) {
+    var area = document.getElementById('results-area');
+    if (!data || !data.results || data.results.length === 0) {
+        area.innerHTML = '<div class="no-results">No matches for <strong>' + esc(q) + '</strong> in books.</div>';
+        return;
+    }
+    var html = '<div class="results-info"><span><strong>' + data.total + '</strong> book matches for <strong>' + esc(q) + '</strong></span>'
+             + '<a class="clear-search" onclick="clearSearch()">Clear</a></div>';
+    html += booksResultsHtml(data.results);
     html += renderPagination(data);
     area.innerHTML = html;
 }
 
 // ── Render: video / transcripts ─────────────────────────────────────
-function renderVideoResults(q, mode, data) {
-    var area = document.getElementById('results-area');
-    if (!data || !data.results || data.results.length === 0) {
-        area.innerHTML = '<div class="no-results">No matches for <strong>' + esc(q) + '</strong> in video transcripts.</div>';
-        return;
-    }
-    var html = '<div class="results-info"><span><strong>' + data.total + '</strong> transcript matches for <strong>' + esc(q) + '</strong></span>'
-             + '<a class="clear-search" onclick="clearSearch()">Clear</a></div>';
-    data.results.forEach(function (r, idx) {
+function videoResultsHtml(q, mode, results) {
+    var html = '';
+    results.forEach(function (r, idx) {
         // Stash full row JSON on a global keyed by id so the play handler
         // doesn't need to re-encode strings into the onclick attribute.
         window.__searchHits = window.__searchHits || {};
@@ -551,8 +696,73 @@ function renderVideoResults(q, mode, data) {
               + '</div>'
               + '</div>';
     });
+    return html;
+}
+
+function renderVideoResults(q, mode, data) {
+    var area = document.getElementById('results-area');
+    if (!data || !data.results || data.results.length === 0) {
+        area.innerHTML = '<div class="no-results">No matches for <strong>' + esc(q) + '</strong> in video transcripts.</div>';
+        return;
+    }
+    var html = '<div class="results-info"><span><strong>' + data.total + '</strong> transcript matches for <strong>' + esc(q) + '</strong></span>'
+             + '<a class="clear-search" onclick="clearSearch()">Clear</a></div>';
+    html += videoResultsHtml(q, mode, data.results);
     html += renderPagination(data);
     area.innerHTML = html;
+}
+
+// Render the Site-mode mixed view: a Books section then a Video section.
+// Each section uses its scope's existing card renderer for visual parity
+// with the dedicated views.
+function renderSiteResults(q, mode, books, videos) {
+    var area = document.getElementById('results-area');
+    var hasBooks = books && books.results && books.results.length;
+    var hasVideo = videos && videos.results && videos.results.length;
+    if (!hasBooks && !hasVideo) {
+        area.innerHTML = '<div class="no-results">No matches for <strong>' + esc(q) + '</strong>.</div>';
+        return;
+    }
+
+    var html = '<div class="results-info">'
+             + '<span><strong>' + (((books && books.total) || 0) + ((videos && videos.total) || 0))
+             + '</strong> total matches for <strong>' + esc(q) + '</strong></span>'
+             + '<a class="clear-search" onclick="clearSearch()">Clear</a></div>';
+
+    if (hasBooks) {
+        html += '<div class="site-section">'
+              +   '<div class="heading">'
+              +     '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></svg>'
+              +     'Books <span class="count">· ' + books.total + ' match' + (books.total === 1 ? '' : 'es') + '</span>'
+              +   '</div>'
+              +   (books.total > books.results.length
+                    ? '<a class="see-all" onclick="seeAllIn(\'books\')">See all in Books →</a>'
+                    : '')
+              + '</div>';
+        html += booksResultsHtml(books.results);
+    }
+
+    if (hasVideo) {
+        html += '<div class="site-section">'
+              +   '<div class="heading">'
+              +     '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l5-2.5z" fill="currentColor"/></svg>'
+              +     'Video <span class="count">· ' + videos.total + ' match' + (videos.total === 1 ? '' : 'es') + '</span>'
+              +   '</div>'
+              +   (videos.total > videos.results.length
+                    ? '<a class="see-all" onclick="seeAllIn(\'video\')">See all in Video →</a>'
+                    : '')
+              + '</div>';
+        html += videoResultsHtml(q, mode, videos.results);
+    }
+
+    area.innerHTML = html;
+}
+
+// Switch scope and re-run the search. Used by the Site-mode "See all"
+// links so the user lands on the paginated single-scope view.
+function seeAllIn(s) {
+    setScope(s);
+    doSearch(1);
 }
 
 // Pagination — same shape regardless of scope.
@@ -636,7 +846,11 @@ document.addEventListener('keydown', function (e) {
 });
 
 // ── Init ────────────────────────────────────────────────────────────
+// loadFilters populates the scope-specific dropdowns; setScope('site')
+// then paints the picker button (icon + label) and ensures both filter
+// rows are collapsed for the default Site scope.
 loadFilters();
+setScope('site');
 </script>
 </body>
 </html>
