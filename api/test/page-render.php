@@ -149,30 +149,50 @@ function resolveItemsSection(PDO $db, array $cfg): array {
         $params[] = $pat;
     }
 
-    $sort    = $cfg['sort']     ?? 'posted';
-    $sortDir = strtolower($cfg['sort_dir'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
-    switch ($sort) {
-        case 'title':
-            $order = "COALESCE(i.feed_item_title_override, i.feed_item_title_import) $sortDir";
-            break;
-        case 'orientation':
-            $order = "i.feed_item_orientation $sortDir, i.feed_item_publish_import_dtime DESC";
-            break;
-        case 'page':
-            // Best-effort: sort by min linked page_key
-            $order = "(SELECT MIN(page_key) FROM yy_feed_item_page WHERE feed_item_key = i.feed_item_key) $sortDir NULLS LAST";
-            break;
-        case 'category':
-            $order = "(SELECT MIN(category_key) FROM yy_feed_item_category WHERE feed_item_key = i.feed_item_key) $sortDir NULLS LAST";
-            break;
-        case 'random':
-            $order = "RANDOM()";
-            break;
-        case 'posted':
-        default:
-            $order = "COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) $sortDir";
-            break;
+    // Build multi-field ORDER BY. Accept either:
+    //   cfg.sorts: [{field, dir}, ...]   (preferred)
+    //   cfg.sort + cfg.sort_dir          (legacy single-field)
+    $sorts = [];
+    if (!empty($cfg['sorts']) && is_array($cfg['sorts'])) {
+        foreach ($cfg['sorts'] as $entry) {
+            if (!empty($entry['field'])) {
+                $sorts[] = ['field' => $entry['field'], 'dir' => $entry['dir'] ?? 'desc'];
+            }
+        }
+    } elseif (!empty($cfg['sort'])) {
+        $sorts[] = ['field' => $cfg['sort'], 'dir' => $cfg['sort_dir'] ?? 'desc'];
     }
+    if (!$sorts) $sorts[] = ['field' => 'posted', 'dir' => 'desc'];
+
+    $orderParts = [];
+    foreach ($sorts as $srt) {
+        $dir = strtolower($srt['dir']) === 'asc' ? 'ASC' : 'DESC';
+        switch ($srt['field']) {
+            case 'title':
+                $orderParts[] = "COALESCE(i.feed_item_title_override, i.feed_item_title_import) $dir";
+                break;
+            case 'orientation':
+                $orderParts[] = "i.feed_item_orientation $dir NULLS LAST";
+                break;
+            case 'page':
+                $orderParts[] = "(SELECT MIN(page_key) FROM yy_feed_item_page WHERE feed_item_key = i.feed_item_key) $dir NULLS LAST";
+                break;
+            case 'category':
+                $orderParts[] = "(SELECT MIN(category_key) FROM yy_feed_item_category WHERE feed_item_key = i.feed_item_key) $dir NULLS LAST";
+                break;
+            case 'duration':
+                $orderParts[] = "i.feed_item_duration_seconds $dir NULLS LAST";
+                break;
+            case 'random':
+                $orderParts[] = "RANDOM()";
+                break;
+            case 'posted':
+            default:
+                $orderParts[] = "COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) $dir";
+                break;
+        }
+    }
+    $order = implode(', ', $orderParts);
 
     $maxCount = (int)($cfg['max_count'] ?? 24);
     if ($maxCount < 1) $maxCount = 24;

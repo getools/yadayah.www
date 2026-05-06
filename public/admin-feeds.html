@@ -698,12 +698,15 @@ function checkAuth() {
             document.getElementById('app').style.display = '';
             document.getElementById('user-display').textContent = d.user_name;
             applyPagePermissions(d.pages);
-            loadFeeds();
-            // Restore last-used tab from previous session
-            var savedTab = window.adminUI ? adminUI.load('feeds', 'tab', 'sources') : 'sources';
-            if (savedTab && savedTab !== 'sources' && document.querySelector('.sub-tab[onclick*="' + savedTab + '"]')) {
-                switchFeedTab(savedTab);
-            }
+            // Wait for feeds to load before switching tabs — otherwise the
+            // Items tab's Feed filter dropdown gets built with an empty
+            // feeds[] array and shows only "All" with no actual options.
+            loadFeeds().then(function() {
+                var savedTab = window.adminUI ? adminUI.load('feeds', 'tab', 'sources') : 'sources';
+                if (savedTab && savedTab !== 'sources' && document.querySelector('.sub-tab[onclick*="' + savedTab + '"]')) {
+                    switchFeedTab(savedTab);
+                }
+            });
         } else {
             document.getElementById('login-screen').classList.add('visible');
         }
@@ -748,7 +751,7 @@ var allPages = [];
 var pageMappings = [];
 
 function loadFeeds() {
-    Promise.all([
+    return Promise.all([
         fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r) { return safeJson(r); }),
         fetch(API + '/admin-feeds.php?page_feeds=1&feed_key=0', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {pages:[]}; }),
         fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {page_feeds:[]}; })
