@@ -1,0 +1,195 @@
+<?php
+/**
+ * TEST endpoint — public renderer for a multi-section page.
+ *
+ *   GET ?code=foo
+ *   GET ?key=N
+ *
+ * Returns:
+ *   { page: {...}, sections: [
+ *       {type, title, config, items?:[...]}, ...   // items present only for type=items
+ *   ]}
+ *
+ * No auth required (public read), but only active pages and sections are returned.
+ */
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../feed-helpers.php';
+
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') errorResponse('Method not allowed', 405);
+
+$db = getDb();
+
+if (!empty($_GET['key'])) {
+    $stmt = $db->prepare("SELECT * FROM yy_page_test WHERE page_test_key = ? AND page_test_active_flag = TRUE");
+    $stmt->execute([(int)$_GET['key']]);
+} elseif (!empty($_GET['code'])) {
+    $stmt = $db->prepare("SELECT * FROM yy_page_test WHERE page_test_code = ? AND page_test_active_flag = TRUE");
+    $stmt->execute([trim($_GET['code'])]);
+} else {
+    errorResponse('Missing code or key');
+}
+$page = $stmt->fetch();
+if (!$page) errorResponse('Page not found', 404);
+
+$sec = $db->prepare("SELECT * FROM yy_page_section_test WHERE page_test_key = ? AND page_section_test_active_flag = TRUE ORDER BY page_section_test_sort, page_section_test_key");
+$sec->execute([$page['page_test_key']]);
+
+$out = [];
+foreach ($sec->fetchAll() as $s) {
+    $cfg = $s['page_section_test_config'];
+    $cfg = is_string($cfg) ? (json_decode($cfg, true) ?: []) : ($cfg ?: []);
+    $section = [
+        'key'    => (int)$s['page_section_test_key'],
+        'type'   => $s['page_section_test_type'],
+        'title'  => $s['page_section_test_title'],
+        'config' => $cfg,
+    ];
+    if ($section['type'] === 'items') {
+        $section['items'] = resolveItemsSection($db, $cfg);
+    }
+    $out[] = $section;
+}
+
+jsonResponse(['page' => $page, 'sections' => $out]);
+
+
+/**
+ * Translate an Items-section config object into a list of feed_item rows.
+ *
+ * Config shape (all fields optional unless noted):
+ *   feed_keys:        [int]            — restrict to these feeds
+ *   feed_item_keys:   [int]            — explicit pinned items (bypasses other filters when present)
+ *   posted_min:       'YYYY-MM-DD' or ISO
+ *   posted_max:       'YYYY-MM-DD' or ISO
+ *   include_hashtags: 'tag1,tag2'      — passed through buildFeedPageFilters
+ *   exclude_hashtags: 'tag1,tag2'
+ *   duration_min_sec: int
+ *   duration_max_sec: int
+ *   content_type:     'video'|'image'|'audio'|...
+ *   page_key:         int              — items linked to this page via yy_feed_item_page
+ *   category_key:     int              — items in this yy_feed_page_category
+ *   title_include:    'foo,bar'        — wildcard convention
+ *   title_exclude:    'baz'
+ *   sort:             'posted'|'title'|'orientation'|'page'|'category'|'random'
+ *   sort_dir:         'asc'|'desc'    — ignored when sort='random'
+ *   max_count:        int (default 24, capped at 200)
+ */
+function resolveItemsSection(PDO $db, array $cfg): array {
+    $where  = "i.feed_item_active_flag = TRUE";
+    $params = [];
+    $joins  = "";
+
+    if (!empty($cfg['feed_item_keys']) && is_array($cfg['feed_item_keys'])) {
+        $ids = array_values(array_filter(array_map('intval', $cfg['feed_item_keys'])));
+        if ($ids) {
+            $place = implode(',', array_fill(0, count($ids), '?'));
+            $where .= " AND i.feed_item_key IN ($place)";
+            array_push($params, ...$ids);
+        }
+    }
+    if (!empty($cfg['feed_keys']) && is_array($cfg['feed_keys'])) {
+        $ids = array_values(array_filter(array_map('intval', $cfg['feed_keys'])));
+        if ($ids) {
+            $place = implode(',', array_fill(0, count($ids), '?'));
+            $where .= " AND i.feed_key IN ($place)";
+            array_push($params, ...$ids);
+        }
+    }
+    if (!empty($cfg['posted_min'])) {
+        $where .= " AND COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) >= ?";
+        $params[] = $cfg['posted_min'];
+    }
+    if (!empty($cfg['posted_max'])) {
+        $where .= " AND COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) <= ?";
+        $params[] = $cfg['posted_max'];
+    }
+    if (isset($cfg['duration_min_sec']) && $cfg['duration_min_sec'] !== '' && $cfg['duration_min_sec'] !== null) {
+        $where .= " AND i.feed_item_duration_seconds >= ?";
+        $params[] = (int)$cfg['duration_min_sec'];
+    }
+    if (isset($cfg['duration_max_sec']) && $cfg['duration_max_sec'] !== '' && $cfg['duration_max_sec'] !== null) {
+        $where .= " AND i.feed_item_duration_seconds <= ?";
+        $params[] = (int)$cfg['duration_max_sec'];
+    }
+    if (!empty($cfg['content_type'])) {
+        $where .= " AND i.feed_item_type = ?";
+        $params[] = $cfg['content_type'];
+    }
+    if (!empty($cfg['page_key'])) {
+        $joins .= " JOIN yy_feed_item_page fip ON fip.feed_item_key = i.feed_item_key AND fip.page_key = ?";
+        $params[] = (int)$cfg['page_key'];
+    }
+    if (!empty($cfg['category_key'])) {
+        $joins .= " JOIN yy_feed_item_category fic ON fic.feed_item_key = i.feed_item_key AND fic.category_key = ?";
+        $params[] = (int)$cfg['category_key'];
+    }
+
+    // Title and hashtag filters via buildFeedPageFilters — but its $where uses bare column names,
+    // we're aliasing as i.* so reproduce its logic inline with the alias.
+    $include = !empty($cfg['include_hashtags']) ? $cfg['include_hashtags'] : '';
+    $exclude = !empty($cfg['exclude_hashtags']) ? $cfg['exclude_hashtags'] : '';
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $include))) as $term) {
+        $pat = filterLikePattern($term);
+        $where .= " AND (i.feed_item_tags ILIKE ? OR COALESCE(i.feed_item_title_override, i.feed_item_title_import) ILIKE ?)";
+        $params[] = $pat; $params[] = $pat;
+    }
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $exclude))) as $term) {
+        $pat = filterLikePattern($term);
+        $where .= " AND (i.feed_item_tags NOT ILIKE ? OR i.feed_item_tags IS NULL) AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) NOT ILIKE ?";
+        $params[] = $pat; $params[] = $pat;
+    }
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['title_include'] ?? ''))) as $term) {
+        $pat = filterLikePattern($term);
+        $where .= " AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) ILIKE ?";
+        $params[] = $pat;
+    }
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['title_exclude'] ?? ''))) as $term) {
+        $pat = filterLikePattern($term);
+        $where .= " AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) NOT ILIKE ?";
+        $params[] = $pat;
+    }
+
+    $sort    = $cfg['sort']     ?? 'posted';
+    $sortDir = strtolower($cfg['sort_dir'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
+    switch ($sort) {
+        case 'title':
+            $order = "COALESCE(i.feed_item_title_override, i.feed_item_title_import) $sortDir";
+            break;
+        case 'orientation':
+            $order = "i.feed_item_orientation $sortDir, i.feed_item_publish_import_dtime DESC";
+            break;
+        case 'page':
+            // Best-effort: sort by min linked page_key
+            $order = "(SELECT MIN(page_key) FROM yy_feed_item_page WHERE feed_item_key = i.feed_item_key) $sortDir NULLS LAST";
+            break;
+        case 'category':
+            $order = "(SELECT MIN(category_key) FROM yy_feed_item_category WHERE feed_item_key = i.feed_item_key) $sortDir NULLS LAST";
+            break;
+        case 'random':
+            $order = "RANDOM()";
+            break;
+        case 'posted':
+        default:
+            $order = "COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) $sortDir";
+            break;
+    }
+
+    $maxCount = (int)($cfg['max_count'] ?? 24);
+    if ($maxCount < 1) $maxCount = 24;
+    if ($maxCount > 200) $maxCount = 200;
+
+    $sql = "SELECT i.feed_item_key, i.feed_key, i.feed_item_external_id, i.feed_item_embed_id,
+                   COALESCE(i.feed_item_title_override, i.feed_item_title_import) AS feed_item_title,
+                   i.feed_item_url, i.feed_item_thumbnail, i.feed_item_duration, i.feed_item_duration_seconds,
+                   i.feed_item_orientation, i.feed_item_type, i.feed_item_tags,
+                   COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) AS feed_item_posted_dtime
+            FROM yy_feed_item i
+            $joins
+            WHERE $where
+            ORDER BY $order
+            LIMIT " . (int)$maxCount;
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}

@@ -82,7 +82,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=8"></script>
+<script src="/js/admin-nav.js?v=9"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -307,7 +307,7 @@ function dataCell(v) {
         icon = '✓'; cls = 'status-gen'; sub = '';
         tipPrefix = 'Last parsed' + (parseDt ? ' on ' + fullDt(parseDt) : '');
     } else {
-        icon = '—'; cls = 'status-miss'; sub = '';
+        icon = '○'; cls = 'status-miss'; sub = '';
         tipPrefix = 'No paragraphs or translations extracted yet';
     }
     // Stack the cell vertically — icon on top, T/P count below, then the
@@ -360,9 +360,9 @@ function flipCell(v) {
         if (inProc) {
             return '<div class="status-cell proc-pulse">'
                  + '<span class="status-icon status-proc" title="Pipeline running (' + esc(ps) + ')">⏳</span>'
-                 + '<div class="age">processing</div></div>';
+                 + '<div class="age">generating</div></div>';
         }
-        return '<div class="status-cell"><span class="status-icon status-miss" title="No PDF yet — upload DOCX first">—</span></div>';
+        return '<div class="status-cell"><span class="status-icon status-miss" title="No PDF yet — upload DOCX first">○</span></div>';
     }
     // PDF exists, flip_code missing — surface the reason it's pending.
     if (inProc) {
@@ -393,16 +393,20 @@ function flipCell(v) {
 function artifactCell(field, mtime, sourceMtime, pipelineStatus, label, downloadHref) {
     var ps = (pipelineStatus || '').toLowerCase();
     var inProc = PROC_STATES.indexOf(ps) >= 0;
+    // Treat the artifact as "actually present" only if both the DB column
+    // and a real mtime exist. Stale DB filename without a file on disk
+    // (mtime null) reads as not-yet-generated.
+    var present = !!field && !!mtime;
     // Pipeline is in flight AND we don't have the artifact yet — definitively
     // "being generated right now". Pulse animation reinforces that something
     // is actively happening.
-    if (inProc && !field) {
+    if (inProc && !present) {
         return '<div class="status-cell proc-pulse">'
              + '<span class="status-icon status-proc" title="' + label + ' is being generated (pipeline ' + esc(ps) + ')">⏳</span>'
-             + '<div class="age">processing</div></div>';
+             + '<div class="age">generating</div></div>';
     }
-    if (!field) {
-        return '<div class="status-cell"><span class="status-icon status-miss" title="' + label + ' missing — no file generated">—</span></div>';
+    if (!present) {
+        return '<div class="status-cell"><span class="status-icon status-miss" title="' + label + ' not generated yet">○</span></div>';
     }
     // Field exists — show age + stale indicator if applicable.
     // Stale means: this artifact's mtime predates its source's mtime, i.e. the
