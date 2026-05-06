@@ -98,14 +98,6 @@
         </div>
     </div>
 
-    <!-- FlipHTML5 session status — collapses out of sight when active.
-         Expands automatically when expired, with a paste-cookies form. -->
-    <div id="flip-session-bar" style="display:none;margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;"></div>
-
-    <!-- FlipHTML5 match status — shows how many volumes have flip_codes
-         vs. still need PDFs uploaded to FlipHTML5. Auto-matches by name. -->
-    <div id="flip-match-bar" style="display:none;margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;background:#eef2ff;border:1px solid #c8d0f0;color:#31345A;"></div>
-
     <div id="table-container">
         <div style="text-align:center;padding:20px;color:#888">Loading...</div>
     </div>
@@ -448,58 +440,10 @@ function renderBooks() {
     var container = document.getElementById('table-container');
     if (!allSeries.length) { container.innerHTML = '<div style="text-align:center;padding:30px;color:#888">No series found.</div>'; return; }
 
-    // Banner: count volumes whose flipbook upload is pending. Categorize by
-    // reason so the operator knows where the work is. Click the banner to
-    // jump-scroll the first pending volume into view.
-    var pending = { failed: [], skipped: [], pending: [] };
-    allVolumes.forEach(function(v) {
-        if (v.volume_flip_code || !v.volume_pdf) return;
-        var ps = (v.volume_pipeline_status || '').toLowerCase();
-        if (PROC_STATES.indexOf(ps) >= 0) return; // currently processing — not "pending"
-        if (ps === 'error')        pending.failed.push(v);
-        else if (ps === 'success') pending.skipped.push(v);
-        else                       pending.pending.push(v);
-    });
-    var totalPending = pending.failed.length + pending.skipped.length + pending.pending.length;
-    var banner = '';
-    if (totalPending > 0) {
-        var parts = [];
-        if (pending.failed.length)  parts.push('<span style="color:#c0392b;">✗ ' + pending.failed.length + ' failed</span>');
-        if (pending.skipped.length) parts.push('<span style="color:#a36100;">⌛ ' + pending.skipped.length + ' skipped</span>');
-        if (pending.pending.length) parts.push('<span style="color:#a36100;">⌛ ' + pending.pending.length + ' never run</span>');
-        var tipLines = [];
-        ['failed', 'skipped', 'pending'].forEach(function(cat) {
-            pending[cat].forEach(function(v) {
-                tipLines.push((cat === 'failed' ? '✗' : '⌛') + ' ' + v.volume_label
-                            + (v.volume_pipeline_message ? ' — ' + v.volume_pipeline_message : ''));
-            });
-        });
-        // Reprocess only retries the volumes that actually failed (status=error).
-        // Skipped + never-run categories are reachable through the per-row
-        // Retry Pipeline button on the edit form, but the banner button is
-        // intentionally narrow so a single click can't kick a 30+ volume
-        // re-run when only a handful are broken.
-        var reproKeys = pending.failed.map(function(v){ return v.volume_key; });
-        var btnHtml = '';
-        if (reproKeys.length) {
-            btnHtml = '<button id="reprocess-all-btn" onclick="reprocessFailed([' + reproKeys.join(',') + '])" '
-                    + 'title="Requeue only the volumes whose pipeline reported error" '
-                    + 'style="margin-left:auto;padding:5px 12px;background:#31345A;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.8rem;">'
-                    + 'Reprocess</button>';
-        }
-        banner = '<div style="margin:0 0 10px;padding:10px 14px;background:#fff8e1;border:1px solid #f5d76e;border-radius:6px;font-size:0.85rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;" '
-               + 'title="' + esc(tipLines.join('\n')) + '">'
-               + '<span><strong>' + totalPending + ' flipbook' + (totalPending === 1 ? '' : 's') + ' need processing:</strong> '
-               + parts.join(' &middot; ') + '</span>'
-               + btnHtml
-               + '</div>';
-    }
-
     // ONE table for all series; series rows span the whole width and act as
     // visual section dividers. Fixed column widths are honored across every
     // group so DOCX/PDF/FLIP/Status icons line up vertically down the page.
-    var html = banner
-        + '<table class="books-table">'
+    var html = '<table class="books-table">'
         + '<colgroup>'
         + '<col style="width:42px;">'         // #
         + '<col>'                              // Label (flex)
@@ -798,47 +742,6 @@ function regeneratePdf(volumeKey, btn) {
     });
 }
 
-// Bulk reprocess every volume whose pipeline status is 'error'. Calls
-// retry_pipeline serially with a short pause between each — the host worker
-// processes one book at a time, and bursting requests would just queue up
-// identical job files. Confirms once up front, surfaces overall progress in
-// the button text, and reloads the books list when done.
-function reprocessFailed(volumeKeys) {
-    if (!volumeKeys || !volumeKeys.length) return;
-    var n = volumeKeys.length;
-    if (!confirm('Requeue ' + n + ' failed flipbook' + (n === 1 ? '' : 's') + '? Each runs through DOCX → PDF → FlipHTML5 again on the host worker (one at a time, ~2-5 min each).')) return;
-    var btn = document.getElementById('reprocess-all-btn');
-    var orig = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.style.cursor = 'wait'; }
-    var done = 0, failed = 0;
-    function step(i) {
-        if (i >= volumeKeys.length) {
-            if (btn) {
-                btn.textContent = '✓ Queued ' + done + (failed ? ' (' + failed + ' failed)' : '');
-                btn.style.background = failed ? '#fff3cd' : '#d4edda';
-                btn.style.color = failed ? '#856404' : '#155724';
-            }
-            if (typeof loadBooks === 'function') setTimeout(loadBooks, 1500);
-            return;
-        }
-        if (btn) btn.textContent = '⏳ Queueing ' + (i + 1) + '/' + n + '…';
-        fetch(API + '/admin-books.php?action=retry_pipeline&key=' + volumeKeys[i], {
-            method: 'POST', credentials: 'include',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({action:'retry_pipeline', volume_key: volumeKeys[i]})
-        }).then(function(r){ return r.json(); }).then(function(d) {
-            if (d && !d.error) done++; else failed++;
-            // 200ms pause keeps us off the rate limiter and gives PHP time to
-            // write each job file before we drop the next.
-            setTimeout(function(){ step(i + 1); }, 200);
-        }).catch(function() {
-            failed++;
-            setTimeout(function(){ step(i + 1); }, 200);
-        });
-    }
-    step(0);
-}
-
 function uploadDocx() {
     var key = document.getElementById('f-key').value;
     if (!key) { alert('Save the volume first before uploading a .docx'); return; }
@@ -903,179 +806,6 @@ function saveSeries() {
 document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
 checkAuth();
 
-// ── FlipHTML5 session panel ─────────────────────────────────────────
-// Polls /api/admin-fliphtml5-session.php. When the session is healthy this
-// is collapsed; when expired (or never set) it expands with a paste-cookies
-// flow so admins can refresh without leaving the page.
-function pollFlipSession() {
-    fetch(API + '/admin-fliphtml5-session.php', {credentials:'include'})
-        .then(function(r){return safeJson(r);})
-        .then(renderFlipSession)
-        .catch(function(){});
-}
-function renderFlipSession(d) {
-    var bar = document.getElementById('flip-session-bar');
-    if (!bar) return;
-    if (!d || d.error) { bar.style.display = 'none'; return; }
-    var state = d.state || 'unknown';
-    var palette = state === 'active'
-        ? {bg:'#e8f5e9', border:'#a5d6a7', fg:'#1b5e20', label:'Active'}
-        : state === 'pending'
-        ? {bg:'#fff8e1', border:'#ffe082', fg:'#7c5e00', label:'Pending'}
-        : state === 'expired'
-        ? {bg:'#fdecea', border:'#f5b7b1', fg:'#a33',    label:'Expired — refresh required'}
-        : {bg:'#eceff1', border:'#cfd8dc', fg:'#37474f', label:'Unknown — no session yet'};
-    bar.style.cssText = 'margin:0 0 12px 0;padding:8px 12px;border-radius:6px;font-size:0.85rem;'
-        + 'background:' + palette.bg + ';border:1px solid ' + palette.border + ';color:' + palette.fg + ';';
-    var saved = d.cookies_saved_at ? (' &middot; cookies saved ' + new Date(d.cookies_saved_at).toLocaleString()) : '';
-    var msg = d.message ? (' &middot; ' + esc(d.message)) : '';
-    var expanded = state !== 'active';
-    bar.innerHTML =
-        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-      + '<strong>FlipHTML5 session:</strong> ' + esc(palette.label)
-      + '<span style="color:#666;font-size:0.78rem;">' + msg + saved + '</span>'
-      + '<button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="toggleFlipPanel()">'
-      +   (expanded ? 'Hide' : 'Refresh session') + '</button>'
-      + (d.cookies_present
-            ? '<button class="btn btn-secondary btn-sm" onclick="clearFlipCookies()">Clear</button>'
-            : '')
-      + '</div>'
-      + '<div id="flip-paste-panel" style="display:' + (expanded ? 'block' : 'none') + ';margin-top:10px;">'
-      +   '<div style="font-size:0.78rem;color:#555;margin-bottom:8px;line-height:1.5;">'
-      +     '<strong>Recommended (one click after setup):</strong> install the Yada Yah FlipHTML5 Sync extension. '
-      +     'Then while logged in to <a href="https://fliphtml5.com/dashboard/home" target="_blank" rel="noopener">fliphtml5.com</a>, '
-      +     'click the extension icon &rarr; <em>Sync session to Yada Yah</em>. No paste needed.'
-      +     '<details style="margin-top:6px;"><summary style="cursor:pointer;color:#31345A;">First-time install (~30 s)</summary>'
-      +       '<ol style="margin:4px 0 0 18px;padding:0;">'
-      +         '<li><a href="/downloads/yadayah-fliphtml5-sync.zip" download>Download the extension (.zip)</a> and unzip it.</li>'
-      +         '<li>Open <code>chrome://extensions</code> in Chrome (paste into the address bar).</li>'
-      +         '<li>Toggle <em>Developer mode</em> on (top-right).</li>'
-      +         '<li>Drag the unzipped <code>yadayah-fliphtml5-sync</code> folder onto the page (or click <em>Load unpacked</em> and select it).</li>'
-      +         '<li>Pin the extension to your toolbar (puzzle-piece icon &rarr; pin).</li>'
-      +       '</ol>'
-      +     '</details>'
-      +     '<details style="margin-top:6px;"><summary style="cursor:pointer;color:#31345A;">Manual paste (if the extension is not handy)</summary>'
-      +       '<ol style="margin:4px 0 0 18px;padding:0;">'
-      +         '<li>Install the <a href="https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener">Cookie-Editor</a> extension &rarr; click its icon on fliphtml5.com &rarr; <em>Export</em> &rarr; paste below.</li>'
-      +         '<li>Or DevTools (F12) &rarr; <em>Network</em> tab &rarr; reload &rarr; right-click any fliphtml5.com request &rarr; <em>Copy as cURL (bash)</em> &rarr; paste below.</li>'
-      +       '</ol>'
-      +     '</details>'
-      +   '</div>'
-      +   '<textarea id="flip-cookie-input" rows="5" placeholder="Paste cURL or JSON cookies here…" '
-      +     'style="width:100%;font-family:monospace;font-size:0.78rem;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"></textarea>'
-      +   '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;">'
-      +     '<button class="btn btn-primary btn-sm" onclick="saveFlipCookies()">Save cookies</button>'
-      +     '<span id="flip-save-status" style="font-size:0.8rem;"></span>'
-      +   '</div>'
-      + '</div>';
-    bar.style.display = '';
-}
-function toggleFlipPanel() {
-    var panel = document.getElementById('flip-paste-panel');
-    if (!panel) return;
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-}
-function saveFlipCookies() {
-    var ta = document.getElementById('flip-cookie-input');
-    var st = document.getElementById('flip-save-status');
-    var raw = ta ? ta.value : '';
-    if (!raw.trim()) { if (st) st.textContent = 'Paste cookies first'; return; }
-    if (st) { st.textContent = 'Saving…'; st.style.color = '#666'; }
-    fetch(API + '/admin-fliphtml5-session.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'save_cookies', cookies: raw}),
-    }).then(function(r){return safeJson(r);}).then(function(d) {
-        if (d.error) { if (st) { st.textContent = '✗ ' + d.error; st.style.color = '#c00'; } return; }
-        var preview = d.names && d.names.length ? ' (' + d.names.slice(0, 6).join(', ') + (d.names.length > 6 ? ', …' : '') + ')' : '';
-        if (st) { st.innerHTML = '✓ saved ' + (d.count || 0) + ' cookie(s)' + esc(preview); st.style.color = '#1b5e20'; }
-        if (ta) ta.value = '';
-        pollFlipSession();
-    }).catch(function(e) {
-        if (st) { st.textContent = '✗ ' + (e && e.message); st.style.color = '#c00'; }
-    });
-}
-function clearFlipCookies() {
-    if (!confirm('Clear saved FlipHTML5 cookies? Next upload will fall back to form login (likely to fail).')) return;
-    fetch(API + '/admin-fliphtml5-session.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'clear_cookies'}),
-    }).then(function(){ pollFlipSession(); });
-}
-// First poll after auth lands; refresh every 60s while the page is open.
-setTimeout(pollFlipSession, 1500);
-setInterval(pollFlipSession, 60000);
-
-// ── FlipHTML5 match status panel ────────────────────────────────────
-// Shows how many volumes have a FlipHTML5 code vs. still need PDFs
-// uploaded. The cron matches by name hourly; the "Match now" button
-// triggers a one-off run via a host-side trigger file.
-function pollFlipMatch() {
-    fetch(API + '/admin-fliphtml5-match.php', {credentials:'include'})
-        .then(function(r){return safeJson(r);})
-        .then(renderFlipMatch)
-        .catch(function(){});
-}
-function renderFlipMatch(d) {
-    var bar = document.getElementById('flip-match-bar');
-    if (!bar) return;
-    if (!d || d.error) { bar.style.display = 'none'; return; }
-    var total = d.total || 0, matched = d.matched || 0, unmatched = d.unmatched_count || 0;
-    var lr = d.last_run || {};
-    var lastWhen = lr.run_at ? new Date(lr.run_at).toLocaleString() : '—';
-    var lastBooks = lr.books_found != null ? lr.books_found : '?';
-    var listHtml = '';
-    if (unmatched > 0 && d.unmatched && d.unmatched.length) {
-        listHtml = '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:600;">'
-            + unmatched + ' volume' + (unmatched === 1 ? '' : 's') + ' still need a FlipHTML5 book</summary>'
-            + '<div style="font-size:0.78rem;color:#444;margin:6px 0 4px;line-height:1.5;">'
-            +   'Drop these PDFs into your FlipHTML5 dashboard (multi-file drag-drop works). The hourly match cron — or the <em>Match now</em> button — will wire each new book back to its volume by name.'
-            + '</div>'
-            + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
-            + '<thead><tr style="text-align:left;color:#666;border-bottom:1px solid #d0d7e0;">'
-            +   '<th style="padding:4px 6px;">Volume</th><th style="padding:4px 6px;">Series</th><th style="padding:4px 6px;">PDF</th>'
-            + '</tr></thead><tbody>';
-        d.unmatched.forEach(function(v) {
-            var pdfHref = '/pdf/' + encodeURIComponent(v.volume_pdf);
-            listHtml += '<tr><td style="padding:3px 6px;">' + esc(v.volume_label || v.volume_code) + '</td>'
-                + '<td style="padding:3px 6px;color:#777;">' + esc(v.series_label || '') + '</td>'
-                + '<td style="padding:3px 6px;"><a href="' + pdfHref + '" target="_blank" download>' + esc(v.volume_pdf) + '</a></td></tr>';
-        });
-        listHtml += '</tbody></table></details>';
-    }
-    bar.innerHTML =
-        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-      + '<strong>FlipHTML5 books:</strong> ' + matched + ' of ' + total + ' matched'
-      + (unmatched > 0 ? ' &middot; ' + unmatched + ' need a flipbook on FlipHTML5' : '')
-      + '<span style="color:#666;font-size:0.78rem;">&middot; last match run ' + esc(lastWhen) + ' (saw ' + esc(String(lastBooks)) + ' books)</span>'
-      + '<button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="triggerFlipMatch(this)">Match now</button>'
-      + '</div>'
-      + listHtml;
-    bar.style.display = '';
-}
-function triggerFlipMatch(btn) {
-    if (btn) { btn.disabled = true; btn.textContent = 'Triggered…'; }
-    fetch(API + '/admin-fliphtml5-match.php', {method: 'POST', credentials: 'include'})
-        .then(function(r){return safeJson(r);})
-        .then(function(){
-            // Match runs in ~30s on the host. Re-poll every 10s for ~90s
-            // so the UI refreshes once the run completes.
-            var ticks = 0;
-            var iv = setInterval(function(){
-                pollFlipMatch();
-                if (++ticks >= 9) clearInterval(iv);
-            }, 10000);
-            setTimeout(function(){
-                if (btn) { btn.disabled = false; btn.textContent = 'Match now'; }
-            }, 30000);
-        })
-        .catch(function(){
-            if (btn) { btn.disabled = false; btn.textContent = 'Match now'; }
-        });
-}
-setTimeout(pollFlipMatch, 2000);
-setInterval(pollFlipMatch, 120000);
 </script>
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/session-state.js?v=1"></script>
