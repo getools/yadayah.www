@@ -11,6 +11,24 @@
 require_once __DIR__ . '/feed-helpers.php';
 
 /**
+ * Pages this item is explicitly categorized on (via yy_feed_item_category).
+ * These are page assignments that came from #vlog|slug|ep / #basics|slug|ep
+ * style hashtag declarations during sync — an explicit "this video belongs
+ * on page X" signal that overrides any include/exclude filter rules on the
+ * destination page.
+ */
+function explicitPagesForItem(PDO $db, int $feedItemKey): array {
+    $stmt = $db->prepare("
+        SELECT DISTINCT fpc.page_key
+        FROM yy_feed_item_category fic
+        JOIN yy_feed_page_category fpc ON fpc.category_key = fic.category_key
+        WHERE fic.feed_item_key = ?
+    ");
+    $stmt->execute([$feedItemKey]);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
  * Evaluate which pages a single feed item belongs to and update the join table.
  */
 function updateItemPages(PDO $db, int $feedItemKey): void {
@@ -39,6 +57,10 @@ function updateItemPages(PDO $db, int $feedItemKey): void {
         if (itemMatchesPage($item, $fp)) {
             $matchedPages[] = (int)$fp['page_key'];
         }
+    }
+    // Union with pages we're explicitly categorized on — overrides filters.
+    foreach (explicitPagesForItem($db, $feedItemKey) as $pk) {
+        if (!in_array($pk, $matchedPages, true)) $matchedPages[] = $pk;
     }
 
     // Replace existing associations
@@ -86,6 +108,18 @@ function updatePageItems(PDO $db, int $pageKey): void {
             }
         }
     }
+
+    // Also add any items explicitly categorized on this page — overrides filters.
+    $expStmt = $db->prepare("
+        INSERT INTO yy_feed_item_page (feed_item_key, page_key)
+        SELECT DISTINCT fic.feed_item_key, fpc.page_key
+        FROM yy_feed_item_category fic
+        JOIN yy_feed_page_category fpc ON fpc.category_key = fic.category_key
+        JOIN yy_feed_item fi ON fi.feed_item_key = fic.feed_item_key
+        WHERE fpc.page_key = ? AND fi.feed_item_active_flag = TRUE
+        ON CONFLICT DO NOTHING
+    ");
+    $expStmt->execute([$pageKey]);
 }
 
 /**
@@ -162,12 +196,42 @@ function updateItemPagesForFeed(PDO $db, int $feedKey): void {
         $db->prepare("DELETE FROM yy_feed_item_page WHERE feed_item_key IN ($placeholders)")->execute($keys);
     }
 
+    // Pre-fetch explicit page assignments (from yy_feed_item_category) so we
+    // can union them with filter-matched pages. An item with #vlog|slug|ep or
+    // #basics|slug|ep in its description gets a category row at sync time —
+    // that's a strong "this video belongs here" signal that overrides any
+    // include/exclude filter rule on the destination page.
+    $explicit = [];
+    if ($items) {
+        $itemKeys = array_map('intval', array_column($items, 'feed_item_key'));
+        $ph = implode(',', array_fill(0, count($itemKeys), '?'));
+        $expStmt = $db->prepare("
+            SELECT fic.feed_item_key, fpc.page_key
+            FROM yy_feed_item_category fic
+            JOIN yy_feed_page_category fpc ON fpc.category_key = fic.category_key
+            WHERE fic.feed_item_key IN ($ph)
+        ");
+        $expStmt->execute($itemKeys);
+        foreach ($expStmt->fetchAll() as $r) {
+            $explicit[(int)$r['feed_item_key']][] = (int)$r['page_key'];
+        }
+    }
+
     $insertStmt = $db->prepare("INSERT INTO yy_feed_item_page (feed_item_key, page_key) VALUES (?, ?) ON CONFLICT DO NOTHING");
     foreach ($items as $item) {
+        $itemKey = (int)$item['feed_item_key'];
+        $assigned = [];
         foreach ($feedPages as $fp) {
             if (itemMatchesPage($item, $fp)) {
-                $insertStmt->execute([$item['feed_item_key'], (int)$fp['page_key']]);
+                $pk = (int)$fp['page_key'];
+                if (!in_array($pk, $assigned, true)) $assigned[] = $pk;
             }
+        }
+        foreach ($explicit[$itemKey] ?? [] as $pk) {
+            if (!in_array($pk, $assigned, true)) $assigned[] = $pk;
+        }
+        foreach ($assigned as $pk) {
+            $insertStmt->execute([$itemKey, $pk]);
         }
     }
 }

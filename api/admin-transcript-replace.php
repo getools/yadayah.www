@@ -77,6 +77,13 @@ if ($action === 'preview') {
     $cnt->execute($params);
     $total = (int)$cnt->fetchColumn();
 
+    // Order samples so the currently-open transcript's matches come first
+    // (so the preview always shows them, even if other items have many more
+    // matches and would otherwise grab all 50 sample slots), followed by
+    // the rest in feed_item_key order.
+    $currentKey = isset($data['current_item_key']) && is_numeric($data['current_item_key'])
+        ? (int)$data['current_item_key'] : 0;
+
     $sampleStmt = $db->prepare("
         SELECT t.feed_item_transcript_key,
                t.feed_item_transcript_segment::text AS segment,
@@ -87,15 +94,36 @@ if ($action === 'preview') {
           FROM yy_feed_item_transcript t
           JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
          WHERE $where
-         ORDER BY t.feed_item_key, t.feed_item_transcript_sort, t.feed_item_transcript_segment
-         LIMIT 50
+         ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END),
+                  t.feed_item_key,
+                  t.feed_item_transcript_sort,
+                  t.feed_item_transcript_segment
+         LIMIT 200
     ");
-    $sampleStmt->execute(array_merge([$pattern, $safeReplace, $flags], $params));
+    $sampleStmt->execute(array_merge([$pattern, $safeReplace, $flags], $params, [$currentKey]));
     $samples = $sampleStmt->fetchAll();
+
+    // Per-transcript hit counts so the UI can show "(N matches)" on each
+    // group header and skip transcripts whose only hits aren't in `samples`
+    // (which can happen because of the 200-row sample cap).
+    $perItemStmt = $db->prepare("
+        SELECT t.feed_item_key,
+               COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS title,
+               count(*) AS hits
+          FROM yy_feed_item_transcript t
+          JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
+         WHERE $where
+         GROUP BY t.feed_item_key, fi.feed_item_title_override, fi.feed_item_title_import
+         ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END), hits DESC, fi.feed_item_title_import
+    ");
+    $perItemStmt->execute(array_merge($params, [$currentKey]));
+    $per_item = $perItemStmt->fetchAll();
 
     jsonResponse([
         'total' => $total,
         'samples' => $samples,
+        'per_item' => $per_item,
+        'current_item_key' => $currentKey,
         'pattern' => $pattern,
         'flags' => $flags,
     ]);

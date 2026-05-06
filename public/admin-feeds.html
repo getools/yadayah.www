@@ -3301,7 +3301,10 @@ function srPayload() {
         case_sensitive: document.getElementById('sr-case').checked,
         // Word boundary doesn't apply in regex mode — user can write \m...\M themselves
         word_boundary: !regex && document.getElementById('sr-wb').checked,
-        regex: regex
+        regex: regex,
+        // Preview groups the currently-open transcript's hits first so the
+        // admin always sees what changes locally before scanning others.
+        current_item_key: _transcriptItemKey || 0
     };
 }
 function srToggleRegexMode() {
@@ -3329,24 +3332,66 @@ function srPreview() {
         body: JSON.stringify(Object.assign({action:'preview'}, p))
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { sum.textContent = '✗ ' + d.error; return; }
-        sum.innerHTML = '<strong>' + d.total + '</strong> row' + (d.total===1?'':'s') + ' match. ' + (d.samples.length < d.total ? 'Showing first ' + d.samples.length + ':' : '');
-        if (!d.samples.length) { list.innerHTML = '<div style="padding:14px;color:#999;text-align:center;">No matches.</div>'; apply.disabled = true; apply.style.opacity = '0.5'; return; }
-        var html = '<table style="width:100%;border-collapse:collapse;">'
-            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
-            + '<th style="padding:6px;text-align:left;width:18%;">Item / Time</th>'
-            + '<th style="padding:6px;text-align:left;">Old → New</th>'
-            + '</tr></thead><tbody>';
+        var perItem = Array.isArray(d.per_item) ? d.per_item : [];
+        var transcriptCount = perItem.length;
+        sum.innerHTML = '<strong>' + d.total + '</strong> row' + (d.total===1?'':'s') + ' match across <strong>'
+            + transcriptCount + '</strong> transcript' + (transcriptCount===1?'':'s') + '.';
+        if (!d.samples || !d.samples.length) {
+            list.innerHTML = '<div style="padding:14px;color:#999;text-align:center;">No matches.</div>';
+            apply.disabled = true; apply.style.opacity = '0.5'; return;
+        }
+        // Group samples by feed_item_key, preserving the API's ordering
+        // (current transcript first, then others). Transcripts with no hits
+        // were already filtered out server-side.
+        var groups = [];          // [{ key, title, hits, samples: [] }]
+        var byKey = {};
         d.samples.forEach(function(s) {
-            html += '<tr style="border-top:1px solid #eee;">'
-                + '<td style="padding:6px;font-size:0.78rem;color:#666;vertical-align:top;">'
-                +   esc((s.title || '').substring(0, 50)) + '<br><span style="font-family:monospace;">'
-                +   esc(s.segment) + '</span></td>'
-                + '<td style="padding:6px;">'
-                +   '<div style="color:#a30;text-decoration:line-through;">' + esc(s.old_text) + '</div>'
-                +   '<div style="color:#1d6b3a;">' + esc(s.new_text) + '</div>'
-                + '</td></tr>';
+            var k = String(s.feed_item_key);
+            if (!byKey[k]) {
+                var meta = perItem.find(function(p){ return String(p.feed_item_key) === k; }) || {};
+                byKey[k] = { key: k, title: s.title || '(untitled)', hits: meta.hits || 0, samples: [] };
+                groups.push(byKey[k]);
+            }
+            byKey[k].samples.push(s);
         });
-        html += '</tbody></table>';
+        // Append transcripts that had hits but no sample rows (extremely
+        // rare — only if 200-row sample cap was exhausted by earlier ones).
+        perItem.forEach(function(p) {
+            if (!byKey[String(p.feed_item_key)]) {
+                groups.push({ key: String(p.feed_item_key), title: p.title || '(untitled)',
+                              hits: p.hits, samples: [] });
+            }
+        });
+
+        var currentKey = String(_transcriptItemKey || '');
+        var html = '';
+        groups.forEach(function(g, gi) {
+            var isCurrent = g.key === currentKey;
+            var headerBg = isCurrent ? '#fff8e1' : '#eef2ff';
+            var headerColor = isCurrent ? '#7c5e00' : '#31345A';
+            var label = (isCurrent ? 'CURRENT — ' : '') + (g.title || '');
+            html += '<div style="margin-top:' + (gi === 0 ? '0' : '12px') + ';">'
+                +   '<div style="background:' + headerBg + ';color:' + headerColor + ';padding:6px 10px;border:1px solid ' + (isCurrent ? '#ffe082' : '#c8d0f0') + ';border-radius:4px 4px 0 0;font-weight:600;font-size:0.85rem;">'
+                +     esc(label) + ' <span style="font-weight:400;">— ' + g.hits + ' match' + (g.hits===1?'':'es')
+                +     (g.samples.length < g.hits ? ' (showing ' + g.samples.length + ')' : '') + '</span>'
+                +   '</div>';
+            if (g.samples.length === 0) {
+                html += '<div style="padding:8px 10px;color:#888;font-size:0.78rem;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 4px 4px;">(matches in this transcript not shown — sample cap reached on earlier transcripts)</div>';
+            } else {
+                html += '<table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 4px 4px;">';
+                g.samples.forEach(function(s) {
+                    html += '<tr style="border-top:1px solid #eee;">'
+                        + '<td style="padding:5px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;width:90px;white-space:nowrap;">'
+                        +   esc(s.segment) + '</td>'
+                        + '<td style="padding:5px 10px;">'
+                        +   '<div style="color:#a30;text-decoration:line-through;">' + esc(s.old_text) + '</div>'
+                        +   '<div style="color:#1d6b3a;">' + esc(s.new_text) + '</div>'
+                        + '</td></tr>';
+                });
+                html += '</table>';
+            }
+            html += '</div>';
+        });
         list.innerHTML = html;
         if (d.total > 0) { apply.disabled = false; apply.style.opacity = '1'; }
     });
