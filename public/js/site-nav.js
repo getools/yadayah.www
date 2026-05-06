@@ -124,6 +124,12 @@
             if (data.page_heading_margin_bottom) root.style.setProperty('--heading-margin-bottom', data.page_heading_margin_bottom + 'px');
             if (data.page_heading_padding_top)   root.style.setProperty('--heading-padding-top', data.page_heading_padding_top + 'px');
             if (data.page_heading_padding_bottom) root.style.setProperty('--heading-padding-bottom', data.page_heading_padding_bottom + 'px');
+            // Global search bar (rendered just below the site header) shares
+            // the page-heading group in admin so the operator can tune both
+            // bands together. bg accepts any rgba()/hex; height is the
+            // total band height in px.
+            if (data.page_heading_search_bg_color) root.style.setProperty('--search-band-bg', data.page_heading_search_bg_color);
+            if (data.page_heading_search_height)   root.style.setProperty('--search-band-height', data.page_heading_search_height + 'px');
 
             reveal();
         })

@@ -44,6 +44,13 @@
         .px-wrap, .em-wrap { display: flex; align-items: center; gap: 8px; }
         .px-wrap input, .em-wrap input { width: 120px; }
         .unit-label { font-size: 0.85rem; color: #888; }
+        /* Two-cell row layout for paired inputs like Margin: Top [ ] Bottom [ ] */
+        .setting-pair { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .setting-pair .pair-label {
+            font-weight: 600; font-size: 0.85rem; color: #555;
+            min-width: 56px;
+        }
+        .setting-pair .px-wrap input { width: 90px; }
         #save-status { font-size: 0.875rem; color: #27ae60; }
         #save-error  { font-size: 0.875rem; color: #c0392b; }
     </style>
@@ -111,20 +118,30 @@
                 </div>
             </div>
             <div class="setting-row">
-                <label>Margin Top</label>
-                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-margin-top" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+                <label>Search Background</label>
+                <div class="setting-input"><div class="rgba-picker" data-id="ph-search-bg"></div></div>
             </div>
             <div class="setting-row">
-                <label>Margin Bottom</label>
-                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-margin-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+                <label>Search Height</label>
+                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-search-height" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
             </div>
             <div class="setting-row">
-                <label>Padding Top</label>
-                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-padding-top" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+                <label>Margin</label>
+                <div class="setting-input setting-pair">
+                    <span class="pair-label">Top</span>
+                    <div class="px-wrap"><input type="number" id="input-ph-margin-top" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    <span class="pair-label">Bottom</span>
+                    <div class="px-wrap"><input type="number" id="input-ph-margin-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                </div>
             </div>
             <div class="setting-row">
-                <label>Padding Bottom</label>
-                <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-padding-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+                <label>Padding</label>
+                <div class="setting-input setting-pair">
+                    <span class="pair-label">Top</span>
+                    <div class="px-wrap"><input type="number" id="input-ph-padding-top" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                    <span class="pair-label">Bottom</span>
+                    <div class="px-wrap"><input type="number" id="input-ph-padding-bottom" value="" step="1" min="0"><span class="unit-label">px</span></div>
+                </div>
             </div>
         </div>
         <div class="section-box">
@@ -270,6 +287,9 @@ function renderPageHeading(rows) {
 
     initRgbaPickers();
     setPickerValue('ph-text-color', (ph['page-heading-text-color'] || {}).setting_value || '#E5C86C');
+    // Search bar background defaults to the dark teal already used as the
+    // sub-toolbar fallback (#0A333A) so it visually belongs out of the box.
+    setPickerValue('ph-search-bg', (ph['page-heading-search-bg-color'] || {}).setting_value || 'rgba(10,51,58,1)');
 
     var sizeInput = document.getElementById('input-ph-text-size');
     sizeInput.value = (ph['page-heading-text-size'] || {}).setting_value || '2.2';
@@ -283,9 +303,10 @@ function renderPageHeading(rows) {
         opVal.textContent = (parseInt(opSlider.value) / 100).toFixed(2);
     });
 
-    document.getElementById('input-ph-margin-top').value = (ph['page-heading-margin-top'] || {}).setting_value || '0';
-    document.getElementById('input-ph-margin-bottom').value = (ph['page-heading-margin-bottom'] || {}).setting_value || '10';
-    document.getElementById('input-ph-padding-top').value = (ph['page-heading-padding-top'] || {}).setting_value || '4';
+    document.getElementById('input-ph-search-height').value  = (ph['page-heading-search-height']  || {}).setting_value || '';
+    document.getElementById('input-ph-margin-top').value     = (ph['page-heading-margin-top']     || {}).setting_value || '0';
+    document.getElementById('input-ph-margin-bottom').value  = (ph['page-heading-margin-bottom']  || {}).setting_value || '10';
+    document.getElementById('input-ph-padding-top').value    = (ph['page-heading-padding-top']    || {}).setting_value || '4';
     document.getElementById('input-ph-padding-bottom').value = (ph['page-heading-padding-bottom'] || {}).setting_value || '4';
 }
 
@@ -473,9 +494,11 @@ function saveGeneral() {
 
     // Also save Page Heading settings (upsert: PUT if exists, POST if new)
     var phSettings = [
-        { code: 'page-heading-text-color',    value: getPickerValue('ph-text-color') },
+        { code: 'page-heading-text-color',     value: getPickerValue('ph-text-color') },
         { code: 'page-heading-text-size',      value: document.getElementById('input-ph-text-size').value },
         { code: 'page-heading-bg-opacity',     value: (parseInt(document.getElementById('input-ph-bg-opacity').value) / 100).toFixed(2) },
+        { code: 'page-heading-search-bg-color', value: getPickerValue('ph-search-bg') },
+        { code: 'page-heading-search-height',  value: document.getElementById('input-ph-search-height').value },
         { code: 'page-heading-margin-top',     value: document.getElementById('input-ph-margin-top').value },
         { code: 'page-heading-margin-bottom',  value: document.getElementById('input-ph-margin-bottom').value },
         { code: 'page-heading-padding-top',    value: document.getElementById('input-ph-padding-top').value },

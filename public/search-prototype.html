@@ -291,7 +291,7 @@
                         Site
                     </div>
                     <div class="scope-option" role="option" data-scope="books" aria-selected="false" onclick="setScope('books')">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></svg>
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H3z"/><path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h7z"/></svg>
                         Books
                     </div>
                     <div class="scope-option" role="option" data-scope="video" aria-selected="false" onclick="setScope('video')">
@@ -732,7 +732,7 @@ function renderSiteResults(q, mode, books, videos) {
     if (hasBooks) {
         html += '<div class="site-section">'
               +   '<div class="heading">'
-              +     '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></svg>'
+              +     '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H3z"/><path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h7z"/></svg>'
               +     'Books <span class="count">· ' + books.total + ' match' + (books.total === 1 ? '' : 'es') + '</span>'
               +   '</div>'
               +   (books.total > books.results.length
