@@ -48,7 +48,7 @@ rsync -a --delete "$DEPLOY_DIR/rumble-scraper/yy/" "$GIT_DIR/rumble-scraper/yy/"
     --include='*.sh' --include='*.cjs' --include='*.js' --include='*/' --exclude='*'
 
 # Sync root config files
-for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh cron-backup.sh book-pipeline-worker.sh claude-fix-runner.sh cron-claude-fix-gated.sh cron-flipbook-retry.sh cron-recording-lock-cleanup.sh flipbook-download-host.sh fliphtml5-download.cjs fliphtml5-upload.cjs process-email-cron.sh sync-blog-cron.sh sync-invite-cron.sh; do
+for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh cron-backup.sh book-pipeline-worker.sh claude-fix-runner.sh cron-claude-fix-gated.sh cron-flipbook-retry.sh cron-recording-lock-cleanup.sh cron-fliphtml5-match.sh cron-fliphtml5-match-trigger.sh cron-fliphtml5-match.py flipbook-download-host.sh fliphtml5-download.cjs fliphtml5-upload.cjs process-email-cron.sh sync-blog-cron.sh sync-invite-cron.sh; do
     [ -f "$DEPLOY_DIR/$f" ] && cp -f "$DEPLOY_DIR/$f" "$GIT_DIR/$f" 2>/dev/null
 done
 
