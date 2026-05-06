@@ -365,7 +365,15 @@ process_job() {
             # container (bind-mounted from /opt/yada-www/rumble-scraper/yy/
             # on the host). docker exec ignores -v flags, so we can't add
             # mounts at exec time — the script HTTP-fetches the PDF instead.
-            up_output=$(systemd-run --scope --quiet \
+            # Hard timeout on the docker exec — without one, a hung
+            # puppeteer-real-browser session inside the container will
+            # hold the global pipeline lock forever (observed: 1h 49m
+            # before manual kill, blocking every other queued volume).
+            # 600s is generous: a healthy upload runs in 30-90s.
+            # `timeout --signal=KILL` because puppeteer ignores SIGTERM
+            # when stuck mid-protocol; SIGKILL is the only thing that
+            # frees the lock. timeout exits 124 on timeout, 137 on KILL.
+            up_output=$(timeout --signal=KILL 600 systemd-run --scope --quiet --wait \
                 --property=MemoryMax=700M \
                 --property=MemorySwapMax=0 \
                 --property=CPUQuota=50% \
@@ -378,6 +386,15 @@ process_job() {
                     "${chrome_env[@]}" \
                     "$RSSHUB_CONTAINER" /scraper/yy/fliphtml5-upload-wrapper.sh 2>&1) || up_rc=$?
             up_rc=${up_rc:-0}
+            if [ "$up_rc" -eq 124 ] || [ "$up_rc" -eq 137 ]; then
+                log "FlipHTML5 upload timed out after 600s (rc=$up_rc) — killed to release lock"
+                log_monitor_event "book_pipeline" "warning" \
+                    "FlipHTML5 upload timed out for $pdf_name (volume_key=$volume_key)" \
+                    "Killed by timeout(1) after 600s. Puppeteer in $RSSHUB_CONTAINER was likely stuck mid-protocol."
+                # Leave any stray docker exec processes for the next tick to find.
+                # The puppeteer Chrome inside the container may still be alive;
+                # `pkill chrome` inside the container would be a separate fix.
+            fi
             echo "$up_output" >> /var/log/book-pipeline.log
             flip_code=$(echo "$up_output" | tail -1 | tr -d '[:space:]')
             if ! echo "$flip_code" | grep -qE '^[A-Za-z0-9_-]+$'; then
@@ -395,9 +412,18 @@ process_job() {
             local zip_dir="$FLIP_DIR/$flip_code"
             mkdir -p "$zip_dir"
             local dl_output dl_rc
-            dl_output=$(docker exec -e FLIP_CODE="$flip_code" -e OUT_DIR="/tmp/flip_$flip_code" \
+            # Same 600s timeout as the upload step — puppeteer-real-browser
+            # can hang here too on the FlipHTML5 download flow (different
+            # script, same root cause). 124/137 = killed by timeout.
+            dl_output=$(timeout --signal=KILL 600 docker exec -e FLIP_CODE="$flip_code" -e OUT_DIR="/tmp/flip_$flip_code" \
                 "$RSSHUB_CONTAINER" node /scraper/yy/fliphtml5-download.cjs 2>&1) || dl_rc=$?
             dl_rc=${dl_rc:-0}
+            if [ "$dl_rc" -eq 124 ] || [ "$dl_rc" -eq 137 ]; then
+                log "Flipbook download timed out after 600s (rc=$dl_rc) — killed to release lock"
+                log_monitor_event "book_pipeline" "warning" \
+                    "Flipbook download timed out for flip_code=$flip_code (volume_key=$volume_key)" \
+                    "Killed by timeout(1) after 600s. Puppeteer download flow was stuck."
+            fi
             echo "$dl_output" >> /var/log/book-pipeline.log
             if [ "$dl_rc" -eq 0 ]; then
                 log "Flipbook downloaded + extracted to $zip_dir"
