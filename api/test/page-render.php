@@ -153,15 +153,17 @@ function resolveItemsSection(PDO $db, array $cfg): array {
     // we're aliasing as i.* so reproduce its logic inline with the alias.
     $include = !empty($cfg['include_hashtags']) ? $cfg['include_hashtags'] : '';
     $exclude = !empty($cfg['exclude_hashtags']) ? $cfg['exclude_hashtags'] : '';
+    // Hashtag filters apply ONLY to feed_item_tags (not titles). Title-based
+    // matching uses the separate title_include / title_exclude fields below.
     foreach (array_filter(array_map('trim', preg_split('/[,|]/', $include))) as $term) {
         $pat = filterLikePattern($term);
-        $where .= " AND (i.feed_item_tags ILIKE ? OR COALESCE(i.feed_item_title_override, i.feed_item_title_import) ILIKE ?)";
-        $params[] = $pat; $params[] = $pat;
+        $where .= " AND i.feed_item_tags ILIKE ?";
+        $params[] = $pat;
     }
     foreach (array_filter(array_map('trim', preg_split('/[,|]/', $exclude))) as $term) {
         $pat = filterLikePattern($term);
-        $where .= " AND (i.feed_item_tags NOT ILIKE ? OR i.feed_item_tags IS NULL) AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) NOT ILIKE ?";
-        $params[] = $pat; $params[] = $pat;
+        $where .= " AND (i.feed_item_tags NOT ILIKE ? OR i.feed_item_tags IS NULL)";
+        $params[] = $pat;
     }
     foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['title_include'] ?? ''))) as $term) {
         $pat = filterLikePattern($term);
