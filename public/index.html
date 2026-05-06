@@ -629,6 +629,21 @@ loadFeatured();
     if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
     if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
     document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+
+    // Home-page component switches (set via Admin → Home). Each key is
+    // namespaced 'home-' on the wire so it can't collide with global
+    // config. A missing/blank value means "use the original default".
+    var truthy = function(v){ return v==='1'||v==='true'||v===1||v===true; };
+    function hide(sel){ document.querySelectorAll(sel).forEach(function(el){ el.style.display='none'; }); }
+    if (cfg['home-carousel-show'] != null && !truthy(cfg['home-carousel-show'])) hide('.carousel, .carousel-dots');
+    if (cfg['home-shorts-show']   != null &&  truthy(cfg['home-shorts-show'])) {
+        // Reveal the shorts section (it ships with display:none baseline).
+        var sh = document.getElementById('shorts-section'); if (sh) sh.style.display = '';
+    }
+    if (cfg['home-featured-show']!= null && !truthy(cfg['home-featured-show'])) hide('.featured-section');
+    // Expose settings to other inline scripts that need numeric values
+    // (videos-initial/loadmore counts, shorts count, featured playlist IDs).
+    window.YY_HOME_CFG = cfg;
 });})();
 </script>
 <script src="/js/site-footer.js?v=127"></script>

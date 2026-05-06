@@ -20,6 +20,7 @@ if (!document.getElementById('admin-dirty-js')) {
 
 var tabs = [
     ['admin-site.html', 'Site'],
+    ['admin-home.html', 'Home'],
     ['admin-translation.html', 'Translation'],
     ['admin-series.html', 'Series'],
     ['admin-books.html', 'Books'],
@@ -52,10 +53,14 @@ var tabs = [
 var nav = document.querySelector('.app-header .nav-tabs');
 if (!nav) return;
 
-var currentPage = window.location.pathname.split('/').pop() || '';
+// Caddy redirects /admin-foo.html -> /admin-foo, so location.pathname is
+// the no-extension form. Strip .html from both sides before comparing or
+// no tab ever matches (and nothing gets the active highlight).
+var currentPage = (window.location.pathname.split('/').pop() || '').replace(/\.html$/, '');
 
 nav.innerHTML = tabs.map(function(t) {
-    var active = (currentPage === t[0]) ? ' active' : '';
+    var tabPage = t[0].replace(/\.html$/, '');
+    var active = (currentPage === tabPage) ? ' active' : '';
     return '<a href="' + t[0] + '" class="nav-tab' + active + '">' + t[1] + '</a>';
 }).join('\n');
 

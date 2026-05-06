@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .home-section {
+            background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+            padding: 16px 20px; margin-bottom: 16px;
+        }
+        .home-section h3 {
+            margin: 0 0 4px; font-size: 1rem; color: #31345A;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .home-section .desc {
+            font-size: 0.82rem; color: #666; margin: 0 0 14px;
+        }
+        .home-field {
+            display: grid; grid-template-columns: 200px 1fr;
+            gap: 10px; align-items: center; margin-bottom: 8px;
+        }
+        .home-field label {
+            font-size: 0.85rem; font-weight: 600; color: #444;
+        }
+        .home-field .hint {
+            grid-column: 2; font-size: 0.74rem; color: #888; margin-top: -4px;
+        }
+        .home-field input[type=text],
+        .home-field input[type=number],
+        .home-field select {
+            padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.88rem; font-family: inherit;
+        }
+        .home-field input[type=number] { width: 100px; }
+        .home-field input[type=text] { width: 100%; max-width: 480px; }
+        .save-row {
+            position: sticky; bottom: 0; background: #fafafa;
+            border-top: 1px solid #e0e0e0; padding: 12px 16px;
+            margin: 16px -16px -16px; display: flex;
+            justify-content: space-between; align-items: center;
+            border-radius: 0 0 8px 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field"><label for="login-pass">Password</label>
+            <div class="pass-wrap"><input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button></div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=9"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Home Page</h1>
+    <p style="color:#666;font-size:0.88rem;margin:-4px 0 16px;">Configure what shows on the public homepage. Changes apply within 60s (the homepage caches the config briefly).</p>
+
+    <div id="form-container">
+        <div style="text-align:center;padding:30px;color:#888;">Loading…</div>
+    </div>
+</div>
+
+<script src="/js/admin-login.js?v=8"></script>
+<script>
+var API = '/api';
+
+// Field definitions — drives both the form rendering and the save payload.
+// Adding a new home component only requires adding an entry here.
+// `code` becomes the yy_setting setting_code (under scope='page', group='home').
+// `default` is the value used when the row doesn't exist yet.
+var SECTIONS = [
+    {
+        title: 'Carousel (top of page)',
+        desc: 'Featured-series carousel populated by /api/series-carousel.php.',
+        fields: [
+            { code: 'carousel-show',     label: 'Show carousel',      type: 'boolean', default: '1' },
+            { code: 'carousel-interval', label: 'Auto-rotate (sec)',  type: 'number',  default: '7', hint: '0 = no auto-rotation' }
+        ]
+    },
+    {
+        title: 'Latest Videos',
+        desc: 'YouTube channel feed grid below the carousel.',
+        fields: [
+            { code: 'videos-initial-count',  label: 'Initial videos',    type: 'number', default: '12' },
+            { code: 'videos-loadmore-count', label: 'Load-more batch',   type: 'number', default: '12' }
+        ]
+    },
+    {
+        title: 'Shorts',
+        desc: 'YouTube Shorts strip — hidden by default.',
+        fields: [
+            { code: 'shorts-show',  label: 'Show Shorts row', type: 'boolean', default: '0' },
+            { code: 'shorts-count', label: 'Number of shorts', type: 'number',  default: '4' }
+        ]
+    },
+    {
+        title: 'Featured section',
+        desc: 'Three-card featured row: playlist · book · playlist.',
+        fields: [
+            { code: 'featured-show',           label: 'Show Featured row',     type: 'boolean', default: '1' },
+            { code: 'featured-playlist1-id',   label: 'Playlist 1 (YT id)',    type: 'text',    default: '', hint: 'e.g. PL2remztpK0uDrhUMrHaUF4gqMXFz9hzBf' },
+            { code: 'featured-playlist1-label',label: 'Playlist 1 label',      type: 'text',    default: '' },
+            { code: 'featured-book-volume-key',label: 'Featured book vol_key', type: 'number',  default: '', hint: 'yy_volume.volume_key — leave empty to hide' },
+            { code: 'featured-playlist2-id',   label: 'Playlist 2 (YT id)',    type: 'text',    default: '' },
+            { code: 'featured-playlist2-label',label: 'Playlist 2 label',      type: 'text',    default: '' }
+        ]
+    }
+];
+
+function isTrue(v) { return v === '1' || v === 'true' || v === 1 || v === true; }
+
+function render(values) {
+    var c = document.getElementById('form-container');
+    var html = '';
+    SECTIONS.forEach(function(sec) {
+        html += '<div class="home-section">'
+              + '<h3>' + esc(sec.title) + '</h3>'
+              + '<p class="desc">' + esc(sec.desc) + '</p>';
+        sec.fields.forEach(function(f) {
+            var v = (values[f.code] != null) ? values[f.code] : f.default;
+            var input;
+            if (f.type === 'boolean') {
+                input = '<select data-code="' + esc(f.code) + '" data-type="boolean" style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
+                      + '<option value="1"' + (isTrue(v) ? ' selected' : '') + '>Yes</option>'
+                      + '<option value="0"' + (!isTrue(v) ? ' selected' : '') + '>No</option>'
+                      + '</select>';
+            } else if (f.type === 'number') {
+                input = '<input type="number" data-code="' + esc(f.code) + '" data-type="number" value="' + esc(v) + '">';
+            } else {
+                input = '<input type="text" data-code="' + esc(f.code) + '" data-type="text" value="' + esc(v) + '">';
+            }
+            html += '<div class="home-field"><label>' + esc(f.label) + '</label>' + input + '</div>';
+            if (f.hint) html += '<div class="home-field"><span></span><span class="hint">' + esc(f.hint) + '</span></div>';
+        });
+        html += '</div>';
+    });
+    html += '<div class="save-row">'
+          + '<span id="save-status" style="font-size:0.85rem;color:#888;"></span>'
+          + '<button class="btn btn-primary" onclick="saveAll()">Save changes</button>'
+          + '</div>';
+    c.innerHTML = html;
+}
+
+function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+}
+
+function load() {
+    fetch(API + '/admin-home.php', { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d && d.error) { alert('Load failed: ' + d.error); return; }
+            render(d || {});
+        })
+        .catch(function(err) { alert('Load failed: ' + err.message); });
+}
+
+function saveAll() {
+    var payload = {};
+    document.querySelectorAll('[data-code]').forEach(function(el) {
+        payload[el.dataset.code] = el.value;
+    });
+    var status = document.getElementById('save-status');
+    status.textContent = 'Saving…';
+    fetch(API + '/admin-home.php', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+          if (d && d.error) { status.textContent = '✗ ' + d.error; status.style.color = '#c0392b'; return; }
+          status.textContent = '✓ Saved — homepage picks this up within 60s';
+          status.style.color = '#27ae60';
+          setTimeout(function() { status.textContent = ''; }, 6000);
+      }).catch(function(err) {
+          status.textContent = '✗ ' + err.message;
+          status.style.color = '#c0392b';
+      });
+}
+
+if (typeof onLoggedIn === 'function') onLoggedIn(load); else document.addEventListener('DOMContentLoaded', load);
+</script>
+
+</body>
+</html>

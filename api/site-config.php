@@ -16,11 +16,19 @@ if (file_exists($CACHE_FILE) && (time() - filemtime($CACHE_FILE)) < $CACHE_TTL) 
 }
 
 $db = getDb();
-$stmt = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'config'");
-$rows = $stmt->fetchAll();
+// Two scopes are exposed publicly to the homepage:
+//   'config'           — global toolbar / site-wide values (existing).
+//   'page'/'home'      — home-page component switches set via Admin → Home.
+// Home keys are namespaced with the 'home-' prefix on the wire so they
+// can't collide with existing site-wide config keys.
 $result = [];
-foreach ($rows as $row) {
+foreach ($db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'config'")->fetchAll() as $row) {
     $result[$row['setting_code']] = $row['setting_value'];
+}
+$homeStmt = $db->prepare("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'page' AND setting_group_code = 'home'");
+$homeStmt->execute();
+foreach ($homeStmt->fetchAll() as $row) {
+    $result['home-' . $row['setting_code']] = $row['setting_value'];
 }
 $json = json_encode($result, JSON_UNESCAPED_UNICODE);
 file_put_contents($CACHE_FILE, $json);
