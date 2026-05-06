@@ -460,7 +460,7 @@ process_job() {
     else
         log "Skipping FlipHTML5 (rsshub container or fliphtml5-upload.cjs missing)"
         local skip_detail="rsshub_running=$(docker ps --format '{{.Names}}' | grep -c \"^${RSSHUB_CONTAINER}\$\"); upload_script_present=$( [ -f /opt/yada-www/fliphtml5-upload.cjs ] && echo yes || echo no )"
-        update_status "$volume_key" "warning" "PDF generated; FlipHTML5 automation not configured on this host" "$skip_detail"
+        update_status "$volume_key" "success" "PDF generated; FlipHTML5 disabled (manual upload only)" "$skip_detail"
     fi
 
     # ── Phase 4: paragraph + translation extraction ──────────────────
