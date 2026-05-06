@@ -115,13 +115,38 @@ function resolveItemsSection(PDO $db, array $cfg): array {
         $where .= " AND i.feed_item_type = ?";
         $params[] = $cfg['content_type'];
     }
-    if (!empty($cfg['page_key'])) {
-        $joins .= " JOIN yy_feed_item_page fip ON fip.feed_item_key = i.feed_item_key AND fip.page_key = ?";
-        $params[] = (int)$cfg['page_key'];
+    // Page/category filters. Preferred shape:
+    //   cfg.pages: [{page_key, category_key}, ...]  — items match if any pair matches
+    // Legacy shape (still honored for older saved configs):
+    //   cfg.page_key + cfg.category_key
+    $pageEntries = [];
+    if (!empty($cfg['pages']) && is_array($cfg['pages'])) {
+        foreach ($cfg['pages'] as $e) {
+            if (!empty($e['page_key'])) {
+                $pageEntries[] = ['page_key' => (int)$e['page_key'], 'category_key' => !empty($e['category_key']) ? (int)$e['category_key'] : null];
+            }
+        }
+    } elseif (!empty($cfg['page_key'])) {
+        $pageEntries[] = ['page_key' => (int)$cfg['page_key'], 'category_key' => !empty($cfg['category_key']) ? (int)$cfg['category_key'] : null];
     }
-    if (!empty($cfg['category_key'])) {
-        $joins .= " JOIN yy_feed_item_category fic ON fic.feed_item_key = i.feed_item_key AND fic.category_key = ?";
-        $params[] = (int)$cfg['category_key'];
+    if ($pageEntries) {
+        // Build EXISTS subquery with one OR'd pair per entry. Use EXISTS rather than JOIN
+        // so multiple entries don't cross-multiply rows.
+        $orParts = [];
+        foreach ($pageEntries as $e) {
+            if ($e['category_key']) {
+                $orParts[] = "EXISTS (
+                    SELECT 1 FROM yy_feed_item_page fip
+                    JOIN yy_feed_item_category fic ON fic.feed_item_key = fip.feed_item_key
+                    WHERE fip.feed_item_key = i.feed_item_key AND fip.page_key = ? AND fic.category_key = ?)";
+                $params[] = $e['page_key'];
+                $params[] = $e['category_key'];
+            } else {
+                $orParts[] = "EXISTS (SELECT 1 FROM yy_feed_item_page fip WHERE fip.feed_item_key = i.feed_item_key AND fip.page_key = ?)";
+                $params[] = $e['page_key'];
+            }
+        }
+        $where .= " AND (" . implode(' OR ', $orParts) . ")";
     }
 
     // Title and hashtag filters via buildFeedPageFilters — but its $where uses bare column names,
