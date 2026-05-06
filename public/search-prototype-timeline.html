@@ -403,6 +403,7 @@
            so the operator can retune both bands without touching code. */
         .search-band {
             background: var(--search-band-bg, #0A333A);
+            color: var(--search-band-text, #d0e3e8);
             /* Body has `display: flex` + `padding: 20px`, which makes
                flex items size to (viewport - 40) and any negative margin
                or `calc(50% - 50vw)` trick gets distorted by scrollbar
@@ -451,7 +452,16 @@
         .search-btn:hover { background-color: #4a4e7a; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
 
         .filter-group { display: flex; align-items: center; gap: 6px; }
-        .filter-group label { font-weight: 600; font-size: 0.875rem; color: #d0e3e8; white-space: nowrap; }
+        /* Honor the [hidden] attribute — the .filter-group display:flex rule
+           above otherwise wins against the user-agent default for [hidden].
+           Used to keep Category collapsed until a Group with categories is
+           picked. */
+        .filter-group[hidden] { display: none !important; }
+        /* Pull color straight from the var instead of relying on
+           inheritance — safer against UA stylesheet quirks for <label
+           for=...> elements that some browsers color independently. */
+        .search-band .filter-group label { font-weight: 600; font-size: 0.875rem; color: var(--search-band-text, #d0e3e8); white-space: nowrap; }
+        .filter-group label { font-weight: 600; font-size: 0.875rem; color: inherit; white-space: nowrap; }
         .filter-group select {
             padding: 6px 8px; border: 1px solid #2c5760; border-radius: 4px; font-size: 0.875rem;
             background: #fff;
@@ -503,6 +513,13 @@
             display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
             overflow: hidden; max-height: 200px; opacity: 1;
             transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;
+        }
+        /* Video filters left-anchor: Group sits at the left edge of the
+           row, Category appears to its right when visible. DOM order
+           matches the visual order (Group, then Category). */
+        .scope-filters#filters-video {
+            justify-content: flex-start;
+            width: 100%;
         }
         .scope-filters[hidden] {
             display: flex !important; max-height: 0; opacity: 0;
@@ -648,7 +665,7 @@
             .result-video .thumb { flex: 0 0 auto; max-width: 100%; }
         }
     </style>
-<script src="/js/site-nav.js?v=3"></script>
+<script src="/js/site-nav.js?v=4"></script>
     <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>
@@ -733,6 +750,9 @@
                     </div>
                 </div>
                 <div class="scope-filters" id="filters-video" hidden>
+                    <!-- DOM order matches visual order: Group first (leftmost),
+                         Category second. When Category later toggles visible
+                         it appears to Group's right. -->
                     <div class="filter-group">
                         <label for="filter-group">Group:</label>
                         <select id="filter-group" onchange="onGroupChange()">
@@ -1103,6 +1123,9 @@ function populateVideoFilters() {
     var sel = document.getElementById('filter-group');
     sel.innerHTML = '<option value="">All</option>';
     (videoFilters.groups || []).forEach(function (g) {
+        // "Home" is the catch-all landing page — not a real video grouping
+        // for the user to filter on, so leave it out of the dropdown.
+        if ((g.page_title || '').trim().toLowerCase() === 'home') return;
         var opt = document.createElement('option');
         opt.value = g.page_key;
         opt.textContent = g.page_title;

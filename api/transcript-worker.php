@@ -118,16 +118,50 @@ $methodFailures = []; // collects "method_name: reason" so the final error is ac
 $uploadDir = sys_get_temp_dir() . '/transcript_uploads';
 $uploadVtt = "$uploadDir/{$itemKey}.vtt";
 $uploadSrt = "$uploadDir/{$itemKey}.srt";
+$uploadedSourceLabel = '';
+$uploadedSourcePath = '';
 if (file_exists($uploadVtt)) {
     updateJob($db, $jobKey, ['job_progress' => 50, 'job_message' => 'Parsing uploaded VTT...']);
     $rows = parseVtt(file_get_contents($uploadVtt));
+    $uploadedSourceLabel = 'uploaded_vtt';
+    $uploadedSourcePath = $uploadVtt;
 } elseif (file_exists($uploadSrt)) {
     updateJob($db, $jobKey, ['job_progress' => 50, 'job_message' => 'Parsing uploaded SRT...']);
     $rows = parseSrt(file_get_contents($uploadSrt));
+    $uploadedSourceLabel = 'uploaded_srt';
+    $uploadedSourcePath = $uploadSrt;
 }
 
 if (!$rows && file_exists($uploadVtt)) $methodFailures[] = "uploaded_vtt: parsed 0 rows";
 elseif (!$rows && file_exists($uploadSrt)) $methodFailures[] = "uploaded_srt: parsed 0 rows";
+
+// Coverage gate for uploaded VTT/SRT — mirrors the yt-dlp captions check so a
+// stale partial caption file doesn't get accepted as a complete transcript.
+// (Bit us once via /tmp/transcript_uploads/791503.vtt covering 9.5% of a 52-min
+// video; same shape as the partial-audio bug the worker already guards against.)
+if ($rows && $uploadedSourceLabel) {
+    $videoDur = (int)($job['feed_item_duration_seconds'] ?? 0);
+    if ($videoDur > 60) {
+        $lastEnd = 0;
+        foreach ($rows as $r) {
+            $end = isset($r['end_seconds']) ? (int)$r['end_seconds'] : 0;
+            if (!$end && isset($r['segment'])) {
+                $parts = explode(':', $r['segment']);
+                if (count($parts) === 3) $end = (int)$parts[0]*3600 + (int)$parts[1]*60 + (int)$parts[2];
+            }
+            if ($end > $lastEnd) $lastEnd = $end;
+        }
+        $coverage = $lastEnd / $videoDur;
+        if ($coverage < 0.80) {
+            $methodFailures[] = $uploadedSourceLabel . ": only " . round($coverage * 100) . "% coverage ($lastEnd s of $videoDur s) — discarding partial upload";
+            $rows = [];
+            // Remove the stale partial file so it doesn't keep poisoning future
+            // runs for this item — fall through to yt-dlp / Whisper which will
+            // get full coverage.
+            @unlink($uploadedSourcePath);
+        }
+    }
+}
 
 bailIfCancelled($db, $jobKey);
 

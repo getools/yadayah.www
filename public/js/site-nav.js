@@ -132,12 +132,18 @@
             // .search-band element if present — the direct path is a
             // belt-and-suspenders fallback in case of any CSS cascade
             // issue that would silently swallow the var().
-            if (data.page_heading_search_bg_color) root.style.setProperty('--search-band-bg', data.page_heading_search_bg_color);
-            if (data.page_heading_search_height)   root.style.setProperty('--search-band-height', data.page_heading_search_height + 'px');
+            if (data.page_heading_search_bg_color)   root.style.setProperty('--search-band-bg',   data.page_heading_search_bg_color);
+            if (data.page_heading_search_text_color) root.style.setProperty('--search-band-text', data.page_heading_search_text_color);
+            if (data.page_heading_search_height)     root.style.setProperty('--search-band-height', data.page_heading_search_height + 'px');
             var bandEl = document.querySelector('.search-band');
             if (bandEl) {
-                if (data.page_heading_search_bg_color) bandEl.style.background = data.page_heading_search_bg_color;
-                if (data.page_heading_search_height)   bandEl.style.minHeight  = data.page_heading_search_height + 'px';
+                if (data.page_heading_search_bg_color)   bandEl.style.background = data.page_heading_search_bg_color;
+                // `color` cascades to the filter-group labels inside the
+                // band, which inherit (see prototype CSS); inputs/selects
+                // keep their own colors because they reset color on
+                // form-control elements.
+                if (data.page_heading_search_text_color) bandEl.style.color      = data.page_heading_search_text_color;
+                if (data.page_heading_search_height)     bandEl.style.minHeight  = data.page_heading_search_height + 'px';
             }
 
             reveal();

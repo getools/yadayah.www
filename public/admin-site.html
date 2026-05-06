@@ -154,6 +154,10 @@
                 <div class="setting-input"><div class="rgba-picker" data-id="ph-search-bg"></div></div>
             </div>
             <div class="setting-row">
+                <label>Search Text</label>
+                <div class="setting-input"><div class="rgba-picker" data-id="ph-search-text"></div></div>
+            </div>
+            <div class="setting-row">
                 <label>Search Height</label>
                 <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-search-height" class="input-narrow" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
             </div>
@@ -304,6 +308,9 @@ function renderPageHeading(rows) {
     // Search bar background defaults to the dark teal already used as the
     // sub-toolbar fallback (#0A333A) so it visually belongs out of the box.
     setPickerValue('ph-search-bg', (ph['page-heading-search-bg-color'] || {}).setting_value || 'rgba(10,51,58,1)');
+    // Search text color cascades to filter-group labels in the search
+    // bar; defaults to the same light cyan the hardcoded styles used.
+    setPickerValue('ph-search-text', (ph['page-heading-search-text-color'] || {}).setting_value || 'rgba(208,227,232,1)');
 
     var sizeInput = document.getElementById('input-ph-text-size');
     sizeInput.value = (ph['page-heading-text-size'] || {}).setting_value || '2.2';
@@ -511,8 +518,9 @@ function saveGeneral() {
         { code: 'page-heading-text-color',     value: getPickerValue('ph-text-color') },
         { code: 'page-heading-text-size',      value: document.getElementById('input-ph-text-size').value },
         { code: 'page-heading-bg-opacity',     value: (parseInt(document.getElementById('input-ph-bg-opacity').value) / 100).toFixed(2) },
-        { code: 'page-heading-search-bg-color', value: getPickerValue('ph-search-bg') },
-        { code: 'page-heading-search-height',  value: document.getElementById('input-ph-search-height').value },
+        { code: 'page-heading-search-bg-color',   value: getPickerValue('ph-search-bg') },
+        { code: 'page-heading-search-text-color', value: getPickerValue('ph-search-text') },
+        { code: 'page-heading-search-height',     value: document.getElementById('input-ph-search-height').value },
         { code: 'page-heading-margin-top',     value: document.getElementById('input-ph-margin-top').value },
         { code: 'page-heading-margin-bottom',  value: document.getElementById('input-ph-margin-bottom').value },
         { code: 'page-heading-padding-top',    value: document.getElementById('input-ph-padding-top').value },
