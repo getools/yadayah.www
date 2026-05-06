@@ -241,8 +241,9 @@ if ($items) {
             if ($age <= 15) {
                 $body = @file_get_contents($hbFile);
                 $j = $body ? json_decode($body, true) : null;
-                $by = (is_array($j) && !empty($j['user_code'])) ? $j['user_code'] : 'unknown';
-                $reasons[] = "recording_active:by:$by:{$age}s_ago";
+                $by      = (is_array($j) && !empty($j['user_code']))     ? $j['user_code']         : 'unknown';
+                $nowFlag = (is_array($j) && !empty($j['recording_now'])) ? 'now' : 'queued';
+                $reasons[] = "recording_active:by:$by:{$age}s_ago:$nowFlag";
             } else {
                 // Stale — clean up so it doesn't sit on disk forever.
                 @unlink($hbFile);

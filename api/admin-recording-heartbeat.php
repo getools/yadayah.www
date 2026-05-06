@@ -28,6 +28,7 @@ session_write_close();
 $data    = json_decode(file_get_contents('php://input'), true) ?: [];
 $action  = $data['action'] ?? '';
 $keys    = [];
+$current = (int)($data['current_item_key'] ?? 0);
 
 if (!empty($data['item_keys']) && is_array($data['item_keys'])) {
     foreach ($data['item_keys'] as $k) {
@@ -55,27 +56,53 @@ if ($action === 'release') {
     jsonResponse(['ok' => true, 'count' => count($results), 'results' => $results]);
 }
 
-// heartbeat: for each key, touch the file. On first touch, write the JSON
-// identity of the current user. Don't overwrite on subsequent touches —
-// the original locker stays the locker even if a different operator's
-// session somehow sneaks in a heartbeat (would be a security boundary
-// violation we don't want to silently mask).
-$identity = json_encode([
-    'user_code'  => $user['user_code'] ?? '',
-    'user_key'   => $user['user_key']  ?? null,
-    'started_at' => date('c'),
-]);
-
+// heartbeat: rewrite each lock file every tick so `recording_now` can flip
+// as the popout advances through its queue. The first writer's `started_at`
+// is preserved (read from existing JSON) so the lock continues to identify
+// the original locker even if the popout advances between heartbeats.
+//
+// We also honour blocked-key tombstones (/tmp/recording_blocked_<key>) —
+// when an operator clears an item from another popout's queue, we drop the
+// lock and tell the popout to remove the key from its in-memory queue via
+// the `blocked_keys` field in the response.
+$blocked = [];
+$writableKeys = [];
 foreach ($keys as $k) {
-    $path = "$tmp/recording_active_$k";
-    if (!is_file($path)) {
-        @file_put_contents($path, $identity);
-        @chmod($path, 0664);
-        $results[$k] = 'created';
-    } else {
-        @touch($path);
-        $results[$k] = 'touched';
+    $bpath = "$tmp/recording_blocked_$k";
+    if (is_file($bpath)) {
+        $age = time() - (int)@filemtime($bpath);
+        if ($age <= 600) {       // 10 min tombstone window
+            $blocked[] = $k;
+            // Make sure no stale active-lock is left behind for a blocked key.
+            @unlink("$tmp/recording_active_$k");
+            $results[$k] = 'blocked';
+            continue;
+        }
+        @unlink($bpath);          // tombstone aged out; allow re-locking
     }
+    $writableKeys[] = $k;
 }
 
-jsonResponse(['ok' => true, 'count' => count($results), 'results' => $results, 'heartbeat_at' => date('c')]);
+foreach ($writableKeys as $k) {
+    $path     = "$tmp/recording_active_$k";
+    $existing = is_file($path) ? (json_decode((string)@file_get_contents($path), true) ?: []) : [];
+    $started  = $existing['started_at'] ?? date('c');
+    $body     = json_encode([
+        'user_code'      => $user['user_code'] ?? '',
+        'user_key'       => $user['user_key']  ?? null,
+        'started_at'     => $started,
+        'recording_now'  => ($current > 0 && $k === $current),
+        'updated_at'     => date('c'),
+    ]);
+    @file_put_contents($path, $body);
+    @chmod($path, 0664);
+    $results[$k] = isset($existing['started_at']) ? 'touched' : 'created';
+}
+
+jsonResponse([
+    'ok' => true,
+    'count' => count($results),
+    'results' => $results,
+    'blocked_keys' => $blocked,
+    'heartbeat_at' => date('c'),
+]);

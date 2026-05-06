@@ -102,6 +102,7 @@
             <button id="restart-btn" style="display:none;" onclick="restartRecording()">⟲ Restart from Beginning</button>
             <button id="retry-upload-btn" style="display:none;background:#fff3a8;border:1px solid #e0c000;color:#8a6d00;" onclick="retryPendingUpload()">⟳ Retry Upload</button>
             <span id="status"></span>
+            <span id="hb-status" style="margin-left:14px;font-size:11px;opacity:0.55;font-variant-numeric:tabular-nums;"></span>
         </div>
         <div class="hint">
             This is a <strong>dedicated recording window</strong>. Recording continues here as long as this window stays open. You can navigate in other tabs and windows freely. Playback is locked at 1× to ensure natural-rate audio. Multi-video batches play back-to-back in this window automatically.
@@ -127,32 +128,132 @@
     // side window). If this window crashes / network drops, every lock
     // in the batch auto-expires within 15s. The explicit release on
     // pagehide is just a best-effort fast-path.
-    var _recHbTimer = null;
-    var _recLockedKeys = [];   // every item_key the popout is currently locking
-    function pingRecordingLocks(keys) {
-        if (!keys || !keys.length) return;
+    // We use a self-rescheduling setTimeout chain rather than setInterval
+    // because Chrome aggressively clamps setInterval in tabs that have been
+    // alive for hours — we saw a 31-hour-old popout stop heartbeating
+    // entirely while the rest of the page (driven by MediaRecorder events)
+    // kept working. The chain re-arms after every fetch settles, with a
+    // visibilitychange listener that immediately fires a heartbeat when the
+    // tab returns to visible (catches the Page-Lifecycle freeze case).
+    var _recHbTimeout = null;
+    var _recLockedKeys = [];           // every item_key the popout is currently locking
+    var _recCurrentRecording = 0;      // the item currently being recorded (0 = none)
+    var _recLastHbAt = 0;              // ms timestamp of last successful heartbeat round-trip
+    var _recLastHbStatus = '';         // 'ok' | 'err' | '' for status footer
+    function pingRecordingLocks(keys, currentKey) {
+        if (!keys || !keys.length) return Promise.resolve(null);
         try {
-            fetch(API + '/admin-recording-heartbeat.php', {
+            return fetch(API + '/admin-recording-heartbeat.php', {
                 method: 'POST', credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'heartbeat', item_keys: keys }),
+                body: JSON.stringify({
+                    action: 'heartbeat',
+                    item_keys: keys,
+                    current_item_key: currentKey || 0,
+                }),
                 keepalive: true,
-            }).catch(function(){});
-        } catch (e) {}
+            }).then(function(r) {
+                _recLastHbAt = Date.now();
+                _recLastHbStatus = r.ok ? 'ok' : 'err';
+                renderHbStatus();
+                if (!r.ok) return null;
+                return r.json().catch(function(){ return null; });
+            }).then(function(d) {
+                // Server-side queue clear: drop any keys it tells us are
+                // blocked so we don't fight to recreate them next tick.
+                if (d && Array.isArray(d.blocked_keys) && d.blocked_keys.length) {
+                    var blocked = d.blocked_keys;
+                    _recLockedKeys = _recLockedKeys.filter(function(k){ return blocked.indexOf(k) === -1; });
+                    handleBlockedKeys(blocked);
+                }
+                return d;
+            }).catch(function() {
+                _recLastHbAt = Date.now();
+                _recLastHbStatus = 'err';
+                renderHbStatus();
+                return null;
+            });
+        } catch (e) {
+            _recLastHbStatus = 'err';
+            renderHbStatus();
+            return Promise.resolve(null);
+        }
+    }
+    function scheduleHeartbeat(delayMs) {
+        if (_recHbTimeout) clearTimeout(_recHbTimeout);
+        _recHbTimeout = setTimeout(function() {
+            _recHbTimeout = null;
+            if (!_recLockedKeys.length) return;
+            pingRecordingLocks(_recLockedKeys, _recCurrentRecording).then(function() {
+                // Re-arm regardless of success — transient errors shouldn't
+                // stop the heartbeat. We only stop on releaseBatchLock.
+                if (_recLockedKeys.length) scheduleHeartbeat(5000);
+            });
+        }, Math.max(0, delayMs|0));
     }
     function acquireBatchLock(keys) {
         // Idempotent — adding the same keys is fine, the server just
-        // touches existing files. We replace the locked set on each call
+        // rewrites existing files. We replace the locked set on each call
         // because items can be added (rare) or finished (advanced past).
         _recLockedKeys = (keys || []).slice();
-        pingRecordingLocks(_recLockedKeys);
-        if (_recHbTimer) clearInterval(_recHbTimer);
-        _recHbTimer = setInterval(function() {
-            if (_recLockedKeys.length) pingRecordingLocks(_recLockedKeys);
-        }, 5000);
+        // Fire immediately, then re-arm 5s after that round-trip.
+        pingRecordingLocks(_recLockedKeys, _recCurrentRecording).then(function() {
+            if (_recLockedKeys.length) scheduleHeartbeat(5000);
+        });
     }
+    function setCurrentRecordingItem(key) {
+        _recCurrentRecording = key|0;
+        // Push the change to the server right away so the Recordings UI
+        // distinguishes "actively recording" from "queued/locked" within
+        // one heartbeat tick instead of up to 5s of staleness.
+        if (_recLockedKeys.length) {
+            pingRecordingLocks(_recLockedKeys, _recCurrentRecording);
+        }
+    }
+    function handleBlockedKeys(blocked) {
+        // Server told us these keys were administratively cleared. Drop
+        // them from the in-memory queue so we skip past on advance. If the
+        // active recording itself was cleared, abort it cleanly so the
+        // popout moves to the next item without uploading a stale partial.
+        if (typeof queue !== 'undefined' && Array.isArray(queue)) {
+            for (var i = queue.length - 1; i >= 0; i--) {
+                if (blocked.indexOf(queue[i]) !== -1) {
+                    if (i < queueIndex) queueIndex--;     // keep index pointing at the same logical item
+                    queue.splice(i, 1);
+                }
+            }
+        }
+        if (blocked.indexOf(_recCurrentRecording) !== -1) {
+            try { setStatus('Item cleared by admin — advancing…'); } catch(e) {}
+            try { if (typeof recorder !== 'undefined' && recorder && recorder.state === 'recording') recorder.stop(); } catch(e) {}
+        }
+    }
+    function renderHbStatus() {
+        var el = document.getElementById('hb-status');
+        if (!el) return;
+        if (!_recLastHbAt) { el.textContent = ''; return; }
+        var d = new Date(_recLastHbAt);
+        var hh = String(d.getHours()).padStart(2,'0');
+        var mm = String(d.getMinutes()).padStart(2,'0');
+        var ss = String(d.getSeconds()).padStart(2,'0');
+        var dot = _recLastHbStatus === 'ok' ? '🟢' : (_recLastHbStatus === 'err' ? '🔴' : '⚪');
+        el.textContent = dot + ' lock heartbeat ' + hh + ':' + mm + ':' + ss;
+    }
+    // Browsers (Chrome especially) freeze tabs that have been backgrounded
+    // for ~5 min, halting setTimeout/setInterval callbacks. The lock
+    // heartbeat needs to recover on visibility return — the recording
+    // itself is fine because MediaRecorder is event-driven.
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState !== 'visible') return;
+        if (!_recLockedKeys.length) return;
+        // Fire one heartbeat now; the chain may have been stalled while we
+        // were hidden. Then re-arm a fresh 5s schedule.
+        pingRecordingLocks(_recLockedKeys, _recCurrentRecording).then(function() {
+            if (_recLockedKeys.length) scheduleHeartbeat(5000);
+        });
+    });
     function releaseBatchLock() {
-        if (_recHbTimer) { clearInterval(_recHbTimer); _recHbTimer = null; }
+        if (_recHbTimeout) { clearTimeout(_recHbTimeout); _recHbTimeout = null; }
         var keys = _recLockedKeys.slice();
         _recLockedKeys = [];
         if (!keys.length) return;
@@ -517,6 +618,10 @@
         startCheckpointTimer();
         startSilenceWatchdog();
         startVolumeWatcher();
+        // Mark this item as the actively-recording one in the heartbeat so
+        // the Recordings UI shows "Recording" (not just "Locked") and the
+        // clear-queue endpoint refuses to remove it.
+        setCurrentRecordingItem(itemKey);
         // Authoritative status update so any stale prompt-related text
         // ("Requesting tab share permission…", "Loading video…", etc.) is
         // replaced once the recorder is actually running.
@@ -644,6 +749,9 @@
         stopCheckpointTimer();
         stopSilenceWatchdog();
         stopVolumeWatcher();
+        // Heartbeat now reports queued/locked but no-longer "recording_now"
+        // — clear-queue may now succeed for this item if an admin requests.
+        setCurrentRecordingItem(0);
         updateControls();
         var blob = new Blob(chunks, { type: 'audio/webm' });
         chunks = [];

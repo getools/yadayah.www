@@ -1863,15 +1863,47 @@ function verifyRecordingSync(itemKey) {
 //     worker(s) and lets this user proceed.
 function handleLockedRecordingClick(itemKey, reason) {
     var rs = String(reason || '');
-    // The server formats recording-active reasons as "recording_active:by:<user_code>:<age>s_ago"
-    // so we can extract who owns the lock.
-    var byMatch = rs.match(/recording_active:by:([^:]+)/);
+    // The server formats recording-active reasons as
+    //   recording_active:by:<user_code>:<age>s_ago:<now|queued>
+    // Older popouts (pre-2026-05-06) emit the variant without the
+    // trailing now|queued segment; treat those as "now" defensively.
+    var byMatch  = rs.match(/recording_active:by:([^:]+)/);
+    var nowMatch = rs.match(/recording_active:by:[^:]+:[^:]+:(now|queued)/);
     var lockedBy = byMatch ? byMatch[1] : null;
+    var nowFlag  = nowMatch ? nowMatch[1] : 'now';   // default to safest interpretation
 
     if (rs.indexOf('recording_active') !== -1) {
-        alert('This video is actively being recorded right now.'
-            + (lockedBy ? '\n\nLocked by: ' + lockedBy : '')
-            + '\n\nThat admin has the recording window open. You cannot access it until they finish or close their window.');
+        if (nowFlag === 'now') {
+            alert('This video is actively being recorded right now.'
+                + (lockedBy ? '\n\nLocked by: ' + lockedBy : '')
+                + '\n\nThat admin has the recording window open. You cannot start a recording for it until they finish or close their window.');
+            return;
+        }
+        // Queued — held in someone's batch but not the active recording.
+        // Offer a clear-queue override; refuses server-side if the item
+        // flips to actively-recording between this UI tick and the call.
+        var msg = 'This video is queued in another admin\'s recording batch'
+                + (lockedBy ? ' (' + lockedBy + ')' : '')
+                + ', but is not the one currently being recorded.\n\n'
+                + 'Clear it from their queue so you can record it now? '
+                + 'Their popout will skip past this item the next time it advances.';
+        if (!confirm(msg)) return;
+        fetch(API + '/admin-recording-clear-queue.php', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_keys: [itemKey] })
+        }).then(function(r){ return r.json(); }).then(function(d) {
+            if (d.error) { alert('Clear failed: ' + d.error); return; }
+            if (d.rejected && d.rejected.length) {
+                alert('Cannot clear — the item is now actively recording. Try again in a moment.');
+                if (typeof loadRecordings === 'function') setTimeout(loadRecordings, 800);
+                return;
+            }
+            if (typeof loadRecordings === 'function') setTimeout(loadRecordings, 800);
+            startRecordingForItem(itemKey);
+        }).catch(function(err) {
+            alert('Clear failed: ' + err.message);
+        });
         return;
     }
     var msg = 'This video is locked because a server-side process is still running for it:\n\n  '
@@ -2175,8 +2207,16 @@ function renderRecordings(d) {
         //   transcribe:running                     → "Transcribing..."
         var inProgressShort = (function(r) {
             if (!r) return '';
-            var m = r.match(/recording_active:by:([^:]+)/);
-            if (m) return 'Locked by ' + m[1];
+            // Reason format from admin-recordings.php:
+            //   recording_active:by:<user>:<age>s_ago:<now|queued>
+            // The last segment distinguishes the actively-recording item
+            // ("now") from items merely held in someone's batch queue
+            // ("queued") — only "queued" can be force-cleared.
+            var m = r.match(/recording_active:by:([^:]+):[^:]+:(now|queued)/);
+            if (m) return (m[2] === 'now' ? 'Recording — ' : 'Queued by ') + m[1];
+            // Legacy (pre-recording_now) reason without the now|queued tag.
+            var legacy = r.match(/recording_active:by:([^:]+)/);
+            if (legacy) return 'Locked by ' + legacy[1];
             if (r.indexOf('recording_active') !== -1) return 'Recording';
             if (r.indexOf('recording_parts')  !== -1) return 'Recording (uploads)';
             if (r.indexOf('finalize:')        !== -1) return 'Encoding...';
