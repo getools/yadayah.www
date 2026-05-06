@@ -59,8 +59,8 @@ jsonResponse(['page' => $page, 'sections' => $out]);
  * Config shape (all fields optional unless noted):
  *   feed_keys:        [int]            — restrict to these feeds
  *   feed_item_keys:   [int]            — explicit pinned items (bypasses other filters when present)
- *   age_min_days, age_min_hours: int — items at least this old
- *   age_max_days, age_max_hours: int — items at most this old
+ *   age_min_h: int total hours — items must be at least this old
+ *   age_max_h: int total hours — items must be at most this old
  *   include_hashtags: 'tag1,tag2'      — passed through buildFeedPageFilters
  *   exclude_hashtags: 'tag1,tag2'
  *   duration_min_sec: int
@@ -96,13 +96,13 @@ function resolveItemsSection(PDO $db, array $cfg): array {
         }
     }
     // Age Min — item must be at least this old (posted_dtime <= now - age_min)
-    $ageMinH = (int)($cfg['age_min_days'] ?? 0) * 24 + (int)($cfg['age_min_hours'] ?? 0);
+    $ageMinH = (int)($cfg['age_min_h'] ?? 0);
     if ($ageMinH > 0) {
         $where .= " AND COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) <= NOW() - (? || ' hours')::interval";
         $params[] = (string)$ageMinH;
     }
     // Age Max — item must be at most this old (posted_dtime >= now - age_max)
-    $ageMaxH = (int)($cfg['age_max_days'] ?? 0) * 24 + (int)($cfg['age_max_hours'] ?? 0);
+    $ageMaxH = (int)($cfg['age_max_h'] ?? 0);
     if ($ageMaxH > 0) {
         $where .= " AND COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) >= NOW() - (? || ' hours')::interval";
         $params[] = (string)$ageMaxH;
