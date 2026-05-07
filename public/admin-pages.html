@@ -151,6 +151,8 @@
             </div>
             <div class="field">
                 <label><input type="checkbox" id="f-active" checked> Active</label>
+                <label style="margin-left:24px;" title="Page can carry feed items (videos, etc.)"><input type="checkbox" id="f-item-allow"> Allow Items</label>
+                <label style="margin-left:24px;" title="Page's items appear in the global Search → Video Group dropdown"><input type="checkbox" id="f-item-search"> Include in Search</label>
             </div>
             <div style="display:flex;gap:24px;flex-wrap:wrap;">
                 <div style="display:flex;align-items:flex-end;gap:8px;">
@@ -424,6 +426,8 @@ function showPageForm(record) {
     setPickerValue('f-background-color', (record && record.page_background_color) || 'rgba(245,245,245,1)');
 
     document.getElementById('f-active').checked = record ? record.page_active_flag : true;
+    document.getElementById('f-item-allow').checked  = record ? !!record.page_item_allow_flag  : false;
+    document.getElementById('f-item-search').checked = record ? !!record.page_item_search_flag : false;
     var toolbarVal = record ? (record.page_toolbar || 0) : 0;
     var footerVal = record ? (record.page_footer_col || 0) : 0;
     document.getElementById('f-toolbar').value = toolbarVal;
@@ -525,8 +529,11 @@ function savePage() {
     var subheading = document.getElementById('f-subheading').value.trim();
     var description = document.getElementById('f-description').value.trim();
     var pageBody = getBodyContent().trim();
+    var itemAllow  = document.getElementById('f-item-allow').checked;
+    var itemSearch = document.getElementById('f-item-search').checked;
     var body = {
         page_code: code, page_title: title, page_active_flag: active,
+        page_item_allow_flag: itemAllow, page_item_search_flag: itemSearch,
         page_toolbar: toolbar, page_footer_col: footerCol, page_header_sort: headerSort, page_footer_sort: footerSort,
         page_url: url, page_heading: heading, page_subheading: subheading, page_description: description, page_body: pageBody,
         page_heading_color: getPickerValue('f-heading-color'),
