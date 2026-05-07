@@ -26,6 +26,5 @@ inthecompanyofgoodandevil.com, www.inthecompanyofgoodandevil.com {
 
 book.yadayah.com {
     tls /certs/origin.pem /certs/origin.key
-
-    reverse_proxy books-web:80
+    redir https://yadayah.com{uri} permanent
 }

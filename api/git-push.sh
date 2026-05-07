@@ -42,13 +42,17 @@ rsync -a "$DEPLOY_DIR/public/js/" "$GIT_DIR/public/js/" \
 rsync -a "$DEPLOY_DIR/public/" "$GIT_DIR/public/" \
     --include='*.html' --exclude='*/' --exclude='*'
 
+# Sync flipbook templates (per-book slim shell + helper assets)
+mkdir -p "$GIT_DIR/templates"
+rsync -a --delete "$DEPLOY_DIR/templates/" "$GIT_DIR/templates/"
+
 # Sync rumble-scraper scripts (shell and Node.js)
 mkdir -p "$GIT_DIR/rumble-scraper/yy"
 rsync -a --delete "$DEPLOY_DIR/rumble-scraper/yy/" "$GIT_DIR/rumble-scraper/yy/" \
     --include='*.sh' --include='*.cjs' --include='*.js' --include='*/' --exclude='*'
 
 # Sync root config files
-for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh cron-backup.sh book-pipeline-worker.sh claude-fix-runner.sh cron-claude-fix-gated.sh cron-flipbook-retry.sh cron-recording-lock-cleanup.sh cron-fliphtml5-match.sh cron-fliphtml5-match-trigger.sh cron-fliphtml5-match.py flipbook-download-host.sh fliphtml5-download.cjs fliphtml5-upload.cjs process-email-cron.sh sync-blog-cron.sh sync-invite-cron.sh; do
+for f in .htaccess CLAUDE.md Dockerfile docker-compose.yml docker-compose.prod.yml docker-entrypoint.sh php.ini cron-monitor.sh cron-backup.sh book-pipeline-worker.sh migrate_flipbook.sh migrate_all_flipbooks.sh Caddyfile rebuild_prototype.sh claude-fix-runner.sh cron-claude-fix-gated.sh cron-flipbook-retry.sh cron-recording-lock-cleanup.sh cron-fliphtml5-match.sh cron-fliphtml5-match-trigger.sh cron-fliphtml5-match.py flipbook-download-host.sh fliphtml5-download.cjs fliphtml5-upload.cjs process-email-cron.sh sync-blog-cron.sh sync-invite-cron.sh; do
     [ -f "$DEPLOY_DIR/$f" ] && cp -f "$DEPLOY_DIR/$f" "$GIT_DIR/$f" 2>/dev/null
 done
 
