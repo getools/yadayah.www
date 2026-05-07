@@ -153,6 +153,12 @@ $stmt = $db->prepare("
            f.feed_site_code,
            f.feed_key,
            f.feed_name,
+           (f.feed_yt_caption_refresh_token IS NOT NULL) AS feed_yt_connected,
+           fi.feed_item_yt_caption_status         AS yt_caption_status,
+           fi.feed_item_yt_caption_uploaded_dtime AS yt_caption_uploaded_dtime,
+           fi.feed_item_yt_caption_message        AS yt_caption_message,
+           (SELECT COUNT(*) FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS yt_caption_segment_count,
+           fi.feed_item_yt_caption_segments_at_upload AS yt_caption_segments_at_upload,
            CASE
              WHEN fi.feed_item_audio_file IS NOT NULL THEN 'complete'
              WHEN COALESCE(fi.feed_item_audio_resume_seconds, 0) > 0 THEN 'partial'

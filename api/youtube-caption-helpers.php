@@ -173,3 +173,193 @@ function ytCaptionsFetchChannel(string $accessToken, ?string $fallbackHandle = n
         'title' => (string)($item['snippet']['title'] ?? ''),
     ];
 }
+
+// ── Phase 2: SRT formatter + caption-upload helper ──────────────────
+
+/**
+ * Render a feed_item's transcript as SRT text. Returns null if the item
+ * has no segments. Each segment's end time is the start of the next
+ * segment; the LAST segment ends at feed_item_duration_seconds (or
+ * start + 5s if duration is unknown).
+ *
+ * SRT format:
+ *   1
+ *   00:00:00,000 --> 00:00:05,000
+ *   Hello world
+ *
+ *   2
+ *   ...
+ */
+function ytCaptionsBuildSrt(PDO $db, int $feedItemKey): ?string {
+    $stmt = $db->prepare("
+        SELECT feed_item_transcript_sort, feed_item_transcript_segment, feed_item_transcript_text
+          FROM yy_feed_item_transcript
+         WHERE feed_item_key = ?
+         ORDER BY feed_item_transcript_sort
+    ");
+    $stmt->execute([$feedItemKey]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) return null;
+
+    // Total duration for the LAST row's end-time fallback.
+    $durStmt = $db->prepare("SELECT feed_item_duration_seconds FROM yy_feed_item WHERE feed_item_key = ?");
+    $durStmt->execute([$feedItemKey]);
+    $totalSeconds = (int)($durStmt->fetchColumn() ?: 0);
+
+    $srt = '';
+    $n = count($rows);
+    for ($i = 0; $i < $n; $i++) {
+        $startSec = ytCaptionsHmsToSeconds((string)$rows[$i]['feed_item_transcript_segment']);
+        if ($i + 1 < $n) {
+            $endSec = ytCaptionsHmsToSeconds((string)$rows[$i + 1]['feed_item_transcript_segment']);
+        } else {
+            $endSec = $totalSeconds > $startSec ? $totalSeconds : $startSec + 5;
+        }
+        // Clamp end > start; SRT players choke on zero-length cues.
+        if ($endSec <= $startSec) $endSec = $startSec + 1;
+        $srt .= ($i + 1) . "\n"
+             . ytCaptionsSecondsToSrt($startSec) . ' --> ' . ytCaptionsSecondsToSrt($endSec) . "\n"
+             . trim((string)$rows[$i]['feed_item_transcript_text']) . "\n\n";
+    }
+    return $srt;
+}
+
+function ytCaptionsHmsToSeconds(string $hms): int {
+    // Accepts "HH:MM:SS" or "MM:SS" or just seconds.
+    $parts = explode(':', $hms);
+    $secs = 0;
+    foreach ($parts as $p) {
+        $secs = $secs * 60 + (int)$p;
+    }
+    return $secs;
+}
+
+function ytCaptionsSecondsToSrt(int $totalSec): string {
+    $h = intdiv($totalSec, 3600);
+    $m = intdiv($totalSec % 3600, 60);
+    $s = $totalSec % 60;
+    return sprintf('%02d:%02d:%02d,000', $h, $m, $s);
+}
+
+/**
+ * List existing caption tracks for a video. Returns array of
+ * ['id' => ..., 'name' => ..., 'language' => ...] or null on error.
+ * Used to detect whether we should INSERT a new track or UPDATE the
+ * existing one we previously uploaded.
+ */
+function ytCaptionsListTracks(string $accessToken, string $videoId): ?array {
+    $url = 'https://www.googleapis.com/youtube/v3/captions?' . http_build_query([
+        'part'    => 'snippet',
+        'videoId' => $videoId,
+    ]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $accessToken],
+        CURLOPT_TIMEOUT        => 15,
+    ]);
+    $body = curl_exec($ch);
+    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($http !== 200 || !$body) return null;
+    $data = json_decode($body, true);
+    if (!is_array($data)) return null;
+    $out = [];
+    foreach (($data['items'] ?? []) as $item) {
+        $out[] = [
+            'id'         => (string)($item['id'] ?? ''),
+            'name'       => (string)($item['snippet']['name'] ?? ''),
+            'language'   => (string)($item['snippet']['language'] ?? ''),
+            // 'standard' (uploaded by an editor), 'ASR' (auto-generated),
+            // or 'forced' — only 'standard' is updatable via this API.
+            'trackKind'  => (string)($item['snippet']['trackKind'] ?? ''),
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Upload (insert or update) an SRT caption track on a video.
+ *
+ * Args:
+ *   $accessToken  — fresh OAuth access token for the channel owner
+ *   $videoId      — YouTube videoId (the 11-char ID)
+ *   $srt          — SRT text body
+ *   $existingId   — captions resource ID to UPDATE (null = INSERT new)
+ *   $name         — track display name (e.g. 'English (auto)' or 'English')
+ *   $language     — BCP-47 language code (e.g. 'en')
+ *
+ * Returns: ['ok' => bool, 'track_id' => string|null, 'http' => int, 'message' => string|null]
+ *
+ * The captions API uses a multipart/related body — one JSON metadata
+ * part (snippet) plus the file body part. PHP's CURLFile produces
+ * multipart/form-data which YouTube REJECTS for this endpoint, so we
+ * build the multipart body manually.
+ */
+function ytCaptionsUploadSrt(
+    string $accessToken,
+    string $videoId,
+    string $srt,
+    ?string $existingId,
+    string $name,
+    string $language
+): array {
+    $boundary = 'yyboundary' . bin2hex(random_bytes(8));
+
+    // INSERT needs videoId in the snippet; UPDATE doesn't (the track ID
+    // already identifies the target). Both accept name/language updates.
+    $snippet = ['name' => $name];
+    if ($existingId === null) {
+        $snippet['videoId'] = $videoId;
+        $snippet['language'] = $language;
+    } else {
+        // captions.update accepts language change but typically we keep it.
+        $snippet['language'] = $language;
+    }
+    $jsonPart = json_encode(['snippet' => $snippet], JSON_UNESCAPED_UNICODE);
+
+    $body  = "--{$boundary}\r\n";
+    $body .= "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+    $body .= $jsonPart . "\r\n";
+    $body .= "--{$boundary}\r\n";
+    $body .= "Content-Type: text/srt\r\n\r\n";
+    $body .= $srt . "\r\n";
+    $body .= "--{$boundary}--\r\n";
+
+    if ($existingId === null) {
+        // INSERT
+        $url    = 'https://www.googleapis.com/upload/youtube/v3/captions?part=snippet&uploadType=multipart';
+        $method = 'POST';
+    } else {
+        // UPDATE (PUT)
+        $url    = 'https://www.googleapis.com/upload/youtube/v3/captions?part=snippet&uploadType=multipart&id=' . urlencode($existingId);
+        $method = 'PUT';
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST  => $method,
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $accessToken,
+            'Content-Type: multipart/related; boundary=' . $boundary,
+            'Content-Length: ' . strlen($body),
+        ],
+        CURLOPT_TIMEOUT        => 60,
+    ]);
+    $resp = curl_exec($ch);
+    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http >= 200 && $http < 300 && $resp) {
+        $j = json_decode($resp, true);
+        $trackId = is_array($j) ? (string)($j['id'] ?? '') : '';
+        return ['ok' => true, 'track_id' => $trackId ?: $existingId, 'http' => $http, 'message' => null];
+    }
+    // Surface the most useful error — Google returns JSON with .error.message
+    $msg = $resp ?: '';
+    $j = $resp ? json_decode($resp, true) : null;
+    if (is_array($j) && !empty($j['error']['message'])) $msg = (string)$j['error']['message'];
+    return ['ok' => false, 'track_id' => null, 'http' => $http, 'message' => substr($msg, 0, 500)];
+}

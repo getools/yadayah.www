@@ -250,6 +250,9 @@
                             <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
                         </div>
                     </th>
+                    <th style="width:120px;" title="Per-row YouTube caption upload status">
+                        <span>Captions</span>
+                    </th>
                     <th style="width:110px;">
                         <span>Status</span>
                         <div id="rec-f-istatus" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">
@@ -2006,6 +2009,77 @@ function ytCaptionsDisconnectFeed(feedKey) {
     }
 })();
 
+
+// ── Captions column helpers ──────────────────────────────────────────
+// Renders the per-row Captions cell. Five visual states:
+//   - feed not connected → '—'
+//   - no transcript      → '—' (nothing to upload)
+//   - status=success and not stale → '✓ <relative time>'
+//   - status=success but segments_at_upload != current count → 'stale + Upload'
+//   - status=queued / never / error / uploading → matching label + Upload button
+function recCaptionsCell(it) {
+    if (!it.feed_yt_connected) {
+        return '<span style="color:#bbb;" title="Connect this feed via Sources tab to enable caption uploads">—</span>';
+    }
+    var segs = parseInt(it.yt_caption_segment_count || 0, 10);
+    if (segs === 0) {
+        return '<span style="color:#bbb;" title="No transcript segments yet">—</span>';
+    }
+    var st = (it.yt_caption_status || 'never').toLowerCase();
+    var atUpload = parseInt(it.yt_caption_segments_at_upload || 0, 10);
+    var stale = (st === 'success' && atUpload && atUpload !== segs);
+    var btn = '<button class="rec-caption-upload-btn" onclick="event.stopPropagation();uploadCaptions(' + it.feed_item_key + ', this)" '
+            + 'style="background:#31345A;color:#fff;border:0;padding:3px 9px;border-radius:3px;font-size:0.72rem;cursor:pointer;font-weight:600;">↑ Upload</button>';
+    if (st === 'success' && !stale) {
+        var when = it.yt_caption_uploaded_dtime ? new Date(it.yt_caption_uploaded_dtime).toLocaleDateString() : '';
+        return '<span style="color:#1b5e20;font-weight:600;" title="Last uploaded ' + esc(it.yt_caption_uploaded_dtime || '') + '">✓ ' + esc(when) + '</span>';
+    }
+    if (st === 'success' && stale) {
+        return '<span style="color:#a36100;font-weight:600;" title="Transcript edited since last upload">↻ stale</span> ' + btn;
+    }
+    if (st === 'uploading') {
+        return '<span style="color:#666;">⏳ uploading…</span>';
+    }
+    if (st === 'error') {
+        return '<span style="color:#c0392b;font-weight:600;" title="' + esc(it.yt_caption_message || '') + '">✗ error</span> ' + btn;
+    }
+    // queued or never with a transcript
+    return '<span style="color:#a36100;">queued</span> ' + btn;
+}
+function uploadCaptions(feedItemKey, btnEl) {
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
+    fetch('/api/admin-yt-caption-upload.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({feed_item_key: feedItemKey}),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) {
+            // Refresh the whole list so the row's caption cell + the
+            // top-of-list "Upload N Queued" badge both update.
+            if (typeof loadRecordings === 'function') loadRecordings();
+        } else {
+            alert('Upload failed: ' + (d.message || d.error || 'unknown'));
+            if (typeof loadRecordings === 'function') loadRecordings();
+        }
+    }).catch(function (e) {
+        alert('Upload failed: ' + e.message);
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = '↑ Upload'; }
+    });
+}
+function batchUploadCaptions(btnEl) {
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Uploading…'; }
+    fetch('/api/admin-yt-caption-upload-batch.php', {
+        method: 'POST', credentials: 'include',
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        alert('Batch upload done: ' + (d.success || 0) + ' ok, ' + (d.failed || 0) + ' failed (out of ' + (d.processed || 0) + ').');
+        if (typeof loadRecordings === 'function') loadRecordings();
+    }).catch(function (e) {
+        alert('Batch upload failed: ' + e.message);
+    }).finally(function () {
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Batch upload'; }
+    });
+}
+
 // ── Recordings sub-tab: queue + batch process ──
 var _recItems = [];
 var _recBatchActive = false;
@@ -2344,6 +2418,7 @@ function renderRecordings(d) {
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
+            +     '<td style="font-size:0.78rem;">' + recCaptionsCell(it) + '</td>'
             +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
             +     '</tr>';
