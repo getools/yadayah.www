@@ -109,7 +109,7 @@
       const pageFlip = new St.PageFlip(bookEl, {
         width: initial.pageW, height: initial.pageH,
         size: 'fixed', maxShadowOpacity: 0.5, showCover: false,
-        flippingTime: 700, mobileScrollSupport: true, usePortrait: true, drawShadow: true,
+        flippingTime: 700, mobileScrollSupport: true, usePortrait: false, drawShadow: true,
         // Disable mouse-drag flipping so transparent text overlay can
         // capture mousedown for text selection. Touch swipe still flips
         // on mobile. Desktop navigation: arrow keys / buttons / TOC.

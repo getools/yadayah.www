@@ -275,7 +275,7 @@ window.loadVideos = function() {
                 + '<button style="' + arrowStyle + (isFirst ? hiddenStyle : '') + '" onclick="moveVideo(' + v.video_key + ',-1)">&#9650;</button>'
                 + '<button style="' + arrowStyle + (isLast ? hiddenStyle : '') + '" onclick="moveVideo(' + v.video_key + ',1)">&#9660;</button>'
                 + '</div>'
-                + '<input type="number" value="' + (v.sort || 0) + '" data-field="sort" style="width:50px;text-align:center;" onchange="saveVideo(' + v.video_key + ')">'
+                + '<input type="number" value="' + (v.sort || 0) + '" data-field="sort" style="width:50px;text-align:center;" onchange="saveVideo(' + v.video_key + ');setTimeout(loadVideos,500)">'
                 + '</td>'
                 + '<td style="text-align:center;">'
                 + '<input type="file" id="mp3-' + v.video_key + '" accept=".mp3" style="display:none" onchange="uploadMp3(' + v.video_key + ')">'
