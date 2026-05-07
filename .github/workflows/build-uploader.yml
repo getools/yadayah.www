@@ -53,9 +53,14 @@ jobs:
           DEPLOY_HOST:            ${{ secrets.DEPLOY_HOST }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s' "$DEPLOY_SSH_KEY"         > ~/.ssh/deploy_key
-          printf '%s' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Strip any CR that Git Bash on Windows may have introduced; the
+          # OpenSSH key parser rejects CRLF and quietly fails as
+          # "error in libcrypto: unsupported". Ensure trailing newline too.
+          printf '%s\n' "$DEPLOY_SSH_KEY"         | tr -d '\r' > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          # Sanity-check that the key parsed (private-key fingerprint).
+          ssh-keygen -lf ~/.ssh/deploy_key
           # The deploy key on the server has a forced command that pipes
           # whatever it receives on stdin into a fixed destination file
           # (uploader-deploy.sh). So we just stream the .exe over SSH stdin.
