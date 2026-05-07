@@ -241,15 +241,14 @@ if ($total > 0) {
 
 // Build per-result links.
 //
-// Page numbers in yy_paragraph come from the source docx footer, but the
-// generated PDF / flipbook page numbers haven't been recalibrated to
-// match those yet — `#p=` deep-links would land users on the wrong
-// flipbook page. Until calibration is done, gate the visible "Page N"
-// label AND the `#p=` anchor behind a single flag here. Book and
-// chapter links stay live regardless — only the page-precise piece is
-// suppressed. Flip $EXPOSE_PAGES back to true once docx footer pages
-// = flipbook pages.
-$EXPOSE_PAGES = false;
+// Page numbers in yy_paragraph come from the source docx footer. The new
+// self-hosted flipbook viewer reads pages straight from the Word-COM-
+// generated PDF, so PDF page = docx footer page = the page stored here
+// (provided the volume's PDF was produced by the desktop "YY PDF
+// Generator App"). The viewer accepts `#chapter=slug&page=N` in the URL
+// hash and seeks to that page on load; if `page=N` exceeds the actual
+// page count it silently clamps, so older volumes whose PDF hasn't been
+// regenerated yet fail gracefully toward the chapter or book home.
 
 // Slugify a chapter's display title ("1 Babel ~ Confusion") to the
 // stable URL slug the flipbook viewer recognizes ("1-babel-confusion").
@@ -275,31 +274,37 @@ foreach ($results as &$row) {
     $bookUrl = $bookSlug ? '/' . $bookSlug . '/' : null;
     $row['book_url'] = $bookUrl;
 
-    // Chapter URL — when chapter info is present, append the slugged
-    // chapter title. The new flipbook viewer reads location.hash for
-    // chapter= to seek; older FlipHTML5 viewers ignore unknown anchors,
-    // so falling through to the book's first page is the safe failure.
-    if ($bookUrl && $row['chapter_number'] && $row['chapter_name']) {
+    // Build the deep-link hash from whatever location info we have for
+    // this paragraph: chapter slug and/or page. Both keys are honored by
+    // the new flipbook viewer (`page` takes precedence over `chapter`
+    // when both are present, which is what we want — page is the more
+    // specific destination).
+    $hashParts = [];
+    if ($row['chapter_number'] && $row['chapter_name']) {
         $title = $row['chapter_number'] . ' ' . $row['chapter_name'];
-        $row['chapter_url'] = $bookUrl . '#chapter=' . chapterSlug($title);
-    } else {
-        $row['chapter_url'] = null;
+        $hashParts[] = 'chapter=' . chapterSlug($title);
     }
+    if (!empty($row['page'])) {
+        $hashParts[] = 'page=' . (int)$row['page'];
+    }
+    // Pass the search query along so the flipbook viewer pre-populates its
+    // own search box on load and highlights matches in the text-layer.
+    // flipbook.js reads params.get('q') from location.hash.
+    if ($q !== '') {
+        $hashParts[] = 'q=' . rawurlencode($q);
+    }
+    $hash = $hashParts ? '#' . implode('&', $hashParts) : '';
 
-    if (!$EXPOSE_PAGES) {
-        // Strip the field so the client-side renderers (which all do
-        // `if (r.page) ...`) skip rendering "Page N" without needing
-        // any HTML/JS edits.
-        unset($row['page']);
-    }
+    // chapter_url is the URL site-search.js wraps the location text in
+    // ("Ch 3 · Foo · Page 47"). Includes both chapter and page when
+    // available so the deep-link is as precise as possible. Falls back
+    // to null if neither is known; the renderer then uses bookHref.
+    $row['chapter_url'] = ($bookUrl && $hashParts) ? ($bookUrl . $hash) : null;
 
-    // flip_url retained for backwards compatibility (existing book.html
-    // and search prototypes read it). Always populated to the book
-    // bundle now — the # anchor is gated by $EXPOSE_PAGES.
-    $row['flip_url'] = $bookUrl;
-    if ($EXPOSE_PAGES && $bookUrl && !empty($row['page'])) {
-        $row['flip_url'] .= '#p=' . ($row['page'] + 6);
-    }
+    // flip_url retained for backwards compatibility (book.html, search
+    // prototype). Always populated; carries the same hash as chapter_url
+    // when location info is present.
+    $row['flip_url'] = $bookUrl ? ($bookUrl . $hash) : null;
 
     unset($row['rank']);
 }

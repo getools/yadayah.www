@@ -521,6 +521,11 @@
         const parts = [];
         if (ch && ch.slug) parts.push('chapter=' + encodeURIComponent(ch.slug));
         parts.push('page=' + page1);
+        // Preserve the active search query in the URL so a copied/shared
+        // link keeps the in-page highlight active for the next reader.
+        const _si = document.getElementById('search-input');
+        const activeQ = (_si && _si.value || '').trim();
+        if (activeQ) parts.push('q=' + encodeURIComponent(activeQ));
         const newHash = '#' + parts.join('&');
         if (location.hash !== newHash) history.replaceState(null, '', newHash);
       }
@@ -963,11 +968,27 @@
       const params = new URLSearchParams(_hashAtLoad.replace(/^#/, ''));
       const hashChapter = params.get('chapter');
       const hashPage    = parseInt(params.get('page') || '0', 10);
+      const hashQuery   = params.get('q') || '';
+      // If the URL hash carries a search query (deep-link from the site-
+      // wide search results), seed the in-flipbook search box and run it.
+      // The existing `input` listener wires through runSearch() and
+      // applySearchHighlight(); just dispatch the event so the same code
+      // path fires. Highlights re-apply as new pages render via the per-
+      // page text-layer builders (which invoke applySearchHighlight).
+      if (hashQuery && searchInput) {
+        searchInput.value = hashQuery;
+        searchInput.dispatchEvent(new Event('input'));
+      }
       window.addEventListener('hashchange', () => {
         const p = new URLSearchParams(location.hash.replace(/^#/, ''));
         const ch = p.get('chapter'); const pg = parseInt(p.get('page') || '0', 10);
+        const qq = p.get('q') || '';
         if (pg) goto(pg, { silent: true });
         else if (ch) { const c = chapterBySlug(ch); if (c && c.page) goto(c.page, { silent: true }); }
+        if (searchInput && qq !== searchInput.value) {
+          searchInput.value = qq;
+          searchInput.dispatchEvent(new Event('input'));
+        }
       });
 
       let initialPage = null;
