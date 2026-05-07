@@ -390,10 +390,9 @@
                 var linkParts = '<span class="volume">' + escHtml(r.volume_label) + '</span>';
                 linkParts += '<span class="sep">&mdash;</span>';
                 linkParts += '<span class="series">' + escHtml(r.series_label) + '</span>';
-                // Prefer FlipHTML5 viewer; fall back to PDF when flipbook isn't up yet
-                var bookUrl = r.flip_url || r.pdf_url;
-                if (bookUrl) {
-                    html += '<div><a href="' + escAttr(bookUrl) + '" target="_blank">' + linkParts + '</a></div>';
+                // Self-hosted flipbook URL — null when the volume's flipbook hasn't been built yet.
+                if (r.flipbook_url) {
+                    html += '<div><a href="' + escAttr(r.flipbook_url) + '" target="_blank">' + linkParts + '</a></div>';
                 } else {
                     html += '<div>' + linkParts + '</div>';
                 }

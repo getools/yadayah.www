@@ -31,6 +31,32 @@ $offset = ($page - 1) * $limit;
 
 $pdo = getDb();
 
+// One-time scan of the new self-hosted flipbook directory. Only volumes with
+// a built flipbook (a directory at /flipbook-prototype/<volume_code>/ containing
+// an index.html) get a link in search results — the old FlipHTML5 and direct-PDF
+// fallbacks have been dropped per the unified Flipbook integration.
+// Webroot inside the container is /var/www/html (not /var/www/html/public),
+// so the flipbook dir is one level up from /api, not two.
+$_flipbookRoot = dirname(__DIR__) . '/flipbook-prototype';
+$_availableFlipbooks = [];
+if (is_dir($_flipbookRoot)) {
+    foreach (scandir($_flipbookRoot) as $d) {
+        if ($d === '.' || $d === '..') continue;
+        if (is_file($_flipbookRoot . '/' . $d . '/index.html')) {
+            $_availableFlipbooks[$d] = true;
+        }
+    }
+}
+function flipbookUrl(?string $volumeCode, $page): ?string {
+    global $_availableFlipbooks;
+    if (!$volumeCode || empty($_availableFlipbooks[$volumeCode])) return null;
+    // Hash deep link uses physical flipbook page. Front matter (cover/copyright/ToC)
+    // contributes ~6 pages, so paragraph_page (the docx footer page) maps to
+    // physical page paragraph_page + 6 — same offset as the prior FlipHTML5 viewer.
+    $physical = ((int)$page) + 6;
+    return '/flipbook-prototype/' . rawurlencode($volumeCode) . '/#page=' . $physical;
+}
+
 // --- Alias expansion: look up alternate forms for each word in the query ---
 $qWords = preg_split('/\s+/', $q);
 $aliasTargets = [];
@@ -71,7 +97,7 @@ if ($mode === 'phrase') {
     $results = [];
     if ($total > 0) {
         $stmt = $pdo->prepare("
-            SELECT v.volume_label, v.volume_flip_code AS flip_code, v.volume_pdf,
+            SELECT v.volume_label, v.volume_code AS volume_code,
                    s.series_label, ch.chapter_name, ch.chapter_number,
                    p.paragraph_page AS page,
                    1.0 AS rank,
@@ -102,15 +128,10 @@ if ($mode === 'phrase') {
         unset($row);
     }
 
-    // Add flip_url + pdf_url. Prefer FlipHTML5 (online flipbook) when its code
-    // is set; otherwise fall back to the on-disk PDF. The same +6 page offset
-    // applies to both — the PDF and the flipbook are built from the same docx
-    // and share the same front-matter (cover, copyright, ToC ≈ 6 pages).
+    // Build flipbook_url for each hit. Returns null when the volume's flipbook
+    // hasn't been built yet — frontends render those rows without a link.
     foreach ($results as &$row) {
-        $row['flip_url'] = ($row['flip_code'] && $row['page'])
-            ? '/' . $row['flip_code'] . '/#p=' . ($row['page'] + 6) : null;
-        $row['pdf_url']  = (!empty($row['volume_pdf']) && $row['page'])
-            ? '/pdf/' . rawurlencode($row['volume_pdf']) . '#page=' . ($row['page'] + 6) : null;
+        $row['flipbook_url'] = flipbookUrl($row['volume_code'] ?? null, $row['page'] ?? 0);
         unset($row['rank']);
     }
     unset($row);
@@ -167,8 +188,7 @@ $results = [];
 if ($total > 0) {
     $stmt = $pdo->prepare("
         SELECT v.volume_label AS volume_label,
-               v.volume_flip_code AS flip_code,
-               v.volume_pdf AS volume_pdf,
+               v.volume_code AS volume_code,
                s.series_label AS series_label,
                ch.chapter_name AS chapter_name,
                ch.chapter_number AS chapter_number,
@@ -228,8 +248,7 @@ if (empty($results) && count($qWords) >= 1) {
         $fuzzyTsqParam = $didYouMean;
         $retryStmt = $pdo->prepare("
             SELECT v.volume_label AS volume_label,
-                   v.volume_flip_code AS flip_code,
-                   v.volume_pdf AS volume_pdf,
+                   v.volume_code AS volume_code,
                    s.series_label AS series_label,
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
@@ -288,8 +307,7 @@ if (empty($results)) {
     if ($total > 0) {
         $stmt = $pdo->prepare("
             SELECT v.volume_label AS volume_label,
-                   v.volume_flip_code AS flip_code,
-                   v.volume_pdf AS volume_pdf,
+                   v.volume_code AS volume_code,
                    s.series_label AS series_label,
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
@@ -323,12 +341,9 @@ if (empty($results)) {
     }
 }
 
-// Add flip_url + pdf_url to all results (see phrase-mode block above for rationale).
+// Build flipbook_url for each hit (see phrase-mode block above for rationale).
 foreach ($results as &$row) {
-    $row['flip_url'] = (!empty($row['flip_code']) && !empty($row['page']))
-        ? '/' . $row['flip_code'] . '/#p=' . ($row['page'] + 6) : null;
-    $row['pdf_url']  = (!empty($row['volume_pdf']) && !empty($row['page']))
-        ? '/pdf/' . rawurlencode($row['volume_pdf']) . '#page=' . ($row['page'] + 6) : null;
+    $row['flipbook_url'] = flipbookUrl($row['volume_code'] ?? null, $row['page'] ?? 0);
     unset($row['rank']);
 }
 unset($row);

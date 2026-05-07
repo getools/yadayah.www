@@ -612,8 +612,9 @@ function booksResultsHtml(results) {
         if (r.chapter_number) location += 'Ch ' + r.chapter_number;
         if (r.chapter_name)   location += (location ? ' · ' : '') + esc(r.chapter_name);
         if (r.page)           location += (location ? ' · ' : '') + 'Page ' + r.page;
-        var titleLink = r.flip_url
-            ? '<a href="' + esc(r.flip_url) + '" target="_blank">' + esc(r.volume_label) + '</a>'
+        // Self-hosted flipbook URL — null when the volume's flipbook hasn't been built yet.
+        var titleLink = r.flipbook_url
+            ? '<a href="' + esc(r.flipbook_url) + '" target="_blank">' + esc(r.volume_label) + '</a>'
             : esc(r.volume_label);
         // Cover thumb: derive sNNvNN from volume_code. Volumes that
         // don't follow the pattern (or have no code) just render an

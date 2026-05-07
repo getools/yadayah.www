@@ -499,8 +499,9 @@ function renderResults(data, query) {
         var linkParts = '<span class="volume">' + escHtml(r.volume_label) + '</span>'
             + '<span class="sep">&mdash;</span>'
             + '<span class="series">' + escHtml(r.series_label) + '</span>';
-        if (r.flip_url) {
-            html += '<div><a href="' + escAttr(r.flip_url) + '" target="_blank">' + linkParts + '</a></div>';
+        // Self-hosted flipbook URL \u2014 null when the volume's flipbook hasn't been built yet.
+        if (r.flipbook_url) {
+            html += '<div><a href="' + escAttr(r.flipbook_url) + '" target="_blank">' + linkParts + '</a></div>';
         } else {
             html += '<div>' + linkParts + '</div>';
         }
@@ -509,8 +510,8 @@ function renderResults(data, query) {
         if (r.page) locParts.push('Page ' + r.page);
         if (locParts.length) {
             var locText = escHtml(locParts.join(' \u00b7 '));
-            if (r.flip_url) {
-                html += '<div class="location-right"><a href="' + escAttr(r.flip_url) + '" target="_blank">' + locText + '</a></div>';
+            if (r.flipbook_url) {
+                html += '<div class="location-right"><a href="' + escAttr(r.flipbook_url) + '" target="_blank">' + locText + '</a></div>';
             } else {
                 html += '<div class="location-right">' + locText + '</div>';
             }

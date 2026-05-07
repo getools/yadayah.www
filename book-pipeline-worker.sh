@@ -590,6 +590,64 @@ while IFS='|' read -r vk docx pdf flip status retries; do
     sweep_count=$((sweep_count + 1))
 done <<< "$sweep_rows"
 
+# ── Phase 6: flipbook regen sweep ─────────────────────────────────
+# When a PDF is newer than its self-hosted flipbook (or the flipbook is
+# missing), regenerate via migrate_flipbook.sh. Caps at 1 volume per tick —
+# pdftoppm at 200dpi is heavy, and process_job above already may have run
+# DOCX→PDF + parser this tick. The sweep walks volumes in volume_key order
+# and picks the first stale slug it finds, so when many books are stale we
+# work through them deterministically over successive ticks.
+#
+# Slug convention matches migrate_flipbook.sh: spaces→hyphens, apostrophes
+# stripped. PDF stem keeps apostrophes (so file lookup matches what
+# pdftoppm/yy_volume reference). The slug is the LIVE URL path under
+# /opt/yada-www/public/<slug>/.
+if [ -x /opt/yada-www/migrate_flipbook.sh ]; then
+    flipbook_rows=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -F'|' -c "
+        SELECT replace(replace(volume_file, ' ', '-'), '''', '') AS slug,
+               replace(volume_file, ' ', '-') AS stem
+          FROM yy_volume
+         WHERE volume_file IS NOT NULL
+           AND volume_file <> ''
+         ORDER BY volume_key
+    " 2>/dev/null)
+
+    fb_target_slug=""
+    fb_target_reason=""
+    while IFS='|' read -r fb_slug fb_stem; do
+        [ -z "$fb_slug" ] && continue
+        fb_pdf="$PDF_DIR/$fb_stem.pdf"
+        [ ! -f "$fb_pdf" ] && continue
+        fb_index="/opt/yada-www/public/$fb_slug/index.html"
+        if [ ! -f "$fb_index" ]; then
+            fb_target_slug="$fb_slug"
+            fb_target_reason="flipbook missing"
+            break
+        elif [ "$fb_pdf" -nt "$fb_index" ]; then
+            fb_target_slug="$fb_slug"
+            fb_target_reason="PDF newer than flipbook"
+            break
+        fi
+    done <<< "$flipbook_rows"
+
+    if [ -n "$fb_target_slug" ]; then
+        log "Flipbook-sweep: regenerating $fb_target_slug ($fb_target_reason)"
+        fb_rc=0
+        fb_output=$(systemd-run --scope --quiet \
+            --property=MemoryMax=1500M \
+            --property=CPUQuota=50% \
+            /opt/yada-www/migrate_flipbook.sh "$fb_target_slug" 2>&1) || fb_rc=$?
+        echo "$fb_output" >> /var/log/book-pipeline.log
+        if [ "$fb_rc" -ne 0 ]; then
+            log "Flipbook-sweep: $fb_target_slug failed (exit $fb_rc)"
+            log_monitor_event "flipbook_regen" "error" \
+                "Flipbook regen failed for slug $fb_target_slug (exit $fb_rc)" "$fb_output"
+        else
+            log "Flipbook-sweep: $fb_target_slug regenerated successfully"
+        fi
+    fi
+fi
+
 # ── Phase 5: parse-only sweep ─────────────────────────────────────
 # Pick up volumes that already have a docx but no parse output (or status
 # 'queued'/'error'/'stale'). These appear as 'stale' in the admin UI because
