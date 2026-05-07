@@ -572,6 +572,7 @@
         const active = document.querySelector(`.thumbs button[data-pg="${human}"]`);
         if (active) { active.classList.add('active'); active.scrollIntoView({block:'nearest', behavior:'smooth'}); }
         syncUrlAndStorage(human);
+        if (typeof scrollSearchResultsToCurrentPage === 'function') scrollSearchResultsToCurrentPage();
         if (mode === 'spread') {
           playFlip();
           repopulateNeighbors(human);
@@ -904,6 +905,10 @@
             btn.onclick = () => { goto(h.page); maybeCloseSidebarAfterNav(); };
             searchResults.appendChild(btn);
           }
+          // Once the result list is built, scroll the entry matching the
+          // current page into view (e.g. when this runs from a deep-link
+          // load with #q=…&page=N).
+          scrollSearchResultsToCurrentPage();
         }, 180);
       }
       searchInput.addEventListener('input', () => {
@@ -962,17 +967,58 @@
       // text from data-text (rather than textContent) keeps this O(n) and
       // robust to repeated highlight passes that change DOM structure.
       let _currentSearchQuery = '';
-      // In-page text-layer highlighting was unreliable: spans are positioned
-      // via the PDF bbox + a scaleX stretch, so wrapping inner <mark> drifted,
-      // and whole-span tints over-highlighted multi-word runs. The Search
-      // side-panel (runSearch + highlightSnippet) lists every hit with a
-      // page link + snippet — that's text-only and reliable, so we lean on
-      // it instead of overlaying marks on the rendered image.
+      // For each text-layer span on every visible page, wrap the matching
+      // substring in <mark class="search-hit"> when the query is present, or
+      // restore the plain styled content when it clears. Spans store their
+      // source text in data-text, so this can be re-run idempotently as new
+      // pages render or the user types another character.
       function applySearchHighlight() {
-        _currentSearchQuery = (searchInput.value || '').trim();
-        // Defensive cleanup of any class left behind by older builds.
-        const stale = document.querySelectorAll('.text-layer span.search-hit');
-        for (let i = 0; i < stale.length; i++) stale[i].classList.remove('search-hit');
+        const q = (searchInput.value || '').trim();
+        _currentSearchQuery = q;
+        const qLower = q.toLowerCase();
+        const layers = document.querySelectorAll('.text-layer');
+        layers.forEach(layer => {
+          const spans = layer.children;
+          for (let i = 0; i < spans.length; i++) {
+            const s = spans[i];
+            const text = s.dataset.text;
+            if (text == null) continue;
+            const flags = parseInt(s.dataset.flags || '0', 10);
+            const hit = q && text.toLowerCase().includes(qLower);
+            const hasMark = !!s.querySelector('mark.search-hit');
+            if (hit) {
+              buildHighlightedSpanContent(s, text, flags, q);
+            } else if (hasMark) {
+              buildStyledSpanContent(s, text, flags);
+            }
+          }
+        });
+        // After re-rendering, scroll the search-results list to the entry
+        // that matches the current flipbook page so the user can see the
+        // matching context without hunting.
+        scrollSearchResultsToCurrentPage();
+      }
+
+      // If the search-results panel has hits, scroll the entry whose .pg
+      // matches the current flipbook page (or the closest preceding page)
+      // into view. Looks the element up via getElementById each call because
+      // pageFlip's 'init' event fires update() before the closure-bound
+      // `searchResults` const has been initialized (temporal dead zone).
+      function scrollSearchResultsToCurrentPage() {
+        const list = document.getElementById('search-results');
+        if (!list || !list.children.length) return;
+        let cur = 0;
+        try { cur = (typeof currentPage === 'function') ? currentPage() : 0; } catch (e) { return; }
+        if (!cur) return;
+        let best = null, bestPg = -1;
+        for (const btn of list.children) {
+          const pgEl = btn.querySelector('.pg');
+          const pg = pgEl ? parseInt(pgEl.textContent, 10) : NaN;
+          if (!isFinite(pg)) continue;
+          if (pg <= cur && pg > bestPg) { best = btn; bestPg = pg; }
+          if (pg === cur) break;
+        }
+        if (best) best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
 
       // ── Initial nav: hash > localStorage resume > page 1

@@ -145,9 +145,12 @@
             </div>
             <input type="hidden" id="f-flip">
             <input type="hidden" id="f-pdf">
-            <div class="field"><label>DOCX Source</label>
-                <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-bottom:6px;"></div>
-                <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()">
+            <div class="field">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="margin:0;">DOCX</label>
+                    <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()">
+                </div>
+                <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-top:6px;"></div>
                 <div id="f-docx-status" style="margin-top:6px;font-size:0.82rem;"></div>
             </div>
             <div class="field"><label>PDF</label>
@@ -361,8 +364,8 @@ function dataCell(v) {
     var pulse = inProc ? ' proc-pulse' : '';
     return '<div class="status-cell' + pulse + '" title="' + esc(tipPrefix) + '">'
          + '<span class="status-icon ' + cls + '">' + icon + '</span>'
-         + countLine
          + ageLine
+         + countLine
          + '</div>';
 }
 
@@ -403,7 +406,7 @@ function artifactCell(field, mtime, sourceMtime, pipelineStatus, label, download
     if (inProc && !present) {
         return '<div class="status-cell proc-pulse">'
              + '<span class="status-icon status-proc" title="' + label + ' is being generated (pipeline ' + esc(ps) + ')">⏳</span>'
-             + '<div class="age">generating</div></div>';
+             + '<div class="age">generate</div></div>';
     }
     if (!present) {
         return '<div class="status-cell"><span class="status-icon status-miss" title="' + label + ' not generated yet">○</span></div>';
@@ -476,7 +479,7 @@ function renderBooks() {
         + '<colgroup>'
         + '<col style="width:42px;">'         // #
         + '<col>'                              // Label (flex)
-        + '<col style="width:160px;">'        // Name
+        + '<col style="width:240px;">'        // Code (book code)
         + '<col style="width:54px;">'         // Pages
         + '<col style="width:74px;">'         // DOCX
         + '<col style="width:74px;">'         // PDF
@@ -612,35 +615,7 @@ function showVolumeForm(record) {
     document.getElementById('f-pdf-status').textContent = '';
     document.getElementById('f-flip-status').textContent = '';
     var docxStatus = document.getElementById('f-docx-status');
-    if (r.volume_pipeline_status) {
-        var color = r.volume_pipeline_status === 'success' ? '#27ae60'
-                  : r.volume_pipeline_status === 'error' ? '#c0392b' : '#888';
-        var statusHtml = '<span style="color:' + color + '">Pipeline: ' + esc(r.volume_pipeline_status)
-                       + (r.volume_pipeline_message ? ' &mdash; ' + esc(r.volume_pipeline_message) : '') + '</span>';
-        // Manual Retry Pipeline button — surfaces next to the FlipHTML5
-        // failure message when auto-retry exhausted its 3-attempt cap (or any
-        // 'error'/'warning' state). Skips re-converting the docx if the PDF
-        // is already on disk, so it's cheap to click.
-        var ps = (r.volume_pipeline_status || '').toLowerCase();
-        if (ps === 'error' || ps === 'warning') {
-            statusHtml += ' <button type="button" onclick="retryPipeline(' + r.volume_key + ', this)" '
-                       + 'title="Requeue the pipeline (LibreOffice + FlipHTML5 + offline package). Runs on the next host worker tick." '
-                       + 'style="margin-left:8px;background:#fff3a8;border:1px solid #e0c000;color:#8a6d00;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;">⟳ Retry Pipeline</button>';
-        }
-        // Regenerate PDF — always available when there's a docx on the
-        // volume. Deletes the existing PDF and forces a fresh LibreOffice /
-        // ONLYOFFICE render. Useful when the PDF on disk is stale (docx
-        // was edited without re-uploading) or rendered with an old
-        // pipeline (pre-bridge / pre-swap).
-        if (r.volume_docx) {
-            statusHtml += ' <button type="button" onclick="regeneratePdf(' + r.volume_key + ', this)" '
-                       + 'title="Delete the existing PDF and re-render from the current DOCX. Runs on the next host worker tick (≤10 min)." '
-                       + 'style="margin-left:6px;background:#fff;border:1px solid #c5cae9;color:#31345A;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;font-weight:600;">↻ Regenerate PDF</button>';
-        }
-        docxStatus.innerHTML = statusHtml;
-    } else {
-        docxStatus.textContent = '';
-    }
+    docxStatus.innerHTML = '';
     var fileInput = document.getElementById('f-docx-file');
     if (fileInput) fileInput.value = '';
 

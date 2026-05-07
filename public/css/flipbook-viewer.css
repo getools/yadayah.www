@@ -86,7 +86,7 @@
                    padding: 8px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-bottom: 2px; line-height: 1.4; }
     .search .hit:hover { background: #2a2a2e; }
     .search .hit .pg { float: right; color: inherit; opacity: 0.95; font-variant-numeric: tabular-nums; font-size: 12px; padding-left: 8px; }
-    .search .hit mark { background: #ffd54a; color: #111; padding: 0 1px; border-radius: 1px; }
+    .search .hit mark { background: #5a5230; color: #fff; padding: 0 2px; border-radius: 2px; }
     .search .summary { padding: 6px 10px; font-size: 11px; opacity: 0.55; }
 
     /* main scrolls when zoom > 100% so user can pan around. book-frame is

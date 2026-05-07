@@ -33,32 +33,11 @@
             // Container is a band that sits below the header. Background
             // colour follows the page-nav config when set; otherwise a
             // cream tint (#fdf6df) matching the design screenshot.
-            // The band can be given an explicit min-height by the admin
-            // (page_heading_search_height). When that height exceeds what
-            // the content needs, the row would otherwise sit at the top
-            // and leave dead space below. Make the band a flex column with
-            // centered content so any extra min-height pads above and
-            // below equally instead of all at the bottom. Padding kept
-            // tight (6px top/bottom) so the band wraps the row snugly
-            // when no min-height is configured.
-            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 6px 0;',
-            '                    display: flex; flex-direction: column; justify-content: center; }',
-            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
-            // The injected <form> ships with default browser margin-block;
-            // zero it so it doesn't add invisible vertical space inside
-            // the band on top of our padding.
-            '.site-search-band form { margin: 0; }',
+            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 14px 0; }',
+            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; }',
 
-            // Row-bottom margin only matters when row-two has visible
-            // content. row-two itself is always rendered (no [hidden]
-            // on the row); only its filter-strip children get [hidden]
-            // when their scope isn't active. So check the children, not
-            // the row, in the :has selector — otherwise scope=site (no
-            // visible filters) leaves an 8px gap under the input that
-            // looks like asymmetric padding.
-            '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 0; }',
-            '.ss-row:has(+ .ss-row.row-two .ss-scope-filters:not([hidden])) { margin-bottom: 8px; }',
-            '.ss-row.row-two { margin-bottom: 0; }',
+            '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }',
+            '.ss-row.row-two { margin-bottom: 16px; }',
             '.ss-row input[type="text"] {',
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
@@ -114,21 +93,15 @@
             '.ss-scope-picker .ss-scope-option[aria-selected="true"] { background: #31345A; color: #fff; }',
             '.ss-scope-picker .ss-scope-option[aria-selected="true"] .icon { color: #fff; }',
 
-            // Filter strip per scope. When [hidden] we want the element
-            // to take ZERO space (display: none). The previous version
-            // forced display: flex !important to enable a height-collapse
-            // animation, which kept hidden strips occupying horizontal
-            // space inside row-two — when scope=video, the (hidden) books
-            // strip pushed the visible video strip toward the middle.
-            // We drop the animation in favor of correct alignment, but
-            // we still need to *explicitly* restore display: none for
-            // [hidden] because our author-level `.ss-scope-filters
-            // { display: flex }` rule otherwise wins over the UA-
-            // stylesheet's default [hidden] { display: none }.
+            // Collapsible filter strip
             '.ss-scope-filters {',
             '  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;',
+            '  overflow: hidden; max-height: 200px; opacity: 1;',
+            '  transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;',
             '}',
-            '.ss-scope-filters[hidden] { display: none; }',
+            '.ss-scope-filters[hidden] {',
+            '  display: flex !important; max-height: 0; opacity: 0; margin-bottom: 0; pointer-events: none;',
+            '}',
 
             // Results
             '.ss-results-info {',
@@ -197,8 +170,11 @@
             '.ss-video-overlay .frame-wrap { position: relative; width: min(90vw, 1100px); aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }',
             '#ss-video-frame-host { position: absolute; inset: 0; }',
             '.ss-video-overlay iframe, .ss-video-overlay video { width: 100%; height: 100%; border: 0; display: block; }',
-            '.ss-video-overlay .close-btn { position: absolute; top: -36px; right: 0; background: transparent; border: 0; color: #fff; font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 4px 8px; }',
-            '.ss-video-overlay .seek-info { position: absolute; top: -32px; left: 0; color: #ddd; font-size: 0.85rem; }',
+            // Close-X sits on top of the player; the prior -36px top offset
+            // sat outside frame-wrap and got clipped by its overflow:hidden.
+            '.ss-video-overlay .close-btn { position: absolute; top: 8px; right: 8px; z-index: 2; background: rgba(0,0,0,0.6); border: 0; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }',
+            '.ss-video-overlay .close-btn:hover { background: rgba(0,0,0,0.85); }',
+            '.ss-video-overlay .seek-info { position: absolute; top: 8px; left: 12px; z-index: 2; color: #fff; font-size: 0.85rem; background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 4px; }',
 
             '@media (max-width: 767px) {',
             '  .ss-row input[type="text"] { min-width: 100%; }',

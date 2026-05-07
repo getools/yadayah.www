@@ -232,13 +232,22 @@
     .video-overlay iframe, .video-overlay video {
         width: 100%; height: 100%; border: 0; display: block;
     }
+    /* X sits on top of the video frame (frame-wrap has overflow:hidden,
+       so a -36px top offset got clipped — keep it inside, above the
+       player, with a translucent background for visibility on light
+       thumbnails). */
     .video-overlay .close-btn {
-        position: absolute; top: -36px; right: 0;
-        background: transparent; border: 0; color: #fff; font-size: 1.6rem;
-        cursor: pointer; line-height: 1; padding: 4px 8px;
+        position: absolute; top: 8px; right: 8px; z-index: 2;
+        background: rgba(0,0,0,0.6); border: 0; color: #fff;
+        width: 36px; height: 36px; border-radius: 50%;
+        font-size: 1.4rem; line-height: 1; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
     }
+    .video-overlay .close-btn:hover { background: rgba(0,0,0,0.85); }
     .video-overlay .seek-info {
-        position: absolute; top: -32px; left: 0; color: #ddd; font-size: 0.85rem;
+        position: absolute; top: 8px; left: 12px; z-index: 2;
+        color: #fff; font-size: 0.85rem;
+        background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 4px;
     }
 
     /* Prototype banner. Cheap visual indicator that this is not the live
