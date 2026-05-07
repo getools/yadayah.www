@@ -197,6 +197,17 @@
             <div style="width:240px;flex-shrink:0;"></div>
         </div>
         <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
+        <!-- Caption-upload progress banner. While a bulk caption upload
+             is running, this shows live "X of Y done" + remaining count.
+             Updates every 5s by polling the server (count_only=true) and
+             refreshing the row cells so each caption status flips visibly. -->
+        <div id="rec-cap-progress" style="display:none;margin-bottom:10px;padding:8px 12px;background:#eef0fa;border:1px solid #bcc4ec;border-radius:6px;font-size:0.85rem;display:none;align-items:center;gap:12px;">
+            <strong style="color:#31345A;">Caption upload in progress</strong>
+            <span id="rec-cap-progress-text" style="color:#444;flex:1;">starting…</span>
+            <div style="flex:0 0 220px;background:#fff;border:1px solid #c4cae8;border-radius:10px;height:10px;overflow:hidden;">
+                <div id="rec-cap-progress-bar" style="height:100%;width:0%;background:#31345A;transition:width 0.5s ease-out;"></div>
+            </div>
+        </div>
         <style>
             #rec-table .rec-filter { width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:0.7rem;font-weight:normal;box-sizing:border-box; }
             #rec-table .rec-sortable-label { cursor:pointer;user-select:none; }
@@ -2129,8 +2140,15 @@ function uploadCaptionsBulkFromHeader(btnEl) {
         alert('Could not get queued count: ' + e.message);
     });
 }
+var _capProgressTimer = null;
+var _capProgressStarted = 0;     // ms epoch
+var _capProgressInitial = 0;     // total at kickoff
 function _bulkCaptionRun(btnEl, payload, expected) {
     if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Uploading ' + expected + '…'; }
+    _capProgressShow(expected);
+    // Kick off live polling so the row cells flip and the banner
+    // updates while the long server-side request is in flight.
+    _capProgressStartPolling(payload);
     fetch('/api/admin-yt-caption-upload-batch.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type': 'application/json'},
@@ -2142,8 +2160,64 @@ function _bulkCaptionRun(btnEl, payload, expected) {
     }).catch(function (e) {
         alert('Caption upload failed: ' + e.message);
     }).finally(function () {
+        _capProgressStopPolling();
+        _capProgressHide();
         if (btnEl) { btnEl.disabled = false; btnEl.textContent = '↑ Upload'; }
     });
+}
+function _capProgressShow(expected) {
+    var bar = document.getElementById('rec-cap-progress');
+    if (!bar) return;
+    bar.style.display = 'flex';
+    _capProgressStarted = Date.now();
+    _capProgressInitial = expected;
+    _capProgressUpdateText(expected, 0);
+}
+function _capProgressHide() {
+    var bar = document.getElementById('rec-cap-progress');
+    if (bar) bar.style.display = 'none';
+}
+function _capProgressUpdateText(remaining, done) {
+    var total = _capProgressInitial || (remaining + done);
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    var text = done + ' of ' + total + ' done';
+    if (done > 0 && remaining > 0) {
+        var elapsed = (Date.now() - _capProgressStarted) / 1000;
+        var perItem = elapsed / done;
+        var etaSec = Math.round(perItem * remaining);
+        var etaMin = Math.floor(etaSec / 60);
+        var etaRem = etaSec % 60;
+        text += ' · ETA ' + (etaMin > 0 ? etaMin + 'm ' + etaRem + 's' : etaRem + 's');
+    }
+    var t = document.getElementById('rec-cap-progress-text');
+    if (t) t.textContent = text;
+    var b = document.getElementById('rec-cap-progress-bar');
+    if (b) b.style.width = pct + '%';
+}
+function _capProgressStartPolling(payload) {
+    _capProgressStopPolling();
+    // Build the poll body so the count_only query matches what was
+    // actually kicked off (selected ids vs all-queued site-wide).
+    var pollBody = Object.assign({ count_only: true }, payload || {});
+    _capProgressTimer = setInterval(function () {
+        fetch('/api/admin-yt-caption-upload-batch.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(pollBody),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            var remaining = parseInt(d.count || 0, 10);
+            // For an "all-queued" run the remaining shrinks as items
+            // succeed (they leave the queued/never/error pool). For
+            // selected-keys mode, count_only re-queries the same set —
+            // remaining starts at N and shrinks the same way.
+            var done = Math.max(0, _capProgressInitial - remaining);
+            _capProgressUpdateText(remaining, done);
+            if (typeof loadRecordings === 'function') loadRecordings();
+        }).catch(function () { /* tolerate transient errors */ });
+    }, 5000);
+}
+function _capProgressStopPolling() {
+    if (_capProgressTimer) { clearInterval(_capProgressTimer); _capProgressTimer = null; }
 }
 
 // ── Recordings sub-tab: queue + batch process ──

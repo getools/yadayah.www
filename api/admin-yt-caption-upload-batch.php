@@ -23,6 +23,12 @@ require_once __DIR__ . '/youtube-caption-helpers.php';
 
 requireAuth();
 
+// A real batch can take 10+ minutes (~3-5s per item × hundreds of items).
+// Keep the PHP process alive even if the client navigates away, closes the
+// tab, or loses network — the UI's progress poll is independent and will
+// pick up where it left off via the DB state.
+ignore_user_abort(true);
+
 $body = json_decode(file_get_contents('php://input'), true) ?: [];
 $countOnly = !empty($body['count_only']);
 $keys = isset($body['feed_item_keys']) && is_array($body['feed_item_keys'])
@@ -69,19 +75,46 @@ if ($countOnly) {
 $results = [];
 $success = 0;
 $failed  = 0;
+$quotaExhausted = false;
 
 foreach ($rows as $feedItemKey) {
     $r = uploadOneItem($db, (int)$feedItemKey);
     $results[] = ['feed_item_key' => (int)$feedItemKey] + $r;
-    if (!empty($r['ok'])) $success++; else $failed++;
+    if (!empty($r['ok'])) {
+        $success++;
+    } else {
+        $failed++;
+        // Daily-quota exhaustion: every subsequent call will also 403,
+        // and each attempt still spends ~50 quota units on captions.list.
+        // Stop the loop so the user's allowance carries over to the next
+        // run instead of being burned on doomed retries.
+        if (!empty($r['message']) && stripos($r['message'], 'exceeded your quota') !== false) {
+            $quotaExhausted = true;
+            // Re-queue the remaining items so they show as queued (not
+            // 'uploading' from a previous invocation, not 'error') —
+            // user can re-run tomorrow and pick up where this left off.
+            $remainingFromHere = array_slice($rows, count($results));
+            if ($remainingFromHere) {
+                $ph = implode(',', array_fill(0, count($remainingFromHere), '?'));
+                $stmt = $db->prepare("UPDATE yy_feed_item
+                                         SET feed_item_yt_caption_status = 'queued',
+                                             feed_item_yt_caption_message = NULL
+                                       WHERE feed_item_key IN ($ph)");
+                $stmt->execute($remainingFromHere);
+            }
+            break;
+        }
+    }
 }
 
 jsonResponse([
-    'ok'        => true,
-    'processed' => count($rows),
-    'success'   => $success,
-    'failed'    => $failed,
-    'items'     => $results,
+    'ok'              => true,
+    'processed'       => count($results),
+    'success'         => $success,
+    'failed'          => $failed,
+    'quota_exhausted' => $quotaExhausted,
+    'remaining'       => $quotaExhausted ? (count($rows) - count($results)) : 0,
+    'items'           => $results,
 ]);
 
 /**
