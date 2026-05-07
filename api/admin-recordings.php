@@ -44,6 +44,30 @@ $pageKeys    = $pageKeysRaw === '' ? [] :
 $itemStatusRaw = trim((string)($_GET['item_status'] ?? ''));
 $itemStatuses  = $itemStatusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $itemStatusRaw)));
 
+// category_keys filter: comma-separated yy_feed_page_category.category_key.
+// Items shown must be tagged with at least one of these categories.
+$categoryKeysRaw = trim((string)($_GET['category_keys'] ?? ''));
+$categoryKeys    = $categoryKeysRaw === '' ? [] :
+    array_values(array_filter(array_map('intval',
+        array_map('trim', explode(',', $categoryKeysRaw))), function($n){ return $n > 0; }));
+
+// caption_status filter: comma-separated subset of: completed, queued, error, never.
+//   completed = feed_item_yt_caption_status = 'success'
+//   queued    = feed_item_yt_caption_status IN ('queued', NULL-but-has-transcript-on-connected-feed)
+//   error     = feed_item_yt_caption_status = 'error'
+//   never     = feed_item_yt_caption_status IS NULL OR no transcript / not connected
+$captionStatusRaw = trim((string)($_GET['caption_status'] ?? ''));
+$captionStatuses  = $captionStatusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $captionStatusRaw)));
+
+// mp3 filter: comma-separated subset of: yes, no.
+//   yes = feed_item_audio_file IS NOT NULL
+//   no  = feed_item_audio_file IS NULL
+$mp3Raw = trim((string)($_GET['mp3'] ?? ''));
+$mp3Filter = $mp3Raw === '' ? [] : array_filter(array_map('trim', explode(',', $mp3Raw)));
+
+// episode filter: free-text ILIKE match against feed_item_episode.
+$episodeQ = trim((string)($_GET['episode'] ?? ''));
+
 $sortMap = [
     'title'      => 'COALESCE(fi.feed_item_title_override, fi.feed_item_title_import)',
     'published'  => 'COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime)',
@@ -86,12 +110,37 @@ if ($pubTo !== '')   { $where .= " AND COALESCE(fi.feed_item_publish_override_dt
 if ($feedKey > 0)    { $where .= " AND fi.feed_key = ?"; $params[] = $feedKey; }
 if ($durMin !== null && $durMin >= 0) { $where .= " AND fi.feed_item_duration_seconds >= ?"; $params[] = $durMin; }
 if ($durMax !== null && $durMax > 0)  { $where .= " AND fi.feed_item_duration_seconds <= ?"; $params[] = $durMax; }
+if ($episodeQ !== '')                 { $where .= " AND fi.feed_item_episode ILIKE ?"; $params[] = '%' . $episodeQ . '%'; }
 if (!empty($pageKeys)) {
     $placeholders = implode(',', array_fill(0, count($pageKeys), '?'));
     $where .= " AND EXISTS (SELECT 1 FROM yy_feed_item_page fip
                               WHERE fip.feed_item_key = fi.feed_item_key
                                 AND fip.page_key IN ($placeholders))";
     foreach ($pageKeys as $pk) $params[] = $pk;
+}
+if (!empty($categoryKeys)) {
+    $placeholders = implode(',', array_fill(0, count($categoryKeys), '?'));
+    $where .= " AND EXISTS (SELECT 1 FROM yy_feed_item_category fic
+                              WHERE fic.feed_item_key = fi.feed_item_key
+                                AND fic.category_key IN ($placeholders))";
+    foreach ($categoryKeys as $ck) $params[] = $ck;
+}
+if (!empty($mp3Filter)) {
+    // yes/no are mutually exclusive — checking both = no filter applied.
+    $hasYes = in_array('yes', $mp3Filter, true);
+    $hasNo  = in_array('no',  $mp3Filter, true);
+    if ($hasYes && !$hasNo)      $where .= " AND fi.feed_item_audio_file IS NOT NULL";
+    else if ($hasNo && !$hasYes) $where .= " AND fi.feed_item_audio_file IS NULL";
+}
+if (!empty($captionStatuses)) {
+    $capOrs = [];
+    foreach ($captionStatuses as $cs) {
+        if ($cs === 'completed') $capOrs[] = "fi.feed_item_yt_caption_status = 'success'";
+        elseif ($cs === 'queued')    $capOrs[] = "fi.feed_item_yt_caption_status = 'queued'";
+        elseif ($cs === 'error')     $capOrs[] = "fi.feed_item_yt_caption_status = 'error'";
+        elseif ($cs === 'never')     $capOrs[] = "(fi.feed_item_yt_caption_status IS NULL OR fi.feed_item_yt_caption_status = 'never')";
+    }
+    if ($capOrs) $where .= " AND (" . implode(' OR ', $capOrs) . ")";
 }
 
 // Status filter: multi-checkbox of Complete / Partial / New
@@ -142,6 +191,7 @@ $stmt = $db->prepare("
            fi.feed_item_duration_seconds,
            COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS published_dtime,
            fi.feed_item_audio_file,
+           fi.feed_item_episode,
            fi.feed_item_audio_resume_seconds AS resume_seconds,
            fi.feed_item_active_flag,
            fi.feed_item_restricted_flag,
@@ -159,6 +209,23 @@ $stmt = $db->prepare("
            fi.feed_item_yt_caption_message        AS yt_caption_message,
            (SELECT COUNT(*) FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS yt_caption_segment_count,
            fi.feed_item_yt_caption_segments_at_upload AS yt_caption_segments_at_upload,
+           -- Categories list — same shape returned by the Items tab so the
+           -- same render snippet works on both sides without divergence.
+           (SELECT json_agg(json_build_object('category_key', cc.category_key, 'category_title', cc.category_title, 'category_slug', cc.category_slug, 'episode', fic.feed_item_category_episode, 'page_title', pp.page_title) ORDER BY pp.page_title, cc.category_sort, cc.category_title)
+            FROM yy_feed_item_category fic
+            JOIN yy_feed_page_category cc ON fic.category_key = cc.category_key
+            JOIN yy_page pp ON cc.page_key = pp.page_key
+            WHERE fic.feed_item_key = fi.feed_item_key) AS categories_list,
+           -- Transcribe-column inputs (mirrored from admin-feeds.php Items
+           -- listing so the same transcribeBtnHtml() helper can render in
+           -- both tabs without divergence).
+           EXISTS (SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS has_transcript,
+           (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
+              WHERE v.feed_item_key = fi.feed_item_key
+              ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_status,
+           (SELECT v.validation_bookmark_seconds FROM yy_feed_item_transcript_validation v
+              WHERE v.feed_item_key = fi.feed_item_key
+              ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_bookmark_seconds,
            CASE
              WHEN fi.feed_item_audio_file IS NOT NULL THEN 'complete'
              WHEN COALESCE(fi.feed_item_audio_resume_seconds, 0) > 0 THEN 'partial'
@@ -281,6 +348,17 @@ $allPagesStmt = $db->query("
      ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();
 
+// Categories that have at least one feed_item tagged. Only categories
+// belonging to a YouTube-bearing video appear in the recordings list, so
+// EXISTS keeps the dropdown narrow.
+$allCategoriesStmt = $db->query("
+    SELECT c.category_key, c.category_title, c.page_key, p.page_title
+      FROM yy_feed_page_category c
+      JOIN yy_page p ON p.page_key = c.page_key
+     WHERE EXISTS (SELECT 1 FROM yy_feed_item_category fic WHERE fic.category_key = c.category_key)
+     ORDER BY p.page_title, c.category_sort, c.category_title");
+$allCategories = $allCategoriesStmt->fetchAll();
+
 $feedsStmt = $db->query("
     SELECT DISTINCT f.feed_key, f.feed_name
       FROM yy_feed f
@@ -298,6 +376,7 @@ jsonResponse([
     'sort' => $sort, 'dir' => strtolower($dir),
     'feeds' => $feedsStmt->fetchAll(),
     'pages' => $allPages,
+    'categories' => $allCategories,
     'filters' => [
         'key' => $keyQ, 'title' => $titleQ,
         'pub_from' => $pubFrom, 'pub_to' => $pubTo,
@@ -306,5 +385,9 @@ jsonResponse([
         'status' => $statuses,
         'item_status' => $itemStatuses,
         'page_keys' => $pageKeys,
+        'category_keys' => $categoryKeys,
+        'mp3' => $mp3Filter,
+        'caption_status' => $captionStatuses,
+        'episode' => $episodeQ,
     ],
 ]);

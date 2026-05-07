@@ -100,8 +100,8 @@
     <div class="sub-tabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #ddd;">
         <button class="sub-tab active" onclick="switchFeedTab('sources')">Sources</button>
         <button class="sub-tab" onclick="switchFeedTab('pages')">Pages</button>
-        <button class="sub-tab" onclick="switchFeedTab('items')">Items</button>
-        <button class="sub-tab" onclick="switchFeedTab('recordings')">Recordings</button>
+        <button class="sub-tab" onclick="switchFeedTab('items')" style="display:none;">Items (legacy)</button>
+        <button class="sub-tab" onclick="switchFeedTab('recordings')">Items</button>
     </div>
 
     <!-- Sources Tab -->
@@ -231,6 +231,7 @@
                     <th colspan="7" style="background:#fafafa;border-bottom:0;padding:6px 8px;text-align:right;">
                         <span id="rec-batch-status-inline" style="font-size:0.78rem;color:#666;"></span>
                     </th>
+                    <th colspan="2" style="background:#fafafa;border-bottom:0;"></th>
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;white-space:nowrap;">▶ Record</button>
                         <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;white-space:nowrap;">⬛ Stop</button>
@@ -238,7 +239,7 @@
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-upload-btn" onclick="uploadCaptionsBulkFromHeader(this)" style="background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;" title="Upload transcripts as YouTube captions for selected rows; if none selected, prompts to upload all queued">↑ Upload</button>
                     </th>
-                    <th colspan="2" style="background:#fafafa;border-bottom:0;"></th>
+                    <th colspan="5" style="background:#fafafa;border-bottom:0;"></th>
                 </tr>
                 <tr>
                     <th style="width:36px;vertical-align:top;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
@@ -267,6 +268,16 @@
                         <input type="text" class="rec-filter" id="rec-f-dur-min" oninput="recDebouncedReload()" placeholder="min mm:ss" style="margin-bottom:2px;" onclick="event.stopPropagation()">
                         <input type="text" class="rec-filter" id="rec-f-dur-max" oninput="recDebouncedReload()" placeholder="max mm:ss" onclick="event.stopPropagation()">
                     </th>
+                    <th style="width:60px;text-align:center;" title="MP3 download link if audio has been recorded">
+                        <span>MP3</span>
+                        <div id="rec-f-mp3" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;align-items:center;">
+                            <label><input type="checkbox" id="rec-f-mp3-yes" value="yes" onchange="loadRecordings(1)"> Yes</label>
+                            <label><input type="checkbox" id="rec-f-mp3-no"  value="no"  onchange="loadRecordings(1)"> No</label>
+                        </div>
+                    </th>
+                    <th style="width:110px;">
+                        <span>Transcribe</span>
+                    </th>
                     <th style="width:120px;" class="rec-sortable" data-col="processed">
                         <span class="rec-sortable-label" onclick="recSort('processed')">Processed</span>
                         <div class="rec-status-checks" onclick="event.stopPropagation()">
@@ -275,8 +286,12 @@
                             <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
                         </div>
                     </th>
-                    <th style="width:120px;" title="Per-row YouTube caption upload status">
+                    <th style="width:130px;" title="Per-row YouTube caption upload status">
                         <span>Captions</span>
+                        <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">
+                            <label><input type="checkbox" id="rec-f-cap-completed" value="completed" onchange="loadRecordings(1)"> Completed</label>
+                            <label><input type="checkbox" id="rec-f-cap-queued"    value="queued"    onchange="loadRecordings(1)"> Queued</label>
+                        </div>
                     </th>
                     <th style="width:110px;">
                         <span>Status</span>
@@ -292,6 +307,17 @@
                             <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
                     </th>
+                    <th style="width:220px;">
+                        <span>Categories</span>
+                        <div id="rec-f-categories" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:80px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                            <em style="font-size:0.7rem;color:#999;">loading…</em>
+                        </div>
+                    </th>
+                    <th style="width:90px;">
+                        <span>Episode</span><br>
+                        <input type="text" class="rec-filter" id="rec-f-episode" oninput="recDebouncedReload()" placeholder="…" onclick="event.stopPropagation()">
+                    </th>
+                    <th style="width:60px;text-align:right;"></th>
                 </tr>
             </thead>
             <tbody id="rec-body"></tbody>
@@ -532,7 +558,7 @@ function transcribeBtnHtml(it) {
         var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
         var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
         var bookmarkText = h > 0 ? pad(h) + ':' + pad(m) + ':' + pad(x) : pad(m) + ':' + pad(x);
-        label = '&#128278; ' + bookmarkText;
+        label = bookmarkText;
         title = sec > 0
             ? 'Review in progress — resume at ' + bookmarkText
             : 'Transcript exists; review not yet started';
@@ -1577,7 +1603,7 @@ function openTranscript(itemKey) {
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
-            + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3/M4A/VTT/SRT to use instead of downloading from YouTube" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">Upload Audio/Captions</button>'
+            + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
             + '<a href="/admin-download-audio.bat" download title="Windows .bat that downloads YouTube audio using your browser cookies, then you upload it" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Helper .bat ↓</a>'
@@ -2254,6 +2280,9 @@ function _persistRecFilters() {
     var pageKeys = Array.prototype.map.call(
         document.querySelectorAll('#rec-f-pages input[type=checkbox]:checked'),
         function(cb){ return cb.value; });
+    var categoryKeys = Array.prototype.map.call(
+        document.querySelectorAll('#rec-f-categories input[type=checkbox]:checked'),
+        function(cb){ return cb.value; });
     adminUI.save('feeds', 'recFilters', {
         key: v('rec-f-key'), title: v('rec-f-title'),
         pubFrom: v('rec-f-pub-from'), pubTo: v('rec-f-pub-to'),
@@ -2261,6 +2290,10 @@ function _persistRecFilters() {
         sComplete: c('rec-f-status-complete'), sPartial: c('rec-f-status-partial'), sNew: c('rec-f-status-new'),
         iActive: c('rec-f-istatus-active'), iRestricted: c('rec-f-istatus-restricted'), iInactive: c('rec-f-istatus-inactive'),
         pageKeys: pageKeys,
+        categoryKeys: categoryKeys,
+        mp3Yes: c('rec-f-mp3-yes'), mp3No: c('rec-f-mp3-no'),
+        capCompleted: c('rec-f-cap-completed'), capQueued: c('rec-f-cap-queued'),
+        episode: v('rec-f-episode'),
         perPage: parseInt((document.getElementById('rec-per-page')||{}).value, 10) || 50,
     });
 }
@@ -2285,6 +2318,12 @@ function _restoreRecFiltersFromStorage() {
     // Page-key checkboxes are populated lazily by populateRecPageFilter; the
     // saved list is threaded through loadRecordings -> populateRecPageFilter.
     if (Array.isArray(saved.pageKeys)) window._recRestoredPageKeys = saved.pageKeys;
+    if (Array.isArray(saved.categoryKeys)) window._recRestoredCategoryKeys = saved.categoryKeys;
+    setChk('rec-f-mp3-yes', saved.mp3Yes);
+    setChk('rec-f-mp3-no', saved.mp3No);
+    setChk('rec-f-cap-completed', saved.capCompleted);
+    setChk('rec-f-cap-queued', saved.capQueued);
+    setVal('rec-f-episode', saved.episode);
 }
 function itemsClearFilters() {
     _savedFilters = {title:'', tags:'', category:'', mp3:'', feed:'', status:'active', page:'', episode:'', key:''};
@@ -2300,7 +2339,7 @@ function onStatusFilterChange() {
 }
 
 function recClearFilters() {
-    ['rec-f-key','rec-f-title','rec-f-pub-from','rec-f-pub-to','rec-f-dur-min','rec-f-dur-max'].forEach(function(id){
+    ['rec-f-key','rec-f-title','rec-f-pub-from','rec-f-pub-to','rec-f-dur-min','rec-f-dur-max','rec-f-episode'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
     });
     var feedSel = document.getElementById('rec-f-feed'); if (feedSel) feedSel.value = '';
@@ -2310,7 +2349,11 @@ function recClearFilters() {
     var ia = document.getElementById('rec-f-istatus-active');     if (ia) ia.checked = true;
     var ir = document.getElementById('rec-f-istatus-restricted'); if (ir) ir.checked = false;
     var ii = document.getElementById('rec-f-istatus-inactive');   if (ii) ii.checked = false;
+    ['rec-f-mp3-yes','rec-f-mp3-no','rec-f-cap-completed','rec-f-cap-queued'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.checked = false;
+    });
     document.querySelectorAll('#rec-f-pages input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
+    document.querySelectorAll('#rec-f-categories input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
     loadRecordings(1);
 }
 // Parse "H:MM:SS" / "MM:SS" / "SS" / "1:30" → seconds. Returns null if blank.
@@ -2366,6 +2409,26 @@ function loadRecordings(page) {
         checkedPages = window._recRestoredPageKeys.slice();
     }
     if (checkedPages.length) qs += '&page_keys=' + encodeURIComponent(checkedPages.join(','));
+    // Categories filter — same pattern as pages.
+    var checkedCats = Array.prototype.map.call(
+        document.querySelectorAll('#rec-f-categories input[type=checkbox]:checked'),
+        function(cb){ return cb.value; });
+    if (!checkedCats.length && Array.isArray(window._recRestoredCategoryKeys)) {
+        checkedCats = window._recRestoredCategoryKeys.slice();
+    }
+    if (checkedCats.length) qs += '&category_keys=' + encodeURIComponent(checkedCats.join(','));
+    // MP3 filter (Yes/No).
+    var mp3Vals = Array.prototype.map.call(
+        document.querySelectorAll('#rec-f-mp3 input[type=checkbox]:checked'),
+        function(cb){ return cb.value; });
+    if (mp3Vals.length) qs += '&mp3=' + encodeURIComponent(mp3Vals.join(','));
+    // Captions filter (Completed/Queued/etc).
+    var capVals = Array.prototype.map.call(
+        document.querySelectorAll('#rec-f-cap input[type=checkbox]:checked'),
+        function(cb){ return cb.value; });
+    if (capVals.length) qs += '&caption_status=' + encodeURIComponent(capVals.join(','));
+    // Episode free-text.
+    if (v('rec-f-episode')) qs += '&episode=' + encodeURIComponent(v('rec-f-episode'));
     if (window.adminUI) _persistRecFilters();
     qs += '&_=' + Date.now();
 
@@ -2380,6 +2443,7 @@ function loadRecordings(page) {
             _recItems = d.items || [];
             populateRecFeedFilter(d.feeds || [], v('rec-f-feed'));
             populateRecPageFilter(d.pages || [], checkedPages);
+            populateRecCategoryFilter(d.categories || [], checkedCats);
             renderRecordings(d);
         });
 }
@@ -2414,6 +2478,24 @@ function populateRecPageFilter(pages, currentSelections) {
     });
     box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no pages</em>';
 }
+function populateRecCategoryFilter(cats, currentSelections) {
+    var box = document.getElementById('rec-f-categories');
+    if (!box) return;
+    if (box.dataset.populated === '1' && box.dataset.count === String(cats.length)) return;
+    box.dataset.populated = '1';
+    box.dataset.count = String(cats.length);
+    var sel = {};
+    (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
+    var html = '';
+    cats.forEach(function(c) {
+        var checked = sel[String(c.category_key)] ? ' checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
+              + '<input type="checkbox" value="' + c.category_key + '" onchange="loadRecordings(1)"' + checked + '> '
+              + esc(c.category_title)
+              + '</label>';
+    });
+    box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no categories</em>';
+}
 function populateRecFeedFilter(feeds, current) {
     var sel = document.getElementById('rec-f-feed');
     if (!sel) return;
@@ -2438,7 +2520,7 @@ function renderRecordings(d) {
         span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
     });
     if (!_recItems.length) {
-        body.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
+        body.innerHTML = '<tr><td colspan="16" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
         var sa = document.getElementById('rec-select-all'); if (sa) sa.checked = false;
         return;
     }
@@ -2451,7 +2533,12 @@ function renderRecordings(d) {
         var pub = '—';
         if (it.published_dtime) {
             var dt = new Date(it.published_dtime);
-            if (!isNaN(dt)) pub = dt.toLocaleString(undefined, { year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+            if (!isNaN(dt)) {
+                // yyyy-MM-dd HH:mm:ss in the user's local time zone.
+                var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+                pub = dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate())
+                    + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
+            }
         }
         // Processed column reflects MP3 state. Partial + New are clickable
         // buttons that open the Record popover for that one item (resumes if
@@ -2557,10 +2644,22 @@ function renderRecordings(d) {
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(pub) + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
+            +     '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3" style="text-decoration:none;font-size:1.1rem;">&#127911;</a>' : '') + '</td>'
+            +     '<td style="text-align:center;">' + transcribeBtnHtml(it) + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
             +     '<td style="font-size:0.78rem;">' + recCaptionsCell(it) + '</td>'
             +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
+            +     '<td style="font-size:0.75rem;color:#888;">' + (function() {
+                    var cl = it.categories_list;
+                    if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch(e) { cl = null; } }
+                    if (cl && cl.length) {
+                        return cl.map(function(c) { return esc(c.category_title) + (c.episode ? ' (' + esc(c.episode) + ')' : ''); }).join(', ');
+                    }
+                    return esc(it.category_title || '');
+                })() + '</td>'
+            +     '<td style="font-size:0.75rem;color:#888;">' + esc(it.feed_item_episode || '') + '</td>'
+            +     '<td class="actions" style="white-space:nowrap;text-align:right;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button></td>'
             +     '</tr>';
     });
     body.innerHTML = html;
