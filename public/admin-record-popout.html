@@ -29,7 +29,8 @@
             padding: 16px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.08);
         }
-        header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        header { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+        header > div { width: 100%; }
         h1 {
             margin: 0; font-size: 1rem; color: var(--primary);
             flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -67,7 +68,8 @@
         #pause-btn { background: #444; color: #fff; }
         #restart-btn { background: #fff; color: var(--red); border: 1px solid var(--red); padding: 8px 12px; font-size: 0.85rem; }
         #status { font-size: 0.9rem; color: #666; flex: 1; }
-        #time { font-family: monospace; font-size: 0.95rem; color: #444; margin-left: auto; }
+        #time { font-family: monospace; font-size: 0.95rem; color: #444; }
+        #overall-time { font-family: monospace; }
         .hint {
             margin-top: 10px; font-size: 0.78rem; color: #888;
             border-top: 1px solid #eee; padding-top: 8px;
@@ -78,9 +80,14 @@
 <body>
     <div class="card">
         <header>
-            <h1 id="title">Loading…</h1>
-            <span id="time">—</span>
-            <span id="overall-time" style="display:block;font-size:0.82em;color:#888;margin-top:2px;"></span>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                <h1 id="title" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Loading…</h1>
+                <span id="queue-pos" style="white-space:nowrap;font-size:0.95em;color:#555;flex-shrink:0;"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:4px;">
+                <span id="time">—</span>
+                <span id="overall-time" style="white-space:nowrap;font-size:0.92em;color:#888;flex-shrink:0;"></span>
+            </div>
         </header>
         <div id="player-wrap">
             <div id="yt-player"></div>
@@ -388,9 +395,15 @@
     }
     function setStatus(msg) { $('status').textContent = msg || ''; }
     function setTitle(t) {
-        var prefix = BATCH_MODE ? '[' + (queueIndex + 1) + '/' + queue.length + '] ' : '';
-        $('title').textContent = prefix + t;
-        document.title = 'Record — ' + prefix + t;
+        // Row 1 left: [<item_key>] <title>. Row 1 right: queue position. The
+        // queue counter used to live inside the H1; now it sits in its own
+        // right-aligned slot so the title can take the full width and ellipsize.
+        var keyTag = itemKey ? '[' + itemKey + '] ' : '';
+        $('title').textContent = keyTag + t;
+        $('title').title = keyTag + t;   // hover-tooltip surfaces the full title when ellipsized
+        var qp = $('queue-pos');
+        if (qp) qp.textContent = BATCH_MODE ? (queueIndex + 1) + '/' + queue.length : '';
+        document.title = 'Record — ' + (BATCH_MODE ? '[' + (queueIndex + 1) + '/' + queue.length + '] ' : '') + keyTag + t;
     }
 
     // ── YT IFrame API ──
@@ -1166,8 +1179,8 @@
             elapsed += queueDurations[i] || 0;
         }
         elapsed += cur;
-        overallEl.textContent = 'Overall: ' + fmt(elapsed) + ' / ' + fmt(queueTotalSeconds)
-                              + ' (' + (queueIndex + 1) + '/' + queue.length + ')';
+        // Queue position lives in row 1 now; this row is purely the time totals.
+        overallEl.textContent = 'Overall: ' + fmt(elapsed) + ' / ' + fmt(queueTotalSeconds);
     }
 
     // Fetch the YouTube durations for every queued item in parallel. The

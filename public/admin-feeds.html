@@ -2271,7 +2271,11 @@ function renderRecordings(d) {
             iStatusBadge = '<span style="display:inline-block;background:#d4edda;color:#155724;border:1px solid #b1d8b9;border-radius:10px;padding:1px 8px;font-size:0.7rem;font-weight:600;">Active</span>';
         }
 
-        var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '" onchange="updateRecHeaderCb()"'
+        // data-duration drives the total play-time readout under "Process Selected".
+        // Stored in seconds; updateProcessSelectedLabel() sums them across :checked.
+        var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '"'
+                    + ' data-duration="' + (parseInt(it.feed_item_duration_seconds, 10) || 0) + '"'
+                    + ' onchange="updateRecHeaderCb()"'
                     + (inProgress ? ' disabled title="Locked while ' + esc(inProgressReason) + '"' : '');
         // In-progress rows get a very light warm tint instead of an opacity
         // dim — gentler on the eye and reads as a "do not touch" cue rather
@@ -2296,17 +2300,46 @@ function renderRecordings(d) {
     });
     body.innerHTML = html;
     document.getElementById('rec-select-all').checked = false;
+    updateProcessSelectedLabel();
 }
 function toggleAllRecordings(on) {
     // Skip disabled (in-progress) checkboxes — toggling them does nothing
     // visually but would mislead getSelectedRecordingKeys consumers if they
     // ever read .checked instead of :checked.
     document.querySelectorAll('.rec-cb:not([disabled])').forEach(function(cb){ cb.checked = !!on; });
+    updateProcessSelectedLabel();
 }
 function updateRecHeaderCb() {
     var all = document.querySelectorAll('.rec-cb');
     var checked = document.querySelectorAll('.rec-cb:checked');
     document.getElementById('rec-select-all').checked = (all.length > 0 && checked.length === all.length);
+    updateProcessSelectedLabel();
+}
+// Sum the data-duration values on every :checked recording checkbox and
+// surface the total on a second line under "Process Selected". Updated on
+// every checkbox change AND on row re-render (loadRecordings clears all
+// checks so the total reads "" again).
+function updateProcessSelectedLabel() {
+    var btn = document.getElementById('rec-process-btn');
+    if (!btn) return;
+    var total = 0, n = 0;
+    document.querySelectorAll('.rec-cb:checked').forEach(function(cb) {
+        total += parseInt(cb.dataset.duration, 10) || 0;
+        n++;
+    });
+    var pad = function(x) { return (x < 10 ? '0' : '') + x; };
+    var fmt = function(s) {
+        s = Math.max(0, Math.floor(s));
+        return pad(Math.floor(s / 3600)) + ':' + pad(Math.floor((s % 3600) / 60)) + ':' + pad(s % 60);
+    };
+    if (n > 0) {
+        btn.innerHTML = '▶ Process Selected'
+                      + '<div style="font-size:0.72rem;font-weight:400;opacity:0.9;margin-top:1px;">'
+                      +   n + ' file' + (n === 1 ? '' : 's') + ' &middot; ' + fmt(total)
+                      + '</div>';
+    } else {
+        btn.innerHTML = '▶ Process Selected';
+    }
 }
 function getSelectedRecordingKeys() {
     return Array.prototype.map.call(document.querySelectorAll('.rec-cb:checked'), function(cb){ return parseInt(cb.value); });

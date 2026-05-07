@@ -135,15 +135,28 @@
             if (data.page_heading_search_bg_color)   root.style.setProperty('--search-band-bg',   data.page_heading_search_bg_color);
             if (data.page_heading_search_text_color) root.style.setProperty('--search-band-text', data.page_heading_search_text_color);
             if (data.page_heading_search_height)     root.style.setProperty('--search-band-height', data.page_heading_search_height + 'px');
-            var bandEl = document.querySelector('.search-band');
-            if (bandEl) {
+            // The injected band uses class `.site-search-band` (set by
+            // site-search.js). We previously queried `.search-band` (the
+            // prototype's class), which never matched, so all three
+            // inline styles below were silent no-ops — the admin's
+            // Search Height in particular did nothing. site-search.js
+            // is loaded async after this block runs, so the band may
+            // not exist yet; defer the inline writes until it does.
+            var applyBandStyles = function() {
+                var bandEl = document.querySelector('.site-search-band');
+                if (!bandEl) return false;
                 if (data.page_heading_search_bg_color)   bandEl.style.background = data.page_heading_search_bg_color;
-                // `color` cascades to the filter-group labels inside the
-                // band, which inherit (see prototype CSS); inputs/selects
-                // keep their own colors because they reset color on
-                // form-control elements.
                 if (data.page_heading_search_text_color) bandEl.style.color      = data.page_heading_search_text_color;
                 if (data.page_heading_search_height)     bandEl.style.minHeight  = data.page_heading_search_height + 'px';
+                return true;
+            };
+            if (!applyBandStyles()) {
+                // Band hasn't been injected yet — poll briefly. site-search.js
+                // builds the bar on DOMContentLoaded, so a few rAFs is enough.
+                var tries = 0;
+                var iv = setInterval(function() {
+                    if (applyBandStyles() || ++tries > 60) clearInterval(iv);
+                }, 50);
             }
 
             reveal();
@@ -155,7 +168,7 @@
     // the 31 pages that already include site-nav.js. Cache-busting via
     // ?v= matches the convention used elsewhere on the site.
     var s = document.createElement('script');
-    s.src = '/js/site-search.js?v=3';
+    s.src = '/js/site-search.js?v=5';
     s.async = false;
     document.head.appendChild(s);
 })();

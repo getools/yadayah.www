@@ -33,11 +33,30 @@
             // Container is a band that sits below the header. Background
             // colour follows the page-nav config when set; otherwise a
             // cream tint (#fdf6df) matching the design screenshot.
-            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 14px 0; }',
-            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; }',
+            // The band can be given an explicit min-height by the admin
+            // (page_heading_search_height). When that height exceeds what
+            // the content needs, the row would otherwise sit at the top
+            // and leave dead space below. Make the band a flex column with
+            // centered content so any extra min-height pads above and
+            // below equally instead of all at the bottom. Padding kept
+            // tight (6px top/bottom) so the band wraps the row snugly
+            // when no min-height is configured.
+            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 6px 0;',
+            '                    display: flex; flex-direction: column; justify-content: center; }',
+            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
+            // The injected <form> ships with default browser margin-block;
+            // zero it so it doesn't add invisible vertical space inside
+            // the band on top of our padding.
+            '.site-search-band form { margin: 0; }',
 
-            '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }',
-            '.ss-row.row-two { margin-bottom: 16px; }',
+            // Row-bottom margin only matters when row-two is visible; when
+            // row-two is hidden (scope=site) we don't want row-one's
+            // margin-bottom showing up as trailing whitespace under the
+            // input. The :has(+ .row-two:not([hidden])) rule keeps the
+            // gap when both rows are present and zeroes it otherwise.
+            '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 0; }',
+            '.ss-row:has(+ .ss-row.row-two:not([hidden])) { margin-bottom: 8px; }',
+            '.ss-row.row-two:not([hidden]) { margin-bottom: 0; }',
             '.ss-row input[type="text"] {',
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
