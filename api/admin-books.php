@@ -111,6 +111,57 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     $docxPath = $docxDir . '/' . $docxName;
     if (!move_uploaded_file($file['tmp_name'], $docxPath)) errorResponse('Failed to save .docx file');
 
+    // Cover-vs-label sanity check: in May 2026 six volumes ended up with
+    // other volumes' DOCX content (silent slot mix-ups), each producing a
+    // PDF + flipbook with TOC links pointing at chapter names that didn't
+    // exist in the rendered book. Read the first ~4 KB of the DOCX's main
+    // document XML, strip tags, and look for any meaningful keyword from
+    // volume_label. Reject the upload (and roll back the saved file) if
+    // nothing matches. To force-accept an unusual upload, append ?force=1.
+    $force = !empty($_GET['force']);
+    if (!$force && class_exists('ZipArchive')) {
+        $zip = new ZipArchive();
+        if ($zip->open($docxPath) === true) {
+            $xml = $zip->getFromName('word/document.xml') ?: '';
+            $zip->close();
+            if ($xml !== '') {
+                $cover = preg_replace('/\s+/', ' ', strip_tags($xml));
+                $cover = mb_substr(trim($cover), 0, 4000);
+                $coverNorm = strtolower(preg_replace('/[^\p{L}\p{N}\s]/u', '', $cover));
+                $coverNoSpace = str_replace(' ', '', $coverNorm);
+                $label = $vol['volume_label'] ?: $vol['volume_name'] ?: '';
+                $keys = [];
+                $stop = ['the','and','for','of','to','at','by','in','on'];
+                foreach (preg_split('/[\s\-]+/', $label) as $p) {
+                    $n = strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $p));
+                    if ($n && strlen($n) >= 3 && !in_array($n, $stop, true)) {
+                        $keys[] = $n;
+                    }
+                }
+                if ($keys) {
+                    $hits = false;
+                    foreach ($keys as $k) {
+                        if (strpos($coverNorm, $k) !== false || strpos($coverNoSpace, $k) !== false) {
+                            $hits = true;
+                            break;
+                        }
+                    }
+                    if (!$hits) {
+                        @unlink($docxPath);
+                        errorResponse(
+                            "Upload rejected: the DOCX cover doesn't mention this volume's label. "
+                            . "Volume label: " . $label . ". "
+                            . "Expected any of: " . implode(', ', $keys) . ". "
+                            . "Cover preview: " . mb_substr($cover, 0, 240) . "... "
+                            . "If this is intentional, retry the upload with ?force=1 in the URL.",
+                            400
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // Persist source filename + flag BOTH pipelines as queued: the docx→pdf→
     // flipbook pipeline AND the paragraph/translation extraction pipeline.
     // The latter rebuilds yy_paragraph and yy_translation rows from the new

@@ -1267,8 +1267,8 @@ function booksResultsHtml(results) {
         if (r.chapter_number) location += 'Ch ' + r.chapter_number;
         if (r.chapter_name)   location += (location ? ' · ' : '') + esc(r.chapter_name);
         if (r.page)           location += (location ? ' · ' : '') + 'Page ' + r.page;
-        var titleLink = r.flip_url
-            ? '<a href="' + esc(r.flip_url) + '" target="_blank">' + esc(r.volume_label) + '</a>'
+        var titleLink = r.flipbook_url
+            ? '<a href="' + esc(r.flipbook_url) + '" target="_blank">' + esc(r.volume_label) + '</a>'
             : esc(r.volume_label);
         var coverHtml = '<div class="cover"></div>';
         if (r.volume_code) {

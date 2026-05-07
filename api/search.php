@@ -31,30 +31,64 @@ $offset = ($page - 1) * $limit;
 
 $pdo = getDb();
 
-// One-time scan of the new self-hosted flipbook directory. Only volumes with
-// a built flipbook (a directory at /flipbook-prototype/<volume_code>/ containing
-// an index.html) get a link in search results — the old FlipHTML5 and direct-PDF
-// fallbacks have been dropped per the unified Flipbook integration.
-// Webroot inside the container is /var/www/html (not /var/www/html/public),
-// so the flipbook dir is one level up from /api, not two.
-$_flipbookRoot = dirname(__DIR__) . '/flipbook-prototype';
-$_availableFlipbooks = [];
-if (is_dir($_flipbookRoot)) {
-    foreach (scandir($_flipbookRoot) as $d) {
-        if ($d === '.' || $d === '..') continue;
-        if (is_file($_flipbookRoot . '/' . $d . '/index.html')) {
-            $_availableFlipbooks[$d] = true;
+// New self-hosted flipbook system: built flipbooks live at /<volume_code>/
+// (top-level — migrated 2026-05-07 in place over the previous FlipHTML5 dirs).
+// Webroot inside the container is /var/www/html, so dirname(__DIR__) is the right base.
+// Volumes whose dir+index.html aren't on disk get no link in results.
+$_flipbookRoot = dirname(__DIR__);
+$_flipbookTocCache = [];
+
+/**
+ * Load and parse the flipbook's toc.json once per request. Returns null if
+ * the volume's flipbook hasn't been built yet (so search results render
+ * without a deep link rather than 404'ing).
+ */
+function flipbookToc(string $volumeCode): ?array {
+    global $_flipbookRoot, $_flipbookTocCache;
+    if (array_key_exists($volumeCode, $_flipbookTocCache)) return $_flipbookTocCache[$volumeCode];
+    $path = $_flipbookRoot . '/' . $volumeCode . '/toc.json';
+    if (!is_file($path)) return $_flipbookTocCache[$volumeCode] = null;
+    $data = json_decode((string)file_get_contents($path), true);
+    return $_flipbookTocCache[$volumeCode] = (is_array($data) ? $data : null);
+}
+
+/**
+ * Map (chapter_number, paragraph_page) → physical flipbook page using the
+ * volume's toc.json. paragraph_page is the Word-doc footer page; the toc
+ * carries the physical page each chapter starts on. We compute:
+ *   physical = chapter.toc_page + (paragraph_page - chapter.docx_page)
+ * Falls back to a constant +6 (front matter heuristic) when chapter info
+ * isn't available, e.g. paragraphs that aren't linked to a chapter row.
+ */
+function flipbookUrl(?string $volumeCode, $paragraphPage, $chapterNumber = null, $chapterDocxPage = null): ?string {
+    if (!$volumeCode) return null;
+    $toc = flipbookToc($volumeCode);
+    if (!$toc) return null;
+    $paragraphPage = (int)$paragraphPage;
+
+    $physical = null;
+    if ($chapterNumber !== null && $chapterDocxPage !== null && !empty($toc['toc'])) {
+        // Match the toc entry by leading "<n> " or "<n>-" in slug/title.
+        $needle = (string)(int)$chapterNumber;
+        foreach ($toc['toc'] as $entry) {
+            $slug = (string)($entry['slug'] ?? '');
+            if (preg_match('/^' . $needle . '[-\s]/', $slug) || preg_match('/^' . $needle . '\b/', (string)($entry['title'] ?? ''))) {
+                $tocPhysical = (int)($entry['page'] ?? 0);
+                $docxPage = (int)$chapterDocxPage;
+                // Only trust the chapter offset if the paragraph sits at or
+                // after the chapter's docx anchor — older volumes have anomalous
+                // chapter_page values where this isn't true. Fall back to the
+                // legacy heuristic in those cases.
+                if ($tocPhysical > 0 && $paragraphPage >= $docxPage) {
+                    $physical = $tocPhysical + ($paragraphPage - $docxPage);
+                }
+                break;
+            }
         }
     }
-}
-function flipbookUrl(?string $volumeCode, $page): ?string {
-    global $_availableFlipbooks;
-    if (!$volumeCode || empty($_availableFlipbooks[$volumeCode])) return null;
-    // Hash deep link uses physical flipbook page. Front matter (cover/copyright/ToC)
-    // contributes ~6 pages, so paragraph_page (the docx footer page) maps to
-    // physical page paragraph_page + 6 — same offset as the prior FlipHTML5 viewer.
-    $physical = ((int)$page) + 6;
-    return '/flipbook-prototype/' . rawurlencode($volumeCode) . '/#page=' . $physical;
+    if ($physical === null) $physical = $paragraphPage + 6;  // legacy fallback
+
+    return '/' . rawurlencode($volumeCode) . '/#page=' . $physical;
 }
 
 // --- Alias expansion: look up alternate forms for each word in the query ---
@@ -98,7 +132,7 @@ if ($mode === 'phrase') {
     if ($total > 0) {
         $stmt = $pdo->prepare("
             SELECT v.volume_label, v.volume_code AS volume_code,
-                   s.series_label, ch.chapter_name, ch.chapter_number,
+                   s.series_label, ch.chapter_name, ch.chapter_number, ch.chapter_page AS chapter_page,
                    p.paragraph_page AS page,
                    1.0 AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
@@ -131,7 +165,12 @@ if ($mode === 'phrase') {
     // Build flipbook_url for each hit. Returns null when the volume's flipbook
     // hasn't been built yet — frontends render those rows without a link.
     foreach ($results as &$row) {
-        $row['flipbook_url'] = flipbookUrl($row['volume_code'] ?? null, $row['page'] ?? 0);
+        $row['flipbook_url'] = flipbookUrl(
+        $row['volume_code'] ?? null,
+        $row['page'] ?? 0,
+        $row['chapter_number'] ?? null,
+        $row['chapter_page'] ?? null
+    );
         unset($row['rank']);
     }
     unset($row);
@@ -192,6 +231,7 @@ if ($total > 0) {
                s.series_label AS series_label,
                ch.chapter_name AS chapter_name,
                ch.chapter_number AS chapter_number,
+               ch.chapter_page AS chapter_page,
                p.paragraph_page AS page,
                ts_rank(p.paragraph_tsv, $tsqSql) AS rank,
                ts_headline('english', COALESCE(p.paragraph_text_plain, ''), $tsqSql,
@@ -252,6 +292,7 @@ if (empty($results) && count($qWords) >= 1) {
                    s.series_label AS series_label,
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
+                   ch.chapter_page AS chapter_page,
                    p.paragraph_page AS page,
                    ts_rank(p.paragraph_tsv, plainto_tsquery('english', ?)) AS rank,
                    ts_headline('english', COALESCE(p.paragraph_text_plain, ''), plainto_tsquery('english', ?),
@@ -311,6 +352,7 @@ if (empty($results)) {
                    s.series_label AS series_label,
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
+                   ch.chapter_page AS chapter_page,
                    p.paragraph_page AS page,
                    0.0 AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
@@ -343,7 +385,12 @@ if (empty($results)) {
 
 // Build flipbook_url for each hit (see phrase-mode block above for rationale).
 foreach ($results as &$row) {
-    $row['flipbook_url'] = flipbookUrl($row['volume_code'] ?? null, $row['page'] ?? 0);
+    $row['flipbook_url'] = flipbookUrl(
+        $row['volume_code'] ?? null,
+        $row['page'] ?? 0,
+        $row['chapter_number'] ?? null,
+        $row['chapter_page'] ?? null
+    );
     unset($row['rank']);
 }
 unset($row);
