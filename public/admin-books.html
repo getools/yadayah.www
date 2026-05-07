@@ -93,7 +93,16 @@
 
     <div class="toolbar">
         <span class="book-count" id="book-count"></span>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+            <!-- Desktop app for the author's Windows machine: opens .docx
+                 in Microsoft Word, exports a Word-pagination-perfect PDF,
+                 and uploads the (.docx, .pdf) pair to the server. The
+                 pipeline picks it up and skips its own docx→pdf step. -->
+            <a class="btn btn-secondary btn-sm" href="https://github.com/getools/yadayah.www/releases/latest/download/YadaYahBookPDFGenerator.exe"
+               title="Windows installer for the desktop tool that generates a PDF in Microsoft Word and uploads both files for flipbook processing"
+               download>
+                ↓ Yada Yah Book PDF Generator
+            </a>
             <button class="btn btn-primary btn-sm" onclick="showVolumeForm(null)">+ Add Volume</button>
         </div>
     </div>
