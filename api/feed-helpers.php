@@ -55,9 +55,10 @@ function tagFilterClause(string $col, string $term, bool $negate): array {
         if ($negate) return ["($col NOT ILIKE ? OR $col IS NULL)", [$pat]];
         return ["$col ILIKE ?", [$pat]];
     }
-    // POSIX regex with comma boundaries. preg_quote covers Postgres regex
-    // metachars too (the overlapping set: . * + ? ( ) [ ] { } | ^ $ \).
-    $rx = '(^|,)' . preg_quote($term, '/') . '(,|$)';
+    // POSIX regex with comma boundaries; allow whitespace around the comma
+    // so legacy tag strings stored as "#a, #b" still match. preg_quote
+    // covers Postgres regex metachars too (overlapping set with PHP).
+    $rx = '(^|,)\s*' . preg_quote($term, '/') . '\s*(,|$)';
     if ($negate) return ["($col !~* ? OR $col IS NULL)", [$rx]];
     return ["$col ~* ?", [$rx]];
 }

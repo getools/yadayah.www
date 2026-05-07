@@ -104,9 +104,12 @@ try {
             }
         }
 
-        // Extract all hashtags from description for feed_item_tags
+        // Extract all hashtags from description for feed_item_tags.
+        // Joined with bare commas (no space) to match the format produced by
+        // sync-youtube/sync-facebook and consumed by tagFilterClause's
+        // whole-word regex.
         if ($description && preg_match_all('/#[a-zA-Z0-9_]+/', $description, $tagMatches)) {
-            $tags = implode(', ', $tagMatches[0]);
+            $tags = implode(',', array_unique($tagMatches[0]));
         }
 
         $stmt = $db->prepare("

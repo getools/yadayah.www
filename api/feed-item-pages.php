@@ -291,7 +291,9 @@ function tagMatchesTerm(string $tags, string $term): bool {
         $regex = str_replace(['\\.*', '\\.'], ['.*', '.'], $regex);
         return (bool)preg_match($regex, $tags);
     }
-    $regex = '/(^|,)' . preg_quote($term, '/') . '(,|$)/i';
+    // Allow whitespace around the comma separator so legacy tag strings
+    // stored as "#a, #b" still match.
+    $regex = '/(^|,)\s*' . preg_quote($term, '/') . '\s*(,|$)/i';
     return (bool)preg_match($regex, $tags);
 }
 

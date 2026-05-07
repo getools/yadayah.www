@@ -12,7 +12,13 @@
     /tinymce/i,
     // Media autoplay policy (browser-enforced, not a code bug)
     /play method is not allowed by the user agent/i,
-    /The play\(\) request was interrupted/i
+    /The play\(\) request was interrupted/i,
+    // Cross-origin "Script error." with no source / line — browsers
+    // censor errors thrown inside third-party iframes (YouTube, Rumble,
+    // etc.) to a generic "Script error" reported at @0:0. Nothing we
+    // can act on, and it spammed the monitor whenever a YouTube embed
+    // went fullscreen on the search prototype.
+    /^Script error\.?$/i
   ];
 
   // Files whose errors we should not report (third-party bundles)
