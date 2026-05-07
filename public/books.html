@@ -136,6 +136,9 @@
         }
 
         /* Search results */
+        /* Hide the wrapper entirely when there's no content — otherwise any
+           inherited padding/background paints a sliver before any search. */
+        #results-area:empty { display: none; }
         .results-info {
             font-size: 0.9rem; color: #555; margin-bottom: 16px; padding-bottom: 8px;
             border-bottom: 1px solid #eee;
@@ -209,7 +212,7 @@
             .result-meta { flex-direction: column; }
         }
     </style>
-<script src="/js/site-nav.js?v=40"></script>
+<script src="/js/site-nav.js?v=41"></script>
 </head>
 <body>
 

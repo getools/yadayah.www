@@ -59,10 +59,10 @@
         .sub-toolbar {
             display: flex; justify-content: center; align-items: center;
             gap: 30px; padding: 8px 0;
-            background: var(--toolbar-bg, #0A333A);
+            background: transparent;
         }
         .sub-toolbar a {
-            text-decoration: none; color: var(--toolbar-text, #8ED0EC);
+            text-decoration: none; color: #E5C86C;
             font-family: "Julius Sans One", sans-serif;
             font-size: 0.95em; font-weight: 700;
         }
@@ -74,8 +74,7 @@
             justify-content: center;
             gap: 0;
             margin: 0 -20px 0 -20px;
-            background: #f0f0f0;
-            border-bottom: 2px solid #ddd;
+            background: transparent;
         }
         .page-tabs a {
             padding: 12px 32px;
@@ -83,14 +82,14 @@
             font-family: "Julius Sans One", sans-serif;
             font-size: 1.1rem;
             font-weight: 700;
-            color: #666;
+            color: #E5C86C;
             border-bottom: 3px solid transparent;
             transition: color 0.2s, border-color 0.2s;
         }
-        .page-tabs a:hover { color: #31345A; }
+        .page-tabs a:hover { color: #E5C86C; }
         .page-tabs a.active {
-            color: #31345A;
-            border-bottom-color: #31345A;
+            color: #E5C86C;
+            border-bottom-color: #E5C86C;
         }
         /* Content */
         html, body { overflow-x: hidden; }
@@ -170,7 +169,7 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
     </style>
-<script src="/js/site-nav.js?v=40"></script>
+<script src="/js/site-nav.js?v=41"></script>
     <link rel="stylesheet" href="/css/page-heading.css?v=2">
 </head>
 <body>

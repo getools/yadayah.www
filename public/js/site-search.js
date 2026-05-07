@@ -252,6 +252,10 @@
             // populated. Defaults: transparent results area (so the
             // band background shows through) and white cards.
             '#ss-results { background: var(--search-results-bg, transparent); border-radius: 8px; padding: 8px; box-sizing: border-box; }',
+            // Hide the container completely when it has no content — otherwise
+            // the padding + configured background show as a thin sliver before
+            // any search has run (or after the user clears the input).
+            '#ss-results:empty { display: none; }',
             '.ss-result-card { padding: 16px; margin-bottom: 12px; border: 1px solid #e0e0e0; border-radius: 8px; background: var(--search-result-item-bg, #fff); transition: box-shadow 0.2s; }',
             '.ss-result-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }',
 
@@ -867,12 +871,12 @@
         $('ss-results').addEventListener('click', function (e) {
             var go = e.target.closest && e.target.closest('[data-go]');
             if (go) { e.preventDefault(); doSearch(parseInt(go.dataset.go, 10)); return; }
-            // "See all in Books / Video" links are no longer needed since
-            // the search always returns both — pagination is the only way
-            // to drill in. Ignore stray data-see clicks if any survive in
-            // cached HTML.
+            // "See all in Books / Video" links switch the scope picker to
+            // the matching scope and re-run the search at page 1, so the
+            // user gets the full paginated list (Site mode caps each
+            // section at SITE_SECTION_LIMIT).
             var see = e.target.closest && e.target.closest('[data-see]');
-            if (see) { e.preventDefault(); return; }
+            if (see) { e.preventDefault(); setScope(see.dataset.see); doSearch(1); return; }
             var hit = e.target.closest && e.target.closest('[data-hit]');
             if (hit) { e.preventDefault(); playHit(hit.dataset.hit); return; }
         });
