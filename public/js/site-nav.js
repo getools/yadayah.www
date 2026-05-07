@@ -135,6 +135,11 @@
             if (data.page_heading_search_bg_color)   root.style.setProperty('--search-band-bg',   data.page_heading_search_bg_color);
             if (data.page_heading_search_text_color) root.style.setProperty('--search-band-text', data.page_heading_search_text_color);
             if (data.page_heading_search_height)     root.style.setProperty('--search-band-height', data.page_heading_search_height + 'px');
+            // Search-results area + per-result-card backgrounds (set
+            // from Admin → Site → Search). Fall back to transparent
+            // / white in site-search.js when unset.
+            if (data.page_heading_search_results_bg_color)     root.style.setProperty('--search-results-bg',     data.page_heading_search_results_bg_color);
+            if (data.page_heading_search_result_item_bg_color) root.style.setProperty('--search-result-item-bg', data.page_heading_search_result_item_bg_color);
             // The injected band uses class `.site-search-band` (set by
             // site-search.js). We previously queried `.search-band` (the
             // prototype's class), which never matched, so all three
@@ -168,7 +173,7 @@
     // the 31 pages that already include site-nav.js. Cache-busting via
     // ?v= matches the convention used elsewhere on the site.
     var s = document.createElement('script');
-    s.src = '/js/site-search.js?v=30';
+    s.src = '/js/site-search.js?v=36';
     s.async = false;
     document.head.appendChild(s);
 })();

@@ -209,7 +209,7 @@
             .result-meta { flex-direction: column; }
         }
     </style>
-<script src="/js/site-nav.js?v=34"></script>
+<script src="/js/site-nav.js?v=40"></script>
 </head>
 <body>
 
@@ -239,34 +239,12 @@
 </header>
 
 
-<div class="search-container">
-    <form id="search-form" onsubmit="doSearch(1); return false;">
-        <div class="search-row">
-            <input type="text" id="search-input" placeholder="Search within books...">
-            <div class="filter-group">
-                <select id="search-mode">
-                    <option value="all">All Words</option>
-                    <option value="phrase">Exact Phrase</option>
-                    <option value="any">Any Word</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="filter-series">Series:</label>
-                <select id="filter-series" onchange="onSeriesChange()">
-                    <option value="">All</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="filter-volume">Volume:</label>
-                <select id="filter-volume" disabled>
-                    <option value="">All</option>
-                </select>
-            </div>
-            <button type="submit" class="search-btn">Search</button>
-        </div>
-    </form>
-    <div id="results-area"></div>
-</div>
+<!-- The page-specific "Search within books" widget that used to live
+     here has been removed permanently. The site-wide search bar
+     (loaded from /js/site-search.js below the header) covers this
+     functionality. Do not re-add: see memory feedback file
+     feedback_books_page_search.md. -->
+
 
 <div class="content">
 
@@ -608,8 +586,10 @@ function initSearchFromUrl() {
     }
 }
 
-loadFilters();
-initSearchFromUrl();
+// loadFilters() / initSearchFromUrl() were callers of the page-specific
+// "Search within books" widget that has been removed. Disabling these
+// calls so the page doesn't crash on the missing DOM nodes. Function
+// definitions are left as dead code to keep this change surgical.
 
 // ── Book Cards ──
 var SVG_READ = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.13 20"><path d="M26.9,5.11l-11.09,6.38s-.54.33-.75.33c-.32.11-.75,0-1.29-.22l-8.58-2.86c-.11,0-2.15-.44-2.9,1.32-.54,1.87.86,2.53,1.29,2.75v2.31c-.97-.33-1.72-.88-2.15-1.1-.54-.33-1.07-.99-1.29-1.98-.43-1.65.11-3.52,1.29-4.73.54-.55.97-.88,1.4-1.1C5.19,4.78,12.38.27,12.38.27c.64-.44,1.61-.22,1.72-.22l12.7,3.96c.43.22.43.88.11,1.1Z"/><path d="M5,11.55v7.63c0,.33.43.55.75.33l1.21-1.51c.21-.11.43-.11.54,0l1.75,1.84c.32.33.75.11.75-.33v-6.71c0-.22-.11-.33-.32-.44l-4.03-1.36c-.32,0-.64.22-.64.55Z"/><path d="M15.71,18.08l10.41-6.16c.5-.3.68-.93.43-1.44-.29-.58-1.02-.79-1.57-.45l-9.21,5.69c-.49.3-1.08.38-1.63.21l-3.14-.94v2.5l3.2.8c.51.13,1.05.05,1.5-.22Z"/></svg>';

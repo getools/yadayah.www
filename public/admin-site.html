@@ -149,17 +149,28 @@
                     </span>
                 </div>
             </div>
+        </div>
+        <div class="section-box">
+            <h2>Search</h2>
             <div class="setting-row">
-                <label>Search Background</label>
+                <label>Search Bar Background</label>
                 <div class="setting-input"><div class="rgba-picker" data-id="ph-search-bg"></div></div>
             </div>
             <div class="setting-row">
-                <label>Search Text</label>
+                <label>Search Bar Text</label>
                 <div class="setting-input"><div class="rgba-picker" data-id="ph-search-text"></div></div>
             </div>
             <div class="setting-row">
-                <label>Search Height</label>
+                <label>Search Bar Height</label>
                 <div class="setting-input"><div class="px-wrap"><input type="number" id="input-ph-search-height" class="input-narrow" value="" step="1" min="0"><span class="unit-label">px</span></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Search Results Background</label>
+                <div class="setting-input"><div class="rgba-picker" data-id="ph-search-results-bg"></div></div>
+            </div>
+            <div class="setting-row">
+                <label>Search Result Item Background</label>
+                <div class="setting-input"><div class="rgba-picker" data-id="ph-search-result-item-bg"></div></div>
             </div>
         </div>
         <div class="section-box">
@@ -311,6 +322,12 @@ function renderPageHeading(rows) {
     // Search text color cascades to filter-group labels in the search
     // bar; defaults to the same light cyan the hardcoded styles used.
     setPickerValue('ph-search-text', (ph['page-heading-search-text-color'] || {}).setting_value || 'rgba(208,227,232,1)');
+    // Search results area background (the wrapper that holds all
+    // result cards) and the per-result-card background. Defaults
+    // are transparent (no fill) so the inherited band background
+    // shows through unless an admin sets one explicitly.
+    setPickerValue('ph-search-results-bg',     (ph['page-heading-search-results-bg-color']     || {}).setting_value || 'rgba(255,255,255,0)');
+    setPickerValue('ph-search-result-item-bg', (ph['page-heading-search-result-item-bg-color'] || {}).setting_value || 'rgba(255,255,255,1)');
 
     var sizeInput = document.getElementById('input-ph-text-size');
     sizeInput.value = (ph['page-heading-text-size'] || {}).setting_value || '2.2';
@@ -521,6 +538,8 @@ function saveGeneral() {
         { code: 'page-heading-search-bg-color',   value: getPickerValue('ph-search-bg') },
         { code: 'page-heading-search-text-color', value: getPickerValue('ph-search-text') },
         { code: 'page-heading-search-height',     value: document.getElementById('input-ph-search-height').value },
+        { code: 'page-heading-search-results-bg-color',     value: getPickerValue('ph-search-results-bg') },
+        { code: 'page-heading-search-result-item-bg-color', value: getPickerValue('ph-search-result-item-bg') },
         { code: 'page-heading-margin-top',     value: document.getElementById('input-ph-margin-top').value },
         { code: 'page-heading-margin-bottom',  value: document.getElementById('input-ph-margin-bottom').value },
         { code: 'page-heading-padding-top',    value: document.getElementById('input-ph-padding-top').value },

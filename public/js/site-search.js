@@ -32,8 +32,12 @@
               +   '<line x1="6" y1="12" x2="18" y2="12"/>'
               +   '<line x1="6" y1="17" x2="18" y2="17"/>'
               + '</svg>',
-        phrase: '<svg class="ss-mode-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-              +   '<path d="M5 6h4v5c0 2.5-1.4 4.4-4 5V14h2V8H5V6zm9 0h4v5c0 2.5-1.4 4.4-4 5V14h2V8h-2V6z"/>'
+        // Exact Phrase: two LEFT double-quotes (““). Rendered
+        // as SVG <text> so the glyphs match whatever serif font the
+        // browser picks; this is more legible than custom paths and
+        // visually unambiguous as opening (left) quotes.
+        phrase: '<svg class="ss-mode-icon" viewBox="0 0 24 24" aria-hidden="true">'
+              +   '<text x="2" y="18" font-size="22" font-weight="700" font-family="Georgia, \'Times New Roman\', serif" fill="currentColor">““</text>'
               + '</svg>',
         any:    '<svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
               +   '<path d="M4 6l8 6-8 6"/>'
@@ -89,8 +93,29 @@
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
             '  transition: border-color 0.2s; background: #fff; color: #222;',
             '  width: auto; height: auto; margin: 0; box-sizing: border-box;',
+            // Inherit the body/header font stack instead of letting the
+            // browser pick its default form-control font, so the search
+            // input matches the header link typography.
+            '  font-family: inherit;',
+            // Placeholder centered + gold (matching the magnifying glass
+            // / mode picker icon color). The text the user types stays
+            // left-aligned at standard input color so they can read it
+            // back; only the placeholder hint gets the gold treatment.
+            '  text-align: center;',
             '}',
             '.ss-row input[type="text"]:focus { border-color: #31345A; }',
+            // Placeholder uses Julius Sans One (loaded once at init via
+            // injectFonts), matching the heading typography on the
+            // login/about pages. Color stays gold (#d4a017) so it pairs
+            // visually with the magnifying-glass icon.
+            '.ss-row input[type="text"]::placeholder {',
+            '  color: #d4a017; opacity: 1; text-align: center;',
+            '  font-family: \'Julius Sans One\', sans-serif;',
+            '  letter-spacing: 0.04em;',
+            '}',
+            // Once the user starts typing, fall back to left-align so
+            // long queries remain readable.
+            '.ss-row input[type="text"]:not(:placeholder-shown) { text-align: left; }',
 
             // Search submit button — gold magnifying glass on transparent
             // background. No box-shadow; the glass is the entire visual
@@ -124,14 +149,17 @@
             // (icon + label). Picking an option closes the menu and
             // updates the trigger's icon.
             '.ss-mode-picker { position: relative; display: inline-flex; flex: 0 0 auto; }',
+            // Trigger button matches the search-submit (gold magnifying
+            // glass) styling: transparent background, gold icon, no
+            // border. Hover darkens the gold like the search button.
             '.ss-mode-picker .ss-mode-current {',
             '  display: inline-flex; align-items: center; justify-content: center;',
-            '  padding: 7px 8px; background: #fff; color: #31345A;',
-            '  border: 1px solid #c4c8d6; border-radius: 6px; cursor: pointer;',
-            '  transition: background-color 0.15s;',
+            '  padding: 6px 8px; background: transparent; color: #d4a017;',
+            '  border: 0; border-radius: 6px; cursor: pointer; line-height: 1;',
+            '  transition: color 0.15s;',
             '}',
-            '.ss-mode-picker .ss-mode-current:hover { background: #eef2ff; }',
-            '.ss-mode-picker .ss-mode-current .ss-mode-icon { width: 18px; height: 18px; }',
+            '.ss-mode-picker .ss-mode-current:hover { color: #b8870e; }',
+            '.ss-mode-picker .ss-mode-current .ss-mode-icon { width: 22px; height: 22px; }',
             '.ss-mode-picker .ss-mode-menu {',
             '  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;',
             '  background: #fff; border: 1px solid #d0d4dd; border-radius: 6px;',
@@ -218,8 +246,13 @@
             '.ss-section .see-all { font-size: 0.85rem; cursor: pointer; color: #2563eb; text-decoration: underline; }',
             '.ss-section .see-all:hover { color: #1d4ed8; }',
 
-            // Result cards
-            '.ss-result-card { padding: 16px; margin-bottom: 12px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; transition: box-shadow 0.2s; }',
+            // Results area + result-card backgrounds. Both are
+            // configurable via Admin → Site → Search; the CSS vars are
+            // set on <html> by site-nav.js when those settings are
+            // populated. Defaults: transparent results area (so the
+            // band background shows through) and white cards.
+            '#ss-results { background: var(--search-results-bg, transparent); border-radius: 8px; padding: 8px; box-sizing: border-box; }',
+            '.ss-result-card { padding: 16px; margin-bottom: 12px; border: 1px solid #e0e0e0; border-radius: 8px; background: var(--search-result-item-bg, #fff); transition: box-shadow 0.2s; }',
             '.ss-result-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }',
 
             '.ss-result-book { display: flex; gap: 12px; align-items: flex-start; }',
@@ -376,7 +409,7 @@
             '          </button>' +
             '        </div>' +
             '      </div>' +
-            '      <input type="text" id="ss-input" placeholder="Search…" autocomplete="off" value="' + esc(initialQ) + '">' +
+            '      <input type="text" id="ss-input" placeholder="Search" autocomplete="off" value="' + esc(initialQ) + '">' +
             '      <button type="submit" class="ss-btn" aria-label="Search" title="Search">' +
             '        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
             '          <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>' +
@@ -875,7 +908,20 @@
         }
     }
 
+    // Pull in the Julius Sans One Google Font so the search-input
+    // placeholder can use it on every host page (some pages already
+    // load it for login modal headings, others don't).
+    function injectFonts() {
+        if (document.getElementById('site-search-fonts')) return;
+        var link = document.createElement('link');
+        link.id = 'site-search-fonts';
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Julius+Sans+One&display=swap';
+        document.head.appendChild(link);
+    }
+
     function init() {
+        injectFonts();
         injectStyle();
         buildBar();
         wire();
