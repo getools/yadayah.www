@@ -1263,12 +1263,20 @@ function searchVideo(q) {
 function booksResultsHtml(results) {
     var html = '';
     results.forEach(function (r) {
+        // Book URL: server provides `book_url` for every result; older
+        // field name fallbacks kept for stale clients.
+        var bookHref = r.book_url || r.flip_url || r.flipbook_url || '';
+        // Chapter info → link to chapter URL when present, else book URL.
         var location = '';
         if (r.chapter_number) location += 'Ch ' + r.chapter_number;
         if (r.chapter_name)   location += (location ? ' · ' : '') + esc(r.chapter_name);
         if (r.page)           location += (location ? ' · ' : '') + 'Page ' + r.page;
-        var titleLink = r.flipbook_url
-            ? '<a href="' + esc(r.flipbook_url) + '" target="_blank">' + esc(r.volume_label) + '</a>'
+        var locHref = r.chapter_url || bookHref;
+        var locHtml = location && locHref
+            ? '<a href="' + esc(locHref) + '" target="_blank">' + location + '</a>'
+            : location;
+        var titleLink = bookHref
+            ? '<a href="' + esc(bookHref) + '" target="_blank">' + esc(r.volume_label) + '</a>'
             : esc(r.volume_label);
         var coverHtml = '<div class="cover"></div>';
         if (r.volume_code) {
@@ -1286,7 +1294,7 @@ function booksResultsHtml(results) {
               +     '<div class="result-meta">'
               +       '<div><span class="volume">' + titleLink + '</span>'
               +         '<span class="sep">·</span><span class="series">' + esc(r.series_label || '') + '</span></div>'
-              +       '<div class="location-right">' + location + '</div>'
+              +       '<div class="location-right">' + locHtml + '</div>'
               +     '</div>'
               +     '<div class="result-snippet">' + (r.snippet || '') + '</div>'
               +   '</div>'

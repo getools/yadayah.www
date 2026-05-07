@@ -480,18 +480,27 @@
             }
             if (r.page) locParts.push('Page ' + r.page);
             var locationText = locParts.join(' · ');
-            // Self-hosted flipbook URL — null when the volume's flipbook
-            // hasn't been built yet. Result still renders with a usable
-            // label, just non-clickable. When we DO have a URL we link
-            // both the volume name AND the location strip — the location
-            // strip is where "Page 492" lives, which is the most useful
-            // click-target (jumps straight to that page in the flipbook).
-            var titleLink = r.flipbook_url
-                ? '<a href="' + esc(r.flipbook_url) + '" target="_blank">' + esc(r.volume_label) + '</a>'
+            // search.php now returns three URL fields:
+            //   book_url     — always the named-path bundle for the book
+            //                  (e.g. /YY-s02v03-Yada-Yahowah-Beyth-In-the-Family/)
+            //   chapter_url  — book_url + #chapter=<slug> when chapter
+            //                  info is present; the new flipbook viewer
+            //                  honors this and seeks; older viewers
+            //                  ignore unknown anchors and fall through
+            //                  to the book's first page.
+            //   flip_url     — backwards-compat alias of book_url;
+            //                  flipbook_url (the old typo'd name this
+            //                  file used to read) is also accepted so
+            //                  a stale-cached client doesn't lose the
+            //                  link.
+            var bookHref = r.book_url || r.flip_url || r.flipbook_url || '';
+            var locHref  = r.chapter_url || bookHref;
+            var titleLink = bookHref
+                ? '<a href="' + esc(bookHref) + '" target="_blank">' + esc(r.volume_label) + '</a>'
                 : esc(r.volume_label);
             var locationHtml = locationText
-                ? (r.flipbook_url
-                    ? '<a href="' + esc(r.flipbook_url) + '" target="_blank">' + locationText + '</a>'
+                ? (locHref
+                    ? '<a href="' + esc(locHref) + '" target="_blank">' + locationText + '</a>'
                     : locationText)
                 : '';
             // Cover thumb: derive sNNvNN from volume_code; broken images
