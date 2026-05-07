@@ -49,14 +49,16 @@
             // the band on top of our padding.
             '.site-search-band form { margin: 0; }',
 
-            // Row-bottom margin only matters when row-two is visible; when
-            // row-two is hidden (scope=site) we don't want row-one's
-            // margin-bottom showing up as trailing whitespace under the
-            // input. The :has(+ .row-two:not([hidden])) rule keeps the
-            // gap when both rows are present and zeroes it otherwise.
+            // Row-bottom margin only matters when row-two has visible
+            // content. row-two itself is always rendered (no [hidden]
+            // on the row); only its filter-strip children get [hidden]
+            // when their scope isn't active. So check the children, not
+            // the row, in the :has selector — otherwise scope=site (no
+            // visible filters) leaves an 8px gap under the input that
+            // looks like asymmetric padding.
             '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 0; }',
-            '.ss-row:has(+ .ss-row.row-two:not([hidden])) { margin-bottom: 8px; }',
-            '.ss-row.row-two:not([hidden]) { margin-bottom: 0; }',
+            '.ss-row:has(+ .ss-row.row-two .ss-scope-filters:not([hidden])) { margin-bottom: 8px; }',
+            '.ss-row.row-two { margin-bottom: 0; }',
             '.ss-row input[type="text"] {',
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
@@ -112,15 +114,21 @@
             '.ss-scope-picker .ss-scope-option[aria-selected="true"] { background: #31345A; color: #fff; }',
             '.ss-scope-picker .ss-scope-option[aria-selected="true"] .icon { color: #fff; }',
 
-            // Collapsible filter strip
+            // Filter strip per scope. When [hidden] we want the element
+            // to take ZERO space (display: none). The previous version
+            // forced display: flex !important to enable a height-collapse
+            // animation, which kept hidden strips occupying horizontal
+            // space inside row-two — when scope=video, the (hidden) books
+            // strip pushed the visible video strip toward the middle.
+            // We drop the animation in favor of correct alignment, but
+            // we still need to *explicitly* restore display: none for
+            // [hidden] because our author-level `.ss-scope-filters
+            // { display: flex }` rule otherwise wins over the UA-
+            // stylesheet's default [hidden] { display: none }.
             '.ss-scope-filters {',
             '  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;',
-            '  overflow: hidden; max-height: 200px; opacity: 1;',
-            '  transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;',
             '}',
-            '.ss-scope-filters[hidden] {',
-            '  display: flex !important; max-height: 0; opacity: 0; margin-bottom: 0; pointer-events: none;',
-            '}',
+            '.ss-scope-filters[hidden] { display: none; }',
 
             // Results
             '.ss-results-info {',

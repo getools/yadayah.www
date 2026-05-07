@@ -172,7 +172,8 @@ body.carousel-narrow #carousel .cpg.n2 { display: none !important; }
 /* Search hit highlight on the live text-layer overlays — wraps just the
    matching substring (not the whole span) in a <mark> so only the query
    text is tinted, regardless of how long the surrounding line is. */
-.text-layer mark.search-hit { background: rgba(255, 220, 0, 0.55);
+.text-layer span.search-hit { background: rgba(255, 230, 100, 0.28); border-radius: 1px; }
+    .text-layer mark.search-hit { background: rgba(255, 230, 100, 0.28);
                                color: transparent; padding: 0; }
 /* Subtle dimming on neighbor pages so the center reads as "in focus". */
 #carousel .cpg::after {

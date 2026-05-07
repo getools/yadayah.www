@@ -168,7 +168,7 @@
     // the 31 pages that already include site-nav.js. Cache-busting via
     // ?v= matches the convention used elsewhere on the site.
     var s = document.createElement('script');
-    s.src = '/js/site-search.js?v=5';
+    s.src = '/js/site-search.js?v=8';
     s.async = false;
     document.head.appendChild(s);
 })();

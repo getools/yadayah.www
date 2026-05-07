@@ -962,27 +962,17 @@
       // text from data-text (rather than textContent) keeps this O(n) and
       // robust to repeated highlight passes that change DOM structure.
       let _currentSearchQuery = '';
+      // In-page text-layer highlighting was unreliable: spans are positioned
+      // via the PDF bbox + a scaleX stretch, so wrapping inner <mark> drifted,
+      // and whole-span tints over-highlighted multi-word runs. The Search
+      // side-panel (runSearch + highlightSnippet) lists every hit with a
+      // page link + snippet — that's text-only and reliable, so we lean on
+      // it instead of overlaying marks on the rendered image.
       function applySearchHighlight() {
-        const q = (searchInput.value || '').trim();
-        _currentSearchQuery = q;
-        const qLower = q.toLowerCase();
-        const layers = document.querySelectorAll('.text-layer');
-        layers.forEach(layer => {
-          const spans = layer.children;
-          for (let i = 0; i < spans.length; i++) {
-            const s = spans[i];
-            const text = s.dataset.text;
-            if (text == null) continue;
-            const flags = parseInt(s.dataset.flags || '0', 10);
-            const hit = q && text.toLowerCase().includes(qLower);
-            const hasMark = s.firstElementChild && s.querySelector('mark.search-hit');
-            if (hit) {
-              buildHighlightedSpanContent(s, text, flags, q);
-            } else if (hasMark) {
-              buildStyledSpanContent(s, text, flags);
-            }
-          }
-        });
+        _currentSearchQuery = (searchInput.value || '').trim();
+        // Defensive cleanup of any class left behind by older builds.
+        const stale = document.querySelectorAll('.text-layer span.search-hit');
+        for (let i = 0; i < stale.length; i++) stale[i].classList.remove('search-hit');
       }
 
       // ── Initial nav: hash > localStorage resume > page 1
@@ -997,9 +987,22 @@
       // applySearchHighlight(); just dispatch the event so the same code
       // path fires. Highlights re-apply as new pages render via the per-
       // page text-layer builders (which invoke applySearchHighlight).
+      // Helper: open the Search side-tab. Defensively retries on the next
+      // animation frame because some later init code in this function may
+      // reset to the default Contents tab if it ran before our call.
+      function focusSearchPane() {
+        try { openSidebar('search'); } catch (e) {}
+        try {
+          const tab = document.querySelector('aside .tab[data-tab="search"]');
+          if (tab) tab.click();
+        } catch (e) {}
+      }
       if (hashQuery && searchInput) {
         searchInput.value = hashQuery;
         searchInput.dispatchEvent(new Event('input'));
+        focusSearchPane();
+        requestAnimationFrame(focusSearchPane);
+        setTimeout(focusSearchPane, 300);
       }
       window.addEventListener('hashchange', () => {
         const p = new URLSearchParams(location.hash.replace(/^#/, ''));
@@ -1010,6 +1013,7 @@
         if (searchInput && qq !== searchInput.value) {
           searchInput.value = qq;
           searchInput.dispatchEvent(new Event('input'));
+          if (qq) focusSearchPane();
         }
       });
 
