@@ -93,6 +93,24 @@
             '  margin: 0; box-sizing: border-box;',
             '}',
 
+            // Mode-toggle: 3 connected segmented buttons (radio group).
+            '.ss-mode-toggle {',
+            '  display: inline-flex; align-items: stretch; flex: 0 0 auto;',
+            '  border: 1px solid #c4c8d6; border-radius: 6px; overflow: hidden;',
+            '  background: #fff;',
+            '}',
+            '.ss-mode-toggle .ss-mode-btn {',
+            '  display: inline-flex; align-items: center; gap: 6px;',
+            '  padding: 8px 12px; border: 0; border-right: 1px solid #d6dae6;',
+            '  background: transparent; color: #31345A; cursor: pointer;',
+            '  font: inherit; font-size: 0.85rem; font-weight: 600; line-height: 1.2;',
+            '  transition: background-color 0.15s, color 0.15s;',
+            '}',
+            '.ss-mode-toggle .ss-mode-btn:last-child { border-right: 0; }',
+            '.ss-mode-toggle .ss-mode-btn:hover { background: #eef2ff; }',
+            '.ss-mode-toggle .ss-mode-btn.is-active { background: #31345A; color: #fff; }',
+            '.ss-mode-toggle .ss-mode-icon { width: 16px; height: 16px; flex: 0 0 16px; }',
+
             // Scope picker
             '.ss-scope-picker {',
             '  position: relative; display: inline-flex; align-items: stretch;',
@@ -265,8 +283,12 @@
             '  .ss-scope-picker .ss-scope-current .chevron { width: 10px; height: 10px; flex: 0 0 10px; }',
             // Compact the mode dropdown so the input gets more room.
             '  .ss-filter-group select { padding: 6px 8px; font-size: 0.85rem; }',
-            '  .ss-btn { padding: 8px 12px; font-size: 0; line-height: 1; }',
-            '  .ss-btn::before { content: "Go"; font-size: 0.95rem; font-weight: 600; }',
+            // Mobile: search button stays a magnifying glass — no "Go"
+            // text injected. Keep button compact.
+            '  .ss-btn { padding: 8px 10px; }',
+            // Mobile: hide mode-button text labels, icon-only.
+            '  .ss-mode-toggle .ss-mode-label { display: none; }',
+            '  .ss-mode-toggle .ss-mode-btn { padding: 7px 8px; }',
             '  .ss-scope-filters { width: 100%; }',
             '  .ss-result-video { flex-direction: column; }',
             '  .ss-result-video .thumb { flex: 0 0 auto; max-width: 100%; }',
@@ -290,57 +312,42 @@
             '<div class="site-search-container">' +
             '  <form id="ss-form">' +
             '    <div class="ss-row">' +
-            '      <div class="ss-scope-picker" id="ss-scope-picker" role="combobox" aria-haspopup="listbox" aria-expanded="false">' +
-            '        <button type="button" class="ss-scope-current" id="ss-scope-current-btn" aria-label="Search scope">' +
-            '          <span class="icon" id="ss-scope-current-icon" aria-hidden="true"></span>' +
-            '          <span class="label" id="ss-scope-current-label">Site</span>' +
-            '          <svg class="chevron" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">' +
-            '            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd"/>' +
-            '          </svg>' +
-            '        </button>' +
-            '        <div class="ss-scope-menu" role="listbox" aria-label="Search scope options">' +
-            '          <div class="ss-scope-option" role="option" data-scope="site"  aria-selected="true">' +
-            '            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>Site' +
-            '          </div>' +
-            '          <div class="ss-scope-option" role="option" data-scope="books" aria-selected="false">' +
-            '            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H3z"/><path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h7z"/></svg>Books' +
-            '          </div>' +
-            '          <div class="ss-scope-option" role="option" data-scope="video" aria-selected="false">' +
-            '            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l5-2.5z" fill="currentColor"/></svg>Video' +
-            '          </div>' +
-            '        </div>' +
-            '      </div>' +
             '      <input type="text" id="ss-input" placeholder="Search…" autocomplete="off" value="' + esc(initialQ) + '">' +
-            '      <div class="ss-filter-group">' +
-            '        <select id="ss-mode">' +
-            '          <option value="all">All Words</option>' +
-            '          <option value="phrase">Exact Phrase</option>' +
-            '          <option value="any">Any Word</option>' +
-            '        </select>' +
+            // Hidden select preserves the existing $(ss-mode).value reader
+            // path; the visible UI is the three graphic toggle buttons below.
+            '      <select id="ss-mode" style="display:none;">' +
+            '        <option value="all" selected>All Words</option>' +
+            '        <option value="phrase">Exact Phrase</option>' +
+            '        <option value="any">Any Word</option>' +
+            '      </select>' +
+            '      <div id="ss-mode-toggle" class="ss-mode-toggle" role="radiogroup" aria-label="Match mode">' +
+            '        <button type="button" class="ss-mode-btn is-active" role="radio" aria-checked="true" data-mode="all" title="All Words — every word must match">' +
+            '          <svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">' +
+            '            <line x1="6" y1="7"  x2="18" y2="7"/>' +
+            '            <line x1="6" y1="12" x2="18" y2="12"/>' +
+            '            <line x1="6" y1="17" x2="18" y2="17"/>' +
+            '          </svg>' +
+            '          <span class="ss-mode-label">All Words</span>' +
+            '        </button>' +
+            '        <button type="button" class="ss-mode-btn" role="radio" aria-checked="false" data-mode="phrase" title="Exact Phrase — the words must appear in this exact order">' +
+            '          <svg class="ss-mode-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+            '            <path d="M5 6h4v5c0 2.5-1.4 4.4-4 5V14h2V8H5V6zm9 0h4v5c0 2.5-1.4 4.4-4 5V14h2V8h-2V6z"/>' +
+            '          </svg>' +
+            '          <span class="ss-mode-label">Exact Phrase</span>' +
+            '        </button>' +
+            '        <button type="button" class="ss-mode-btn" role="radio" aria-checked="false" data-mode="any" title="Any Word — match if any of the words appear">' +
+            '          <svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '            <path d="M4 6l8 6-8 6"/>' +
+            '            <path d="M12 6l8 6-8 6"/>' +
+            '          </svg>' +
+            '          <span class="ss-mode-label">Any Word</span>' +
+            '        </button>' +
             '      </div>' +
-            '      <button type="submit" class="ss-btn">Search</button>' +
-            '    </div>' +
-            '    <div class="ss-row row-two">' +
-            '      <div class="ss-scope-filters" id="ss-filters-books" hidden>' +
-            '        <div class="ss-filter-group">' +
-            '          <label for="ss-filter-series">Series:</label>' +
-            '          <select id="ss-filter-series"><option value="">All</option></select>' +
-            '        </div>' +
-            '        <div class="ss-filter-group">' +
-            '          <label for="ss-filter-volume">Volume:</label>' +
-            '          <select id="ss-filter-volume"><option value="">All</option></select>' +
-            '        </div>' +
-            '      </div>' +
-            '      <div class="ss-scope-filters" id="ss-filters-video" hidden>' +
-            '        <div class="ss-filter-group">' +
-            '          <label for="ss-filter-group">Group:</label>' +
-            '          <select id="ss-filter-group"><option value="">All</option></select>' +
-            '        </div>' +
-            '        <div class="ss-filter-group" id="ss-filter-category-wrap" hidden>' +
-            '          <label for="ss-filter-category">Category:</label>' +
-            '          <select id="ss-filter-category"><option value="">All</option></select>' +
-            '        </div>' +
-            '      </div>' +
+            '      <button type="submit" class="ss-btn" aria-label="Search" title="Search">' +
+            '        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '          <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>' +
+            '        </svg>' +
+            '      </button>' +
             '    </div>' +
             '  </form>' +
             '  <div id="ss-results"></div>' +
@@ -397,17 +404,10 @@
     }
 
     // ── Filter loading ──────────────────────────────────────────────────
-    function loadFilters() {
-        return Promise.all([
-            fetch('/api/search-filters.php').then(function (r) { return r.json(); }).catch(function () { return null; }),
-            fetch('/api/search-video-filters.php').then(function (r) { return r.json(); }).catch(function () { return null; }),
-        ]).then(function (out) {
-            if (out[0]) booksFilters = out[0];
-            if (out[1]) videoFilters = out[1];
-            populateBooksFilters();
-            populateVideoFilters();
-        });
-    }
+    // Per-scope filters were removed when the search bar was simplified
+    // to always parallel-fetch books + video. Stub remains for any
+    // legacy callers expecting a Promise return; resolves immediately.
+    function loadFilters() { return Promise.resolve(); }
 
     function populateBooksFilters() {
         var sel = $('ss-filter-series');
@@ -466,43 +466,15 @@
         wrap.hidden = false;
     }
 
-    // ── Scope picker ────────────────────────────────────────────────────
-    var SCOPE_META = {
-        site:  { label: 'Site',  placeholder: 'Search…' },
-        books: { label: 'Books', placeholder: 'Search books…' },
-        video: { label: 'Video', placeholder: 'Search video transcripts…' },
-    };
-    function toggleScopeMenu() {
-        var picker = $('ss-scope-picker');
-        var open = !picker.classList.contains('open');
-        picker.classList.toggle('open', open);
-        picker.setAttribute('aria-expanded', String(open));
-    }
-    function setScope(s) {
-        scope = s;
-        var picker = $('ss-scope-picker');
-        picker.classList.remove('open');
-        picker.setAttribute('aria-expanded', 'false');
-        var menuOption = picker.querySelector('[data-scope="' + s + '"]');
-        $('ss-scope-current-label').textContent = SCOPE_META[s].label;
-        var icon = $('ss-scope-current-icon');
-        icon.innerHTML = menuOption ? menuOption.querySelector('.icon').outerHTML : '';
-        Array.prototype.forEach.call(picker.querySelectorAll('[role="option"]'), function (el) {
-            el.setAttribute('aria-selected', String(el.dataset.scope === s));
-        });
-        $('ss-filters-books').hidden = (s !== 'books');
-        $('ss-filters-video').hidden = (s !== 'video');
-        $('ss-input').placeholder = SCOPE_META[s].placeholder;
-    }
-
     // ── Search ──────────────────────────────────────────────────────────
+    // Search bar always queries books AND video transcripts in parallel
+    // and renders a mixed view. The scope picker (Site/Books/Video) was
+    // removed; this is now the only mode.
     function doSearch(page) {
         currentPage = Math.max(1, page || 1);
         var q = $('ss-input').value.trim();
         if (!q) { $('ss-results').innerHTML = ''; return; }
-        if (scope === 'site')  return searchSite(q);
-        if (scope === 'video') return searchVideo(q);
-        return searchBooks(q);
+        return searchSite(q);
     }
     function searchSite(q) {
         var mode = $('ss-mode').value;
@@ -793,20 +765,22 @@
     // ── Wiring ──────────────────────────────────────────────────────────
     function wire() {
         $('ss-form').addEventListener('submit', function (e) { e.preventDefault(); doSearch(1); });
-        $('ss-scope-current-btn').addEventListener('click', toggleScopeMenu);
-        Array.prototype.forEach.call(document.querySelectorAll('#ss-scope-picker [data-scope]'), function (el) {
-            el.addEventListener('click', function () { setScope(el.dataset.scope); });
-        });
-        $('ss-filter-series').addEventListener('change', onSeriesChange);
-        $('ss-filter-group').addEventListener('change', onGroupChange);
-        // Close scope menu on outside click.
-        document.addEventListener('click', function (e) {
-            var picker = $('ss-scope-picker');
-            if (!picker) return;
-            if (picker.classList.contains('open') && !picker.contains(e.target)) {
-                picker.classList.remove('open');
-                picker.setAttribute('aria-expanded', 'false');
-            }
+        // Mode toggle: clicking a button updates the hidden <select>
+        // (so existing $('ss-mode').value readers keep working) and
+        // restyles the active button. Re-runs the search if there's a
+        // current query, so swapping All ↔ Phrase ↔ Any updates results
+        // immediately rather than waiting for re-submit.
+        Array.prototype.forEach.call(document.querySelectorAll('#ss-mode-toggle .ss-mode-btn'), function (btn) {
+            btn.addEventListener('click', function () {
+                var mode = btn.dataset.mode;
+                $('ss-mode').value = mode;
+                Array.prototype.forEach.call(document.querySelectorAll('#ss-mode-toggle .ss-mode-btn'), function (b) {
+                    var active = b === btn;
+                    b.classList.toggle('is-active', active);
+                    b.setAttribute('aria-checked', active ? 'true' : 'false');
+                });
+                if ($('ss-input').value.trim()) doSearch(1);
+            });
         });
         // Delegated handler for results-area: pagination buttons,
         // see-all links, video play targets — all single source so the
@@ -814,8 +788,12 @@
         $('ss-results').addEventListener('click', function (e) {
             var go = e.target.closest && e.target.closest('[data-go]');
             if (go) { e.preventDefault(); doSearch(parseInt(go.dataset.go, 10)); return; }
+            // "See all in Books / Video" links are no longer needed since
+            // the search always returns both — pagination is the only way
+            // to drill in. Ignore stray data-see clicks if any survive in
+            // cached HTML.
             var see = e.target.closest && e.target.closest('[data-see]');
-            if (see) { e.preventDefault(); setScope(see.dataset.see); doSearch(1); return; }
+            if (see) { e.preventDefault(); return; }
             var hit = e.target.closest && e.target.closest('[data-hit]');
             if (hit) { e.preventDefault(); playHit(hit.dataset.hit); return; }
         });
@@ -849,8 +827,6 @@
         injectStyle();
         buildBar();
         wire();
-        loadFilters();
-        setScope('site');
         applyModeLabels();
         try {
             window.matchMedia('(max-width: 767px)').addEventListener('change', applyModeLabels);
