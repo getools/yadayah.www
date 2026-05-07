@@ -1,5 +1,10 @@
 name: Build Yada Yah Book PDF Generator
 
+# Builds the desktop .exe on a Windows runner and ships it directly to the
+# yadayah.com server's private staging dir via a restricted SSH key. The
+# artifact is NOT published to a public release; admins download it through
+# /api/admin-uploader-download.php which requireAuth()'s.
+
 on:
   push:
     branches: [master]
@@ -9,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -38,19 +43,25 @@ jobs:
           python -m PyInstaller --noconfirm --windowed --onefile --name "YadaYahBookPDFGenerator" --icon icon.ico --add-data "icon.png;." yada_uploader.py
 
       - name: Show artifact
+        run: dir dist
+
+      - name: Deploy to yadayah.com private staging
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY:         ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_HOST:            ${{ secrets.DEPLOY_HOST }}
         run: |
-          dir dist
-
-      - name: Publish to GitHub Releases (uploader-latest)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: uploader-latest
-          name: Yada Yah Book PDF Generator (latest)
-          body: |
-            Automated build of the Yada Yah Book PDF Generator desktop app.
-
-            Built from commit ${{ github.sha }} on ${{ github.ref_name }}.
-
-            Download: YadaYahBookPDFGenerator.exe
-          files: desktop/dist/YadaYahBookPDFGenerator.exe
-          make_latest: 'true'
+          mkdir -p ~/.ssh
+          printf '%s' "$DEPLOY_SSH_KEY"         > ~/.ssh/deploy_key
+          printf '%s' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          # The deploy key on the server has a forced command that pipes
+          # whatever it receives on stdin into a fixed destination file
+          # (uploader-deploy.sh). So we just stream the .exe over SSH stdin.
+          ssh -i ~/.ssh/deploy_key \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o StrictHostKeyChecking=yes \
+              -o IdentitiesOnly=yes \
+              "root@${DEPLOY_HOST}" 'cat' < dist/YadaYahBookPDFGenerator.exe
+          echo "Deployed $(stat -c%s dist/YadaYahBookPDFGenerator.exe 2>/dev/null || wc -c < dist/YadaYahBookPDFGenerator.exe) bytes"
