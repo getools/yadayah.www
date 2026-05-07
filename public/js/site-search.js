@@ -109,7 +109,7 @@
             // login/about pages. Color stays gold (#d4a017) so it pairs
             // visually with the magnifying-glass icon.
             '.ss-row input[type="text"]::placeholder {',
-            '  color: #d4a017; opacity: 1; text-align: center;',
+            '  color: var(--search-band-text, #d4a017); opacity: 1; text-align: center;',
             '  font-family: \'Julius Sans One\', sans-serif;',
             '  letter-spacing: 0.04em;',
             '}',
@@ -121,7 +121,7 @@
             // background. No box-shadow; the glass is the entire visual
             // affordance.
             '.ss-btn {',
-            '  padding: 6px 8px; background: transparent; color: #d4a017; border: 0;',
+            '  padding: 6px 8px; background: transparent; color: var(--search-band-text, #d4a017); border: 0;',
             '  cursor: pointer; border-radius: 6px; line-height: 1;',
             '  display: inline-flex; align-items: center; justify-content: center;',
             '  transition: color 0.15s;',
@@ -154,7 +154,7 @@
             // border. Hover darkens the gold like the search button.
             '.ss-mode-picker .ss-mode-current {',
             '  display: inline-flex; align-items: center; justify-content: center;',
-            '  padding: 6px 8px; background: transparent; color: #d4a017;',
+            '  padding: 6px 8px; background: transparent; color: var(--search-band-text, #d4a017);',
             '  border: 0; border-radius: 6px; cursor: pointer; line-height: 1;',
             '  transition: color 0.15s;',
             '}',
