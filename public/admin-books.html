@@ -93,7 +93,7 @@
 
     <div class="toolbar">
         <span class="book-count" id="book-count"></span>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <!-- Desktop app for the author's Windows machine: opens .docx
                  in Microsoft Word, exports a Word-pagination-perfect PDF,
                  and uploads the (.docx, .pdf) pair to the server. The
@@ -103,6 +103,11 @@
                download>
                 ↓ Yada Yah Book PDF Generator
             </a>
+            <span id="uploader-setup" style="display:none;font-size:0.78rem;color:#666;align-items:center;gap:6px;">
+                <span title="Paste these into the desktop app on first launch">Setup:</span>
+                <code id="uploader-server" style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;cursor:pointer;" title="Click to copy server URL"></code>
+                <code id="uploader-token"  style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;cursor:pointer;" title="Click to copy token"></code>
+            </span>
             <button class="btn btn-primary btn-sm" onclick="showVolumeForm(null)">+ Add Volume</button>
         </div>
     </div>
@@ -228,8 +233,40 @@ function checkAuth() {
             document.getElementById('user-display').textContent = d.user_name;
             applyPagePermissions(d.pages);
             loadBooks();
+            loadUploaderSetup();
         } else { document.getElementById('login-screen').classList.add('visible'); }
     });
+}
+
+// Fetch the bearer token used by the desktop "Yada Yah Book PDF Generator"
+// app and surface it next to the download button so admins can copy/paste
+// once instead of provisioning via SQL. Only authenticated admins ever see
+// this — the endpoint requireAuth()'s and the Admin → Books page itself is
+// already gated.
+function loadUploaderSetup() {
+    fetch(API + '/admin-author-token.php', {credentials:'include'})
+      .then(function(r){return safeJson(r);})
+      .then(function(d) {
+        if (!d || !d.token) return;
+        var box = document.getElementById('uploader-setup');
+        var s   = document.getElementById('uploader-server');
+        var t   = document.getElementById('uploader-token');
+        s.textContent = d.server_url;
+        t.textContent = d.token;
+        box.style.display = 'inline-flex';
+        function copyOnClick(el, label) {
+            el.addEventListener('click', function() {
+                navigator.clipboard.writeText(el.textContent).then(function() {
+                    var orig = el.style.background;
+                    el.style.background = '#c8f0c8';
+                    el.title = 'Copied!';
+                    setTimeout(function() { el.style.background = orig; el.title = 'Click to copy ' + label; }, 800);
+                });
+            });
+        }
+        copyOnClick(s, 'server URL');
+        copyOnClick(t, 'token');
+    }).catch(function() { /* non-fatal */ });
 }
 function doLogin() {
     var user = document.getElementById('login-user').value, pass = document.getElementById('login-pass').value;
