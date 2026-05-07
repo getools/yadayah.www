@@ -60,25 +60,31 @@ function flipbookToc(string $volumeCode): ?array {
  * Falls back to a constant +6 (front matter heuristic) when chapter info
  * isn't available, e.g. paragraphs that aren't linked to a chapter row.
  */
-function flipbookUrl(?string $volumeCode, $paragraphPage, $chapterNumber = null, $chapterDocxPage = null): ?string {
+function flipbookUrl(?string $volumeCode, $paragraphPage, $chapterNumber = null, $chapterDocxPage = null, $pdfPage = null): ?string {
     if (!$volumeCode) return null;
+    // If we have an authoritative paragraph_pdf_page (extracted via
+    // Word-COM and stored on yy_paragraph), use it directly — that's
+    // exactly the physical page Word renders, matches page-NNN.jpg in
+    // the flipbook, and matches the viewer's "page X / N" indicator.
+    if ($pdfPage !== null && (int)$pdfPage > 0) {
+        return '/' . rawurlencode($volumeCode) . '/#page=' . (int)$pdfPage;
+    }
+    // Legacy fallback for volumes that haven't been re-extracted yet:
+    // estimate from toc.json's chapter anchors. Drifts when the docx
+    // and rendered PDF disagree on internal pagination — see
+    // paragraph_pdf_page rollout for the proper fix.
     $toc = flipbookToc($volumeCode);
     if (!$toc) return null;
     $paragraphPage = (int)$paragraphPage;
 
     $physical = null;
     if ($chapterNumber !== null && $chapterDocxPage !== null && !empty($toc['toc'])) {
-        // Match the toc entry by leading "<n> " or "<n>-" in slug/title.
         $needle = (string)(int)$chapterNumber;
         foreach ($toc['toc'] as $entry) {
             $slug = (string)($entry['slug'] ?? '');
             if (preg_match('/^' . $needle . '[-\s]/', $slug) || preg_match('/^' . $needle . '\b/', (string)($entry['title'] ?? ''))) {
                 $tocPhysical = (int)($entry['page'] ?? 0);
                 $docxPage = (int)$chapterDocxPage;
-                // Only trust the chapter offset if the paragraph sits at or
-                // after the chapter's docx anchor — older volumes have anomalous
-                // chapter_page values where this isn't true. Fall back to the
-                // legacy heuristic in those cases.
                 if ($tocPhysical > 0 && $paragraphPage >= $docxPage) {
                     $physical = $tocPhysical + ($paragraphPage - $docxPage);
                 }
@@ -86,8 +92,7 @@ function flipbookUrl(?string $volumeCode, $paragraphPage, $chapterNumber = null,
             }
         }
     }
-    if ($physical === null) $physical = $paragraphPage + 6;  // legacy fallback
-
+    if ($physical === null) $physical = $paragraphPage + 6;
     return '/' . rawurlencode($volumeCode) . '/#page=' . $physical;
 }
 
@@ -133,7 +138,9 @@ if ($mode === 'phrase') {
         $stmt = $pdo->prepare("
             SELECT v.volume_label, v.volume_code AS volume_code,
                    s.series_label, ch.chapter_name, ch.chapter_number, ch.chapter_page AS chapter_page,
-                   p.paragraph_page AS page,
+                   p.paragraph_page         AS page_legacy,
+                   p.paragraph_pdf_page    AS pdf_page,
+                   COALESCE(p.paragraph_footer_page, p.paragraph_page) AS page,
                    1.0 AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
                         THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(p.paragraph_text_plain)) - 100) FOR 300)
@@ -167,9 +174,10 @@ if ($mode === 'phrase') {
     foreach ($results as &$row) {
         $row['flipbook_url'] = flipbookUrl(
         $row['volume_code'] ?? null,
-        $row['page'] ?? 0,
+        $row['page_legacy'] ?? $row['page'] ?? 0,
         $row['chapter_number'] ?? null,
-        $row['chapter_page'] ?? null
+        $row['chapter_page'] ?? null,
+        $row['pdf_page'] ?? null
     );
         unset($row['rank']);
     }
@@ -232,7 +240,9 @@ if ($total > 0) {
                ch.chapter_name AS chapter_name,
                ch.chapter_number AS chapter_number,
                ch.chapter_page AS chapter_page,
-               p.paragraph_page AS page,
+               p.paragraph_page         AS page_legacy,
+               p.paragraph_pdf_page    AS pdf_page,
+               COALESCE(p.paragraph_footer_page, p.paragraph_page) AS page,
                ts_rank(p.paragraph_tsv, $tsqSql) AS rank,
                ts_headline('english', COALESCE(p.paragraph_text_plain, ''), $tsqSql,
                    'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=20, MaxFragments=2, FragmentDelimiter= ... '
@@ -293,7 +303,9 @@ if (empty($results) && count($qWords) >= 1) {
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
                    ch.chapter_page AS chapter_page,
-                   p.paragraph_page AS page,
+                   p.paragraph_page         AS page_legacy,
+                   p.paragraph_pdf_page    AS pdf_page,
+                   COALESCE(p.paragraph_footer_page, p.paragraph_page) AS page,
                    ts_rank(p.paragraph_tsv, plainto_tsquery('english', ?)) AS rank,
                    ts_headline('english', COALESCE(p.paragraph_text_plain, ''), plainto_tsquery('english', ?),
                        'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=20, MaxFragments=2, FragmentDelimiter= ... '
@@ -353,7 +365,9 @@ if (empty($results)) {
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
                    ch.chapter_page AS chapter_page,
-                   p.paragraph_page AS page,
+                   p.paragraph_page         AS page_legacy,
+                   p.paragraph_pdf_page    AS pdf_page,
+                   COALESCE(p.paragraph_footer_page, p.paragraph_page) AS page,
                    0.0 AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
                         THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(p.paragraph_text_plain)) - 100) FOR 300)
@@ -387,9 +401,10 @@ if (empty($results)) {
 foreach ($results as &$row) {
     $row['flipbook_url'] = flipbookUrl(
         $row['volume_code'] ?? null,
-        $row['page'] ?? 0,
+        $row['page_legacy'] ?? $row['page'] ?? 0,
         $row['chapter_number'] ?? null,
-        $row['chapter_page'] ?? null
+        $row['chapter_page'] ?? null,
+        $row['pdf_page'] ?? null
     );
     unset($row['rank']);
 }
