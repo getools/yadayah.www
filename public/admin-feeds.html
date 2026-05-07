@@ -114,6 +114,7 @@
                     <th>Account ID</th>
                     <th>Status</th>
                     <th>Stream</th>
+                    <th title="Per-feed YouTube captions OAuth grant. Required before captions can be uploaded.">OAuth</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -197,13 +198,6 @@
                 <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
                 <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
             </div>
-        </div>
-        <!-- YouTube captions auth + batch-upload control. Hidden until
-             admin-yt-captions-status.php returns its first poll. -->
-        <div id="yt-caption-bar" style="display:none;margin-bottom:10px;padding:10px 14px;background:#eef4fb;border:1px solid #c5d8ec;border-radius:6px;font-size:0.85rem;align-items:center;gap:12px;flex-wrap:wrap;">
-            <span id="yt-caption-state" style="font-weight:600;"></span>
-            <span id="yt-caption-detail" style="color:#555;font-size:0.78rem;flex:1;min-width:0;"></span>
-            <span id="yt-caption-actions" style="display:flex;gap:8px;"></span>
         </div>
         <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
         <style>
@@ -794,12 +788,33 @@ function renderAll() {
             + '<input type="checkbox" ' + (streamOn ? 'checked' : '') + ' onclick="event.stopPropagation();" onchange="toggleStreamFlag(' + f.feed_key + ',this.checked)">'
             + streamBtn
             + '</span>';
+        // OAuth cell: per-feed YouTube captions grant button. Only
+        // shown for YouTube feeds; other site_codes get a placeholder.
+        var oauthCell = '<td onclick="event.stopPropagation()" style="white-space:nowrap;">';
+        if (String(f.feed_site_code).toLowerCase() === 'youtube') {
+            if (f.feed_yt_caption_connected) {
+                oauthCell += '<span style="color:#1b5e20;font-size:0.78rem;font-weight:600;" title="Channel: '
+                          + esc(f.feed_yt_caption_channel_title || '?') + '">✓ '
+                          + esc(f.feed_yt_caption_channel_title || 'Connected')
+                          + '</span>'
+                         ;
+            } else {
+                oauthCell += '<a href="/api/admin-yt-captions-connect.php?feed_key=' + f.feed_key + '" '
+                          +   'class="btn btn-primary btn-sm" '
+                          +   'style="text-decoration:none;font-size:0.78rem;padding:3px 10px;">Connect OAuth</a>';
+            }
+        } else {
+            oauthCell += '<span style="color:#bbb;font-size:0.72rem;">—</span>';
+        }
+        oauthCell += '</td>';
+
         html += '<tr onclick="editFeedSource(' + f.feed_key + ')">'
             + '<td><strong>' + esc(f.feed_name) + '</strong></td>'
             + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
             + '<td style="font-size:0.8rem">' + (f.feed_source_url ? '<a href="' + esc(f.feed_source_url) + '" target="_blank" style="color:#31345A">' + esc(f.feed_source_url.replace(/https?:\/\/(www\.)?/, '').substring(0,40)) + '</a>' : esc(f.feed_account_id || '')) + '</td>'
             + '<td>' + statusBadge + '</td>'
             + '<td onclick="event.stopPropagation()" style="white-space:nowrap;">' + streamCell + '</td>'
+            + oauthCell
             + '<td class="actions" onclick="event.stopPropagation()">'
             + '<button onclick="editFeedSource(' + f.feed_key + ')">Edit</button>'
             + '<button onclick="syncFeed(' + f.feed_key + ')" style="background:#e8f4fd">Sync</button>'
@@ -1969,56 +1984,20 @@ function startRecordingForItem(itemKey) {
     }, 1500);
 }
 
-// ── YouTube Captions: connection status bar (top of Recordings) ──
-function renderYtCaptionBar(d) {
-    var bar = document.getElementById('yt-caption-bar');
-    if (!bar) return;
-    var stateEl  = document.getElementById('yt-caption-state');
-    var detailEl = document.getElementById('yt-caption-detail');
-    var actEl    = document.getElementById('yt-caption-actions');
-    if (!d) { bar.style.display = 'none'; return; }
-    bar.style.display = 'flex';
-    if (d.connected) {
-        stateEl.textContent = '● YouTube captions connected';
-        stateEl.style.color = '#1b5e20';
-        detailEl.textContent = d.channel_title ? ('Channel: ' + d.channel_title) : 'Channel: (unknown)';
-        var n = d.queued_count || 0;
-        var html = '';
-        if (n > 0) {
-            html += '<button class="btn btn-primary btn-sm" onclick="batchUploadYtCaptions()">▲ Upload ' + n + ' Queued</button>';
-        } else {
-            html += '<span style="color:#888;font-size:0.78rem;">No queued uploads</span>';
-        }
-        html += ' <button class="btn btn-secondary btn-sm" onclick="ytCaptionsDisconnect()">Disconnect</button>';
-        actEl.innerHTML = html;
-    } else {
-        stateEl.textContent = '○ YouTube captions not connected';
-        stateEl.style.color = '#a36100';
-        detailEl.textContent = 'Click Connect to authorize the channel owner once. Required before any per-video caption upload.';
-        actEl.innerHTML = '<a class="btn btn-primary btn-sm" href="/api/admin-yt-captions-connect.php">Connect YouTube</a>';
-    }
-}
-function loadYtCaptionStatus() {
-    fetch('/api/admin-yt-captions-status.php', {credentials: 'include'})
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(renderYtCaptionBar)
-        .catch(function () { renderYtCaptionBar(null); });
-}
-function batchUploadYtCaptions() {
-    // Phase 2 (not yet shipped) — wired here so the button behaves and
-    // the user gets an explanatory toast instead of a broken click.
-    alert('Batch upload: not yet wired. Phase 2 ships the per-video upload endpoint + this batch driver.');
-}
-function ytCaptionsDisconnect() {
-    if (!confirm('Disconnect YouTube? Future caption uploads will fail until reconnected.')) return;
-    fetch('/api/admin-yt-captions-disconnect.php', {method: 'POST', credentials: 'include'})
-        .then(function () { loadYtCaptionStatus(); });
+// ── YouTube Captions: per-feed Disconnect + OAuth flash ──
+function ytCaptionsDisconnectFeed(feedKey) {
+    if (!confirm('Disconnect YouTube for this feed? Caption uploads from it will fail until reconnected.')) return;
+    fetch('/api/admin-yt-captions-disconnect.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({feed_key: feedKey})
+    }).then(function () { if (typeof loadFeeds === 'function') loadFeeds(); });
 }
 // Surface ?yt_caption_ok / ?yt_caption_err flashes from the OAuth callback.
 (function () {
     var p = new URLSearchParams(location.search);
     if (p.get('yt_caption_ok')) {
-        setTimeout(function () { alert('YouTube captions connected. You can now upload per-video.'); }, 200);
+        setTimeout(function () { alert('YouTube captions connected for that feed.'); }, 200);
         history.replaceState({}, '', location.pathname);
     } else if (p.get('yt_caption_err')) {
         var e = p.get('yt_caption_err');
@@ -2133,7 +2112,6 @@ function recParseDuration(text) {
 }
 
 function loadRecordings(page) {
-    if (typeof loadYtCaptionStatus === "function") loadYtCaptionStatus();
     _restoreRecFiltersFromStorage(); // hydrates DOM inputs once on first call
     page = page || _recPage || 1;
     _recPage = page;

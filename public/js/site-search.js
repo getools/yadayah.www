@@ -40,13 +40,28 @@
             // 20px from each edge. The 100vw + 50%-shift trick breaks
             // out of that container constraint without needing per-page
             // CSS overrides.
-            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 14px 0;',
+            // Tight vertical padding (6px) so the band hugs the row
+            // when no min-height is configured. Flex column + center
+            // also re-centers content inside any admin-set min-height.
+            // 100vw + 50%-shift breaks out of any host-page body
+            // padding (e.g. vlog.html: body{padding:20px}).
+            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 6px 0;',
             '                    width: 100vw; position: relative;',
-            '                    left: 50%; transform: translateX(-50%); }',
-            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; }',
+            '                    left: 50%; transform: translateX(-50%);',
+            '                    display: flex; flex-direction: column; justify-content: center; }',
+            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
+            // Reset default <form> block-margin that browsers add — it
+            // would otherwise stack inside the band as visible whitespace.
+            '.site-search-band form { margin: 0; }',
 
-            '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }',
-            '.ss-row.row-two { margin-bottom: 16px; }',
+            // Both rows zero margin-bottom by default; the gap between
+            // row-1 and row-2 only appears when row-2 actually has a
+            // visible filter strip. row-2 itself never gets [hidden]
+            // (only its filter children do), so the :has selector
+            // checks for a non-hidden filter inside row-2.
+            '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 0; }',
+            '.ss-row:has(+ .ss-row.row-two .ss-scope-filters:not([hidden])) { margin-bottom: 8px; }',
+            '.ss-row.row-two { margin-bottom: 0; }',
             '.ss-row input[type="text"] {',
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
@@ -111,15 +126,18 @@
             '.ss-scope-picker .ss-scope-option[aria-selected="true"] { background: #31345A; color: #fff; }',
             '.ss-scope-picker .ss-scope-option[aria-selected="true"] .icon { color: #fff; }',
 
-            // Collapsible filter strip
+            // Filter strip per scope. [hidden] collapses to display:none
+            // so it takes ZERO horizontal space. The earlier "animation"
+            // override (display:flex !important + max-height:0) kept
+            // hidden strips occupying horizontal space inside row-two,
+            // which pushed the visible strip toward the middle of the
+            // row when scope=video. We need the [hidden] rule to win
+            // over the bare-class rule below — its `class[attr]`
+            // selector has higher specificity, so display:none wins.
             '.ss-scope-filters {',
             '  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;',
-            '  overflow: hidden; max-height: 200px; opacity: 1;',
-            '  transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;',
             '}',
-            '.ss-scope-filters[hidden] {',
-            '  display: flex !important; max-height: 0; opacity: 0; margin-bottom: 0; pointer-events: none;',
-            '}',
+            '.ss-scope-filters[hidden] { display: none; }',
 
             // Results
             '.ss-results-info {',
@@ -201,9 +219,16 @@
             // controls. Negative offsets push it onto the dark overlay
             // backdrop; the player-pane (its positioning parent) has
             // overflow:visible so the button isn\'t clipped.
-            '.ss-video-overlay .close-btn { position: absolute; top: -14px; right: -14px; z-index: 3; background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.25); color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }',
+            '.ss-video-overlay .close-btn { position: absolute; top: -32px; right: -32px; z-index: 3; background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.25); color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }',
             '.ss-video-overlay .close-btn:hover { background: #000; }',
-            '.ss-video-overlay .seek-info { position: absolute; top: 8px; left: 12px; z-index: 2; color: #fff; font-size: 0.85rem; background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 4px; }',
+            // seek-info sits ABOVE the player rectangle (on the dark
+            // backdrop) so it never obscures the video itself or any
+            // of the player's built-in controls. Same approach as the
+            // close button — positioned on .player-pane (which has
+            // overflow:visible) with a negative top offset that pushes
+            // it onto the overlay backdrop just above the frame.
+            '.ss-video-overlay .seek-info { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; z-index: 2; color: #fff; font-size: 0.85rem; background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 4px; white-space: nowrap; opacity: 1; transition: opacity 0.6s ease; pointer-events: none; }',
+            '.ss-video-overlay .seek-info.fade-out { opacity: 0; }',
 
             // Mobile (≤767px): keep all controls on one row by letting the
             // input shrink, slimming the scope picker, tightening the
@@ -335,8 +360,8 @@
         ov.innerHTML =
             '<div class="player-pane">' +
             '  <button class="close-btn" id="ss-video-close" title="Close">×</button>' +
+            '  <div class="seek-info" id="ss-video-seek-info"></div>' +
             '  <div class="frame-wrap">' +
-            '    <div class="seek-info" id="ss-video-seek-info"></div>' +
             '    <div id="ss-video-frame-host"></div>' +
             '  </div>' +
             '</div>';
@@ -737,8 +762,16 @@
             html = '<video src="' + esc(url) + '#t=' + t + '" controls autoplay></video>';
         }
         host.innerHTML = html;
-        info.textContent = 'Resuming at ' + fmtSeconds(t)
+        info.textContent = 'Playing at ' + fmtSeconds(t)
             + (r.before ? ' (start of previous transcript line)' : ' (start of transcript)');
+        // Reset visibility so a freshly opened video shows the label,
+        // then auto-fade after 10s. Cancel any pending timer from a
+        // previous video so the new label gets its own full window.
+        info.classList.remove('fade-out');
+        if (window.__ssSeekFadeTimer) clearTimeout(window.__ssSeekFadeTimer);
+        window.__ssSeekFadeTimer = setTimeout(function () {
+            info.classList.add('fade-out');
+        }, 20000);
         $('ss-video-overlay').classList.add('open');
     }
     function extractYouTubeId(url) {

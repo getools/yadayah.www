@@ -1,21 +1,17 @@
 <?php
 /**
- * YouTube captions API helpers — separate from oauth-helpers.php (which is
- * for user-login OAuth, not service-to-API OAuth).
+ * YouTube captions API helpers — separate from oauth-helpers.php (which
+ * is for user-login OAuth, not service-to-API OAuth).
  *
- * Auth model: a single channel-owner OAuth refresh token is stored in
- * yy_setting under 'youtube-captions-refresh-token'. From it we mint an
- * access token on demand. The refresh token is granted ONCE by the
- * channel owner via the connect/callback flow.
+ * Auth model: a per-feed channel-owner OAuth refresh token is stored in
+ * yy_feed.feed_yt_caption_refresh_token (one column per feed row). From
+ * it we mint an access token on demand. Each feed (each YouTube channel)
+ * has its own refresh token, granted ONCE by the channel owner via the
+ * connect/callback flow.
  *
- * Reused settings:
+ * Reused settings (yy_setting):
  *   oauth-google-client-id     — existing Google OAuth 2.0 client ID
  *   oauth-google-client-secret — existing client secret
- *
- * New settings populated by the callback:
- *   youtube-captions-refresh-token — long-lived refresh token
- *   youtube-captions-channel-id    — the channel we're authorized for
- *   youtube-captions-channel-title — for display in admin UI
  */
 
 const YT_CAPTIONS_SCOPE = 'https://www.googleapis.com/auth/youtube.force-ssl';
@@ -38,21 +34,11 @@ function ytSetting(PDO $db, string $code): ?string {
 }
 
 /**
- * Upsert a setting row.
- */
-function ytSetSetting(PDO $db, string $code, string $value): void {
-    $db->prepare(
-        "INSERT INTO yy_setting (setting_code, setting_value) VALUES (?, ?)
-         ON CONFLICT (setting_code) DO UPDATE SET setting_value = EXCLUDED.setting_value"
-    )->execute([$code, $value]);
-}
-
-/**
  * Build the URL the channel owner should be redirected to in order to
- * grant captions write access. Caller is responsible for storing
- * $_SESSION['yt_caption_state'] and verifying it on callback.
+ * grant captions write access. State carries the feed_key so the
+ * callback knows which feed row to update.
  */
-function ytCaptionsAuthUrl(PDO $db, string $stateNonce): ?string {
+function ytCaptionsAuthUrl(PDO $db, string $stateNonce, int $feedKey): ?string {
     $clientId = ytSetting($db, 'oauth-google-client-id');
     if (!$clientId) return null;
     $params = [
@@ -63,7 +49,7 @@ function ytCaptionsAuthUrl(PDO $db, string $stateNonce): ?string {
         'access_type'            => 'offline',     // we want a refresh_token
         'prompt'                 => 'consent',     // force refresh_token even on re-auth
         'include_granted_scopes' => 'true',
-        'state'                  => $stateNonce,
+        'state'                  => $stateNonce . ':' . $feedKey,
     ];
     return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
 }
@@ -100,14 +86,18 @@ function ytCaptionsExchangeCode(PDO $db, string $code): ?array {
 }
 
 /**
- * Mint an access token from the stored refresh token. Returns the access
- * token string (~1 hour TTL) or null if no refresh token / refresh fails.
+ * Mint an access token for a SPECIFIC feed's refresh token. Returns the
+ * access token string (~1 hour TTL) or null if no refresh token / refresh fails.
  */
-function ytCaptionsAccessToken(PDO $db): ?string {
-    $refresh      = ytSetting($db, 'youtube-captions-refresh-token');
+function ytCaptionsAccessTokenForFeed(PDO $db, int $feedKey): ?string {
+    $stmt = $db->prepare("SELECT feed_yt_caption_refresh_token FROM yy_feed WHERE feed_key = ?");
+    $stmt->execute([$feedKey]);
+    $refresh = $stmt->fetchColumn();
+    if (!$refresh) return null;
+
     $clientId     = ytSetting($db, 'oauth-google-client-id');
     $clientSecret = ytSetting($db, 'oauth-google-client-secret');
-    if (!$refresh || !$clientId || !$clientSecret) return null;
+    if (!$clientId || !$clientSecret) return null;
 
     $ch = curl_init('https://oauth2.googleapis.com/token');
     curl_setopt_array($ch, [
@@ -134,7 +124,14 @@ function ytCaptionsAccessToken(PDO $db): ?string {
  * default YouTube channel (id + title) so the admin UI can show
  * "Connected to: <Channel Title>".
  */
-function ytCaptionsFetchChannel(string $accessToken): ?array {
+function ytCaptionsFetchChannel(string $accessToken, ?string $fallbackHandle = null, ?string $fallbackChannelId = null): ?array {
+    // mine=true is the canonical lookup for OAuth-authorized channels.
+    // For Brand Accounts the personal Google account the user signed in
+    // with may not surface the brand-managed channel here; in that case
+    // fall back to the feed row's known handle/channel-id (passed by the
+    // caller) and look it up by forHandle / id. The token may or may
+    // not actually authorize writes to that channel — that gets verified
+    // later when captions.insert runs.
     $url = 'https://www.googleapis.com/youtube/v3/channels?' . http_build_query([
         'part' => 'snippet',
         'mine' => 'true',
@@ -150,7 +147,26 @@ function ytCaptionsFetchChannel(string $accessToken): ?array {
     curl_close($ch);
     if ($http !== 200 || !$body) return null;
     $data = json_decode($body, true);
-    if (!is_array($data) || empty($data['items'][0])) return null;
+    if (!is_array($data) || empty($data['items'][0])) {
+        // mine=true returned empty — likely Brand Account confusion.
+        // Try the public lookup using the caller-supplied handle/id.
+        $lookupParams = null;
+        if ($fallbackHandle)        $lookupParams = ['part' => 'snippet', 'forHandle' => $fallbackHandle];
+        else if ($fallbackChannelId) $lookupParams = ['part' => 'snippet', 'id'        => $fallbackChannelId];
+        if (!$lookupParams) return null;
+        $ch2 = curl_init('https://www.googleapis.com/youtube/v3/channels?' . http_build_query($lookupParams));
+        curl_setopt_array($ch2, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $accessToken],
+            CURLOPT_TIMEOUT        => 15,
+        ]);
+        $body2 = curl_exec($ch2);
+        $http2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+        curl_close($ch2);
+        if ($http2 !== 200 || !$body2) return null;
+        $data = json_decode($body2, true);
+        if (!is_array($data) || empty($data['items'][0])) return null;
+    }
     $item = $data['items'][0];
     return [
         'id'    => (string)($item['id'] ?? ''),

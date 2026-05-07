@@ -210,7 +210,16 @@ if ($method === 'GET') {
         FROM yy_feed f
         ORDER BY f.feed_name
     ");
-    jsonResponse($stmt->fetchAll());
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$r) {
+        // Per-feed YouTube captions OAuth state. Expose as boolean only —
+        // the actual refresh token never leaves the server. Channel id +
+        // title are safe to send (used for the row badge).
+        $r["feed_yt_caption_connected"] = !empty($r["feed_yt_caption_refresh_token"]);
+        unset($r["feed_yt_caption_refresh_token"]);
+    }
+    unset($r);
+    jsonResponse($rows);
 }
 
 // POST - create or update
