@@ -33,7 +33,7 @@ function handleGet(PDO $db, array $user): void {
                 s.yah_scroll_label_yy, s.yah_scroll_label_common,
                 c.yah_chapter_number, v.yah_verse_number,
                 COALESCE(ser.series_label, ser.series_name) AS series_display,
-                COALESCE(vol.volume_label, vol.volume_name) AS volume_display,
+                vol.volume_label AS volume_display,
                 t.translation_page,
                 ych.chapter_number AS yy_ch_number,
                 s.yah_scroll_sort, ser.series_sort, vol.volume_number, ych.chapter_sort
@@ -56,7 +56,7 @@ function handleGet(PDO $db, array $user): void {
             SELECT t.*,
                 s.yah_scroll_label_yy, s.yah_scroll_label_common,
                 c.yah_chapter_number, v.yah_verse_number,
-                ser.series_name, vol.volume_name, vol.volume_number,
+                ser.series_name, vol.volume_label, vol.volume_number,
                 ych.chapter_number AS yy_ch_number, ych.chapter_name AS yy_ch_name
             FROM yy_translation t
             JOIN yah_scroll s ON s.yah_scroll_key = t.yah_scroll_key
@@ -127,7 +127,7 @@ function handleGet(PDO $db, array $user): void {
             c.yah_chapter_number,
             v.yah_verse_number,
             ser.series_name,
-            vol.volume_name,
+            vol.volume_label,
             vol.volume_number,
             ych.chapter_number AS yy_ch_number,
             ych.chapter_name AS yy_ch_name

@@ -152,7 +152,6 @@ $TABLES = [
             ['name' => 'volume_flip_code',       'label' => 'Flip Code',       'type' => 'text'],
             ['name' => 'volume_pdf',             'label' => 'PDF',             'type' => 'text', 'wide' => true],
             ['name' => 'volume_file',            'label' => 'File',            'type' => 'text', 'wide' => true],
-            ['name' => 'volume_name',            'label' => 'Name',            'type' => 'text'],
             ['name' => 'volume_page_count',      'label' => 'Page Count',      'type' => 'int'],
             ['name' => 'volume_paragraph_count', 'label' => 'Paragraph Count', 'type' => 'int'],
             ['name' => 'volume_sort',            'label' => 'Sort',            'type' => 'int'],

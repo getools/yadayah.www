@@ -33,7 +33,16 @@
             // Container is a band that sits below the header. Background
             // colour follows the page-nav config when set; otherwise a
             // cream tint (#fdf6df) matching the design screenshot.
-            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 14px 0; }',
+            // The band must span the full viewport width regardless of
+            // whatever padding/margin the host page applies to <body>.
+            // Some pages (e.g. vlog.html) put `body { padding: 20px }`
+            // for content layout, which would otherwise inset the band
+            // 20px from each edge. The 100vw + 50%-shift trick breaks
+            // out of that container constraint without needing per-page
+            // CSS overrides.
+            '.site-search-band { background: var(--search-band-bg, #fdf6df); padding: 14px 0;',
+            '                    width: 100vw; position: relative;',
+            '                    left: 50%; transform: translateX(-50%); }',
             '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; }',
 
             '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }',
@@ -176,9 +185,43 @@
             '.ss-video-overlay .close-btn:hover { background: rgba(0,0,0,0.85); }',
             '.ss-video-overlay .seek-info { position: absolute; top: 8px; left: 12px; z-index: 2; color: #fff; font-size: 0.85rem; background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 4px; }',
 
+            // Mobile (≤767px): keep all controls on one row by letting the
+            // input shrink, slimming the scope picker, tightening the
+            // Search button's side padding, and swapping its label to
+            // "Go" via CSS (font-size:0 hides the existing "Search" text;
+            // the ::before pseudo-element supplies the shorter label).
+            // Reduce the band's side padding too so the bar reaches
+            // closer to the screen edges on phones.
             '@media (max-width: 767px) {',
-            '  .ss-row input[type="text"] { min-width: 100%; }',
-            '  .ss-row { gap: 8px; }',
+            '  .site-search-container { padding: 0 8px; }',
+            // Zero the inter-row margins on mobile. row-1 had 8px and
+            // row-2 had 16px built-in margin-bottom; combined with the
+            // band's own padding they were stacking into a visible gap
+            // below the search fields even when row-two was empty
+            // (scope=site). Drop both — band padding already provides
+            // breathing room.
+            //
+            // flex-wrap:nowrap forces every base control to share the
+            // single row by shrinking; without it the input's auto
+            // basis (~200px) could push siblings to a second line on
+            // narrow phones. Row-two stays wrappable because filter
+            // strips can legitimately need a second line.
+            '  .ss-row { gap: 6px; margin-bottom: 0; flex-wrap: nowrap; }',
+            '  .ss-row.row-two { margin-bottom: 0; flex-wrap: wrap; }',
+            // Input takes only spare space, never claims a natural
+            // basis that could push siblings to wrap. flex-basis:0
+            // means the input contributes nothing to the wrap
+            // calculation and grows from there.
+            '  .ss-row input[type="text"] { min-width: 0; flex: 1 1 0; padding: 8px 10px; font-size: 0.95rem; }',
+            '  .ss-scope-picker .ss-scope-current {',
+            '    min-width: 0; padding: 8px 10px; gap: 4px;',
+            '  }',
+            '  .ss-scope-picker .ss-scope-current .icon { width: 16px; height: 16px; flex: 0 0 16px; }',
+            '  .ss-scope-picker .ss-scope-current .chevron { width: 10px; height: 10px; flex: 0 0 10px; }',
+            // Compact the mode dropdown so the input gets more room.
+            '  .ss-filter-group select { padding: 6px 8px; font-size: 0.85rem; }',
+            '  .ss-btn { padding: 8px 12px; font-size: 0; line-height: 1; }',
+            '  .ss-btn::before { content: "Go"; font-size: 0.95rem; font-weight: 600; }',
             '  .ss-scope-filters { width: 100%; }',
             '  .ss-result-video { flex-direction: column; }',
             '  .ss-result-video .thumb { flex: 0 0 auto; max-width: 100%; }',
@@ -222,7 +265,7 @@
             '          </div>' +
             '        </div>' +
             '      </div>' +
-            '      <input type="text" id="ss-input" placeholder="Search the site…" autocomplete="off" value="' + esc(initialQ) + '">' +
+            '      <input type="text" id="ss-input" placeholder="Search…" autocomplete="off" value="' + esc(initialQ) + '">' +
             '      <div class="ss-filter-group">' +
             '        <select id="ss-mode">' +
             '          <option value="all">All Words</option>' +
@@ -378,7 +421,7 @@
 
     // ── Scope picker ────────────────────────────────────────────────────
     var SCOPE_META = {
-        site:  { label: 'Site',  placeholder: 'Search the site…' },
+        site:  { label: 'Site',  placeholder: 'Search…' },
         books: { label: 'Books', placeholder: 'Search books…' },
         video: { label: 'Video', placeholder: 'Search video transcripts…' },
     };
@@ -730,12 +773,41 @@
         });
     }
 
+    // The mode select shows full labels on desktop and shorter ones on
+    // mobile. <option> text content can't be styled via CSS, so we swap
+    // it in JS based on a matchMedia listener that fires whenever the
+    // viewport crosses the 767px breakpoint.
+    var MODE_LABELS_DESKTOP = { all: 'All Words', phrase: 'Exact Phrase', any: 'Any Word' };
+    var MODE_LABELS_MOBILE  = { all: 'All',       phrase: 'Phrase',       any: 'Any'      };
+    function applyModeLabels() {
+        var sel = document.getElementById('ss-mode');
+        if (!sel) return;
+        var isMobile = window.matchMedia('(max-width: 767px)').matches;
+        var labels = isMobile ? MODE_LABELS_MOBILE : MODE_LABELS_DESKTOP;
+        for (var i = 0; i < sel.options.length; i++) {
+            var v = sel.options[i].value;
+            if (labels[v]) sel.options[i].textContent = labels[v];
+        }
+    }
+
     function init() {
         injectStyle();
         buildBar();
         wire();
         loadFilters();
         setScope('site');
+        applyModeLabels();
+        try {
+            window.matchMedia('(max-width: 767px)').addEventListener('change', applyModeLabels);
+        } catch (_) {
+            // Safari < 14 lacks addEventListener on MediaQueryList; fall
+            // back to a resize listener that's debounced via rAF.
+            var rafId = 0;
+            window.addEventListener('resize', function () {
+                if (rafId) return;
+                rafId = requestAnimationFrame(function () { rafId = 0; applyModeLabels(); });
+            });
+        }
         // Auto-search if landed with ?q= (e.g., from a "View all" link).
         var initialQ = ($('ss-input').value || '').trim();
         if (initialQ) doSearch(1);

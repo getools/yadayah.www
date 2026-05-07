@@ -534,7 +534,7 @@ $(function () {
         }
         $.each(translations, function (_, t) {
             var meta = '<span><strong>Series:</strong> ' + escHtml(t.series_name) + '</span>' +
-                '<span><strong>Volume:</strong> ' + escHtml(t.volume_number + ' - ' + t.volume_name) + '</span>' +
+                '<span><strong>Volume:</strong> ' + escHtml(t.volume_number + ' - ' + t.volume_label) + '</span>' +
                 '<span><strong>Ch:</strong> ' + escHtml(t.yy_ch_number + (t.yy_ch_name ? ' - ' + t.yy_ch_name : '')) + '</span>';
             if (t.translation_page) meta += '<span><strong>Pg:</strong> ' + escHtml(t.translation_page) + '</span>';
             if (t.translation_paragraph) meta += '<span><strong>Par:</strong> ' + escHtml(t.translation_paragraph) + '</span>';

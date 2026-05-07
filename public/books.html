@@ -416,7 +416,7 @@ function populateVolumeDropdown(seriesKey) {
         if (v.volume_active_flag === false) return;
         var opt = document.createElement('option');
         opt.value = v.volume_key;
-        opt.textContent = v.volume_label || v.volume_name;
+        opt.textContent = v.volume_label;
         sel.appendChild(opt);
     });
 }

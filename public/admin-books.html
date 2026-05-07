@@ -133,7 +133,6 @@
                 <select id="f-series"></select>
             </div>
             <div class="field"><label>Label</label><input type="text" id="f-label" placeholder="e.g. Dabarym-Words"></div>
-            <div class="field"><label>Name</label><input type="text" id="f-name" placeholder="e.g. Dabarym-Words"></div>
             <div class="form-row">
                 <div class="field"><label>Volume #</label><input type="number" id="f-number" value="0"></div>
                 <div class="field"><label>Sort</label><input type="number" id="f-sort" value="0"></div>
@@ -153,17 +152,19 @@
                 <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-top:6px;"></div>
                 <div id="f-docx-status" style="margin-top:6px;font-size:0.82rem;"></div>
             </div>
-            <div class="field"><label>PDF</label>
+            <div class="field">
                 <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="margin:0;">PDF</label>
                     <a id="f-pdf-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
-                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-pdf" onclick="regeneratePdfFromForm(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regenerate</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-pdf" onclick="regeneratePdfFromForm(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
                 <div id="f-pdf-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
             </div>
-            <div class="field"><label>Flipbook</label>
+            <div class="field">
                 <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="margin:0;">FLIP</label>
                     <a id="f-flip-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
-                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-flip" onclick="regenerateFlipbookFromForm(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regenerate</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-flip" onclick="regenerateFlipbookFromForm(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
                 <div id="f-flip-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
             </div>
@@ -551,7 +552,6 @@ function showVolumeForm(record) {
     document.getElementById('form-title').textContent = r.volume_key ? 'Edit Volume' : 'Add Volume';
     document.getElementById('f-key').value = r.volume_key || '';
     document.getElementById('f-label').value = r.volume_label || '';
-    document.getElementById('f-name').value = r.volume_name || '';
     document.getElementById('f-number').value = r.volume_number || 0;
     document.getElementById('f-sort').value = r.volume_sort || 0;
     document.getElementById('f-pages').value = r.volume_page_count || 0;
@@ -649,7 +649,6 @@ function saveVolume() {
     var payload = {
         series_key: parseInt(document.getElementById('f-series').value),
         volume_label: label,
-        volume_name: document.getElementById('f-name').value.trim(),
         volume_number: parseInt(document.getElementById('f-number').value) || 0,
         volume_sort: parseInt(document.getElementById('f-sort').value) || 0,
         // volume_page_count is derived from the parser; never sent from the

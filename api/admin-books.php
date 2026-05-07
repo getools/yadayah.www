@@ -74,7 +74,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     // every per-book filename: docx, PDF, eventually any other artifact. If
     // it's already set we honor it (renaming a book is intentional, not auto).
     $volStmt = $db->prepare("
-        SELECT v.volume_key, v.volume_label, v.volume_name, v.volume_pdf, v.volume_code, s.series_key,
+        SELECT v.volume_key, v.volume_label, v.volume_pdf, v.volume_code, s.series_key,
                COALESCE(s.series_number, 0) AS series_number, COALESCE(v.volume_number, 0) AS volume_number
         FROM yy_volume v JOIN yy_series s ON s.series_key = v.series_key
         WHERE v.volume_key = ?
@@ -95,7 +95,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
             $s = preg_replace('/[^A-Za-z0-9 _-]/', '', $s ?? '');
             return trim(preg_replace('/\s+/', '-', $s), '-');
         };
-        $base = sprintf('YY-s%02dv%02d-%s', (int)$vol['series_number'], (int)$vol['volume_number'], $sanitize($vol['volume_label'] ?: $vol['volume_name'] ?: ''));
+        $base = sprintf('YY-s%02dv%02d-%s', (int)$vol['series_number'], (int)$vol['volume_number'], $sanitize($vol['volume_label'] ?: ''));
     }
     // Force canonical form on the book_code, then derive filenames from it.
     // Doing this here means a stale volume_pdf or volume_docx with %20 / spaces
@@ -429,14 +429,13 @@ if ($method === 'POST') {
         : 50;
 
     $stmt = $db->prepare("
-        INSERT INTO yy_volume (series_key, volume_label, volume_name, volume_number, volume_sort,
+        INSERT INTO yy_volume (series_key, volume_label, volume_number, volume_sort,
                                volume_code, volume_flip_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
     $stmt->execute([
         $seriesKey,
         $label,
-        trim($data['volume_name'] ?? '') ?: $label,
         (int)($data['volume_number'] ?? 0),
         (int)($data['volume_sort'] ?? 0),
         $code,
@@ -536,7 +535,7 @@ if ($method === 'PUT') {
     // rename fired, otherwise honored.
     if ($renamedDocx !== null) { $fields[] = "volume_docx = ?"; $params[] = $renamedDocx; }
     if ($renamedPdf  !== null) { $fields[] = "volume_pdf  = ?"; $params[] = $renamedPdf;  }
-    foreach (['volume_label', 'volume_name', 'volume_flip_code', 'volume_pdf', 'volume_docx'] as $col) {
+    foreach (['volume_label', 'volume_flip_code', 'volume_pdf', 'volume_docx'] as $col) {
         if ($col === 'volume_pdf'  && $renamedPdf  !== null) continue;
         if ($col === 'volume_docx' && $renamedDocx !== null) continue;
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = trim($data[$col] ?? '') ?: null; }

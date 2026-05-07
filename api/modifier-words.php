@@ -7,7 +7,7 @@ $pg = getDb();
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sql = "
         SELECT m.id, m.translit, m.filename, m.series, m.volume, m.page, m.status,
-               v.volume_flip_code, v.volume_name,
+               v.volume_flip_code,
                s.series_name
         FROM _translit_modifier_map m
         LEFT JOIN yy_volume v ON v.series_key = m.series
