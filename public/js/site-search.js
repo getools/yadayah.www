@@ -66,12 +66,15 @@
             '                    width: 100vw; position: relative;',
             '                    left: 50%; transform: translateX(-50%);',
             '                    display: flex; flex-direction: column; justify-content: center; }',
-            // Container max-width 400px so the bar stays tight regardless
-            // of host page width.
-            '.site-search-container { max-width: 400px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
+            // Container holds both the bar and the results. Bar is
+            // constrained separately (form max-width: 400px); results
+            // inherit the container's main-display width.
+            '.site-search-container { max-width: 1200px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
             // Reset default <form> block-margin that browsers add — it
             // would otherwise stack inside the band as visible whitespace.
-            '.site-search-band form { margin: 0; }',
+            // The bar itself is constrained to 400px and centered; the
+            // results area below inherits the wider container width.
+            '.site-search-band form { margin: 0 auto; max-width: 400px; }',
 
             // Both rows zero margin-bottom by default; the gap between
             // row-1 and row-2 only appears when row-2 actually has a
