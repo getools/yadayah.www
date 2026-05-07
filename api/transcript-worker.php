@@ -401,7 +401,8 @@ if (!$rows) {
                 ]);
                 $glossaryPrompt = buildGlossaryPrompt($db);
                 $whisperErr = '';
-                if (filesize($audioPath) > 24 * 1024 * 1024) {
+                $whisperChunked = filesize($audioPath) > 24 * 1024 * 1024;
+                if ($whisperChunked) {
                     $rows = whisperApiTranscribeChunked($db, $jobKey, $audioPath, $openaiKey, $glossaryPrompt, $whisperErr);
                 } else {
                     $rows = whisperApiTranscribe($audioPath, $openaiKey, $glossaryPrompt, 0, $whisperErr);
@@ -411,12 +412,11 @@ if (!$rows) {
                 if (!$rows) {
                     $methodFailures[] = "whisper_api: " . ($whisperErr ?: 'API returned no segments');
                 } else {
-                    // Coverage gate: same 80% threshold as the VTT/yt-dlp paths.
-                    // Whisper transcribes the full audio file end-to-end, so a
-                    // last-segment timestamp far short of the video's declared
-                    // duration usually means: chunked Whisper had failed chunks,
-                    // the audio file itself is partial, or the recording stopped
-                    // early. Reject and let it fall through (or fail loudly).
+                    // Coverage gate: 80% for chunked paths where chunk failures can leave
+                    // the transcript truncated. For non-chunked paths Whisper processes the
+                    // full audio end-to-end; coverage below 100% means silent/non-speech
+                    // content at the end (music, credits, silence) — use 70% to avoid
+                    // falsely rejecting transcripts of short videos with silent endings.
                     $videoDur = (int)($job['feed_item_duration_seconds'] ?? 0);
                     if ($videoDur > 60) {
                         $lastEnd = 0;
@@ -429,7 +429,8 @@ if (!$rows) {
                             if ($end > $lastEnd) $lastEnd = $end;
                         }
                         $coverage = $lastEnd / $videoDur;
-                        if ($coverage < 0.80) {
+                        $coverageThreshold = $whisperChunked ? 0.80 : 0.70;
+                        if ($coverage < $coverageThreshold) {
                             $methodFailures[] = "whisper_api: only " . round($coverage * 100) . "% coverage ($lastEnd s of $videoDur s)" . ($whisperErr ? " ($whisperErr)" : '');
                             $rows = [];
                         } elseif ($whisperErr) {
