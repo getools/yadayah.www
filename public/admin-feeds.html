@@ -106,12 +106,15 @@
 
     <!-- Sources Tab -->
     <div id="tab-sources" class="feed-tab">
+        <div style="margin-bottom:12px;">
+            <button class="btn btn-primary" onclick="openFeedSourceForm({})">+ New Feed</button>
+        </div>
         <table class="feeds-table">
             <thead>
                 <tr>
                     <th>Name</th>
                     <th>Site</th>
-                    <th>Account ID</th>
+                    <th>URL</th>
                     <th>Status</th>
                     <th>Stream</th>
                     <th title="Per-feed YouTube captions OAuth grant. Required before captions can be uploaded.">OAuth</th>
@@ -374,6 +377,7 @@
                 <div class="field"><label>Account / Channel ID</label><input type="text" id="f-account-id"></div>
             </div>
             <div class="field"><label>Source URL</label><input type="text" id="f-source-url" placeholder="https://..."></div>
+            <div class="field"><label>URL</label><input type="text" id="f-public-url" placeholder="https://..."></div>
             <div class="field"><label>API Key</label><input type="text" id="f-api-key" placeholder="API key or token"></div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
                 <label style="display:inline;margin:0;white-space:nowrap;">Stream</label>
@@ -886,7 +890,7 @@ function renderAll() {
         html += '<tr onclick="editFeedSource(' + f.feed_key + ')">'
             + '<td><strong>' + esc(f.feed_name) + '</strong></td>'
             + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
-            + '<td style="font-size:0.8rem">' + (f.feed_source_url ? '<a href="' + esc(f.feed_source_url) + '" target="_blank" style="color:#31345A">' + esc(f.feed_source_url.replace(/https?:\/\/(www\.)?/, '').substring(0,40)) + '</a>' : esc(f.feed_account_id || '')) + '</td>'
+            + '<td style="font-size:0.8rem">' + ((function(){var u=f.feed_public_url||f.feed_source_url; return u?'<a href="'+esc(u)+'" target="_blank" style="color:#31345A">'+esc(u.replace(/https?:\/\/(www\.)?/, '').substring(0,40))+'</a>':esc(f.feed_account_id||'');})()) + '</td>'
             + '<td>' + statusBadge + '</td>'
             + '<td onclick="event.stopPropagation()" style="white-space:nowrap;">' + streamCell + '</td>'
             + oauthCell
@@ -956,6 +960,7 @@ function openFeedSourceForm(data) {
     document.getElementById('f-site-code').value = d.feed_site_code || 'YouTube';
     document.getElementById('f-account-id').value = d.feed_site_id || d.feed_account_id || '';
     document.getElementById('f-source-url').value = d.feed_source_url || '';
+    document.getElementById('f-public-url').value = d.feed_public_url || '';
     document.getElementById('f-api-key').value = d.feed_api_key || '';
     var streamOn = d.feed_stream_flag === true || d.feed_stream_flag === 't';
     document.getElementById('f-stream').checked = streamOn;
@@ -1023,6 +1028,7 @@ function saveFeedSource() {
         feed_site_code: document.getElementById('f-site-code').value,
         feed_account_id: document.getElementById('f-account-id').value,
         feed_source_url: document.getElementById('f-source-url').value,
+        feed_public_url: document.getElementById('f-public-url').value,
         feed_api_key: document.getElementById('f-api-key').value,
         // feed_stream_flag is intentionally NOT included here — it can only be
         // changed via the explicit Stream toggle button, never bundled with

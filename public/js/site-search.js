@@ -925,6 +925,12 @@
     }
 
     function init() {
+        // Admin pages have their own /js/admin-nav.js toolbar + page-specific
+        // controls. The public search band would crowd those layouts and the
+        // admin user already has the admin sidebar. Match the same prefixes
+        // admin-nav.js cares about: /admin-* and /test/* (test admin pages).
+        var p = location.pathname || '';
+        if (/^\/admin-/i.test(p) || /^\/test\//i.test(p)) return;
         injectFonts();
         injectStyle();
         buildBar();
