@@ -51,6 +51,7 @@
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
             '  transition: border-color 0.2s; background: #fff; color: #222;',
+            '  width: auto; height: auto; margin: 0; box-sizing: border-box;',
             '}',
             '.ss-row input[type="text"]:focus { border-color: #31345A; }',
 
@@ -64,9 +65,17 @@
 
             '.ss-filter-group { display: flex; align-items: center; gap: 6px; }',
             '.ss-filter-group label { font-weight: 600; font-size: 0.875rem; color: #555; white-space: nowrap; }',
+            // Self-defend against host pages that style raw `select` or
+            // `input[type=text]` globally — without explicit width
+            // declarations here, a `select { width: 250px }` rule on
+            // a host page (e.g. translations.html) would leak into the
+            // injected mode dropdown and blow up its width. width:auto
+            // restores natural sizing; the higher specificity of these
+            // selectors lets us beat any host page's bare-element rules.
             '.ss-filter-group select {',
             '  padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.875rem;',
-            '  background: #fff; color: #222;',
+            '  background: #fff; color: #222; width: auto; height: auto;',
+            '  margin: 0; box-sizing: border-box;',
             '}',
 
             // Scope picker
