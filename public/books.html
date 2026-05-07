@@ -108,6 +108,95 @@
         .book-icons a:hover svg { fill: #332FB4; }
 
 
+        /* ── Search ── */
+        .search-container {
+            max-width: 1024px; margin: 20px auto 0; padding: 0 20px;
+        }
+        .search-row {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .search-row input[type="text"] {
+            flex: 1; min-width: 200px; padding: 9px 14px;
+            font-size: 1rem; border: 2px solid #ccc; border-radius: 6px;
+            outline: none; transition: border-color 0.2s;
+        }
+        .search-row input[type="text"]:focus { border-color: #31345A; }
+        .search-btn {
+            padding: 9px 22px; background-color: #31345A; color: white; border: none; cursor: pointer;
+            border-radius: 6px; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.3px;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .search-btn:hover { background-color: #4a4e7a; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+        .filter-group { display: flex; align-items: center; gap: 6px; }
+        .filter-group label { font-weight: 600; font-size: 0.875rem; color: #555; white-space: nowrap; }
+        .filter-group select {
+            padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.875rem;
+        }
+
+        /* Search results */
+        .results-info {
+            font-size: 0.9rem; color: #555; margin-bottom: 16px; padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .results-info strong { color: #31345A; }
+        .clear-search { color: #31345A; cursor: pointer; font-size: 0.9rem; text-decoration: underline; white-space: nowrap; }
+        .result-card {
+            padding: 16px; margin-bottom: 12px;
+            border: 1px solid #e0e0e0; border-radius: 8px;
+            background: #fff; transition: box-shadow 0.2s;
+        }
+        .result-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .result-meta {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 8px; flex-wrap: wrap; gap: 4px;
+        }
+        .result-meta a { text-decoration: underline; color: #2563eb; font-size: 0.9rem; }
+        .result-meta a:hover { color: #1d4ed8; }
+        .result-meta a:visited { color: #7c3aed; }
+        .result-meta .volume { font-weight: 700; }
+        .result-meta .sep { color: #999; margin: 0 4px; }
+        .result-meta .series { font-style: italic; }
+        .result-meta .location-right { font-size: 0.8rem; text-align: right; }
+        .result-snippet {
+            font-size: 0.9rem; color: #333; line-height: 1.6; margin-bottom: 4px;
+            max-height: 7.8em; overflow: hidden; position: relative;
+        }
+        .result-snippet.expanded { max-height: none; }
+        .result-snippet.overflowing::after {
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+            height: 2em; background: linear-gradient(to bottom, rgba(255,255,255,0), #fff);
+            pointer-events: none;
+        }
+        .result-snippet.expanded::after { display: none; }
+        .result-snippet mark { background: #fff3cd; padding: 1px 2px; border-radius: 2px; font-weight: 600; }
+        .result-snippet p { margin: 0; }
+        .yy-font-yadatowrah-times { font-family: "Yada Towrah", serif; color: #1a5276; }
+        .toggle-snippet {
+            font-size: 0.8rem; color: #3498db; cursor: pointer;
+            background: none; border: none; padding: 0; font-weight: 600;
+            box-shadow: none; margin-bottom: 8px; display: none;
+        }
+        .toggle-snippet:hover { text-decoration: underline; color: #2980b9; background: none; box-shadow: none; }
+        .search-pagination {
+            display: flex; justify-content: center; align-items: center;
+            gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee;
+        }
+        .search-pagination button {
+            padding: 8px 16px; font-size: 0.875rem;
+            background-color: #31345A; color: white; border: none; cursor: pointer;
+            border-radius: 6px; font-weight: 600;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .search-pagination button:hover { background-color: #4a4e7a; }
+        .search-pagination button:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
+        .search-pagination .page-info { font-size: 0.875rem; color: #666; }
+        .loading { text-align: center; padding: 40px; color: #888; font-size: 1rem; }
+        .no-results { text-align: center; padding: 40px; color: #888; }
+
         /* ── Responsive ── */
         @media (max-width: 1024px) {
 
@@ -115,6 +204,9 @@
         @media (max-width: 767px) {
             .hide-narrower { display: none !important; }
             .book-grid { grid-template-columns: 1fr; }
+            .search-row input[type="text"] { min-width: 100%; }
+            .search-row { gap: 8px; }
+            .result-meta { flex-direction: column; }
         }
     </style>
 <script src="/js/site-nav.js?v=29"></script>
@@ -146,6 +238,35 @@
     </div>
 </header>
 
+
+<div class="search-container">
+    <form id="search-form" onsubmit="doSearch(1); return false;">
+        <div class="search-row">
+            <input type="text" id="search-input" placeholder="Search within books...">
+            <div class="filter-group">
+                <select id="search-mode">
+                    <option value="all">All Words</option>
+                    <option value="phrase">Exact Phrase</option>
+                    <option value="any">Any Word</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-series">Series:</label>
+                <select id="filter-series" onchange="onSeriesChange()">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-volume">Volume:</label>
+                <select id="filter-volume" disabled>
+                    <option value="">All</option>
+                </select>
+            </div>
+            <button type="submit" class="search-btn">Search</button>
+        </div>
+    </form>
+    <div id="results-area"></div>
+</div>
 
 <div class="content">
 
@@ -251,7 +372,246 @@
 <footer></footer>
 
 <script>
-// ── Book Cards (search bar comes from /js/site-search.js global bar) ──
+// ── Search Logic ──
+var EXCLUDE_SERIES = 8;
+var allSeries = [];
+var allVolumes = [];
+var currentPage = 1;
+
+function loadFilters() {
+    fetch('/api/search-filters.php')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            allSeries = (data.series || []).filter(function(s) { return s.series_key !== EXCLUDE_SERIES; });
+            allVolumes = (data.volumes || []).filter(function(v) { return v.series_key !== EXCLUDE_SERIES; });
+            var sel = document.getElementById('filter-series');
+            allSeries.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.series_key;
+                opt.textContent = s.series_name;
+                sel.appendChild(opt);
+            });
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('series')) {
+                document.getElementById('filter-series').value = params.get('series');
+                populateVolumeDropdown(params.get('series'));
+            }
+            if (params.get('volume')) document.getElementById('filter-volume').value = params.get('volume');
+        })
+        .catch(function() {});
+}
+
+function populateVolumeDropdown(seriesKey) {
+    var sel = document.getElementById('filter-volume');
+    sel.innerHTML = '<option value="">All</option>';
+    if (!seriesKey) {
+        sel.disabled = true;
+        return;
+    }
+    sel.disabled = false;
+    var filtered = allVolumes
+        .filter(function(v) { return String(v.series_key) === String(seriesKey); })
+        .sort(function(a, b) { return a.volume_key - b.volume_key; });
+    filtered.forEach(function(v) {
+        if (v.volume_active_flag === false) return;
+        var opt = document.createElement('option');
+        opt.value = v.volume_key;
+        opt.textContent = v.volume_label;
+        sel.appendChild(opt);
+    });
+}
+
+function onSeriesChange() {
+    var sk = document.getElementById('filter-series').value;
+    populateVolumeDropdown(sk || null);
+}
+
+function clearSearch() {
+    document.getElementById('search-input').value = '';
+    document.getElementById('results-area').innerHTML = '';
+}
+
+function doSearch(page) {
+    var q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+
+    currentPage = page || 1;
+    if (currentPage > 1) {
+        document.getElementById('search-input').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    var mode = document.getElementById('search-mode').value;
+    var series = document.getElementById('filter-series').value;
+    var volume = document.getElementById('filter-volume').value;
+
+    var url = '/api/search.php?q=' + encodeURIComponent(q)
+        + '&mode=' + mode
+        + '&page=' + currentPage
+        + '&limit=25';
+    if (series) url += '&series=' + series;
+    if (volume) url += '&volume=' + volume;
+
+    var area = document.getElementById('results-area');
+    area.innerHTML = '<div class="loading">Searching...</div>';
+
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                area.innerHTML = '<div class="no-results">' + escHtml(data.error) + '</div>';
+                return;
+            }
+            // Filter out excluded series from results
+            if (data.results) {
+                data.results = data.results.filter(function(r) {
+                    return r.series_key !== EXCLUDE_SERIES;
+                });
+            }
+            renderResults(data, q);
+        })
+        .catch(function() {
+            area.innerHTML = '<div class="no-results">Search failed. Please try again.</div>';
+        });
+
+    var params = new URLSearchParams({ q: q, mode: mode, page: currentPage });
+    if (series) params.set('series', series);
+    if (volume) params.set('volume', volume);
+    history.replaceState(null, '', '?' + params.toString());
+}
+
+function renderResults(data, query) {
+    var area = document.getElementById('results-area');
+    if (!data.results || data.results.length === 0) {
+        area.innerHTML = '<div class="no-results">No results found for "<strong>' + escHtml(query) + '</strong>"</div>';
+        return;
+    }
+    var html = '';
+    if (data.fuzzy) {
+        html += '<div class="results-info" style="color:#996600; font-style:italic;">No exact matches found. Showing similar results for "<strong>' + escHtml(query) + '</strong>"</div>';
+    }
+    var elapsed = data.elapsed_ms != null ? ' <span style="color:#999;font-weight:normal;">(' + (data.elapsed_ms < 1000 ? data.elapsed_ms + 'ms' : (data.elapsed_ms / 1000).toFixed(2) + 's') + ')</span>' : '';
+    html += '<div class="results-info"><span><strong>' + data.total.toLocaleString()
+        + '</strong> results for "<strong>' + escHtml(query) + '</strong>"'
+        + elapsed
+        + ' &mdash; page ' + data.page + ' of ' + data.pages + '</span>'
+        + '<a class="clear-search" onclick="clearSearch()">Clear Search</a></div>';
+    data.results.forEach(function(r) {
+        html += '<div class="result-card"><div class="result-meta">';
+        var linkParts = '<span class="volume">' + escHtml(r.volume_label) + '</span>'
+            + '<span class="sep">&mdash;</span>'
+            + '<span class="series">' + escHtml(r.series_label) + '</span>';
+        // Book URL \u2014 `book_url` (preferred) is the named-path slug
+        // (/<book>/) populated for every result; `flipbook_url` was the
+        // older field name kept here as a fallback for any cached client.
+        var bookHref = r.book_url || r.flipbook_url || r.flip_url || '';
+        if (bookHref) {
+            html += '<div><a href="' + escAttr(bookHref) + '" target="_blank">' + linkParts + '</a></div>';
+        } else {
+            html += '<div>' + linkParts + '</div>';
+        }
+        var locParts = [];
+        if (r.chapter_name) locParts.push('Ch. ' + r.chapter_number + ': ' + r.chapter_name);
+        if (r.page) locParts.push('Page ' + r.page);
+        if (locParts.length) {
+            var locText = escHtml(locParts.join(' \u00b7 '));
+            // Prefer chapter-specific URL when chapter info is present;
+            // otherwise fall back to the book URL.
+            var locHref = r.chapter_url || bookHref;
+            if (locHref) {
+                html += '<div class="location-right"><a href="' + escAttr(locHref) + '" target="_blank">' + locText + '</a></div>';
+            } else {
+                html += '<div class="location-right">' + locText + '</div>';
+            }
+        }
+        html += '</div>';
+        var collapsed = r.snippet || r.html || '';
+        var expanded = r.html || r.snippet || '';
+        html += '<div class="result-snippet" data-collapsed="' + escAttr(collapsed) + '" data-expanded="' + escAttr(expanded) + '">' + collapsed + '</div>';
+        html += '<button class="toggle-snippet" onclick="toggleSnippet(this)">Show more</button>';
+        html += '</div>';
+    });
+    html += '<div class="search-pagination">';
+    html += '<button ' + (data.page <= 1 ? 'disabled' : 'onclick="doSearch(' + (data.page - 1) + ')"') + '>&laquo; Previous</button>';
+    html += '<span class="page-info">Page ' + data.page + ' of ' + data.pages + '</span>';
+    html += '<button ' + (data.page >= data.pages ? 'disabled' : 'onclick="doSearch(' + (data.page + 1) + ')"') + '>Next &raquo;</button>';
+    html += '</div>';
+    area.innerHTML = html;
+    highlightSnippets(query);
+    detectOverflow();
+}
+
+function highlightSnippets(query) {
+    var words = query.split(/\s+/).filter(function(w) { return w.length > 0; });
+    if (words.length === 0) return;
+    var pattern = words.map(function(w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|');
+    var regex = new RegExp('(' + pattern + ')', 'gi');
+    document.querySelectorAll('.result-snippet').forEach(function(el) {
+        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+        var textNodes = [];
+        while (walker.nextNode()) textNodes.push(walker.currentNode);
+        textNodes.forEach(function(node) {
+            if (!regex.test(node.nodeValue)) return;
+            regex.lastIndex = 0;
+            var frag = document.createDocumentFragment();
+            var text = node.nodeValue, lastIdx = 0, match;
+            while ((match = regex.exec(text)) !== null) {
+                if (match.index > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, match.index)));
+                var mark = document.createElement('mark');
+                mark.textContent = match[1];
+                frag.appendChild(mark);
+                lastIdx = regex.lastIndex;
+            }
+            if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+            node.parentNode.replaceChild(frag, node);
+        });
+    });
+}
+
+function detectOverflow() {
+    document.querySelectorAll('.result-snippet').forEach(function(el) {
+        var lineHeight = parseFloat(getComputedStyle(el).lineHeight) || (parseFloat(getComputedStyle(el).fontSize) * 1.6);
+        if (el.scrollHeight > el.clientHeight + lineHeight * 2) {
+            el.classList.add('overflowing');
+            var btn = el.nextElementSibling;
+            if (btn && btn.classList.contains('toggle-snippet')) btn.style.display = 'inline';
+        }
+    });
+}
+
+function toggleSnippet(btn) {
+    var snippet = btn.previousElementSibling;
+    if (snippet.classList.contains('expanded')) {
+        snippet.classList.remove('expanded');
+        snippet.classList.add('overflowing');
+        var collapsed = snippet.getAttribute('data-collapsed');
+        if (collapsed) snippet.innerHTML = collapsed;
+        btn.textContent = 'Show more';
+    } else {
+        snippet.classList.add('expanded');
+        snippet.classList.remove('overflowing');
+        var expanded = snippet.getAttribute('data-expanded');
+        if (expanded) snippet.innerHTML = expanded;
+        btn.textContent = 'Show less';
+    }
+}
+
+function escHtml(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function escAttr(s) { return escHtml(s); }
+
+function initSearchFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var q = params.get('q');
+    if (q) {
+        document.getElementById('search-input').value = q;
+        var mode = params.get('mode') || 'all';
+        document.getElementById('search-mode').value = mode;
+        doSearch(parseInt(params.get('page')) || 1);
+    }
+}
+
+loadFilters();
+initSearchFromUrl();
+
+// ── Book Cards ──
 var SVG_READ = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27.13 20"><path d="M26.9,5.11l-11.09,6.38s-.54.33-.75.33c-.32.11-.75,0-1.29-.22l-8.58-2.86c-.11,0-2.15-.44-2.9,1.32-.54,1.87.86,2.53,1.29,2.75v2.31c-.97-.33-1.72-.88-2.15-1.1-.54-.33-1.07-.99-1.29-1.98-.43-1.65.11-3.52,1.29-4.73.54-.55.97-.88,1.4-1.1C5.19,4.78,12.38.27,12.38.27c.64-.44,1.61-.22,1.72-.22l12.7,3.96c.43.22.43.88.11,1.1Z"/><path d="M5,11.55v7.63c0,.33.43.55.75.33l1.21-1.51c.21-.11.43-.11.54,0l1.75,1.84c.32.33.75.11.75-.33v-6.71c0-.22-.11-.33-.32-.44l-4.03-1.36c-.32,0-.64.22-.64.55Z"/><path d="M15.71,18.08l10.41-6.16c.5-.3.68-.93.43-1.44-.29-.58-1.02-.79-1.57-.45l-9.21,5.69c-.49.3-1.08.38-1.63.21l-3.14-.94v2.5l3.2.8c.51.13,1.05.05,1.5-.22Z"/></svg>';
 var SVG_AMAZON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 435.2 435.2"><path d="M244.6,148.6c-62,2-121,19-121,81,0,43,26,64,61,64,31,0,51-12,68-30,8,11,10,16,24,27,3,2,8,2,10-1l31-27c4-3,2-8,0-10-7-11-15-19-15-39v-64c0-27,2-52-18-70-17-16-38-20-62-21-53-1-88,28-93,62-1,6,4,9,7,9l37,5c6,1,9-4,10-8,6-22,29-28,43-23,20,6,18,29,18,45ZM208.6,253.6c-15,0-25-13-25-30,1-36,29-42,61-42v18c0,32-17,54-36,54ZM376.6,359.6c13-11,26-38,25-57,0-7-1-8-8-10-13-4-46-5-62,10-3,3-2,5,1,5,11-2,45-6,50,2,4,7-8,35-12,47-2,5,2,6,6,3ZM19.6,303.6c96,91,247,94,345,25,7-4,0-12-6-9-108.77,46-232.83,38.22-335-21-4-3-8,2-4,5Z"/></svg>';
 var SVG_PDF = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37.26 36.12"><path d="M36.46,22.6c-1.2-1.3-3.5-1.9-6.8-1.9-1.8,0-3.7.2-5.5.5-1.2-1.1-2.2-2.4-3.2-3.7-.7-1-1.4-2-2-3.1,1-2.8,1.6-5.8,1.8-8.8,0-2.7-1.1-5.6-4.1-5.6-1,0-2,.6-2.5,1.5-1.3,2.2-.8,6.7,1.3,11.4-.7,2.1-1.5,4.2-2.4,6.5-.8,2-1.7,3.9-2.8,5.7C7.16,26.3.66,29.3.06,32.6c-.2,1,.1,2,.9,2.6.7.6,1.7,1,2.7.9,3.9,0,7.8-5.4,10.5-10.1,1.5-.5,3-1,4.6-1.4,1.7-.4,3.3-.8,4.8-1.1,4.2,3.6,7.9,4.2,9.7,4.2,2.5,0,3.5-1.1,3.8-2,.4-1.1.2-2.3-.6-3.1ZM33.76,24.5c-.1.7-.9,1.2-1.9,1.2-.3,0-.6,0-.9-.1-2-.5-3.9-1.5-5.5-2.8,1.3-.2,2.7-.3,4-.3.9,0,1.8.1,2.7.2.9.2,1.9.6,1.6,1.8ZM15.86,2.4c.2-.3.5-.5.9-.6,1,0,1.2,1.1,1.2,2.1-.1,2.3-.5,4.5-1.2,6.7-1.7-4.3-1.5-7.2-.9-8.2ZM21.46,21.6c-1.1.2-2.2.5-3.3.8-.8.2-1.6.5-2.5.7.4-.9.8-1.8,1.2-2.6.5-1.1.9-2.2,1.3-3.3.4.6.7,1.1,1.1,1.6.7,1,1.5,1.9,2.2,2.8ZM9.36,27.4c-2.5,4-5,6.6-6.4,6.6-.2,0-.5-.1-.6-.2-.3-.2-.4-.6-.3-.9.2-1.5,3.1-3.6,7.3-5.5Z"/></svg>';
