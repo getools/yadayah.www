@@ -24,6 +24,7 @@ var tabs = [
     ['admin-translation.html', 'Translation'],
     ['admin-series.html', 'Series'],
     ['admin-books.html', 'Books'],
+    ['admin-flipbook.html', 'Flipbook'],
     ['admin-word.html', 'Word'],
     ['admin-glossary.html', 'Glossary'],
     ['admin-lookups.html', 'Lookups'],

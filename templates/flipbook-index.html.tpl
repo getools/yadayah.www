@@ -51,6 +51,7 @@
       <div class="tab active" data-tab="toc">Contents</div>
       <div class="tab"        data-tab="thumbs">Pages</div>
       <div class="tab"        data-tab="search">Search</div>
+      <div class="tab"        data-tab="bookmarks">Bookmarks</div>
     </div>
     <div class="body">
       <div id="toc-pane"    class="toc"></div>
@@ -60,6 +61,7 @@
         <div class="summary" id="search-summary">Type at least 2 characters.</div>
         <div class="results" id="search-results"></div>
       </div>
+      <div id="bookmarks-pane" style="display:none;"></div>
     </div>
   </aside>
 
@@ -94,6 +96,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"
           onerror="document.getElementById('err').style.display='block'; document.getElementById('err').textContent='Failed to load page-flip.browser.js';"></script>
-  <script src="/js/flipbook-viewer.js?v=8"></script>
+  <script src="/js/flipbook-viewer.js?v=9"></script>
+  <script src="/js/flipbook-bookmarks.js?v=1"></script>
 </body>
 </html>

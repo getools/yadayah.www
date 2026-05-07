@@ -539,6 +539,7 @@
           return;
         }
         urlWrittenOnce = true;
+        try { if (window.FlipbookBookmarks) { FlipbookBookmarks.refresh(); FlipbookBookmarks.recordCurrentPage(page1); } } catch (e) {}
         const ch = chapterForPage(page1);
         const parts = [];
         if (ch && ch.slug) parts.push('chapter=' + encodeURIComponent(ch.slug));
@@ -1021,6 +1022,19 @@
         if (best) best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
 
+      // Bookmarks module — populates icon overlay on visible pages, the
+      // sidebar Bookmarks tab, and the slider marker lane. refresh() is also
+      // called from syncUrlAndStorage on every navigation.
+      try {
+        if (window.FlipbookBookmarks) {
+          FlipbookBookmarks.init({
+            bookCode: cfg.bookCode,
+            totalPages: TOTAL,
+            getCurrentPage: function () { try { return currentPage(); } catch (e) { return 1; } },
+            gotoPage: function (n) { try { goto(n); } catch (e) {} },
+          });
+        }
+      } catch (e) {}
       // ── Initial nav: hash > localStorage resume > page 1
       // Use the hash captured at the very top of init — see _hashAtLoad above.
       const params = new URLSearchParams(_hashAtLoad.replace(/^#/, ''));
