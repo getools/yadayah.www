@@ -47,6 +47,10 @@
 
             '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }',
             '.ss-row.row-two { margin-bottom: 16px; }',
+            // Site mode = no Books/Video filter strip = empty row-two.
+            // Hide it so its 16px margin-bottom doesn't manifest as
+            // dead space below the input row.
+            '.ss-row.row-two[hidden] { display: none !important; }',
             '.ss-row input[type="text"] {',
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
@@ -117,9 +121,12 @@
             '  overflow: hidden; max-height: 200px; opacity: 1;',
             '  transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;',
             '}',
-            '.ss-scope-filters[hidden] {',
-            '  display: flex !important; max-height: 0; opacity: 0; margin-bottom: 0; pointer-events: none;',
-            '}',
+            // CRITICAL: hidden filter strips MUST be removed from the
+            // flex flow entirely (display:none), NOT kept as zero-height
+            // flex items. Otherwise the hidden Books strip takes a flex
+            // slot in row-two and pushes the visible Video strip to the
+            // right. We lose the height transition; that is fine.
+            '.ss-scope-filters[hidden] { display: none !important; }',
 
             // Results
             '.ss-results-info {',
@@ -454,6 +461,10 @@
         });
         $('ss-filters-books').hidden = (s !== 'books');
         $('ss-filters-video').hidden = (s !== 'video');
+        // Hide the row-two wrapper entirely in Site mode so its
+        // own margin-bottom doesn't add dead space below the input.
+        var rowTwo = document.querySelector('.ss-row.row-two');
+        if (rowTwo) rowTwo.hidden = (s === 'site');
         $('ss-input').placeholder = SCOPE_META[s].placeholder;
     }
 
