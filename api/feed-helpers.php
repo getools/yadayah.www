@@ -6,7 +6,13 @@
  *   term*   → starts with (ILIKE 'term%')
  *   *term   → ends with   (ILIKE '%term')
  *   *term*  → contains    (ILIKE '%term%')
- *   term    → contains    (ILIKE '%term%')  [default]
+ *   term    → exact match for hashtags (whole-word, comma-bounded);
+ *             contains for title text [default]
+ *
+ * Hashtag whole-word matching: feed_item_tags is a comma-separated list like
+ * "#vlog,#Music,#Shabbat". Without this, `#Music` as a filter would falsely
+ * match `#MusicVideo` via substring. We require any non-wildcard tag term to
+ * sit between commas / string boundaries.
  */
 
 /**
@@ -34,6 +40,28 @@ function filterLikePattern(string $term): string {
     return '%' . $core . '%';
 }
 
+/**
+ * Build a SQL fragment + bind params for matching a single include/exclude
+ * term against the comma-separated `feed_item_tags` column. Without a
+ * wildcard the match is whole-token (bounded by commas / string ends) so
+ * `#Music` doesn't bleed into `#MusicVideo`. With a `*` anywhere, falls
+ * back to the existing ILIKE wildcard behavior.
+ *
+ * Returns [sqlClause, [paramValues...]].
+ */
+function tagFilterClause(string $col, string $term, bool $negate): array {
+    if (str_contains($term, '*')) {
+        $pat = filterLikePattern($term);
+        if ($negate) return ["($col NOT ILIKE ? OR $col IS NULL)", [$pat]];
+        return ["$col ILIKE ?", [$pat]];
+    }
+    // POSIX regex with comma boundaries. preg_quote covers Postgres regex
+    // metachars too (the overlapping set: . * + ? ( ) [ ] { } | ^ $ \).
+    $rx = '(^|,)' . preg_quote($term, '/') . '(,|$)';
+    if ($negate) return ["($col !~* ? OR $col IS NULL)", [$rx]];
+    return ["$col ~* ?", [$rx]];
+}
+
 function buildFeedPageFilters(string &$where, array &$params, ?string $includeStr, ?string $excludeStr, ?string $orientation = null): void {
     if ($orientation) {
         $where .= " AND feed_item_orientation = ?";
@@ -43,20 +71,24 @@ function buildFeedPageFilters(string &$where, array &$params, ?string $includeSt
     if ($include) {
         $clauses = [];
         foreach ($include as $term) {
-            $pat = filterLikePattern($term);
-            $clauses[] = "(feed_item_tags ILIKE ? OR COALESCE(feed_item_title_override, feed_item_title_import) ILIKE ?)";
-            $params[] = $pat;
-            $params[] = $pat;
+            // Tags use whole-word matching (or wildcards if the term has *).
+            // Title still uses substring match — titles aren't comma-tokenised.
+            [$tagSql, $tagParams] = tagFilterClause('feed_item_tags', $term, false);
+            $titlePat = filterLikePattern($term);
+            $clauses[] = "($tagSql OR COALESCE(feed_item_title_override, feed_item_title_import) ILIKE ?)";
+            foreach ($tagParams as $p) $params[] = $p;
+            $params[] = $titlePat;
         }
         $where .= " AND (" . implode(' OR ', $clauses) . ")";
     }
 
     $exclude = array_filter(array_map('trim', preg_split('/[,|]/', $excludeStr ?? '')));
     foreach ($exclude as $term) {
-        $pat = filterLikePattern($term);
-        $where .= " AND (feed_item_tags NOT ILIKE ? OR feed_item_tags IS NULL) AND COALESCE(feed_item_title_override, feed_item_title_import) NOT ILIKE ?";
-        $params[] = $pat;
-        $params[] = $pat;
+        [$tagSql, $tagParams] = tagFilterClause('feed_item_tags', $term, true);
+        $titlePat = filterLikePattern($term);
+        $where .= " AND $tagSql AND COALESCE(feed_item_title_override, feed_item_title_import) NOT ILIKE ?";
+        foreach ($tagParams as $p) $params[] = $p;
+        $params[] = $titlePat;
     }
 }
 

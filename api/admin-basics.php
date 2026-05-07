@@ -13,6 +13,7 @@
  * DELETE ?type=video&key=N — soft-delete video
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/feed-helpers.php';
 requireAuth();
 
 $db = getDb();
@@ -121,8 +122,11 @@ if ($type === 'videos' && $method === 'GET') {
     if ($cfg['include']) {
         $inc = [];
         foreach ($cfg['include'] as $term) {
-            $inc[] = "(fi.feed_item_tags ILIKE ? OR COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?)";
-            $params[] = '%' . $term . '%';
+            // Whole-word tag matching (`#Music` won't pull in `#MusicVideo`).
+            // Title still uses substring.
+            [$tagSql, $tagParams] = tagFilterClause('fi.feed_item_tags', $term, false);
+            $inc[] = "($tagSql OR COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?)";
+            foreach ($tagParams as $p) $params[] = $p;
             $params[] = '%' . $term . '%';
         }
         $where .= " AND (" . implode(' OR ', $inc) . ")";

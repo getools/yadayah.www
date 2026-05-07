@@ -256,12 +256,7 @@ function itemMatchesPage(array $item, array $feedPage): bool {
         if ($terms) {
             $matched = false;
             foreach ($terms as $term) {
-                $pat = filterLikePattern($term);
-                // Convert SQL ILIKE pattern to PHP regex
-                $regex = '/^' . str_replace(['%', '_'], ['.*', '.'], preg_quote($pat, '/')) . '$/i';
-                // Fix double-escaped wildcards
-                $regex = str_replace(['\\.*', '\\.'], ['.*', '.'], $regex);
-                if (preg_match($regex, $tags) || preg_match($regex, $title)) {
+                if (tagMatchesTerm($tags, $term) || titleMatchesTerm($title, $term)) {
                     $matched = true;
                     break;
                 }
@@ -275,14 +270,38 @@ function itemMatchesPage(array $item, array $feedPage): bool {
     if ($excludeStr) {
         $terms = array_filter(array_map('trim', preg_split('/[,|]/', $excludeStr)));
         foreach ($terms as $term) {
-            $pat = filterLikePattern($term);
-            $regex = '/^' . str_replace(['%', '_'], ['.*', '.'], preg_quote($pat, '/')) . '$/i';
-            $regex = str_replace(['\\.*', '\\.'], ['.*', '.'], $regex);
-            if (preg_match($regex, $tags) || preg_match($regex, $title)) {
+            if (tagMatchesTerm($tags, $term) || titleMatchesTerm($title, $term)) {
                 return false;
             }
         }
     }
 
     return true;
+}
+
+/**
+ * PHP-side analogue of SQL `tagFilterClause`: whole-word match against the
+ * comma-separated `feed_item_tags` string unless the term contains `*`.
+ */
+function tagMatchesTerm(string $tags, string $term): bool {
+    if ($tags === '') return false;
+    if (str_contains($term, '*')) {
+        $pat = filterLikePattern($term);
+        $regex = '/^' . str_replace(['%', '_'], ['.*', '.'], preg_quote($pat, '/')) . '$/i';
+        $regex = str_replace(['\\.*', '\\.'], ['.*', '.'], $regex);
+        return (bool)preg_match($regex, $tags);
+    }
+    $regex = '/(^|,)' . preg_quote($term, '/') . '(,|$)/i';
+    return (bool)preg_match($regex, $tags);
+}
+
+/**
+ * Title still uses substring/wildcard match — titles aren't tokenized.
+ */
+function titleMatchesTerm(string $title, string $term): bool {
+    if ($title === '') return false;
+    $pat = filterLikePattern($term);
+    $regex = '/^' . str_replace(['%', '_'], ['.*', '.'], preg_quote($pat, '/')) . '$/i';
+    $regex = str_replace(['\\.*', '\\.'], ['.*', '.'], $regex);
+    return (bool)preg_match($regex, $title);
 }

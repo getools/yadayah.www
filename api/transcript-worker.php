@@ -410,6 +410,33 @@ if (!$rows) {
                 if (!$usedUploadedAudio) @unlink($audioPath);
                 if (!$rows) {
                     $methodFailures[] = "whisper_api: " . ($whisperErr ?: 'API returned no segments');
+                } else {
+                    // Coverage gate: same 80% threshold as the VTT/yt-dlp paths.
+                    // Whisper transcribes the full audio file end-to-end, so a
+                    // last-segment timestamp far short of the video's declared
+                    // duration usually means: chunked Whisper had failed chunks,
+                    // the audio file itself is partial, or the recording stopped
+                    // early. Reject and let it fall through (or fail loudly).
+                    $videoDur = (int)($job['feed_item_duration_seconds'] ?? 0);
+                    if ($videoDur > 60) {
+                        $lastEnd = 0;
+                        foreach ($rows as $r) {
+                            $end = isset($r['end_seconds']) ? (int)$r['end_seconds'] : 0;
+                            if (!$end && isset($r['segment'])) {
+                                $parts = explode(':', $r['segment']);
+                                if (count($parts) === 3) $end = (int)$parts[0]*3600 + (int)$parts[1]*60 + (int)$parts[2];
+                            }
+                            if ($end > $lastEnd) $lastEnd = $end;
+                        }
+                        $coverage = $lastEnd / $videoDur;
+                        if ($coverage < 0.80) {
+                            $methodFailures[] = "whisper_api: only " . round($coverage * 100) . "% coverage ($lastEnd s of $videoDur s)" . ($whisperErr ? " ($whisperErr)" : '');
+                            $rows = [];
+                        } elseif ($whisperErr) {
+                            // Partial chunk failures — keep the rows but log.
+                            error_log("transcript job $jobKey whisper partial: $whisperErr");
+                        }
+                    }
                 }
                 // Corrections applied below for any method that produced rows
             }
@@ -572,11 +599,24 @@ function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt 
     $data = json_decode($resp, true);
     $rows = [];
     foreach ($data['segments'] ?? [] as $seg) {
-        $rows[] = ['segment' => secsToInterval((int)$seg['start'] + $offsetSecs), 'text' => trim($seg['text'])];
+        $text = trim($seg['text'] ?? '');
+        // Drop empty-text segments. Whisper occasionally returns whitespace
+        // segments for silent / non-speech audio chunks; storing those as
+        // "captions" pollutes search and falsely marks the job successful.
+        if ($text === '') continue;
+        $rows[] = ['segment' => secsToInterval((int)$seg['start'] + $offsetSecs), 'text' => $text];
     }
     if (!$rows && isset($data['text'])) {
-        // Some response shapes return only 'text' without segments
-        $rows[] = ['segment' => secsToInterval($offsetSecs), 'text' => trim($data['text'])];
+        // Some response shapes return only 'text' without segments. Reject
+        // empty fallback too — a single 0:00 row with no text is the
+        // "1 caption at 0:00, length 0" pattern that fooled item 982.
+        $fallback = trim($data['text']);
+        if ($fallback !== '') {
+            $rows[] = ['segment' => secsToInterval($offsetSecs), 'text' => $fallback];
+        }
+    }
+    if (!$rows) {
+        $err = 'Whisper returned no speech segments (silent / non-speech audio?)';
     }
     return $rows;
 }
@@ -607,6 +647,7 @@ function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, st
         return [];
     }
     $allRows = [];
+    $chunkFailures = [];
     foreach ($chunks as $idx => $chunkPath) {
         bailIfCancelled($db, $jobKey, [$chunkDir]);
         $chunkSizeMB = file_exists($chunkPath) ? filesize($chunkPath) / 1024 / 1024 : 5;
@@ -618,13 +659,21 @@ function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, st
         $chunkErr = '';
         $rows = whisperApiTranscribe($chunkPath, $apiKey, $prompt, $idx * $chunkSecs, $chunkErr);
         if (!$rows && $chunkErr) {
-            $err = "chunk " . ($idx + 1) . " failed: $chunkErr";
+            $chunkFailures[] = "chunk " . ($idx + 1) . ": $chunkErr";
             // continue rather than abort — partial transcript better than none
         }
         $allRows = array_merge($allRows, $rows);
         @unlink($chunkPath);
     }
     @rmdir($chunkDir);
+    if (!$allRows) {
+        $err = $chunkFailures
+            ? 'all chunks empty: ' . implode('; ', $chunkFailures)
+            : 'Whisper returned no speech segments across all chunks';
+    } elseif ($chunkFailures) {
+        // Partial success — surface failures so caller / methodFailures has context.
+        $err = 'partial: ' . implode('; ', $chunkFailures);
+    }
     return $allRows;
 }
 

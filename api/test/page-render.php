@@ -160,14 +160,14 @@ function resolveItemsSection(PDO $db, array $cfg): array {
     // Hashtag filters apply ONLY to feed_item_tags (not titles). Title-based
     // matching uses the separate title_include / title_exclude fields below.
     foreach (array_filter(array_map('trim', preg_split('/[,|]/', $include))) as $term) {
-        $pat = filterLikePattern($term);
-        $where .= " AND i.feed_item_tags ILIKE ?";
-        $params[] = $pat;
+        [$tagSql, $tagParams] = tagFilterClause('i.feed_item_tags', $term, false);
+        $where .= " AND $tagSql";
+        foreach ($tagParams as $p) $params[] = $p;
     }
     foreach (array_filter(array_map('trim', preg_split('/[,|]/', $exclude))) as $term) {
-        $pat = filterLikePattern($term);
-        $where .= " AND (i.feed_item_tags NOT ILIKE ? OR i.feed_item_tags IS NULL)";
-        $params[] = $pat;
+        [$tagSql, $tagParams] = tagFilterClause('i.feed_item_tags', $term, true);
+        $where .= " AND $tagSql";
+        foreach ($tagParams as $p) $params[] = $p;
     }
     foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['title_include'] ?? ''))) as $term) {
         $pat = filterLikePattern($term);
