@@ -1,0 +1,283 @@
+    :root { color-scheme: dark; --hdr: 48px; --nav: 56px; --side: 280px; --resume: 0px; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #1c1c1f; color: #ddd;
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           overflow: hidden; height: 100vh; height: 100dvh;
+           display: grid;
+           grid-template-rows: var(--hdr) var(--resume) 1fr var(--nav);
+           grid-template-columns: 1fr;
+           grid-template-areas: "header" "resume" "main" "nav";
+           transition: grid-template-rows .25s ease; }
+    /* Sidebar is positioned outside the grid flow so opening it slides over
+       the book rather than pushing the book to the right. body.show-side
+       just translates it into view. */
+    /* show-resume class still exists — now it just unhides #resume-toolbar-btn
+       in the top toolbar instead of expanding a grid row. */
+
+    header { grid-area: header; padding: 8px 14px; background: #111; border-bottom: 1px solid #2a2a2e;
+             display: flex; align-items: center; gap: 12px; min-width: 0; }
+    header .home-link { display: inline-flex; align-items: center; flex: 0 0 auto;
+                        text-decoration: none; opacity: 0.95; }
+    header .home-link:hover { opacity: 1; }
+    header .home-link img { display: block; height: 28px; width: auto; }
+    header .titlewrap { flex: 1; min-width: 0; overflow: hidden; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    header .meta { font-size: 11px; opacity: 0.55; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    header .tools { display: flex; gap: 6px; flex: 0 0 auto; align-items: center; }
+    header .tools button { font-size: 12px; padding: 6px 10px; }
+    header .tools button[aria-pressed="true"] { background: #3a4d6e; border-color: #5b8def; }
+    .zoom-pct {
+        font-size: 11px; opacity: 0.85;
+        width: 56px; text-align: center;
+        font-variant-numeric: tabular-nums;
+        background: #2a2a2e; color: #ddd;
+        border: 1px solid #3a3a3e; border-radius: 4px;
+        padding: 4px 4px;
+        font-family: inherit;
+    }
+    .zoom-pct:focus { outline: none; border-color: #5b8def; opacity: 1; }
+
+    #resume-bar { grid-area: resume; background: #1f3550; border-bottom: 1px solid #2a4d70;
+                  display: flex; align-items: stretch; padding: 0; gap: 0;
+                  font-size: 13px; overflow: hidden; }
+    #resume-bar #resume-btn { flex: 1; background: transparent; border: 0; color: #cfe1ff;
+                              padding: 0 14px; cursor: pointer; text-align: left;
+                              font: inherit; font-weight: 600; letter-spacing: 0.2px;
+                              display: flex; align-items: center; gap: 8px; }
+    #resume-bar #resume-btn:hover { background: rgba(91,141,239,0.15); }
+    #resume-bar #resume-btn .arrow { font-size: 16px; opacity: 0.85; }
+    #resume-bar .x { display: flex; align-items: center; padding: 0 14px;
+                     cursor: pointer; opacity: 0.55; border-left: 1px solid #2a4d70; }
+    #resume-bar .x:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+
+    aside { position: fixed; left: 0; top: var(--hdr); bottom: var(--nav);
+            width: var(--side); max-width: 100%; z-index: 10;
+            background: #16161a; border-right: 1px solid #2a2a2e;
+            overflow: hidden; min-width: 0; display: flex; flex-direction: column;
+            transform: translateX(-100%);
+            transition: transform .25s ease;
+            box-shadow: 4px 0 16px rgba(0,0,0,0); }
+    body.show-side aside { transform: translateX(0);
+                           box-shadow: 4px 0 16px rgba(0,0,0,0.5); }
+    aside .tabs { display: flex; flex: 0 0 auto; border-bottom: 1px solid #2a2a2e; }
+    aside .tab { flex: 1; padding: 8px; text-align: center; font-size: 12px; cursor: pointer; opacity: 0.55; border-bottom: 2px solid transparent; }
+    aside .tab.active { opacity: 1; border-bottom-color: #5b8def; }
+    aside .body { flex: 1; min-height: 0; overflow: auto; }
+
+    .toc { padding: 8px 4px; }
+    .toc-item { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: #ddd;
+                padding: 6px 10px; border-radius: 4px; font-size: 13px; cursor: pointer; line-height: 1.35; }
+    .toc-item:hover { background: #2a2a2e; }
+    .toc-item .pg { float: right; color: inherit; opacity: 0.95; font-variant-numeric: tabular-nums; font-size: 13px; padding-left: 8px; }
+
+    .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 6px; padding: 8px; }
+    .thumbs button { padding: 0; background: transparent; border: 2px solid transparent; border-radius: 3px; cursor: pointer; }
+    .thumbs button.active { border-color: #5b8def; }
+    .thumbs img { width: 100%; display: block; border-radius: 1px; }
+    .thumbs .lbl { font-size: 11px; color: #fff; font-weight: 600; text-align: center; margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+    .search { display: flex; flex-direction: column; height: 100%; }
+    .search .input { padding: 8px; border-bottom: 1px solid #2a2a2e; flex: 0 0 auto; }
+    .search input { width: 100%; background: #2a2a2e; color: #ddd; border: 1px solid #3a3a3e;
+                    border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none; }
+    .search .results { flex: 1; min-height: 0; overflow: auto; padding: 4px; }
+    .search .hit { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: #ddd;
+                   padding: 8px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-bottom: 2px; line-height: 1.4; }
+    .search .hit:hover { background: #2a2a2e; }
+    .search .hit .pg { float: right; color: inherit; opacity: 0.95; font-variant-numeric: tabular-nums; font-size: 12px; padding-left: 8px; }
+    .search .hit mark { background: #ffd54a; color: #111; padding: 0 1px; border-radius: 1px; }
+    .search .summary { padding: 6px 10px; font-size: 11px; opacity: 0.55; }
+
+    /* main scrolls when zoom > 100% so user can pan around. book-frame is
+       the scroll-area with min-size = main's content; explicit width/height
+       are set in JS to match (book × zoom) so the scrollable region grows
+       with zoom even though CSS transform alone doesn't extend layout. */
+    main { grid-area: main; position: relative; overflow: auto;
+           min-height: 0; min-width: 0; padding: 16px;
+           /* Center the book frame at zoom=1; `safe center` prevents flexbox
+              from pushing the frame off-screen when the user zooms in past
+              main's size (would otherwise make the upper-left unreachable
+              with overflow scroll). */
+           display: flex; align-items: safe center; justify-content: safe center;
+           /* Reserve gutter for both scrollbars even when not visible — without
+              this the page width oscillates as the carousel sizes up/down past
+              the scrollbar boundary, creating a layout-thrash loop. */
+           scrollbar-gutter: stable both-edges; }
+    /* Anchor book/carousel at the upper-left of the frame so zooming in grows
+       the page down-right from a fixed corner instead of expanding outward
+       from the middle. Frame is sized by JS to (book × zoom) and `main`
+       flex-centers it when smaller than main so zoom=1 still looks centered. */
+    #book-frame { display: flex; align-items: flex-start; justify-content: flex-start;
+                  flex: 0 0 auto; }
+    #book { box-shadow: 0 4px 50px rgba(0,0,0,.55);
+            transform: scale(var(--zoom, 1));
+            transform-origin: 0 0;
+            transition: transform 0s; }   /* set in JS with brief tween */
+
+    /* Carousel single-page mode: center page full size, ±2 neighbors fanned
+       in 3D perspective. Hidden by default; shown when body.mode-carousel. */
+    #carousel { display: none; position: relative;
+                transform: scale(var(--zoom, 1));
+                transform-origin: 0 0;
+                perspective: 2400px;
+                transform-style: preserve-3d; }
+    /* StPageFlip writes inline `style="display:block"` on its parent (#book),
+       so we need !important here to win against the inline rule. */
+    body.mode-carousel #book       { display: none !important; }
+    body.mode-carousel #carousel   { display: block; }
+    /* Flip zones stay clickable in both modes so the user can use the
+       black background gutters on either side of the page to page back /
+       forward. The visible arrow hints inside them are subtle by default
+       and brighten on hover. */
+    #carousel .cpg {
+      position: absolute; top: 0; left: 50%;
+      background: white; overflow: hidden;
+      box-shadow: 0 6px 30px rgba(0,0,0,.55);
+      transform-origin: 50% 50%;
+      transform: translate3d(calc(var(--ox,0px) - 50%), 0, 0)
+                 rotateY(var(--ry, 0deg))
+                 scale(var(--sc, 1));
+      opacity: var(--op, 1);
+      transition: transform .35s cubic-bezier(.22,.61,.36,1),
+                  opacity   .35s ease;
+      will-change: transform, opacity;
+      backface-visibility: hidden;
+    }
+    #carousel .cpg.center { z-index: 5; cursor: default; }
+    #carousel .cpg.n1     { z-index: 4; cursor: pointer; }
+    #carousel .cpg.n2     { z-index: 3; cursor: pointer; }
+    #carousel .cpg.gone   { opacity: 0; pointer-events: none; }
+    /* Carousel preview-page tiers — sizeCarousel() picks one of three based
+       on how much horizontal room is available before the page starts being
+       width-constrained:
+         (default)         full fan: center + ±n1 + ±n2  (4 previews)
+         .carousel-medium  center + ±n1                  (2 previews)
+         .carousel-narrow  center only                   (0 previews)
+       Hides via display:none so the absolutely-positioned slots don't
+       overflow the carousel container and pop a horizontal scrollbar. */
+    body.carousel-medium #carousel .cpg.n2 { display: none !important; }
+    body.carousel-narrow #carousel .cpg.n1,
+    body.carousel-narrow #carousel .cpg.n2 { display: none !important; }
+    #carousel .cpg img    { position: absolute; inset: 0; width: 100%; height: 100%;
+                             display: block; user-select: none; -webkit-user-drag: none; }
+    #carousel .cpg .text-layer { position: absolute; inset: 0; pointer-events: auto;
+                                  user-select: text; -webkit-user-select: text;
+                                  line-height: 1; font-family: serif; overflow: hidden; }
+    #carousel .cpg .text-layer span { position: absolute; color: transparent;
+                                       transform-origin: 0 0; white-space: pre;
+                                       cursor: text; }
+    #carousel .cpg .text-layer span::selection      { background: rgba(91,141,239,.45); color: transparent; }
+    #carousel .cpg .text-layer span::-moz-selection { background: rgba(91,141,239,.45); color: transparent; }
+    /* Search hit highlight on the live text-layer overlays — wraps just the
+       matching substring (not the whole span) in a <mark> so only the query
+       text is tinted, regardless of how long the surrounding line is. */
+    .text-layer mark.search-hit { background: rgba(255, 220, 0, 0.55);
+                                   color: transparent; padding: 0; }
+    /* Subtle dimming on neighbor pages so the center reads as "in focus". */
+    #carousel .cpg::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(to right, rgba(0,0,0,var(--shade-l, 0)), rgba(0,0,0,var(--shade-r, 0)));
+      pointer-events: none;
+    }
+
+    /* Click zones live OUTSIDE the book in the gray space on either side.
+       JS sizes them each frame to fill from book-frame's edge to the
+       book's edge, so they expand on wide screens (lots of gray) and
+       shrink on narrow ones. Never overlap the page text. */
+    #flip-zones { position: absolute; inset: 0; pointer-events: none; }
+    #flip-zones .zone { position: absolute; top: 0; bottom: 0;
+                        pointer-events: auto; cursor: pointer; z-index: 6;
+                        transition: background .12s ease;
+                        display: flex; align-items: center; }
+    #flip-zones .zone:hover { background: rgba(91, 141, 239, .10); }
+    #flip-zones .zone.l { left: 0; }
+    #flip-zones .zone.r { right: 0; }
+    #flip-zones .zone .arrow {
+      opacity: 0; transition: opacity .12s; width: 0; height: 0;
+      border-top: 10px solid transparent; border-bottom: 10px solid transparent;
+      margin: auto;
+    }
+    #flip-zones .zone:hover .arrow { opacity: 0.7; }
+    #flip-zones .zone.l .arrow { border-right: 12px solid #fff; }
+    #flip-zones .zone.r .arrow { border-left:  12px solid #fff; }
+
+    #book .pg { background: white; position: relative; overflow: hidden; }
+    #book .pg img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+    .pg .text-layer { position: absolute; inset: 0; pointer-events: auto;
+                      user-select: text; -webkit-user-select: text;
+                      line-height: 1; font-family: serif; overflow: hidden; }
+    .pg .text-layer span { position: absolute; color: transparent;
+                           transform-origin: 0 0; white-space: pre;
+                           cursor: text; }
+    .pg .text-layer span::selection { background: rgba(91,141,239,.45); color: transparent; }
+    .pg .text-layer span::-moz-selection { background: rgba(91,141,239,.45); color: transparent; }
+
+    #status { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); opacity: 0.6; font-size: 13px; pointer-events: none; }
+    #err { position: absolute; top: 8px; left: 8px; right: 8px;
+           background: #5a1f1f; color: #ffe; padding: 8px 12px; border-radius: 4px;
+           font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+           white-space: pre-wrap; display: none; max-height: 40%; overflow: auto; z-index: 10; }
+    #toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+             background: #2a2a2e; border: 1px solid #3a3a3e; border-radius: 6px;
+             padding: 6px 12px; font-size: 12px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 20; }
+    #toast.show { opacity: 1; }
+    /* Big centered zoom indicator for narrow viewports where the inline %
+       input is hidden — appears briefly when the user taps zoom +/-. */
+    #zoom-toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                  background: rgba(0,0,0,0.78); color: #fff; border-radius: 12px;
+                  padding: 18px 28px; font-size: 32px; font-weight: 600;
+                  font-variant-numeric: tabular-nums;
+                  opacity: 0; transition: opacity .35s; pointer-events: none; z-index: 25; }
+    #zoom-toast.show { opacity: 1; }
+    #print-frame { position: fixed; left: -10000px; top: -10000px; width: 0; height: 0; border: 0; }
+
+    nav { grid-area: nav; padding: 10px 14px; background: #111; border-top: 1px solid #2a2a2e;
+          display: flex; align-items: center; justify-content: center; gap: 10px; user-select: none; min-width: 0; }
+    button { background: #2a2a2e; color: #ddd; border: 1px solid #3a3a3e; border-radius: 6px;
+             padding: 6px 14px; font-size: 13px; cursor: pointer; min-width: 36px; }
+    button:hover { background: #353539; }
+    button.icon { padding: 6px 8px; }
+    /* Page-flip prev/next buttons in the bottom nav bar — wider hit area
+       and a beefier chevron icon than the default first/last buttons. */
+    nav #prev, nav #next { padding: 4px 32px; min-width: 88px; }
+    nav #prev svg, nav #next svg { display: block; margin: 0 auto; }
+    .pageinfo { font-variant-numeric: tabular-nums; font-size: 12px; opacity: 0.85; min-width: 96px; text-align: center;
+                display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
+    .pageinfo #pinput { width: 56px; padding: 4px 4px; text-align: center; font: inherit;
+                        background: #2a2a2e; color: #ddd; border: 1px solid #3a3a3e; border-radius: 4px; }
+    .pageinfo #pinput:focus { outline: none; border-color: #5b8def; }
+    /* Resume button in the top toolbar (replaces the under-header bar). */
+    #resume-toolbar-btn { display: none; align-items: center; gap: 6px;
+                          background: #1f3550; color: #cfe1ff; border: 1px solid #2a4d70;
+                          padding: 5px 10px; border-radius: 4px; font: inherit; font-size: 12px;
+                          font-weight: 600; cursor: pointer; }
+    #resume-toolbar-btn:hover { background: #28456a; }
+    #resume-toolbar-btn .x { opacity: 0.55; padding: 0 2px; cursor: pointer; }
+    #resume-toolbar-btn .x:hover { opacity: 1; }
+    body.show-resume #resume-toolbar-btn { display: inline-flex; }
+    /* Resume button has two label variants: full text on desktop, just the
+       arrow + page number on mobile (CSS swaps which is visible). */
+    #resume-toolbar-btn .resume-compact { display: none; }
+    input[type=range] { flex: 1; max-width: 220px; }
+
+    @media (max-width: 700px) {
+      :root { --hdr: 44px; --nav: 50px; --side: 80vw; }
+      .pageinfo, .zoom-pct { display: none; }
+      /* Hide title text on small screens but keep .titlewrap as the flex
+         spacer so the tools cluster stays right-aligned. */
+      header h1, header .meta { display: none; }
+      header .tools button .lbl { display: none; }
+      /* 2-page spread doesn't fit two readable pages on a small viewport, so
+         hide the toggle button along with the other narrow-mode trims. */
+      header .tools #mode { display: none; }
+      /* Compact resume button: just the arrow + page number. */
+      #resume-toolbar-btn .resume-full { display: none; }
+      #resume-toolbar-btn .resume-compact { display: inline; }
+      /* Print is rarely useful from a phone and is taking up room that the
+         bookmark button needs to fit on-screen. */
+      #print { display: none; }
+    }
+    /* Sound toggle is hidden in all viewports for now — the page-flip sound
+       still plays per saved preference, just no UI control. */
+    #sound { display: none; }

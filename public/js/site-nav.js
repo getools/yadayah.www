@@ -149,4 +149,13 @@
             reveal();
         })
         .catch(reveal);
+
+    // Load the dedicated site-wide search bar script. Doing it from
+    // site-nav.js means we do not have to add a second <script> tag to
+    // the 31 pages that already include site-nav.js. Cache-busting via
+    // ?v= matches the convention used elsewhere on the site.
+    var s = document.createElement('script');
+    s.src = '/js/site-search.js?v=2';
+    s.async = false;
+    document.head.appendChild(s);
 })();

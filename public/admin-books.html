@@ -332,65 +332,22 @@ function dataCell(v) {
 
 // FlipHTML5-specific cell. Distinguishes the four states that artifactCell
 // collapsed into a single "—":
-//   - flip_code present       → ✓ (or ↻ if stale vs. PDF, or ⏳ if regenerating)
-//   - PDF present, no code, status=error    → ✗ "failed" with tooltip
-//   - PDF present, no code, status=success  → ⌛ "skipped" (pipeline ran but
-//                                              FlipHTML5 step was disabled at the time)
-//   - PDF present, no code, no/queued status → ⌛ "pending"
-//   - No PDF, no code         → — (truly missing input)
-// The last three all flag "needs flipbook processing" so the operator knows
-// what's queued or stuck.
+// Flipbook column — uses the new self-hosted system at /<volume_code>/.
+// admin-books.php sets volume_flip_mtime to the mtime of that dir's
+// index.html when present. Three states:
+//   - mtime present → ✓ + age (or ↻ if stale vs. the source PDF)
+//   - PDF present, no flipbook → ⌛ "pending" (rebuild it via Edit form's Regenerate button)
+//   - No PDF → ○ (no source to build from)
 function flipCell(v) {
     var ps = (v.volume_pipeline_status || '').toLowerCase();
-    var inProc = PROC_STATES.indexOf(ps) >= 0;
-    var hasFlip = !!v.volume_flip_code;
-    var hasPdf  = !!v.volume_pdf;
-
-    // flip_code is set. Two sub-cases the operator cares about:
-    //   (a) local self-hosted bundle present at /opt/yada-www/public/flipbook/<code>/
-    //       — admin-books.php sets volume_flip_mtime to that dir's filemtime
-    //       in that case. Show ✓ + timestamp like DOCX/PDF columns.
-    //   (b) flip_code present but no local bundle yet (download still pending,
-    //       or download failed). Show a distinct "remote-only" badge so the
-    //       operator can tell self-hosting is incomplete at a glance.
-    if (hasFlip) {
-        if (v.volume_flip_mtime) {
-            // Stale check + ✓ + timestamp — same rendering as DOCX/PDF.
-            return artifactCell(true, v.volume_flip_mtime, v.volume_pdf_mtime, ps, 'FlipHTML5');
-        }
-        return '<div class="status-cell">'
-             + '<span class="status-icon" style="color:#a36100;" title="Uploaded to FlipHTML5 (' + esc(v.volume_flip_code) + ') — local offline package not yet downloaded for self-hosting">&darr;</span>'
-             + '<div class="age" style="color:#a36100;">remote</div></div>';
+    if (v.volume_flip_mtime) {
+        return artifactCell(true, v.volume_flip_mtime, v.volume_pdf_mtime, ps, 'Flipbook');
     }
-    // No PDF yet → nothing to flip, plain missing.
-    if (!hasPdf) {
-        if (inProc) {
-            return '<div class="status-cell proc-pulse">'
-                 + '<span class="status-icon status-proc" title="Pipeline running (' + esc(ps) + ')">⏳</span>'
-                 + '<div class="age">generating</div></div>';
-        }
-        return '<div class="status-cell"><span class="status-icon status-miss" title="No PDF yet — upload DOCX first">○</span></div>';
+    if (!v.volume_pdf) {
+        return '<div class="status-cell"><span class="status-icon status-miss" title="No PDF — upload a DOCX first">○</span></div>';
     }
-    // PDF exists, flip_code missing — surface the reason it's pending.
-    if (inProc) {
-        return '<div class="status-cell proc-pulse">'
-             + '<span class="status-icon status-proc" title="FlipHTML5 upload in flight (' + esc(ps) + ')">⏳</span>'
-             + '<div class="age">uploading</div></div>';
-    }
-    if (ps === 'error') {
-        var msg = v.volume_pipeline_message || 'unknown error';
-        return '<div class="status-cell">'
-             + '<span class="status-icon status-stale" title="FlipHTML5 upload failed: ' + esc(msg) + '">✗</span>'
-             + '<div class="age" style="color:#c0392b;">failed</div></div>';
-    }
-    if (ps === 'success') {
-        return '<div class="status-cell">'
-             + '<span class="status-icon" style="color:#a36100;" title="Pipeline finished but FlipHTML5 upload was skipped: ' + esc(v.volume_pipeline_message || '') + '">⌛</span>'
-             + '<div class="age" style="color:#a36100;">skipped</div></div>';
-    }
-    // Default: never tried.
     return '<div class="status-cell">'
-         + '<span class="status-icon" style="color:#a36100;" title="PDF ready — flipbook upload pending">⌛</span>'
+         + '<span class="status-icon" style="color:#a36100;" title="PDF ready — flipbook not built yet (use Edit → Regenerate)">⌛</span>'
          + '<div class="age" style="color:#a36100;">pending</div></div>';
 }
 
@@ -619,7 +576,7 @@ function showVolumeForm(record) {
         pdfLink.style.pointerEvents = '';
     } else {
         pdfLink.removeAttribute('href');
-        pdfLink.textContent = r.volume_pdf ? '(' + r.volume_pdf + ' — file missing on disk)' : '(not generated yet)';
+        pdfLink.textContent = 'Pending Generation';
         pdfLink.style.color = '#888';
         pdfLink.style.pointerEvents = 'none';
     }
@@ -636,7 +593,7 @@ function showVolumeForm(record) {
         flipLink.style.pointerEvents = '';
     } else {
         flipLink.removeAttribute('href');
-        flipLink.textContent = r.volume_code ? '(' + r.volume_code + '/ — flipbook not built yet)' : '(no book code set)';
+        flipLink.textContent = 'Pending Generation';
         flipLink.style.color = '#888';
         flipLink.style.pointerEvents = 'none';
     }

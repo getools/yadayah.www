@@ -48,12 +48,15 @@ if ($method === 'GET') {
     // regeneration even if the row says "success".
     $publicRoot = dirname(__DIR__);
     foreach ($volumes as &$v) {
-        $docxAbs = !empty($v['volume_docx'])      ? $publicRoot . '/u/books-word/' . $v['volume_docx']     : null;
-        $pdfAbs  = !empty($v['volume_pdf'])       ? $publicRoot . '/pdf/'       . $v['volume_pdf']      : null;
-        $flipAbs = !empty($v['volume_flip_code']) ? $publicRoot . '/flipbook/'  . $v['volume_flip_code'] : null;
+        $docxAbs = !empty($v['volume_docx'])  ? $publicRoot . '/u/books-word/' . $v['volume_docx']  : null;
+        $pdfAbs  = !empty($v['volume_pdf'])   ? $publicRoot . '/pdf/'          . $v['volume_pdf']   : null;
+        // Flipbook lives at /<volume_code>/ (top-level, post-migration). Detect
+        // by index.html — that's what the migration script writes last, so its
+        // presence proves a complete rebuild.
+        $flipIdx = !empty($v['volume_code']) ? $publicRoot . '/' . $v['volume_code'] . '/index.html' : null;
         $v['volume_docx_mtime'] = ($docxAbs && is_file($docxAbs)) ? date('c', filemtime($docxAbs)) : null;
         $v['volume_pdf_mtime']  = ($pdfAbs  && is_file($pdfAbs))  ? date('c', filemtime($pdfAbs))  : null;
-        $v['volume_flip_mtime'] = ($flipAbs && is_dir($flipAbs))  ? date('c', filemtime($flipAbs)) : null;
+        $v['volume_flip_mtime'] = ($flipIdx && is_file($flipIdx)) ? date('c', filemtime($flipIdx)) : null;
     }
     unset($v);
 
@@ -110,57 +113,6 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     if (!is_dir($docxDir) && !@mkdir($docxDir, 0775, true)) errorResponse('Cannot create u/books-word directory');
     $docxPath = $docxDir . '/' . $docxName;
     if (!move_uploaded_file($file['tmp_name'], $docxPath)) errorResponse('Failed to save .docx file');
-
-    // Cover-vs-label sanity check: in May 2026 six volumes ended up with
-    // other volumes' DOCX content (silent slot mix-ups), each producing a
-    // PDF + flipbook with TOC links pointing at chapter names that didn't
-    // exist in the rendered book. Read the first ~4 KB of the DOCX's main
-    // document XML, strip tags, and look for any meaningful keyword from
-    // volume_label. Reject the upload (and roll back the saved file) if
-    // nothing matches. To force-accept an unusual upload, append ?force=1.
-    $force = !empty($_GET['force']);
-    if (!$force && class_exists('ZipArchive')) {
-        $zip = new ZipArchive();
-        if ($zip->open($docxPath) === true) {
-            $xml = $zip->getFromName('word/document.xml') ?: '';
-            $zip->close();
-            if ($xml !== '') {
-                $cover = preg_replace('/\s+/', ' ', strip_tags($xml));
-                $cover = mb_substr(trim($cover), 0, 4000);
-                $coverNorm = strtolower(preg_replace('/[^\p{L}\p{N}\s]/u', '', $cover));
-                $coverNoSpace = str_replace(' ', '', $coverNorm);
-                $label = $vol['volume_label'] ?: $vol['volume_name'] ?: '';
-                $keys = [];
-                $stop = ['the','and','for','of','to','at','by','in','on'];
-                foreach (preg_split('/[\s\-]+/', $label) as $p) {
-                    $n = strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $p));
-                    if ($n && strlen($n) >= 3 && !in_array($n, $stop, true)) {
-                        $keys[] = $n;
-                    }
-                }
-                if ($keys) {
-                    $hits = false;
-                    foreach ($keys as $k) {
-                        if (strpos($coverNorm, $k) !== false || strpos($coverNoSpace, $k) !== false) {
-                            $hits = true;
-                            break;
-                        }
-                    }
-                    if (!$hits) {
-                        @unlink($docxPath);
-                        errorResponse(
-                            "Upload rejected: the DOCX cover doesn't mention this volume's label. "
-                            . "Volume label: " . $label . ". "
-                            . "Expected any of: " . implode(', ', $keys) . ". "
-                            . "Cover preview: " . mb_substr($cover, 0, 240) . "... "
-                            . "If this is intentional, retry the upload with ?force=1 in the URL.",
-                            400
-                        );
-                    }
-                }
-            }
-        }
-    }
 
     // Persist source filename + flag BOTH pipelines as queued: the docx→pdf→
     // flipbook pipeline AND the paragraph/translation extraction pipeline.
@@ -359,6 +311,45 @@ if ($method === 'POST' && (($_GET['action'] ?? '') === 'regenerate_pdf'
         'job'         => basename($jobFile),
         'deleted_pdf' => $deletedPdf,
         'message'     => 'PDF regeneration queued — runs on next host worker tick (≤10 min).',
+    ]);
+}
+
+// Force a flipbook rebuild via /opt/yada-www/migrate_flipbook.sh on the host.
+// Drops a small JSON job file under /jobs/flipbook/; a host cron picks it up
+// and runs the rebuild, then deletes the job file. Same job-file pattern as
+// the PDF regen above — keeps PHP from needing host shell access.
+if ($method === 'POST' && (($_GET['action'] ?? '') === 'regenerate_flipbook'
+                            || (json_decode(file_get_contents('php://input'), true)['action'] ?? '') === 'regenerate_flipbook')) {
+    if (!$key) {
+        $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $key  = (int)($body['volume_key'] ?? 0);
+    }
+    if (!$key) errorResponse('Volume key required');
+
+    $volStmt = $db->prepare("SELECT volume_key, volume_code, volume_pdf FROM yy_volume WHERE volume_key = ?");
+    $volStmt->execute([$key]);
+    $vol = $volStmt->fetch();
+    if (!$vol) errorResponse('Volume not found', 404);
+    if (empty($vol['volume_code'])) errorResponse('Volume has no Book Code — set one before regenerating', 400);
+    if (empty($vol['volume_pdf']))  errorResponse('Volume has no PDF — generate the PDF first', 400);
+
+    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
+    $pdfAbs = $publicRoot . '/pdf/' . $vol['volume_pdf'];
+    if (!is_file($pdfAbs)) errorResponse('PDF file missing on disk: ' . basename($pdfAbs), 400);
+
+    $jobsDir = $publicRoot . '/jobs/flipbook';
+    if (!is_dir($jobsDir) && !@mkdir($jobsDir, 0775, true)) errorResponse('Cannot create jobs/flipbook dir');
+    $jobPayload = [
+        'volume_key' => (int)$key,
+        'book_code'  => $vol['volume_code'],
+        'queued_at'  => date('c'),
+    ];
+    $jobFile = $jobsDir . '/' . sprintf('%010d', $key) . '_flipbook_' . time() . '.json';
+    @file_put_contents($jobFile, json_encode($jobPayload, JSON_PRETTY_PRINT));
+    jsonResponse([
+        'queued'  => true,
+        'job'     => basename($jobFile),
+        'message' => 'Flipbook rebuild queued — runs on next host worker tick.',
     ]);
 }
 
