@@ -469,14 +469,14 @@ process_job() {
     # Honors yy_volume.volume_parse_flag (if FALSE, parser exits early with
     # status='skipped'). Failures here log a monitor event but do NOT mark
     # the docx→pdf→flip pipeline as failed — the artifacts are still good.
-    if [ -x /opt/yada-www/parsers/parse_volume.py ]; then
+    if [ -x /opt/yada-www/parsers/parse_volume_from_bundle.py ]; then
         log "Running paragraph + translation extraction (capped at $PARSER_MEM_MAX)"
         local pv_output pv_rc
         pv_output=$(systemd-run --scope --quiet \
             --property=MemoryMax=$PARSER_MEM_MAX \
             --property=MemorySwapMax=0 \
             --property=CPUQuota=$PARSER_CPU_QUOTA \
-            python3 /opt/yada-www/parsers/parse_volume.py --volume-key "$volume_key" 2>&1) || pv_rc=$?
+            python3 /opt/yada-www/parsers/parse_volume_from_bundle.py --volume-key "$volume_key" 2>&1) || pv_rc=$?
         pv_rc=${pv_rc:-0}
         echo "$pv_output" >> /var/log/book-pipeline.log
         if [ "$pv_rc" -ne 0 ]; then
@@ -654,7 +654,7 @@ fi
 # their parse work was never triggered (e.g. docx was uploaded before the
 # parser pipeline existed, or a previous parse errored). Process at most 1
 # per tick to avoid hogging the host. The next 2-min tick picks up the next.
-if [ -x /opt/yada-www/parsers/parse_volume.py ]; then
+if [ -x /opt/yada-www/parsers/parse_volume_from_bundle.py ]; then
     parse_target=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -c "SELECT volume_key FROM yy_volume WHERE volume_docx IS NOT NULL AND (volume_parse_status IS NULL OR volume_parse_status IN ('queued','stale')) ORDER BY CASE WHEN volume_parse_status='queued' THEN 0 ELSE 1 END, volume_key LIMIT 1")
     if [ -n "$parse_target" ]; then
         log "Parse-sweep: picking up volume $parse_target"
@@ -663,7 +663,7 @@ if [ -x /opt/yada-www/parsers/parse_volume.py ]; then
             --property=MemoryMax=$PARSER_MEM_MAX \
             --property=MemorySwapMax=0 \
             --property=CPUQuota=$PARSER_CPU_QUOTA \
-            python3 /opt/yada-www/parsers/parse_volume.py --volume-key "$parse_target" 2>&1) || ps_rc=$?
+            python3 /opt/yada-www/parsers/parse_volume_from_bundle.py --volume-key "$parse_target" 2>&1) || ps_rc=$?
         echo "$ps_output" >> /var/log/book-pipeline.log
         if [ "$ps_rc" -ne 0 ]; then
             log "Parse-sweep: volume $parse_target failed (exit $ps_rc)"
