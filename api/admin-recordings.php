@@ -133,12 +133,37 @@ if (!empty($mp3Filter)) {
     else if ($hasNo && !$hasYes) $where .= " AND fi.feed_item_audio_file IS NULL";
 }
 if (!empty($captionStatuses)) {
+    // Transcript-state cascade — every row falls into exactly one of:
+    //   captions — yt_caption_uploaded_dtime IS NOT NULL AND no later
+    //              Approved review (the upload is current).
+    //   reviewed — latest validation = 'Approved' AND (no upload yet
+    //              OR latest review is newer than the upload — i.e.
+    //              upload is stale w.r.t. the current review).
+    //   pending  — has transcript records, no Approved review, no
+    //              upload date yet.
+    //   missing  — no transcript records at all.
+    $hasTx        = "EXISTS(SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key)";
+    $latestStatus = "(SELECT v.validation_status FROM yy_feed_item_transcript_validation v
+                       WHERE v.feed_item_key = fi.feed_item_key
+                       ORDER BY v.validation_dtime DESC LIMIT 1)";
+    $latestDtime  = "(SELECT v.validation_dtime FROM yy_feed_item_transcript_validation v
+                       WHERE v.feed_item_key = fi.feed_item_key
+                       ORDER BY v.validation_dtime DESC LIMIT 1)";
     $capOrs = [];
     foreach ($captionStatuses as $cs) {
-        if ($cs === 'completed') $capOrs[] = "fi.feed_item_yt_caption_status = 'success'";
-        elseif ($cs === 'queued')    $capOrs[] = "fi.feed_item_yt_caption_status = 'queued'";
-        elseif ($cs === 'error')     $capOrs[] = "fi.feed_item_yt_caption_status = 'error'";
-        elseif ($cs === 'never')     $capOrs[] = "(fi.feed_item_yt_caption_status IS NULL OR fi.feed_item_yt_caption_status = 'never')";
+        if ($cs === 'captions') {
+            $capOrs[] = "(fi.feed_item_yt_caption_uploaded_dtime IS NOT NULL
+                          AND NOT ($latestStatus = 'Approved' AND $latestDtime > fi.feed_item_yt_caption_uploaded_dtime))";
+        } elseif ($cs === 'reviewed') {
+            $capOrs[] = "($hasTx AND $latestStatus = 'Approved'
+                          AND (fi.feed_item_yt_caption_uploaded_dtime IS NULL
+                            OR $latestDtime > fi.feed_item_yt_caption_uploaded_dtime))";
+        } elseif ($cs === 'pending') {
+            $capOrs[] = "($hasTx AND ($latestStatus IS DISTINCT FROM 'Approved')
+                          AND fi.feed_item_yt_caption_uploaded_dtime IS NULL)";
+        } elseif ($cs === 'missing') {
+            $capOrs[] = "NOT $hasTx";
+        }
     }
     if ($capOrs) $where .= " AND (" . implode(' OR ', $capOrs) . ")";
 }
@@ -223,6 +248,9 @@ $stmt = $db->prepare("
            (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
               WHERE v.feed_item_key = fi.feed_item_key
               ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_status,
+           (SELECT v.validation_dtime FROM yy_feed_item_transcript_validation v
+              WHERE v.feed_item_key = fi.feed_item_key
+              ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_dtime,
            (SELECT v.validation_bookmark_seconds FROM yy_feed_item_transcript_validation v
               WHERE v.feed_item_key = fi.feed_item_key
               ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_bookmark_seconds,

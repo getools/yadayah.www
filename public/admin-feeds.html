@@ -212,8 +212,20 @@
             #rec-table .rec-filter { width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:0.7rem;font-weight:normal;box-sizing:border-box; }
             #rec-table .rec-sortable-label { cursor:pointer;user-select:none; }
             #rec-table th { vertical-align:top; }
-            #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.68rem;font-weight:normal; }
-            #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer; }
+            /* Action-row buttons: pin to a common height so the single-line
+               "↑ Upload" matches the two-line "▶ Record" (which gains a
+               sub-line showing N files · total duration when rows are
+               checked). Without this they jitter at different heights. */
+            #rec-process-btn, #rec-upload-btn, #rec-stop-btn {
+                min-height: 25px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                line-height: 1.15;
+            }
+            #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.7rem;font-weight:normal; }
+            #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer;font-weight:normal;font-size:0.7rem; }
             /* Very light warm tint for rows currently in a finalize /
                transcribe pipeline. Marks the row as "do not touch" without
                reducing legibility. Applied per-td so border-collapse layouts
@@ -221,6 +233,11 @@
             #rec-table tr.rec-row-inprogress td { background-color: #fff9e6; }
             #rec-table tr.rec-row-inprogress:hover td { background-color: #fff3c7; }
         </style>
+        <!-- Hidden file input used by per-row MP3 upload icons in the
+             MP3 column. recMp3UploadClick() stashes the target row's
+             feed_item_key on it before triggering, then onchange POSTs
+             to admin-transcript-upload.php with that item_key. -->
+        <input type="file" id="rec-mp3-upload-input" accept="audio/mpeg,.mp3" style="display:none;" onchange="recMp3UploadHandle(this)">
         <table class="feeds-table" id="rec-table">
             <thead>
                 <!-- Action row — buttons sit directly above the column they
@@ -231,7 +248,7 @@
                     <th colspan="7" style="background:#fafafa;border-bottom:0;padding:6px 8px;text-align:right;">
                         <span id="rec-batch-status-inline" style="font-size:0.78rem;color:#666;"></span>
                     </th>
-                    <th colspan="2" style="background:#fafafa;border-bottom:0;"></th>
+                    <th style="background:#fafafa;border-bottom:0;"></th>
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;white-space:nowrap;">▶ Record</button>
                         <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;white-space:nowrap;">⬛ Stop</button>
@@ -275,22 +292,21 @@
                             <label><input type="checkbox" id="rec-f-mp3-no"  value="no"  onchange="loadRecordings(1)"> No</label>
                         </div>
                     </th>
-                    <th style="width:110px;">
-                        <span>Transcribe</span>
-                    </th>
                     <th style="width:120px;" class="rec-sortable" data-col="processed">
-                        <span class="rec-sortable-label" onclick="recSort('processed')">Processed</span>
+                        <span class="rec-sortable-label" onclick="recSort('processed')">Recording</span>
                         <div class="rec-status-checks" onclick="event.stopPropagation()">
                             <label><input type="checkbox" id="rec-f-status-complete" onchange="loadRecordings(1)"> Complete</label>
                             <label><input type="checkbox" id="rec-f-status-partial"  onchange="loadRecordings(1)" checked> Partial</label>
                             <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
                         </div>
                     </th>
-                    <th style="width:130px;" title="Per-row YouTube caption upload status">
-                        <span>Captions</span>
-                        <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;">
-                            <label><input type="checkbox" id="rec-f-cap-completed" value="completed" onchange="loadRecordings(1)"> Completed</label>
-                            <label><input type="checkbox" id="rec-f-cap-queued"    value="queued"    onchange="loadRecordings(1)"> Queued</label>
+                    <th style="width:140px;" title="Transcript / caption-upload state">
+                        <span>Transcript</span>
+                        <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;font-weight:normal;">
+                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-captions" value="captions" onchange="loadRecordings(1)" title="Transcript has been uploaded to YouTube as a caption track and is current (no later review)"> Captions</label>
+                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-reviewed" value="reviewed" onchange="loadRecordings(1)" title="Transcript reviewed/Approved; not yet uploaded (or upload is older than review)"> Reviewed</label>
+                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-pending"  value="pending"  onchange="loadRecordings(1)" title="Transcript records exist but haven't been Approved by an admin"> Pending</label>
+                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-missing"  value="missing"  onchange="loadRecordings(1)" title="No transcript records yet"> Missing</label>
                         </div>
                     </th>
                     <th style="width:110px;">
@@ -309,7 +325,7 @@
                     </th>
                     <th style="width:220px;">
                         <span>Categories</span>
-                        <div id="rec-f-categories" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:80px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                        <div id="rec-f-categories" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:96px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
                             <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
                     </th>
@@ -1606,7 +1622,6 @@ function openTranscript(itemKey) {
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
-            + '<a href="/admin-download-audio.bat" download title="Windows .bat that downloads YouTube audio using your browser cookies, then you upload it" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Helper .bat ↓</a>'
             + '<button onclick="addTranscriptRow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">+ Row</button>'
             + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '<span style="border-left:1px solid #ddd;height:24px;margin:0 4px;"></span>'
@@ -2066,41 +2081,74 @@ function ytCaptionsDisconnectFeed(feedKey) {
 })();
 
 
-// ── Captions column helpers ──────────────────────────────────────────
-// Renders the per-row Captions cell. Five visual states:
-//   - feed not connected → '—'
-//   - no transcript      → '—' (nothing to upload)
-//   - status=success and not stale → '✓ <relative time>'
-//   - status=success but segments_at_upload != current count → 'stale + Upload'
-//   - status=queued / never / error / uploading → matching label + Upload button
-function recCaptionsCell(it) {
-    if (!it.feed_yt_connected) {
-        return '<span style="color:#bbb;" title="Connect this feed via Sources tab to enable caption uploads">—</span>';
+// ── Transcript column cell ────────────────────────────────────────────
+// Single merged cell replacing the prior Transcribe + Captions columns.
+// Renders one of four mutually-exclusive states (cascade priority):
+//
+//   Reviewed — latest validation = 'Approved' AND (no upload yet OR
+//              latest review is newer than the upload). Shown in amber
+//              with the review datetime underneath. The upload is
+//              effectively stale w.r.t. the current review.
+//   Uploaded — yt_caption_uploaded_dtime IS NOT NULL AND no later
+//              Approved review. Shown in green with the upload datetime.
+//   Pending  — has transcript records, no Approved review, no upload.
+//              Shown in muted yellow with the most recent review/edit
+//              datetime if any.
+//   Missing  — no transcript records at all.
+//
+// The whole cell is clickable — opens the Transcribe popover so the
+// admin can review/edit/approve the transcript.
+function recTranscriptCellFmtDate(s) {
+    if (!s) return '';
+    var d = new Date(s);
+    if (isNaN(d)) return '';
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+function recTranscriptCell(it) {
+    var hasTx     = it.has_transcript === true || it.has_transcript === 't';
+    var uploadDt  = it.yt_caption_uploaded_dtime || null;
+    var reviewSt  = it.transcript_validation_status || null;
+    var reviewDt  = it.transcript_validation_dtime || null;
+    var label, color, dateLine, title;
+    var reviewIsNewer = reviewDt && uploadDt && (new Date(reviewDt) > new Date(uploadDt));
+    if (!hasTx) {
+        label = 'Missing'; color = '#999'; dateLine = '';
+        title = 'No transcript records yet';
+    } else if (reviewSt === 'Approved' && (!uploadDt || reviewIsNewer)) {
+        label = 'Reviewed'; color = '#a36100';
+        dateLine = recTranscriptCellFmtDate(reviewDt);
+        title = uploadDt
+            ? 'Approved on ' + dateLine + ' — newer than the YouTube upload (' + recTranscriptCellFmtDate(uploadDt) + ')'
+            : 'Approved on ' + dateLine + ' — not yet uploaded to YouTube';
+    } else if (uploadDt) {
+        label = 'Uploaded'; color = '#1b5e20';
+        dateLine = recTranscriptCellFmtDate(uploadDt);
+        title = 'Uploaded to YouTube on ' + dateLine;
+    } else {
+        label = 'Pending'; color = '#856404';
+        // Show how far into the video the last reviewer paused (bookmark
+        // saved by the Transcribe popover's auto-bookmark). If no
+        // review activity yet, fall back to the latest review datetime
+        // if any.
+        var sec = Math.max(0, Math.floor(Number(it.transcript_bookmark_seconds) || 0));
+        if (sec > 0) {
+            var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+            var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
+            dateLine = h > 0 ? pad(h) + ':' + pad(m) + ':' + pad(x) : pad(m) + ':' + pad(x);
+            title = 'Last reviewer left off at ' + dateLine + ' — not yet Approved';
+        } else {
+            dateLine = recTranscriptCellFmtDate(reviewDt);
+            title = 'Transcript exists but has not been Approved by an admin';
+        }
     }
-    var segs = parseInt(it.yt_caption_segment_count || 0, 10);
-    if (segs === 0) {
-        return '<span style="color:#bbb;" title="No transcript segments yet">—</span>';
-    }
-    var st = (it.yt_caption_status || 'never').toLowerCase();
-    var atUpload = parseInt(it.yt_caption_segments_at_upload || 0, 10);
-    var stale = (st === 'success' && atUpload && atUpload !== segs);
-    var btn = '<button class="rec-caption-upload-btn" onclick="event.stopPropagation();uploadCaptions(' + it.feed_item_key + ', this)" '
-            + 'style="background:#31345A;color:#fff;border:0;padding:3px 9px;border-radius:3px;font-size:0.72rem;cursor:pointer;font-weight:600;">↑ Upload</button>';
-    if (st === 'success' && !stale) {
-        var when = it.yt_caption_uploaded_dtime ? new Date(it.yt_caption_uploaded_dtime).toLocaleDateString() : '';
-        return '<span style="color:#1b5e20;font-weight:600;" title="Last uploaded ' + esc(it.yt_caption_uploaded_dtime || '') + '">✓ ' + esc(when) + '</span>';
-    }
-    if (st === 'success' && stale) {
-        return '<span style="color:#a36100;font-weight:600;" title="Transcript edited since last upload">↻ stale</span> ' + btn;
-    }
-    if (st === 'uploading') {
-        return '<span style="color:#666;">⏳ uploading…</span>';
-    }
-    if (st === 'error') {
-        return '<span style="color:#c0392b;font-weight:600;" title="' + esc(it.yt_caption_message || '') + '">✗ error</span> ' + btn;
-    }
-    // queued or never with a transcript
-    return '<span style="color:#a36100;">queued</span> ' + btn;
+    return '<button onclick="openTranscript(' + it.feed_item_key + ')" '
+        + 'title="' + esc(title) + '" '
+        + 'style="background:none;border:none;cursor:pointer;padding:2px 4px;font-family:inherit;text-align:center;width:100%;line-height:1.2;">'
+        + '<div style="color:' + color + ';font-weight:600;font-size:0.78rem;">' + label + '</div>'
+        + (dateLine ? '<div style="font-size:0.65rem;color:#888;font-family:monospace;margin-top:1px;">' + dateLine + '</div>' : '')
+        + '</button>';
 }
 function uploadCaptions(feedItemKey, btnEl) {
     if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
@@ -2134,6 +2182,40 @@ function batchUploadCaptions(btnEl) {
     }).finally(function () {
         if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Batch upload'; }
     });
+}
+
+// Per-row MP3 upload (icon in the MP3 column on rows without audio).
+// Clicking the icon stashes the target feed_item_key on the hidden file
+// input, then triggers the picker. The onchange handler POSTs to the
+// existing transcript-upload endpoint and refreshes the list when done.
+var _recMp3UploadItemKey = null;
+function recMp3UploadClick(feedItemKey) {
+    _recMp3UploadItemKey = feedItemKey;
+    var input = document.getElementById('rec-mp3-upload-input');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+function recMp3UploadHandle(input) {
+    if (!input.files || !input.files.length || !_recMp3UploadItemKey) return;
+    var feedItemKey = _recMp3UploadItemKey;
+    var file = input.files[0];
+    var fd = new FormData();
+    fd.append('item_key', feedItemKey);
+    fd.append('file', file);
+    fetch('/api/admin-transcript-upload.php', {method:'POST', credentials:'include', body: fd})
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+            if (d && d.error) {
+                alert('Upload failed: ' + d.error);
+            }
+        })
+        .catch(function(e) { alert('Upload failed: ' + e.message); })
+        .finally(function() {
+            input.value = '';
+            _recMp3UploadItemKey = null;
+            if (typeof loadRecordings === 'function') loadRecordings();
+        });
 }
 
 // Header "↑ Upload" button. If rows are checked, upload exactly those.
@@ -2292,7 +2374,8 @@ function _persistRecFilters() {
         pageKeys: pageKeys,
         categoryKeys: categoryKeys,
         mp3Yes: c('rec-f-mp3-yes'), mp3No: c('rec-f-mp3-no'),
-        capCompleted: c('rec-f-cap-completed'), capQueued: c('rec-f-cap-queued'),
+        capCaptions: c('rec-f-cap-captions'), capReviewed: c('rec-f-cap-reviewed'),
+        capPending: c('rec-f-cap-pending'), capMissing: c('rec-f-cap-missing'),
         episode: v('rec-f-episode'),
         perPage: parseInt((document.getElementById('rec-per-page')||{}).value, 10) || 50,
     });
@@ -2321,8 +2404,10 @@ function _restoreRecFiltersFromStorage() {
     if (Array.isArray(saved.categoryKeys)) window._recRestoredCategoryKeys = saved.categoryKeys;
     setChk('rec-f-mp3-yes', saved.mp3Yes);
     setChk('rec-f-mp3-no', saved.mp3No);
-    setChk('rec-f-cap-completed', saved.capCompleted);
-    setChk('rec-f-cap-queued', saved.capQueued);
+    setChk('rec-f-cap-captions', saved.capCaptions);
+    setChk('rec-f-cap-reviewed', saved.capReviewed);
+    setChk('rec-f-cap-pending', saved.capPending);
+    setChk('rec-f-cap-missing', saved.capMissing);
     setVal('rec-f-episode', saved.episode);
 }
 function itemsClearFilters() {
@@ -2349,7 +2434,7 @@ function recClearFilters() {
     var ia = document.getElementById('rec-f-istatus-active');     if (ia) ia.checked = true;
     var ir = document.getElementById('rec-f-istatus-restricted'); if (ir) ir.checked = false;
     var ii = document.getElementById('rec-f-istatus-inactive');   if (ii) ii.checked = false;
-    ['rec-f-mp3-yes','rec-f-mp3-no','rec-f-cap-completed','rec-f-cap-queued'].forEach(function(id){
+    ['rec-f-mp3-yes','rec-f-mp3-no','rec-f-cap-captions','rec-f-cap-reviewed','rec-f-cap-pending','rec-f-cap-missing'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.checked = false;
     });
     document.querySelectorAll('#rec-f-pages input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
@@ -2520,7 +2605,7 @@ function renderRecordings(d) {
         span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
     });
     if (!_recItems.length) {
-        body.innerHTML = '<tr><td colspan="16" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
+        body.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
         var sa = document.getElementById('rec-select-all'); if (sa) sa.checked = false;
         return;
     }
@@ -2581,9 +2666,7 @@ function renderRecordings(d) {
             // cancel confirm if only finalize / transcribe is running.
             processed = '<button onclick="handleLockedRecordingClick(' + it.feed_item_key + ', ' + JSON.stringify(inProgressReason).replace(/"/g, '&quot;') + ')" '
                       + 'title="Click for details — locked: ' + esc(inProgressReason) + '" '
-                      + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;background:#fff8e1;">⏳ ' + esc(inProgressShort) + '</button>'
-                      + '<div style="font-size:0.65rem;color:#a36100;margin-top:2px;text-align:center;font-weight:normal;" title="' + esc(inProgressReason) + '">'
-                      + esc(inProgressShort) + '</div>';
+                      + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;background:#fff8e1;">⏳ ' + esc(inProgressShort) + '</button>';
         } else if (it.processed_status === 'complete') {
             processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>'
                       + '<button onclick="verifyRecordingSync(' + it.feed_item_key + ')" '
@@ -2644,10 +2727,11 @@ function renderRecordings(d) {
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(pub) + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(it.feed_name || it.feed_site_code || '') + '</td>'
             +     '<td style="font-size:0.78rem;color:#666;">' + esc(dur) + '</td>'
-            +     '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3" style="text-decoration:none;font-size:1.1rem;">&#127911;</a>' : '') + '</td>'
-            +     '<td style="text-align:center;">' + transcribeBtnHtml(it) + '</td>'
+            +     '<td style="text-align:center;">' + (it.feed_item_audio_file
+                    ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3" style="text-decoration:none;font-size:1.1rem;">&#127911;</a>'
+                    : '<button onclick="recMp3UploadClick(' + it.feed_item_key + ')" title="Upload MP3 for this video" style="background:none;border:none;cursor:pointer;font-size:1rem;color:#31345A;padding:2px 6px;">&#11014;</button>') + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
-            +     '<td style="font-size:0.78rem;">' + recCaptionsCell(it) + '</td>'
+            +     '<td style="font-size:0.78rem;text-align:center;">' + recTranscriptCell(it) + '</td>'
             +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
             +     '<td style="font-size:0.75rem;color:#888;">' + (function() {
