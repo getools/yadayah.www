@@ -2641,39 +2641,41 @@ function renderRecordings(d) {
         //   recording_parts:120s_ago               → "Recording (uploads)"
         //   finalize:encoding                      → "Encoding..."
         //   transcribe:running                     → "Transcribing..."
-        var inProgressShort = (function(r) {
-            if (!r) return '';
-            // Reason format from admin-recordings.php:
-            //   recording_active:by:<user>:<age>s_ago:<now|queued>
-            // The last segment distinguishes the actively-recording item
-            // ("now") from items merely held in someone's batch queue
-            // ("queued") — only "queued" can be force-cleared.
+        // Returns { label, full } — label is what shows on the button face
+        // (no user account / id — that goes in the title for hover only),
+        // full is what shows in the tooltip.
+        var inProgressInfo = (function(r) {
+            if (!r) return { label: '', full: '' };
             var m = r.match(/recording_active:by:([^:]+):[^:]+:(now|queued)/);
-            if (m) return (m[2] === 'now' ? 'Recording — ' : 'Queued by ') + m[1];
-            // Legacy (pre-recording_now) reason without the now|queued tag.
+            if (m) {
+                var prefix = m[2] === 'now' ? 'Recording' : 'Queued';
+                return { label: prefix, full: prefix + (m[2] === 'now' ? ' — ' : ' by ') + m[1] };
+            }
             var legacy = r.match(/recording_active:by:([^:]+)/);
-            if (legacy) return 'Locked by ' + legacy[1];
-            if (r.indexOf('recording_active') !== -1) return 'Recording';
-            if (r.indexOf('recording_parts')  !== -1) return 'Recording (uploads)';
-            if (r.indexOf('finalize:')        !== -1) return 'Encoding...';
-            if (r.indexOf('transcribe:')      !== -1) return 'Transcribing...';
-            return r;
+            if (legacy) return { label: 'Locked', full: 'Locked by ' + legacy[1] };
+            if (r.indexOf('recording_active') !== -1) return { label: 'Recording', full: 'Recording' };
+            if (r.indexOf('recording_parts')  !== -1) return { label: 'Recording', full: 'Recording (uploads)' };
+            if (r.indexOf('finalize:')        !== -1) return { label: 'Encoding...', full: 'Encoding...' };
+            if (r.indexOf('transcribe:')      !== -1) return { label: 'Transcribing...', full: 'Transcribing...' };
+            return { label: r, full: r };
         })(inProgressReason);
+        var inProgressShort = inProgressInfo.label;
+        var inProgressFull  = inProgressInfo.full;
         if (inProgress) {
             // Clickable button — clicking triggers handleLockedRecordingClick,
             // which shows an OK-only "actively recording" dialog if a popout
             // is currently holding the heartbeat lock, OR a force-unlock /
             // cancel confirm if only finalize / transcribe is running.
             processed = '<button onclick="handleLockedRecordingClick(' + it.feed_item_key + ', ' + JSON.stringify(inProgressReason).replace(/"/g, '&quot;') + ')" '
-                      + 'title="Click for details — locked: ' + esc(inProgressReason) + '" '
+                      + 'title="' + esc(inProgressFull) + ' — click for details" '
                       + 'style="' + commonBtn + 'color:#a36100;border-color:#e0c000;background:#fff8e1;">⏳ ' + esc(inProgressShort) + '</button>';
         } else if (it.processed_status === 'complete') {
-            processed = '<span style="color:#1d6b3a;font-weight:600;">✓ Complete</span>'
-                      + '<button onclick="verifyRecordingSync(' + it.feed_item_key + ')" '
+            // Single "Complete" button — opens the same Verify window the
+            // dedicated Verify button used to. Clicking now runs the
+            // MP3-vs-YouTube sync check directly.
+            processed = '<button onclick="verifyRecordingSync(' + it.feed_item_key + ')" '
                       + 'title="Run automated sync check between MP3 and YouTube audio" '
-                      + 'style="display:block;margin-top:4px;background:#fff;color:#1976d2;border:1px solid #1976d2;'
-                      + 'padding:3px 8px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:600;width:100%;">'
-                      + '🔍 Verify</button>';
+                      + 'style="' + commonBtn + 'color:#1d6b3a;border-color:#a3d4ad;background:#eaf6ee;">✓ Complete</button>';
         } else if (it.processed_status === 'partial') {
             var recSec = it.resume_seconds || 0, totSec = it.feed_item_duration_seconds || 0;
             var pct = totSec ? Math.round((recSec/totSec)*100) : 0;
