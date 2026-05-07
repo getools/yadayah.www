@@ -47,7 +47,12 @@ function ytCaptionsAuthUrl(PDO $db, string $stateNonce, int $feedKey): ?string {
         'response_type'          => 'code',
         'scope'                  => YT_CAPTIONS_SCOPE,
         'access_type'            => 'offline',     // we want a refresh_token
-        'prompt'                 => 'consent',     // force refresh_token even on re-auth
+        // select_account: ALWAYS show the Google account chooser. Without
+        // this, re-clicking Connect silently re-uses the previously-signed
+        // account, which makes Brand-Account mistakes hard to recover
+        // from (caption writes 403 if the picked identity doesn't own
+        // the channel). consent: force re-issue of refresh_token.
+        'prompt'                 => 'select_account consent',
         'include_granted_scopes' => 'true',
         'state'                  => $stateNonce . ':' . $feedKey,
     ];
@@ -276,6 +281,41 @@ function ytCaptionsListTracks(string $accessToken, string $videoId): ?array {
         ];
     }
     return $out;
+}
+
+/**
+ * Resolve the right caption-track ID to UPDATE for a video, given a
+ * candidate ID we may have stored from a prior run.
+ *
+ *   - If $candidateId exists in captions.list AND its trackKind is NOT
+ *     'asr', return it as-is.
+ *   - Otherwise (missing, or ASR auto-caption) look for a non-ASR
+ *     track named 'English' or language 'en' and return its ID.
+ *   - If nothing usable exists, return null → caller should INSERT.
+ *
+ * The 'asr' filter matters because YouTube auto-generated tracks
+ * cannot be updated or deleted via the Data API; PUTting to one
+ * returns 403 ("permissions … not sufficient") or 404 ("could not
+ * be found"). We never want to target one for replace.
+ */
+function ytCaptionsResolveUpdatableTrack(string $accessToken, string $videoId, ?string $candidateId): ?string {
+    $tracks = ytCaptionsListTracks($accessToken, $videoId);
+    if (!is_array($tracks)) return null;
+    if ($candidateId) {
+        foreach ($tracks as $t) {
+            if ($t['id'] === $candidateId) {
+                return strcasecmp($t['trackKind'] ?? '', 'asr') === 0 ? null : $candidateId;
+            }
+        }
+        // candidate not in list anymore — fall through to discovery
+    }
+    foreach ($tracks as $t) {
+        if (strcasecmp($t['trackKind'] ?? '', 'asr') === 0) continue;
+        if (strcasecmp($t['name'] ?? '', 'English') === 0 || ($t['language'] ?? '') === 'en') {
+            return $t['id'];
+        }
+    }
+    return null;
 }
 
 /**

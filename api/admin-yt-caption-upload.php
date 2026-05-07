@@ -67,42 +67,21 @@ if (!$token) {
     jsonResponse(['ok' => false, 'status' => 'error', 'message' => 'Access token mint failed']);
 }
 
-// Find existing track to UPDATE; else INSERT new.
-$existingTrackId = null;
-// Prefer the track id we previously stored (most reliable).
+// Resolve which existing track (if any) we can UPDATE. The helper
+// inspects captions.list, ignores ASR auto-tracks (not updatable via
+// the API), and returns null if nothing usable exists → INSERT.
 $prev = $db->prepare("SELECT feed_item_yt_caption_track_id FROM yy_feed_item WHERE feed_item_key = ?");
 $prev->execute([$feedItemKey]);
-$existingTrackId = $prev->fetchColumn() ?: null;
+$candidate = $prev->fetchColumn() ?: null;
+$existingTrackId = ytCaptionsResolveUpdatableTrack($token, $videoId, $candidate);
 
-if (!$existingTrackId) {
-    // Fallback: ask YouTube for tracks on this video; if there's one named
-    // "English" we replace it (matches the user's "assume replace" pref).
-    $tracks = ytCaptionsListTracks($token, $videoId);
-    if (is_array($tracks)) {
-        foreach ($tracks as $t) {
-            // ASR = YouTube auto-generated, NOT updatable via the API.
-            if (strcasecmp($t['trackKind'] ?? '', 'asr') === 0) continue;
-            if (strcasecmp($t['name'], 'English') === 0 || $t['language'] === 'en') {
-                $existingTrackId = $t['id'];
-                break;
-            }
-        }
-    }
-}
+$result = ytCaptionsUploadSrt($token, $videoId, $srt, $existingTrackId, 'English', 'en');
 
-$result = ytCaptionsUploadSrt(
-    $token,
-    $videoId,
-    $srt,
-    $existingTrackId,
-    'English',
-    'en'
-);
-
-// Stale stored track id? YouTube returns 404 when the captions resource
-// no longer exists (deleted in Studio, or never updatable like ASR).
-// Clear the stale id and retry as INSERT exactly once.
-if (!$result['ok'] && $existingTrackId && $result['http'] === 404) {
+// If captions.update came back 403/404 (track gone, or not actually
+// writable by this token despite passing our prefilter — possible if
+// the list response was cached or raced), drop the id and retry as
+// INSERT exactly once.
+if (!$result['ok'] && $existingTrackId && in_array($result['http'], [403, 404], true)) {
     $existingTrackId = null;
     $result = ytCaptionsUploadSrt($token, $videoId, $srt, null, 'English', 'en');
 }

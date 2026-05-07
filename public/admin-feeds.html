@@ -194,10 +194,7 @@
             <div style="flex:1;text-align:center;min-width:0;">
                 <span id="rec-count" class="feed-count"></span>
             </div>
-            <div style="width:240px;flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;">
-                <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
-                <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
-            </div>
+            <div style="width:240px;flex-shrink:0;"></div>
         </div>
         <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
         <style>
@@ -215,6 +212,23 @@
         </style>
         <table class="feeds-table" id="rec-table">
             <thead>
+                <!-- Action row — buttons sit directly above the column they
+                     act on. Record covers Processed (selected → record popout);
+                     Upload covers Captions (selected → per-item caption upload,
+                     or, with no selection, prompts to upload all queued). -->
+                <tr class="rec-action-row">
+                    <th colspan="7" style="background:#fafafa;border-bottom:0;padding:6px 8px;text-align:right;">
+                        <span id="rec-batch-status-inline" style="font-size:0.78rem;color:#666;"></span>
+                    </th>
+                    <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
+                        <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;white-space:nowrap;">▶ Record</button>
+                        <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;white-space:nowrap;">⬛ Stop</button>
+                    </th>
+                    <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
+                        <button class="btn btn-primary btn-sm" id="rec-upload-btn" onclick="uploadCaptionsBulkFromHeader(this)" style="background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;" title="Upload transcripts as YouTube captions for selected rows; if none selected, prompts to upload all queued">↑ Upload</button>
+                    </th>
+                    <th colspan="2" style="background:#fafafa;border-bottom:0;"></th>
+                </tr>
                 <tr>
                     <th style="width:36px;vertical-align:top;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
                     <th style="width:120px;">Thumb<br><button onclick="recClearFilters()" style="margin-top:4px;background:#fff;border:1px solid #ccc;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:normal;">Clear filters</button></th>
@@ -796,11 +810,16 @@ function renderAll() {
         var oauthCell = '<td onclick="event.stopPropagation()" style="white-space:nowrap;">';
         if (String(f.feed_site_code).toLowerCase() === 'youtube') {
             if (f.feed_yt_caption_connected) {
-                oauthCell += '<span style="color:#1b5e20;font-size:0.78rem;font-weight:600;" title="Channel: '
-                          + esc(f.feed_yt_caption_channel_title || '?') + '">✓ '
+                // Channel title doubles as a Reconnect link — clicking
+                // re-runs the OAuth flow (Google now shows the account
+                // chooser), overwriting the stored refresh token. Useful
+                // when the wrong identity was picked the first time.
+                oauthCell += '<a href="/api/admin-yt-captions-connect.php?feed_key=' + f.feed_key + '" '
+                          + 'title="Reconnect — pick a different Google account if caption uploads are 403ing. Currently connected as: '
+                          + esc(f.feed_yt_caption_channel_title || '?') + '" '
+                          + 'style="color:#1b5e20;font-size:0.78rem;font-weight:600;text-decoration:none;border-bottom:1px dotted #1b5e20;">✓ '
                           + esc(f.feed_yt_caption_channel_title || 'Connected')
-                          + '</span>'
-                         ;
+                          + '</a>';
             } else {
                 oauthCell += '<a href="/api/admin-yt-captions-connect.php?feed_key=' + f.feed_key + '" '
                           +   'class="btn btn-primary btn-sm" '
@@ -2080,6 +2099,53 @@ function batchUploadCaptions(btnEl) {
     });
 }
 
+// Header "↑ Upload" button. If rows are checked, upload exactly those.
+// If none, ask the server how many queued/never/error items are
+// eligible site-wide and prompt before kicking off the batch.
+function uploadCaptionsBulkFromHeader(btnEl) {
+    var ids = (typeof getSelectedRecordingKeys === 'function') ? getSelectedRecordingKeys() : [];
+    if (ids.length) {
+        if (!confirm('Upload transcripts to YouTube as captions for ' + ids.length
+                   + ' selected video' + (ids.length === 1 ? '' : 's') + '?')) return;
+        _bulkCaptionRun(btnEl, { feed_item_keys: ids }, ids.length);
+        return;
+    }
+    // No selection — fetch count first so the prompt is informative.
+    var origLabel = btnEl ? btnEl.textContent : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
+    fetch('/api/admin-yt-caption-upload-batch.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({count_only: true}),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        var n = parseInt(d.count || 0, 10);
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = origLabel || '↑ Upload'; }
+        if (n === 0) { alert('No queued or never-uploaded transcripts to upload.'); return; }
+        if (!confirm('No rows selected.\n\nUpload all ' + n + ' queued/never/error transcript'
+                   + (n === 1 ? '' : 's') + ' to YouTube as captions?')) return;
+        _bulkCaptionRun(btnEl, {}, n);
+    }).catch(function (e) {
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = origLabel || '↑ Upload'; }
+        alert('Could not get queued count: ' + e.message);
+    });
+}
+function _bulkCaptionRun(btnEl, payload, expected) {
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Uploading ' + expected + '…'; }
+    fetch('/api/admin-yt-caption-upload-batch.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        alert('Caption upload done: ' + (d.success || 0) + ' ok, ' + (d.failed || 0)
+            + ' failed (out of ' + (d.processed || 0) + ').');
+        if (typeof loadRecordings === 'function') loadRecordings();
+    }).catch(function (e) {
+        alert('Caption upload failed: ' + e.message);
+    }).finally(function () {
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = '↑ Upload'; }
+    });
+}
+
 // ── Recordings sub-tab: queue + batch process ──
 var _recItems = [];
 var _recBatchActive = false;
@@ -2298,7 +2364,7 @@ function renderRecordings(d) {
         span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
     });
     if (!_recItems.length) {
-        body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
+        body.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
         var sa = document.getElementById('rec-select-all'); if (sa) sa.checked = false;
         return;
     }
@@ -2458,12 +2524,12 @@ function updateProcessSelectedLabel() {
         return pad(Math.floor(s / 3600)) + ':' + pad(Math.floor((s % 3600) / 60)) + ':' + pad(s % 60);
     };
     if (n > 0) {
-        btn.innerHTML = '▶ Process Selected'
+        btn.innerHTML = '▶ Record'
                       + '<div style="font-size:0.72rem;font-weight:400;opacity:0.9;margin-top:1px;">'
                       +   n + ' file' + (n === 1 ? '' : 's') + ' &middot; ' + fmt(total)
                       + '</div>';
     } else {
-        btn.innerHTML = '▶ Process Selected';
+        btn.innerHTML = '▶ Record';
     }
 }
 function getSelectedRecordingKeys() {
@@ -2486,7 +2552,7 @@ function processSelectedRecordings() {
     var w = window.open(url, 'yy-record-batch',
         'width=920,height=760,menubar=no,toolbar=no,location=no,status=no');
     if (!w || w.closed || typeof w.closed === 'undefined') {
-        alert('The browser blocked the popup window. Please allow popups for this site, then click Process Selected again.');
+        alert('The browser blocked the popup window. Please allow popups for this site, then click Record again.');
         cleanupBatch();
         return;
     }
