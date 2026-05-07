@@ -23,6 +23,23 @@
     var booksFilters = { series: [], volumes: [] };
     var videoFilters = { groups: [], categories: [] };
     var SITE_SECTION_LIMIT = 10;
+    // Mode-picker icon SVGs. Defined once so the dropdown trigger (which
+    // shows only the current mode's icon) can rebuild its content from a
+    // single source when the user picks a different mode.
+    var MODE_ICON_SVG = {
+        all:    '<svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">'
+              +   '<line x1="6" y1="7"  x2="18" y2="7"/>'
+              +   '<line x1="6" y1="12" x2="18" y2="12"/>'
+              +   '<line x1="6" y1="17" x2="18" y2="17"/>'
+              + '</svg>',
+        phrase: '<svg class="ss-mode-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+              +   '<path d="M5 6h4v5c0 2.5-1.4 4.4-4 5V14h2V8H5V6zm9 0h4v5c0 2.5-1.4 4.4-4 5V14h2V8h-2V6z"/>'
+              + '</svg>',
+        any:    '<svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+              +   '<path d="M4 6l8 6-8 6"/>'
+              +   '<path d="M12 6l8 6-8 6"/>'
+              + '</svg>',
+    };
 
     // ── CSS (one-shot inject; lifted verbatim from prototype) ───────────
     function injectStyle() {
@@ -49,7 +66,9 @@
             '                    width: 100vw; position: relative;',
             '                    left: 50%; transform: translateX(-50%);',
             '                    display: flex; flex-direction: column; justify-content: center; }',
-            '.site-search-container { max-width: 1024px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
+            // Container max-width 400px so the bar stays tight regardless
+            // of host page width.
+            '.site-search-container { max-width: 400px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }',
             // Reset default <form> block-margin that browsers add — it
             // would otherwise stack inside the band as visible whitespace.
             '.site-search-band form { margin: 0; }',
@@ -70,13 +89,17 @@
             '}',
             '.ss-row input[type="text"]:focus { border-color: #31345A; }',
 
+            // Search submit button — gold magnifying glass on transparent
+            // background. No box-shadow; the glass is the entire visual
+            // affordance.
             '.ss-btn {',
-            '  padding: 9px 22px; background-color: #31345A; color: #fff; border: none;',
-            '  cursor: pointer; border-radius: 6px; font-size: 0.95rem; font-weight: 600;',
-            '  letter-spacing: 0.3px; transition: background-color 0.2s, box-shadow 0.2s;',
-            '  box-shadow: 0 2px 4px rgba(0,0,0,0.15);',
+            '  padding: 6px 8px; background: transparent; color: #d4a017; border: 0;',
+            '  cursor: pointer; border-radius: 6px; line-height: 1;',
+            '  display: inline-flex; align-items: center; justify-content: center;',
+            '  transition: color 0.15s;',
             '}',
-            '.ss-btn:hover { background-color: #4a4e7a; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }',
+            '.ss-btn:hover { color: #b8870e; }',
+            '.ss-btn svg { width: 22px; height: 22px; stroke: currentColor; }',
 
             '.ss-filter-group { display: flex; align-items: center; gap: 6px; }',
             '.ss-filter-group label { font-weight: 600; font-size: 0.875rem; color: #555; white-space: nowrap; }',
@@ -93,23 +116,37 @@
             '  margin: 0; box-sizing: border-box;',
             '}',
 
-            // Mode-toggle: 3 connected segmented buttons (radio group).
-            '.ss-mode-toggle {',
-            '  display: inline-flex; align-items: stretch; flex: 0 0 auto;',
-            '  border: 1px solid #c4c8d6; border-radius: 6px; overflow: hidden;',
-            '  background: #fff;',
+            // Mode picker (dropdown): icon-only trigger button on the
+            // left of the search input. Click → menu of all 3 options
+            // (icon + label). Picking an option closes the menu and
+            // updates the trigger's icon.
+            '.ss-mode-picker { position: relative; display: inline-flex; flex: 0 0 auto; }',
+            '.ss-mode-picker .ss-mode-current {',
+            '  display: inline-flex; align-items: center; justify-content: center;',
+            '  padding: 7px 8px; background: #fff; color: #31345A;',
+            '  border: 1px solid #c4c8d6; border-radius: 6px; cursor: pointer;',
+            '  transition: background-color 0.15s;',
             '}',
-            '.ss-mode-toggle .ss-mode-btn {',
-            '  display: inline-flex; align-items: center; gap: 6px;',
-            '  padding: 8px 12px; border: 0; border-right: 1px solid #d6dae6;',
-            '  background: transparent; color: #31345A; cursor: pointer;',
-            '  font: inherit; font-size: 0.85rem; font-weight: 600; line-height: 1.2;',
-            '  transition: background-color 0.15s, color 0.15s;',
+            '.ss-mode-picker .ss-mode-current:hover { background: #eef2ff; }',
+            '.ss-mode-picker .ss-mode-current .ss-mode-icon { width: 18px; height: 18px; }',
+            '.ss-mode-picker .ss-mode-menu {',
+            '  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;',
+            '  background: #fff; border: 1px solid #d0d4dd; border-radius: 6px;',
+            '  box-shadow: 0 6px 24px rgba(0,0,0,0.12); padding: 4px;',
+            '  min-width: 160px; display: none;',
             '}',
-            '.ss-mode-toggle .ss-mode-btn:last-child { border-right: 0; }',
-            '.ss-mode-toggle .ss-mode-btn:hover { background: #eef2ff; }',
-            '.ss-mode-toggle .ss-mode-btn.is-active { background: #31345A; color: #fff; }',
-            '.ss-mode-toggle .ss-mode-icon { width: 16px; height: 16px; flex: 0 0 16px; }',
+            '.ss-mode-picker.open .ss-mode-menu { display: block; }',
+            '.ss-mode-picker .ss-mode-option {',
+            '  display: flex; align-items: center; gap: 10px; width: 100%;',
+            '  padding: 8px 12px; border: 0; border-radius: 4px;',
+            '  background: transparent; color: #333; cursor: pointer;',
+            '  font: inherit; font-size: 0.875rem; font-weight: 500; text-align: left;',
+            '  white-space: nowrap;',
+            '}',
+            '.ss-mode-picker .ss-mode-option:hover { background: #eef2ff; }',
+            '.ss-mode-picker .ss-mode-option .ss-mode-icon { width: 16px; height: 16px; flex: 0 0 16px; color: #31345A; }',
+            '.ss-mode-picker .ss-mode-option.is-active { background: #31345A; color: #fff; }',
+            '.ss-mode-picker .ss-mode-option.is-active .ss-mode-icon { color: #fff; }',
 
             // Scope picker
             '.ss-scope-picker {',
@@ -284,11 +321,8 @@
             // Compact the mode dropdown so the input gets more room.
             '  .ss-filter-group select { padding: 6px 8px; font-size: 0.85rem; }',
             // Mobile: search button stays a magnifying glass — no "Go"
-            // text injected. Keep button compact.
-            '  .ss-btn { padding: 8px 10px; }',
-            // Mobile: hide mode-button text labels, icon-only.
-            '  .ss-mode-toggle .ss-mode-label { display: none; }',
-            '  .ss-mode-toggle .ss-mode-btn { padding: 7px 8px; }',
+            // text injected.
+            '  .ss-btn { padding: 6px 8px; }',
             '  .ss-scope-filters { width: 100%; }',
             '  .ss-result-video { flex-direction: column; }',
             '  .ss-result-video .thumb { flex: 0 0 auto; max-width: 100%; }',
@@ -312,37 +346,34 @@
             '<div class="site-search-container">' +
             '  <form id="ss-form">' +
             '    <div class="ss-row">' +
-            '      <input type="text" id="ss-input" placeholder="Search…" autocomplete="off" value="' + esc(initialQ) + '">' +
             // Hidden select preserves the existing $(ss-mode).value reader
-            // path; the visible UI is the three graphic toggle buttons below.
+            // path; the visible UI is the dropdown picker on the left.
             '      <select id="ss-mode" style="display:none;">' +
             '        <option value="all" selected>All Words</option>' +
             '        <option value="phrase">Exact Phrase</option>' +
             '        <option value="any">Any Word</option>' +
             '      </select>' +
-            '      <div id="ss-mode-toggle" class="ss-mode-toggle" role="radiogroup" aria-label="Match mode">' +
-            '        <button type="button" class="ss-mode-btn is-active" role="radio" aria-checked="true" data-mode="all" title="All Words — every word must match">' +
-            '          <svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">' +
-            '            <line x1="6" y1="7"  x2="18" y2="7"/>' +
-            '            <line x1="6" y1="12" x2="18" y2="12"/>' +
-            '            <line x1="6" y1="17" x2="18" y2="17"/>' +
-            '          </svg>' +
-            '          <span class="ss-mode-label">All Words</span>' +
+            // Mode picker (icon-only trigger; click → menu of all 3 options).
+            '      <div class="ss-mode-picker" id="ss-mode-picker">' +
+            '        <button type="button" class="ss-mode-current" id="ss-mode-current-btn" aria-haspopup="menu" aria-expanded="false" title="Match mode">' +
+            '          <span id="ss-mode-current-icon" aria-hidden="true">' + MODE_ICON_SVG.all + '</span>' +
             '        </button>' +
-            '        <button type="button" class="ss-mode-btn" role="radio" aria-checked="false" data-mode="phrase" title="Exact Phrase — the words must appear in this exact order">' +
-            '          <svg class="ss-mode-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-            '            <path d="M5 6h4v5c0 2.5-1.4 4.4-4 5V14h2V8H5V6zm9 0h4v5c0 2.5-1.4 4.4-4 5V14h2V8h-2V6z"/>' +
-            '          </svg>' +
-            '          <span class="ss-mode-label">Exact Phrase</span>' +
-            '        </button>' +
-            '        <button type="button" class="ss-mode-btn" role="radio" aria-checked="false" data-mode="any" title="Any Word — match if any of the words appear">' +
-            '          <svg class="ss-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-            '            <path d="M4 6l8 6-8 6"/>' +
-            '            <path d="M12 6l8 6-8 6"/>' +
-            '          </svg>' +
-            '          <span class="ss-mode-label">Any Word</span>' +
-            '        </button>' +
+            '        <div class="ss-mode-menu" role="menu">' +
+            '          <button type="button" class="ss-mode-option" role="menuitem" data-mode="all">' +
+            '            ' + MODE_ICON_SVG.all +
+            '            <span class="ss-mode-label">All Words</span>' +
+            '          </button>' +
+            '          <button type="button" class="ss-mode-option" role="menuitem" data-mode="phrase">' +
+            '            ' + MODE_ICON_SVG.phrase +
+            '            <span class="ss-mode-label">Exact Phrase</span>' +
+            '          </button>' +
+            '          <button type="button" class="ss-mode-option" role="menuitem" data-mode="any">' +
+            '            ' + MODE_ICON_SVG.any +
+            '            <span class="ss-mode-label">Any Word</span>' +
+            '          </button>' +
+            '        </div>' +
             '      </div>' +
+            '      <input type="text" id="ss-input" placeholder="Search…" autocomplete="off" value="' + esc(initialQ) + '">' +
             '      <button type="submit" class="ss-btn" aria-label="Search" title="Search">' +
             '        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
             '          <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>' +
@@ -765,22 +796,34 @@
     // ── Wiring ──────────────────────────────────────────────────────────
     function wire() {
         $('ss-form').addEventListener('submit', function (e) { e.preventDefault(); doSearch(1); });
-        // Mode toggle: clicking a button updates the hidden <select>
-        // (so existing $('ss-mode').value readers keep working) and
-        // restyles the active button. Re-runs the search if there's a
-        // current query, so swapping All ↔ Phrase ↔ Any updates results
-        // immediately rather than waiting for re-submit.
-        Array.prototype.forEach.call(document.querySelectorAll('#ss-mode-toggle .ss-mode-btn'), function (btn) {
-            btn.addEventListener('click', function () {
-                var mode = btn.dataset.mode;
+        // Mode picker: click trigger toggles menu; click an option sets
+        // the mode (in the hidden <select> so $('ss-mode').value still
+        // works), updates the trigger's icon, and re-runs the search if
+        // there's an active query.
+        var picker = $('ss-mode-picker');
+        $('ss-mode-current-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            var open = !picker.classList.contains('open');
+            picker.classList.toggle('open', open);
+            $('ss-mode-current-btn').setAttribute('aria-expanded', String(open));
+            if (open) syncModeOptionActive();
+        });
+        Array.prototype.forEach.call(picker.querySelectorAll('.ss-mode-option'), function (opt) {
+            opt.addEventListener('click', function () {
+                var mode = opt.dataset.mode;
                 $('ss-mode').value = mode;
-                Array.prototype.forEach.call(document.querySelectorAll('#ss-mode-toggle .ss-mode-btn'), function (b) {
-                    var active = b === btn;
-                    b.classList.toggle('is-active', active);
-                    b.setAttribute('aria-checked', active ? 'true' : 'false');
-                });
+                $('ss-mode-current-icon').innerHTML = MODE_ICON_SVG[mode] || '';
+                picker.classList.remove('open');
+                $('ss-mode-current-btn').setAttribute('aria-expanded', 'false');
                 if ($('ss-input').value.trim()) doSearch(1);
             });
+        });
+        // Close picker on outside click.
+        document.addEventListener('click', function (e) {
+            if (picker.classList.contains('open') && !picker.contains(e.target)) {
+                picker.classList.remove('open');
+                $('ss-mode-current-btn').setAttribute('aria-expanded', 'false');
+            }
         });
         // Delegated handler for results-area: pagination buttons,
         // see-all links, video play targets — all single source so the
@@ -803,6 +846,12 @@
         $('ss-video-close').addEventListener('click', closeVideo);
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') closeVideo();
+        });
+    }
+    function syncModeOptionActive() {
+        var current = $('ss-mode').value;
+        Array.prototype.forEach.call(document.querySelectorAll('#ss-mode-picker .ss-mode-option'), function (opt) {
+            opt.classList.toggle('is-active', opt.dataset.mode === current);
         });
     }
 
