@@ -101,13 +101,12 @@
             <a class="btn btn-secondary btn-sm" href="/api/admin-uploader-download.php"
                title="Windows installer for the desktop tool that generates a PDF in Microsoft Word and uploads both files for flipbook processing (admin-only download)"
                download>
-                ↓ Yada Yah Book PDF Generator
+                YY PDF Generator App
             </a>
-            <span id="uploader-setup" style="display:none;font-size:0.78rem;color:#666;align-items:center;gap:6px;">
-                <span title="Paste these into the desktop app on first launch">Setup:</span>
-                <code id="uploader-server" style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;cursor:pointer;" title="Click to copy server URL"></code>
-                <code id="uploader-token"  style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:monospace;cursor:pointer;" title="Click to copy token"></code>
-            </span>
+            <button id="uploader-token-btn" class="btn btn-secondary btn-sm" style="display:none;"
+                    title="Copy the desktop app's bearer token to the clipboard — paste it into the app on first launch">
+                Auth Token
+            </button>
             <button class="btn btn-primary btn-sm" onclick="showVolumeForm(null)">+ Add Volume</button>
         </div>
     </div>
@@ -248,24 +247,15 @@ function loadUploaderSetup() {
       .then(function(r){return safeJson(r);})
       .then(function(d) {
         if (!d || !d.token) return;
-        var box = document.getElementById('uploader-setup');
-        var s   = document.getElementById('uploader-server');
-        var t   = document.getElementById('uploader-token');
-        s.textContent = d.server_url;
-        t.textContent = d.token;
-        box.style.display = 'inline-flex';
-        function copyOnClick(el, label) {
-            el.addEventListener('click', function() {
-                navigator.clipboard.writeText(el.textContent).then(function() {
-                    var orig = el.style.background;
-                    el.style.background = '#c8f0c8';
-                    el.title = 'Copied!';
-                    setTimeout(function() { el.style.background = orig; el.title = 'Click to copy ' + label; }, 800);
-                });
+        var btn = document.getElementById('uploader-token-btn');
+        btn.style.display = '';
+        btn.addEventListener('click', function() {
+            navigator.clipboard.writeText(d.token).then(function() {
+                var orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = orig; }, 1000);
             });
-        }
-        copyOnClick(s, 'server URL');
-        copyOnClick(t, 'token');
+        });
     }).catch(function() { /* non-fatal */ });
 }
 function doLogin() {
@@ -458,52 +448,25 @@ function renderBooks() {
     var container = document.getElementById('table-container');
     if (!allSeries.length) { container.innerHTML = '<div style="text-align:center;padding:30px;color:#888">No series found.</div>'; return; }
 
-    // Banner: count volumes whose flipbook upload is pending. Categorize by
-    // reason so the operator knows where the work is. Click the banner to
-    // jump-scroll the first pending volume into view.
-    var pending = { failed: [], skipped: [], pending: [] };
-    allVolumes.forEach(function(v) {
-        if (v.volume_flip_code || !v.volume_pdf) return;
-        var ps = (v.volume_pipeline_status || '').toLowerCase();
-        if (PROC_STATES.indexOf(ps) >= 0) return; // currently processing — not "pending"
-        if (ps === 'error')        pending.failed.push(v);
-        else if (ps === 'success') pending.skipped.push(v);
-        else                       pending.pending.push(v);
+    // Banner: volumes that have a PDF but no flipbook built yet at /<volume_code>/.
+    // "Build all" queues a flipbook regen for each pending volume.
+    var pendingFlip = allVolumes.filter(function(v) {
+        return v.volume_pdf && !v.volume_flip_mtime && v.volume_code;
     });
-    var totalPending = pending.failed.length + pending.skipped.length + pending.pending.length;
     var banner = '';
-    if (totalPending > 0) {
-        var parts = [];
-        if (pending.failed.length)  parts.push('<span style="color:#c0392b;">✗ ' + pending.failed.length + ' failed</span>');
-        if (pending.skipped.length) parts.push('<span style="color:#a36100;">⌛ ' + pending.skipped.length + ' skipped</span>');
-        if (pending.pending.length) parts.push('<span style="color:#a36100;">⌛ ' + pending.pending.length + ' never run</span>');
-        var tipLines = [];
-        ['failed', 'skipped', 'pending'].forEach(function(cat) {
-            pending[cat].forEach(function(v) {
-                tipLines.push((cat === 'failed' ? '✗' : '⌛') + ' ' + v.volume_label
-                            + (v.volume_pipeline_message ? ' — ' + v.volume_pipeline_message : ''));
-            });
-        });
-        // Reprocess only retries the volumes that actually failed (status=error).
-        // Skipped + never-run categories are reachable through the per-row
-        // Retry Pipeline button on the edit form, but the banner button is
-        // intentionally narrow so a single click can't kick a 30+ volume
-        // re-run when only a handful are broken.
-        var reproKeys = pending.failed.map(function(v){ return v.volume_key; });
-        var btnHtml = '';
-        if (reproKeys.length) {
-            btnHtml = '<button id="reprocess-all-btn" onclick="reprocessFailed([' + reproKeys.join(',') + '])" '
-                    + 'title="Requeue only the volumes whose pipeline reported error" '
-                    + 'style="margin-left:auto;padding:5px 12px;background:#31345A;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.8rem;">'
-                    + 'Reprocess</button>';
-        }
+    if (pendingFlip.length > 0) {
+        var pendingKeys = pendingFlip.map(function(v){ return v.volume_key; });
+        var tipLines = pendingFlip.map(function(v){ return '⌛ ' + v.volume_label; });
         banner = '<div style="margin:0 0 10px;padding:10px 14px;background:#fff8e1;border:1px solid #f5d76e;border-radius:6px;font-size:0.85rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;" '
-               + 'title="' + esc(tipLines.join('\n')) + '">'
-               + '<span><strong>' + totalPending + ' flipbook' + (totalPending === 1 ? '' : 's') + ' need processing:</strong> '
-               + parts.join(' &middot; ') + '</span>'
-               + btnHtml
+               + 'title="' + esc(tipLines.join(' | ')) + '">'
+               + '<span><strong>' + pendingFlip.length + ' flipbook' + (pendingFlip.length === 1 ? '' : 's') + ' pending:</strong> '
+               + '<span style="color:#a36100;">⌛ awaiting build</span></span>'
+               + '<button id="reprocess-all-btn" onclick="buildAllPendingFlipbooks([' + pendingKeys.join(',') + '])" '
+               + 'title="Queue a flipbook regen for every volume listed above" '
+               + 'style="margin-left:auto;padding:5px 12px;background:#31345A;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.8rem;">'
+               + 'Build all</button>'
                + '</div>';
-    }
+        }
 
     // ONE table for all series; series rows span the whole width and act as
     // visual section dividers. Fixed column widths are honored across every
@@ -529,7 +492,7 @@ function renderBooks() {
         + '<th>Pages</th>'
         + '<th class="status-cell" style="text-align:center;" title="Source .docx file uploaded">DOCX</th>'
         + '<th class="status-cell" style="text-align:center;" title="PDF generated from the .docx">PDF</th>'
-        + '<th class="status-cell" style="text-align:center;" title="FlipHTML5 flipbook built">FLIP</th>'
+        + '<th class="status-cell" style="text-align:center;" title="Self-hosted flipbook built at /&lt;volume_code&gt;/">FLIP</th>'
         + '<th class="status-cell" style="text-align:center;" title="Number of Translations (T) and Paragraphs (P) pulled from the document">YY Parse</th>'
         + '<th>Active</th>'
         + '<th>Actions</th>'
@@ -870,6 +833,34 @@ function regenerateFlipbookFromForm(btn) {
     });
 }
 
+// Queue a flipbook regen for every volume in the list. Sequential calls so
+// the host worker isn't slammed; each enqueue is a tiny DB write so the
+// total rapid-fire stays well under any rate limit.
+function buildAllPendingFlipbooks(volumeKeys) {
+    if (!volumeKeys || !volumeKeys.length) return;
+    var n = volumeKeys.length;
+    if (!confirm('Queue ' + n + ' flipbook' + (n === 1 ? '' : 's') + ' for rebuild? They run sequentially on the host worker (~5 min each).')) return;
+    var btn = document.getElementById('reprocess-all-btn');
+    var done = 0;
+    var step = function(i) {
+        if (i >= volumeKeys.length) {
+            if (btn) { btn.textContent = '✓ Queued ' + done + '/' + n; btn.disabled = true; }
+            if (typeof loadBooks === 'function') loadBooks();
+            return;
+        }
+        if (btn) { btn.textContent = '⏳ Queueing ' + (i + 1) + '/' + n + '…'; btn.disabled = true; }
+        fetch(API + '/admin-books.php?action=regenerate_flipbook&key=' + volumeKeys[i], {
+            method:'POST', credentials:'include',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({action:'regenerate_flipbook', volume_key: volumeKeys[i]})
+        }).then(function(r){return r.json();}).then(function(d){
+            if (!d.error) done++;
+            step(i + 1);
+        }).catch(function(){ step(i + 1); });
+    };
+    step(0);
+}
+
 function regeneratePdf(volumeKey, btn) {
     if (!confirm('Delete the existing PDF and regenerate it from the current DOCX?\n\nThe flipbook will need a separate regenerate to pick up the new PDF.')) return;
     var orig = btn ? btn.textContent : '';
@@ -1098,8 +1089,7 @@ function clearFlipCookies() {
     }).then(function(){ pollFlipSession(); });
 }
 // First poll after auth lands; refresh every 60s while the page is open.
-setTimeout(pollFlipSession, 1500);
-setInterval(pollFlipSession, 60000);
+// FlipHTML5 session polling disabled — superseded by self-hosted flipbook system.
 
 // ── FlipHTML5 match status panel ────────────────────────────────────
 // Shows how many volumes have a FlipHTML5 code vs. still need PDFs
@@ -1168,8 +1158,7 @@ function triggerFlipMatch(btn) {
             if (btn) { btn.disabled = false; btn.textContent = 'Match now'; }
         });
 }
-setTimeout(pollFlipMatch, 2000);
-setInterval(pollFlipMatch, 120000);
+// FlipHTML5 match polling disabled — superseded by self-hosted flipbook system.
 </script>
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/session-state.js?v=1"></script>
