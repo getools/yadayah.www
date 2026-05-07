@@ -50,6 +50,14 @@
       const BOOK_CODE  = cfg.bookCode;
       const PDF_PATH   = cfg.pdfPath || ('/pdf/' + BOOK_CODE + '.pdf');
       const STORE_KEY  = 'flipbook:' + BOOK_CODE;
+      // Bundle assets (page JPGs, per-page text JSON, search.json, toc.json)
+      // are immutable once uploaded but get *replaced* whenever a new PDF
+      // is processed. Without a version query, browsers serve the cached
+      // copy of the old PDF's images for hours after a rebuild — making
+      // search highlights land on stale image positions. rebuild_prototype.sh
+      // bumps cfg.bundleVersion; we append it to every asset URL.
+      const BV = cfg.bundleVersion ? ('?v=' + encodeURIComponent(cfg.bundleVersion)) : '';
+      const bundleUrl = (path) => path + BV;
 
       // CAPTURE bookmark NOW — before pageFlip's 'init' event handler can
       // call syncUrlAndStorage(1) and overwrite it. The init event fires
@@ -78,7 +86,7 @@
         pg.className = 'pg';
         pg.dataset.page = i;
         pg.innerHTML =
-          `<img src="pages/page-${PAD(i)}.jpg" alt="Page ${i}" loading="lazy" decoding="async">` +
+          `<img src="${bundleUrl('pages/page-' + PAD(i) + '.jpg')}" alt="Page ${i}" loading="lazy" decoding="async">` +
           `<div class="text-layer"></div>`;
         bookEl.appendChild(pg);
       }
@@ -255,7 +263,7 @@
         if (page1 < 1 || page1 > TOTAL) return;
         let data = carouselText.get(page1);
         if (!data) {
-          try { data = await fetch(`text/page-${PAD(page1)}.json`).then(r => r.json()); }
+          try { data = await fetch(bundleUrl(`text/page-${PAD(page1)}.json`)).then(r => r.json()); }
           catch { return; }
           carouselText.set(page1, data);
         }
@@ -309,7 +317,7 @@
           const layer = slot.querySelector('.text-layer');
           if (inRange) {
             slot.dataset.page = page;
-            const newSrc = `pages/page-${PAD(page)}.jpg`;
+            const newSrc = bundleUrl(`pages/page-${PAD(page)}.jpg`);
             if (!img.src.endsWith(newSrc)) img.src = newSrc;
             slot.title = `Page ${page}`;
             // Only the focused page gets a selectable text layer — neighbors
@@ -503,6 +511,7 @@
       function chapterBySlug(slug) { return toc.find(e => e.slug === slug); }
 
       let lastSavedPage = 0;
+      let urlWrittenOnce = false;
       function syncUrlAndStorage(page1) {
         if (page1 !== lastSavedPage) {
           // Don't overwrite a saved bookmark with page 1 during the very
@@ -517,6 +526,19 @@
           }
           lastSavedPage = page1;
         }
+        // Same guard for the URL hash. pageFlip emits 'init' which fires
+        // update() → syncUrlAndStorage(1) BEFORE the queued initial-nav
+        // gets to call goto(<the URL's intended page>). Without this
+        // guard, that init firing replaces the user's deep-link hash
+        // (e.g. #chapter=8&page=313&q=test) with #page=1, and a hard
+        // refresh then loses the search query. Skip the write when
+        // we've never written the URL yet AND we're being called with
+        // page=1 — that's the init-artifact case. Once any navigation
+        // has touched the URL, all subsequent syncs write normally.
+        if (!urlWrittenOnce && page1 === 1) {
+          return;
+        }
+        urlWrittenOnce = true;
         const ch = chapterForPage(page1);
         const parts = [];
         if (ch && ch.slug) parts.push('chapter=' + encodeURIComponent(ch.slug));
@@ -569,7 +591,7 @@
         if (!pgEl || pgEl.dataset.populated === '1') return;
         let data = textCache.get(page1);
         if (!data) {
-          try { data = await fetch(`text/page-${PAD(page1)}.json`).then(r => r.json()); }
+          try { data = await fetch(bundleUrl(`text/page-${PAD(page1)}.json`)).then(r => r.json()); }
           catch { return; }
           textCache.set(page1, data);
         }
@@ -810,7 +832,7 @@
       // ── TOC
       const tocPane = document.getElementById('toc-pane');
       try {
-        const tocJson = await fetch('toc.json').then(r => r.json());
+        const tocJson = await fetch(bundleUrl('toc.json')).then(r => r.json());
         const flat = [];
         const walk = (items, depth = 0) => {
           for (const it of items) {
@@ -864,7 +886,7 @@
         searchT = setTimeout(async () => {
           if (!searchIndex) {
             searchSummary.textContent = 'Loading search index…';
-            searchIndex = await fetch('search.json').then(r => r.json());
+            searchIndex = await fetch(bundleUrl('search.json')).then(r => r.json());
           }
           const ql = q.toLowerCase();
           const hits = [];

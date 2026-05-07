@@ -80,6 +80,7 @@
         <header>
             <h1 id="title">Loading…</h1>
             <span id="time">—</span>
+            <span id="overall-time" style="display:block;font-size:0.82em;color:#888;margin-top:2px;"></span>
         </header>
         <div id="player-wrap">
             <div id="yt-player"></div>
@@ -331,6 +332,12 @@
     var queueIndex = 0;
     var BATCH_MODE = queue.length > 1;
     var itemKey = queue[0] || 0;
+    // Per-item YouTube durations (seconds). Populated in parallel at bootstrap
+    // so the "Overall: hh:mm:ss / hh:mm:ss" footer can sum them. 0 = not yet
+    // fetched OR unknown for that item; we treat 0 as a soft skip rather than
+    // blocking the display.
+    var queueDurations = new Array(queue.length).fill(0);
+    var queueTotalSeconds = 0;
     var ytPlayer = null, ytReady = false;
     var stream = null, recorder = null, chunks = [], startedMs = 0;
     var partCount = 0;
@@ -398,6 +405,9 @@
         // Once Process Selected is clicked nobody else should be able to
         // grab any of the videos in this batch.
         if (queue.length) acquireBatchLock(queue);
+        // Fire and forget — the Overall display fills in when each item's
+        // duration lands; the rest of the popout doesn't need to wait.
+        fetchQueueDurations();
         loadCurrentItem();
     }
 
@@ -1143,6 +1153,42 @@
         }
         var prefix = (recorder && recorder.state === 'recording') ? '🔴 ' : '';
         $('time').textContent = prefix + fmt(cur) + ' / ' + (dur > 0 ? fmt(dur) : '?:??:??');
+
+        // Overall progress across the entire batch — sum of (already-completed
+        // item durations) + current item's elapsed time, vs. sum of all
+        // durations. Only shown in BATCH_MODE; single-item popouts just have
+        // the per-item line above.
+        var overallEl = $('overall-time');
+        if (!overallEl) return;
+        if (!BATCH_MODE || queueTotalSeconds <= 0) { overallEl.textContent = ''; return; }
+        var elapsed = 0;
+        for (var i = 0; i < queueIndex && i < queueDurations.length; i++) {
+            elapsed += queueDurations[i] || 0;
+        }
+        elapsed += cur;
+        overallEl.textContent = 'Overall: ' + fmt(elapsed) + ' / ' + fmt(queueTotalSeconds)
+                              + ' (' + (queueIndex + 1) + '/' + queue.length + ')';
+    }
+
+    // Fetch the YouTube durations for every queued item in parallel. The
+    // current item's duration also lands in the YT player's getDuration() but
+    // we use the DB value here so the Overall total is correct before the
+    // player has cycled to each item.
+    async function fetchQueueDurations() {
+        if (!queue.length) return;
+        var results = await Promise.all(queue.map(function(k) {
+            return fetch(API + '/admin-transcript.php?item_key=' + k + '&_=' + Date.now(),
+                         { credentials: 'include', cache: 'no-store' })
+                .then(function(r){ return r.ok ? r.json() : null; })
+                .then(function(d){
+                    if (!d || !d.item) return 0;
+                    return parseInt(d.item.feed_item_duration_seconds, 10) || 0;
+                })
+                .catch(function(){ return 0; });
+        }));
+        queueDurations = results;
+        queueTotalSeconds = results.reduce(function(a, b){ return a + b; }, 0);
+        updateTime();
     }
 
     // ── Closing-tab safety net ──
