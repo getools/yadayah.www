@@ -47,10 +47,6 @@
 
             '.ss-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }',
             '.ss-row.row-two { margin-bottom: 16px; }',
-            // Site mode = no Books/Video filter strip = empty row-two.
-            // Hide it so its 16px margin-bottom doesn't manifest as
-            // dead space below the input row.
-            '.ss-row.row-two[hidden] { display: none !important; }',
             '.ss-row input[type="text"] {',
             '  flex: 1; min-width: 200px; padding: 9px 14px; font-size: 1rem;',
             '  border: 2px solid #ccc; border-radius: 6px; outline: none;',
@@ -121,12 +117,9 @@
             '  overflow: hidden; max-height: 200px; opacity: 1;',
             '  transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;',
             '}',
-            // CRITICAL: hidden filter strips MUST be removed from the
-            // flex flow entirely (display:none), NOT kept as zero-height
-            // flex items. Otherwise the hidden Books strip takes a flex
-            // slot in row-two and pushes the visible Video strip to the
-            // right. We lose the height transition; that is fine.
-            '.ss-scope-filters[hidden] { display: none !important; }',
+            '.ss-scope-filters[hidden] {',
+            '  display: flex !important; max-height: 0; opacity: 0; margin-bottom: 0; pointer-events: none;',
+            '}',
 
             // Results
             '.ss-results-info {',
@@ -192,13 +185,24 @@
             // Video popover
             '.ss-video-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 24px; }',
             '.ss-video-overlay.open { display: flex; }',
-            '.ss-video-overlay .frame-wrap { position: relative; width: min(90vw, 1100px); aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }',
+            // .player-pane is the positioning context for the close
+            // button — placing the button on the pane (not the frame)
+            // lets it sit OUTSIDE the player\'s clipped rectangle, so
+            // it can\'t overlap built-in controls (YouTube gear, Rumble
+            // settings, etc.) in the player\'s own corners.
+            '.ss-video-overlay .player-pane { position: relative; width: min(90vw, 1100px); }',
+            '.ss-video-overlay .frame-wrap { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }',
             '#ss-video-frame-host { position: absolute; inset: 0; }',
             '.ss-video-overlay iframe, .ss-video-overlay video { width: 100%; height: 100%; border: 0; display: block; }',
             // Close-X sits on top of the player; the prior -36px top offset
             // sat outside frame-wrap and got clipped by its overflow:hidden.
-            '.ss-video-overlay .close-btn { position: absolute; top: 8px; right: 8px; z-index: 2; background: rgba(0,0,0,0.6); border: 0; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }',
-            '.ss-video-overlay .close-btn:hover { background: rgba(0,0,0,0.85); }',
+            // Close button sits just OUTSIDE the player\'s top-right
+            // corner so it can\'t overlap the player\'s built-in
+            // controls. Negative offsets push it onto the dark overlay
+            // backdrop; the player-pane (its positioning parent) has
+            // overflow:visible so the button isn\'t clipped.
+            '.ss-video-overlay .close-btn { position: absolute; top: -14px; right: -14px; z-index: 3; background: rgba(0,0,0,0.85); border: 2px solid rgba(255,255,255,0.25); color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }',
+            '.ss-video-overlay .close-btn:hover { background: #000; }',
             '.ss-video-overlay .seek-info { position: absolute; top: 8px; left: 12px; z-index: 2; color: #fff; font-size: 0.85rem; background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 4px; }',
 
             // Mobile (≤767px): keep all controls on one row by letting the
@@ -329,10 +333,12 @@
         ov.className = 'ss-video-overlay';
         ov.id = 'ss-video-overlay';
         ov.innerHTML =
-            '<div class="frame-wrap">' +
+            '<div class="player-pane">' +
             '  <button class="close-btn" id="ss-video-close" title="Close">×</button>' +
-            '  <div class="seek-info" id="ss-video-seek-info"></div>' +
-            '  <div id="ss-video-frame-host"></div>' +
+            '  <div class="frame-wrap">' +
+            '    <div class="seek-info" id="ss-video-seek-info"></div>' +
+            '    <div id="ss-video-frame-host"></div>' +
+            '  </div>' +
             '</div>';
         document.body.appendChild(ov);
     }
@@ -461,10 +467,6 @@
         });
         $('ss-filters-books').hidden = (s !== 'books');
         $('ss-filters-video').hidden = (s !== 'video');
-        // Hide the row-two wrapper entirely in Site mode so its
-        // own margin-bottom doesn't add dead space below the input.
-        var rowTwo = document.querySelector('.ss-row.row-two');
-        if (rowTwo) rowTwo.hidden = (s === 'site');
         $('ss-input').placeholder = SCOPE_META[s].placeholder;
     }
 

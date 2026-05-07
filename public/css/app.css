@@ -41,7 +41,7 @@ h2 { margin: 0 0 16px 0; color: #34495e; font-size: 1.25rem; }
 .pass-toggle:hover { color: #555; }
 
 /* ── App Header ── */
-.app-header {
+.app-header { background: #f3f4f7;
     display: flex;
     align-items: center;
     margin-bottom: 20px;

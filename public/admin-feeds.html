@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/app.css?v=10">
     <link rel="stylesheet" href="css/login.css">
     <style>
         /* Override the 1100px cap from app.css — feeds tables benefit from full screen width. */
@@ -145,19 +145,25 @@
 
     <!-- Items Tab -->
     <div id="tab-items" class="feed-tab" style="display:none;">
-        <div class="toolbar">
-            <span id="items-count" class="feed-count"></span>
-            <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">per page
-                <select id="items-per-page" onchange="_itemsPerPage=parseInt(this.value)||99999;if(window.adminUI)adminUI.save('feeds','itemsPerPage',_itemsPerPage);loadItems(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100" selected>100</option>
-                    <option value="250">250</option>
-                    <option value="500">500</option>
-                    <option value="1000">1000</option>
-                    <option value="99999">All</option>
-                </select>
-            </label>
+        <div class="toolbar" style="display:flex;align-items:center;gap:8px;">
+            <div style="width:156px;flex-shrink:0;">
+                <label style="font-size:0.82rem;color:#666;display:inline-flex;align-items:center;gap:6px;">
+                    <select id="items-per-page" onchange="_itemsPerPage=parseInt(this.value)||99999;if(window.adminUI)adminUI.save('feeds','itemsPerPage',_itemsPerPage);loadItems(1)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.82rem;">
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="250">250</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                        <option value="99999">All</option>
+                    </select>
+                    per page
+                </label>
+            </div>
+            <div style="flex:1;text-align:center;min-width:0;">
+                <span id="items-count" class="feed-count"></span>
+            </div>
+            <div style="width:240px;flex-shrink:0;"></div>
         </div>
         <div id="items-container"><div style="text-align:center;padding:20px;color:#888">Select the Items tab to load...</div></div>
     </div>
@@ -191,6 +197,13 @@
                 <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;">▶ Process Selected</button>
                 <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;">⬛ Stop Batch</button>
             </div>
+        </div>
+        <!-- YouTube captions auth + batch-upload control. Hidden until
+             admin-yt-captions-status.php returns its first poll. -->
+        <div id="yt-caption-bar" style="display:none;margin-bottom:10px;padding:10px 14px;background:#eef4fb;border:1px solid #c5d8ec;border-radius:6px;font-size:0.85rem;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span id="yt-caption-state" style="font-weight:600;"></span>
+            <span id="yt-caption-detail" style="color:#555;font-size:0.78rem;flex:1;min-width:0;"></span>
+            <span id="yt-caption-actions" style="display:flex;gap:8px;"></span>
         </div>
         <div id="rec-batch-status" style="display:none;margin-bottom:10px;padding:10px;background:#fffbe6;border:1px solid #ffe99e;border-radius:6px;font-size:0.85rem;"></div>
         <style>
@@ -1956,6 +1969,64 @@ function startRecordingForItem(itemKey) {
     }, 1500);
 }
 
+// ── YouTube Captions: connection status bar (top of Recordings) ──
+function renderYtCaptionBar(d) {
+    var bar = document.getElementById('yt-caption-bar');
+    if (!bar) return;
+    var stateEl  = document.getElementById('yt-caption-state');
+    var detailEl = document.getElementById('yt-caption-detail');
+    var actEl    = document.getElementById('yt-caption-actions');
+    if (!d) { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    if (d.connected) {
+        stateEl.textContent = '● YouTube captions connected';
+        stateEl.style.color = '#1b5e20';
+        detailEl.textContent = d.channel_title ? ('Channel: ' + d.channel_title) : 'Channel: (unknown)';
+        var n = d.queued_count || 0;
+        var html = '';
+        if (n > 0) {
+            html += '<button class="btn btn-primary btn-sm" onclick="batchUploadYtCaptions()">▲ Upload ' + n + ' Queued</button>';
+        } else {
+            html += '<span style="color:#888;font-size:0.78rem;">No queued uploads</span>';
+        }
+        html += ' <button class="btn btn-secondary btn-sm" onclick="ytCaptionsDisconnect()">Disconnect</button>';
+        actEl.innerHTML = html;
+    } else {
+        stateEl.textContent = '○ YouTube captions not connected';
+        stateEl.style.color = '#a36100';
+        detailEl.textContent = 'Click Connect to authorize the channel owner once. Required before any per-video caption upload.';
+        actEl.innerHTML = '<a class="btn btn-primary btn-sm" href="/api/admin-yt-captions-connect.php">Connect YouTube</a>';
+    }
+}
+function loadYtCaptionStatus() {
+    fetch('/api/admin-yt-captions-status.php', {credentials: 'include'})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(renderYtCaptionBar)
+        .catch(function () { renderYtCaptionBar(null); });
+}
+function batchUploadYtCaptions() {
+    // Phase 2 (not yet shipped) — wired here so the button behaves and
+    // the user gets an explanatory toast instead of a broken click.
+    alert('Batch upload: not yet wired. Phase 2 ships the per-video upload endpoint + this batch driver.');
+}
+function ytCaptionsDisconnect() {
+    if (!confirm('Disconnect YouTube? Future caption uploads will fail until reconnected.')) return;
+    fetch('/api/admin-yt-captions-disconnect.php', {method: 'POST', credentials: 'include'})
+        .then(function () { loadYtCaptionStatus(); });
+}
+// Surface ?yt_caption_ok / ?yt_caption_err flashes from the OAuth callback.
+(function () {
+    var p = new URLSearchParams(location.search);
+    if (p.get('yt_caption_ok')) {
+        setTimeout(function () { alert('YouTube captions connected. You can now upload per-video.'); }, 200);
+        history.replaceState({}, '', location.pathname);
+    } else if (p.get('yt_caption_err')) {
+        var e = p.get('yt_caption_err');
+        setTimeout(function () { alert('YouTube connect failed: ' + e); }, 200);
+        history.replaceState({}, '', location.pathname);
+    }
+})();
+
 // ── Recordings sub-tab: queue + batch process ──
 var _recItems = [];
 var _recBatchActive = false;
@@ -2062,6 +2133,7 @@ function recParseDuration(text) {
 }
 
 function loadRecordings(page) {
+    if (typeof loadYtCaptionStatus === "function") loadYtCaptionStatus();
     _restoreRecFiltersFromStorage(); // hydrates DOM inputs once on first call
     page = page || _recPage || 1;
     _recPage = page;
