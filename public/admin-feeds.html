@@ -309,7 +309,7 @@
                             <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-captions" value="captions" onchange="loadRecordings(1)" title="Transcript has been uploaded to YouTube as a caption track and is current (no later review)"> Captions</label>
                             <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-reviewed" value="reviewed" onchange="loadRecordings(1)" title="Transcript reviewed/Approved; not yet uploaded (or upload is older than review)"> Reviewed</label>
                             <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-pending"  value="pending"  onchange="loadRecordings(1)" title="Transcript records exist but haven't been Approved by an admin"> Pending</label>
-                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-missing"  value="missing"  onchange="loadRecordings(1)" title="No transcript records yet"> Missing</label>
+                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-missing"  value="missing"  onchange="loadRecordings(1)" title="No transcript records yet"> None</label>
                         </div>
                     </th>
                     <th style="width:110px;">
@@ -1262,9 +1262,19 @@ function editItem(key) {
 
     var html = '<div style="display:grid;grid-template-columns:200px 1fr 1fr;gap:16px;">';
 
-    // Column 1: Thumbnail + Active + Save/Cancel at bottom
+    // Column 1: Thumbnail + Active + Save/Cancel at bottom. Wrap the
+    // thumbnail (or "No image" placeholder) in an <a> that opens
+    // feed_item_url in a new tab, so clicking the slot in the edit
+    // panel jumps straight to the original video / post / image.
+    // Inline ternary mirrors the proven pattern used by the items-list
+    // row (search "feed_item_url ?" elsewhere in this file).
+    var _u = item.feed_item_url ? esc(item.feed_item_url) : '';
     html += '<div style="display:flex;flex-direction:column;">'
-        + (thumbSrc ? '<img src="' + esc(thumbSrc.indexOf('http')===0 ? thumbSrc : '/'+thumbSrc) + '" style="width:100%;border-radius:6px;margin-bottom:8px;" alt="">' : '<div style="width:100%;height:120px;background:#eee;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>')
+        + (_u ? '<a href="' + _u + '" target="_blank" rel="noopener" title="Open source" style="text-decoration:none;color:inherit;">' : '')
+        + (thumbSrc
+            ? '<img src="' + esc(thumbSrc.indexOf('http')===0 ? thumbSrc : '/'+thumbSrc) + '" style="width:100%;border-radius:6px;margin-bottom:8px;' + (_u ? 'cursor:pointer;' : '') + '" alt="">'
+            : '<div style="width:100%;height:120px;background:#eee;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;color:#999;' + (_u ? 'cursor:pointer;' : '') + '">No image</div>')
+        + (_u ? '</a>' : '')
         + fld('Thumbnail', 'feed_item_thumbnail', thumbSrc)
         + '<div style="margin-bottom:8px;"><label style="font-size:0.82rem;font-weight:600;color:#555;">Upload Image</label><input type="file" id="item-thumb-file" accept="image/*" style="font-size:0.78rem;margin-top:2px;" onchange="uploadItemThumb()"><span id="item-thumb-status" style="font-size:0.78rem;margin-left:6px;"></span></div>'
         + fld('Active', 'feed_item_active_flag', item.feed_item_active_flag, {type:'checkbox'})
@@ -2100,7 +2110,7 @@ function ytCaptionsDisconnectFeed(feedKey) {
 //   Pending  — has transcript records, no Approved review, no upload.
 //              Shown in muted yellow with the most recent review/edit
 //              datetime if any.
-//   Missing  — no transcript records at all.
+//   None     — no transcript records at all.
 //
 // The whole cell is clickable — opens the Transcribe popover so the
 // admin can review/edit/approve the transcript.
@@ -2120,7 +2130,7 @@ function recTranscriptCell(it) {
     var label, color, dateLine, title;
     var reviewIsNewer = reviewDt && uploadDt && (new Date(reviewDt) > new Date(uploadDt));
     if (!hasTx) {
-        label = 'Missing'; color = '#999'; dateLine = '';
+        label = 'None'; color = '#999'; dateLine = '';
         title = 'No transcript records yet';
     } else if (reviewSt === 'Approved' && (!uploadDt || reviewIsNewer)) {
         label = 'Reviewed'; color = '#a36100';

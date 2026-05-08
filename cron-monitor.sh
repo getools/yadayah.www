@@ -19,11 +19,3 @@ docker exec "$WEB" php /var/www/html/api/cron-monitor.php
 # 4. Cleanup
 rm -f "$TMP"
 
-# 5. Hourly: run fliphtml5 matcher if not run in last 55 min.
-# Replaces a standalone cron entry; runs here because this script executes as root.
-_flip_age_min=$(docker exec -i yada-postgres-prod psql -U postgres -d yada -t -A \
-    -c "SELECT COALESCE(EXTRACT(EPOCH FROM (NOW()-max(event_dtime)))/60, 9999) \
-        FROM yy_monitor_event WHERE event_source='fliphtml5_match'" 2>/dev/null | tr -d '[:space:]')
-if awk -v m="${_flip_age_min:-9999}" 'BEGIN{exit !(m+0 > 55)}'; then
-    /opt/yada-www/cron-fliphtml5-match.sh >> /var/log/fliphtml5-match.log 2>&1
-fi
