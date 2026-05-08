@@ -126,6 +126,9 @@
             '              background: none; border: 0; -webkit-appearance: none; appearance: none;',
             '              filter: drop-shadow(0 1px 1px rgba(0,0,0,0.18));',
             '              transition: transform 0.12s ease, opacity 0.12s ease; }',
+            // Two-page spread: left page anchors the bookmark in its far-left
+            // upper corner, mirroring the right-page default.
+            '.fb-bm-icon.fb-bm-icon-left { left: 6px; right: auto; }',
             '.fb-bm-icon:focus { outline: none; }',
             '.fb-bm-icon:focus-visible { outline: 2px solid #5b8def; outline-offset: 2px; border-radius: 2px; }',
             '.fb-bm-icon:hover { transform: scale(1.15); }',
@@ -169,6 +172,12 @@
             '                          background: transparent; border: 0; color: #888; cursor: pointer; border-radius: 3px; padding: 0; }',
             '.fb-bm-list button.icon:hover { background: #3a3a3e; color: #fff; }',
             '.fb-bm-list .empty-msg { padding: 16px; text-align: center; color: #888; font-size: 12px; font-style: italic; }',
+            // "Add Bookmark" button anchored at the bottom of the list — creates
+            // a bookmark on the currently active page (right page in spreads).
+            '.fb-bm-add-row { padding: 10px 6px; border-top: 1px solid #2a2a2e; margin-top: 4px; text-align: center; }',
+            '.fb-bm-add-btn { background: #1f3550; color: #cfe1ff; border: 1px solid #2a4d70; padding: 6px 14px; border-radius: 4px;',
+            '                 font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }',
+            '.fb-bm-add-btn:hover { background: #28456a; }',
             // Slider markers
             '.fb-bm-seek-wrap { position: relative; flex: 1 1 0; display: flex; align-items: center; max-width: none; }',
             // Override the global "input[type=range] { flex:1; max-width:220px }"
@@ -239,11 +248,34 @@
         }
     }
 
+    // Active page for the "Add Bookmark" button. Single-page → current page;
+    // two-page spread → right page (sort visible spread by x, take rightmost).
+    function getActivePage() {
+        var carouselMode = document.body.classList.contains('mode-carousel');
+        if (!carouselMode) {
+            var pairs = document.querySelectorAll('#book .stf__item.--page, #book .pg');
+            var visible = [];
+            pairs.forEach(function (el) {
+                if (el.offsetParent === null) return;
+                var page = getSlotPage(el);
+                if (page) visible.push({ page: page, x: el.getBoundingClientRect().left });
+            });
+            if (visible.length >= 2) {
+                visible.sort(function (a, b) { return a.x - b.x; });
+                return visible[visible.length - 1].page;
+            }
+            if (visible.length === 1) return visible[0].page;
+        }
+        return cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
+    }
+
     function renderSidebarList() {
         var list = document.getElementById('fb-bm-list');
         if (!list) return;
+        var addBtnHtml = '<div class="fb-bm-add-row"><button type="button" class="fb-bm-add-btn" id="fb-bm-add">+ Add Bookmark</button></div>';
         if (!bookmarks.length) {
-            list.innerHTML = '<div class="empty-msg">No bookmarks yet — click the bookmark icon on any page to add one.</div>';
+            list.innerHTML = '<div class="empty-msg">No bookmarks yet — click the bookmark icon on any page to add one.</div>' + addBtnHtml;
+            wireAddButton();
             return;
         }
         // Auto bookmark first (it's the "resume reading" pointer), manual ones sorted by page.
@@ -262,7 +294,7 @@
                  + '<button class="icon" data-action="edit" title="Edit"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
                  + '<button class="icon" data-action="del"  title="Delete"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'
                  + '</div>';
-        }).join('');
+        }).join('') + addBtnHtml;
         list.querySelectorAll('.row').forEach(function (row) {
             var key = parseInt(row.dataset.key, 10);
             var page = parseInt(row.dataset.page, 10);
@@ -272,6 +304,15 @@
                 if (action && action.dataset.action === 'del')  { e.stopPropagation(); deleteBookmark(key); return; }
                 if (cfg.gotoPage && page) cfg.gotoPage(page);
             });
+        });
+        wireAddButton();
+    }
+
+    function wireAddButton() {
+        var btn = document.getElementById('fb-bm-add');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            openPopover({ bookmark_page: getActivePage() });
         });
     }
 
@@ -288,23 +329,32 @@
             var center = document.querySelector('#carousel .cpg.center');
             if (center) targets.push({ el: center, page: getSlotPage(center) });
         } else {
-            // Spread mode — both visible pages of the current spread. StPageFlip
-            // marks the rendered pair with .--left and .--right classes, but
-            // their `data-page` (set during loadFromHTML) is what we actually
-            // care about. Fall back to scanning any .pg with display !== 'none'
-            // when the helper classes aren't on this version of the lib.
-            var pairs = document.querySelectorAll('#book .stf__item.--page, #book .pg');
-            pairs.forEach(function (el) {
+            // Spread mode — append the bookmark only to the inner .pg
+            // elements StPageFlip clones into its wrappers. Appending to
+            // the outer .stf__item.--page can interfere with the library's
+            // own positioning/animation and has visibly broken the spread
+            // in the past. Each .pg is unique per page (dedupe via the
+            // data-page attribute as a defense in depth).
+            var seenPage = {};
+            document.querySelectorAll('#book .pg[data-page]').forEach(function (el) {
                 if (el.offsetParent === null) return;
-                var page = getSlotPage(el);
-                if (page) targets.push({ el: el, page: page });
+                var page = parseInt(el.getAttribute('data-page'), 10);
+                if (!page || seenPage[page]) return;
+                seenPage[page] = true;
+                targets.push({ el: el, page: page, x: el.getBoundingClientRect().left });
             });
+            // Two-page spread: tag the leftmost target so its bookmark icon
+            // anchors to the far-left corner instead of the right.
+            if (targets.length >= 2) {
+                targets.sort(function (a, b) { return a.x - b.x; });
+                targets[0].leftPage = true;
+            }
         }
         targets.forEach(function (t) {
             var bm = bookmarksByPage[t.page];
             var btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'fb-bm-icon';
+            btn.className = 'fb-bm-icon' + (t.leftPage ? ' fb-bm-icon-left' : '');
             // Apply admin-configurable wrapper size + background. The SVG
             // glyph inside still uses its own width/height (placeholder-*),
             // so the wrapper acts as a padded hit-area around it.
