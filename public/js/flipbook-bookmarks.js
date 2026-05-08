@@ -34,6 +34,12 @@
     function placeholderW() { return parseInt(siteSettings['placeholder-width'],  10) || 18; }
     function placeholderH() { return parseInt(siteSettings['placeholder-height'], 10) || 22; }
     function placeholderColor() { return siteSettings['placeholder-color'] || '#888888'; }
+    // Icon wrapper (the clickable hit-area around the SVG glyph) — separate
+    // from the glyph itself so admins can grow the tap target without
+    // distorting the bookmark drawing.
+    function iconW()   { return parseInt(siteSettings['icon-width'],  10) || 24; }
+    function iconH()   { return parseInt(siteSettings['icon-height'], 10) || 28; }
+    function iconBg()  { return siteSettings['icon-bg'] || 'transparent'; }
     function iconFilled(color) {
         var w = placeholderW(), h = placeholderH();
         return '<svg viewBox="0 0 24 24" width="' + w + '" height="' + h + '" aria-hidden="true">'
@@ -93,8 +99,9 @@
 
     function rebuildIndex() {
         bookmarksByPage = {};
+        // Manual bookmarks sort before auto in the API (ORDER BY bookmark_auto_flag ASC),
+        // so first-write-wins gives manual precedence when a page has both.
         bookmarks.forEach(function (b) {
-            if (b.bookmark_auto_flag) return; // auto bookmark doesn't drive icon fill
             var p = b.bookmark_page;
             if (!bookmarksByPage[p]) bookmarksByPage[p] = b;
         });
@@ -113,9 +120,14 @@
             // an earlier attempt to do so collapsed `.cpg` from absolute to
             // relative and stacked pages vertically, breaking layout.
             '.fb-bm-icon { position: absolute; top: 4px; right: 6px; z-index: 5; cursor: pointer;',
-            '              color: #444; line-height: 0; padding: 2px;',
+            '              color: #444; line-height: 0; padding: 0;',
+            // Strip the <button> default chrome (gray fill, rounded border) so
+            // only the SVG bookmark glyph shows on the page corner.
+            '              background: none; border: 0; -webkit-appearance: none; appearance: none;',
             '              filter: drop-shadow(0 1px 1px rgba(0,0,0,0.18));',
             '              transition: transform 0.12s ease, opacity 0.12s ease; }',
+            '.fb-bm-icon:focus { outline: none; }',
+            '.fb-bm-icon:focus-visible { outline: 2px solid #5b8def; outline-offset: 2px; border-radius: 2px; }',
             '.fb-bm-icon:hover { transform: scale(1.15); }',
             // Popover
             '.fb-bm-pop-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200;',
@@ -191,7 +203,7 @@
             tab = document.createElement('div');
             tab.className = 'tab';
             tab.setAttribute('data-tab', 'bookmarks');
-            tab.textContent = 'Bookmarks';
+            tab.textContent = 'Bookmark';
             tabs.appendChild(tab);
         }
 
@@ -293,10 +305,23 @@
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'fb-bm-icon';
+            // Apply admin-configurable wrapper size + background. The SVG
+            // glyph inside still uses its own width/height (placeholder-*),
+            // so the wrapper acts as a padded hit-area around it.
+            btn.style.width      = iconW() + 'px';
+            btn.style.height     = iconH() + 'px';
+            btn.style.background = iconBg();
+            btn.style.display    = 'flex';
+            btn.style.alignItems = 'center';
+            btn.style.justifyContent = 'center';
             btn.innerHTML = bm ? iconFilled(bm.bookmark_color || '#888') : iconOutline();
+            // Tooltip text on the placeholder (no-bookmark) icon comes from
+            // admin-flipbook's "Hover text" setting; supports a {page} token
+            // that we substitute at render time.
+            var tipTpl = siteSettings['placeholder-tooltip'] || 'Add bookmark for page {page}';
             btn.title = bm
                 ? ((bm.bookmark_label || '(no label)') + (bm.bookmark_note ? '\n\n' + bm.bookmark_note : ''))
-                : 'Add bookmark for page ' + t.page;
+                : tipTpl.replace(/\{page\}/g, t.page);
             btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 openPopover(bm || { bookmark_page: t.page });

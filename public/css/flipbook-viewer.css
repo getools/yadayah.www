@@ -278,6 +278,9 @@
       /* Print is rarely useful from a phone and is taking up room that the
          bookmark button needs to fit on-screen. */
       #print { display: none; }
+      /* Shrink the bottom prev/next page-flip buttons by 40% on mobile so
+         they don't crowd the slider and bookmark icons. */
+      nav #prev, nav #next { padding: 4px 19px; min-width: 53px; }
     }
     /* Sound toggle is hidden in all viewports for now — the page-flip sound
        still plays per saved preference, just no UI control. */

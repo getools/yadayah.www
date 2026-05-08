@@ -18,7 +18,7 @@
       pdfPath:  "{{PDF_PATH}}"
     };
   </script>
-  <link rel="stylesheet" href="/css/flipbook-viewer.css?v=3">
+  <link rel="stylesheet" href="/css/flipbook-viewer.css?v=6">
 </head>
 <body>
   <header>
@@ -48,7 +48,7 @@
 
   <aside>
     <div class="tabs">
-      <div class="tab active" data-tab="toc">Contents</div>
+      <div class="tab active" data-tab="toc">TOC</div>
       <div class="tab"        data-tab="thumbs">Pages</div>
       <div class="tab"        data-tab="search">Search</div>
       <div class="tab"        data-tab="bookmarks">Bookmarks</div>
@@ -97,6 +97,6 @@
   <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"
           onerror="document.getElementById('err').style.display='block'; document.getElementById('err').textContent='Failed to load page-flip.browser.js';"></script>
   <script src="/js/flipbook-viewer.js?v=12"></script>
-  <script src="/js/flipbook-bookmarks.js?v=7"></script>
+  <script src="/js/flipbook-bookmarks.js?v=11"></script>
 </body>
 </html>
