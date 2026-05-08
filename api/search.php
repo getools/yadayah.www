@@ -28,9 +28,6 @@ $limit  = min(100, max(1, (int)($_GET['limit'] ?? 25)));
 $offset = ($page - 1) * $limit;
 
 $pdo = getDb();
-// 15-second hard limit on any single search query; prevents a long natural-language
-// question from holding a DB connection for minutes via Tier-3 fuzzy scans.
-$pdo->exec("SET statement_timeout = '15000'");
 
 // --- Alias expansion: look up alternate forms for each word in the query ---
 $queryWords = preg_split('/\s+/', $q);
@@ -189,64 +186,82 @@ if ($total > 0) {
         }
         unset($row);
     } else {
-        // --- TIER 3: Fuzzy word_similarity (handles typos/misspellings) ---
-        // Cap to 8 words: each word creates one trigram scan; a full sentence (40+ words)
-        // causes multi-minute queries even with a GIN index on 119k rows.
-        $tier3Words = array_slice($queryWords, 0, 8);
-        $pdo->exec("SET pg_trgm.word_similarity_threshold = 0.4");
-        $simConditions = [];
-        $simParams = [];
-        foreach ($tier3Words as $w) {
-            $simConditions[] = "? %> normalize_search_text(p.paragraph_text_plain)";
-            $simParams[] = $w;
-        }
-        $simWhere = 'WHERE (' . implode(' OR ', $simConditions) . ')';
-        if (count($filterConditions) > 0) {
-            $simWhere .= ' AND ' . implode(' AND ', $filterConditions);
-        }
-
-        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $simWhere");
-        $countStmt->execute(array_merge($simParams, $filterParams));
-        $total = (int)$countStmt->fetchColumn();
-
-        $stmt = $pdo->prepare("
-            SELECT v.volume_label AS volume_label,
-                   v.volume_code AS volume_code,
-                   v.volume_flip_code AS flip_code,
-                   v.volume_pdf AS volume_pdf,
-                   s.series_label AS series_label,
-                   ch.chapter_name AS chapter_name,
-                   ch.chapter_number AS chapter_number,
-                   p.paragraph_page AS page,
-                   greatest(" . implode(', ', array_fill(0, count($tier3Words), 'word_similarity(?, normalize_search_text(p.paragraph_text_plain))')) . ") AS rank,
-                   CASE WHEN length(p.paragraph_text_plain) > 300
-                        THEN substring(p.paragraph_text_plain FROM 1 FOR 300)
-                        ELSE p.paragraph_text_plain
-                   END AS snippet,
-                   p.paragraph_text_html AS html
-            FROM yy_paragraph p
-            JOIN yy_volume v ON v.volume_key = p.volume_key
-            JOIN yy_series s ON s.series_key = p.series_key
-            LEFT JOIN yy_chapter ch ON ch.chapter_key = p.chapter_key
-            $simWhere
-            ORDER BY rank DESC
-            LIMIT ? OFFSET ?
-        ");
-        $rankParams = [];
-        foreach ($tier3Words as $w) $rankParams[] = $w;
-        $stmt->execute(array_merge($rankParams, $simParams, $filterParams, [$limit, $offset]));
-        $results = $stmt->fetchAll();
-
-        foreach ($results as &$row) {
-            if ($row['snippet']) {
-                $escaped = htmlspecialchars($row['snippet'], ENT_QUOTES, 'UTF-8');
-                foreach ($queryWords as $w) {
-                    $escaped = preg_replace('/(' . preg_quote($w, '/') . ')/i', '<mark>$1</mark>', $escaped);
-                }
-                $row['snippet'] = $escaped;
+        // --- TIER 3: Per-word ILIKE fallback (OR logic, uses GiST idx_paragraph_norm_gist) ---
+        // word_similarity (%>) never uses GIN/GiST indexes in PG 15, causing full seq scans.
+        // Per-word ILIKE on normalize_search_text() DOES use idx_paragraph_norm_gist and is fast.
+        // Semantics: any query word present in a paragraph (OR logic), ranked by word-match count.
+        $tier3Words = array_values(array_filter(
+            array_slice($queryWords, 0, 8),
+            fn($w) => mb_strlen($w) >= 3
+        ));
+        if (empty($tier3Words)) {
+            $total = 0;
+            $results = [];
+        } else {
+            $simConditions = [];
+            $simParams = [];
+            foreach ($tier3Words as $w) {
+                $simConditions[] = "normalize_search_text(p.paragraph_text_plain) ILIKE ?";
+                $simParams[] = '%' . str_replace(['%', '_'], ['\%', '\_'], $w) . '%';
             }
+            $simWhere = 'WHERE (' . implode(' OR ', $simConditions) . ')';
+            if (count($filterConditions) > 0) {
+                $simWhere .= ' AND ' . implode(' AND ', $filterConditions);
+            }
+
+            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $simWhere");
+            $countStmt->execute(array_merge($simParams, $filterParams));
+            $total = (int)$countStmt->fetchColumn();
+
+            // Rank by how many query words appear; snippet anchored to first matching word.
+            $rankCases = implode(' + ', array_fill(0, count($tier3Words), '(CASE WHEN normalize_search_text(p.paragraph_text_plain) ILIKE ? THEN 1 ELSE 0 END)'));
+            $firstWord = $tier3Words[0];
+            $stmt = $pdo->prepare("
+                SELECT v.volume_label AS volume_label,
+                       v.volume_code AS volume_code,
+                       v.volume_flip_code AS flip_code,
+                       v.volume_pdf AS volume_pdf,
+                       s.series_label AS series_label,
+                       ch.chapter_name AS chapter_name,
+                       ch.chapter_number AS chapter_number,
+                       p.paragraph_page AS page,
+                       ($rankCases)::float / ? AS rank,
+                       CASE WHEN length(p.paragraph_text_plain) > 300
+                            THEN substring(p.paragraph_text_plain
+                                 FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - 100)
+                                 FOR 300)
+                            ELSE p.paragraph_text_plain
+                       END AS snippet,
+                       p.paragraph_text_html AS html
+                FROM yy_paragraph p
+                JOIN yy_volume v ON v.volume_key = p.volume_key
+                JOIN yy_series s ON s.series_key = p.series_key
+                LEFT JOIN yy_chapter ch ON ch.chapter_key = p.chapter_key
+                $simWhere
+                ORDER BY rank DESC, v.volume_sort, p.paragraph_page, p.paragraph_number
+                LIMIT ? OFFSET ?
+            ");
+            $stmt->execute(array_merge(
+                $simParams,             // CASE WHEN rank conditions
+                [count($tier3Words)],   // divisor for rank normalization
+                [$firstWord],           // snippet anchor word
+                $simParams,             // WHERE conditions
+                $filterParams,
+                [$limit, $offset]
+            ));
+            $results = $stmt->fetchAll();
+
+            foreach ($results as &$row) {
+                if ($row['snippet']) {
+                    $escaped = htmlspecialchars($row['snippet'], ENT_QUOTES, 'UTF-8');
+                    foreach ($queryWords as $w) {
+                        $escaped = preg_replace('/(' . preg_quote($w, '/') . ')/i', '<mark>$1</mark>', $escaped);
+                    }
+                    $row['snippet'] = $escaped;
+                }
+            }
+            unset($row);
         }
-        unset($row);
     }
 }
 
