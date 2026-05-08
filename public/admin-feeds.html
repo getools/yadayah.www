@@ -1217,8 +1217,12 @@ var _editItemKey = null;
 var _allItems = [];
 
 function editItem(key) {
-    // Find item from last loaded data
+    // Find item from last loaded data — both tabs feed lookup tables.
+    // _allItems = legacy Items tab; _recItems = current Items / recordings tab.
     var item = _allItems.find(function(it) { return it.feed_item_key == key; });
+    if (!item && Array.isArray(window._recItems)) {
+        item = _recItems.find(function(it) { return it.feed_item_key == key; });
+    }
     if (!item) return;
     _editItemKey = key;
 
@@ -2629,7 +2633,9 @@ function renderRecordings(d) {
     var html = '';
     _recItems.forEach(function(it) {
         var thumb = it.feed_item_thumbnail
-            ? '<img src="' + esc(it.feed_item_thumbnail) + '" style="width:90px;height:auto;border-radius:3px;">'
+            ? (it.feed_item_url
+                ? '<a href="' + esc(it.feed_item_url) + '" target="_blank" rel="noopener" title="Open source video"><img src="' + esc(it.feed_item_thumbnail) + '" style="width:90px;height:auto;border-radius:3px;"></a>'
+                : '<img src="' + esc(it.feed_item_thumbnail) + '" style="width:90px;height:auto;border-radius:3px;">')
             : '';
         var dur = it.feed_item_duration || (it.feed_item_duration_seconds ? formatSeconds(it.feed_item_duration_seconds) : '—');
         var pub = '—';

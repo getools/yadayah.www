@@ -267,27 +267,47 @@ foreach ($feeds as $feed) {
 }
 
 // ── Check for restricted/private videos ──
-// Spot-check items whose thumbnails return 404 (indicates private/deleted on YouTube)
+// Rotate through every item's thumbnail across successive sync runs.
+// 404 = private/deleted/unlisted on YouTube → mark Restricted.
+// yy_feed_item_check tracks last-checked timestamp per item; ORDER BY
+// least-recently-checked (NULL first = never checked yet) so the queue
+// fairly cycles. With LIMIT 200 × 3 runs/day, ~3,300-item libraries
+// complete a full sweep in ~6 days.
 $restrictStmt = $db->query("
-    SELECT feed_item_key, feed_item_thumbnail, feed_item_external_id
-    FROM yy_feed_item
-    WHERE feed_item_active_flag = TRUE AND feed_item_restricted_flag = FALSE
-      AND feed_item_thumbnail LIKE 'https://i.ytimg.com/%'
-    ORDER BY feed_item_publish_import_dtime DESC
-    LIMIT 50
+    SELECT fi.feed_item_key, fi.feed_item_thumbnail, fi.feed_item_external_id
+    FROM yy_feed_item fi
+    LEFT JOIN yy_feed_item_check c USING (feed_item_key)
+    WHERE fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE
+      AND fi.feed_item_thumbnail LIKE 'https://i.ytimg.com/%'
+    ORDER BY c.feed_item_last_checked_dtime ASC NULLS FIRST,
+             fi.feed_item_publish_import_dtime DESC
+    LIMIT 200
 ");
+$markRestrictedStmt = $db->prepare(
+    "UPDATE yy_feed_item SET feed_item_restricted_flag = TRUE WHERE feed_item_key = ?"
+);
+$recordCheckStmt = $db->prepare(
+    "INSERT INTO yy_feed_item_check (feed_item_key, feed_item_last_checked_dtime, feed_item_check_result)
+     VALUES (?, NOW(), ?)
+     ON CONFLICT (feed_item_key) DO UPDATE
+        SET feed_item_last_checked_dtime = EXCLUDED.feed_item_last_checked_dtime,
+            feed_item_check_result = EXCLUDED.feed_item_check_result"
+);
 $restrictCount = 0;
+$checkedCount = 0;
 foreach ($restrictStmt->fetchAll() as $ri) {
     $headers = @get_headers($ri['feed_item_thumbnail'], true);
     $httpCode = $headers ? (int)substr($headers[0], 9, 3) : 0;
+    $result = $httpCode === 404 ? '404' : ($httpCode === 200 ? 'ok' : ('http_' . $httpCode));
     if ($httpCode === 404) {
-        $db->prepare("UPDATE yy_feed_item SET feed_item_restricted_flag = TRUE WHERE feed_item_key = ?")
-           ->execute([$ri['feed_item_key']]);
+        $markRestrictedStmt->execute([$ri['feed_item_key']]);
         $restrictCount++;
         if ($isCli) echo "Restricted: {$ri['feed_item_external_id']} (thumbnail 404)\n";
     }
+    $recordCheckStmt->execute([$ri['feed_item_key'], $result]);
+    $checkedCount++;
 }
-if ($restrictCount > 0 && $isCli) echo "Marked {$restrictCount} item(s) as restricted\n";
+if ($isCli) echo "Privacy check: {$checkedCount} item(s) probed, {$restrictCount} marked restricted\n";
 
 // Update feed item → page associations after sync
 require_once __DIR__ . '/feed-item-pages.php';
