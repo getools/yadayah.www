@@ -109,7 +109,12 @@
       const pageFlip = new St.PageFlip(bookEl, {
         width: initial.pageW, height: initial.pageH,
         size: 'fixed', maxShadowOpacity: 0.5, showCover: false,
-        flippingTime: 700, mobileScrollSupport: true, usePortrait: true, drawShadow: true,
+        // usePortrait:false — once StPageFlip latches to portrait at init
+        // (because bookEl was 0-wide before layout settled), update() does
+        // not reliably re-evaluate. Spread mode is gated to desktop anyway
+        // (mobile users default to carousel and the mode toggle is hidden
+        // below 700px), so forcing landscape here removes the latch bug.
+        flippingTime: 700, mobileScrollSupport: true, usePortrait: false, drawShadow: true,
         // Disable mouse-drag flipping so transparent text overlay can
         // capture mousedown for text selection. Touch swipe still flips
         // on mobile. Desktop navigation: arrow keys / buttons / TOC.
@@ -469,6 +474,12 @@
             // re-render at the new size on the next updateCarousel().
             for (const s of carouselSlots) s.querySelector('.text-layer').innerHTML = '';
             updateCarousel(carouselCenter, { animate: false });
+          } else {
+            // Spread mode: kick StPageFlip to re-evaluate portrait/landscape
+            // orientation against the new container width. Without this it
+            // stays locked to whatever orientation it picked at init time
+            // (e.g. portrait when bookEl was 0-wide during script bootstrap).
+            try { pageFlip.update(); } catch (e) {}
           }
           applyZoom();
           repopulateNeighbors(currentPage());
@@ -1178,6 +1189,25 @@
         const btn = document.getElementById('mode');
         btn.innerHTML = '<svg viewBox="0 0 24 18" width="22" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="7" y="2" width="10" height="14" rx="1"/></svg>';
         btn.title = 'Switch to single-page view';
+        // StPageFlip evaluates portrait vs landscape from bookEl.offsetWidth
+        // at init time. If bookEl was 0-wide because the page-flip init runs
+        // before layout settles, the library latches to portrait and stays
+        // there even after bookEl grows. Re-fire update() once the layout
+        // is definitely complete (load event covers async images/fonts) so
+        // the spread renders both pages on a wide viewport.
+        function forceSpreadRelayout() {
+          try { pageFlip.update(); } catch (e) {}
+          try { pageFlip.turnToPage(Math.max(0, (initialPage || 1) - 1)); } catch (e) {}
+          applyZoom();
+          positionFlipZones();
+        }
+        requestAnimationFrame(forceSpreadRelayout);
+        if (document.readyState !== 'complete') {
+          window.addEventListener('load', forceSpreadRelayout, { once: true });
+        }
+        // Belt-and-suspenders: a 250ms tick covers cases where layout is
+        // still settling after `load` (sidebar autoShow animations, etc.).
+        setTimeout(forceSpreadRelayout, 250);
       }
 
     } catch (e) { showErr('init threw: ' + (e && e.stack || e)); }

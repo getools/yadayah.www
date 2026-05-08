@@ -248,23 +248,16 @@
         }
     }
 
-    // Active page for the "Add Bookmark" button. Single-page → current page;
-    // two-page spread → right page (sort visible spread by x, take rightmost).
+    // Active page for the "Add Bookmark" button. Single-page (carousel) →
+    // current page; two-page spread → right page (the .pg with --right).
     function getActivePage() {
         var carouselMode = document.body.classList.contains('mode-carousel');
         if (!carouselMode) {
-            var pairs = document.querySelectorAll('#book .stf__item.--page, #book .pg');
-            var visible = [];
-            pairs.forEach(function (el) {
-                if (el.offsetParent === null) return;
-                var page = getSlotPage(el);
-                if (page) visible.push({ page: page, x: el.getBoundingClientRect().left });
-            });
-            if (visible.length >= 2) {
-                visible.sort(function (a, b) { return a.x - b.x; });
-                return visible[visible.length - 1].page;
+            var rightPg = document.querySelector('#book [class~="--right"][data-page]');
+            if (rightPg) {
+                var p = parseInt(rightPg.getAttribute('data-page'), 10);
+                if (p) return p;
             }
-            if (visible.length === 1) return visible[0].page;
         }
         return cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
     }
@@ -329,26 +322,34 @@
             var center = document.querySelector('#carousel .cpg.center');
             if (center) targets.push({ el: center, page: getSlotPage(center) });
         } else {
-            // Spread mode — append the bookmark only to the inner .pg
-            // elements StPageFlip clones into its wrappers. Appending to
-            // the outer .stf__item.--page can interfere with the library's
-            // own positioning/animation and has visibly broken the spread
-            // in the past. Each .pg is unique per page (dedupe via the
-            // data-page attribute as a defense in depth).
+            // Spread mode. StPageFlip 2.0.7 adds --left / --right classes
+            // directly to whichever .pg is currently the visible left/right
+            // of the spread. Use those to identify left vs right.
+            //
+            // Approach: scan all visible .pg elements (the original ones we
+            // attached data-page to). Among them, the "left" page is the
+            // one with the smaller page number — page numbering increases
+            // strictly within a spread (1+2, 3+4, ...). This is more
+            // reliable than the --left/--right selector, which we observed
+            // sometimes doesn't match (likely because StPageFlip rebuilds
+            // its internal element references and our refresh fires before
+            // the classes settle).
             var seenPage = {};
-            document.querySelectorAll('#book .pg[data-page]').forEach(function (el) {
+            var visible = [];
+            document.querySelectorAll('.pg[data-page]').forEach(function (el) {
                 if (el.offsetParent === null) return;
+                if (!el.closest('#book')) return;
                 var page = parseInt(el.getAttribute('data-page'), 10);
                 if (!page || seenPage[page]) return;
                 seenPage[page] = true;
-                targets.push({ el: el, page: page, x: el.getBoundingClientRect().left });
+                visible.push({ el: el, page: page });
             });
-            // Two-page spread: tag the leftmost target so its bookmark icon
-            // anchors to the far-left corner instead of the right.
-            if (targets.length >= 2) {
-                targets.sort(function (a, b) { return a.x - b.x; });
-                targets[0].leftPage = true;
+            // Two-page spread: lowest page number is the left page.
+            if (visible.length >= 2) {
+                visible.sort(function (a, b) { return a.page - b.page; });
+                visible[0].leftPage = true;
             }
+            visible.forEach(function (v) { targets.push(v); });
         }
         targets.forEach(function (t) {
             var bm = bookmarksByPage[t.page];
