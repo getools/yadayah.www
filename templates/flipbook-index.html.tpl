@@ -97,6 +97,6 @@
   <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"
           onerror="document.getElementById('err').style.display='block'; document.getElementById('err').textContent='Failed to load page-flip.browser.js';"></script>
   <script src="/js/flipbook-viewer.js?v=15"></script>
-  <script src="/js/flipbook-bookmarks.js?v=18"></script>
+  <script src="/js/flipbook-bookmarks.js?v=21"></script>
 </body>
 </html>

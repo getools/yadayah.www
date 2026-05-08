@@ -248,18 +248,17 @@
         }
     }
 
-    // Active page for the "Add Bookmark" button. Single-page (carousel) →
-    // current page; two-page spread → right page (the .pg with --right).
+    // Active page for "Add Bookmark" / auto-bookmark. Single-page → current
+    // page. Two-page spread → LEFT page (odd partner). With showCover:false
+    // pages display as (1+2, 3+4, …), so odd pages are on the left; if the
+    // caller's currentPage is even we step back one to its odd partner.
     function getActivePage() {
+        var current = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
         var carouselMode = document.body.classList.contains('mode-carousel');
-        if (!carouselMode) {
-            var rightPg = document.querySelector('#book [class~="--right"][data-page]');
-            if (rightPg) {
-                var p = parseInt(rightPg.getAttribute('data-page'), 10);
-                if (p) return p;
-            }
+        if (!carouselMode && current % 2 === 0 && current > 1) {
+            return current - 1;
         }
-        return cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
+        return current;
     }
 
     function renderSidebarList() {
@@ -322,34 +321,28 @@
             var center = document.querySelector('#carousel .cpg.center');
             if (center) targets.push({ el: center, page: getSlotPage(center) });
         } else {
-            // Spread mode. StPageFlip 2.0.7 adds --left / --right classes
-            // directly to whichever .pg is currently the visible left/right
-            // of the spread. Use those to identify left vs right.
-            //
-            // Approach: scan all visible .pg elements (the original ones we
-            // attached data-page to). Among them, the "left" page is the
-            // one with the smaller page number — page numbering increases
-            // strictly within a spread (1+2, 3+4, ...). This is more
-            // reliable than the --left/--right selector, which we observed
-            // sometimes doesn't match (likely because StPageFlip rebuilds
-            // its internal element references and our refresh fires before
-            // the classes settle).
-            var seenPage = {};
-            var visible = [];
-            document.querySelectorAll('.pg[data-page]').forEach(function (el) {
-                if (el.offsetParent === null) return;
-                if (!el.closest('#book')) return;
-                var page = parseInt(el.getAttribute('data-page'), 10);
-                if (!page || seenPage[page]) return;
-                seenPage[page] = true;
-                visible.push({ el: el, page: page });
-            });
-            // Two-page spread: lowest page number is the left page.
-            if (visible.length >= 2) {
-                visible.sort(function (a, b) { return a.page - b.page; });
-                visible[0].leftPage = true;
+            // Spread mode. We can't reliably trust offsetParent or
+            // getBoundingClientRect to filter to the active spread —
+            // StPageFlip uses transforms (not display:none) to stage the
+            // other pages off-screen, so old pages from prior spreads still
+            // pass those checks after a flip. Instead derive the active
+            // pair from the current page number plus parity: with
+            // showCover:false, odd pages are on the LEFT and the even
+            // partner is on the RIGHT (1+2, 3+4, …).
+            var current = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
+            var leftNum, rightNum;
+            if (current % 2 === 1) { leftNum = current; rightNum = current + 1; }
+            else                   { leftNum = current - 1; rightNum = current; }
+            // Cap at TOTAL — at end of book the right slot may not exist.
+            var totalPages = cfg.totalPages || Number.MAX_SAFE_INTEGER;
+            if (leftNum >= 1 && leftNum <= totalPages) {
+                var leftEl = document.querySelector('#book .pg[data-page="' + leftNum + '"]');
+                if (leftEl) targets.push({ el: leftEl, page: leftNum, leftPage: true });
             }
-            visible.forEach(function (v) { targets.push(v); });
+            if (rightNum >= 1 && rightNum <= totalPages) {
+                var rightEl = document.querySelector('#book .pg[data-page="' + rightNum + '"]');
+                if (rightEl) targets.push({ el: rightEl, page: rightNum });
+            }
         }
         targets.forEach(function (t) {
             var bm = bookmarksByPage[t.page];
@@ -482,9 +475,19 @@
         document.getElementById('fb-bm-del').addEventListener('click', function () {
             if (popState && popState.bookmark_key) deleteBookmark(popState.bookmark_key);
         });
-        // Esc to close
+        // Esc to close, Enter to Save (excluding the textarea — Enter there
+        // adds a newline as expected).
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && document.getElementById('fb-bm-pop-mask').classList.contains('show')) closePopover();
+            var open = document.getElementById('fb-bm-pop-mask');
+            if (!open || !open.classList.contains('show')) return;
+            if (e.key === 'Escape') { closePopover(); return; }
+            if (e.key === 'Enter' && !e.shiftKey) {
+                var inPopover = e.target && e.target.closest && e.target.closest('.fb-bm-pop');
+                if (!inPopover) return;
+                if (e.target.tagName === 'TEXTAREA') return;
+                e.preventDefault();
+                savePopover();
+            }
         });
     }
 
@@ -583,7 +586,13 @@
     // pagehide/beforeunload (synchronous-ish, fires even on tab close).
     var lastSeenPage = 0;
     BM.recordCurrentPage = function (page) {
-        if (page > 0) lastSeenPage = page;
+        if (!page || page <= 0) return;
+        // In two-page spread, normalize to the LEFT page (odd partner) so
+        // the auto-bookmark always points to the start of the spread the
+        // user was reading, not the right-hand verso.
+        var carouselMode = document.body.classList.contains('mode-carousel');
+        if (!carouselMode && page % 2 === 0 && page > 1) page = page - 1;
+        lastSeenPage = page;
     };
 
     function flushAutoBookmark() {
