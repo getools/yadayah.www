@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778246407">
+    <meta name="page-version" content="1778267650">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -784,9 +784,16 @@ function checkAuth() {
             // Items tab's Feed filter dropdown gets built with an empty
             // feeds[] array and shows only "All" with no actual options.
             loadFeeds().then(function() {
+                // URL hash takes precedence over the saved tab — admin-helper
+                // links here with #recordings so clicking the MP3 Generation
+                // helper card lands directly on the queue. Falls back to the
+                // saved tab from the previous visit, or 'sources' on first
+                // load.
+                var hashTab = (location.hash || '').replace(/^#/, '');
                 var savedTab = window.adminUI ? adminUI.load('feeds', 'tab', 'sources') : 'sources';
-                if (savedTab && savedTab !== 'sources' && document.querySelector('.sub-tab[onclick*="' + savedTab + '"]')) {
-                    switchFeedTab(savedTab);
+                var targetTab = hashTab || savedTab;
+                if (targetTab && targetTab !== 'sources' && document.querySelector('.sub-tab[onclick*="' + targetTab + '"]')) {
+                    switchFeedTab(targetTab);
                 }
             });
         } else {

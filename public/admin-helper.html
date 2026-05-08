@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="page-version" content="1778267650">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helper Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css?v=10">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .helper-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .helper-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            transition: box-shadow 0.18s, transform 0.18s, border-color 0.18s;
+        }
+        .helper-card:hover {
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+            transform: translateY(-1px);
+            border-color: #5b8def;
+        }
+        .helper-card.disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+        .helper-card.disabled:hover {
+            transform: none;
+            box-shadow: none;
+            border-color: #e0e0e0;
+        }
+        .helper-card .helper-label {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #31345A;
+        }
+        .helper-card .helper-meta {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .helper-card .queue-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #fff;
+            background: #31345A;
+            padding: 3px 10px;
+            border-radius: 12px;
+            align-self: flex-start;
+        }
+        .helper-card .queue-badge.zero  { background: #aab1c1; }
+        .helper-card .queue-badge.unbound { background: #ccc; color: #555; }
+        .helper-card .helper-go {
+            margin-top: 4px;
+            font-size: 0.82rem;
+            color: #5b8def;
+        }
+        .helper-card.disabled .helper-go { color: #aaa; }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=10"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Helper</h1>
+    <p style="color:#666;font-size:0.92rem;max-width:780px;">
+        Long-running tasks an admin can claim and process. Each helper points
+        at a stored report whose query yields the work queue. Click a card
+        to open its queue.
+    </p>
+
+    <div id="helper-list">
+        <div class="empty-state">Loading helpers…</div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+
+function checkAuth() {
+    fetch(API + '/auth.php', { credentials: 'include' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.authenticated) {
+                document.getElementById('app').style.display = '';
+                document.getElementById('user-display').textContent = d.user_name || '';
+                if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+                loadHelpers();
+            } else {
+                document.getElementById('login-screen').classList.add('visible');
+            }
+        });
+}
+
+function doLogin() {
+    var user = document.getElementById('login-user').value;
+    var pass = document.getElementById('login-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: user, password: pass })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name || '';
+            if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+            loadHelpers();
+        } else {
+            errEl.textContent = d.error || 'Login failed';
+            errEl.style.display = '';
+        }
+    });
+}
+
+function doLogout() {
+    fetch(API + '/auth.php', { method: 'DELETE', credentials: 'include' })
+        .then(function () { location.reload(); });
+}
+
+function togglePassword() {
+    var i = document.getElementById('login-pass');
+    i.type = i.type === 'password' ? 'text' : 'password';
+}
+
+function esc(s) {
+    return (s == null ? '' : String(s))
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Where each helper sends the admin when its card is clicked. The
+// MP3-generation helper hands off to the existing Recordings tab
+// inside Admin → Feeds because that's where the lock/queue UI lives;
+// the URL hash gets picked up by admin-feeds.html on load to switch
+// tabs straight away. Other helpers can be wired here as we add them.
+var HELPER_TARGETS = {
+    'mp3-generation':    '/admin-feeds#recordings',
+    'transcript-review': null  // not wired yet — report not seeded
+};
+
+function loadHelpers() {
+    var listEl = document.getElementById('helper-list');
+    listEl.innerHTML = '<div class="empty-state">Loading helpers…</div>';
+    fetch(API + '/admin-helpers.php', { credentials: 'include' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var items = (d && d.helpers) || [];
+            if (!items.length) {
+                listEl.innerHTML = '<div class="empty-state">No helpers configured.</div>';
+                return;
+            }
+            var html = '<div class="helper-grid">';
+            items.forEach(function (h) {
+                var target = HELPER_TARGETS[h.helper_code] || null;
+                var hasReport = !!h.report_key;
+                var disabled = !target;
+                var queueBadge = '';
+                if (!hasReport) {
+                    queueBadge = '<span class="queue-badge unbound" title="No report bound">no report</span>';
+                } else if (h.queue_count == null) {
+                    queueBadge = '<span class="queue-badge unbound" title="Queue size unavailable">— in queue</span>';
+                } else if (h.queue_count === 0) {
+                    queueBadge = '<span class="queue-badge zero">0 in queue</span>';
+                } else {
+                    queueBadge = '<span class="queue-badge">' + h.queue_count + ' in queue</span>';
+                }
+                var bound = h.report_label
+                    ? '<div class="helper-meta">Report: <span style="color:#444">' + esc(h.report_label) + '</span></div>'
+                    : '<div class="helper-meta" style="color:#bbb">no bound report yet</div>';
+                var go = disabled
+                    ? '<div class="helper-go">coming soon</div>'
+                    : '<div class="helper-go">→ open queue</div>';
+                if (disabled) {
+                    html += '<div class="helper-card disabled" title="Not wired yet">'
+                          + '<div class="helper-label">' + esc(h.helper_label) + '</div>'
+                          + bound
+                          + queueBadge
+                          + go
+                          + '</div>';
+                } else {
+                    html += '<a class="helper-card" href="' + esc(target) + '">'
+                          + '<div class="helper-label">' + esc(h.helper_label) + '</div>'
+                          + bound
+                          + queueBadge
+                          + go
+                          + '</a>';
+                }
+            });
+            html += '</div>';
+            listEl.innerHTML = html;
+        })
+        .catch(function (e) {
+            listEl.innerHTML = '<div class="empty-state">Failed to load helpers: ' + esc(e && e.message) + '</div>';
+        });
+}
+
+checkAuth();
+</script>
+
+</body>
+</html>
