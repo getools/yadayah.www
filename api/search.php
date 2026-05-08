@@ -14,6 +14,11 @@ if ($q === '') {
 $stripChars = "\u{02BF}\u{02BE}\u{02BC}\u{02BB}\u{02B9}\u{02BA}\u{2018}\u{2019}\u{201C}\u{201D}\u{2013}\u{2014}'";
 $q = str_replace(str_split($stripChars), '', $q);
 $q = preg_replace('/\s{2,}/', ' ', trim($q));
+// Cap query to 150 chars to prevent Tier-3 from expanding into dozens of trigram scans.
+// Trim to last complete word so we don't split mid-token.
+if (mb_strlen($q) > 150) {
+    $q = trim(preg_replace('/\s+\S*$/', '', mb_substr($q, 0, 150)));
+}
 
 $mode   = $_GET['mode'] ?? 'all';
 $series = isset($_GET['series']) && $_GET['series'] !== '' ? (int)$_GET['series'] : null;
@@ -23,6 +28,9 @@ $limit  = min(100, max(1, (int)($_GET['limit'] ?? 25)));
 $offset = ($page - 1) * $limit;
 
 $pdo = getDb();
+// 15-second hard limit on any single search query; prevents a long natural-language
+// question from holding a DB connection for minutes via Tier-3 fuzzy scans.
+$pdo->exec("SET statement_timeout = '15000'");
 
 // --- Alias expansion: look up alternate forms for each word in the query ---
 $queryWords = preg_split('/\s+/', $q);
@@ -182,10 +190,13 @@ if ($total > 0) {
         unset($row);
     } else {
         // --- TIER 3: Fuzzy word_similarity (handles typos/misspellings) ---
+        // Cap to 8 words: each word creates one trigram scan; a full sentence (40+ words)
+        // causes multi-minute queries even with a GIN index on 119k rows.
+        $tier3Words = array_slice($queryWords, 0, 8);
         $pdo->exec("SET pg_trgm.word_similarity_threshold = 0.4");
         $simConditions = [];
         $simParams = [];
-        foreach ($queryWords as $w) {
+        foreach ($tier3Words as $w) {
             $simConditions[] = "? %> normalize_search_text(p.paragraph_text_plain)";
             $simParams[] = $w;
         }
@@ -207,7 +218,7 @@ if ($total > 0) {
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
                    p.paragraph_page AS page,
-                   greatest(" . implode(', ', array_fill(0, count($queryWords), 'word_similarity(?, normalize_search_text(p.paragraph_text_plain))')) . ") AS rank,
+                   greatest(" . implode(', ', array_fill(0, count($tier3Words), 'word_similarity(?, normalize_search_text(p.paragraph_text_plain))')) . ") AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > 300
                         THEN substring(p.paragraph_text_plain FROM 1 FOR 300)
                         ELSE p.paragraph_text_plain
@@ -222,7 +233,7 @@ if ($total > 0) {
             LIMIT ? OFFSET ?
         ");
         $rankParams = [];
-        foreach ($queryWords as $w) $rankParams[] = $w;
+        foreach ($tier3Words as $w) $rankParams[] = $w;
         $stmt->execute(array_merge($rankParams, $simParams, $filterParams, [$limit, $offset]));
         $results = $stmt->fetchAll();
 
