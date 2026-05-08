@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
     errorResponse('Method not allowed', 405);
 }
 

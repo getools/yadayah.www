@@ -1,82 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778267650">
+    <meta name="page-version" content="1778270373">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Helper Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=10">
     <link rel="stylesheet" href="css/login.css">
     <style>
-        .helper-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
-            margin-top: 20px;
-        }
-        .helper-card {
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 10px;
-            padding: 18px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            text-decoration: none;
-            color: inherit;
-            cursor: pointer;
-            transition: box-shadow 0.18s, transform 0.18s, border-color 0.18s;
-        }
-        .helper-card:hover {
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
-            transform: translateY(-1px);
-            border-color: #5b8def;
-        }
-        .helper-card.disabled {
-            cursor: not-allowed;
-            opacity: 0.55;
-        }
-        .helper-card.disabled:hover {
-            transform: none;
-            box-shadow: none;
-            border-color: #e0e0e0;
-        }
-        .helper-card .helper-label {
-            font-size: 1.05rem;
-            font-weight: 600;
-            color: #31345A;
-        }
-        .helper-card .helper-meta {
-            font-size: 0.8rem;
-            color: #888;
-        }
-        .helper-card .queue-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #fff;
-            background: #31345A;
-            padding: 3px 10px;
-            border-radius: 12px;
-            align-self: flex-start;
-        }
-        .helper-card .queue-badge.zero  { background: #aab1c1; }
+        /* ── Card grid (helper list view) ───────────────────────────── */
+        .helper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
+        .helper-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; cursor: pointer; transition: box-shadow 0.18s, transform 0.18s, border-color 0.18s; }
+        .helper-card:hover { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08); transform: translateY(-1px); border-color: #5b8def; }
+        .helper-card.disabled { cursor: not-allowed; opacity: 0.55; }
+        .helper-card.disabled:hover { transform: none; box-shadow: none; border-color: #e0e0e0; }
+        .helper-card .helper-label { font-size: 1.05rem; font-weight: 600; color: #31345A; }
+        .helper-card .helper-meta { font-size: 0.8rem; color: #888; }
+        .helper-card .queue-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #fff; background: #31345A; padding: 3px 10px; border-radius: 12px; align-self: flex-start; }
+        .helper-card .queue-badge.zero { background: #aab1c1; }
         .helper-card .queue-badge.unbound { background: #ccc; color: #555; }
-        .helper-card .helper-go {
-            margin-top: 4px;
-            font-size: 0.82rem;
-            color: #5b8def;
-        }
+        .helper-card .helper-go { margin-top: 4px; font-size: 0.82rem; color: #5b8def; }
         .helper-card.disabled .helper-go { color: #aaa; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #888; font-style: italic; }
 
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #888;
-            font-style: italic;
-        }
+        /* ── Queue view ─────────────────────────────────────────────── */
+        .queue-toolbar { display: flex; align-items: center; gap: 12px; margin: 14px 0 10px; flex-wrap: wrap; }
+        .queue-toolbar .spacer { flex: 1; }
+        .queue-toolbar .meta { font-size: 0.85rem; color: #666; }
+        .queue-toolbar .meta strong { color: #31345A; }
+        .queue-toolbar button { padding: 6px 12px; font-size: 0.85rem; border: 1px solid #ccc; background: #fff; color: #333; border-radius: 4px; cursor: pointer; transition: background 0.15s; }
+        .queue-toolbar button.primary { background: #31345A; color: #fff; border-color: #31345A; font-weight: 600; }
+        .queue-toolbar button.primary:hover { background: #4a4e7a; }
+        .queue-toolbar button.danger  { background: #c33;    color: #fff; border-color: #a22; }
+        .queue-toolbar button.danger:hover { background: #a22; }
+        .queue-toolbar button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .queue-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff; }
+        .queue-table th, .queue-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .queue-table thead th { background: #f6f7fa; font-weight: 600; color: #444; font-size: 0.82rem; user-select: none; }
+        .queue-table tbody tr:hover { background: #fafbfd; }
+        .queue-table tbody tr.locked-by-me { background: #eaf4ff; }
+        .queue-table tbody tr.locked-by-other { background: #fff9ea; }
+        .queue-table .col-thumb img { width: 80px; height: auto; border-radius: 3px; display: block; }
+        .queue-table .col-key { font-family: monospace; color: #888; font-size: 0.78rem; }
+        .queue-table .col-title { max-width: 460px; }
+        .queue-table .col-title a { color: #2563eb; text-decoration: none; }
+        .queue-table .col-title a:hover { text-decoration: underline; }
+        .queue-table .col-published { font-size: 0.78rem; color: #666; white-space: nowrap; }
+        .queue-table .col-duration  { font-family: monospace; font-size: 0.78rem; color: #666; }
+        .queue-table .col-actions   { white-space: nowrap; text-align: right; }
+
+        .lock-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+        .lock-badge.mine    { background: #d4edda; color: #155724; border: 1px solid #b1d8b9; }
+        .lock-badge.other   { background: #fff3cd; color: #856404; border: 1px solid #e6c200; }
+        .lock-badge.now     { background: #f8d7da; color: #721c24; border: 1px solid #f1aeb5; }
+        .lock-badge.free    { background: #f0f1f4; color: #888;    border: 1px solid #dde0e6; }
+
+        .row-action-btn { padding: 4px 10px; font-size: 0.78rem; border: 1px solid #ccc; background: #fff; color: #333; border-radius: 4px; cursor: pointer; margin-left: 4px; transition: background 0.15s, border-color 0.15s; }
+        .row-action-btn.primary { background: #31345A; color: #fff; border-color: #31345A; }
+        .row-action-btn.primary:hover { background: #4a4e7a; }
+        .row-action-btn.warn    { background: #c33;   color: #fff; border-color: #a22; }
+        .row-action-btn.warn:hover { background: #a22; }
+        .row-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .breadcrumb { font-size: 0.85rem; margin: 8px 0; }
+        .breadcrumb a { color: #5b8def; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #31345A; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 0.85rem; box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 100; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+        .toast.show { opacity: 1; }
+        .toast.error { background: #c33; }
     </style>
 </head>
 <body>
@@ -84,12 +77,8 @@
 <div id="login-screen" class="login-screen">
     <div class="login-card">
         <h1>Admin</h1>
-        <div class="field">
-            <label for="login-user">Login</label>
-            <input type="text" id="login-user" autocomplete="username">
-        </div>
-        <div class="field">
-            <label for="login-pass">Password</label>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field"><label for="login-pass">Password</label>
             <div class="pass-wrap">
                 <input type="password" id="login-pass" autocomplete="current-password">
                 <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
@@ -110,21 +99,47 @@
         </div>
     </div>
 
-    <h1>Helper</h1>
-    <p style="color:#666;font-size:0.92rem;max-width:780px;">
-        Long-running tasks an admin can claim and process. Each helper points
-        at a stored report whose query yields the work queue. Click a card
-        to open its queue.
-    </p>
+    <!-- ── List view: cards ────────────────────────────────────────── -->
+    <div id="view-list">
+        <h1>Helper</h1>
+        <p style="color:#666;font-size:0.92rem;max-width:780px;">
+            Long-running tasks an admin can claim and process. Each helper points at a stored report whose query yields the work queue. Click a card to open its queue.
+        </p>
+        <div id="helper-list"><div class="empty-state">Loading helpers…</div></div>
+    </div>
 
-    <div id="helper-list">
-        <div class="empty-state">Loading helpers…</div>
+    <!-- ── Queue view: table for one helper ────────────────────────── -->
+    <div id="view-queue" style="display:none;">
+        <div class="breadcrumb"><a href="#" onclick="navHome();return false;">← Helpers</a></div>
+        <h1 id="queue-title">…</h1>
+        <p id="queue-description" style="color:#666;font-size:0.9rem;max-width:780px;"></p>
+
+        <div class="queue-toolbar">
+            <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="select-all" onclick="toggleSelectAll(this.checked)"> Select all
+            </label>
+            <button class="primary" id="btn-claim-selected"   onclick="claimSelected()">Claim selected</button>
+            <button class="danger"  id="btn-release-selected" onclick="releaseSelected()">Release selected</button>
+            <button id="btn-refresh" onclick="refreshQueue()">↻ Refresh</button>
+            <span class="spacer"></span>
+            <span class="meta">
+                <strong id="queue-count">0</strong> in queue ·
+                <strong id="locked-mine-count">0</strong> mine ·
+                <strong id="locked-other-count">0</strong> by others
+            </span>
+        </div>
+
+        <div id="queue-table-wrap"><div class="empty-state">Loading queue…</div></div>
     </div>
 </div>
 
+<div id="toast" class="toast"></div>
+
 <script>
 var API = '/api';
+var ME = { user_code: '', user_key: 0 };
 
+// ── Auth ────────────────────────────────────────────────────────────────
 function checkAuth() {
     fetch(API + '/auth.php', { credentials: 'include' })
         .then(function (r) { return r.json(); })
@@ -132,63 +147,76 @@ function checkAuth() {
             if (d.authenticated) {
                 document.getElementById('app').style.display = '';
                 document.getElementById('user-display').textContent = d.user_name || '';
+                ME.user_code = d.user_code || '';
+                ME.user_key  = d.user_key  || 0;
                 if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
-                loadHelpers();
+                handleHashChange();
             } else {
                 document.getElementById('login-screen').classList.add('visible');
             }
         });
 }
-
 function doLogin() {
     var user = document.getElementById('login-user').value;
     var pass = document.getElementById('login-pass').value;
     var errEl = document.getElementById('login-error');
     errEl.style.display = 'none';
-    fetch(API + '/auth.php', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login: user, password: pass })
-    }).then(function (r) { return r.json(); }).then(function (d) {
-        if (d.authenticated) {
-            document.getElementById('login-screen').classList.remove('visible');
-            document.getElementById('app').style.display = '';
-            document.getElementById('user-display').textContent = d.user_name || '';
-            if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
-            loadHelpers();
-        } else {
-            errEl.textContent = d.error || 'Login failed';
-            errEl.style.display = '';
-        }
-    });
+    fetch(API + '/auth.php', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: user, password: pass }) })
+        .then(function (r) { return r.json(); }).then(function (d) {
+            if (d.authenticated) {
+                document.getElementById('login-screen').classList.remove('visible');
+                document.getElementById('app').style.display = '';
+                document.getElementById('user-display').textContent = d.user_name || '';
+                ME.user_code = d.user_code || '';
+                ME.user_key  = d.user_key  || 0;
+                if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+                handleHashChange();
+            } else {
+                errEl.textContent = d.error || 'Login failed';
+                errEl.style.display = '';
+            }
+        });
+}
+function doLogout() { fetch(API + '/auth.php', { method: 'DELETE', credentials: 'include' }).then(function () { location.reload(); }); }
+function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+function esc(s) { return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function fmtDuration(s) { s = parseInt(s,10) || 0; var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60; var p=function(n){return n<10?'0'+n:''+n;}; return h>0 ? (h+':'+p(m)+':'+p(x)) : (p(m)+':'+p(x)); }
+function fmtDate(iso) { if (!iso) return ''; var d=new Date(iso); if (isNaN(d)) return ''; return d.toISOString().slice(0,10) + ' ' + d.toTimeString().slice(0,5); }
+function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.toggle('error', !!isError); t.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function(){ t.classList.remove('show'); }, 2200);
 }
 
-function doLogout() {
-    fetch(API + '/auth.php', { method: 'DELETE', credentials: 'include' })
-        .then(function () { location.reload(); });
+// ── Hash routing ────────────────────────────────────────────────────────
+function handleHashChange() {
+    var hash = (location.hash || '').replace(/^#/, '');
+    var params = new URLSearchParams(hash);
+    var helperCode = params.get('helper');
+    if (helperCode) {
+        Queue.open(helperCode);
+    } else {
+        Queue.close();
+        showListView();
+    }
+}
+function navHome() { location.hash = ''; }
+window.addEventListener('hashchange', handleHashChange);
+
+function showListView() {
+    document.getElementById('view-list').style.display  = '';
+    document.getElementById('view-queue').style.display = 'none';
+    loadHelpers();
+}
+function showQueueView() {
+    document.getElementById('view-list').style.display  = 'none';
+    document.getElementById('view-queue').style.display = '';
 }
 
-function togglePassword() {
-    var i = document.getElementById('login-pass');
-    i.type = i.type === 'password' ? 'text' : 'password';
-}
-
-function esc(s) {
-    return (s == null ? '' : String(s))
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-// Where each helper sends the admin when its card is clicked. The
-// MP3-generation helper hands off to the existing Recordings tab
-// inside Admin → Feeds because that's where the lock/queue UI lives;
-// the URL hash gets picked up by admin-feeds.html on load to switch
-// tabs straight away. Other helpers can be wired here as we add them.
-var HELPER_TARGETS = {
-    'mp3-generation':    '/admin-feeds#recordings',
-    'transcript-review': null  // not wired yet — report not seeded
-};
-
+// ── Card grid (list view) ───────────────────────────────────────────────
 function loadHelpers() {
     var listEl = document.getElementById('helper-list');
     listEl.innerHTML = '<div class="empty-state">Loading helpers…</div>';
@@ -196,54 +224,302 @@ function loadHelpers() {
         .then(function (r) { return r.json(); })
         .then(function (d) {
             var items = (d && d.helpers) || [];
-            if (!items.length) {
-                listEl.innerHTML = '<div class="empty-state">No helpers configured.</div>';
-                return;
-            }
+            if (!items.length) { listEl.innerHTML = '<div class="empty-state">No helpers configured.</div>'; return; }
             var html = '<div class="helper-grid">';
             items.forEach(function (h) {
-                var target = HELPER_TARGETS[h.helper_code] || null;
                 var hasReport = !!h.report_key;
-                var disabled = !target;
-                var queueBadge = '';
-                if (!hasReport) {
-                    queueBadge = '<span class="queue-badge unbound" title="No report bound">no report</span>';
-                } else if (h.queue_count == null) {
-                    queueBadge = '<span class="queue-badge unbound" title="Queue size unavailable">— in queue</span>';
-                } else if (h.queue_count === 0) {
-                    queueBadge = '<span class="queue-badge zero">0 in queue</span>';
-                } else {
-                    queueBadge = '<span class="queue-badge">' + h.queue_count + ' in queue</span>';
-                }
+                var disabled = !hasReport;  // only render link when there's a report
+                var queueBadge;
+                if (!hasReport) queueBadge = '<span class="queue-badge unbound" title="No report bound">no report</span>';
+                else if (h.queue_count == null) queueBadge = '<span class="queue-badge unbound" title="Queue size unavailable">— in queue</span>';
+                else if (h.queue_count === 0) queueBadge = '<span class="queue-badge zero">0 in queue</span>';
+                else queueBadge = '<span class="queue-badge">' + h.queue_count + ' in queue</span>';
                 var bound = h.report_label
                     ? '<div class="helper-meta">Report: <span style="color:#444">' + esc(h.report_label) + '</span></div>'
                     : '<div class="helper-meta" style="color:#bbb">no bound report yet</div>';
-                var go = disabled
-                    ? '<div class="helper-go">coming soon</div>'
-                    : '<div class="helper-go">→ open queue</div>';
+                var go = disabled ? '<div class="helper-go">coming soon</div>' : '<div class="helper-go">→ open queue</div>';
                 if (disabled) {
                     html += '<div class="helper-card disabled" title="Not wired yet">'
                           + '<div class="helper-label">' + esc(h.helper_label) + '</div>'
-                          + bound
-                          + queueBadge
-                          + go
-                          + '</div>';
+                          + bound + queueBadge + go + '</div>';
                 } else {
-                    html += '<a class="helper-card" href="' + esc(target) + '">'
+                    var href = '#helper=' + encodeURIComponent(h.helper_code);
+                    html += '<a class="helper-card" href="' + esc(href) + '">'
                           + '<div class="helper-label">' + esc(h.helper_label) + '</div>'
-                          + bound
-                          + queueBadge
-                          + go
-                          + '</a>';
+                          + bound + queueBadge + go + '</a>';
                 }
             });
             html += '</div>';
             listEl.innerHTML = html;
         })
-        .catch(function (e) {
-            listEl.innerHTML = '<div class="empty-state">Failed to load helpers: ' + esc(e && e.message) + '</div>';
-        });
+        .catch(function (e) { listEl.innerHTML = '<div class="empty-state">Failed to load helpers: ' + esc(e && e.message) + '</div>'; });
 }
+
+// ── Queue controller ────────────────────────────────────────────────────
+// Tracks the active helper, items, my claimed keys, and runs the
+// heartbeat/poll timers. Uses the existing recording-* APIs so locks
+// taken here are visible to the Recordings tab and vice versa.
+var Queue = {
+    helperCode:   null,
+    helper:       null,
+    items:        [],
+    selectedKeys: {},     // {key: true} for checkboxes
+    claimedKeys:  {},     // {key: true} for items I've claimed in this session
+    pollTimer:    null,
+    heartbeatTimer: null,
+    POLL_MS:      10000,
+    HEARTBEAT_MS: 5000,
+
+    open: function(helperCode) {
+        if (this.helperCode === helperCode) {
+            this.refresh();
+            showQueueView();
+            return;
+        }
+        this.helperCode = helperCode;
+        this.selectedKeys = {};
+        // claimedKeys persists — moving between helpers shouldn't drop my locks
+        this.refresh();
+        this.startTimers();
+        showQueueView();
+    },
+
+    close: function() {
+        this.stopTimers();
+        // Auto-release my locks when leaving the queue. Without this they'd
+        // sit on disk for ~15s until the freshness window expires; tidier
+        // to release explicitly.
+        var keys = Object.keys(this.claimedKeys).map(Number);
+        if (keys.length) {
+            this.heartbeatBatch(keys, 'release').catch(function(){});
+            this.claimedKeys = {};
+        }
+        this.helperCode = null;
+    },
+
+    refresh: function() {
+        if (!this.helperCode) return Promise.resolve();
+        var self = this;
+        return fetch(API + '/admin-helper-queue.php?helper=' + encodeURIComponent(this.helperCode), { credentials: 'include' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d && d.error) { showToast(d.error, true); return; }
+                self.helper = d.helper || null;
+                self.items  = d.items || [];
+                self.render();
+            })
+            .catch(function(e) { showToast('Refresh failed: ' + (e && e.message), true); });
+    },
+
+    render: function() {
+        var titleEl = document.getElementById('queue-title');
+        var descEl  = document.getElementById('queue-description');
+        var wrap    = document.getElementById('queue-table-wrap');
+        var countEl = document.getElementById('queue-count');
+        var mineEl  = document.getElementById('locked-mine-count');
+        var otherEl = document.getElementById('locked-other-count');
+
+        if (!this.helper) {
+            titleEl.textContent = 'Helper not found';
+            descEl.textContent = '';
+            wrap.innerHTML = '<div class="empty-state">Unknown helper code: ' + esc(this.helperCode) + '</div>';
+            return;
+        }
+        titleEl.textContent = this.helper.helper_label;
+        descEl.textContent  = this.helper.report_label
+            ? 'Driven by report: ' + this.helper.report_label
+            : 'No bound report.';
+
+        var mineN = 0, otherN = 0;
+        this.items.forEach(function(it) {
+            if (!it.lock) return;
+            if (it.lock.is_mine) mineN++; else otherN++;
+        });
+        countEl.textContent = this.items.length;
+        mineEl.textContent  = mineN;
+        otherEl.textContent = otherN;
+
+        if (!this.items.length) {
+            wrap.innerHTML = '<div class="empty-state">Queue is empty — nothing to process.</div>';
+            return;
+        }
+
+        var self = this;
+        var rows = this.items.map(function(it) {
+            var key = it.feed_item_key;
+            var lockHtml, rowCls, rowActions;
+            if (!it.lock) {
+                lockHtml = '<span class="lock-badge free">unlocked</span>';
+                rowCls = '';
+                rowActions = '<button class="row-action-btn primary" onclick="Queue.claim([' + key + '])">Claim</button>';
+            } else if (it.lock.is_mine) {
+                lockHtml = '<span class="lock-badge mine">mine · ' + (it.lock.state === 'now' ? 'recording' : 'queued') + ' · ' + it.lock.age_s + 's ago</span>';
+                rowCls = 'locked-by-me';
+                rowActions = '<button class="row-action-btn warn" onclick="Queue.release([' + key + '])">Release</button>';
+            } else {
+                var who = esc(it.lock.by);
+                var stateCls = it.lock.state === 'now' ? 'now' : 'other';
+                var stateLabel = it.lock.state === 'now' ? 'recording' : 'queued';
+                lockHtml = '<span class="lock-badge ' + stateCls + '">' + who + ' · ' + stateLabel + ' · ' + it.lock.age_s + 's ago</span>';
+                rowCls = 'locked-by-other';
+                // Force-clear: only enabled when not actively recording (clear-queue
+                // refuses recording_now on the server side; we mirror that hint here).
+                var disabled = (it.lock.state === 'now') ? ' disabled title="Cannot break an active-recording lock"' : ' onclick="Queue.forceClear([' + key + '])"';
+                rowActions = '<button class="row-action-btn warn"' + disabled + '>Force clear</button>';
+            }
+            var checked = self.selectedKeys[key] ? ' checked' : '';
+            var thumb = it.thumbnail_url
+                ? (it.source_url
+                    ? '<a href="' + esc(it.source_url) + '" target="_blank" rel="noopener"><img src="' + esc(it.thumbnail_url) + '" alt=""></a>'
+                    : '<img src="' + esc(it.thumbnail_url) + '" alt="">')
+                : '';
+            var titleLink = it.source_url
+                ? '<a href="' + esc(it.source_url) + '" target="_blank" rel="noopener">' + esc(it.title || '(untitled)') + '</a>'
+                : esc(it.title || '(untitled)');
+            return '<tr class="' + rowCls + '">'
+                 + '<td><input type="checkbox" data-key="' + key + '"' + checked + ' onclick="Queue.toggle(' + key + ', this.checked)"></td>'
+                 + '<td class="col-thumb">' + thumb + '</td>'
+                 + '<td class="col-key">' + key + '</td>'
+                 + '<td class="col-title">' + titleLink + '</td>'
+                 + '<td class="col-published">' + esc(fmtDate(it.published)) + '</td>'
+                 + '<td class="col-duration">' + esc(fmtDuration(it.duration_seconds)) + '</td>'
+                 + '<td>' + lockHtml + '</td>'
+                 + '<td class="col-actions">' + rowActions + '</td>'
+                 + '</tr>';
+        }).join('');
+
+        wrap.innerHTML =
+            '<table class="queue-table">'
+          + '<thead><tr>'
+          +   '<th style="width:30px;"></th>'
+          +   '<th style="width:90px;">Thumb</th>'
+          +   '<th>Key</th>'
+          +   '<th>Title</th>'
+          +   '<th>Published</th>'
+          +   '<th>Duration</th>'
+          +   '<th>Lock</th>'
+          +   '<th></th>'
+          + '</tr></thead>'
+          + '<tbody>' + rows + '</tbody></table>';
+
+        // Update select-all checkbox state.
+        var allKeys = this.items.map(function(it){ return it.feed_item_key; });
+        var allSelected = allKeys.length > 0 && allKeys.every(function(k){ return self.selectedKeys[k]; });
+        document.getElementById('select-all').checked = allSelected;
+    },
+
+    toggle: function(key, on) {
+        if (on) this.selectedKeys[key] = true;
+        else    delete this.selectedKeys[key];
+        // Update select-all without full re-render.
+        var allKeys = this.items.map(function(it){ return it.feed_item_key; });
+        var self = this;
+        document.getElementById('select-all').checked = allKeys.length > 0 && allKeys.every(function(k){ return self.selectedKeys[k]; });
+    },
+
+    selectAll: function(on) {
+        var self = this;
+        if (on) this.items.forEach(function(it){ self.selectedKeys[it.feed_item_key] = true; });
+        else    this.selectedKeys = {};
+        // Re-render checkboxes only.
+        document.querySelectorAll('.queue-table tbody input[type="checkbox"]').forEach(function(cb) {
+            cb.checked = !!self.selectedKeys[parseInt(cb.dataset.key, 10)];
+        });
+    },
+
+    selectedKeysArray: function() {
+        return Object.keys(this.selectedKeys).map(Number).filter(function(k){ return k > 0; });
+    },
+
+    claim: function(keys) {
+        var self = this;
+        if (!keys.length) return;
+        keys.forEach(function(k){ self.claimedKeys[k] = true; });
+        this.heartbeatBatch(keys, 'heartbeat')
+            .then(function(r) {
+                showToast('Claimed ' + keys.length + ' item' + (keys.length===1?'':'s'));
+                if (r && r.blocked_keys && r.blocked_keys.length) {
+                    r.blocked_keys.forEach(function(bk){ delete self.claimedKeys[bk]; });
+                    showToast('Some items were blocked by another admin', true);
+                }
+                self.refresh();
+            })
+            .catch(function(e) { showToast('Claim failed: ' + (e && e.message), true); });
+    },
+
+    release: function(keys) {
+        var self = this;
+        if (!keys.length) return;
+        keys.forEach(function(k){ delete self.claimedKeys[k]; });
+        this.heartbeatBatch(keys, 'release')
+            .then(function() { showToast('Released ' + keys.length + ' item' + (keys.length===1?'':'s')); self.refresh(); })
+            .catch(function(e) { showToast('Release failed: ' + (e && e.message), true); });
+    },
+
+    forceClear: function(keys) {
+        var self = this;
+        if (!keys.length) return;
+        if (!confirm('Force-clear ' + keys.length + ' lock' + (keys.length===1?'':'s') + ' held by another admin? They will lose their queue position.')) return;
+        fetch(API + '/admin-recording-clear-queue.php', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_keys: keys })
+        }).then(function(r){ return r.json(); }).then(function(d) {
+            var cleared = (d && d.cleared) || [];
+            var rejected = (d && d.rejected) || [];
+            if (cleared.length) showToast('Cleared ' + cleared.length + ' lock' + (cleared.length===1?'':'s'));
+            if (rejected.length) showToast('Refused ' + rejected.length + ' (active recording)', true);
+            self.refresh();
+        }).catch(function(e) { showToast('Force-clear failed: ' + (e && e.message), true); });
+    },
+
+    heartbeatBatch: function(keys, action) {
+        return fetch(API + '/admin-recording-heartbeat.php', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action, item_keys: keys })
+        }).then(function(r) { return r.json(); });
+    },
+
+    startTimers: function() {
+        var self = this;
+        this.stopTimers();
+        // Heartbeat every 5s for items I've claimed. Without this the
+        // 15s freshness window would expire and another admin could
+        // re-claim the row out from under me.
+        this.heartbeatTimer = setInterval(function() {
+            var keys = Object.keys(self.claimedKeys).map(Number);
+            if (keys.length) self.heartbeatBatch(keys, 'heartbeat').catch(function(){});
+        }, this.HEARTBEAT_MS);
+        // Poll the queue itself every 10s so the lock column reflects
+        // other admins' actions live.
+        this.pollTimer = setInterval(function() { self.refresh(); }, this.POLL_MS);
+    },
+
+    stopTimers: function() {
+        if (this.pollTimer)      { clearInterval(this.pollTimer);      this.pollTimer = null; }
+        if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+    }
+};
+
+function toggleSelectAll(on) { Queue.selectAll(on); }
+function claimSelected()     { Queue.claim(Queue.selectedKeysArray()); }
+function releaseSelected()   { Queue.release(Queue.selectedKeysArray()); }
+function refreshQueue()      { Queue.refresh(); }
+
+// On unload, fire-and-forget release for any locks I still hold so they
+// don't sit on disk for ~15s. Uses sendBeacon so the request survives
+// page navigation; falls back to a sync fetch with keepalive flag.
+window.addEventListener('beforeunload', function() {
+    var keys = Object.keys(Queue.claimedKeys).map(Number);
+    if (!keys.length) return;
+    var body = JSON.stringify({ action: 'release', item_keys: keys });
+    if (navigator.sendBeacon) {
+        navigator.sendBeacon(API + '/admin-recording-heartbeat.php', new Blob([body], { type: 'application/json' }));
+    } else {
+        try { fetch(API + '/admin-recording-heartbeat.php', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: body, keepalive: true }); } catch(_){}
+    }
+});
 
 checkAuth();
 </script>
