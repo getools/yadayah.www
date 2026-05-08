@@ -109,7 +109,7 @@
       const pageFlip = new St.PageFlip(bookEl, {
         width: initial.pageW, height: initial.pageH,
         size: 'fixed', maxShadowOpacity: 0.5, showCover: false,
-        flippingTime: 700, mobileScrollSupport: true, usePortrait: false, drawShadow: true,
+        flippingTime: 700, mobileScrollSupport: true, usePortrait: true, drawShadow: true,
         // Disable mouse-drag flipping so transparent text overlay can
         // capture mousedown for text selection. Touch swipe still flips
         // on mobile. Desktop navigation: arrow keys / buttons / TOC.
@@ -562,6 +562,10 @@
           if (!silent) syncUrlAndStorage(p);
         } else {
           pageFlip.turnToPage(p - 1);
+          // Synchronously reflect the target page in the slider + input so the
+          // visible UI doesn't lag behind the deep-link nav (see comment).
+          seek.value = p;
+          if (pinput && document.activeElement !== pinput) pinput.value = String(p);
           if (!silent) syncUrlAndStorage(p);
         }
       }
@@ -1107,6 +1111,15 @@
         }
       });
       if (initialPage) {
+        // Sync the slider + page input up-front so the visible UI matches the
+        // URL even if pageFlip's 'init' event fires before our listener is
+        // wired (or doesn't fire at all on cached/instant loads). update() at
+        // 'flip'/'init' will overwrite these once the library catches up, but
+        // by then pageFlip is at the right page so the values agree.
+        try {
+            seek.value = String(initialPage);
+            if (pinput && document.activeElement !== pinput) pinput.value = String(initialPage);
+        } catch (e) {}
         if (pageFlipReady) goto(initialPage);
         else pendingInitialNav = initialPage;
       } else {

@@ -24,17 +24,26 @@
     var bookmarks = [];          // server-fetched list, sorted by page
     var bookmarksByPage = {};    // page → first manual bookmark on that page
     var autoDefaults = {};       // { color, label, note } from admin-flipbook
+    var siteSettings = {};       // raw flipbook-scoped yy_setting values
     var autoSaveTimer = null;
 
     // ── SVG icons ───────────────────────────────────────────────────────
+    // Width/height + outline color come from admin-flipbook (Bookmark
+    // Placeholder section); we fall back to the same defaults the admin form
+    // shows so the icon still renders if those settings haven't been saved.
+    function placeholderW() { return parseInt(siteSettings['placeholder-width'],  10) || 18; }
+    function placeholderH() { return parseInt(siteSettings['placeholder-height'], 10) || 22; }
+    function placeholderColor() { return siteSettings['placeholder-color'] || '#888888'; }
     function iconFilled(color) {
-        return '<svg viewBox="0 0 24 24" width="18" height="22" aria-hidden="true">'
+        var w = placeholderW(), h = placeholderH();
+        return '<svg viewBox="0 0 24 24" width="' + w + '" height="' + h + '" aria-hidden="true">'
              + '<path d="M6 3 H18 V21 L12 17 L6 21 Z" fill="' + (color || '#888') + '" stroke="rgba(0,0,0,0.45)" stroke-width="1.2"/>'
              + '</svg>';
     }
     function iconOutline() {
-        return '<svg viewBox="0 0 24 24" width="18" height="22" aria-hidden="true">'
-             + '<path d="M6 3 H18 V21 L12 17 L6 21 Z" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>'
+        var w = placeholderW(), h = placeholderH(), c = placeholderColor();
+        return '<svg viewBox="0 0 24 24" width="' + w + '" height="' + h + '" aria-hidden="true">'
+             + '<path d="M6 3 H18 V21 L12 17 L6 21 Z" fill="none" stroke="' + c + '" stroke-width="1.5" opacity="0.85"/>'
              + '</svg>';
     }
     function randomColor() {
@@ -65,6 +74,7 @@
             .then(function (d) {
                 bookmarks = (d && d.bookmarks) || [];
                 autoDefaults = (d && d.auto_defaults) || {};
+                siteSettings = (d && d.settings) || {};
                 // Apply auto-defaults to auto bookmarks where the row's own
                 // field is null. The DB row stays untouched — this is purely
                 // a render concern, set by the admin Flipbook page.
@@ -96,8 +106,12 @@
         var st = document.createElement('style');
         st.id = 'fb-bm-style';
         st.textContent = [
-            // Icon overlay (top-right of every visible .pg / .cpg.center)
-            '.pg, .cpg { position: relative; }',
+            // Icon overlay sits absolute inside each visible page. The base
+            // CSS already gives `#book .pg { position:relative }` and
+            // `#carousel .cpg { position:absolute }`, both of which establish
+            // a positioning context, so we don't add a position rule here —
+            // an earlier attempt to do so collapsed `.cpg` from absolute to
+            // relative and stacked pages vertically, breaking layout.
             '.fb-bm-icon { position: absolute; top: 4px; right: 6px; z-index: 5; cursor: pointer;',
             '              color: #444; line-height: 0; padding: 2px;',
             '              filter: drop-shadow(0 1px 1px rgba(0,0,0,0.18));',
@@ -125,7 +139,11 @@
             '.fb-bm-pop button.primary { background: #3a4d6e; color: #fff; border-color: #5b8def; }',
             '.fb-bm-pop button.primary:hover { background: #4a5d7e; }',
             '.fb-bm-pop button.ghost { background: #2a2a2e; color: #ddd; }',
-            '.fb-bm-pop button.danger { background: #4d2a2a; color: #ffbcbc; border-color: #6d3a3a; margin-right: auto; }',
+            // With justify-content:space-between and three buttons, Save sits at
+            // the far left, Cancel at the far right, and Delete naturally lands
+            // in the middle. (Earlier had margin-right:auto here which shoved
+            // Delete off-center toward Cancel.)
+            '.fb-bm-pop button.danger { background: #4d2a2a; color: #ffbcbc; border-color: #6d3a3a; }',
             '.fb-bm-pop .err { color: #ff8a8a; font-size: 11px; margin-top: 6px; min-height: 14px; }',
             // Sidebar list
             '.fb-bm-list { padding: 6px 4px; }',
@@ -140,8 +158,15 @@
             '.fb-bm-list button.icon:hover { background: #3a3a3e; color: #fff; }',
             '.fb-bm-list .empty-msg { padding: 16px; text-align: center; color: #888; font-size: 12px; font-style: italic; }',
             // Slider markers
-            '.fb-bm-marker-lane { position: absolute; left: 0; right: 0; bottom: 100%; height: 12px;',
-            '                     pointer-events: none; }',
+            '.fb-bm-seek-wrap { position: relative; flex: 1 1 0; display: flex; align-items: center; max-width: none; }',
+            // Override the global "input[type=range] { flex:1; max-width:220px }"
+            // when the seek input lives inside our wrapper — let it fill so the
+            // marker lane and the slider thumb align across the same width.
+            '.fb-bm-seek-wrap > input[type=range] { flex: 1 1 0; width: 100%; max-width: none; }',
+            '.fb-bm-marker-lane { position: absolute; left: 0; right: 0; bottom: 100%; height: 8px;',
+            '                     pointer-events: none;',
+            '                     background: var(--fb-bm-lane-bg, transparent);',
+            '                     border-radius: 4px 4px 0 0; }',
             '.fb-bm-marker { position: absolute; transform: translateX(-50%); pointer-events: auto;',
             '                cursor: pointer; padding: 2px 1px; }',
             '.fb-bm-marker svg { display: block; }',
@@ -151,31 +176,55 @@
     }
 
     // ── Sidebar tab ─────────────────────────────────────────────────────
+    // Idempotent: the tab + pane shells are also baked into the static HTML
+    // so we don't recreate them, but we DO need to ensure the list element
+    // and click handler exist regardless of whether the shells came from JS
+    // or HTML. (Earlier version early-returned when the tab existed, leaving
+    // an empty pane with no click handler — bookmarks tab silently blank.)
     function ensureSidebarTab() {
         var tabs = document.querySelector('aside .tabs');
-        if (!tabs || document.querySelector('aside .tab[data-tab="bookmarks"]')) return;
-        var tab = document.createElement('div');
-        tab.className = 'tab';
-        tab.setAttribute('data-tab', 'bookmarks');
-        tab.textContent = 'Bookmarks';
-        tabs.appendChild(tab);
-        // Pane
+        if (!tabs) return;
+
+        // 1. Tab itself
+        var tab = document.querySelector('aside .tab[data-tab="bookmarks"]');
+        if (!tab) {
+            tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.setAttribute('data-tab', 'bookmarks');
+            tab.textContent = 'Bookmarks';
+            tabs.appendChild(tab);
+        }
+
+        // 2. Pane shell
         var body = document.querySelector('aside .body');
-        if (body && !document.getElementById('bookmarks-pane')) {
-            var pane = document.createElement('div');
+        var pane = document.getElementById('bookmarks-pane');
+        if (body && !pane) {
+            pane = document.createElement('div');
             pane.id = 'bookmarks-pane';
             pane.style.display = 'none';
-            pane.innerHTML = '<div class="fb-bm-list" id="fb-bm-list"></div>';
             body.appendChild(pane);
         }
-        // Wire click using the same convention other tabs use (data-tab → toggle pane visibility).
-        tab.addEventListener('click', function () {
-            document.querySelectorAll('aside .tab').forEach(function (x) {
-                x.classList.toggle('active', x === tab);
-                var p = document.getElementById(x.getAttribute('data-tab') + '-pane');
-                if (p) p.style.display = (x === tab) ? '' : 'none';
+
+        // 3. List element inside the pane (separate from the pane shell so the
+        //    static HTML can pre-create the pane without us double-creating it).
+        if (pane && !document.getElementById('fb-bm-list')) {
+            var list = document.createElement('div');
+            list.className = 'fb-bm-list';
+            list.id = 'fb-bm-list';
+            pane.appendChild(list);
+        }
+
+        // 4. Click handler (idempotent — flag on the element so we don't double-bind).
+        if (!tab.dataset.fbBmWired) {
+            tab.dataset.fbBmWired = '1';
+            tab.addEventListener('click', function () {
+                document.querySelectorAll('aside .tab').forEach(function (x) {
+                    x.classList.toggle('active', x === tab);
+                    var p = document.getElementById(x.getAttribute('data-tab') + '-pane');
+                    if (p) p.style.display = (x === tab) ? '' : 'none';
+                });
             });
-        });
+        }
     }
 
     function renderSidebarList() {
@@ -272,10 +321,11 @@
         if (!seek || document.getElementById('fb-bm-marker-lane')) return;
         var nav = seek.parentNode;
         // Wrap the seek input in a positioned container so we can place markers
-        // absolutely above it. The container takes the same flex slot the input
-        // had so layout doesn't shift.
+        // absolutely above it. The wrapper takes nav's full flex slot AND
+        // overrides the global 220px cap on the seek (via .fb-bm-seek-wrap CSS)
+        // so the slider thumb and marker triangles span the same width.
         var wrap = document.createElement('span');
-        wrap.style.cssText = 'position:relative; flex: 1; display: flex;';
+        wrap.className = 'fb-bm-seek-wrap';
         nav.insertBefore(wrap, seek);
         wrap.appendChild(seek);
         var lane = document.createElement('div');
@@ -288,14 +338,20 @@
         var lane = document.getElementById('fb-bm-marker-lane');
         if (!lane) return;
         var total = cfg.totalPages || 1;
+        // Thumb-edge inset: a native <input type=range> renders its thumb so
+        // value=min is NOT at left:0 but at left:thumbHalf (≈8 px). Mirror
+        // that so markers line up with the slider thumb instead of drifting
+        // a few pixels to the left at the start and a few right at the end.
+        var THUMB_HALF = 8;
         lane.innerHTML = bookmarks
             .map(function (b) {
-                var pct = ((b.bookmark_page - 1) / Math.max(1, total - 1)) * 100;
-                pct = Math.max(0, Math.min(100, pct));
+                var frac = (b.bookmark_page - 1) / Math.max(1, total - 1);
+                frac = Math.max(0, Math.min(1, frac));
                 var color = b.bookmark_color || '#888';
                 var titleAttr = (b.bookmark_label || 'Page ' + b.bookmark_page)
                               + (b.bookmark_note ? ' — ' + b.bookmark_note : '');
-                return '<span class="fb-bm-marker" data-page="' + b.bookmark_page + '" style="left:' + pct.toFixed(2) + '%" title="' + esc(titleAttr) + '">'
+                var leftCss = 'calc(' + THUMB_HALF + 'px + (100% - ' + (THUMB_HALF * 2) + 'px) * ' + frac.toFixed(4) + ')';
+                return '<span class="fb-bm-marker" data-page="' + b.bookmark_page + '" style="left:' + leftCss + '" title="' + esc(titleAttr) + '">'
                      + '<svg viewBox="0 0 12 14" width="12" height="14"><path d="M6 14 L0 0 L12 0 Z" fill="' + esc(color) + '" stroke="rgba(0,0,0,0.4)" stroke-width="0.6"/></svg>'
                      + '</span>';
             }).join('');
@@ -442,16 +498,46 @@
         return '#' + hex(r) + hex(g) + hex(b);
     }
 
-    // ── Auto-bookmark (fire-and-forget on page change, debounced) ───────
+    // ── Auto-bookmark (only when leaving the book) ──────────────────────
+    // Track the last page seen so unload can write it. Auto-bookmark used to
+    // fire on every page-change with a 1.5 s debounce, which made "Resume
+    // reading" jump to wherever the user happened to last be — even when
+    // they were just flipping through. The user wants it set only when they
+    // actually LEAVE the book, so we now flush via sendBeacon on
+    // pagehide/beforeunload (synchronous-ish, fires even on tab close).
+    var lastSeenPage = 0;
     BM.recordCurrentPage = function (page) {
-        if (!page || !cfg.bookCode) return;
-        if (autoSaveTimer) clearTimeout(autoSaveTimer);
-        autoSaveTimer = setTimeout(function () {
-            fetch('/api/bookmarks.php', {
-                method: 'POST', credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'auto_bookmark', book_code: cfg.bookCode, bookmark_page: page })
-            }).catch(function () { /* offline / anonymous — fine to drop */ });
-        }, 1500);
+        if (page > 0) lastSeenPage = page;
     };
+
+    function flushAutoBookmark() {
+        if (!lastSeenPage || !cfg.bookCode) return;
+        var body = JSON.stringify({ action: 'auto_bookmark', book_code: cfg.bookCode, bookmark_page: lastSeenPage });
+        // sendBeacon is the right API for unload — runs to completion even
+        // after the page is closing. Falls back to fetch+keepalive for older
+        // browsers.
+        try {
+            if (navigator.sendBeacon) {
+                var blob = new Blob([body], { type: 'application/json' });
+                navigator.sendBeacon('/api/bookmarks.php', blob);
+                return;
+            }
+        } catch (e) {}
+        try {
+            fetch('/api/bookmarks.php', {
+                method: 'POST', credentials: 'include', keepalive: true,
+                headers: { 'Content-Type': 'application/json' }, body: body
+            }).catch(function () {});
+        } catch (e) {}
+    }
+    // Fire on every plausible exit hook — different browsers honor different
+    // ones, and pagehide is the most reliable (no firing on bfcache restore).
+    window.addEventListener('pagehide', flushAutoBookmark);
+    window.addEventListener('beforeunload', flushAutoBookmark);
+    // visibilitychange catches the tab being switched away on mobile where
+    // beforeunload often doesn't fire. Re-flush every time the tab hides;
+    // the API is idempotent (UPSERT keyed on user+volume+auto_flag).
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') flushAutoBookmark();
+    });
 })();

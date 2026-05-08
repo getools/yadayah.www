@@ -26,7 +26,15 @@ $db      = getDb();
 // we silently no-op rather than return 401, so the viewer's fire-and-forget
 // call doesn't pollute the console with auth errors.
 if ($method === 'GET' && !$userKey) jsonResponse(['bookmarks' => []]);
-if (!$userKey) jsonResponse(['ok' => true, 'skipped' => 'anonymous']);
+// Auto-bookmarks from anonymous users are silently dropped (no-op success) —
+// the viewer fires this on every page change and should not nag. Manual
+// writes (POST/PUT/DELETE) need a sign-in, so return a clear error so the UI
+// can show "Sign in to save bookmarks" instead of silently swallowing.
+if (!$userKey) {
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+    if (($body['action'] ?? '') === 'auto_bookmark') jsonResponse(['ok' => true, 'skipped' => 'anonymous']);
+    errorResponse('Sign in to save bookmarks', 401);
+}
 
 $EDITABLE_FIELDS = ['bookmark_page', 'bookmark_offset', 'bookmark_label', 'bookmark_note', 'bookmark_color'];
 
@@ -60,16 +68,20 @@ if ($method === 'GET') {
     ");
     $stmt->execute([$userKey, $volumeKey]);
     $rows = $stmt->fetchAll();
-    // Auto-bookmark defaults from admin-flipbook (color/label/note) — used by
-    // the viewer to display auto bookmarks whose own fields are NULL.
-    $defStmt = $db->prepare("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'page' AND setting_group_code = 'flipbook' AND setting_code LIKE 'auto-bookmark-%'");
-    $defStmt->execute();
+    // Pull all flipbook-scoped settings; the viewer applies auto-bookmark-*
+    // defaults to auto rows whose own fields are NULL, and uses other keys
+    // (e.g. marker-lane-bg) for surrounding UI chrome.
+    $setStmt = $db->prepare("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'page' AND setting_group_code = 'flipbook'");
+    $setStmt->execute();
+    $settings = [];
     $defaults = ['color' => null, 'label' => null, 'note' => null];
-    foreach ($defStmt->fetchAll() as $r) {
-        $key = substr($r['setting_code'], strlen('auto-bookmark-'));
-        $defaults[$key] = $r['setting_value'];
+    foreach ($setStmt->fetchAll() as $r) {
+        $settings[$r['setting_code']] = $r['setting_value'];
+        if (strpos($r['setting_code'], 'auto-bookmark-') === 0) {
+            $defaults[substr($r['setting_code'], strlen('auto-bookmark-'))] = $r['setting_value'];
+        }
     }
-    jsonResponse(['bookmarks' => $rows, 'auto_defaults' => $defaults]);
+    jsonResponse(['bookmarks' => $rows, 'auto_defaults' => $defaults, 'settings' => $settings]);
 }
 
 if ($method === 'POST') {
