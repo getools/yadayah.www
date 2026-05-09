@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778348659">
+    <meta name="page-version" content="1778348954">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1681,7 +1681,7 @@ function openTranscript(itemKey) {
             // handler can read its highlighted selection (if any) and
             // pre-fill the Find field.
             + '<button onmousedown="event.preventDefault()" onclick="openSearchReplaceFromButton()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace — pre-fills Find with any text you have highlighted in a transcript row">Search &amp; Replace</button>'
-            + '<button onclick="openTranscriptAnalysis()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Compare three versions per segment — Whisper initial, after auto-fix, and current text">Analyze Changes</button>'
+            + '<button id="t-analyze-btn" onclick="openTranscriptAnalysis()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;opacity:0.5;" title="No Whisper snapshot yet — re-run Transcribe Audio to capture one">Analyze Changes</button>'
             + '</div>'
             + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
             + '<div id="t-find-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;">'
@@ -2934,6 +2934,21 @@ function loadTranscript() {
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
             populateValidation(d.validation);
+            // Analyze Changes is meaningful only when all three versions
+            // exist for this item: text_current (live rows) AND the
+            // snapshot pair (text_initial + text_auto_fix). Older items
+            // transcribed before the snapshot table was added have no
+            // snapshot rows, so the button stays disabled until they're
+            // re-transcribed.
+            var anBtn = document.getElementById('t-analyze-btn');
+            if (anBtn) {
+                var ready = !!d.has_snapshot && (d.rows || []).length > 0;
+                anBtn.disabled = !ready;
+                anBtn.style.opacity = ready ? '1' : '0.5';
+                anBtn.title = ready
+                    ? 'Compare three versions per segment — Whisper initial, after auto-fix, and current text'
+                    : 'No Whisper snapshot yet — re-run Transcribe Audio to capture one';
+            }
             // Show "Open on YouTube" link if this is a YouTube video
             if (d.item && (d.item.feed_site_code || '').toLowerCase() === 'youtube' && d.item.feed_item_external_id) {
                 var yt = document.getElementById('t-yt-link');
@@ -3757,7 +3772,7 @@ function openTranscriptAnalysis() {
     if (!ov) {
         ov = document.createElement('div');
         ov.id = 'tanalysis-overlay';
-        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1100;';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10002;';
         ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(1280px,95vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
             + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
             +   '<div><h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcript Version Analysis</h3>'

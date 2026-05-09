@@ -86,11 +86,27 @@ if ($method === 'GET') {
     $valStmt->execute([$itemKey]);
     $validation = $valStmt->fetch() ?: null;
 
+    // Does the snapshot table have rows for any item in this cluster? The
+    // worker writes (text_initial, text_auto_fix) as a pair in one INSERT,
+    // so a single existence check covers both Whisper versions. Combined
+    // with $rows being non-empty (text_current), this is what the UI uses
+    // to decide whether the "Analyze Changes" button is meaningful.
+    $snapStmt = $db->prepare("
+        SELECT 1 FROM yy_feed_item_transcript_snapshot
+         WHERE feed_item_key IN ($placeholders)
+           AND text_initial IS NOT NULL
+           AND text_auto_fix IS NOT NULL
+         LIMIT 1
+    ");
+    $snapStmt->execute($itemKeys);
+    $hasSnapshot = (bool)$snapStmt->fetchColumn();
+
     jsonResponse([
         'item' => $item,
         'rows' => $rows,
         'job' => $job ?: null,
         'validation' => $validation,
+        'has_snapshot' => $hasSnapshot,
     ]);
 }
 
