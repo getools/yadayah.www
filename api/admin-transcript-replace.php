@@ -84,6 +84,15 @@ if ($action === 'preview') {
     $currentKey = isset($data['current_item_key']) && is_numeric($data['current_item_key'])
         ? (int)$data['current_item_key'] : 0;
 
+    // Sort priority for "other" transcripts (after the current one):
+    // Series → Volume → Page. The video-domain analogues are
+    //   Series → feed_name (e.g. "YouTube - @YahowahsHerald")
+    //   Volume → feed_item_episode (the show's episode number when set)
+    //   Page   → feed_item_transcript_segment (sub-row inside the item).
+    // feed_item_episode is text; we extract its leading-digits component
+    // for numeric ordering and fall back to lexical when no digits exist.
+    // Both queries use identical ORDER BY so the group headers match the
+    // order of the sample rows that fall under them.
     $sampleStmt = $db->prepare("
         SELECT t.feed_item_transcript_key,
                t.feed_item_transcript_segment::text AS segment,
@@ -93,8 +102,12 @@ if ($action === 'preview') {
                COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS title
           FROM yy_feed_item_transcript t
           JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
+          LEFT JOIN yy_feed   f  ON f.feed_key       = fi.feed_key
          WHERE $where
          ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END),
+                  COALESCE(f.feed_name, ''),
+                  NULLIF(regexp_replace(COALESCE(fi.feed_item_episode,''), '[^0-9]', '', 'g'), '')::int NULLS LAST,
+                  COALESCE(fi.feed_item_episode, ''),
                   t.feed_item_key,
                   t.feed_item_transcript_sort,
                   t.feed_item_transcript_segment
@@ -103,18 +116,23 @@ if ($action === 'preview') {
     $sampleStmt->execute(array_merge([$pattern, $safeReplace, $flags], $params, [$currentKey]));
     $samples = $sampleStmt->fetchAll();
 
-    // Per-transcript hit counts so the UI can show "(N matches)" on each
-    // group header and skip transcripts whose only hits aren't in `samples`
-    // (which can happen because of the 200-row sample cap).
+    // Per-transcript hit counts. Same ORDER BY so the group headers
+    // appear in the same order as the underlying sample rows.
     $perItemStmt = $db->prepare("
         SELECT t.feed_item_key,
                COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS title,
                count(*) AS hits
           FROM yy_feed_item_transcript t
           JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
+          LEFT JOIN yy_feed   f  ON f.feed_key       = fi.feed_key
          WHERE $where
-         GROUP BY t.feed_item_key, fi.feed_item_title_override, fi.feed_item_title_import
-         ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END), hits DESC, fi.feed_item_title_import
+         GROUP BY t.feed_item_key, fi.feed_item_title_override, fi.feed_item_title_import,
+                  f.feed_name, fi.feed_item_episode
+         ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END),
+                  COALESCE(f.feed_name, ''),
+                  NULLIF(regexp_replace(COALESCE(fi.feed_item_episode,''), '[^0-9]', '', 'g'), '')::int NULLS LAST,
+                  COALESCE(fi.feed_item_episode, ''),
+                  t.feed_item_key
     ");
     $perItemStmt->execute(array_merge($params, [$currentKey]));
     $per_item = $perItemStmt->fetchAll();

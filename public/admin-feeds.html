@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778336826">
+    <meta name="page-version" content="1778340604">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1606,7 +1606,7 @@ function openTranscript(itemKey) {
         ov = document.createElement('div');
         ov.id = 'transcript-overlay';
         ov.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto;';
-        ov.innerHTML = '<div id="t-card" style="background:#fff;border-radius:10px;padding:20px;max-width:1500px;width:100%;margin-top:20px;">'
+        ov.innerHTML = '<div id="t-card" style="background:#fff;border-radius:10px;padding:20px;max-width:1500px;width:100%;margin-top:0;">'
             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;">'
             + '<h3 id="t-title" style="margin:0;font-size:1rem;color:#31345A;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Transcript</h3>'
             + '<label style="font-size:0.78rem;color:#666;display:flex;align-items:center;gap:4px;white-space:nowrap;"><input type="checkbox" id="t-autoscroll" checked> Auto-scroll</label>'
@@ -1632,11 +1632,19 @@ function openTranscript(itemKey) {
             + '<div id="t-validation" style="padding:10px 12px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;">'
             + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">'
             + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Status</label>'
-            + '<select id="t-val-status" style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;background:#fff;">'
+            // Two-button toggle replaces the old dropdown. The select
+            // stays in the DOM (hidden) so saveValidation() / Open
+            // continue to read/write t-val-status without rewiring; the
+            // visible buttons just push values into it.
+            + '<select id="t-val-status" style="display:none;">'
             + '<option value="Pending">Pending</option>'
             + '<option value="Approved">Approved</option>'
             + '<option value="Errors">Errors</option>'
             + '</select>'
+            + '<div id="t-val-toggle" role="radiogroup" aria-label="Validation Status" style="display:inline-flex;border:1px solid #ccc;border-radius:4px;overflow:hidden;align-self:flex-start;">'
+            + '<button type="button" data-status="Pending"  onclick="setValidationStatus(\'Pending\')"  style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;border-right:1px solid #ccc;">Pending</button>'
+            + '<button type="button" data-status="Approved" onclick="setValidationStatus(\'Approved\')" style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;">Approved</button>'
+            + '</div>'
             + '</div>'
             + '<div style="display:flex;flex-direction:column;gap:4px;">'
             + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Note <span style="font-weight:400;color:#999;">(optional)</span></label>'
@@ -1644,15 +1652,7 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div id="t-val-meta" style="font-size:0.72rem;color:#888;margin-top:6px;"></div>'
             + '</div>'
-            // Status buttons: each flips the dropdown to a specific
-            // value and runs the same save-and-close path as Done so a
-            // reviewer never has to touch the dropdown for the common
-            // outcomes. Approved (green) = fully reviewed, eligible for
-            // YouTube caption upload. Pending (amber) = needs more
-            // review; resets the row back to the queue.
-            + '<button onclick="markTranscriptReviewed()" title="Mark this transcript as fully reviewed and approved for YouTube upload" style="background:#27ae60;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;margin-right:8px;">Mark Reviewed</button>'
-            + '<button onclick="markTranscriptPending()" title="Mark this transcript as still needing review" style="background:#a36100;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;margin-right:8px;">Mark Pending</button>'
-            + '<button onclick="doneTranscript()" style="background:#31345A;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">Done</button>'
+            + '<button onclick="doneTranscript()" style="background:#31345A;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">Close</button>'
             + '</div>'
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
@@ -2972,6 +2972,34 @@ function deleteUploadedSource() {
         .then(function(){ refreshUploadedSourceInfo(); });
 }
 
+// Two-button toggle handler — writes the status into the (now hidden)
+// t-val-status select so saveValidation() reads the same source of
+// truth, and repaints the buttons so the active one is visually
+// highlighted. The Approved button uses the same green palette as the
+// row badge for consistency; Pending uses an amber palette.
+function setValidationStatus(status) {
+    var sel = document.getElementById('t-val-status');
+    if (!sel) return;
+    sel.value = status;
+    paintValidationToggle();
+}
+function paintValidationToggle() {
+    var sel = document.getElementById('t-val-status');
+    if (!sel) return;
+    var current = sel.value || 'Pending';
+    var btns = document.querySelectorAll('#t-val-toggle button[data-status]');
+    btns.forEach(function(b) {
+        var active = b.getAttribute('data-status') === current;
+        if (active) {
+            if (current === 'Approved') { b.style.background = '#27ae60'; b.style.color = '#fff'; }
+            else                        { b.style.background = '#a36100'; b.style.color = '#fff'; }
+        } else {
+            b.style.background = '#fff';
+            b.style.color      = '#333';
+        }
+    });
+}
+
 function populateValidation(v) {
     var sel = document.getElementById('t-val-status');
     var note = document.getElementById('t-val-note');
@@ -2981,6 +3009,7 @@ function populateValidation(v) {
     if (v) {
         sel.value = v.validation_status || 'Pending';
         note.value = v.validation_note || '';
+        paintValidationToggle();
         var who = v.validation_user_code ? 'by ' + v.validation_user_code : '';
         var when = v.validation_dtime ? new Date(v.validation_dtime).toLocaleString() : '';
         meta.textContent = (when || who) ? ('Last set ' + when + (who ? ' ' + who : '')) : '';
@@ -2988,6 +3017,7 @@ function populateValidation(v) {
         sel.value = 'Pending';
         note.value = '';
         meta.textContent = 'Not yet validated';
+        paintValidationToggle();
     }
     var bookmarkSec = v && v.validation_bookmark_seconds != null ? parseInt(v.validation_bookmark_seconds, 10) : 0;
     _lastSavedBookmarkSec = bookmarkSec;
@@ -3463,25 +3493,6 @@ function doneTranscript() {
     }).then(closeTranscript);
 }
 
-// One-click status setters — flip the validation dropdown to the named
-// value and run the same save-and-close path as Done. Approved makes the
-// row eligible for the YouTube-caption batch upload (admin-recordings.php
-// keys on $latestStatus = 'Approved'); Pending resets it back to the
-// review queue.
-function setTranscriptStatusAndClose(status) {
-    if (!_transcriptItemKey) return;
-    var sel = document.getElementById('t-val-status');
-    if (!sel) return;
-    sel.value = status;
-    var itemKey = _transcriptItemKey;
-    var rowSave = _savePending ? saveTranscript() : Promise.resolve();
-    rowSave.then(saveValidation).then(function() {
-        updateTranscribeButton(itemKey, status);
-    }).then(closeTranscript);
-}
-function markTranscriptReviewed() { setTranscriptStatusAndClose('Approved'); }
-function markTranscriptPending()  { setTranscriptStatusAndClose('Pending');  }
-
 // ── Transcript Dictionary modal (glossary + corrections) ──
 // Pause the embedded YouTube player if it's running. Called by openers of
 // any modal that takes focus off the transcript editing flow so the video
@@ -3825,11 +3836,20 @@ function openSearchReplace() {
             + '<label id="sr-wb-label" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-wb" checked> Whole word only</label>'
             + '<label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-regex" onchange="srToggleRegexMode()"> Use regex</label>'
             + '</div>'
+            // Scope + post-apply toggles. By default the modal acts on
+            // only the currently-open transcript; tick "Apply to all
+            // transcripts" to widen the scope to every transcript in the
+            // DB. "Add to Corrections" is a post-apply hook — when
+            // ticked, the find/replace pair is also saved as a permanent
+            // Whisper correction so future transcripts auto-apply it.
+            + '<div style="display:flex;gap:14px;align-items:center;font-size:0.82rem;color:#555;flex-wrap:wrap;">'
+            + '<label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sr-all-transcripts" onchange="srRefreshPreviewIfReady()"> Apply to all transcripts</label>'
+            + '<label style="display:flex;align-items:center;gap:4px;" title="When ticked, the find/replace pair is also saved to the corrections dictionary on Apply"><input type="checkbox" id="sr-add-correction" checked> Add to Corrections</label>'
+            + '</div>'
             + '<div id="sr-regex-hint" style="display:none;font-size:0.78rem;color:#666;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;line-height:1.4;">POSIX-extended regex. Common tokens: <code>.</code> any char · <code>*</code>/<code>+</code>/<code>?</code> repeats · <code>|</code> alternation · <code>()</code> groups · <code>[abc]</code> char class · <code>\\d</code>/<code>\\w</code>/<code>\\s</code> · <code>\\m</code>/<code>\\M</code> word start/end · <code>^</code>/<code>$</code> line anchors · <code>\\1</code>-<code>\\9</code> backrefs in replacement. No lookahead/lookbehind.</div>'
             + '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">'
-            + '<button onclick="srPreview()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Preview matches</button>'
+            + '<button id="sr-preview-btn" onclick="srPreview()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;" title="Type a Replace value to enable">Preview matches</button>'
             + '<button id="sr-apply-btn" onclick="srApply()" disabled style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Apply to all matches</button>'
-            + '<button onclick="srAddCorrection()" title="Save this find/replace as a permanent Whisper correction so it auto-applies on future transcripts" style="background:#fff;border:1px solid #31345A;color:#31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">+ Add to Corrections</button>'
             + '</div>'
             + '<div id="sr-summary" style="margin-top:6px;font-size:0.85rem;color:#555;"></div>'
             + '<div id="sr-preview-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;font-size:0.82rem;"></div>'
@@ -3851,6 +3871,41 @@ function openSearchReplace() {
     document.getElementById('sr-preview-list').innerHTML = '';
     var apply = document.getElementById('sr-apply-btn');
     apply.disabled = true; apply.style.opacity = '0.5';
+    // Preview is gated on the Replace field having content. Wire input
+    // listeners once (idempotent — guarded by a data attribute) so the
+    // Preview button enables/disables as the user types.
+    var rep  = document.getElementById('sr-replace');
+    var prev = document.getElementById('sr-preview-btn');
+    if (rep && prev && !rep.dataset.srWired) {
+        rep.dataset.srWired = '1';
+        rep.addEventListener('input', srRefreshPreviewIfReady);
+        // Reset toggles on each open so a prior session's choice
+        // doesn't carry into a new task. Add-to-Corrections is on by
+        // default — most replacements happening here are typo/spelling
+        // fixes the user wants Whisper to learn going forward.
+        var all = document.getElementById('sr-all-transcripts');
+        var add = document.getElementById('sr-add-correction');
+        if (all) all.checked = false;
+        if (add) add.checked = true;
+    }
+    srRefreshPreviewIfReady();
+}
+
+// Enable Preview only when there's something in the Replace field. Also
+// clears any stale preview if the Replace field is wiped out.
+function srRefreshPreviewIfReady() {
+    var rep  = document.getElementById('sr-replace');
+    var prev = document.getElementById('sr-preview-btn');
+    var apply = document.getElementById('sr-apply-btn');
+    if (!rep || !prev) return;
+    var ready = rep.value.length > 0;
+    prev.disabled = !ready;
+    prev.style.opacity = ready ? '1' : '0.5';
+    if (!ready) {
+        document.getElementById('sr-preview-list').innerHTML = '';
+        document.getElementById('sr-summary').textContent = '';
+        if (apply) { apply.disabled = true; apply.style.opacity = '0.5'; }
+    }
 }
 function closeSearchReplace() {
     var ov = document.getElementById('sr-overlay');
@@ -3858,10 +3913,10 @@ function closeSearchReplace() {
 }
 // Open S&R modal with the find field pre-filled. Used by double-click on a
 // transcript word. Defaults: case-sensitive ON, whole-word ON, regex OFF.
+// Preview is NOT auto-fired here any more — the user must type a Replace
+// value first, which is what gates the Preview button.
 function openSearchReplaceWithFind(text) {
     openSearchReplace();
-    // Modal HTML is created/shown synchronously above; nudge to next tick so
-    // we can safely set field values and run preview.
     setTimeout(function() {
         var f = document.getElementById('sr-find');
         var r = document.getElementById('sr-replace');
@@ -3875,12 +3930,13 @@ function openSearchReplaceWithFind(text) {
         if (x) x.checked = false;
         srToggleRegexMode();
         if (r) r.focus();      // jump to "Replace with" so user can type the fix
-        srPreview();
+        srRefreshPreviewIfReady();
     }, 30);
 }
 function srPayload() {
     var regex = document.getElementById('sr-regex').checked;
-    return {
+    var allTranscripts = !!document.getElementById('sr-all-transcripts').checked;
+    var p = {
         find: document.getElementById('sr-find').value,
         replace: document.getElementById('sr-replace').value,
         case_sensitive: document.getElementById('sr-case').checked,
@@ -3891,6 +3947,13 @@ function srPayload() {
         // admin always sees what changes locally before scanning others.
         current_item_key: _transcriptItemKey || 0
     };
+    // Scope: default is just the currently-open transcript. Tick the
+    // "Apply to all transcripts" checkbox to widen scope to every
+    // transcript in the database.
+    if (!allTranscripts && _transcriptItemKey) {
+        p.item_key = _transcriptItemKey;
+    }
+    return p;
 }
 function srToggleRegexMode() {
     var on = document.getElementById('sr-regex').checked;
@@ -3984,7 +4047,10 @@ function srPreview() {
 function srApply() {
     var p = srPayload();
     if (!p.find) return;
-    if (!confirm('Apply this replacement across ALL matching transcript rows? Each change will be logged and added to the correction dictionary. This cannot be auto-undone.')) return;
+    var allTranscripts = !!document.getElementById('sr-all-transcripts').checked;
+    var addCorrection  = !!document.getElementById('sr-add-correction').checked;
+    var scopeMsg = allTranscripts ? 'every transcript in the database' : 'the current transcript only';
+    if (!confirm('Apply this replacement to ' + scopeMsg + '? Each change will be logged. This cannot be auto-undone.')) return;
     var sum = document.getElementById('sr-summary');
     var apply = document.getElementById('sr-apply-btn');
     apply.disabled = true; apply.style.opacity = '0.5';
@@ -4000,6 +4066,11 @@ function srApply() {
         srRefreshHistory();
         // Refresh the open transcript popover so row text reflects the new state
         if (_transcriptItemKey) loadTranscript();
+        // Optional post-apply: persist the find/replace pair as a Whisper
+        // correction so future transcripts auto-apply it. Reuses the
+        // same dictionary endpoint that the old "+ Add to Corrections"
+        // button called — just gated on the checkbox now.
+        if (addCorrection) srAddCorrection();
     });
 }
 // Save the current Find / Replace pair as a permanent correction so future
