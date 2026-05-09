@@ -29,31 +29,10 @@ function secondsToInterval(int $secs): string {
     return sprintf('%02d:%02d:%02d', $h, $m, $s);
 }
 
-/**
- * Apply active corrections from yy_transcript_correction to a single text segment.
- * Higher correction_count entries win when multiple match (most-corrected first).
- */
-function applyCorrectionDictionary(PDO $db, string $text): string {
-    static $cache = null;
-    if ($cache === null) {
-        $stmt = $db->query("SELECT correction_wrong, correction_right, correction_case_sensitive, correction_word_boundary FROM yy_transcript_correction WHERE correction_active_flag = TRUE ORDER BY correction_count DESC, length(correction_wrong) DESC");
-        $cache = $stmt->fetchAll();
-    }
-    foreach ($cache as $c) {
-        $wrong = $c['correction_wrong'];
-        $right = $c['correction_right'];
-        $flags = $c['correction_case_sensitive'] ? '' : 'i';
-        if ($c['correction_word_boundary']) {
-            $pattern = '/\b' . preg_quote($wrong, '/') . '\b/u' . $flags;
-        } else {
-            $pattern = '/' . preg_quote($wrong, '/') . '/u' . $flags;
-        }
-        $text = preg_replace($pattern, $right, $text);
-    }
-    return $text;
-}
-
-require_once __DIR__ . '/transcript-helpers.php'; // autoLearnCorrections()
+// applyCorrectionDictionary() and autoLearnCorrections() both live in
+// transcript-helpers.php now — the worker also needs applyCorrection so
+// it can snapshot the "auto-fix" pass alongside Whisper's raw output.
+require_once __DIR__ . '/transcript-helpers.php';
 
 // ── GET: load transcript + job status ──
 if ($method === 'GET') {

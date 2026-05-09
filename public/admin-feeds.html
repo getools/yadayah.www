@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778345114">
+    <meta name="page-version" content="1778348659">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1681,6 +1681,7 @@ function openTranscript(itemKey) {
             // handler can read its highlighted selection (if any) and
             // pre-fill the Find field.
             + '<button onmousedown="event.preventDefault()" onclick="openSearchReplaceFromButton()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace — pre-fills Find with any text you have highlighted in a transcript row">Search &amp; Replace</button>'
+            + '<button onclick="openTranscriptAnalysis()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Compare three versions per segment — Whisper initial, after auto-fix, and current text">Analyze Changes</button>'
             + '</div>'
             + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
             + '<div id="t-find-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;">'
@@ -2163,23 +2164,27 @@ function recTranscriptCell(it) {
     var uploadDt  = it.yt_caption_uploaded_dtime || null;
     var reviewSt  = it.transcript_validation_status || null;
     var reviewDt  = it.transcript_validation_dtime || null;
-    var label, color, dateLine, title;
+    // Button styling matches the Recording column's pattern (tinted bg +
+    // matching border + same padding / font / width). Each state picks its
+    // own color triple: text / border / background.
+    var label, fg, border, bg, dateLine, title;
     var reviewIsNewer = reviewDt && uploadDt && (new Date(reviewDt) > new Date(uploadDt));
     if (!hasTx) {
-        label = 'None'; color = '#999'; dateLine = '';
+        label = 'None'; fg = '#666'; border = '#ccc'; bg = '#fff';
+        dateLine = '';
         title = 'No transcript records yet';
     } else if (reviewSt === 'Approved' && (!uploadDt || reviewIsNewer)) {
-        label = 'Reviewed'; color = '#a36100';
+        label = 'Reviewed'; fg = '#a36100'; border = '#e0c000'; bg = '#fffbe6';
         dateLine = recTranscriptCellFmtDate(reviewDt);
         title = uploadDt
             ? 'Approved on ' + dateLine + ' — newer than the YouTube upload (' + recTranscriptCellFmtDate(uploadDt) + ')'
             : 'Approved on ' + dateLine + ' — not yet uploaded to YouTube';
     } else if (uploadDt) {
-        label = 'Uploaded'; color = '#1b5e20';
+        label = 'Uploaded'; fg = '#1d6b3a'; border = '#a3d4ad'; bg = '#eaf6ee';
         dateLine = recTranscriptCellFmtDate(uploadDt);
         title = 'Uploaded to YouTube on ' + dateLine;
     } else {
-        label = 'Pending'; color = '#856404';
+        label = 'Pending'; fg = '#856404'; border = '#e6c200'; bg = '#fff8e1';
         // Show how far into the video the last reviewer paused (bookmark
         // saved by the Transcribe popover's auto-bookmark). If no
         // review activity yet, fall back to the latest review datetime
@@ -2197,9 +2202,11 @@ function recTranscriptCell(it) {
     }
     return '<button onclick="openTranscript(' + it.feed_item_key + ')" '
         + 'title="' + esc(title) + '" '
-        + 'style="background:none;border:none;cursor:pointer;padding:2px 4px;font-family:inherit;text-align:center;width:100%;line-height:1.2;">'
-        + '<div style="color:' + color + ';font-weight:600;font-size:0.78rem;">' + label + '</div>'
-        + (dateLine ? '<div style="font-size:0.65rem;color:#888;font-family:monospace;margin-top:1px;">' + dateLine + '</div>' : '')
+        + 'style="border:1px solid ' + border + ';background:' + bg + ';color:' + fg + ';'
+        +        'padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;'
+        +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
+        + label
+        + (dateLine ? '<div style="font-size:0.65rem;color:#888;font-family:monospace;font-weight:400;margin-top:2px;">' + dateLine + '</div>' : '')
         + '</button>';
 }
 function uploadCaptions(feedItemKey, btnEl) {
@@ -3374,9 +3381,15 @@ function splitTranscriptRow(btn) {
     var newTd = newTr.querySelector('td.t-time-cell');
     if (newTd) bindTimeCellHandlers(newTd);
 
+    // Resize both textareas: the original now has less text (may shrink
+    // back from 2-3 rows to 1) and the new row was rendered at rows="1"
+    // but its moved content may need 2-3 rows to display in full.
+    if (textInput && textInput.tagName === 'TEXTAREA') autosizeTextRow(textInput);
+    var newTextInput = newTr.querySelector('[data-field="text"]');
+    if (newTextInput && newTextInput.tagName === 'TEXTAREA') autosizeTextRow(newTextInput);
+
     // Move focus into the new row's text input so the user can keep
     // typing where they left off.
-    var newTextInput = newTr.querySelector('[data-field="text"]');
     if (newTextInput) {
         newTextInput.focus();
         try { newTextInput.setSelectionRange(0, 0); } catch (e) {}
@@ -3730,6 +3743,117 @@ function closeTranscriptDict() {
     var ov = document.getElementById('tdict-overlay');
     if (ov) ov.style.display = 'none';
 }
+
+// ── 3-version analysis modal ──
+// Calls /api/admin-transcript-versions.php?item_key=N and renders a per-row
+// table comparing Whisper raw / auto-fixed / current. Cells get a yellow
+// background when they differ from the column to their left. Word-level
+// highlighting is intentionally NOT done here — at this scale a coloured
+// row tells the reviewer "look at this segment" without the noise of
+// per-word markup, and they can read the prose normally.
+function openTranscriptAnalysis() {
+    if (!_transcriptItemKey) { alert('No transcript loaded.'); return; }
+    var ov = document.getElementById('tanalysis-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'tanalysis-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1100;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(1280px,95vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<div><h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcript Version Analysis</h3>'
+            +     '<div id="tanalysis-summary" style="font-size:0.78rem;color:#666;margin-top:4px;">Loading…</div></div>'
+            +   '<button onclick="closeTranscriptAnalysis()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<div style="padding:8px 18px;border-bottom:1px solid #eee;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:0.78rem;color:#444;">'
+            +   '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="tan-only-diffs" checked onchange="renderTranscriptAnalysis()"> Show only rows with differences</label>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fff7d6;border:1px solid #e8d77a;"></span> auto-fix changed it</span>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#dff5e1;border:1px solid #99cfa6;"></span> human edited it</span>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fde2e2;border:1px solid #e8a0a0;"></span> deleted by reviewer</span>'
+            + '</div>'
+            + '<div id="tanalysis-body" style="overflow:auto;padding:0;"></div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e) { if (e.target === ov) closeTranscriptAnalysis(); };
+    }
+    ov.style.display = 'flex';
+    document.getElementById('tanalysis-summary').textContent = 'Loading…';
+    document.getElementById('tanalysis-body').innerHTML = '<div style="padding:30px;text-align:center;color:#999;">Loading…</div>';
+    fetch(API + '/admin-transcript-versions.php?item_key=' + encodeURIComponent(_transcriptItemKey),
+        { credentials: 'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error) {
+                document.getElementById('tanalysis-summary').textContent = '✗ ' + d.error;
+                document.getElementById('tanalysis-body').innerHTML = '';
+                return;
+            }
+            _tanalysisData = d;
+            renderTranscriptAnalysis();
+        });
+}
+function closeTranscriptAnalysis() {
+    var ov = document.getElementById('tanalysis-overlay');
+    if (ov) ov.style.display = 'none';
+}
+var _tanalysisData = null;
+function renderTranscriptAnalysis() {
+    var d = _tanalysisData;
+    if (!d) return;
+    var sumEl = document.getElementById('tanalysis-summary');
+    var bodyEl = document.getElementById('tanalysis-body');
+    var rows = d.rows || [];
+    var totals = d.totals || {};
+    if (!d.has_snapshot) {
+        sumEl.innerHTML = '<span style="color:#a36100;">No Whisper snapshot for this transcript</span> — it was transcribed before the snapshot table existed, so only the current text is available below.';
+    } else {
+        sumEl.innerHTML = rows.length + ' segment' + (rows.length === 1 ? '' : 's')
+            + ' &middot; <strong>' + (totals.initial_diff_auto    || 0) + '</strong> changed by auto-fix'
+            + ' &middot; <strong>' + (totals.auto_diff_current    || 0) + '</strong> changed by humans after auto-fix'
+            + ' &middot; <strong>' + (totals.initial_diff_current || 0) + '</strong> total Whisper→current changes';
+    }
+    var onlyDiffs = !!document.getElementById('tan-only-diffs').checked;
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.83rem;table-layout:fixed;">'
+        + '<colgroup><col style="width:90px;"><col><col><col><col style="width:60px;"></colgroup>'
+        + '<thead><tr style="background:#f7f8fc;color:#31345A;font-weight:600;position:sticky;top:0;">'
+        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Segment</th>'
+        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Whisper raw</th>'
+        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">After auto-fix</th>'
+        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Current</th>'
+        +   '<th style="padding:7px 10px;text-align:center;border-bottom:1px solid #d8dcec;" title="Number of human edit-log entries on this segment">Edits</th>'
+        + '</tr></thead><tbody>';
+    var shown = 0;
+    rows.forEach(function(r) {
+        var ti = r.text_initial, ta = r.text_auto_fix, tc = r.text_current;
+        var autoChanged  = (ti !== null && ta !== null && ti !== ta);
+        var humanChanged = (ta !== null && ta !== tc);
+        var deleted      = (tc === null);
+        var added        = (ti === null && ta === null && tc !== null);
+        if (onlyDiffs && !autoChanged && !humanChanged && !deleted && !added) return;
+        shown++;
+        var bgInitial = '#fff';
+        var bgAuto    = autoChanged  ? '#fff7d6' : '#fff';
+        var bgCurrent = deleted      ? '#fde2e2' : (humanChanged ? '#dff5e1' : '#fff');
+        // Edit-log summary: count entries by action type
+        var editsCell = '';
+        if (r.edits) {
+            var parts = [];
+            for (var act in r.edits) parts.push(act.replace(/_/g, ' ') + ':' + r.edits[act].count);
+            editsCell = parts.join('<br>');
+        }
+        html += '<tr style="border-top:1px solid #eee;">'
+            + '<td style="padding:6px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;white-space:nowrap;">' + esc(r.segment) + '</td>'
+            + '<td style="padding:6px 10px;background:' + bgInitial + ';vertical-align:top;word-wrap:break-word;">' + (ti === null ? '<span style="color:#bbb;font-style:italic;">(added later)</span>' : esc(ti)) + '</td>'
+            + '<td style="padding:6px 10px;background:' + bgAuto    + ';vertical-align:top;word-wrap:break-word;">' + (ta === null ? '<span style="color:#bbb;font-style:italic;">(added later)</span>' : esc(ta)) + '</td>'
+            + '<td style="padding:6px 10px;background:' + bgCurrent + ';vertical-align:top;word-wrap:break-word;">' + (tc === null ? '<span style="color:#a30;font-style:italic;">(deleted)</span>' : esc(tc)) + '</td>'
+            + '<td style="padding:6px 10px;text-align:center;font-size:0.72rem;color:#666;vertical-align:top;">' + editsCell + '</td>'
+            + '</tr>';
+    });
+    html += '</tbody></table>';
+    if (shown === 0) {
+        html += '<div style="padding:30px;text-align:center;color:#999;">No rows differ between versions.</div>';
+    }
+    bodyEl.innerHTML = html;
+}
 function switchTdTab(name) {
     document.querySelectorAll('.td-tab').forEach(function(b){
         var active = b.getAttribute('data-td') === name;
@@ -4047,7 +4171,7 @@ function openSearchReplace() {
             + '<div id="sr-regex-hint" style="display:none;font-size:0.78rem;color:#666;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;line-height:1.4;">POSIX-extended regex. Common tokens: <code>.</code> any char · <code>*</code>/<code>+</code>/<code>?</code> repeats · <code>|</code> alternation · <code>()</code> groups · <code>[abc]</code> char class · <code>\\d</code>/<code>\\w</code>/<code>\\s</code> · <code>\\m</code>/<code>\\M</code> word start/end · <code>^</code>/<code>$</code> line anchors · <code>\\1</code>-<code>\\9</code> backrefs in replacement. No lookahead/lookbehind.</div>'
             + '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">'
             + '<button id="sr-preview-btn" onclick="srPreview()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;" title="Type a Replace value to enable">Preview matches</button>'
-            + '<button id="sr-apply-btn" onclick="srApply()" disabled style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Apply to all matches</button>'
+            + '<button id="sr-apply-btn" onclick="srApply()" disabled style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Apply</button>'
             + '</div>'
             + '<div id="sr-summary" style="margin-top:6px;font-size:0.85rem;color:#555;"></div>'
             + '<div id="sr-preview-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;font-size:0.82rem;"></div>'
@@ -4211,12 +4335,17 @@ function srPreview() {
 
         var currentKey = String(_transcriptItemKey || '');
         var html = '';
+        // Master "select all" header — toggles every per-row checkbox below.
+        html += '<div style="background:#f6f7fb;border:1px solid #d8dcec;border-radius:4px;padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:600;color:#31345A;">'
+            +   '<input type="checkbox" id="sr-check-all" checked onclick="srToggleAll(this)" style="cursor:pointer;">'
+            +   '<label for="sr-check-all" style="cursor:pointer;user-select:none;">Apply all <span style="font-weight:400;color:#666;">(uncheck rows below to skip them)</span></label>'
+            + '</div>';
         groups.forEach(function(g, gi) {
             var isCurrent = g.key === currentKey;
             var headerBg = isCurrent ? '#fff8e1' : '#eef2ff';
             var headerColor = isCurrent ? '#7c5e00' : '#31345A';
             var label = (isCurrent ? 'CURRENT — ' : '') + (g.title || '');
-            html += '<div style="margin-top:' + (gi === 0 ? '0' : '12px') + ';">'
+            html += '<div style="margin-top:' + (gi === 0 ? '8px' : '12px') + ';">'
                 +   '<div style="background:' + headerBg + ';color:' + headerColor + ';padding:6px 10px;border:1px solid ' + (isCurrent ? '#ffe082' : '#c8d0f0') + ';border-radius:4px 4px 0 0;font-weight:600;font-size:0.85rem;">'
                 +     esc(label) + ' <span style="font-weight:400;">— ' + g.hits + ' match' + (g.hits===1?'':'es')
                 +     (g.samples.length < g.hits ? ' (showing ' + g.samples.length + ')' : '') + '</span>'
@@ -4226,7 +4355,11 @@ function srPreview() {
             } else {
                 html += '<table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 4px 4px;">';
                 g.samples.forEach(function(s) {
+                    var tkey = parseInt(s.feed_item_transcript_key, 10);
                     html += '<tr style="border-top:1px solid #eee;">'
+                        + '<td style="padding:5px 4px 5px 10px;width:24px;vertical-align:top;">'
+                        +   '<input type="checkbox" class="sr-row-check" data-tkey="' + tkey + '" checked onclick="srRowCheckChanged()" style="cursor:pointer;">'
+                        + '</td>'
                         + '<td style="padding:5px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;width:90px;white-space:nowrap;">'
                         +   esc(s.segment) + '</td>'
                         + '<td style="padding:5px 10px;">'
@@ -4242,20 +4375,69 @@ function srPreview() {
         if (d.total > 0) { apply.disabled = false; apply.style.opacity = '1'; }
     });
 }
+// Master checkbox handler: forces every per-row checkbox to match its state.
+function srToggleAll(master) {
+    var rows = document.querySelectorAll('#sr-preview-list .sr-row-check');
+    rows.forEach(function(c) { c.checked = master.checked; });
+    srRefreshApplyState();
+}
+// Called whenever a per-row checkbox flips. Updates the master's
+// checked/indeterminate state and the Apply button's enable state.
+function srRowCheckChanged() {
+    var master = document.getElementById('sr-check-all');
+    var rows = document.querySelectorAll('#sr-preview-list .sr-row-check');
+    var checkedCount = 0;
+    rows.forEach(function(c) { if (c.checked) checkedCount++; });
+    if (master) {
+        master.checked       = checkedCount === rows.length && rows.length > 0;
+        master.indeterminate = checkedCount > 0 && checkedCount < rows.length;
+    }
+    srRefreshApplyState();
+}
+function srRefreshApplyState() {
+    var apply = document.getElementById('sr-apply-btn');
+    if (!apply) return;
+    var anyChecked = !!document.querySelector('#sr-preview-list .sr-row-check:checked');
+    apply.disabled = !anyChecked;
+    apply.style.opacity = anyChecked ? '1' : '0.5';
+}
 function srApply() {
     var p = srPayload();
     if (!p.find) return;
     var allTranscripts = !!document.getElementById('sr-all-transcripts').checked;
     var addCorrection  = !!document.getElementById('sr-add-correction').checked;
-    var scopeMsg = allTranscripts ? 'every transcript in the database' : 'the current transcript only';
+    // Collect row keys for every preview row whose checkbox is still ticked.
+    // If the user previewed at all, we always send selected_keys (even when
+    // every box is checked) — that way the apply scope = displayed scope,
+    // and rows hidden by the 200-sample cap aren't silently swept up.
+    var rowChecks = document.querySelectorAll('#sr-preview-list .sr-row-check');
+    var selectedKeys = null;
+    if (rowChecks.length > 0) {
+        selectedKeys = [];
+        rowChecks.forEach(function(c) {
+            if (c.checked) {
+                var k = parseInt(c.getAttribute('data-tkey'), 10);
+                if (!isNaN(k)) selectedKeys.push(k);
+            }
+        });
+        if (selectedKeys.length === 0) { alert('No rows are checked.'); return; }
+    }
+    var scopeMsg;
+    if (selectedKeys !== null) {
+        scopeMsg = selectedKeys.length + ' selected row' + (selectedKeys.length === 1 ? '' : 's');
+    } else {
+        scopeMsg = allTranscripts ? 'every transcript in the database' : 'the current transcript only';
+    }
     if (!confirm('Apply this replacement to ' + scopeMsg + '? Each change will be logged. This cannot be auto-undone.')) return;
     var sum = document.getElementById('sr-summary');
     var apply = document.getElementById('sr-apply-btn');
     apply.disabled = true; apply.style.opacity = '0.5';
     sum.textContent = 'Applying…';
+    var body = Object.assign({action:'apply'}, p);
+    if (selectedKeys !== null) body.selected_keys = selectedKeys;
     fetch(API + '/admin-transcript-replace.php', {
         method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(Object.assign({action:'apply'}, p))
+        body: JSON.stringify(body)
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { sum.textContent = '✗ ' + d.error; return; }
         sum.innerHTML = '<span style="color:#27ae60;font-weight:600;">✓ ' + (d.message || 'Applied') + '</span>';

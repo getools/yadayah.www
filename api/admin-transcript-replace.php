@@ -27,6 +27,18 @@ $wordBoundary  = !empty($data['word_boundary']);
 $isRegex       = !empty($data['regex']);
 $itemKey = isset($data['item_key']) && $data['item_key'] !== null
     ? (int)$data['item_key'] : null;
+// When the client sends a non-null `selected_keys` array, the apply path
+// limits to those feed_item_transcript_key rows only (the user unchecked
+// some preview boxes). null/missing means "apply to every match" — the
+// pre-checkbox behavior. An explicit empty array means "user unchecked
+// everything" and is treated as a no-op.
+$selectedKeys = null;
+if (isset($data['selected_keys']) && is_array($data['selected_keys'])) {
+    $selectedKeys = [];
+    foreach ($data['selected_keys'] as $k) {
+        if (is_numeric($k)) $selectedKeys[] = (int)$k;
+    }
+}
 
 if ($find === '') errorResponse('find string is required');
 if (mb_strlen($find) > 500) errorResponse('find string too long');
@@ -156,17 +168,31 @@ if ($action === 'preview') {
 }
 
 if ($action === 'apply') {
+    // Handle the "user unchecked everything" case before opening a transaction.
+    if ($selectedKeys !== null && count($selectedKeys) === 0) {
+        jsonResponse(['changed' => 0, 'message' => 'No rows selected.']);
+    }
     $db->beginTransaction();
     try {
-        // Fetch all matching rows so we can log each diff
+        // Fetch matching rows so we can log each diff. When the client sent
+        // selected_keys, restrict to that set in addition to the find regex
+        // (the regex check is still needed in case a row's text changed
+        // between preview and apply).
+        $applyWhere  = $where;
+        $applyParams = array_merge([$pattern, $safeReplace, $flags], $params);
+        if ($selectedKeys !== null) {
+            $placeholders = implode(',', array_fill(0, count($selectedKeys), '?'));
+            $applyWhere  .= " AND feed_item_transcript_key IN ($placeholders)";
+            $applyParams = array_merge($applyParams, $selectedKeys);
+        }
         $rowsStmt = $db->prepare("
             SELECT feed_item_transcript_key, feed_item_key, feed_item_transcript_segment::text AS segment,
                    feed_item_transcript_text AS old_text,
                    regexp_replace(feed_item_transcript_text, ?, ?, ?) AS new_text
               FROM yy_feed_item_transcript
-             WHERE $where
+             WHERE $applyWhere
         ");
-        $rowsStmt->execute(array_merge([$pattern, $safeReplace, $flags], $params));
+        $rowsStmt->execute($applyParams);
         $rows = $rowsStmt->fetchAll();
 
         if (!$rows) {

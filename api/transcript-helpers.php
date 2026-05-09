@@ -82,3 +82,34 @@ function autoLearnCorrections(PDO $db, string $oldText, string $newText): void {
         $upsert->execute([$a, $b]);
     }
 }
+
+/**
+ * Apply active corrections from yy_transcript_correction to a single text
+ * segment. Higher correction_count entries win when multiple match
+ * (most-corrected first). Originally lived inside admin-transcript.php;
+ * lifted to this shared file so the transcript-worker (which writes
+ * Whisper output) can also produce the "auto-fix" snapshot at run time.
+ *
+ * Cache is per-request: the worker processes one job per process so
+ * caching across calls is fine; admin-transcript.php endpoints are also
+ * single-request scoped.
+ */
+function applyCorrectionDictionary(PDO $db, string $text): string {
+    static $cache = null;
+    if ($cache === null) {
+        $stmt = $db->query("SELECT correction_wrong, correction_right, correction_case_sensitive, correction_word_boundary FROM yy_transcript_correction WHERE correction_active_flag = TRUE ORDER BY correction_count DESC, length(correction_wrong) DESC");
+        $cache = $stmt->fetchAll();
+    }
+    foreach ($cache as $c) {
+        $wrong = $c['correction_wrong'];
+        $right = $c['correction_right'];
+        $flags = $c['correction_case_sensitive'] ? '' : 'i';
+        if ($c['correction_word_boundary']) {
+            $pattern = '/\b' . preg_quote($wrong, '/') . '\b/u' . $flags;
+        } else {
+            $pattern = '/' . preg_quote($wrong, '/') . '/u' . $flags;
+        }
+        $text = preg_replace($pattern, $right, $text);
+    }
+    return $text;
+}

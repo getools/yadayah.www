@@ -17,6 +17,7 @@ if ($argc < 2) { fwrite(STDERR, "Usage: php transcript-worker.php <job_key>\n");
 $jobKey = (int)$argv[1];
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/transcript-helpers.php'; // applyCorrectionDictionary() for snapshot
 $db = getDb();
 
 // Honor SIGTERM from admin-transcript.php's cancel handler. We don't try to
@@ -472,14 +473,30 @@ if (!$rows) {
 bailIfCancelled($db, $jobKey);
 
 // ── Save rows ──
+// Two parallel writes for every Whisper segment:
+//   1. yy_feed_item_transcript     — the live row the editor binds to.
+//      Stays as the raw Whisper text (current behavior — admin can hit
+//      "Apply corrections now" later if they want to bulk-correct).
+//   2. yy_feed_item_transcript_snapshot — frozen pair (text_initial,
+//      text_auto_fix) so the comparison UI can show three columns:
+//      raw Whisper / after auto-fix / current. text_auto_fix is the
+//      hypothetical "what corrections WOULD apply" value, computed
+//      here regardless of whether the admin actually applies them.
+// Snapshot is replaced wholesale on each Whisper run for the same item.
 updateJob($db, $jobKey, ['job_progress' => 90, 'job_message' => 'Saving ' . count($rows) . ' segments...']);
 $db->beginTransaction();
 try {
-    $db->prepare("DELETE FROM yy_feed_item_transcript WHERE feed_item_key = ?")->execute([$itemKey]);
-    $insStmt = $db->prepare("INSERT INTO yy_feed_item_transcript (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort) VALUES (?, ?::interval, ?, ?)");
+    $db->prepare("DELETE FROM yy_feed_item_transcript          WHERE feed_item_key = ?")->execute([$itemKey]);
+    $db->prepare("DELETE FROM yy_feed_item_transcript_snapshot WHERE feed_item_key = ?")->execute([$itemKey]);
+    $insStmt  = $db->prepare("INSERT INTO yy_feed_item_transcript (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort) VALUES (?, ?::interval, ?, ?)");
+    $snapStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_snapshot (feed_item_key, snapshot_segment, snapshot_sort, text_initial, text_auto_fix) VALUES (?, ?::interval, ?, ?, ?)");
     $sort = 0;
     foreach ($rows as $r) {
-        $insStmt->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort++]);
+        $rawText  = mb_substr($r['text'], 0, 2000);
+        $autoText = mb_substr(applyCorrectionDictionary($db, $rawText), 0, 2000);
+        $insStmt ->execute([$itemKey, $r['segment'], $rawText, $sort]);
+        $snapStmt->execute([$itemKey, $r['segment'], $sort, $rawText, $autoText]);
+        $sort++;
     }
     $db->commit();
 } catch (Exception $e) {
