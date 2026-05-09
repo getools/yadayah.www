@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778342783">
+    <meta name="page-version" content="1778344789">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -572,11 +572,11 @@ function transcribeBtnHtml(it) {
         label = '&#9888; Errors'; title = 'Transcript flagged as having errors';
     } else if (hasTranscript) {
         // Transcript exists but isn't Approved or flagged Errors — i.e.
-        // it's in the Pending review state. Surface that as a labeled
-        // "Pending" button (with the resume bookmark appended when the
-        // reviewer has left off mid-transcript) so the column reads as
-        // a status at a glance, not just a number.
-        bg = '#fff3cd'; fg = '#856404'; border = '#e6c200';
+        // Pending review state. Visually a solid amber button (matches
+        // the "Mark Pending" toggle inside the editor) so the column
+        // reads as a clickable button, not a badge/label. Bookmark time
+        // is appended when the reviewer has left off mid-transcript.
+        bg = '#a36100'; fg = '#fff'; border = '#7c4a00';
         var sec = Math.max(0, Math.floor(Number(bookmark) || 0));
         var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
         var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
@@ -590,9 +590,11 @@ function transcribeBtnHtml(it) {
         bg = '#e8eaf6'; fg = '#31345A'; border = '#c5cae9';
         label = 'Transcribe'; title = 'No transcript yet — click to start';
     }
+    // Solid box-shadow + slightly fatter padding makes every state read
+    // as an actionable button rather than a status pill.
     return '<button data-tx-key="' + it.feed_item_key + '" onclick="openTranscript(' + it.feed_item_key + ')" '
         + 'title="' + esc(title) + '" '
-        + 'style="background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-size:0.7rem;padding:3px 8px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap;">'
+        + 'style="background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-size:0.72rem;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.08);">'
         + label + '</button>';
 }
 
@@ -1619,13 +1621,19 @@ function openTranscript(itemKey) {
             + '<button onclick="cancelTranscript()" style="margin-top:8px;font-size:0.78rem;background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">Cancel</button>'
             + '</div>'
             + '<div style="display:flex;gap:14px;align-items:flex-start;">'
-            + '<div style="flex:0 0 40%;min-width:320px;display:flex;flex-direction:column;gap:10px;">'
+            // Player column shrunk from 40% → 24% of card width (i.e. 40%
+            // smaller). Transcript editor on the right gets the freed
+            // space. min-width also dropped proportionally so the column
+            // stays sane on smaller screens.
+            + '<div style="flex:0 0 24%;min-width:200px;display:flex;flex-direction:column;gap:10px;">'
             + '<div id="t-player-wrap" style="background:#000;border-radius:6px;overflow:hidden;aspect-ratio:16/9;">'
             + '<div id="t-player-empty" style="color:#888;display:flex;align-items:center;justify-content:center;height:100%;font-size:0.85rem;">Video player loads when transcript opens</div>'
             + '<div id="yt-player" style="width:100%;height:100%;"></div>'
             + '</div>'
             + '<div id="t-speed-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;padding:6px 8px;">'
-            + speedButtonsHtml([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4])
+            // Removed 2.5×, 3×, 3.5×, 4× — those rates are unusable for
+            // accurate transcription and just clutter the toolbar.
+            + speedButtonsHtml([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2])
             + '<span id="t-speed-note" style="font-size:0.7rem;color:#a36100;margin-left:auto;"></span>'
             + '</div>'
             + '<div id="t-time-display" style="font-size:0.78rem;color:#666;font-family:monospace;">—</div>'
@@ -1668,7 +1676,11 @@ function openTranscript(itemKey) {
             + '<button onclick="openYoutubeCookies()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Manage YouTube auth cookies used by yt-dlp">YouTube Cookies</button>'
             + '<button onclick="openTranscriptDict()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Whisper glossary + correction dictionary">Transcript Dictionary</button>'
             + '<button onclick="openTranscriptFind()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Find text within this transcript">Find</button>'
-            + '<button onclick="openSearchReplace()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace with undo/redo">Search &amp; Replace</button>'
+            // onmousedown→preventDefault keeps focus on whichever
+            // transcript text input the cursor was in, so the click
+            // handler can read its highlighted selection (if any) and
+            // pre-fill the Find field.
+            + '<button onmousedown="event.preventDefault()" onclick="openSearchReplaceFromButton()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace — pre-fills Find with any text you have highlighted in a transcript row">Search &amp; Replace</button>'
             + '</div>'
             + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
             + '<div id="t-find-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;">'
@@ -3088,13 +3100,43 @@ function saveValidation() {
 // The "+" button uses onmousedown→preventDefault to avoid stealing focus
 // from whichever text input the cursor was in, so splitTranscriptRow can
 // read selectionStart from the still-focused input.
+//
+// Text field is a <textarea rows="1"> rather than <input type="text">
+// so that long lines can WRAP to a second visible row (the input form
+// only ever shows one line, scrolling horizontally). autosizeTextRow()
+// keeps it at 1 row when content fits and grows to a max of 2 rows
+// otherwise; cells with text longer than 2 rows scroll internally.
 function transcriptRowCells(seg, secs, text) {
-    return '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(text || '') + '" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;">'
+    return '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1" style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;">' + esc(text || '') + '</textarea></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;vertical-align:top;">'
         +   '<button onmousedown="event.preventDefault()" onclick="splitTranscriptRow(this)" title="Insert a new row after this one — splits text at the cursor if you have one in this row" style="background:none;border:none;color:#27ae60;cursor:pointer;font-size:1.15rem;padding:0 4px;font-weight:700;">+</button>'
         +   '<button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" title="Delete this row" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;padding:0 4px;">&times;</button>'
         + '</td>';
+}
+
+// Resize a transcript text textarea to fit its content, capped at 2
+// visible rows. >2 rows of content → internal scroll. Called on render
+// and on every input event (debounced isn't needed — the work is O(1)
+// against the active row).
+function autosizeTextRow(ta) {
+    if (!ta || ta.dataset.field !== 'text') return;
+    ta.rows = 1;
+    // After setting rows=1, scrollHeight reflects the natural content
+    // height. If it overflows the 1-row clientHeight, bump to rows=2;
+    // if still overflowing, allow internal scroll so the cell never
+    // grows beyond 2 rows tall.
+    if (ta.scrollHeight > ta.clientHeight + 2) {
+        ta.rows = 2;
+    }
+    ta.style.overflowY = (ta.scrollHeight > ta.clientHeight + 2) ? 'auto' : 'hidden';
+}
+
+// Apply autosize to every text field in the transcript table. Run after
+// renderTranscriptRows / addTranscriptRow / splitTranscriptRow so the
+// initial layout is correct.
+function autosizeAllTextRows() {
+    document.querySelectorAll('#t-rows textarea[data-field="text"]').forEach(autosizeTextRow);
 }
 
 function renderTranscriptRows(rows) {
@@ -3116,41 +3158,62 @@ function renderTranscriptRows(rows) {
             + '</tr>';
     });
     tbody.innerHTML = html;
+    autosizeAllTextRows();
 
     // Single click anywhere in the time cell seeks the video; double click
     // unlocks the input for editing. We keep the input readonly while not
     // being edited so it doesn't swallow the click event.
     tbody.querySelectorAll('td.t-time-cell').forEach(bindTimeCellHandlers);
 
-    // Auto-save: only when focus leaves the input (blur). Keystrokes only
+    // Auto-save: only when focus leaves the field (blur). Keystrokes only
     // update the "…editing" indicator. This prevents partially-typed words
     // from being saved + auto-learned mid-edit.
+    // The text field is now a <textarea> (so long lines can wrap to a 2nd
+    // row); the time field stays an <input>. Each handler accepts both.
     if (!tbody.dataset.autosaveBound) {
         tbody.addEventListener('input', function(e) {
-            if (e.target.tagName === 'INPUT') {
-                _savePending = true;
-                var st = document.getElementById('t-status');
-                if (st) st.textContent = '…editing';
-            }
+            var t = e.target;
+            if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+            _savePending = true;
+            var st = document.getElementById('t-status');
+            if (st) st.textContent = '…editing';
+            // Re-size the text row so a freshly-typed wrapping line shows
+            // its full content within the 2-row cap.
+            if (t.dataset.field === 'text' && t.tagName === 'TEXTAREA') autosizeTextRow(t);
         });
-        // Focusing a transcript text input pauses the video — user is editing,
-        // continued playback would scroll past the row they're looking at.
+        // Focusing a transcript text field pauses the video — user is
+        // editing, continued playback would scroll past the row.
         // (focus doesn't bubble, focusin does.)
         tbody.addEventListener('focusin', function(e) {
-            if (e.target.tagName !== 'INPUT' || e.target.dataset.field !== 'text') return;
+            var t = e.target;
+            if (!t || t.dataset.field !== 'text') return;
             if (_ytPlayer && typeof _ytPlayer.pauseVideo === 'function') {
                 try { _ytPlayer.pauseVideo(); } catch (err) {}
             }
         });
         // focusout bubbles (blur doesn't), so we can listen at the tbody level
         tbody.addEventListener('focusout', function(e) {
-            if (e.target.tagName === 'INPUT' && _savePending) saveTranscript();
+            var t = e.target;
+            if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+            if (_savePending) saveTranscript();
+        });
+        // Block Enter inside the text textarea so the field stays
+        // visually one logical sentence per row — user shouldn't be
+        // able to insert literal newlines mid-transcript. Shift+Enter
+        // is left alone for the rare intentional case.
+        tbody.addEventListener('keydown', function(e) {
+            if (e.target.dataset && e.target.dataset.field === 'text'
+                && e.target.tagName === 'TEXTAREA'
+                && e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.target.blur();
+            }
         });
         // Double-click a word in the text column → open Search & Replace pre-filled.
         // Browser default already selects the double-clicked word; we just read it.
         tbody.addEventListener('dblclick', function(e) {
             var input = e.target;
-            if (!input || input.tagName !== 'INPUT' || input.dataset.field !== 'text') return;
+            if (!input || input.dataset.field !== 'text') return;
             var sel = input.value.substring(input.selectionStart || 0, input.selectionEnd || 0);
             sel = (sel || '').trim();
             if (!sel) return;
@@ -3162,7 +3225,7 @@ function renderTranscriptRows(rows) {
         // the word boundaries around the caret.
         tbody.addEventListener('contextmenu', function(e) {
             var input = e.target;
-            if (!input || input.tagName !== 'INPUT' || input.dataset.field !== 'text') return;
+            if (!input || input.dataset.field !== 'text') return;
             e.preventDefault();
             var s = input.selectionStart || 0;
             var en = input.selectionEnd || 0;
@@ -3255,7 +3318,7 @@ function addTranscriptRow() {
 function splitTranscriptRow(btn) {
     var tr = btn.closest('tr');
     if (!tr) return;
-    var textInput = tr.querySelector('input[data-field="text"]');
+    var textInput = tr.querySelector('[data-field="text"]');
     var fullText  = textInput ? textInput.value : '';
     var totalChars = fullText.length;
 
@@ -3312,7 +3375,7 @@ function splitTranscriptRow(btn) {
 
     // Move focus into the new row's text input so the user can keep
     // typing where they left off.
-    var newTextInput = newTr.querySelector('input[data-field="text"]');
+    var newTextInput = newTr.querySelector('[data-field="text"]');
     if (newTextInput) {
         newTextInput.focus();
         try { newTextInput.setSelectionRange(0, 0); } catch (e) {}
@@ -3867,7 +3930,7 @@ function runTranscriptFind(q) {
     var needle = q.toLowerCase();
     var rows = document.querySelectorAll('#t-rows tr');
     for (var i = 0; i < rows.length; i++) {
-        var input = rows[i].querySelector('input[data-field="text"]');
+        var input = rows[i].querySelector('[data-field="text"]');
         if (!input) continue;
         var hay = (input.value || '').toLowerCase();
         var pos = 0;
@@ -3876,12 +3939,13 @@ function runTranscriptFind(q) {
             pos += needle.length || 1;
         }
     }
-    if (_txFindMatches.length) {
-        _txFindIdx = 0;
-        showTranscriptFindMatch();
-    } else if (countEl) {
-        countEl.textContent = '0 / 0';
-    }
+    // Update the match count but DO NOT auto-jump to the first match.
+    // Auto-jumping called showTranscriptFindMatch() which focuses the
+    // matching transcript row's text input — that yanked focus out of
+    // the Find field on every keystroke, breaking the typing flow.
+    // Navigation now happens only via the ↑/↓ buttons or Enter /
+    // Shift+Enter.
+    if (countEl) countEl.textContent = '0 / ' + _txFindMatches.length;
 }
 
 function showTranscriptFindMatch() {
@@ -3890,7 +3954,7 @@ function showTranscriptFindMatch() {
     var rows = document.querySelectorAll('#t-rows tr');
     var tr = rows[m.row];
     if (!tr) return;
-    var input = tr.querySelector('input[data-field="text"]');
+    var input = tr.querySelector('[data-field="text"]');
     if (!input) return;
     tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
     input.focus({ preventScroll: true });
@@ -3921,6 +3985,26 @@ function findTranscriptPrev() {
 }
 
 // ── Search & Replace modal ──
+// Toolbar entry point: if the user has text highlighted in any
+// transcript text input, copy it into the Find field automatically.
+// Falls through to the plain openSearchReplace() when nothing is
+// selected (or focus has wandered off the transcript table).
+function openSearchReplaceFromButton() {
+    var active = document.activeElement;
+    var selected = '';
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+        && active.dataset && active.dataset.field === 'text'
+        && active.selectionStart != null && active.selectionEnd != null
+        && active.selectionEnd > active.selectionStart) {
+        selected = active.value.substring(active.selectionStart, active.selectionEnd);
+    }
+    if (selected) {
+        openSearchReplaceWithFind(selected);
+    } else {
+        openSearchReplace();
+    }
+}
+
 function openSearchReplace() {
     pauseTranscriptVideo();
     var ov = document.getElementById('sr-overlay');

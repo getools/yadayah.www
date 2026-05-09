@@ -64,10 +64,18 @@ if ($isRegex) {
     $safeReplace = str_replace('\\', '\\\\', $replace);
 }
 
-$where = "feed_item_transcript_text ~" . ($caseSensitive ? '' : '*') . " ?";
+// Two flavors of WHERE: $where for queries against yy_feed_item_transcript
+// alone (the apply path uses this — no JOINs, so bare column refs are
+// unambiguous). $whereT for queries that also JOIN yy_feed_item /
+// yy_feed (the preview path uses this — feed_item_key exists on both
+// yy_feed_item_transcript AND yy_feed_item, so the alias prefix is
+// required to avoid SQLSTATE 42702 ambiguous-column errors).
+$where  = "feed_item_transcript_text ~"   . ($caseSensitive ? '' : '*') . " ?";
+$whereT = "t.feed_item_transcript_text ~" . ($caseSensitive ? '' : '*') . " ?";
 $params = [$pattern];
 if ($itemKey !== null) {
-    $where .= " AND feed_item_key = ?";
+    $where  .= " AND feed_item_key = ?";
+    $whereT .= " AND t.feed_item_key = ?";
     $params[] = $itemKey;
 }
 
@@ -103,7 +111,7 @@ if ($action === 'preview') {
           FROM yy_feed_item_transcript t
           JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
           LEFT JOIN yy_feed   f  ON f.feed_key       = fi.feed_key
-         WHERE $where
+         WHERE $whereT
          ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END),
                   COALESCE(f.feed_name, ''),
                   NULLIF(regexp_replace(COALESCE(fi.feed_item_episode,''), '[^0-9]', '', 'g'), '')::int NULLS LAST,
@@ -125,7 +133,7 @@ if ($action === 'preview') {
           FROM yy_feed_item_transcript t
           JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
           LEFT JOIN yy_feed   f  ON f.feed_key       = fi.feed_key
-         WHERE $where
+         WHERE $whereT
          GROUP BY t.feed_item_key, fi.feed_item_title_override, fi.feed_item_title_import,
                   f.feed_name, fi.feed_item_episode
          ORDER BY (CASE WHEN t.feed_item_key = ? THEN 0 ELSE 1 END),
