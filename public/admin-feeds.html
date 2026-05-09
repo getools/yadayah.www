@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778344789">
+    <meta name="page-version" content="1778345114">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -3121,15 +3121,16 @@ function transcriptRowCells(seg, secs, text) {
 // against the active row).
 function autosizeTextRow(ta) {
     if (!ta || ta.dataset.field !== 'text') return;
-    ta.rows = 1;
-    // After setting rows=1, scrollHeight reflects the natural content
-    // height. If it overflows the 1-row clientHeight, bump to rows=2;
-    // if still overflowing, allow internal scroll so the cell never
-    // grows beyond 2 rows tall.
-    if (ta.scrollHeight > ta.clientHeight + 2) {
-        ta.rows = 2;
+    // Try 1 row first, then 2, then 3. Stop at the smallest size where
+    // content fits. After 3 rows, allow internal scroll so the cell
+    // doesn't keep growing for unusually long lines.
+    var SLOP = 2; // px tolerance when comparing scrollHeight to clientHeight
+    var MAX_ROWS = 3;
+    for (var rows = 1; rows <= MAX_ROWS; rows++) {
+        ta.rows = rows;
+        if (ta.scrollHeight <= ta.clientHeight + SLOP) break;
     }
-    ta.style.overflowY = (ta.scrollHeight > ta.clientHeight + 2) ? 'auto' : 'hidden';
+    ta.style.overflowY = (ta.scrollHeight > ta.clientHeight + SLOP) ? 'auto' : 'hidden';
 }
 
 // Apply autosize to every text field in the transcript table. Run after
