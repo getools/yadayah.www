@@ -2,23 +2,28 @@
 /**
  * Three-version comparison data for a single transcript.
  *
- * Returns a row-aligned dataset showing, per segment:
- *   text_initial   — exactly what Whisper produced (from snapshot)
- *   text_auto_fix  — Whisper output + applyCorrectionDictionary (snapshot)
+ * Returns a row dataset showing, per segment timestamp:
+ *   text_initial   — exactly what Whisper produced (yy_feed_item_transcript_whisper)
+ *   text_auto_fix  — Whisper output + applyCorrectionDictionary (yy_feed_item_transcript_autoclean)
  *   text_current   — live row in yy_feed_item_transcript
  *
- * Pairing is by (sort, segment). When a snapshot row matches a current
- * row by (segment), we line them up; rows in only one source are
- * returned with the missing version as null.
+ * Rows are coordinated by SEGMENT TIMESTAMP, not record offset. The three
+ * source tables can have different row counts (humans add/delete rows in
+ * the live table; a fresh Whisper run produces its own segment boundaries
+ * that may not exactly align with the prior live timestamps). For each
+ * distinct segment value across all three sources we emit one row with
+ * whichever versions are present at that exact timestamp; sources whose
+ * timestamps don't match get null and are shown on their own row at the
+ * timestamp they do have.
  *
- * Also reports per-segment edit history from yy_transcript_edit_log so
- * the UI can flag rows that have human edits beyond the auto-fix.
+ * Final output is sorted by segment ascending — the natural reading order
+ * of a transcript.
  *
  * GET ?item_key=N → { item_key, has_snapshot, rows: [...], totals: {...} }
  *
- * Items transcribed before the snapshot table existed have no snapshot
- * rows — has_snapshot = false in that case and only text_current is
- * meaningful.
+ * Items that were never re-run through the snapshot pipeline have no rows
+ * in _whisper / _autoclean — has_snapshot=false in that case and only
+ * text_current is meaningful.
  */
 require_once __DIR__ . '/config.php';
 requireAuth();
@@ -27,38 +32,34 @@ $db = getDb();
 $itemKey = (int)($_GET['item_key'] ?? 0);
 if (!$itemKey) errorResponse('item_key required');
 
-// Live rows
-$liveStmt = $db->prepare("
-    SELECT feed_item_transcript_key,
-           feed_item_transcript_segment::text AS segment,
-           feed_item_transcript_text          AS text_current,
-           feed_item_transcript_sort          AS sort
-      FROM yy_feed_item_transcript
-     WHERE feed_item_key = ?
-     ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
-");
-$liveStmt->execute([$itemKey]);
-$liveRows = $liveStmt->fetchAll();
-
-// Snapshot rows (paired by segment, since segment is the stable key)
-$snapStmt = $db->prepare("
-    SELECT snapshot_segment::text AS segment,
-           snapshot_sort          AS sort,
-           text_initial,
-           text_auto_fix
-      FROM yy_feed_item_transcript_snapshot
-     WHERE feed_item_key = ?
-     ORDER BY snapshot_sort, snapshot_segment
-");
-$snapStmt->execute([$itemKey]);
-$snapByseg = [];
-foreach ($snapStmt->fetchAll() as $s) {
-    $snapByseg[$s['segment']] = $s;
+// Fetch from each source. Cast segment to a normalized HH:MM:SS string up
+// front so segment-equality comparisons in PHP behave like timestamp
+// equality (avoids "00:01:23" vs "00:01:23.0" mismatches that would
+// otherwise split the row).
+function loadByseg(PDO $db, string $table, int $itemKey): array {
+    $stmt = $db->prepare("
+        SELECT to_char(feed_item_transcript_segment, 'HH24:MI:SS') AS segment,
+               feed_item_transcript_text AS text
+          FROM $table
+         WHERE feed_item_key = ?
+    ");
+    $stmt->execute([$itemKey]);
+    $byseg = [];
+    foreach ($stmt->fetchAll() as $r) {
+        // If duplicates exist at the same timestamp (rare), last write wins —
+        // we don't try to merge text; alignment is per-timestamp.
+        $byseg[$r['segment']] = $r['text'];
+    }
+    return $byseg;
 }
+
+$whisper   = loadByseg($db, 'yy_feed_item_transcript_whisper',   $itemKey);
+$autoclean = loadByseg($db, 'yy_feed_item_transcript_autoclean', $itemKey);
+$live      = loadByseg($db, 'yy_feed_item_transcript',           $itemKey);
 
 // Edit history per segment — flag rows with human edits since auto-fix
 $editStmt = $db->prepare("
-    SELECT edit_segment::text AS segment, edit_action,
+    SELECT to_char(edit_segment, 'HH24:MI:SS') AS segment, edit_action,
            COUNT(*) AS n,
            MAX(edit_dtime) AS last_dtime
       FROM yy_transcript_edit_log
@@ -74,53 +75,34 @@ foreach ($editStmt->fetchAll() as $e) {
     ];
 }
 
+// Union of all segment timestamps across the three sources, sorted ascending.
+$allSegs = array_keys(array_merge($whisper, $autoclean, $live));
+$allSegs = array_unique($allSegs);
+sort($allSegs); // HH:MM:SS strings sort like real timestamps
+
 $out = [];
 $totals = ['initial_diff_auto' => 0, 'auto_diff_current' => 0, 'initial_diff_current' => 0];
-foreach ($liveRows as $r) {
-    $seg = $r['segment'];
-    $snap = $snapByseg[$seg] ?? null;
-    $textInitial = $snap['text_initial']   ?? null;
-    $textAuto    = $snap['text_auto_fix']  ?? null;
-    $textCurrent = $r['text_current'];
+foreach ($allSegs as $seg) {
+    $ti = $whisper[$seg]   ?? null;
+    $ta = $autoclean[$seg] ?? null;
+    $tc = $live[$seg]      ?? null;
 
-    if ($textInitial !== null && $textAuto !== null && $textInitial !== $textAuto) $totals['initial_diff_auto']++;
-    if ($textAuto    !== null && $textAuto    !== $textCurrent)                    $totals['auto_diff_current']++;
-    if ($textInitial !== null && $textInitial !== $textCurrent)                    $totals['initial_diff_current']++;
+    if ($ti !== null && $ta !== null && $ti !== $ta) $totals['initial_diff_auto']++;
+    if ($ta !== null && $tc !== null && $ta !== $tc) $totals['auto_diff_current']++;
+    if ($ti !== null && $tc !== null && $ti !== $tc) $totals['initial_diff_current']++;
 
     $out[] = [
         'segment'       => $seg,
-        'sort'          => (int)$r['sort'],
-        'text_initial'  => $textInitial,
-        'text_auto_fix' => $textAuto,
-        'text_current'  => $textCurrent,
+        'text_initial'  => $ti,
+        'text_auto_fix' => $ta,
+        'text_current'  => $tc,
         'edits'         => $editsByseg[$seg] ?? null,
     ];
-    unset($snapByseg[$seg]);
 }
-// Snapshot rows that no longer have a live row (deleted in editing) —
-// expose them too so the UI can render the "deleted by reviewer" case.
-foreach ($snapByseg as $seg => $snap) {
-    $out[] = [
-        'segment'       => $seg,
-        'sort'          => (int)$snap['sort'],
-        'text_initial'  => $snap['text_initial'],
-        'text_auto_fix' => $snap['text_auto_fix'],
-        'text_current'  => null,
-        'edits'         => $editsByseg[$seg] ?? null,
-    ];
-    if ($snap['text_initial']  !== $snap['text_auto_fix']) $totals['initial_diff_auto']++;
-    $totals['auto_diff_current']++;
-    $totals['initial_diff_current']++;
-}
-// Re-sort by (sort, segment) so the merged list reads top-to-bottom.
-usort($out, function($a, $b) {
-    if ($a['sort'] !== $b['sort']) return $a['sort'] - $b['sort'];
-    return strcmp($a['segment'], $b['segment']);
-});
 
 jsonResponse([
     'item_key'     => $itemKey,
-    'has_snapshot' => count($snapByseg) > 0 || array_filter(array_column($out, 'text_initial')) !== [],
+    'has_snapshot' => count($whisper) > 0 || count($autoclean) > 0,
     'rows'         => $out,
     'totals'       => $totals,
 ]);

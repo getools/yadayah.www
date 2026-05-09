@@ -86,19 +86,14 @@ if ($method === 'GET') {
     $valStmt->execute([$itemKey]);
     $validation = $valStmt->fetch() ?: null;
 
-    // Does the snapshot table have rows for any item in this cluster? The
-    // worker writes (text_initial, text_auto_fix) as a pair in one INSERT,
-    // so a single existence check covers both Whisper versions. Combined
-    // with $rows being non-empty (text_current), this is what the UI uses
-    // to decide whether the "Analyze Changes" button is meaningful.
+    // Do _whisper AND _autoclean both have rows for any item in this cluster?
+    // Both must be present for the three-version analysis to be meaningful;
+    // the UI uses this flag to enable/disable the "Analyze Changes" button.
     $snapStmt = $db->prepare("
-        SELECT 1 FROM yy_feed_item_transcript_snapshot
-         WHERE feed_item_key IN ($placeholders)
-           AND text_initial IS NOT NULL
-           AND text_auto_fix IS NOT NULL
-         LIMIT 1
+        SELECT EXISTS (SELECT 1 FROM yy_feed_item_transcript_whisper   WHERE feed_item_key IN ($placeholders))
+           AND EXISTS (SELECT 1 FROM yy_feed_item_transcript_autoclean WHERE feed_item_key IN ($placeholders))
     ");
-    $snapStmt->execute($itemKeys);
+    $snapStmt->execute(array_merge($itemKeys, $itemKeys));
     $hasSnapshot = (bool)$snapStmt->fetchColumn();
 
     jsonResponse([
