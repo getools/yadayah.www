@@ -565,9 +565,16 @@
         });
     }
     function searchBooks(q) {
-        var mode    = $('ss-mode').value;
-        var series  = $('ss-filter-series').value;
-        var volume  = $('ss-filter-volume').value;
+        // Filter selects (series/volume) were removed when the scope
+        // picker went away, but the search.php API still accepts them —
+        // read defensively so missing elements don't crash this call
+        // path (used by the "See all in Books" link).
+        var modeEl   = $('ss-mode');
+        var seriesEl = $('ss-filter-series');
+        var volumeEl = $('ss-filter-volume');
+        var mode     = modeEl   ? modeEl.value   : 'all';
+        var series   = seriesEl ? seriesEl.value : '';
+        var volume   = volumeEl ? volumeEl.value : '';
         var url = '/api/search.php?q=' + encodeURIComponent(q)
                 + '&mode=' + encodeURIComponent(mode)
                 + (series ? '&series=' + series : '')
@@ -582,9 +589,12 @@
         });
     }
     function searchVideo(q) {
-        var mode     = $('ss-mode').value;
-        var group    = $('ss-filter-group').value;
-        var category = $('ss-filter-category').value;
+        var modeEl     = $('ss-mode');
+        var groupEl    = $('ss-filter-group');
+        var categoryEl = $('ss-filter-category');
+        var mode       = modeEl     ? modeEl.value     : 'all';
+        var group      = groupEl    ? groupEl.value    : '';
+        var category   = categoryEl ? categoryEl.value : '';
         var url = '/api/search-transcripts.php?q=' + encodeURIComponent(q)
                 + '&mode=' + encodeURIComponent(mode)
                 + (group    ? '&group='    + group    : '')
@@ -874,9 +884,20 @@
             // "See all in Books / Video" links switch the scope picker to
             // the matching scope and re-run the search at page 1, so the
             // user gets the full paginated list (Site mode caps each
-            // section at SITE_SECTION_LIMIT).
+            // section at SITE_SECTION_LIMIT). The scope picker UI was
+            // removed earlier but these links must still drill into the
+            // single-source-paginated view, so call the search functions
+            // directly here.
             var see = e.target.closest && e.target.closest('[data-see]');
-            if (see) { e.preventDefault(); setScope(see.dataset.see); doSearch(1); return; }
+            if (see) {
+                e.preventDefault();
+                var q = $('ss-input').value.trim();
+                if (!q) return;
+                currentPage = 1;
+                if (see.dataset.see === 'books')      searchBooks(q);
+                else if (see.dataset.see === 'video') searchVideo(q);
+                return;
+            }
             var hit = e.target.closest && e.target.closest('[data-hit]');
             if (hit) { e.preventDefault(); playHit(hit.dataset.hit); return; }
         });
