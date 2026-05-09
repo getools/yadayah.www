@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778306403">
+    <meta name="page-version" content="1778336826">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -571,17 +571,19 @@ function transcribeBtnHtml(it) {
         bg = '#f8d7da'; fg = '#721c24'; border = '#e0a0a8';
         label = '&#9888; Errors'; title = 'Transcript flagged as having errors';
     } else if (hasTranscript) {
-        // Merged "Transcribed" + "Pending review" — both mean a transcript
-        // exists and review is open. Always show the bookmark, even when
-        // it's 00:00 (no review activity yet).
+        // Transcript exists but isn't Approved or flagged Errors — i.e.
+        // it's in the Pending review state. Surface that as a labeled
+        // "Pending" button (with the resume bookmark appended when the
+        // reviewer has left off mid-transcript) so the column reads as
+        // a status at a glance, not just a number.
         bg = '#fff3cd'; fg = '#856404'; border = '#e6c200';
         var sec = Math.max(0, Math.floor(Number(bookmark) || 0));
         var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
         var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
         var bookmarkText = h > 0 ? pad(h) + ':' + pad(m) + ':' + pad(x) : pad(m) + ':' + pad(x);
-        label = bookmarkText;
+        label = sec > 0 ? 'Pending &middot; ' + bookmarkText : 'Pending';
         title = sec > 0
-            ? 'Review in progress — resume at ' + bookmarkText
+            ? 'Pending review — resume at ' + bookmarkText
             : 'Transcript exists; review not yet started';
     } else {
         // Never transcribed
@@ -1642,6 +1644,14 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div id="t-val-meta" style="font-size:0.72rem;color:#888;margin-top:6px;"></div>'
             + '</div>'
+            // Status buttons: each flips the dropdown to a specific
+            // value and runs the same save-and-close path as Done so a
+            // reviewer never has to touch the dropdown for the common
+            // outcomes. Approved (green) = fully reviewed, eligible for
+            // YouTube caption upload. Pending (amber) = needs more
+            // review; resets the row back to the queue.
+            + '<button onclick="markTranscriptReviewed()" title="Mark this transcript as fully reviewed and approved for YouTube upload" style="background:#27ae60;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;margin-right:8px;">Mark Reviewed</button>'
+            + '<button onclick="markTranscriptPending()" title="Mark this transcript as still needing review" style="background:#a36100;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;margin-right:8px;">Mark Pending</button>'
             + '<button onclick="doneTranscript()" style="background:#31345A;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">Done</button>'
             + '</div>'
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
@@ -3452,6 +3462,25 @@ function doneTranscript() {
         updateTranscribeButton(itemKey, newStatus);
     }).then(closeTranscript);
 }
+
+// One-click status setters — flip the validation dropdown to the named
+// value and run the same save-and-close path as Done. Approved makes the
+// row eligible for the YouTube-caption batch upload (admin-recordings.php
+// keys on $latestStatus = 'Approved'); Pending resets it back to the
+// review queue.
+function setTranscriptStatusAndClose(status) {
+    if (!_transcriptItemKey) return;
+    var sel = document.getElementById('t-val-status');
+    if (!sel) return;
+    sel.value = status;
+    var itemKey = _transcriptItemKey;
+    var rowSave = _savePending ? saveTranscript() : Promise.resolve();
+    rowSave.then(saveValidation).then(function() {
+        updateTranscribeButton(itemKey, status);
+    }).then(closeTranscript);
+}
+function markTranscriptReviewed() { setTranscriptStatusAndClose('Approved'); }
+function markTranscriptPending()  { setTranscriptStatusAndClose('Pending');  }
 
 // ── Transcript Dictionary modal (glossary + corrections) ──
 // Pause the embedded YouTube player if it's running. Called by openers of
