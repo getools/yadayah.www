@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778340604">
+    <meta name="page-version" content="1778342783">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1660,7 +1660,9 @@ function openTranscript(itemKey) {
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
-            + '<button onclick="addTranscriptRow()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;">+ Row</button>'
+            // "+ Row" toolbar button removed — per-row "+" buttons in the
+            // table now insert AND split, which covers the same need
+            // without forcing the user to type a timestamp by hand.
             + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '<span style="border-left:1px solid #ddd;height:24px;margin:0 4px;"></span>'
             + '<button onclick="openYoutubeCookies()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Manage YouTube auth cookies used by yt-dlp">YouTube Cookies</button>'
@@ -3080,23 +3082,37 @@ function saveValidation() {
     }).then(function(r){return safeJson(r);});
 }
 
+// Build the inner <td> cells for a transcript row. Shared between the
+// initial render, the manual "add row" path, and the per-row "+" split
+// action so all three produce identical markup (and identical handlers).
+// The "+" button uses onmousedown→preventDefault to avoid stealing focus
+// from whichever text input the cursor was in, so splitTranscriptRow can
+// read selectionStart from the still-focused input.
+function transcriptRowCells(seg, secs, text) {
+    return '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(text || '') + '" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;">'
+        +   '<button onmousedown="event.preventDefault()" onclick="splitTranscriptRow(this)" title="Insert a new row after this one — splits text at the cursor if you have one in this row" style="background:none;border:none;color:#27ae60;cursor:pointer;font-size:1.15rem;padding:0 4px;font-weight:700;">+</button>'
+        +   '<button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" title="Delete this row" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;padding:0 4px;">&times;</button>'
+        + '</td>';
+}
+
 function renderTranscriptRows(rows) {
     var tbody = document.getElementById('t-rows');
     if (!tbody) return;
     _segmentSeconds = [];
     _activeRowIdx = -1;
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" or "+ Row" to begin.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" to begin.</td></tr>';
         return;
     }
     var html = '';
     rows.forEach(function(r, i) {
         var seg = r.feed_item_transcript_segment || '00:00:00';
-        _segmentSeconds.push(parseSegmentToSeconds(seg));
+        var secs = parseSegmentToSeconds(seg);
+        _segmentSeconds.push(secs);
         html += '<tr data-idx="' + i + '">'
-            + '<td class="t-time-cell" data-secs="' + parseSegmentToSeconds(seg) + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
-            + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + esc(r.feed_item_transcript_text || '') + '" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
-            + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
+            + transcriptRowCells(seg, secs, r.feed_item_transcript_text || '')
             + '</tr>';
     });
     tbody.innerHTML = html;
@@ -3207,9 +3223,7 @@ function addTranscriptRow() {
     var seg = formatSecondsToSegment(secs);
 
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;"><input type="text" value="' + seg + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;"><input type="text" value="" data-field="text" style="width:100%;font-size:0.85rem;border:1px solid #ddd;border-radius:3px;padding:3px 6px;"></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;"><button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>';
+    tr.innerHTML = transcriptRowCells(seg, secs, '');
     tbody.appendChild(tr);
 
     // Bind click/dblclick/blur on the new time cell so the time is editable
@@ -3220,10 +3234,109 @@ function addTranscriptRow() {
     tr.querySelector('[data-field="text"]').focus();
 }
 
+// Split / insert at row level. Wired to the per-row "+" button. Reads the
+// cursor (or selection start) from the focused text input, moves text
+// after that point into a new row inserted right after, and computes the
+// new row's timestamp by interpolating between this row's timestamp and
+// the next row's (or the video duration when this is the last row):
+//
+//     newTimestamp = t2 - (charsToMove / totalChars) * (t2 - t1)
+//
+// Edge cases:
+//   • No cursor active in this row     → no text moved, newTimestamp = t2
+//   • Cursor at start                  → all text moved, newTimestamp = t1
+//   • Cursor at end                    → no text moved, newTimestamp = t2
+//   • Selection range                  → split at selectionStart (the left
+//                                         edge of the selection)
+//
+// Focus preservation: the button's onmousedown="event.preventDefault()"
+// keeps focus on whichever text input the user was editing, so by the
+// time onclick fires the input still reports its real selectionStart.
+function splitTranscriptRow(btn) {
+    var tr = btn.closest('tr');
+    if (!tr) return;
+    var textInput = tr.querySelector('input[data-field="text"]');
+    var fullText  = textInput ? textInput.value : '';
+    var totalChars = fullText.length;
+
+    // Capture cursor / selection from the focused input. If the user
+    // never clicked into this row's text, splitPoint stays null and we
+    // insert an empty new row at the next-row timestamp (Scenario A).
+    var splitPoint = null;
+    if (textInput && document.activeElement === textInput) {
+        splitPoint = textInput.selectionStart != null ? textInput.selectionStart : textInput.value.length;
+    }
+
+    var charsToMove = 0;
+    var movedText   = '';
+    if (splitPoint !== null) {
+        movedText   = fullText.substring(splitPoint);
+        charsToMove = movedText.length;
+        textInput.value = fullText.substring(0, splitPoint);
+    }
+
+    var segInput = tr.querySelector('input[data-field="segment"]');
+    var t1 = parseSegmentToSeconds(segInput ? segInput.value : '00:00:00');
+
+    // t2 = next row's timestamp, or video duration when this is the last row.
+    var nextTr = tr.nextElementSibling;
+    var t2;
+    if (nextTr) {
+        var nextSeg = nextTr.querySelector('input[data-field="segment"]');
+        t2 = nextSeg ? parseSegmentToSeconds(nextSeg.value) : t1;
+    } else {
+        t2 = t1;
+        if (_ytPlayer && typeof _ytPlayer.getDuration === 'function') {
+            try {
+                var d = _ytPlayer.getDuration();
+                if (d > 0) t2 = d;
+            } catch (e) {}
+        }
+    }
+
+    var newTs;
+    if (totalChars > 0) {
+        newTs = t2 - (charsToMove / totalChars) * (t2 - t1);
+    } else {
+        newTs = t2;
+    }
+    newTs = Math.round(newTs);
+    var newSeg = formatSecondsToSegment(newTs);
+
+    var newTr = document.createElement('tr');
+    newTr.innerHTML = transcriptRowCells(newSeg, newTs, movedText);
+    tr.parentNode.insertBefore(newTr, tr.nextSibling);
+
+    var newTd = newTr.querySelector('td.t-time-cell');
+    if (newTd) bindTimeCellHandlers(newTd);
+
+    // Move focus into the new row's text input so the user can keep
+    // typing where they left off.
+    var newTextInput = newTr.querySelector('input[data-field="text"]');
+    if (newTextInput) {
+        newTextInput.focus();
+        try { newTextInput.setSelectionRange(0, 0); } catch (e) {}
+    }
+    _savePending = true;
+    scheduleAutoSave();
+}
+
 function startTranscript() {
     var existingRows = _segmentSeconds.length;
     if (existingRows > 0) {
-        if (!confirm('This video already has ' + existingRows + ' transcript row' + (existingRows === 1 ? '' : 's') + '.\n\nRunning Transcribe Audio again will REPLACE all of them with a fresh AI-generated transcript. Any manual edits will be lost.\n\nContinue?')) {
+        // Strong warning before reprocessing. The current transcript +
+        // every manual edit gets blown away by a fresh Whisper run; this
+        // can't be undone, so make sure the operator clicks through it
+        // intentionally rather than reflexively dismissing a generic
+        // confirm.
+        var msg = '⚠ WARNING — REPROCESSING WILL REPLACE EVERYTHING\n\n'
+                + 'This video has ' + existingRows + ' transcript row' + (existingRows === 1 ? '' : 's') + ' with text and timing data already in place.\n\n'
+                + 'Running Transcribe Audio again will:\n'
+                + '   • Permanently DELETE the entire current transcript\n'
+                + '   • Overwrite it with a fresh AI-generated version\n'
+                + '   • DISCARD every manual edit, correction, and validation note\n\n'
+                + 'This cannot be undone. Are you sure you want to continue?';
+        if (!confirm(msg)) {
             return;
         }
     }
