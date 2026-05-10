@@ -98,6 +98,7 @@
     <div class="sub-tabs">
         <span class="sub-tab active" onclick="switchTab('general')">General</span>
         <span class="sub-tab" onclick="switchTab('header')">Header</span>
+        <span class="sub-tab" onclick="switchTab('css')">CSS</span>
     </div>
 
     <!-- General tab -->
@@ -201,6 +202,37 @@
             <button class="btn btn-primary" onclick="saveHeader()">Save</button>
             <span id="header-status" style="display:none">Saved!</span>
             <span id="header-error" style="display:none;font-size:0.875rem;color:#c0392b"></span>
+        </div>
+    </div>
+
+    <!-- CSS tab — site-wide font + CSS-class registry. Both lists feed
+         downstream consumers (TinyMCE font_family_formats, the "Class"
+         dropdown above each TinyMCE editor in admin-pages, etc.). -->
+    <div id="tab-css" class="tab-panel">
+        <div class="section-box">
+            <h2>Fonts</h2>
+            <p style="font-size:0.85rem;color:#666;margin:0 0 8px">
+                One font per line. Format: <code>Display Name=css-stack</code>.
+                These appear in every TinyMCE font picker.
+            </p>
+            <textarea id="css-fonts" rows="10" style="width:100%;font-family:monospace;font-size:0.85rem;padding:8px;border:1px solid #ccc;border-radius:4px;"
+                placeholder="Maven Pro=Maven Pro,sans-serif&#10;Georgia=georgia,palatino&#10;Times New Roman=times new roman,times"></textarea>
+        </div>
+        <div class="section-box">
+            <h2>Classes</h2>
+            <p style="font-size:0.85rem;color:#666;margin:0 0 8px">
+                One CSS class per line. These populate the "Class" dropdown
+                above each TinyMCE field in the page editor.
+            </p>
+            <textarea id="css-classes" rows="10" style="width:100%;font-family:monospace;font-size:0.85rem;padding:8px;border:1px solid #ccc;border-radius:4px;"
+                placeholder="lead&#10;callout&#10;highlight&#10;centered"></textarea>
+        </div>
+        <div class="section-box">
+            <div class="button-row" style="margin-top:0">
+                <button class="btn btn-primary" onclick="saveCss()">Save</button>
+                <span id="css-status" style="display:none">Saved!</span>
+                <span id="css-error" style="display:none;font-size:0.875rem;color:#c0392b"></span>
+            </div>
         </div>
     </div>
 
@@ -308,7 +340,54 @@ function loadSettings() {
             renderHeaderSection('logo-fields', LOGO_FIELDS);
             renderHeaderSection('main-fields', MAIN_FIELDS);
             renderHeaderSection('sub-fields', SUB_FIELDS);
+            renderCss(rows);
         });
+}
+
+// ── CSS tab ──────────────────────────────────────────────────
+// Two free-form textareas store the site's font registry and CSS-class
+// registry under setting_group_code='css'. Downstream consumers (e.g.
+// /test/admin-pages.html) fetch these via /api/admin-config-settings.php
+// and populate their TinyMCE font picker + class datalists.
+function renderCss(rows) {
+    var fonts = '', classes = '';
+    rows.forEach(function (r) {
+        if (r.setting_group_code !== 'css') return;
+        if (r.setting_code === 'fonts')   fonts   = r.setting_value || '';
+        if (r.setting_code === 'classes') classes = r.setting_value || '';
+    });
+    document.getElementById('css-fonts').value   = fonts;
+    document.getElementById('css-classes').value = classes;
+}
+
+function saveCss() {
+    var fonts   = document.getElementById('css-fonts').value;
+    var classes = document.getElementById('css-classes').value;
+    var status = document.getElementById('css-status');
+    var errEl  = document.getElementById('css-error');
+    status.style.display = 'none'; errEl.style.display = 'none';
+
+    function upsertOne(code, value) {
+        var existing = _allRecords.filter(function (r) {
+            return r.setting_group_code === 'css' && r.setting_code === code;
+        })[0];
+        if (existing) {
+            return fetch(API + '/admin-config-settings.php?key=' + existing.setting_key, {
+                method: 'PUT', credentials: 'include',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ setting_group_code: 'css', setting_code: code, setting_value_code: 'text', setting_value: value })
+            }).then(safeJson);
+        }
+        return fetch(API + '/admin-config-settings.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ setting_group_code: 'css', setting_label: '', setting_code: code, setting_value_code: 'text', setting_sort: 0, setting_value: value })
+        }).then(safeJson);
+    }
+
+    Promise.all([upsertOne('fonts', fonts), upsertOne('classes', classes)])
+        .then(function () { status.style.display = ''; loadSettings(); setTimeout(function(){ status.style.display = 'none'; }, 2000); })
+        .catch(function (e) { errEl.textContent = (e && e.message) || 'Save failed'; errEl.style.display = ''; });
 }
 
 function renderPageHeading(rows) {

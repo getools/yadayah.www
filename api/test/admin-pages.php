@@ -111,7 +111,7 @@ case 'POST':
     $code = trim($input['page_test_code'] ?? '');
     if (!$code) errorResponse('page_test_code is required');
 
-    $stmt = $db->prepare("INSERT INTO yy_page_test (page_test_code, page_test_title, page_test_url, page_test_heading, page_test_subheading, page_test_description, page_test_heading_color, page_test_heading_size, page_test_subheading_color, page_test_subheading_size, page_test_description_color, page_test_description_size, page_test_background_color, page_test_active_flag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING page_test_key");
+    $stmt = $db->prepare("INSERT INTO yy_page_test (page_test_code, page_test_title, page_test_url, page_test_heading, page_test_subheading, page_test_description, page_test_heading_color, page_test_heading_size, page_test_subheading_color, page_test_subheading_size, page_test_description_color, page_test_description_size, page_test_description_class, page_test_description_style, page_test_background_color, page_test_active_flag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING page_test_key");
     $stmt->execute([
         $code,
         trim($input['page_test_title'] ?? '') ?: null,
@@ -125,6 +125,8 @@ case 'POST':
         trim($input['page_test_subheading_size'] ?? '') ?: null,
         trim($input['page_test_description_color'] ?? '') ?: null,
         trim($input['page_test_description_size'] ?? '') ?: null,
+        trim($input['page_test_description_class'] ?? '') ?: null,
+        trim($input['page_test_description_style'] ?? '') ?: null,
         trim($input['page_test_background_color'] ?? '') ?: null,
         ($input['page_test_active_flag'] ?? true) ? 't' : 'f',
     ]);
@@ -143,7 +145,7 @@ case 'PUT':
     $code = trim($input['page_test_code'] ?? '');
     if (!$code) errorResponse('page_test_code is required');
 
-    $stmt = $db->prepare("UPDATE yy_page_test SET page_test_code = ?, page_test_title = ?, page_test_url = ?, page_test_heading = ?, page_test_subheading = ?, page_test_description = ?, page_test_heading_color = ?, page_test_heading_size = ?, page_test_subheading_color = ?, page_test_subheading_size = ?, page_test_description_color = ?, page_test_description_size = ?, page_test_background_color = ?, page_test_active_flag = ? WHERE page_test_key = ?");
+    $stmt = $db->prepare("UPDATE yy_page_test SET page_test_code = ?, page_test_title = ?, page_test_url = ?, page_test_heading = ?, page_test_subheading = ?, page_test_description = ?, page_test_heading_color = ?, page_test_heading_size = ?, page_test_subheading_color = ?, page_test_subheading_size = ?, page_test_description_color = ?, page_test_description_size = ?, page_test_description_class = ?, page_test_description_style = ?, page_test_background_color = ?, page_test_active_flag = ? WHERE page_test_key = ?");
     $stmt->execute([
         $code,
         trim($input['page_test_title'] ?? '') ?: null,
@@ -157,6 +159,8 @@ case 'PUT':
         trim($input['page_test_subheading_size'] ?? '') ?: null,
         trim($input['page_test_description_color'] ?? '') ?: null,
         trim($input['page_test_description_size'] ?? '') ?: null,
+        trim($input['page_test_description_class'] ?? '') ?: null,
+        trim($input['page_test_description_style'] ?? '') ?: null,
         trim($input['page_test_background_color'] ?? '') ?: null,
         ($input['page_test_active_flag'] ?? true) ? 't' : 'f',
         $key,

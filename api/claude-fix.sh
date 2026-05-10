@@ -136,12 +136,20 @@ if [ ! -s "$HOME/.claude/.credentials.json" ]; then
     exit 2
 fi
 
-# Claude's Read/Edit tools default to CWD only. When running on the host,
-# expose /opt/yada-git (commit target) and /var/log (Apache + monitor logs)
-# too. CWD is already CODE_ROOT so /opt/yada-www is implicit.
+# Claude's Read/Edit tools default to CWD only. CWD is already CODE_ROOT
+# (/opt/yada-www) so the production tree is implicit.
+#
+# Do NOT add /opt/yada-git as a readable dir. /opt/yada-git is a downstream
+# mirror that lags /opt/yada-www by up to 30 minutes (rsync runs in
+# git-push.sh on the cron). If Claude reads the mirror while reasoning about
+# a file and then writes the rewrite back to the live tree, any changes
+# made in the gap between rsyncs get silently reverted. This was the
+# proximate cause of the recurring "old versions keep coming back" pattern
+# the user has flagged. Always read from the live tree only.
+#
+# /var/log stays — read-only Apache + monitor logs, no overwrite risk.
 CLAUDE_ADD_DIRS=()
 if [ "$CODE_ROOT" = "/opt/yada-www" ]; then
-    [ -d /opt/yada-git ] && CLAUDE_ADD_DIRS+=(--add-dir /opt/yada-git)
     [ -d /var/log ]      && CLAUDE_ADD_DIRS+=(--add-dir /var/log)
 fi
 
