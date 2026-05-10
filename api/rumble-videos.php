@@ -26,9 +26,17 @@ $perPage = $fpRow ? ((int)$fpRow['feed_page_per_page'] ?: 24) : 24;
 $page = max(1, intval($_GET['page'] ?? 1));
 $offset = ($page - 1) * $perPage;
 
-// Build WHERE clause using join table
+// Build WHERE clause using join table.
+// `fp_filter` is an EXISTS check that restricts results to items whose feed
+// is configured as a source for this page in yy_feed_page. yy_feed_item_page
+// (the per-item assignment table) can drift from yy_feed_page (the per-feed
+// configuration) if items get tagged manually or by a misbehaving import;
+// this filter keeps the public list honest to the configured intent and
+// quarantines any rogue assignments without needing a cleanup pass.
 $pageKey = getPageKey($db, 'vlog');
-$where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE AND fip.page_key = ?";
+$where = "fi.feed_item_active_flag = TRUE AND fi.feed_item_restricted_flag = FALSE
+          AND fip.page_key = ?
+          AND EXISTS (SELECT 1 FROM yy_feed_page fp WHERE fp.page_key = fip.page_key AND fp.feed_key = fi.feed_key)";
 $params = [$pageKey];
 
 // Grouped mode — sections by category with episode sort.
