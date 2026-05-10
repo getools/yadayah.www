@@ -272,10 +272,15 @@
         const pageH = slot.clientHeight, pageW = slot.clientWidth;
         if (pageH < 10 || pageW < 10) return;
         const frag = document.createDocumentFragment();
+        const fontTable = data.fonts || null;
         for (const sp of data.spans) {
           const x = sp[0], y = sp[1], h = sp[3], text = sp[4], flags = sp[5] | 0;
+          const fontKey = sp.length >= 7 ? sp[6] : -1;
           const s = document.createElement('span');
           buildStyledSpanContent(s, text, flags);
+          if (fontTable && fontKey >= 0 && fontTable[String(fontKey)]) {
+            s.dataset.font = fontTable[String(fontKey)];
+          }
           s.style.left = x + '%';
           s.style.top  = y + '%';
           s.style.fontSize = (h * pageH / 100) + 'px';
@@ -600,10 +605,15 @@
         const pageH = pgEl.clientHeight, pageW = pgEl.clientWidth;
         if (pageH < 10 || pageW < 10) return;
         const frag = document.createDocumentFragment();
+        const fontTable = data.fonts || null;
         for (const sp of data.spans) {
           const x = sp[0], y = sp[1], h = sp[3], text = sp[4], flags = sp[5] | 0;
+          const fontKey = sp.length >= 7 ? sp[6] : -1;
           const s = document.createElement('span');
           buildStyledSpanContent(s, text, flags);
+          if (fontTable && fontKey >= 0 && fontTable[String(fontKey)]) {
+            s.dataset.font = fontTable[String(fontKey)];
+          }
           s.style.left = x + '%';
           s.style.top  = y + '%';
           s.style.fontSize = (h * pageH / 100) + 'px';
@@ -916,13 +926,13 @@
         applySearchHighlight();
       });
 
-      // Build a text-layer span's content so copy/paste preserves italic/bold.
-      // flags bitmask from extractor: 1 = italic, 2 = bold. We wrap the text
-      // in real <i>/<b> elements (rather than CSS) so clipboard targets like
-      // Word/Docs receive the formatting via HTML semantics.
-      // Also stashes (text, flags) on data-* attributes so the search-highlight
-      // pass can re-render the span on every keystroke without needing to
-      // remember which fragment of which page it came from.
+      // Build a text-layer span's content so copy/paste preserves italic/bold/
+      // underline. flags bitmask from extractor: 1 = italic, 2 = bold,
+      // 4 = underline. We wrap the text in real <i>/<b>/<u> elements (rather
+      // than CSS) so clipboard targets like Word/Docs receive the formatting
+      // via HTML semantics. (text, flags) are stashed on data-* attributes
+      // so the search-highlight pass can re-render the span on every
+      // keystroke without needing to remember which page it came from.
       function buildStyledSpanContent(el, text, flags) {
         el.dataset.text = text;
         if (flags) el.dataset.flags = String(flags);
@@ -932,6 +942,7 @@
         let inner = document.createTextNode(text);
         if (flags & 1) { const i = document.createElement('i'); i.appendChild(inner); inner = i; }
         if (flags & 2) { const b = document.createElement('b'); b.appendChild(inner); inner = b; }
+        if (flags & 4) { const u = document.createElement('u'); u.appendChild(inner); inner = u; }
         el.appendChild(inner);
       }
 
@@ -1082,6 +1093,15 @@
           let html = escapeHtml(slice);
           if (flags & 1) html = '<i>' + html + '</i>';
           if (flags & 2) html = '<b>' + html + '</b>';
+          if (flags & 4) html = '<u>' + html + '</u>';
+          // Wrap with an inline font-family span when this run uses a
+          // non-default family (e.g. the embedded Hebrew face). Word reads
+          // the inline style and switches the run's font for the paste.
+          const fam = span.dataset.font;
+          if (fam) {
+            const escFam = escapeHtml(fam);
+            html = '<span style="font-family: \'' + escFam + '\', serif;">' + html + '</span>';
+          }
           parts.push({ html, plain: slice });
         }
         if (!parts.length) return;

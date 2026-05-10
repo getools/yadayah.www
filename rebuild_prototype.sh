@@ -6,7 +6,7 @@
 #
 # Reads /opt/yada-www/public/pdf/<stem>.pdf and regenerates the four
 # derived assets in /opt/yada-www/public/flipbook-prototype/<stem>/:
-#     pages/page-NNN.jpg   — 200dpi rendered pages (1200x1804)
+#     pages/page-NNN.jpg   — 300dpi rendered pages (1800x2700)
 #     thumbs/thumb-NNN.jpg —  33dpi thumbnails    (~200x300)
 #     text/page-NNN.json   — per-page span-positioned text overlays
 #     search.json          — single-file search index
@@ -29,9 +29,9 @@ mkdir -p "$OUT"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-echo "[$(date +%H:%M:%S)] rendering pages (200dpi)…"
+echo "[$(date +%H:%M:%S)] rendering pages (300dpi)…"
 mkdir -p "$TMP/pages"
-pdftoppm -jpeg -r 200 -jpegopt 'quality=85,progressive=y' "$PDF" "$TMP/pages/page" 2>&1 | tail -3
+pdftoppm -jpeg -r 300 -jpegopt 'quality=75,progressive=y' "$PDF" "$TMP/pages/page" 2>&1 | tail -3
 
 echo "[$(date +%H:%M:%S)] rendering thumbs (33dpi)…"
 mkdir -p "$TMP/thumbs"
