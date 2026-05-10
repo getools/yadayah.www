@@ -109,12 +109,7 @@
       const pageFlip = new St.PageFlip(bookEl, {
         width: initial.pageW, height: initial.pageH,
         size: 'fixed', maxShadowOpacity: 0.5, showCover: false,
-        // usePortrait:false — once StPageFlip latches to portrait at init
-        // (because bookEl was 0-wide before layout settled), update() does
-        // not reliably re-evaluate. Spread mode is gated to desktop anyway
-        // (mobile users default to carousel and the mode toggle is hidden
-        // below 700px), so forcing landscape here removes the latch bug.
-        flippingTime: 700, mobileScrollSupport: true, usePortrait: false, drawShadow: true,
+        flippingTime: 700, mobileScrollSupport: true, usePortrait: true, drawShadow: true,
         // Disable mouse-drag flipping so transparent text overlay can
         // capture mousedown for text selection. Touch swipe still flips
         // on mobile. Desktop navigation: arrow keys / buttons / TOC.
@@ -474,12 +469,6 @@
             // re-render at the new size on the next updateCarousel().
             for (const s of carouselSlots) s.querySelector('.text-layer').innerHTML = '';
             updateCarousel(carouselCenter, { animate: false });
-          } else {
-            // Spread mode: kick StPageFlip to re-evaluate portrait/landscape
-            // orientation against the new container width. Without this it
-            // stays locked to whatever orientation it picked at init time
-            // (e.g. portrait when bookEl was 0-wide during script bootstrap).
-            try { pageFlip.update(); } catch (e) {}
           }
           applyZoom();
           repopulateNeighbors(currentPage());
@@ -550,7 +539,6 @@
           return;
         }
         urlWrittenOnce = true;
-        try { if (window.FlipbookBookmarks) { FlipbookBookmarks.refresh(); FlipbookBookmarks.recordCurrentPage(page1); } } catch (e) {}
         const ch = chapterForPage(page1);
         const parts = [];
         if (ch && ch.slug) parts.push('chapter=' + encodeURIComponent(ch.slug));
@@ -573,10 +561,6 @@
           if (!silent) syncUrlAndStorage(p);
         } else {
           pageFlip.turnToPage(p - 1);
-          // Synchronously reflect the target page in the slider + input so the
-          // visible UI doesn't lag behind the deep-link nav (see comment).
-          seek.value = p;
-          if (pinput && document.activeElement !== pinput) pinput.value = String(p);
           if (!silent) syncUrlAndStorage(p);
         }
       }
@@ -1037,19 +1021,81 @@
         if (best) best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
 
-      // Bookmarks module — populates icon overlay on visible pages, the
-      // sidebar Bookmarks tab, and the slider marker lane. refresh() is also
-      // called from syncUrlAndStorage on every navigation.
-      try {
-        if (window.FlipbookBookmarks) {
-          FlipbookBookmarks.init({
-            bookCode: cfg.bookCode,
-            totalPages: TOTAL,
-            getCurrentPage: function () { try { return currentPage(); } catch (e) { return 1; } },
-            gotoPage: function (n) { try { goto(n); } catch (e) {} },
-          });
+      // ── Copy-with-formatting from text-layer ──────────────────────────
+      // Each text-layer span is absolutely positioned with no whitespace
+      // between it and its neighbour, so a normal browser copy concatenates
+      // textContent and runs words together (e.g. "name.The proper"). We
+      // intercept the copy event, walk the spans the selection touches, and
+      // build a clipboard payload with single spaces between spans plus
+      // preserved <i>/<b> wrappers from the per-span flag bits.
+      function escapeHtml(s) {
+        return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      }
+      // Compute character offset within a span up to a given (node, offset).
+      // The span may contain plain text or text wrapped in <i>/<b>; either
+      // way span.textContent flattens to the same character sequence.
+      function offsetInSpan(span, targetNode, targetOffset) {
+        if (targetNode === span) {
+          // offset is in childNode units; convert to characters by walking
+          let off = 0;
+          for (let i = 0; i < targetOffset && i < span.childNodes.length; i++) {
+            off += span.childNodes[i].textContent.length;
+          }
+          return off;
         }
-      } catch (e) {}
+        let off = 0;
+        const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const n = walker.currentNode;
+          if (n === targetNode) return off + targetOffset;
+          off += n.textContent.length;
+        }
+        return span.textContent.length;
+      }
+      document.addEventListener('copy', (e) => {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+        const range = sel.getRangeAt(0);
+        const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+        const layer = startEl && startEl.closest && startEl.closest('.text-layer');
+        if (!layer) return;
+        // Grab every span the selection actually touches, in DOM order
+        // (which the extractor emits in reading order). containsNode with
+        // partial=true catches partially-selected spans at either end.
+        const spans = layer.querySelectorAll('span');
+        const parts = [];
+        for (const span of spans) {
+          if (!sel.containsNode(span, true)) continue;
+          const fullText = span.dataset.text != null ? span.dataset.text : span.textContent;
+          if (!fullText) continue;
+          let startOff = 0;
+          let endOff = fullText.length;
+          if (span.contains(range.startContainer) || span === range.startContainer) {
+            startOff = offsetInSpan(span, range.startContainer, range.startOffset);
+          }
+          if (span.contains(range.endContainer) || span === range.endContainer) {
+            endOff = offsetInSpan(span, range.endContainer, range.endOffset);
+          }
+          const slice = fullText.slice(startOff, endOff);
+          if (!slice) continue;
+          const flags = parseInt(span.dataset.flags || '0', 10);
+          let html = escapeHtml(slice);
+          if (flags & 1) html = '<i>' + html + '</i>';
+          if (flags & 2) html = '<b>' + html + '</b>';
+          parts.push({ html, plain: slice });
+        }
+        if (!parts.length) return;
+        // Single space between spans is the right default for word-level
+        // copies; runs that already end with whitespace/punctuation keep
+        // their trailing form (we still join with a space because the next
+        // span starts a new word).
+        const htmlOut  = '<p>' + parts.map(p => p.html).join(' ') + '</p>';
+        const plainOut = parts.map(p => p.plain).join(' ');
+        e.clipboardData.setData('text/html', htmlOut);
+        e.clipboardData.setData('text/plain', plainOut);
+        e.preventDefault();
+      });
+
       // ── Initial nav: hash > localStorage resume > page 1
       // Use the hash captured at the very top of init — see _hashAtLoad above.
       const params = new URLSearchParams(_hashAtLoad.replace(/^#/, ''));
@@ -1122,15 +1168,6 @@
         }
       });
       if (initialPage) {
-        // Sync the slider + page input up-front so the visible UI matches the
-        // URL even if pageFlip's 'init' event fires before our listener is
-        // wired (or doesn't fire at all on cached/instant loads). update() at
-        // 'flip'/'init' will overwrite these once the library catches up, but
-        // by then pageFlip is at the right page so the values agree.
-        try {
-            seek.value = String(initialPage);
-            if (pinput && document.activeElement !== pinput) pinput.value = String(initialPage);
-        } catch (e) {}
         if (pageFlipReady) goto(initialPage);
         else pendingInitialNav = initialPage;
       } else {
@@ -1189,25 +1226,6 @@
         const btn = document.getElementById('mode');
         btn.innerHTML = '<svg viewBox="0 0 24 18" width="22" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="7" y="2" width="10" height="14" rx="1"/></svg>';
         btn.title = 'Switch to single-page view';
-        // StPageFlip evaluates portrait vs landscape from bookEl.offsetWidth
-        // at init time. If bookEl was 0-wide because the page-flip init runs
-        // before layout settles, the library latches to portrait and stays
-        // there even after bookEl grows. Re-fire update() once the layout
-        // is definitely complete (load event covers async images/fonts) so
-        // the spread renders both pages on a wide viewport.
-        function forceSpreadRelayout() {
-          try { pageFlip.update(); } catch (e) {}
-          try { pageFlip.turnToPage(Math.max(0, (initialPage || 1) - 1)); } catch (e) {}
-          applyZoom();
-          positionFlipZones();
-        }
-        requestAnimationFrame(forceSpreadRelayout);
-        if (document.readyState !== 'complete') {
-          window.addEventListener('load', forceSpreadRelayout, { once: true });
-        }
-        // Belt-and-suspenders: a 250ms tick covers cases where layout is
-        // still settling after `load` (sidebar autoShow animations, etc.).
-        setTimeout(forceSpreadRelayout, 250);
       }
 
     } catch (e) { showErr('init threw: ' + (e && e.stack || e)); }
