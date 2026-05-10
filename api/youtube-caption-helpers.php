@@ -183,9 +183,13 @@ function ytCaptionsFetchChannel(string $accessToken, ?string $fallbackHandle = n
 
 /**
  * Render a feed_item's transcript as SRT text. Returns null if the item
- * has no segments. Each segment's end time is the start of the next
- * segment; the LAST segment ends at feed_item_duration_seconds (or
- * start + 5s if duration is unknown).
+ * has no segments. Each cue overlaps the next by ~1 second so YouTube's
+ * player runs the scrolling/rolling caption transition instead of cutting
+ * abruptly between cues. The DB-stored segment timings are unchanged —
+ * the overlap is applied only at upload time.
+ *
+ * For non-last cues:  end = nextStart + overlap
+ * For the last cue:   end = feed_item_duration_seconds (or start + 5s)
  *
  * SRT format:
  *   1
@@ -195,6 +199,8 @@ function ytCaptionsFetchChannel(string $accessToken, ?string $fallbackHandle = n
  *   2
  *   ...
  */
+const YT_CAPTIONS_OVERLAP_SECONDS = 1;
+
 function ytCaptionsBuildSrt(PDO $db, int $feedItemKey): ?string {
     $stmt = $db->prepare("
         SELECT feed_item_transcript_sort, feed_item_transcript_segment, feed_item_transcript_text
@@ -206,7 +212,7 @@ function ytCaptionsBuildSrt(PDO $db, int $feedItemKey): ?string {
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if (!$rows) return null;
 
-    // Total duration for the LAST row's end-time fallback.
+    // Total duration for the LAST row's end-time fallback + overlap clamp.
     $durStmt = $db->prepare("SELECT feed_item_duration_seconds FROM yy_feed_item WHERE feed_item_key = ?");
     $durStmt->execute([$feedItemKey]);
     $totalSeconds = (int)($durStmt->fetchColumn() ?: 0);
@@ -216,10 +222,16 @@ function ytCaptionsBuildSrt(PDO $db, int $feedItemKey): ?string {
     for ($i = 0; $i < $n; $i++) {
         $startSec = ytCaptionsHmsToSeconds((string)$rows[$i]['feed_item_transcript_segment']);
         if ($i + 1 < $n) {
-            $endSec = ytCaptionsHmsToSeconds((string)$rows[$i + 1]['feed_item_transcript_segment']);
+            $nextStart = ytCaptionsHmsToSeconds((string)$rows[$i + 1]['feed_item_transcript_segment']);
+            // Extend this cue past the next cue's start so the two
+            // overlap — that's what triggers YouTube's smooth scroll
+            // animation between captions.
+            $endSec = $nextStart + YT_CAPTIONS_OVERLAP_SECONDS;
         } else {
             $endSec = $totalSeconds > $startSec ? $totalSeconds : $startSec + 5;
         }
+        // Don't run past the video end on the last cue or the overlap.
+        if ($totalSeconds > 0 && $endSec > $totalSeconds) $endSec = $totalSeconds;
         // Clamp end > start; SRT players choke on zero-length cues.
         if ($endSec <= $startSec) $endSec = $startSec + 1;
         $srt .= ($i + 1) . "\n"
