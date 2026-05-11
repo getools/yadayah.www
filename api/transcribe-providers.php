@@ -146,6 +146,7 @@ function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err, arr
         'paragraphs'   => 'true',
         'smart_format' => 'true',
         'utterances'   => 'true',
+        'diarize'      => 'true',  // tag each utterance with a 0-based speaker number
         'language'     => 'en',
     ]);
     // Append keyword-boost entries from the correction dictionary. Nova-3
@@ -182,24 +183,35 @@ function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err, arr
     $rows = [];
     $alt = $data['results']['channels'][0]['alternatives'][0] ?? null;
     if (!$alt) { $err = 'Deepgram returned no alternatives'; return []; }
-    // Prefer paragraphs→sentences (natural phrase rows). Fall back to
-    // utterances, then to a single big row with the full transcript.
+    // Prefer paragraphs→sentences (natural phrase rows). Each paragraph
+    // is tagged with a 0-based 'speaker' when diarize=true; carry that
+    // onto every sentence inside the paragraph. Fall back to utterances
+    // (which also carry speaker), then to the flat transcript.
     if (isset($alt['paragraphs']['paragraphs'])) {
         foreach ($alt['paragraphs']['paragraphs'] as $p) {
+            $speaker = isset($p['speaker']) ? (int)$p['speaker'] : null;
             foreach ($p['sentences'] ?? [] as $s) {
                 $text = trim((string)($s['text'] ?? ''));
                 if ($text === '') continue;
-                $rows[] = ['segment' => secsToIntervalFrac((float)($s['start'] ?? 0)), 'text' => $text];
+                $rows[] = [
+                    'segment' => secsToIntervalFrac((float)($s['start'] ?? 0)),
+                    'text'    => $text,
+                    'speaker' => $speaker,
+                ];
             }
         }
     } elseif (!empty($data['results']['utterances'])) {
         foreach ($data['results']['utterances'] as $u) {
             $text = trim((string)($u['transcript'] ?? ''));
             if ($text === '') continue;
-            $rows[] = ['segment' => secsToIntervalFrac((float)($u['start'] ?? 0)), 'text' => $text];
+            $rows[] = [
+                'segment' => secsToIntervalFrac((float)($u['start'] ?? 0)),
+                'text'    => $text,
+                'speaker' => isset($u['speaker']) ? (int)$u['speaker'] : null,
+            ];
         }
     } elseif (!empty($alt['transcript'])) {
-        $rows[] = ['segment' => '00:00:00', 'text' => trim((string)$alt['transcript'])];
+        $rows[] = ['segment' => '00:00:00', 'text' => trim((string)$alt['transcript']), 'speaker' => null];
     }
     if (!$rows) $err = 'Deepgram returned no speech';
     return $rows;
@@ -219,10 +231,11 @@ function assemblyaiTranscribe(string $audioUrl, string $apiKey, ?string &$err, a
     // Deepgram's boost=3). Hard-coded to "high" because our boost list is
     // curated from confirmed corrections — we trust each entry.
     $submitBody = [
-        'audio_url'    => $audioUrl,
-        'speech_model' => 'universal',
-        'punctuate'    => true,
-        'format_text'  => true,
+        'audio_url'      => $audioUrl,
+        'speech_model'   => 'universal',
+        'punctuate'      => true,
+        'format_text'    => true,
+        'speaker_labels' => true,   // diarisation; AssemblyAI returns speaker labels per utterance
     ];
     if ($boostList) {
         $submitBody['word_boost']  = array_values(array_unique(array_filter(array_map(
@@ -273,12 +286,23 @@ function assemblyaiTranscribe(string $audioUrl, string $apiKey, ?string &$err, a
         $status = $poll['status'] ?? '';
         if ($status === 'completed') {
             $rows = [];
-            // Prefer utterances → phrase-level rows
+            // Prefer utterances → phrase-level rows. With speaker_labels=true
+            // each utterance carries 'speaker' as a letter ("A", "B", ...).
+            // Map letters to 0-based ints for our schema (A→0, B→1, etc.).
             foreach ($poll['utterances'] ?? [] as $u) {
                 $text = trim((string)($u['text'] ?? ''));
                 if ($text === '') continue;
                 $startMs = (int)($u['start'] ?? 0);
-                $rows[] = ['segment' => secsToIntervalFrac($startMs / 1000.0), 'text' => $text];
+                $speakerCode = null;
+                if (isset($u['speaker']) && is_string($u['speaker']) && strlen($u['speaker']) === 1) {
+                    $c = strtoupper($u['speaker']);
+                    if (ctype_alpha($c)) $speakerCode = ord($c) - ord('A');
+                }
+                $rows[] = [
+                    'segment' => secsToIntervalFrac($startMs / 1000.0),
+                    'text'    => $text,
+                    'speaker' => $speakerCode,
+                ];
             }
             // No utterances (no diarisation)? Use sentence-level grouping
             // by punctuating the full text on .!?

@@ -39,10 +39,15 @@ if (!$itemKey) errorResponse('item_key required');
 // same whole second — important for whisper-1-word, where the underlying
 // rows are one-per-word at millisecond precision. The display granularity
 // is whole-second; same-second rows render as one space-joined line.
+// Both loaders now return entries of the form
+//   $byseg[$seg] = ['text' => '...', 'speaker' => int|null]
+// so the renderer can show a per-cell speaker chip for diarised models
+// (Deepgram, AssemblyAI). Non-diarised models leave speaker null.
 function loadRows(PDO $db, string $table, int $itemKey): array {
     $stmt = $db->prepare("
         SELECT to_char(feed_item_transcript_segment, 'HH24:MI:SS') AS segment,
-               feed_item_transcript_text AS text
+               feed_item_transcript_text AS text,
+               feed_item_transcript_speaker AS speaker
           FROM $table
          WHERE feed_item_key = ?
          ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
@@ -51,7 +56,14 @@ function loadRows(PDO $db, string $table, int $itemKey): array {
     $byseg = [];
     foreach ($stmt->fetchAll() as $r) {
         $seg = $r['segment'];
-        $byseg[$seg] = isset($byseg[$seg]) ? $byseg[$seg] . ' ' . $r['text'] : $r['text'];
+        if (isset($byseg[$seg])) {
+            $byseg[$seg]['text'] .= ' ' . $r['text'];
+            if ($byseg[$seg]['speaker'] === null && $r['speaker'] !== null) {
+                $byseg[$seg]['speaker'] = (int)$r['speaker'];
+            }
+        } else {
+            $byseg[$seg] = ['text' => (string)$r['text'], 'speaker' => $r['speaker'] !== null ? (int)$r['speaker'] : null];
+        }
     }
     return $byseg;
 }
@@ -59,6 +71,7 @@ function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey)
     $stmt = $db->prepare("
         SELECT to_char(feed_item_transcript_segment, 'HH24:MI:SS') AS segment,
                feed_item_transcript_text AS text,
+               feed_item_transcript_speaker AS speaker,
                $modelCol AS model
           FROM $table
          WHERE feed_item_key = ?
@@ -69,9 +82,12 @@ function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey)
     foreach ($stmt->fetchAll() as $r) {
         $m = $r['model']; $seg = $r['segment'];
         if (isset($byModel[$m][$seg])) {
-            $byModel[$m][$seg] .= ' ' . $r['text'];
+            $byModel[$m][$seg]['text'] .= ' ' . $r['text'];
+            if ($byModel[$m][$seg]['speaker'] === null && $r['speaker'] !== null) {
+                $byModel[$m][$seg]['speaker'] = (int)$r['speaker'];
+            }
         } else {
-            $byModel[$m][$seg] = $r['text'];
+            $byModel[$m][$seg] = ['text' => (string)$r['text'], 'speaker' => $r['speaker'] !== null ? (int)$r['speaker'] : null];
         }
     }
     return $byModel;
@@ -112,12 +128,23 @@ sort($allSegs);
 $rows = [];
 foreach ($allSegs as $seg) {
     $cells = [];
+    $speakers = [];
     foreach ($modelCodes as $m) {
-        if (isset($autoByModel[$m]))      $cells[$m . '__auto']      = $autoByModel[$m][$seg]      ?? null;
-        if (isset($autocleanByModel[$m])) $cells[$m . '__autoclean'] = $autocleanByModel[$m][$seg] ?? null;
+        if (isset($autoByModel[$m])) {
+            $entry = $autoByModel[$m][$seg] ?? null;
+            $cells[$m . '__auto']    = $entry !== null ? $entry['text'] : null;
+            $speakers[$m . '__auto'] = $entry !== null ? $entry['speaker'] : null;
+        }
+        if (isset($autocleanByModel[$m])) {
+            $entry = $autocleanByModel[$m][$seg] ?? null;
+            $cells[$m . '__autoclean']    = $entry !== null ? $entry['text'] : null;
+            $speakers[$m . '__autoclean'] = $entry !== null ? $entry['speaker'] : null;
+        }
     }
-    $cells['current'] = $liveByseg[$seg] ?? null;
-    $rows[] = ['segment' => $seg, 'cells' => $cells];
+    $liveEntry = $liveByseg[$seg] ?? null;
+    $cells['current']    = $liveEntry !== null ? $liveEntry['text'] : null;
+    $speakers['current'] = $liveEntry !== null ? $liveEntry['speaker'] : null;
+    $rows[] = ['segment' => $seg, 'cells' => $cells, 'speakers' => $speakers];
 }
 
 jsonResponse([

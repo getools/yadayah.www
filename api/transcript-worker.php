@@ -575,10 +575,13 @@ $db->beginTransaction();
 try {
     $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $jobModel]);
     $db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ? AND feed_item_transcript_autoclean_model = ?")->execute([$itemKey, $jobModel]);
-    $insAuto = $db->prepare("INSERT INTO yy_feed_item_transcript_auto (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model) VALUES (?, ?::interval, ?, ?, ?)");
+    // Speaker column carries diarisation output when the provider supplies
+    // it (Deepgram + AssemblyAI today). Other providers leave it NULL.
+    $insAuto = $db->prepare("INSERT INTO yy_feed_item_transcript_auto (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model, feed_item_transcript_speaker) VALUES (?, ?::interval, ?, ?, ?, ?)");
     $sort = 0;
     foreach ($rows as $r) {
-        $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $jobModel]);
+        $speaker = isset($r['speaker']) && $r['speaker'] !== null ? (int)$r['speaker'] : null;
+        $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $jobModel, $speaker]);
         $sort++;
     }
     $db->commit();

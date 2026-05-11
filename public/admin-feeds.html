@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778478908">
+    <meta name="page-version" content="1778533864">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -4054,9 +4054,28 @@ function closeTranscriptAnalysis() {
 var _tanalysisData = null;
 var _tanalysisPickedCodes = null;  // null = picker not run yet; array = filter to apply
 
+// Persisted picker state. The user's last-clicked set of "show" columns
+// is stored as a JSON array under this key in localStorage and reloaded
+// on every Analyze open. New columns that weren't in the saved set fall
+// back to the kind-based default (autoclean off, everything else on).
+var TANALYSIS_PICKED_STORAGE_KEY = 'tanalysisPickedCodes_v1';
+function loadSavedAnalysisPicks() {
+    try {
+        var raw = localStorage.getItem(TANALYSIS_PICKED_STORAGE_KEY);
+        if (!raw) return null;
+        var arr = JSON.parse(raw);
+        return (Array.isArray(arr) && arr.length) ? arr : null;
+    } catch (e) { return null; }
+}
+function saveAnalysisPicks(codes) {
+    try { localStorage.setItem(TANALYSIS_PICKED_STORAGE_KEY, JSON.stringify(codes)); }
+    catch (e) {}
+}
+
 // First step on opening Analyze: show a checkbox list of every column the
-// data has, let the operator pick which to include in the comparison. All
-// boxes are ticked by default — unchecking some narrows the table.
+// data has, let the operator pick which to include in the comparison.
+// Initial check state comes from the previously-saved set when available,
+// or falls back to the per-kind default (autoclean unchecked, others on).
 function renderTranscriptAnalysisPicker() {
     var d = _tanalysisData;
     var sumEl = document.getElementById('tanalysis-summary');
@@ -4067,7 +4086,9 @@ function renderTranscriptAnalysisPicker() {
         bodyEl.innerHTML = '';
         return;
     }
-    sumEl.innerHTML = 'Select which columns to compare. Untick any you want hidden, then click <strong>Show</strong>.';
+    sumEl.innerHTML = 'Select which columns to compare. Untick any you want hidden, then click <strong>Show</strong>. Your selection is remembered for next time.';
+    var saved = loadSavedAnalysisPicks();
+    var savedSet = saved ? Object.fromEntries(saved.map(function(c){ return [c, true]; })) : null;
     var html = '<div style="padding:14px 18px;">'
         + '<div style="display:flex;gap:8px;margin-bottom:10px;font-size:0.8rem;">'
         +   '<button onclick="setAllAnalysisPicks(true)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;">All</button>'
@@ -4076,8 +4097,12 @@ function renderTranscriptAnalysisPicker() {
     cols.forEach(function(c) {
         var rowCount = 0;
         (d.rows || []).forEach(function(r){ if (r.cells[c.code] !== null && r.cells[c.code] !== undefined) rowCount++; });
+        // Saved state wins if present; otherwise fall back to kind default.
+        var checked = savedSet
+            ? !!savedSet[c.code]
+            : (c.kind !== 'autoclean');
         html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f0f0f0;cursor:pointer;">'
-            +   '<input type="checkbox" class="tan-pick" data-code="' + esc(c.code) + '"' + (c.kind === 'autoclean' ? '' : ' checked') + ' onchange="updateAnalysisShowBtn()">'
+            +   '<input type="checkbox" class="tan-pick" data-code="' + esc(c.code) + '"' + (checked ? ' checked' : '') + ' onchange="updateAnalysisShowBtn()">'
             +   '<div style="flex:1;">'
             +     '<div style="font-weight:600;color:' + (c.kind === 'current' ? '#a36100' : '#31345A') + ';">' + esc(c.label) + '</div>'
             +     '<div style="font-size:0.72rem;color:#666;">' + rowCount + ' row' + (rowCount === 1 ? '' : 's') + '</div>'
@@ -4107,6 +4132,7 @@ function commitAnalysisPicker() {
     document.querySelectorAll('#tanalysis-body .tan-pick:checked').forEach(function(c){ picks.push(c.getAttribute('data-code')); });
     if (!picks.length) return;
     _tanalysisPickedCodes = picks;
+    saveAnalysisPicks(picks);  // persist for next open
     renderTranscriptAnalysis();
 }
 function renderTranscriptAnalysis() {
@@ -4186,7 +4212,17 @@ function renderTranscriptAnalysis() {
             if (v === null || v === undefined) {
                 cellHtml = '<span style="color:#bbb;font-style:italic;">(no row)</span>';
             } else {
-                cellHtml = esc(v);
+                // Speaker chip prefix when this row has diarisation info
+                // for this column. Cycling palette so up to 8 speakers
+                // get distinct colors.
+                var spk = (r.speakers && r.speakers[c.code] !== undefined) ? r.speakers[c.code] : null;
+                var chipHtml = '';
+                if (spk !== null && spk !== undefined) {
+                    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+                    var bgChip = palette[spk % palette.length];
+                    chipHtml = '<span title="Speaker ' + spk + '" style="display:inline-block;background:' + bgChip + ';color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:5px;vertical-align:1px;">' + spk + '</span>';
+                }
+                cellHtml = chipHtml + esc(v);
             }
             html += '<td style="padding:6px 10px;background:' + bg + ';vertical-align:top;word-break:break-word;">' + cellHtml + '</td>';
         });
