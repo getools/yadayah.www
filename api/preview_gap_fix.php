@@ -127,7 +127,7 @@ if ($maxGap < 2.0) {
         printf("    %-13s | %s\n", $r['segment'], mb_substr($r['text'], 0, 90));
     }
     $insertSeg = sprintf('%02d:%02d:%02d', (int)($gapStart / 3600),
-        (int)(($gapStart % 3600) / 60), $gapStart % 60);
+        (int)(((int)$gapStart % 3600) / 60), (int)$gapStart % 60);
     printf("    %-13s | %s   ← INSERTED from whisper-1-segment\n",
         $insertSeg, mb_substr($segText, 0, 90));
 }
@@ -147,17 +147,19 @@ $firstIdxAtOrAfter = function (float $T, int $startIdx) use ($wordTimes, $nw): i
 };
 
 $nr = count($ytRows);
-$wsIdx = 0;
 $anchors = array_fill(0, $nr, -1);
 $prevAnchor = -1;
-$ANCHOR_TIME_SLACK = 4.0;
-// Phase 1: anchors (same as production algorithm)
+$ANCHOR_BEFORE = 1.5;   // anchor may sit at most this many seconds before yt's start
+$ANCHOR_AFTER  = 4.0;
+// Phase 1: anchors. Search is constrained to [Y_T - ANCHOR_BEFORE, Y_T + ANCHOR_AFTER]
+// AND must start after the previous anchor to keep anchors strictly increasing.
 foreach ($ytRows as $yi => $refRow) {
     if (!preg_match_all('/\S+/u', (string)$refRow['text'], $mm)) continue;
     $tokens = $mm[0];
     $T = secs((string)$refRow['segment']);
-    $minIdx = $prevAnchor + 1;
-    $maxIdx = $firstIdxAtOrAfter($T + $ANCHOR_TIME_SLACK, $minIdx);
+    $minByTime = $firstIdxAtOrAfter($T - $ANCHOR_BEFORE, max(0, $prevAnchor + 1));
+    $minIdx = max($prevAnchor + 1, $minByTime);
+    $maxIdx = $firstIdxAtOrAfter($T + $ANCHOR_AFTER, $minIdx);
     if ($maxIdx <= $minIdx) $maxIdx = min($nw, $minIdx + 1);
     $anchor = -1;
     foreach ($tokens as $tok) {
@@ -190,12 +192,16 @@ for ($yi = 0; $yi < $nr; $yi++) {
     $rowSegSecs = secs((string)$rowSeg);
     if ($rowSegSecs < $winStartSecs - 0.5 || $rowSegSecs >= $winEndSecs + 0.5) continue;
 
-    // Sparseness check: token count of youtube row vs whisper word count
+    // Sparseness check: youtube has N tokens; whisper provides fewer than
+    // ~40% of N words for this row → fall back to youtube text.
     $ytTokenCount = preg_match_all('/\S+/u', (string)$ytRows[$yi]['text'], $tmp);
     $wordCount = $end - $start + 1;
-    $sparse = ($wordCount < max(1, (int)($ytTokenCount * 0.5))) && ($wordCount < 2);
+    $sparse = $wordCount < max(2, (int)ceil($ytTokenCount * 0.4));
 
     if ($sparse) {
+        // Use youtube's own timestamp so the fallback row sits where the
+        // captions said it was, not where whisper happened to land.
+        $rowSeg = (string)$ytRows[$yi]['segment'];
         $text = (string)$ytRows[$yi]['text'];
         printf("    %-13s | %s   ← FALLBACK to youtube text (%d whisper words for %d yt tokens)\n",
             $rowSeg, mb_substr($text, 0, 90), $wordCount, $ytTokenCount);

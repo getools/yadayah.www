@@ -303,17 +303,21 @@ function buildWhisperWordJoin(PDO $db, int $itemKey, string $refModel = 'youtube
     // word, the row's boundary still gets set; only the OUTPUT TEXT comes
     // from whisper. The goal is one join row per ref row, not perfect
     // token-level alignment.
-    $ANCHOR_TIME_SLACK = 4.0;    // ± seconds either side of ref T to search
+    // Anchor search bounds. ANCHOR_BEFORE keeps the anchor from drifting
+    // back into the previous ref row's content — without it, common short
+    // tokens like "to" or "the" inside a later ref row can match a whisper
+    // word from an earlier moment and pull the row backward.
+    $ANCHOR_BEFORE = 1.5;
+    $ANCHOR_AFTER  = 4.0;
     $anchors = array_fill(0, $nr, -1);
     $prevAnchor = -1;
     foreach ($refRows as $yi => $refRow) {
         if (!preg_match_all('/\S+/u', (string)$refRow['text'], $mm)) continue;
         $refTokens = $mm[0];
         $T = $secs((string)$refRow['segment']);
-        $minIdx = $prevAnchor + 1;
-        // Search up to (ref T + slack) so the anchor doesn't wander into the
-        // next ref row's territory. The next ref row will set its own anchor.
-        $maxIdx = $firstIdxAtOrAfter($T + $ANCHOR_TIME_SLACK, $minIdx);
+        $minByTime = $firstIdxAtOrAfter($T - $ANCHOR_BEFORE, max(0, $prevAnchor + 1));
+        $minIdx = max($prevAnchor + 1, $minByTime);
+        $maxIdx = $firstIdxAtOrAfter($T + $ANCHOR_AFTER, $minIdx);
         if ($maxIdx <= $minIdx) {
             // No whisper words in this time window; fall back to the very
             // next whisper word (if any).
@@ -348,23 +352,39 @@ function buildWhisperWordJoin(PDO $db, int $itemKey, string $refModel = 'youtube
     }
 
     // ── Phase 2: each ref row's group = [anchor_i .. next_anchor - 1] ──
-    // Stitch whisper words back together with punctuation transferred from
-    // matched ref tokens.
+    // Stitch whisper words together. When the claimed range is too sparse
+    // (fewer whisper words than the ref row would suggest), fall back to
+    // the ref row's own text — that handles spans where whisper missed the
+    // audio entirely and the row would otherwise contain a stray word or
+    // two. Fallback rows use the REF row's segment timestamp, so they sit
+    // where the captions say the speech happened.
     $result = [];
     for ($yi = 0; $yi < $nr; $yi++) {
         $start = $anchors[$yi];
         if ($start < 0) continue;
-        // Find the next defined anchor strictly greater than $start
         $end = $nw - 1;
         for ($j = $yi + 1; $j < $nr; $j++) {
             if ($anchors[$j] > $start) { $end = $anchors[$j] - 1; break; }
         }
         if ($start > $end) continue;
 
-        // Re-run a per-token greedy match within [start..end] purely for
-        // punctuation transfer onto matched whisper words.
         preg_match_all('/\S+/u', (string)$refRows[$yi]['text'], $mm);
         $refTokens = $mm[0] ?? [];
+        $refTokenCount = count($refTokens);
+        $wordCount = $end - $start + 1;
+        $sparse = $wordCount < max(2, (int)ceil($refTokenCount * 0.4));
+
+        if ($sparse) {
+            // Sparse-window fallback: substitute the ref row's text and
+            // tag with the ref row's own timestamp.
+            $result[] = [
+                'segment' => $refRows[$yi]['segment'],
+                'text'    => (string)$refRows[$yi]['text'],
+            ];
+            continue;
+        }
+
+        // Normal path: greedy match for punctuation transfer.
         $alignMap = [];
         $localWs = $start;
         foreach ($refTokens as $rti => $tok) {
@@ -378,7 +398,6 @@ function buildWhisperWordJoin(PDO $db, int $itemKey, string $refModel = 'youtube
                 }
             }
         }
-
         $parts = [];
         for ($i = $start; $i <= $end; $i++) {
             $w = (string)$wordRows[$i]['text'];
