@@ -189,7 +189,7 @@ function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err, arr
     // (which also carry speaker), then to the flat transcript.
     if (isset($alt['paragraphs']['paragraphs'])) {
         foreach ($alt['paragraphs']['paragraphs'] as $p) {
-            $speaker = isset($p['speaker']) ? (int)$p['speaker'] : null;
+            $speaker = isset($p['speaker']) ? (string)$p['speaker'] : null;
             foreach ($p['sentences'] ?? [] as $s) {
                 $text = trim((string)($s['text'] ?? ''));
                 if ($text === '') continue;
@@ -207,7 +207,7 @@ function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err, arr
             $rows[] = [
                 'segment' => secsToIntervalFrac((float)($u['start'] ?? 0)),
                 'text'    => $text,
-                'speaker' => isset($u['speaker']) ? (int)$u['speaker'] : null,
+                'speaker' => isset($u['speaker']) ? (string)$u['speaker'] : null,
             ];
         }
     } elseif (!empty($alt['transcript'])) {
@@ -293,15 +293,13 @@ function assemblyaiTranscribe(string $audioUrl, string $apiKey, ?string &$err, a
                 $text = trim((string)($u['text'] ?? ''));
                 if ($text === '') continue;
                 $startMs = (int)($u['start'] ?? 0);
-                $speakerCode = null;
-                if (isset($u['speaker']) && is_string($u['speaker']) && strlen($u['speaker']) === 1) {
-                    $c = strtoupper($u['speaker']);
-                    if (ctype_alpha($c)) $speakerCode = ord($c) - ord('A');
-                }
+                // AssemblyAI returns speaker as letters ("A", "B", "C"...).
+                // Keep them verbatim — the column is varchar(64) now, so a
+                // letter label is just as valid as a number.
                 $rows[] = [
                     'segment' => secsToIntervalFrac($startMs / 1000.0),
                     'text'    => $text,
-                    'speaker' => $speakerCode,
+                    'speaker' => isset($u['speaker']) ? (string)$u['speaker'] : null,
                 ];
             }
             // No utterances (no diarisation)? Use sentence-level grouping

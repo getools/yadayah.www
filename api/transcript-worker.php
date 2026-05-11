@@ -580,7 +580,10 @@ try {
     $insAuto = $db->prepare("INSERT INTO yy_feed_item_transcript_auto (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model, feed_item_transcript_speaker) VALUES (?, ?::interval, ?, ?, ?, ?)");
     $sort = 0;
     foreach ($rows as $r) {
-        $speaker = isset($r['speaker']) && $r['speaker'] !== null ? (int)$r['speaker'] : null;
+        // Speaker is now a varchar (could be "0" / "A" / "Craig"); keep as
+        // string, treating "" the same as missing.
+        $speaker = (isset($r['speaker']) && $r['speaker'] !== null && $r['speaker'] !== '')
+            ? (string)$r['speaker'] : null;
         $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $jobModel, $speaker]);
         $sort++;
     }

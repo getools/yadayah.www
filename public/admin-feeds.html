@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778533864">
+    <meta name="page-version" content="1778534335">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -4212,15 +4212,21 @@ function renderTranscriptAnalysis() {
             if (v === null || v === undefined) {
                 cellHtml = '<span style="color:#bbb;font-style:italic;">(no row)</span>';
             } else {
-                // Speaker chip prefix when this row has diarisation info
-                // for this column. Cycling palette so up to 8 speakers
-                // get distinct colors.
+                // Speaker chip prefix when this row has diarisation info.
+                // Speaker is now a string (varchar) — could be "0", "A",
+                // "Craig", etc. Pick a palette color by hashing the string
+                // so the same label always renders the same color.
                 var spk = (r.speakers && r.speakers[c.code] !== undefined) ? r.speakers[c.code] : null;
                 var chipHtml = '';
-                if (spk !== null && spk !== undefined) {
+                if (spk !== null && spk !== undefined && spk !== '') {
                     var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
-                    var bgChip = palette[spk % palette.length];
-                    chipHtml = '<span title="Speaker ' + spk + '" style="display:inline-block;background:' + bgChip + ';color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:5px;vertical-align:1px;">' + spk + '</span>';
+                    var spkStr = String(spk);
+                    var hashCode = 0;
+                    for (var hi = 0; hi < spkStr.length; hi++) {
+                        hashCode = (hashCode * 31 + spkStr.charCodeAt(hi)) | 0;
+                    }
+                    var bgChip = palette[Math.abs(hashCode) % palette.length];
+                    chipHtml = '<span title="Speaker ' + esc(spkStr) + '" style="display:inline-block;background:' + bgChip + ';color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:5px;vertical-align:1px;">' + esc(spkStr) + '</span>';
                 }
                 cellHtml = chipHtml + esc(v);
             }

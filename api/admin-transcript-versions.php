@@ -59,10 +59,10 @@ function loadRows(PDO $db, string $table, int $itemKey): array {
         if (isset($byseg[$seg])) {
             $byseg[$seg]['text'] .= ' ' . $r['text'];
             if ($byseg[$seg]['speaker'] === null && $r['speaker'] !== null) {
-                $byseg[$seg]['speaker'] = (int)$r['speaker'];
+                $byseg[$seg]['speaker'] = (string)$r['speaker'];
             }
         } else {
-            $byseg[$seg] = ['text' => (string)$r['text'], 'speaker' => $r['speaker'] !== null ? (int)$r['speaker'] : null];
+            $byseg[$seg] = ['text' => (string)$r['text'], 'speaker' => $r['speaker'] !== null ? (string)$r['speaker'] : null];
         }
     }
     return $byseg;
@@ -84,10 +84,10 @@ function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey)
         if (isset($byModel[$m][$seg])) {
             $byModel[$m][$seg]['text'] .= ' ' . $r['text'];
             if ($byModel[$m][$seg]['speaker'] === null && $r['speaker'] !== null) {
-                $byModel[$m][$seg]['speaker'] = (int)$r['speaker'];
+                $byModel[$m][$seg]['speaker'] = (string)$r['speaker'];
             }
         } else {
-            $byModel[$m][$seg] = ['text' => (string)$r['text'], 'speaker' => $r['speaker'] !== null ? (int)$r['speaker'] : null];
+            $byModel[$m][$seg] = ['text' => (string)$r['text'], 'speaker' => $r['speaker'] !== null ? (string)$r['speaker'] : null];
         }
     }
     return $byModel;
