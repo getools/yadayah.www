@@ -21,6 +21,17 @@
     var scope = 'site';        // 'site' | 'books' | 'video'  — Site is default
     var currentPage = 1;
     var booksFilters = { series: [], volumes: [] };
+    // Match-mode source of truth: kept in a closure variable so callers
+    // never depend on the hidden <select id="ss-mode"> staying in sync
+    // (it was reading stale 'all' on every search regardless of which
+    // option the user clicked in the picker).
+    var searchMode = 'all';
+    function setSearchMode(m) {
+        searchMode = m;
+        var sel = document.getElementById('ss-mode');
+        if (sel) sel.value = m;  // mirror for any legacy reader
+    }
+    function getSearchMode() { return searchMode; }
     var videoFilters = { groups: [], categories: [] };
     var SITE_SECTION_LIMIT = 10;
     // Mode-picker icon SVGs. Defined once so the dropdown trigger (which
@@ -548,7 +559,7 @@
         return searchSite(q);
     }
     function searchSite(q) {
-        var mode = $('ss-mode').value;
+        var mode = getSearchMode();
         var area = $('ss-results');
         area.innerHTML = '<div class="ss-loading">Searching the site…</div>';
         var booksUrl = '/api/search.php?q=' + encodeURIComponent(q)
@@ -569,10 +580,9 @@
         // picker went away, but the search.php API still accepts them —
         // read defensively so missing elements don't crash this call
         // path (used by the "See all in Books" link).
-        var modeEl   = $('ss-mode');
         var seriesEl = $('ss-filter-series');
         var volumeEl = $('ss-filter-volume');
-        var mode     = modeEl   ? modeEl.value   : 'all';
+        var mode     = getSearchMode();
         var series   = seriesEl ? seriesEl.value : '';
         var volume   = volumeEl ? volumeEl.value : '';
         var url = '/api/search.php?q=' + encodeURIComponent(q)
@@ -589,10 +599,9 @@
         });
     }
     function searchVideo(q) {
-        var modeEl     = $('ss-mode');
         var groupEl    = $('ss-filter-group');
         var categoryEl = $('ss-filter-category');
-        var mode       = modeEl     ? modeEl.value     : 'all';
+        var mode       = getSearchMode();
         var group      = groupEl    ? groupEl.value    : '';
         var category   = categoryEl ? categoryEl.value : '';
         var url = '/api/search-transcripts.php?q=' + encodeURIComponent(q)
@@ -861,7 +870,7 @@
         Array.prototype.forEach.call(picker.querySelectorAll('.ss-mode-option'), function (opt) {
             opt.addEventListener('click', function () {
                 var mode = opt.dataset.mode;
-                $('ss-mode').value = mode;
+                setSearchMode(mode);
                 $('ss-mode-current-icon').innerHTML = MODE_ICON_SVG[mode] || '';
                 picker.classList.remove('open');
                 $('ss-mode-current-btn').setAttribute('aria-expanded', 'false');
@@ -910,7 +919,7 @@
         });
     }
     function syncModeOptionActive() {
-        var current = $('ss-mode').value;
+        var current = getSearchMode();
         Array.prototype.forEach.call(document.querySelectorAll('#ss-mode-picker .ss-mode-option'), function (opt) {
             opt.classList.toggle('is-active', opt.dataset.mode === current);
         });
