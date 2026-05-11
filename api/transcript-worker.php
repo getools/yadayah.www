@@ -110,9 +110,10 @@ $videoId = $job['feed_item_external_id'];
 $videoUrl = $job['feed_item_url'];
 $site = strtolower($job['feed_site_code']);
 // Which model this job is for. 'youtube' means caption-import only (no
-// OpenAI call). The three OpenAI variants pick the API model directly.
-// Pre-existing jobs with NULL default to whisper-1 for safety.
-$jobModel = $job['job_model'] ?: 'whisper-1';
+// OpenAI call). The OpenAI variants pick the API model and granularity
+// (see whisperApiTranscribe for the mapping). Pre-existing jobs with
+// NULL default to whisper-1-segment for safety.
+$jobModel = $job['job_model'] ?: 'whisper-1-segment';
 $wantYoutubeCaptions = ($jobModel === 'youtube');
 
 updateJob($db, $jobKey, ['job_status' => 'running', 'job_progress' => 5, 'job_message' => 'Starting transcription...']);
@@ -605,21 +606,55 @@ function secsToInterval(int $secs): string {
     return sprintf('%02d:%02d:%02d', (int)($secs/3600), (int)(($secs%3600)/60), $secs%60);
 }
 
-function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt = '', int $offsetSecs = 0, ?string &$err = null, string $model = 'whisper-1'): array {
-    // Only whisper-1 supports verbose_json + segment-level timestamps. The
-    // gpt-4o-* transcribe models (gpt-4o-mini-transcribe, gpt-4o-transcribe)
-    // reject verbose_json with HTTP 400 and have no segment API at all.
-    // For those we use response_format='json' and emit a single row per
-    // call positioned at the chunk's offset — the surrounding chunked path
-    // already slices 10-min ffmpeg pieces, so each chunk becomes one row.
-    $isSegmentCapable = ($model === 'whisper-1');
+// Sub-second-precision variant for word-level rows where multiple words can
+// share the same whole-second start. Postgres INTERVAL accepts fractional
+// seconds with milliseconds.
+function secsToIntervalFrac(float $secs): string {
+    $whole = (int)$secs;
+    $h = (int)($whole / 3600);
+    $m = (int)(($whole % 3600) / 60);
+    $s = $whole % 60;
+    $ms = (int)round(($secs - $whole) * 1000);
+    if ($ms >= 1000) { $ms = 0; $s++; }
+    return sprintf('%02d:%02d:%02d.%03d', $h, $m, $s, $ms);
+}
+
+// Map internal model code → { openai_model, granularity }. Centralized so
+// the chunked wrapper, the per-chunk caller, and any future probe code all
+// agree on the rules.
+function mapModelToOpenai(string $internal): array {
+    switch ($internal) {
+        case 'whisper-1-segment':
+            return ['openai_model' => 'whisper-1', 'granularity' => 'segment'];
+        case 'whisper-1-word':
+            return ['openai_model' => 'whisper-1', 'granularity' => 'word'];
+        case 'gpt-4o-mini-transcribe':
+        case 'gpt-4o-transcribe':
+            return ['openai_model' => $internal, 'granularity' => null];
+        default:
+            // Unknown — assume the caller wrote in the actual OpenAI model
+            // name and try a plain json call (no segment metadata).
+            return ['openai_model' => $internal, 'granularity' => null];
+    }
+}
+
+function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt = '', int $offsetSecs = 0, ?string &$err = null, string $model = 'whisper-1-segment'): array {
+    // Map our internal code to (openai_model, granularity).
+    //   segment → verbose_json with segment-level timestamps (whisper-1 only)
+    //   word    → verbose_json with word-level timestamps (whisper-1 only)
+    //   null    → response_format=json, one row per chunk at offsetSecs
+    //             (gpt-4o-* models and any unknown model)
+    $map = mapModelToOpenai($model);
+    $openaiModel = $map['openai_model'];
+    $granularity = $map['granularity'];
+
     $fields = [
         'file' => new CURLFile($audioPath),
-        'model' => $model,
-        'response_format' => $isSegmentCapable ? 'verbose_json' : 'json',
+        'model' => $openaiModel,
+        'response_format' => $granularity !== null ? 'verbose_json' : 'json',
     ];
-    if ($isSegmentCapable) {
-        $fields['timestamp_granularities[]'] = 'segment';
+    if ($granularity !== null) {
+        $fields['timestamp_granularities[]'] = $granularity;
     }
     if ($prompt !== '') $fields['prompt'] = $prompt;
 
@@ -642,18 +677,26 @@ function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt 
     }
     $data = json_decode($resp, true);
     $rows = [];
-    if ($isSegmentCapable) {
+    if ($granularity === 'segment') {
         foreach ($data['segments'] ?? [] as $seg) {
             $text = trim($seg['text'] ?? '');
-            // Drop empty-text segments. Whisper occasionally returns whitespace
-            // segments for silent / non-speech audio chunks; storing those as
+            // Drop empty-text rows. Whisper occasionally returns whitespace
+            // entries for silent / non-speech audio chunks; storing those as
             // "captions" pollutes search and falsely marks the job successful.
             if ($text === '') continue;
             $rows[] = ['segment' => secsToInterval((int)$seg['start'] + $offsetSecs), 'text' => $text];
         }
+    } elseif ($granularity === 'word') {
+        foreach ($data['words'] ?? [] as $w) {
+            $text = trim($w['word'] ?? '');
+            if ($text === '') continue;
+            // Sub-second precision is essential here — many words land in
+            // the same whole second.
+            $rows[] = ['segment' => secsToIntervalFrac(((float)$w['start']) + (float)$offsetSecs), 'text' => $text];
+        }
     }
     if (!$rows && isset($data['text'])) {
-        // No-segments path (gpt-4o-* models or whisper-1 returning only
+        // No-segments path (gpt-4o-* models, or whisper-1 returning only
         // a top-level "text" field). One row at the chunk's offset.
         $fallback = trim($data['text']);
         if ($fallback !== '') {
@@ -670,7 +713,7 @@ function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt 
  * Split audio into ~10-minute chunks via ffmpeg, transcribe each, stitch results
  * with timestamp offsets so segments line up to the original timeline.
  */
-function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, string $apiKey, string $prompt, ?string &$err = null, string $model = 'whisper-1'): array {
+function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, string $apiKey, string $prompt, ?string &$err = null, string $model = 'whisper-1-segment'): array {
     $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
     if (!$ffmpeg) {
         $err = 'ffmpeg not available — cannot chunk audio over 25MB';

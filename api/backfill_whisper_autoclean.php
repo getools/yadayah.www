@@ -1,6 +1,6 @@
 <?php
 // One-off: re-run Whisper on a single feed_item and write the raw output to
-// yy_feed_item_transcript_auto (with model='whisper-1'), then apply the correction dictionary and
+// yy_feed_item_transcript_auto (with model='whisper-1-segment'), then apply the correction dictionary and
 // write the cleaned version to yy_feed_item_transcript_autoclean.
 //
 // LIVE TABLE (yy_feed_item_transcript) IS NOT TOUCHED — current human edits
@@ -164,7 +164,7 @@ if (!$allRows) { fwrite(STDERR, "no segments returned across any chunk\n"); exit
 logmsg("total segments: " . count($allRows));
 
 // --- write to _auto (with model column) and _autoclean ---
-$model = 'whisper-1';  // the OpenAI endpoint this script calls
+$model = 'whisper-1-segment';  // segment-level whisper-1 (the only mode this one-off script invokes)
 $db->beginTransaction();
 $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ?")->execute([$itemKey]);
 $db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ?")->execute([$itemKey]);
