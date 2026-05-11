@@ -218,6 +218,43 @@ function applyReplacementsAcrossRows(array $rows, array $replacements, int $maxR
  * Loads the active correction list once per call (no per-request cache;
  * the worker invokes this once per item).
  */
+/**
+ * Build a keyword-boost list from the active correction dictionary for use
+ * with Deepgram (keywords[]=term:boost) and AssemblyAI (word_boost[]).
+ * Returns [['term' => 'Yahowah', 'boost' => 3], ...] sorted by descending
+ * correction_count. The "right" side of each correction is what we want
+ * the model to RECOGNISE — that's the spelling we keep using post-fix.
+ *
+ * Boost tiers (Deepgram's recommended scale is roughly 1-10 with diminishing
+ * returns past 3):
+ *   count >= 50  → boost 3   (heavily-confirmed, e.g. Yahowah/Towrah)
+ *   count >= 10  → boost 2
+ *   count >= 5   → boost 1
+ *   below 5      → excluded (too few confirmations to be reliable)
+ *
+ * Capped at $limit entries to keep request URLs/bodies reasonable —
+ * Deepgram's URL gets long fast and AssemblyAI's word_boost has a 1000-word
+ * hard limit. 100 is plenty given how few corrections we typically have.
+ */
+function buildKeywordBoostList(PDO $db, int $limit = 100): array {
+    $stmt = $db->query("
+        SELECT correction_right AS term, correction_count AS cnt
+          FROM yy_transcript_correction
+         WHERE correction_active_flag = TRUE
+           AND correction_count >= 5
+           AND correction_right ~ '^[[:print:]]+$'
+         ORDER BY correction_count DESC
+         LIMIT $limit
+    ");
+    $out = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $cnt = (int)$r['cnt'];
+        $boost = $cnt >= 50 ? 3 : ($cnt >= 10 ? 2 : 1);
+        $out[] = ['term' => (string)$r['term'], 'boost' => $boost];
+    }
+    return $out;
+}
+
 function applyCorrectionsAcrossRows(PDO $db, array $rows): array {
     if (!$rows) return $rows;
     $stmt = $db->query("SELECT correction_wrong, correction_right, correction_case_sensitive, correction_word_boundary FROM yy_transcript_correction WHERE correction_active_flag = TRUE ORDER BY correction_count DESC, length(correction_wrong) DESC");

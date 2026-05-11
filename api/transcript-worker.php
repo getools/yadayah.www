@@ -448,6 +448,16 @@ if (!$rows && !$wantYoutubeCaptions) {
                     $publicAudioUrl = 'https://yadayah.com/' . $rel;
                 }
 
+                // Keyword-boost list from the correction dictionary —
+                // sent on every Deepgram / AssemblyAI run so the model
+                // biases toward our confirmed spellings (Yahowah, Towrah,
+                // Yada Yah, etc.) without us paying for fine-tuning.
+                // OpenAI/Groq already get the equivalent via the
+                // glossary `prompt` parameter.
+                $boostList = ($providerFamily === 'deepgram' || $providerFamily === 'assemblyai')
+                    ? buildKeywordBoostList($db, 100)
+                    : [];
+
                 switch ($providerFamily) {
                     case 'openai':
                         if ($whisperChunked) {
@@ -466,7 +476,7 @@ if (!$rows && !$wantYoutubeCaptions) {
                             $whisperErr = 'Deepgram needs a public audio URL — only durable uploads supported';
                             $rows = [];
                         } else {
-                            $rows = deepgramTranscribe($publicAudioUrl, $providerKey, $whisperErr);
+                            $rows = deepgramTranscribe($publicAudioUrl, $providerKey, $whisperErr, $boostList);
                         }
                         break;
                     case 'assemblyai':
@@ -474,7 +484,7 @@ if (!$rows && !$wantYoutubeCaptions) {
                             $whisperErr = 'AssemblyAI needs a public audio URL — only durable uploads supported';
                             $rows = [];
                         } else {
-                            $rows = assemblyaiTranscribe($publicAudioUrl, $providerKey, $whisperErr);
+                            $rows = assemblyaiTranscribe($publicAudioUrl, $providerKey, $whisperErr, $boostList);
                         }
                         break;
                     case 'elevenlabs':

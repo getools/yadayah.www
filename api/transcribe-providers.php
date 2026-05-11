@@ -139,7 +139,7 @@ function groqApiTranscribeOne(string $audioPath, string $apiKey, string $prompt,
  * generate proper case/numbers/punctuation, which is the main advantage
  * over OpenAI Whisper for the YadaYah use case.
  */
-function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err): array {
+function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err, array $boostList = []): array {
     $params = http_build_query([
         'model'        => 'nova-3',
         'punctuate'    => 'true',
@@ -148,6 +148,17 @@ function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err): ar
         'utterances'   => 'true',
         'language'     => 'en',
     ]);
+    // Append keyword-boost entries from the correction dictionary. Nova-3
+    // uses the `keyterm` parameter (no per-term weight; previous models'
+    // `keywords=word:N` syntax returns HTTP 400). Each phrase is its own
+    // query param; rawurlencode handles multi-word phrases ("Yada Yah").
+    // The $boost value still influences inclusion order — kept around so
+    // higher-confidence terms appear first if Deepgram ever caps quantity.
+    foreach ($boostList as $b) {
+        $term = trim((string)($b['term'] ?? ''));
+        if ($term === '') continue;
+        $params .= '&keyterm=' . rawurlencode($term);
+    }
     $ch = curl_init("https://api.deepgram.com/v1/listen?$params");
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -202,18 +213,29 @@ function deepgramTranscribe(string $audioUrl, string $apiKey, ?string &$err): ar
  * Optionally set speaker_labels=true for diarisation — currently off because
  * the row schema doesn't carry a speaker field. Worth revisiting later.
  */
-function assemblyaiTranscribe(string $audioUrl, string $apiKey, ?string &$err): array {
-    // Step 1: submit
+function assemblyaiTranscribe(string $audioUrl, string $apiKey, ?string &$err, array $boostList = []): array {
+    // Step 1: submit. word_boost is a flat list of strings; boost_param
+    // sets a global strength multiplier ("high" is roughly equivalent to
+    // Deepgram's boost=3). Hard-coded to "high" because our boost list is
+    // curated from confirmed corrections — we trust each entry.
+    $submitBody = [
+        'audio_url'    => $audioUrl,
+        'speech_model' => 'universal',
+        'punctuate'    => true,
+        'format_text'  => true,
+    ];
+    if ($boostList) {
+        $submitBody['word_boost']  = array_values(array_unique(array_filter(array_map(
+            function ($b) { return trim((string)($b['term'] ?? '')); },
+            $boostList
+        ))));
+        $submitBody['boost_param'] = 'high';
+    }
     $ch = curl_init('https://api.assemblyai.com/v2/transcript');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode([
-            'audio_url'    => $audioUrl,
-            'speech_model' => 'universal',
-            'punctuate'    => true,
-            'format_text'  => true,
-        ]),
+        CURLOPT_POSTFIELDS => json_encode($submitBody),
         CURLOPT_HTTPHEADER => [
             'authorization: ' . $apiKey,
             'content-type: application/json',
