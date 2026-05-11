@@ -50,15 +50,46 @@ if ($method === 'GET') {
     // duplicate-uploaded video automatically inherits the original's transcript).
     $itemKeys = getFeedItemKeyCluster($db, $itemKey);
     $placeholders = implode(',', array_fill(0, count($itemKeys), '?'));
-    $rowsStmt = $db->prepare("
-        SELECT feed_item_transcript_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort,
-               feed_item_transcript_speaker
-        FROM yy_feed_item_transcript
-        WHERE feed_item_key IN ($placeholders)
-        ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
-    ");
-    $rowsStmt->execute($itemKeys);
+    // Optional view: when ?view=<model_code> is supplied, return rows from
+    // yy_feed_item_transcript_auto for that model instead of the live
+    // table. The client puts the editor into read-only mode for these
+    // views (no save, no row-add/split/delete). Default view '' means
+    // editable live rows.
+    $view = trim((string)($_GET['view'] ?? ''));
+    if ($view !== '') {
+        $rowsStmt = $db->prepare("
+            SELECT NULL AS feed_item_transcript_key,
+                   feed_item_transcript_segment,
+                   feed_item_transcript_text,
+                   feed_item_transcript_sort,
+                   feed_item_transcript_speaker
+              FROM yy_feed_item_transcript_auto
+             WHERE feed_item_key IN ($placeholders)
+               AND feed_item_transcript_auto_model = ?
+             ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
+        ");
+        $rowsStmt->execute(array_merge($itemKeys, [$view]));
+    } else {
+        $rowsStmt = $db->prepare("
+            SELECT feed_item_transcript_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort,
+                   feed_item_transcript_speaker
+            FROM yy_feed_item_transcript
+            WHERE feed_item_key IN ($placeholders)
+            ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
+        ");
+        $rowsStmt->execute($itemKeys);
+    }
     $rows = $rowsStmt->fetchAll();
+
+    // Distinct auto-model codes available for the view dropdown.
+    $viewsStmt = $db->prepare("
+        SELECT DISTINCT feed_item_transcript_auto_model AS code
+          FROM yy_feed_item_transcript_auto
+         WHERE feed_item_key IN ($placeholders)
+         ORDER BY feed_item_transcript_auto_model
+    ");
+    $viewsStmt->execute($itemKeys);
+    $availableViews = array_column($viewsStmt->fetchAll(), 'code');
 
     // Convert intervals to display strings (HH:MM:SS)
     foreach ($rows as &$r) {
@@ -103,6 +134,8 @@ if ($method === 'GET') {
         'job' => $job ?: null,
         'validation' => $validation,
         'has_snapshot' => $hasSnapshot,
+        'view' => $view,
+        'available_views' => $availableViews,
     ]);
 }
 

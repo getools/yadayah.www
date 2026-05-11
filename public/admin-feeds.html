@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778537390">
+    <meta name="page-version" content="1778539364">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -107,8 +107,9 @@
 
     <!-- Sources Tab -->
     <div id="tab-sources" class="feed-tab">
-        <div style="margin-bottom:12px;">
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
             <button class="btn btn-primary" onclick="openFeedSourceForm({})">+ New Feed</button>
+            <button class="btn btn-secondary" onclick="openYoutubeCookies()" title="Manage YouTube auth cookies used by yt-dlp for caption / audio downloads">YouTube Cookies</button>
         </div>
         <table class="feeds-table">
             <thead>
@@ -1571,6 +1572,12 @@ function syncFeed(key) {
 
 // ── Transcribe popover ──
 var _transcriptItemKey = null;
+// Active transcript view. '' = the editable live yy_feed_item_transcript
+// rows. A model code like 'whisper-1-segment' = read-only display of
+// that model's _auto rows. saveTranscript and row-edit buttons are
+// suppressed whenever this is non-empty.
+var _transcriptView = '';
+var _transcriptReadonly = false;
 var _transcriptPollTimer = null;
 // ETA state for the Transcribe Audio progress bar.
 var _txDurationSec = 0;       // video length in seconds (from feed_item_duration_seconds)
@@ -1664,11 +1671,14 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+            + '<select id="t-view-select" onchange="switchTranscriptView(this.value)" title="Swap the displayed rows between the editable live transcript and any read-only auto-model version" style="font-size:0.85rem;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff;">'
+            +   '<option value="">Current (editable)</option>'
+            + '</select>'
             + '<button id="t-start-btn" onclick="openTranscribeModal()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
             + '<button id="t-init-btn" onclick="openInitializeModal()" style="background:#31345A;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;" title="Pick one of the auto-transcribed model versions, apply the YadaYah correction pass, and copy it into the live transcript for editing">Initialize Transcript</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
-            + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
+            // "Open on YouTube" link removed — the video player in this popover already plays the source.
             // Push the current transcript out to YouTube as a caption
             // track. The server-side ytCaptionsBuildSrt already emits each
             // cue with a YT_CAPTIONS_OVERLAP_SECONDS (=1) tail so cues
@@ -1682,7 +1692,7 @@ function openTranscript(itemKey) {
             // without forcing the user to type a timestamp by hand.
             + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '<span style="border-left:1px solid #ddd;height:24px;margin:0 4px;"></span>'
-            + '<button onclick="openYoutubeCookies()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Manage YouTube auth cookies used by yt-dlp">YouTube Cookies</button>'
+            // YouTube Cookies button moved to the Sources tab on the Feeds page.
             + '<button onclick="openTranscriptDict()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Whisper glossary + correction dictionary">Transcript Dictionary</button>'
             + '<button onclick="openTranscriptFind()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Find text within this transcript">Find</button>'
             // onmousedown→preventDefault keeps focus on whichever
@@ -1700,10 +1710,20 @@ function openTranscript(itemKey) {
             + '<button onclick="findTranscriptNext()" title="Next match (Enter)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:0.85rem;">&darr;</button>'
             + '<button onclick="closeTranscriptFind()" title="Close (Esc)" style="background:none;border:none;color:#666;cursor:pointer;font-size:1.2rem;line-height:1;padding:0 6px;">&times;</button>'
             + '</div>'
-            + '<div id="t-speakers-panel" style="display:none;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;background:#f7f8fc;font-size:0.82rem;"></div>'
+            + '<div id="t-spk-popover" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;font-size:0.82rem;z-index:10003;min-width:220px;"></div>'
+            + '<div id="t-row-spk-popover" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;font-size:0.82rem;z-index:10004;min-width:240px;"></div>'
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
-            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:120px;text-align:left;">Time</th><th style="padding:8px;width:80px;text-align:left;">Speaker</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
+            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
+            +   '<th style="padding:4px 2px;width:1%;text-align:center;white-space:nowrap;" title="Speaker — hover or click to rename">'
+            +     '<span id="t-spk-anchor" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" onclick="toggleSpeakerPopover()" style="display:inline-block;cursor:pointer;padding:2px 4px;">'
+            +       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+            +     '</span>'
+            +   '</th>'
+            +   '<th style="padding:8px;width:112px;text-align:left;">Time</th>'
+            +   '<th style="padding:8px;text-align:left;">Text</th>'
+            +   '<th style="padding:8px;width:40px;"></th>'
+            + '</tr></thead>'
             + '<tbody id="t-rows"></tbody></table></div>'
             + '</div>'
             + '</div>'
@@ -2973,7 +2993,9 @@ function markRecRow(itemKey, state, err) {
 }
 
 function loadTranscript() {
-    fetch(API + '/admin-transcript.php?item_key=' + _transcriptItemKey, {credentials:'include'})
+    var url = API + '/admin-transcript.php?item_key=' + encodeURIComponent(_transcriptItemKey);
+    if (_transcriptView) url += '&view=' + encodeURIComponent(_transcriptView);
+    fetch(url, {credentials:'include'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.error) { alert(d.error); return; }
@@ -2983,6 +3005,8 @@ function loadTranscript() {
             // close (yt-dlp ~2s/min + Whisper API ~13s/min + setup).
             _txDurationSec = parseInt(d.item.feed_item_duration_seconds, 10) || 0;
             _txEtaTotalSec = _txDurationSec ? Math.round(_txDurationSec * 0.25 + 8) : 0;
+            _transcriptReadonly = !!d.view;
+            updateTranscriptViewSelect(d.available_views || [], d.view || '');
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
             populateValidation(d.validation);
@@ -3000,20 +3024,36 @@ function loadTranscript() {
                     ? 'Side-by-side view of every transcript version stored for this item'
                     : 'No transcript data yet';
             }
-            // Show "Open on YouTube" link if this is a YouTube video
-            if (d.item && (d.item.feed_site_code || '').toLowerCase() === 'youtube' && d.item.feed_item_external_id) {
-                var yt = document.getElementById('t-yt-link');
-                if (yt) {
-                    yt.href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(d.item.feed_item_external_id);
-                    yt.style.display = '';
-                }
-            }
             refreshUploadedSourceInfo();
             // Initialize video player once per popover open
             if (!_ytPlayer && d.item) {
                 initVideoPlayer(d.item.feed_site_code, d.item.feed_item_external_id);
             }
         });
+}
+
+// Populate the view dropdown with the available auto-model snapshots. The
+// "Current (editable)" option is always present at the top. Setting the
+// dropdown's value sets _transcriptView; switchTranscriptView() is the
+// onchange handler.
+function updateTranscriptViewSelect(availableViews, currentView) {
+    var sel = document.getElementById('t-view-select');
+    if (!sel) return;
+    var html = '<option value="">Current (editable)</option>';
+    availableViews.forEach(function(code) {
+        html += '<option value="' + esc(code) + '"' + (code === currentView ? ' selected' : '') + '>' + esc(code) + ' (read-only)</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = currentView || '';
+}
+function switchTranscriptView(newView) {
+    _transcriptView = newView || '';
+    // Cancel any pending auto-save: switching away from a stale view
+    // shouldn't write whatever's in the now-discarded textareas back to
+    // live storage.
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+    _savePending = false;
+    loadTranscript();
 }
 
 function refreshUploadedSourceInfo() {
@@ -3181,43 +3221,251 @@ function saveValidation() {
 // otherwise; cells with text longer than 2 rows scroll internally.
 function transcriptRowCells(seg, secs, text, speaker) {
     var s = (speaker === null || speaker === undefined) ? '' : String(speaker);
-    return '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;vertical-align:top;">'
-        +   speakerChipForRow(s)
-        + '</td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1" style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;">' + esc(text || '') + '</textarea></td>'
-        + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;vertical-align:top;">'
+    // Read-only mode: textarea is disabled, +/× buttons hidden. Time cell
+    // double-click handler still works (the user can still seek video).
+    var readOnly = !!_transcriptReadonly;
+    var textareaAttr = readOnly ? ' readonly' : '';
+    var textareaBg   = readOnly ? '#f6f6f6'   : 'transparent';
+    var actionsCell = readOnly
+        ? '<td style="padding:6px;border-top:1px solid #eee;"></td>'
+        : '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;vertical-align:top;">'
         +   '<button onmousedown="event.preventDefault()" onclick="splitTranscriptRow(this)" title="Insert a new row after this one — splits text at the cursor if you have one in this row" style="background:none;border:none;color:#27ae60;cursor:pointer;font-size:1.15rem;padding:0 4px;font-weight:700;">+</button>'
         +   '<button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" title="Delete this row" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;padding:0 4px;">&times;</button>'
         + '</td>';
+    return '<td style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
+        +   speakerChipForRow(s)
+        + '</td>'
+        + '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1"' + textareaAttr + ' style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;background:' + textareaBg + ';">' + esc(text || '') + '</textarea></td>'
+        + actionsCell;
 }
 
 // Speaker chip used in transcript rows. Stores the raw label in a hidden
 // data-field input so saveTranscript() can pick it up; the chip is just
 // a styled span on top, clickable to scroll the Speakers panel to its
 // rename input. Empty label renders a dim "+" affordance.
-function speakerChipForRow(label) {
-    var hiddenInput = '<input type="hidden" data-field="speaker" value="' + esc(label) + '">';
-    if (!label) {
-        return hiddenInput + '<span class="t-spk-chip" data-label="" onclick="focusSpeakerPanel(this)" title="Click to assign a speaker" style="display:inline-block;color:#bbb;font-size:0.75rem;padding:1px 8px;border:1px dashed #ddd;border-radius:8px;cursor:pointer;">—</span>';
+// Speaker labels are stored as either "Name" (one piece — chip derives an
+// auto-abbreviation) or "Abbrev|Name" (chip uses the explicit abbreviation
+// the user set). parseSpeakerLabel / formatSpeakerLabel handle the split.
+// Storage shapes in feed_item_transcript_speaker (varchar 64):
+//   "Craig"               name only — chip derives abbreviation + color
+//   "Cw|Craig"             explicit abbreviation + name
+//   "Cw|Craig|#ff0000"      explicit abbreviation + name + color
+//   "|Craig|#ff0000"        name + color (no custom abbreviation)
+//   "||#ff0000"             color only — chip uses auto-derived abbrev / no name
+// parseSpeakerLabel splits on "|"; trailing parts are optional.
+function parseSpeakerLabel(label) {
+    if (label === null || label === undefined) return { abbrev: '', name: '', color: '' };
+    var s = String(label);
+    if (s === '') return { abbrev: '', name: '', color: '' };
+    var parts = s.split('|');
+    if (parts.length === 1) {
+        return { abbrev: '', name: parts[0].trim(), color: '' };
     }
-    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
-    var h = 0;
-    for (var i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
-    var bg = palette[Math.abs(h) % palette.length];
-    return hiddenInput
-        + '<span class="t-spk-chip" data-label="' + esc(label) + '" onclick="focusSpeakerPanel(this)"'
-        + ' title="Speaker ' + esc(label) + ' — click to rename in the Speakers panel"'
-        + ' style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:9px;cursor:pointer;">'
-        + esc(label) + '</span>';
+    return {
+        abbrev: (parts[0] || '').trim(),
+        name:   (parts[1] || '').trim(),
+        color:  ((parts[2] || '').trim()).toLowerCase(),
+    };
+}
+function formatSpeakerLabel(abbrev, name, color) {
+    abbrev = (abbrev || '').trim();
+    name   = (name   || '').trim();
+    color  = (color  || '').trim().toLowerCase();
+    if (!abbrev && !name && !color) return '';
+    if (color) {
+        // Color forces the 3-part form so the parser keeps the slots in order.
+        return abbrev + '|' + name + '|' + color;
+    }
+    if (!abbrev && !name) return '';
+    if (!abbrev)          return name;
+    if (!name)            return abbrev;
+    if (abbrev === name)  return name;
+    return abbrev + '|' + name;
 }
 
-// Speakers panel above the transcript table. One row per distinct speaker
-// label, each with an input to bulk-rename it across every row of this
-// item. Hidden when there are no labelled speakers (yet).
-function renderSpeakersPanel(rows) {
-    var panel = document.getElementById('t-speakers-panel');
-    if (!panel) return;
+// Compact display label for a speaker chip — at most ~4 characters so the
+// per-row chip stays narrow even when the speaker has a long name. Honors
+// an explicit "Abbrev|Name" stored value; otherwise derives from name.
+//   "0", "A"           → "0", "A"        (kept as-is when ≤2 chars)
+//   "Craig"            → "Cr"            (first 2 chars title-cased)
+//   "Craig Winn"       → "CW"            (initials of first two words)
+//   "Cw|Craig"         → "Cw"            (explicit abbreviation wins)
+function speakerAbbrev(label) {
+    var parsed = parseSpeakerLabel(label);
+    if (parsed.abbrev) return parsed.abbrev.substring(0, 4);
+    var s = parsed.name;
+    if (s.length === 0) return '';
+    if (s.length <= 2) return s;
+    var parts = s.split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return (s[0].toUpperCase() + s[1]).substring(0, 2);
+}
+function speakerChipPalette(label) {
+    var parsed = parseSpeakerLabel(label);
+    if (parsed.color && /^#[0-9a-f]{6}$/.test(parsed.color)) return parsed.color;
+    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+    // Hash off the name + abbrev only, so a custom color doesn't influence
+    // the fallback color (lets the user "reset" by clearing the color).
+    var seed = parsed.abbrev + '|' + parsed.name;
+    var h = 0;
+    for (var i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+    return palette[Math.abs(h) % palette.length];
+}
+
+// Speaker chip used in transcript rows. Hidden input stores the FULL label
+// (saveTranscript reads it); the visible chip shows the abbreviation only.
+// Empty label shows a dim em-dash placeholder.
+function speakerChipForRow(label) {
+    var hiddenInput = '<input type="hidden" data-field="speaker" value="' + esc(label) + '">';
+    // Clickable chips only when the editor is in editable mode. In
+    // read-only model views the chip stays informational.
+    var clickable = !_transcriptReadonly;
+    var onclickAttr = clickable ? ' onclick="openRowSpeakerPicker(this); event.stopPropagation();"' : '';
+    var cursorRule  = clickable ? 'cursor:pointer;' : '';
+    if (!label) {
+        var title = clickable ? 'Click to assign a speaker' : 'Read-only';
+        return hiddenInput
+            + '<span class="t-spk-chip" data-label=""' + onclickAttr
+            + ' title="' + title + '"'
+            + ' style="display:inline-block;color:#bbb;font-size:0.75rem;padding:1px 6px;border:1px dashed #ddd;border-radius:8px;' + cursorRule + '">—</span>';
+    }
+    var bg = speakerChipPalette(label);
+    var tipSuffix = clickable ? ' — click to change' : '';
+    return hiddenInput
+        + '<span class="t-spk-chip" data-label="' + esc(label) + '"' + onclickAttr
+        + ' title="Speaker ' + esc(label) + tipSuffix + '"'
+        + ' style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:9px;min-width:14px;text-align:center;' + cursorRule + '">'
+        + esc(speakerAbbrev(label)) + '</span>';
+}
+// Chip in the popover — same color, same abbreviation rules.
+function speakerChipForLabel(label) {
+    var bg = speakerChipPalette(label);
+    return '<span style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:9px;min-width:14px;text-align:center;">'
+        + esc(speakerAbbrev(label)) + '</span>';
+}
+
+// Per-row speaker picker. Opens a small popover anchored to the clicked
+// chip with two sections:
+//   1. Existing speakers — click one to assign that label to this row.
+//   2. "Add new" row — color picker + abbreviation + name + ✓ button to
+//      compose a new label, assign it to this row, and have it show up
+//      as an option for subsequent rows.
+// Known speakers are gathered from the currently-rendered rows so the
+// picker reflects whatever's live in the editor right now (no extra fetch).
+var _rowSpkAnchor = null;
+function openRowSpeakerPicker(chipEl) {
+    _rowSpkAnchor = chipEl;
+    var pop = document.getElementById('t-row-spk-popover');
+    if (!pop) return;
+    // Gather distinct speaker labels from all editor rows.
+    var seen = {};
+    document.querySelectorAll('#t-rows input[data-field="speaker"]').forEach(function(inp) {
+        var v = inp.value.trim();
+        if (v && !seen[v]) seen[v] = true;
+    });
+    var labels = Object.keys(seen);
+    // Pre-fill the "new speaker" color with the next palette entry the row
+    // doesn't already use, so a fresh row gets a distinct default color.
+    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+    var nextColor = palette[labels.length % palette.length];
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:4px;font-size:0.78rem;padding:0 4px;">Assign speaker</div>'
+        + '<div style="max-height:240px;overflow-y:auto;">';
+    labels.forEach(function(lbl) {
+        var parsed = parseSpeakerLabel(lbl);
+        var nameTxt = parsed.name || lbl;
+        html += '<div class="t-row-spk-opt" onclick="pickRowSpeaker(' + JSON.stringify(lbl).replace(/"/g, '&quot;') + ')"'
+            +   ' style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;"'
+            +   ' onmouseover="this.style.background=\'#f0f4ff\';" onmouseout="this.style.background=\'\';">'
+            +   speakerChipForLabel(lbl)
+            +   '<span style="font-size:0.78rem;color:#31345A;">' + esc(nameTxt) + '</span>'
+            + '</div>';
+    });
+    // Clear-row option
+    html += '<div class="t-row-spk-opt" onclick="pickRowSpeaker(\'\')"'
+        +   ' style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;color:#888;border-top:1px dashed #eee;margin-top:4px;"'
+        +   ' onmouseover="this.style.background=\'#f5f5f5\';" onmouseout="this.style.background=\'\';">'
+        +   '<span style="font-size:0.7rem;display:inline-block;border:1px dashed #ccc;border-radius:8px;padding:1px 6px;color:#bbb;">—</span>'
+        +   '<span style="font-size:0.78rem;">No speaker</span>'
+        + '</div>';
+    html += '</div>';
+    // "Add new" row
+    html += '<div style="border-top:1px solid #eee;margin-top:6px;padding:6px 4px 2px;">'
+        + '<div style="font-size:0.7rem;color:#888;margin-bottom:4px;">Add new speaker</div>'
+        + '<div style="display:flex;align-items:center;gap:4px;">'
+        +   '<input type="color" id="t-row-spk-new-color" value="' + esc(nextColor) + '" title="Pick chip color" style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:transparent;">'
+        +   '<input id="t-row-spk-new-abbrev" maxlength="4" placeholder="ab" style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;">'
+        +   '<input id="t-row-spk-new-name" placeholder="name…" style="font-size:0.78rem;flex:1;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
+        +   '<button onclick="createAndAssignSpeaker()" title="Create and assign" style="background:#27ae60;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-weight:700;">✓</button>'
+        + '</div>'
+        + '</div>';
+    pop.innerHTML = html;
+    pop.style.display = 'block';
+    // Position below the clicked chip.
+    var r = chipEl.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, r.left) + 'px';
+    // Close on outside click
+    setTimeout(function() {
+        document.addEventListener('click', closeRowSpeakerPickerOnce, { once: true });
+    }, 0);
+}
+function closeRowSpeakerPickerOnce(e) {
+    var pop = document.getElementById('t-row-spk-popover');
+    if (pop && !pop.contains(e.target)) {
+        pop.style.display = 'none';
+        _rowSpkAnchor = null;
+    } else if (pop && pop.contains(e.target)) {
+        // Click was inside the popover — rebind for the next outside click.
+        document.addEventListener('click', closeRowSpeakerPickerOnce, { once: true });
+    }
+}
+function pickRowSpeaker(label) {
+    if (!_rowSpkAnchor) return;
+    applyRowSpeakerLabel(_rowSpkAnchor, label);
+    var pop = document.getElementById('t-row-spk-popover');
+    if (pop) pop.style.display = 'none';
+    _rowSpkAnchor = null;
+}
+function createAndAssignSpeaker() {
+    var color  = (document.getElementById('t-row-spk-new-color').value || '').toLowerCase();
+    var abbrev =  document.getElementById('t-row-spk-new-abbrev').value.trim();
+    var name   =  document.getElementById('t-row-spk-new-name').value.trim();
+    if (!abbrev && !name) { alert('Enter at least an abbreviation or name'); return; }
+    // Drop the color if it equals what the hash would pick anyway.
+    var baseLabel = formatSpeakerLabel(abbrev, name, '');
+    var hashColor = speakerChipPalette(baseLabel);
+    if (color === hashColor) color = '';
+    if (abbrev && name && abbrev === speakerAbbrev(name)) abbrev = '';
+    var label = formatSpeakerLabel(abbrev, name, color);
+    pickRowSpeaker(label);
+}
+function applyRowSpeakerLabel(chipEl, newLabel) {
+    var td = chipEl.closest('td');
+    if (!td) return;
+    var hidden = td.querySelector('input[data-field="speaker"]');
+    if (hidden) hidden.value = newLabel;
+    // Re-render just this cell's chip in place.
+    td.innerHTML = speakerChipForRow(newLabel);
+    // Mark dirty so autosave persists the change.
+    _savePending = true;
+    var st = document.getElementById('t-status');
+    if (st) st.textContent = '…editing';
+    scheduleAutoSave();
+}
+
+// Speakers popover, anchored to the person icon in the transcript header.
+// Shows a 3-column no-header table: row count, current label, rename input.
+// Mouseover OR click on the icon opens it; mouseleave (with a short delay)
+// closes it. _speakerPopoverRows is set whenever the transcript loads so
+// the popover content stays accurate even when reopened without a reload.
+var _speakerPopoverRows = [];
+var _speakerPopoverHideTimer = null;
+function renderSpeakersPanel(rows) { _speakerPopoverRows = rows || []; }
+function buildSpeakerPopoverHtml() {
+    var rows = _speakerPopoverRows;
     var counts = {};
     rows.forEach(function(r) {
         var s = (r.feed_item_transcript_speaker == null) ? '' : String(r.feed_item_transcript_speaker);
@@ -3225,38 +3473,105 @@ function renderSpeakersPanel(rows) {
         counts[s] = (counts[s] || 0) + 1;
     });
     var labels = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a]; });
-    if (!labels.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
-    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;">Speakers in this transcript</div>'
-        + '<div style="display:flex;flex-wrap:wrap;gap:10px;">';
+    if (!labels.length) {
+        return '<div style="color:#888;padding:6px 4px;">No speaker labels on this transcript yet.</div>';
+    }
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;font-size:0.78rem;">Speakers in this transcript</div>'
+        + '<table style="border-collapse:collapse;font-size:0.78rem;">';
     labels.forEach(function(lbl) {
-        html += '<div data-label="' + esc(lbl) + '" style="display:flex;align-items:center;gap:4px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:4px 8px;">'
-            +   speakerChipForLabel(lbl)
-            +   '<span style="font-size:0.7rem;color:#888;">' + counts[lbl] + ' row' + (counts[lbl] === 1 ? '' : 's') + '</span>'
-            +   '<span style="color:#888;">→</span>'
-            +   '<input class="t-spk-rename" data-from="' + esc(lbl) + '" value="' + esc(lbl) + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)" placeholder="rename…" style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
-            + '</div>';
+        var parsed = parseSpeakerLabel(lbl);
+        var displayAbbrev = speakerAbbrev(lbl);  // resolved (explicit or auto)
+        var resolvedColor = speakerChipPalette(lbl); // explicit or hash-derived
+        html += '<tr data-from="' + esc(lbl) + '">'
+            +   '<td style="padding:3px 8px 3px 0;text-align:right;color:#888;white-space:nowrap;">' + counts[lbl] + '</td>'
+            +   '<td style="padding:3px 4px;text-align:center;">' + speakerChipForLabel(lbl) + '</td>'
+            +   '<td style="padding:3px 2px;text-align:center;">'
+            // Native color picker. data-default holds the auto-derived color
+            // so commitSpeakerRename can tell whether the user actually
+            // picked a custom color (vs. just inheriting the hash default).
+            +     '<input type="color" class="t-spk-color"'
+            +       ' value="' + esc(resolvedColor) + '"'
+            +       ' data-default="' + esc(speakerChipPalette(formatSpeakerLabel(parsed.abbrev, parsed.name, ''))) + '"'
+            +       ' onchange="commitSpeakerRename(this)"'
+            +       ' title="Chip color — leave at default to use the auto-picked palette color"'
+            +       ' style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:transparent;">'
+            +   '</td>'
+            +   '<td style="padding:3px 4px;">'
+            +     '<input class="t-spk-abbrev" value="' + esc(displayAbbrev) + '"'
+            +       ' maxlength="4"'
+            +       ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
+            +       ' onblur="commitSpeakerRename(this)"'
+            +       ' placeholder="ab"'
+            +       ' style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;">'
+            +   '</td>'
+            +   '<td style="padding:3px 0;">'
+            +     '<input class="t-spk-name" value="' + esc(parsed.name) + '"'
+            +       ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
+            +       ' onblur="commitSpeakerRename(this)"'
+            +       ' placeholder="name…"'
+            +       ' style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
+            +   '</td>'
+            + '</tr>';
     });
-    html += '</div>';
-    panel.innerHTML = html;
-    panel.style.display = '';
+    html += '</table>'
+        + '<div style="font-size:0.7rem;color:#888;margin-top:6px;">Abbreviation drives the chip; if blank it derives from the name.</div>';
+    return html;
 }
-function speakerChipForLabel(label) {
-    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
-    var h = 0;
-    for (var i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
-    var bg = palette[Math.abs(h) % palette.length];
-    return '<span style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 7px;border-radius:9px;">' + esc(label) + '</span>';
+function positionSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    var anchor = document.getElementById('t-spk-anchor');
+    if (!pop || !anchor) return;
+    var r = anchor.getBoundingClientRect();
+    pop.style.top  = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, r.left - 4) + 'px';
 }
-function focusSpeakerPanel(chip) {
-    var label = chip.getAttribute('data-label');
-    var input = document.querySelector('#t-speakers-panel input.t-spk-rename[data-from="' + label.replace(/"/g, '\\"') + '"]');
-    if (input) { input.focus(); input.select(); }
+function showSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    if (!pop) return;
+    if (_speakerPopoverHideTimer) { clearTimeout(_speakerPopoverHideTimer); _speakerPopoverHideTimer = null; }
+    pop.innerHTML = buildSpeakerPopoverHtml();
+    pop.style.display = 'block';
+    positionSpeakerPopover();
+}
+function hideSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    if (pop) pop.style.display = 'none';
+}
+function speakerPopoverEnter() { showSpeakerPopover(); }
+function speakerPopoverLeave() {
+    if (_speakerPopoverHideTimer) clearTimeout(_speakerPopoverHideTimer);
+    _speakerPopoverHideTimer = setTimeout(hideSpeakerPopover, 220);
+}
+function toggleSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    if (pop && pop.style.display === 'block') hideSpeakerPopover();
+    else showSpeakerPopover();
 }
 function commitSpeakerRename(inputEl) {
-    var from = inputEl.getAttribute('data-from');
-    var to = inputEl.value.trim();
+    var tr = inputEl.closest('tr');
+    if (!tr || !_transcriptItemKey) return;
+    var from = tr.getAttribute('data-from');
+    var abbrevInp = tr.querySelector('.t-spk-abbrev');
+    var nameInp   = tr.querySelector('.t-spk-name');
+    var colorInp  = tr.querySelector('.t-spk-color');
+    var abbrev = abbrevInp ? abbrevInp.value.trim()      : '';
+    var name   = nameInp   ? nameInp.value.trim()        : '';
+    var color  = colorInp  ? colorInp.value.toLowerCase() : '';
+    // If the abbreviation matches what the auto-derivation would produce
+    // from the name, drop the explicit abbreviation — keeps storage clean
+    // (no "Cr|Craig" when "Craig" alone would yield the same chip).
+    if (abbrev && name) {
+        var auto = speakerAbbrev(name);  // parses "name" with no abbrev pipe
+        if (abbrev === auto) abbrev = '';
+    }
+    // Drop the explicit color when it matches the hash-derived default for
+    // this (abbrev, name) — same cleanup principle.
+    if (colorInp) {
+        var defaultColor = (colorInp.getAttribute('data-default') || '').toLowerCase();
+        if (color === defaultColor) color = '';
+    }
+    var to = formatSpeakerLabel(abbrev, name, color);
     if (to === from) return;
-    if (!_transcriptItemKey) return;
     var statusEl = document.getElementById('t-status');
     if (statusEl) statusEl.textContent = 'Renaming speaker…';
     fetch(API + '/admin-transcript.php', {
@@ -3983,6 +4298,8 @@ function scheduleAutoSave() {
 
 function saveTranscript() {
     if (!_transcriptItemKey) return Promise.resolve();
+    // Skip saving while the editor is showing a read-only auto-model view.
+    if (_transcriptReadonly) { _savePending = false; return Promise.resolve(); }
     var rows = [];
     document.querySelectorAll('#t-rows tr').forEach(function(tr) {
         var seg = tr.querySelector('[data-field="segment"]');
