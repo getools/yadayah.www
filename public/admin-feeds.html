@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778470639">
+    <meta name="page-version" content="1778473700">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1664,7 +1664,8 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<button id="t-start-btn" onclick="openTranscribeModal()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<button id="t-init-btn" onclick="openInitializeModal()" style="background:#31345A;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;" title="Pick one of the auto-transcribed model versions, apply the YadaYah correction pass, and copy it into the live transcript for editing">Initialize Transcript</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
@@ -1689,7 +1690,7 @@ function openTranscript(itemKey) {
             // handler can read its highlighted selection (if any) and
             // pre-fill the Find field.
             + '<button onmousedown="event.preventDefault()" onclick="openSearchReplaceFromButton()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace — pre-fills Find with any text you have highlighted in a transcript row">Search &amp; Replace</button>'
-            + '<button id="t-analyze-btn" onclick="openTranscriptAnalysis()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;opacity:0.5;" title="No Whisper snapshot yet — re-run Transcribe Audio to capture one">Analyze Changes</button>'
+            + '<button id="t-analyze-btn" onclick="openTranscriptAnalysis()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;opacity:0.5;" title="No auto-transcript yet — run Transcribe Audio first">Analyze</button>'
             + '</div>'
             + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
             + '<div id="t-find-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;">'
@@ -2984,20 +2985,19 @@ function loadTranscript() {
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
             populateValidation(d.validation);
-            // Analyze Changes is meaningful only when all three versions
-            // exist for this item: text_current (live rows) AND the
-            // snapshot pair (text_initial + text_auto_fix). Older items
-            // transcribed before the snapshot table was added have no
-            // snapshot rows, so the button stays disabled until they're
-            // re-transcribed.
+            // "Analyze" surfaces every rendering of this transcript:
+            // each model's _auto rows, each model's _autoclean rows, and
+            // the live editor rows. Enabled as long as there's any
+            // auto/autoclean data — the modal handles a current-only
+            // case too (just shows one column).
             var anBtn = document.getElementById('t-analyze-btn');
             if (anBtn) {
-                var ready = !!d.has_snapshot && (d.rows || []).length > 0;
+                var ready = !!d.has_snapshot || (d.rows || []).length > 0;
                 anBtn.disabled = !ready;
                 anBtn.style.opacity = ready ? '1' : '0.5';
                 anBtn.title = ready
-                    ? 'Compare three versions per segment — Whisper initial, after auto-fix, and current text'
-                    : 'No Whisper snapshot yet — re-run Transcribe Audio to capture one';
+                    ? 'Side-by-side view of every transcript version stored for this item'
+                    : 'No transcript data yet';
             }
             // Show "Open on YouTube" link if this is a YouTube video
             if (d.item && (d.item.feed_site_code || '').toLowerCase() === 'youtube' && d.item.feed_item_external_id) {
@@ -3463,44 +3463,235 @@ function splitTranscriptRow(btn) {
     scheduleAutoSave();
 }
 
-function startTranscript() {
-    var existingRows = _segmentSeconds.length;
-    if (existingRows > 0) {
-        // Strong warning before reprocessing. The current transcript +
-        // every manual edit gets blown away by a fresh Whisper run; this
-        // can't be undone, so make sure the operator clicks through it
-        // intentionally rather than reflexively dismissing a generic
-        // confirm.
-        var msg = '⚠ WARNING — REPROCESSING WILL REPLACE EVERYTHING\n\n'
-                + 'This video has ' + existingRows + ' transcript row' + (existingRows === 1 ? '' : 's') + ' with text and timing data already in place.\n\n'
-                + 'Running Transcribe Audio again will:\n'
-                + '   • Permanently DELETE the entire current transcript\n'
-                + '   • Overwrite it with a fresh AI-generated version\n'
-                + '   • DISCARD every manual edit, correction, and validation note\n\n'
-                + 'This cannot be undone. Are you sure you want to continue?';
-        if (!confirm(msg)) {
-            return;
-        }
+// Legacy entry-point retained for any external callers. The Transcribe
+// Audio button now opens the multi-model picker modal instead of kicking
+// off a single hardcoded Whisper run.
+function startTranscript() { openTranscribeModal(); }
+
+// ── Transcribe Audio: multi-model picker ──
+// Lets the operator tick which models to run (whisper-1, gpt-4o-*,
+// youtube captions). Selected models run sequentially via the model-runner
+// endpoint; per-model progress bars update from job polling. The live
+// yy_feed_item_transcript table is NOT touched — output lands in
+// yy_feed_item_transcript_auto + _autoclean keyed by model. Initialize
+// Transcript is the separate path that promotes one of these into live.
+var _txModalState = null;  // { models, queue:[code], current:null, cancelled:false }
+function openTranscribeModal() {
+    if (!_transcriptItemKey) { alert('No transcript loaded.'); return; }
+    var ov = document.getElementById('tx-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'tx-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10002;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(640px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcribe Audio — Select Models</h3>'
+            +   '<button onclick="closeTranscribeModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<div style="padding:14px 18px;font-size:0.82rem;color:#555;border-bottom:1px solid #eee;">'
+            +   'Each selected model runs in turn against this item\'s MP3 (or YouTube captions for the <code>youtube</code> option). Results land in the auto-transcript table; the live editor transcript is not modified.'
+            + '</div>'
+            + '<div id="tx-list" style="padding:8px 18px;overflow-y:auto;">Loading…</div>'
+            + '<div style="padding:12px 18px;border-top:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<div id="tx-status" style="font-size:0.82rem;color:#666;"></div>'
+            +   '<div><button id="tx-cancel-btn" onclick="closeTranscribeModal()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;margin-right:8px;">Close</button>'
+            +     '<button id="tx-process-btn" onclick="startTranscribeQueue()" disabled style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Process</button></div>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e){ if (e.target === ov) closeTranscribeModal(); };
     }
-    // Cancel any pending auto-save so we don't save then immediately overwrite
-    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
-    fetch(API + '/admin-transcript.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({action:'start', item_key: _transcriptItemKey})
-    }).then(function(r){return safeJson(r);}).then(function(d) {
-        if (d.error) { alert(d.error); return; }
-        document.getElementById('t-progress').style.display = '';
-        document.getElementById('t-start-btn').disabled = true;
-        if (d.attached) {
-            // Server attached us to an in-flight job (started in another
-            // tab/window). Surface that briefly so it doesn't look like a
-            // fresh run that finished suspiciously fast.
-            var msg = document.getElementById('t-msg');
-            if (msg) msg.textContent = 'Attached to in-progress transcription…';
-        }
-        if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
-        _transcriptPollTimer = setInterval(pollJob, 2000);
+    ov.style.display = 'flex';
+    document.getElementById('tx-list').innerHTML = '<div style="padding:30px;text-align:center;color:#999;">Loading…</div>';
+    document.getElementById('tx-status').textContent = '';
+    fetch(API + '/admin-transcript-models.php?action=status&item_key=' + encodeURIComponent(_transcriptItemKey),
+        { credentials:'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error) {
+                document.getElementById('tx-list').innerHTML = '<div style="padding:14px;color:#c00;">' + esc(d.error) + '</div>';
+                return;
+            }
+            _txModalState = { models: d.models, queue: [], current: null, cancelled: false };
+            renderTranscribeList();
+        });
+}
+function closeTranscribeModal() {
+    if (_txModalState) _txModalState.cancelled = true;
+    var ov = document.getElementById('tx-overlay'); if (ov) ov.style.display = 'none';
+}
+function renderTranscribeList() {
+    var html = '';
+    _txModalState.models.forEach(function(m) {
+        var lastTxt = m.last_run
+            ? new Date(m.last_run).toLocaleString()
+            : '<span style="color:#999;">never run</span>';
+        html += '<label style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid #f0f0f0;cursor:pointer;">'
+            +   '<input type="checkbox" class="tx-pick" data-code="' + esc(m.code) + '" onchange="updateTranscribeProcessBtn()">'
+            +   '<div style="flex:1;">'
+            +     '<div style="font-weight:600;color:#31345A;">' + esc(m.label) + '</div>'
+            +     '<div style="font-size:0.75rem;color:#666;">Last run: ' + lastTxt + '</div>'
+            +   '</div>'
+            +   '<div id="tx-prog-wrap-' + esc(m.code) + '" style="flex:0 0 220px;display:none;">'
+            +     '<div style="background:#eee;border-radius:10px;height:10px;overflow:hidden;"><div id="tx-prog-' + esc(m.code) + '" style="background:#27ae60;height:100%;width:0;transition:width 0.4s;"></div></div>'
+            +     '<div id="tx-prog-msg-' + esc(m.code) + '" style="font-size:0.7rem;color:#666;margin-top:3px;text-align:right;"></div>'
+            +   '</div>'
+            + '</label>';
+    });
+    document.getElementById('tx-list').innerHTML = html;
+    updateTranscribeProcessBtn();
+}
+function updateTranscribeProcessBtn() {
+    var checked = document.querySelectorAll('#tx-list .tx-pick:checked').length;
+    var btn = document.getElementById('tx-process-btn');
+    btn.disabled = (checked === 0);
+    btn.style.opacity = checked ? '1' : '0.5';
+}
+function startTranscribeQueue() {
+    var picks = [];
+    document.querySelectorAll('#tx-list .tx-pick:checked').forEach(function(c){ picks.push(c.getAttribute('data-code')); });
+    if (!picks.length) return;
+    _txModalState.queue = picks;
+    _txModalState.cancelled = false;
+    // Disable controls during processing
+    document.getElementById('tx-process-btn').disabled = true;
+    document.getElementById('tx-process-btn').style.opacity = '0.5';
+    document.querySelectorAll('#tx-list .tx-pick').forEach(function(c){ c.disabled = true; });
+    runNextTranscribeModel();
+}
+function runNextTranscribeModel() {
+    if (_txModalState.cancelled) return;
+    if (!_txModalState.queue.length) {
+        document.getElementById('tx-status').textContent = '✓ All selected models complete.';
+        document.getElementById('tx-process-btn').textContent = 'Done';
+        // Reload the popover so the Analyze Changes data sees the fresh rows
+        if (_transcriptItemKey) loadTranscript();
+        return;
+    }
+    var code = _txModalState.queue.shift();
+    _txModalState.current = code;
+    var wrap = document.getElementById('tx-prog-wrap-' + code);
+    if (wrap) wrap.style.display = 'block';
+    setTxProg(code, 1, 'Queuing…');
+    document.getElementById('tx-status').textContent = 'Running: ' + code + ' …';
+    fetch(API + '/admin-transcript-models.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'run', item_key: _transcriptItemKey, model: code })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (d.error) { setTxProg(code, 100, '✗ ' + d.error); runNextTranscribeModel(); return; }
+        pollTranscribeJob(code, d.job_key);
+    });
+}
+function pollTranscribeJob(code, jobKey) {
+    if (_txModalState.cancelled) return;
+    fetch(API + '/admin-transcript-models.php?action=job&job_key=' + jobKey, { credentials:'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error) { setTxProg(code, 100, '✗ ' + d.error); runNextTranscribeModel(); return; }
+            var prog = parseInt(d.job_progress || 0, 10);
+            setTxProg(code, prog, d.job_message || d.job_status);
+            if (d.job_status === 'complete' || d.job_status === 'completed') {
+                setTxProg(code, 100, '✓ done');
+                runNextTranscribeModel();
+            } else if (d.job_status === 'error' || d.job_status === 'failed' || d.job_status === 'cancelled') {
+                setTxProg(code, 100, '✗ ' + (d.job_error || d.job_message || d.job_status));
+                runNextTranscribeModel();
+            } else {
+                setTimeout(function(){ pollTranscribeJob(code, jobKey); }, 2000);
+            }
+        });
+}
+function setTxProg(code, pct, msg) {
+    var bar = document.getElementById('tx-prog-' + code);
+    var lab = document.getElementById('tx-prog-msg-' + code);
+    if (bar) bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    if (lab) lab.textContent = msg || '';
+}
+
+// ── Initialize Transcript: promote an auto version into the live editor ──
+// Asks which auto-transcribed model to use as the source, then runs the
+// YadaYah correction pass on it and writes the cleaned rows into the live
+// yy_feed_item_transcript (replacing whatever's there). This is the path
+// that actually populates the editor.
+function openInitializeModal() {
+    if (!_transcriptItemKey) { alert('No transcript loaded.'); return; }
+    var ov = document.getElementById('init-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'init-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10002;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(560px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<h3 style="margin:0;color:#31345A;font-size:1.05rem;">Initialize Transcript</h3>'
+            +   '<button onclick="closeInitializeModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<div style="padding:14px 18px;font-size:0.82rem;color:#555;border-bottom:1px solid #eee;">'
+            +   'Pick one auto-transcribed version to seed the live editor. The selected model\'s rows will be passed through the correction dictionary (every confirmed Search-&-Replace) and written into the editable transcript. <strong style="color:#a30;">Any existing edits on the current transcript will be overwritten.</strong>'
+            + '</div>'
+            + '<div id="init-list" style="padding:8px 18px;overflow-y:auto;">Loading…</div>'
+            + '<div style="padding:12px 18px;border-top:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<div id="init-status" style="font-size:0.82rem;color:#666;"></div>'
+            +   '<div><button onclick="closeInitializeModal()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;margin-right:8px;">Cancel</button>'
+            +     '<button id="init-go-btn" onclick="doInitialize()" disabled style="background:#a36100;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Initialize</button></div>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e){ if (e.target === ov) closeInitializeModal(); };
+    }
+    ov.style.display = 'flex';
+    document.getElementById('init-list').innerHTML = '<div style="padding:30px;text-align:center;color:#999;">Loading…</div>';
+    document.getElementById('init-status').textContent = '';
+    fetch(API + '/admin-transcript-models.php?action=status&item_key=' + encodeURIComponent(_transcriptItemKey),
+        { credentials:'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error) {
+                document.getElementById('init-list').innerHTML = '<div style="padding:14px;color:#c00;">' + esc(d.error) + '</div>';
+                return;
+            }
+            var anyAvailable = false;
+            var html = '';
+            d.models.forEach(function(m) {
+                var has = !!m.last_run;
+                if (has) anyAvailable = true;
+                var lastTxt = has
+                    ? new Date(m.last_run).toLocaleString()
+                    : '<span style="color:#999;">no rows — run this model first via Transcribe Audio</span>';
+                html += '<label style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid #f0f0f0;cursor:' + (has ? 'pointer' : 'not-allowed') + ';opacity:' + (has ? '1' : '0.55') + ';">'
+                    +   '<input type="radio" name="init-pick" value="' + esc(m.code) + '"' + (has ? '' : ' disabled') + ' onchange="document.getElementById(\'init-go-btn\').disabled=false;document.getElementById(\'init-go-btn\').style.opacity=\'1\';">'
+                    +   '<div style="flex:1;">'
+                    +     '<div style="font-weight:600;color:#31345A;">' + esc(m.label) + '</div>'
+                    +     '<div style="font-size:0.75rem;color:#666;">Last run: ' + lastTxt + '</div>'
+                    +   '</div>'
+                    + '</label>';
+            });
+            if (!anyAvailable) {
+                html = '<div style="padding:24px;color:#a36100;text-align:center;">No auto-transcripts exist for this item yet. Run <em>Transcribe Audio</em> first to populate at least one model.</div>';
+            }
+            document.getElementById('init-list').innerHTML = html;
+        });
+}
+function closeInitializeModal() {
+    var ov = document.getElementById('init-overlay'); if (ov) ov.style.display = 'none';
+}
+function doInitialize() {
+    var picked = document.querySelector('#init-list input[name="init-pick"]:checked');
+    if (!picked) return;
+    var model = picked.value;
+    var msg = '⚠ This will REPLACE every row of the live transcript with the cleaned-up version of "' + model + '".\n\nProceed?';
+    if (!confirm(msg)) return;
+    var statusEl = document.getElementById('init-status');
+    var btn = document.getElementById('init-go-btn');
+    btn.disabled = true; btn.style.opacity = '0.5';
+    statusEl.textContent = 'Initializing…';
+    fetch(API + '/admin-transcript-init.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ item_key: _transcriptItemKey, model: model })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (d.error) { statusEl.innerHTML = '<span style="color:#c00;">✗ ' + esc(d.error) + '</span>'; btn.disabled = false; btn.style.opacity = '1'; return; }
+        statusEl.innerHTML = '<span style="color:#27ae60;">✓ ' + esc(d.message || ('Wrote ' + d.rows_written + ' rows.')) + '</span>';
+        if (_transcriptItemKey) loadTranscript();
+        setTimeout(closeInitializeModal, 1500);
     });
 }
 
@@ -3823,17 +4014,16 @@ function openTranscriptAnalysis() {
         ov = document.createElement('div');
         ov.id = 'tanalysis-overlay';
         ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10002;';
-        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(1280px,95vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(1600px,98vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
             + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
-            +   '<div><h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcript Version Analysis</h3>'
+            +   '<div><h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcript Versions</h3>'
             +     '<div id="tanalysis-summary" style="font-size:0.78rem;color:#666;margin-top:4px;">Loading…</div></div>'
             +   '<button onclick="closeTranscriptAnalysis()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
             + '</div>'
             + '<div style="padding:8px 18px;border-bottom:1px solid #eee;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:0.78rem;color:#444;">'
-            +   '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="tan-only-diffs" checked onchange="renderTranscriptAnalysis()"> Show only rows with differences</label>'
-            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fff7d6;border:1px solid #e8d77a;"></span> auto-fix changed it</span>'
-            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#dff5e1;border:1px solid #99cfa6;"></span> human edited it</span>'
-            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fde2e2;border:1px solid #e8a0a0;"></span> deleted by reviewer</span>'
+            +   '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="tan-only-diffs" onchange="renderTranscriptAnalysis()"> Show only rows where versions differ</label>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fff7d6;border:1px solid #e8d77a;"></span> differs from Current</span>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fde2e2;border:1px solid #e8a0a0;"></span> Current is empty / deleted</span>'
             + '</div>'
             + '<div id="tanalysis-body" style="overflow:auto;padding:0;"></div>'
             + '</div>';
@@ -3867,55 +4057,81 @@ function renderTranscriptAnalysis() {
     var sumEl = document.getElementById('tanalysis-summary');
     var bodyEl = document.getElementById('tanalysis-body');
     var rows = d.rows || [];
-    var totals = d.totals || {};
-    if (!d.has_snapshot) {
-        sumEl.innerHTML = '<span style="color:#a36100;">No Whisper snapshot for this transcript</span> — it was transcribed before the snapshot table existed, so only the current text is available below.';
-    } else {
-        sumEl.innerHTML = rows.length + ' segment' + (rows.length === 1 ? '' : 's')
-            + ' &middot; <strong>' + (totals.initial_diff_auto    || 0) + '</strong> changed by auto-fix'
-            + ' &middot; <strong>' + (totals.auto_diff_current    || 0) + '</strong> changed by humans after auto-fix'
-            + ' &middot; <strong>' + (totals.initial_diff_current || 0) + '</strong> total Whisper→current changes';
+    var columns = d.columns || [];
+    if (!columns.length) {
+        sumEl.innerHTML = '<span style="color:#a36100;">No transcript data for this item.</span>';
+        bodyEl.innerHTML = '';
+        return;
     }
+    // Summary: per-column row count (segments that have data in this column)
+    var colCounts = {};
+    columns.forEach(function(c){ colCounts[c.code] = 0; });
+    rows.forEach(function(r){
+        columns.forEach(function(c){
+            if (r.cells[c.code] !== null && r.cells[c.code] !== undefined) colCounts[c.code]++;
+        });
+    });
+    var summaryParts = [];
+    columns.forEach(function(c){
+        summaryParts.push('<span style="color:' + (c.kind === 'current' ? '#a36100' : '#31345A') + ';">'
+            + esc(c.label) + '</span>: <strong>' + colCounts[c.code] + '</strong>');
+    });
+    sumEl.innerHTML = rows.length + ' segment' + (rows.length === 1 ? '' : 's')
+        + ' across <strong>' + columns.length + '</strong> column' + (columns.length === 1 ? '' : 's')
+        + ' &middot; ' + summaryParts.join(' &middot; ');
+
     var onlyDiffs = !!document.getElementById('tan-only-diffs').checked;
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.83rem;table-layout:fixed;">'
-        + '<colgroup><col style="width:90px;"><col><col><col><col style="width:60px;"></colgroup>'
-        + '<thead><tr style="background:#f7f8fc;color:#31345A;font-weight:600;position:sticky;top:0;">'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Segment</th>'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Whisper raw</th>'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">After auto-fix</th>'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Current</th>'
-        +   '<th style="padding:7px 10px;text-align:center;border-bottom:1px solid #d8dcec;" title="Number of human edit-log entries on this segment">Edits</th>'
-        + '</tr></thead><tbody>';
+
+    // Header row
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.83rem;table-layout:auto;">'
+        + '<thead><tr style="background:#f7f8fc;color:#31345A;font-weight:600;position:sticky;top:0;z-index:1;">'
+        +   '<th style="padding:7px 10px;text-align:left;border-bottom:2px solid #d8dcec;width:90px;white-space:nowrap;">Segment</th>';
+    columns.forEach(function(c){
+        var headerBg = c.kind === 'current' ? '#fff8e1'
+                     : c.kind === 'autoclean' ? '#eef7ed' : '#f7f8fc';
+        html += '<th style="padding:7px 10px;text-align:left;border-bottom:2px solid #d8dcec;background:' + headerBg + ';">'
+            + esc(c.label) + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
     var shown = 0;
-    rows.forEach(function(r) {
-        var ti = r.text_initial, ta = r.text_auto_fix, tc = r.text_current;
-        var autoChanged  = (ti !== null && ta !== null && ti !== ta);
-        var humanChanged = (ta !== null && ta !== tc);
-        var deleted      = (tc === null);
-        var added        = (ti === null && ta === null && tc !== null);
-        if (onlyDiffs && !autoChanged && !humanChanged && !deleted && !added) return;
+    rows.forEach(function(r){
+        // Decide whether all columns agree (for the only-diffs filter).
+        // Empty cells are treated as agreeing only with other empty cells.
+        var distinctValues = {};
+        columns.forEach(function(c){
+            var v = r.cells[c.code];
+            distinctValues[v === null || v === undefined ? '\x00null' : v] = true;
+        });
+        var allAgree = (Object.keys(distinctValues).length <= 1);
+        if (onlyDiffs && allAgree) return;
         shown++;
-        var bgInitial = '#fff';
-        var bgAuto    = autoChanged  ? '#fff7d6' : '#fff';
-        var bgCurrent = deleted      ? '#fde2e2' : (humanChanged ? '#dff5e1' : '#fff');
-        // Edit-log summary: count entries by action type
-        var editsCell = '';
-        if (r.edits) {
-            var parts = [];
-            for (var act in r.edits) parts.push(act.replace(/_/g, ' ') + ':' + r.edits[act].count);
-            editsCell = parts.join('<br>');
-        }
+        var currentVal = r.cells['current'];
         html += '<tr style="border-top:1px solid #eee;">'
-            + '<td style="padding:6px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;white-space:nowrap;">' + esc(r.segment) + '</td>'
-            + '<td style="padding:6px 10px;background:' + bgInitial + ';vertical-align:top;word-wrap:break-word;">' + (ti === null ? '<span style="color:#bbb;font-style:italic;">(added later)</span>' : esc(ti)) + '</td>'
-            + '<td style="padding:6px 10px;background:' + bgAuto    + ';vertical-align:top;word-wrap:break-word;">' + (ta === null ? '<span style="color:#bbb;font-style:italic;">(added later)</span>' : esc(ta)) + '</td>'
-            + '<td style="padding:6px 10px;background:' + bgCurrent + ';vertical-align:top;word-wrap:break-word;">' + (tc === null ? '<span style="color:#a30;font-style:italic;">(deleted)</span>' : esc(tc)) + '</td>'
-            + '<td style="padding:6px 10px;text-align:center;font-size:0.72rem;color:#666;vertical-align:top;">' + editsCell + '</td>'
-            + '</tr>';
+            + '<td style="padding:6px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;white-space:nowrap;">' + esc(r.segment) + '</td>';
+        columns.forEach(function(c){
+            var v = r.cells[c.code];
+            var bg = '#fff';
+            if (c.kind === 'current' && (v === null || v === undefined)) {
+                bg = '#fde2e2';
+            } else if (c.kind !== 'current' && v !== null && v !== undefined
+                       && currentVal !== null && currentVal !== undefined
+                       && v !== currentVal) {
+                bg = '#fff7d6';
+            }
+            var cellHtml;
+            if (v === null || v === undefined) {
+                cellHtml = '<span style="color:#bbb;font-style:italic;">(no row)</span>';
+            } else {
+                cellHtml = esc(v);
+            }
+            html += '<td style="padding:6px 10px;background:' + bg + ';vertical-align:top;word-break:break-word;">' + cellHtml + '</td>';
+        });
+        html += '</tr>';
     });
     html += '</tbody></table>';
     if (shown === 0) {
-        html += '<div style="padding:30px;text-align:center;color:#999;">No rows differ between versions.</div>';
+        html += '<div style="padding:30px;text-align:center;color:#999;">' + (onlyDiffs ? 'No rows differ between versions.' : 'No rows.') + '</div>';
     }
     bodyEl.innerHTML = html;
 }

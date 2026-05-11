@@ -92,7 +92,7 @@ function bailIfCancelled(PDO $db, int $jobKey, array $tempPaths = []): void {
 
 // Load job + item info
 $jobStmt = $db->prepare("
-    SELECT j.feed_item_key, j.job_status, fi.feed_item_external_id, fi.feed_item_url, fi.feed_item_type,
+    SELECT j.feed_item_key, j.job_status, j.job_model, fi.feed_item_external_id, fi.feed_item_url, fi.feed_item_type,
            fi.feed_item_duration_seconds, fi.feed_item_audio_file,
            fi.feed_key, f.feed_site_code, f.feed_account_id, f.feed_api_key
     FROM yy_feed_item_transcript_job j
@@ -109,6 +109,11 @@ $itemKey = (int)$job['feed_item_key'];
 $videoId = $job['feed_item_external_id'];
 $videoUrl = $job['feed_item_url'];
 $site = strtolower($job['feed_site_code']);
+// Which model this job is for. 'youtube' means caption-import only (no
+// OpenAI call). The three OpenAI variants pick the API model directly.
+// Pre-existing jobs with NULL default to whisper-1 for safety.
+$jobModel = $job['job_model'] ?: 'whisper-1';
+$wantYoutubeCaptions = ($jobModel === 'youtube');
 
 updateJob($db, $jobKey, ['job_status' => 'running', 'job_progress' => 5, 'job_message' => 'Starting transcription...']);
 
@@ -116,10 +121,18 @@ $rows = [];
 $methodFailures = []; // collects "method_name: reason" so the final error is actionable
 
 // ── Method 1: Pre-uploaded VTT/SRT file ──
+// Only consulted when the job's chosen model is 'youtube' — these uploaded
+// VTT/SRT files are typically exported YouTube captions. When an OpenAI
+// model is selected, the operator has explicitly asked for a fresh
+// machine transcription against the MP3; skip the uploaded captions.
 $uploadDir = sys_get_temp_dir() . '/transcript_uploads';
 $uploadVtt = "$uploadDir/{$itemKey}.vtt";
 $uploadSrt = "$uploadDir/{$itemKey}.srt";
 $uploadedSourceLabel = '';
+if ($wantYoutubeCaptions === false) {
+    // Force the method-1 block below to no-op by emptying the candidate paths.
+    $uploadVtt = $uploadSrt = '/dev/null/skipped-by-job-model';
+}
 $uploadedSourcePath = '';
 if (file_exists($uploadVtt)) {
     updateJob($db, $jobKey, ['job_progress' => 50, 'job_message' => 'Parsing uploaded VTT...']);
@@ -201,7 +214,9 @@ $playerArg   = $haveCookies
 $remoteComponentsArg = ' --remote-components ejs:github';
 
 // ── Method 2: yt-dlp auto-captions (host) ──
-if (!$rows && $site === 'youtube') {
+// Only when the chosen model is 'youtube'. For OpenAI models we want a
+// fresh API transcription, not YouTube's captions.
+if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
     updateJob($db, $jobKey, ['job_progress' => 15, 'job_message' => 'Fetching YouTube captions...']);
     $tmpFile = sys_get_temp_dir() . "/transcript_$jobKey";
     $ytDlp = trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');
@@ -269,7 +284,8 @@ if (!$rows && $site === 'youtube') {
 bailIfCancelled($db, $jobKey);
 
 // ── Method 3: OpenAI Whisper API ──
-if (!$rows) {
+// Skip entirely when the chosen model is 'youtube' (caption-import only).
+if (!$rows && !$wantYoutubeCaptions) {
     $openaiKey = readEnv('OPENAI_API_KEY');
     if (!$openaiKey) {
         $methodFailures[] = "whisper_api: OPENAI_API_KEY not set in .env";
@@ -404,9 +420,9 @@ if (!$rows) {
                 $whisperErr = '';
                 $whisperChunked = filesize($audioPath) > 24 * 1024 * 1024;
                 if ($whisperChunked) {
-                    $rows = whisperApiTranscribeChunked($db, $jobKey, $audioPath, $openaiKey, $glossaryPrompt, $whisperErr);
+                    $rows = whisperApiTranscribeChunked($db, $jobKey, $audioPath, $openaiKey, $glossaryPrompt, $whisperErr, $jobModel);
                 } else {
-                    $rows = whisperApiTranscribe($audioPath, $openaiKey, $glossaryPrompt, 0, $whisperErr);
+                    $rows = whisperApiTranscribe($audioPath, $openaiKey, $glossaryPrompt, 0, $whisperErr, $jobModel);
                 }
                 // Only delete the audio if we downloaded it ourselves; preserve admin uploads
                 if (!$usedUploadedAudio) @unlink($audioPath);
@@ -473,29 +489,30 @@ if (!$rows) {
 bailIfCancelled($db, $jobKey);
 
 // ── Save rows ──
-// Two parallel writes for every Whisper segment:
-//   1. yy_feed_item_transcript     — the live row the editor binds to.
-//      Stays as the raw Whisper text (current behavior — admin can hit
-//      "Apply corrections now" later if they want to bulk-correct).
-//   2. yy_feed_item_transcript_snapshot — frozen pair (text_initial,
-//      text_auto_fix) so the comparison UI can show three columns:
-//      raw Whisper / after auto-fix / current. text_auto_fix is the
-//      hypothetical "what corrections WOULD apply" value, computed
-//      here regardless of whether the admin actually applies them.
-// Snapshot is replaced wholesale on each Whisper run for the same item.
-updateJob($db, $jobKey, ['job_progress' => 90, 'job_message' => 'Saving ' . count($rows) . ' segments...']);
+// Two parallel writes per row, both tagged with the job's model so
+// per-model history is preserved side-by-side:
+//   1. yy_feed_item_transcript_auto      — raw output of the chosen
+//      model (or YouTube captions when job_model='youtube').
+//   2. yy_feed_item_transcript_autoclean — same rows after
+//      applyCorrectionDictionary() (the YadaYah correction pass).
+// The live yy_feed_item_transcript is NEVER written here — the user's
+// human edits live there, and "Initialize Transcript" is the explicit
+// path that copies an autoclean version into the live table.
+// Replacement is scoped to (item, model) so re-running one model
+// doesn't disturb another model's stored rows.
+updateJob($db, $jobKey, ['job_progress' => 90, 'job_message' => 'Saving ' . count($rows) . ' segments (model=' . $jobModel . ')...']);
 $db->beginTransaction();
 try {
-    $db->prepare("DELETE FROM yy_feed_item_transcript          WHERE feed_item_key = ?")->execute([$itemKey]);
-    $db->prepare("DELETE FROM yy_feed_item_transcript_snapshot WHERE feed_item_key = ?")->execute([$itemKey]);
-    $insStmt  = $db->prepare("INSERT INTO yy_feed_item_transcript (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort) VALUES (?, ?::interval, ?, ?)");
-    $snapStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_snapshot (feed_item_key, snapshot_segment, snapshot_sort, text_initial, text_auto_fix) VALUES (?, ?::interval, ?, ?, ?)");
+    $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $jobModel]);
+    $db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ? AND feed_item_transcript_autoclean_model = ?")->execute([$itemKey, $jobModel]);
+    $insAuto  = $db->prepare("INSERT INTO yy_feed_item_transcript_auto      (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)      VALUES (?, ?::interval, ?, ?, ?)");
+    $insClean = $db->prepare("INSERT INTO yy_feed_item_transcript_autoclean (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model) VALUES (?, ?::interval, ?, ?, ?)");
     $sort = 0;
     foreach ($rows as $r) {
         $rawText  = mb_substr($r['text'], 0, 2000);
         $autoText = mb_substr(applyCorrectionDictionary($db, $rawText), 0, 2000);
-        $insStmt ->execute([$itemKey, $r['segment'], $rawText, $sort]);
-        $snapStmt->execute([$itemKey, $r['segment'], $sort, $rawText, $autoText]);
+        $insAuto ->execute([$itemKey, $r['segment'], $rawText,  $sort, $jobModel]);
+        $insClean->execute([$itemKey, $r['segment'], $autoText, $sort, $jobModel]);
         $sort++;
     }
     $db->commit();
@@ -588,13 +605,22 @@ function secsToInterval(int $secs): string {
     return sprintf('%02d:%02d:%02d', (int)($secs/3600), (int)(($secs%3600)/60), $secs%60);
 }
 
-function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt = '', int $offsetSecs = 0, ?string &$err = null): array {
+function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt = '', int $offsetSecs = 0, ?string &$err = null, string $model = 'whisper-1'): array {
+    // Only whisper-1 supports verbose_json + segment-level timestamps. The
+    // gpt-4o-* transcribe models (gpt-4o-mini-transcribe, gpt-4o-transcribe)
+    // reject verbose_json with HTTP 400 and have no segment API at all.
+    // For those we use response_format='json' and emit a single row per
+    // call positioned at the chunk's offset — the surrounding chunked path
+    // already slices 10-min ffmpeg pieces, so each chunk becomes one row.
+    $isSegmentCapable = ($model === 'whisper-1');
     $fields = [
         'file' => new CURLFile($audioPath),
-        'model' => 'whisper-1',
-        'response_format' => 'verbose_json',
-        'timestamp_granularities[]' => 'segment',
+        'model' => $model,
+        'response_format' => $isSegmentCapable ? 'verbose_json' : 'json',
     ];
+    if ($isSegmentCapable) {
+        $fields['timestamp_granularities[]'] = 'segment';
+    }
     if ($prompt !== '') $fields['prompt'] = $prompt;
 
     $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
@@ -616,25 +642,26 @@ function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt 
     }
     $data = json_decode($resp, true);
     $rows = [];
-    foreach ($data['segments'] ?? [] as $seg) {
-        $text = trim($seg['text'] ?? '');
-        // Drop empty-text segments. Whisper occasionally returns whitespace
-        // segments for silent / non-speech audio chunks; storing those as
-        // "captions" pollutes search and falsely marks the job successful.
-        if ($text === '') continue;
-        $rows[] = ['segment' => secsToInterval((int)$seg['start'] + $offsetSecs), 'text' => $text];
+    if ($isSegmentCapable) {
+        foreach ($data['segments'] ?? [] as $seg) {
+            $text = trim($seg['text'] ?? '');
+            // Drop empty-text segments. Whisper occasionally returns whitespace
+            // segments for silent / non-speech audio chunks; storing those as
+            // "captions" pollutes search and falsely marks the job successful.
+            if ($text === '') continue;
+            $rows[] = ['segment' => secsToInterval((int)$seg['start'] + $offsetSecs), 'text' => $text];
+        }
     }
     if (!$rows && isset($data['text'])) {
-        // Some response shapes return only 'text' without segments. Reject
-        // empty fallback too — a single 0:00 row with no text is the
-        // "1 caption at 0:00, length 0" pattern that fooled item 982.
+        // No-segments path (gpt-4o-* models or whisper-1 returning only
+        // a top-level "text" field). One row at the chunk's offset.
         $fallback = trim($data['text']);
         if ($fallback !== '') {
             $rows[] = ['segment' => secsToInterval($offsetSecs), 'text' => $fallback];
         }
     }
     if (!$rows) {
-        $err = 'Whisper returned no speech segments (silent / non-speech audio?)';
+        $err = 'API returned no speech (silent / non-speech audio?)';
     }
     return $rows;
 }
@@ -643,7 +670,7 @@ function whisperApiTranscribe(string $audioPath, string $apiKey, string $prompt 
  * Split audio into ~10-minute chunks via ffmpeg, transcribe each, stitch results
  * with timestamp offsets so segments line up to the original timeline.
  */
-function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, string $apiKey, string $prompt, ?string &$err = null): array {
+function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, string $apiKey, string $prompt, ?string &$err = null, string $model = 'whisper-1'): array {
     $ffmpeg = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
     if (!$ffmpeg) {
         $err = 'ffmpeg not available — cannot chunk audio over 25MB';
@@ -675,7 +702,7 @@ function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, st
             'job_message' => 'Transcribing chunk ' . ($idx + 1) . '/' . count($chunks) . '… (ETA ~' . $chunkEta . 's)',
         ]);
         $chunkErr = '';
-        $rows = whisperApiTranscribe($chunkPath, $apiKey, $prompt, $idx * $chunkSecs, $chunkErr);
+        $rows = whisperApiTranscribe($chunkPath, $apiKey, $prompt, $idx * $chunkSecs, $chunkErr, $model);
         if (!$rows && $chunkErr) {
             $chunkFailures[] = "chunk " . ($idx + 1) . ": $chunkErr";
             // continue rather than abort — partial transcript better than none

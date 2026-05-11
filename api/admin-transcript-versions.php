@@ -1,29 +1,31 @@
 <?php
 /**
- * Three-version comparison data for a single transcript.
+ * Multi-version transcript comparison for a single feed_item.
  *
- * Returns a row dataset showing, per segment timestamp:
- *   text_initial   — exactly what the auto transcriber produced (yy_feed_item_transcript_auto)
- *   text_auto_fix  — auto output + applyCorrectionDictionary (yy_feed_item_transcript_autoclean)
- *   text_current   — live row in yy_feed_item_transcript
+ * Returns every rendering of the transcript currently in the database:
+ *   - For each model present in yy_feed_item_transcript_auto: raw auto rows
+ *   - For each model present in yy_feed_item_transcript_autoclean: corrected rows
+ *   - The live yy_feed_item_transcript rows (the human-editable transcript)
  *
- * Rows are coordinated by SEGMENT TIMESTAMP, not record offset. The three
- * source tables can have different row counts (humans add/delete rows in
- * the live table; a fresh Whisper run produces its own segment boundaries
- * that may not exactly align with the prior live timestamps). For each
- * distinct segment value across all three sources we emit one row with
- * whichever versions are present at that exact timestamp; sources whose
- * timestamps don't match get null and are shown on their own row at the
- * timestamp they do have.
+ * Rows are coordinated by SEGMENT TIMESTAMP (HH:MM:SS string). Different
+ * model runs produce slightly different segment boundaries, so any timestamp
+ * that appears in ANY source becomes a row in the output; cells are NULL
+ * where the source doesn't have an entry at that exact timestamp.
  *
- * Final output is sorted by segment ascending — the natural reading order
- * of a transcript.
- *
- * GET ?item_key=N → { item_key, has_snapshot, rows: [...], totals: {...} }
- *
- * Items that were never re-run through the snapshot pipeline have no rows
- * in _auto / _autoclean — has_snapshot=false in that case and only
- * text_current is meaningful.
+ * GET ?item_key=N → {
+ *   item_key, has_any:bool,
+ *   columns: [
+ *     { code:'whisper-1__auto',      model:'whisper-1', kind:'auto'      },
+ *     { code:'whisper-1__autoclean', model:'whisper-1', kind:'autoclean' },
+ *     { code:'gpt-4o-mini-transcribe__auto', ... },
+ *     ...
+ *     { code:'current',              model:null,        kind:'current'   },
+ *   ],
+ *   rows: [
+ *     { segment: '00:00:00', cells: { 'whisper-1__auto':'…', 'whisper-1__autoclean':'…', …, 'current':'…' } },
+ *     …
+ *   ]
+ * }
  */
 require_once __DIR__ . '/config.php';
 requireAuth();
@@ -32,11 +34,9 @@ $db = getDb();
 $itemKey = (int)($_GET['item_key'] ?? 0);
 if (!$itemKey) errorResponse('item_key required');
 
-// Fetch from each source. Cast segment to a normalized HH:MM:SS string up
-// front so segment-equality comparisons in PHP behave like timestamp
-// equality (avoids "00:01:23" vs "00:01:23.0" mismatches that would
-// otherwise split the row).
-function loadByseg(PDO $db, string $table, int $itemKey): array {
+// Pull all rows from each source. Cast segment to HH:MM:SS for stable
+// equality across the three tables.
+function loadRows(PDO $db, string $table, int $itemKey): array {
     $stmt = $db->prepare("
         SELECT to_char(feed_item_transcript_segment, 'HH24:MI:SS') AS segment,
                feed_item_transcript_text AS text
@@ -44,65 +44,72 @@ function loadByseg(PDO $db, string $table, int $itemKey): array {
          WHERE feed_item_key = ?
     ");
     $stmt->execute([$itemKey]);
-    $byseg = [];
+    return $stmt->fetchAll();
+}
+function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey): array {
+    $stmt = $db->prepare("
+        SELECT to_char(feed_item_transcript_segment, 'HH24:MI:SS') AS segment,
+               feed_item_transcript_text AS text,
+               $modelCol AS model
+          FROM $table
+         WHERE feed_item_key = ?
+    ");
+    $stmt->execute([$itemKey]);
+    $byModel = [];
     foreach ($stmt->fetchAll() as $r) {
-        // If duplicates exist at the same timestamp (rare), last write wins —
-        // we don't try to merge text; alignment is per-timestamp.
-        $byseg[$r['segment']] = $r['text'];
+        $byModel[$r['model']][$r['segment']] = $r['text'];
     }
-    return $byseg;
+    return $byModel;
 }
 
-$auto      = loadByseg($db, 'yy_feed_item_transcript_auto',      $itemKey);
-$autoclean = loadByseg($db, 'yy_feed_item_transcript_autoclean', $itemKey);
-$live      = loadByseg($db, 'yy_feed_item_transcript',           $itemKey);
+$autoByModel      = loadRowsByModel($db, 'yy_feed_item_transcript_auto',      'feed_item_transcript_auto_model',      $itemKey);
+$autocleanByModel = loadRowsByModel($db, 'yy_feed_item_transcript_autoclean', 'feed_item_transcript_autoclean_model', $itemKey);
 
-// Edit history per segment — flag rows with human edits since auto-fix
-$editStmt = $db->prepare("
-    SELECT to_char(edit_segment, 'HH24:MI:SS') AS segment, edit_action,
-           COUNT(*) AS n,
-           MAX(edit_dtime) AS last_dtime
-      FROM yy_transcript_edit_log
-     WHERE feed_item_key = ?
-     GROUP BY edit_segment, edit_action
-");
-$editStmt->execute([$itemKey]);
-$editsByseg = [];
-foreach ($editStmt->fetchAll() as $e) {
-    $editsByseg[$e['segment']][$e['edit_action']] = [
-        'count' => (int)$e['n'],
-        'last_dtime' => $e['last_dtime'],
-    ];
+$liveRows = loadRows($db, 'yy_feed_item_transcript', $itemKey);
+$liveByseg = [];
+foreach ($liveRows as $r) $liveByseg[$r['segment']] = $r['text'];
+
+// Stable column ordering: sort model codes alphabetically; for each model,
+// auto comes before autoclean. The live "Current" column lands last so
+// the eye can sweep left-to-right "raw → cleaned → human."
+$modelCodes = array_unique(array_merge(array_keys($autoByModel), array_keys($autocleanByModel)));
+sort($modelCodes);
+
+$columns = [];
+foreach ($modelCodes as $m) {
+    if (isset($autoByModel[$m])) {
+        $columns[] = ['code' => $m . '__auto',      'model' => $m, 'kind' => 'auto',
+                      'label' => $m . ' (auto)'];
+    }
+    if (isset($autocleanByModel[$m])) {
+        $columns[] = ['code' => $m . '__autoclean', 'model' => $m, 'kind' => 'autoclean',
+                      'label' => $m . ' (clean)'];
+    }
 }
+$columns[] = ['code' => 'current', 'model' => null, 'kind' => 'current', 'label' => 'Current'];
 
-// Union of all segment timestamps across the three sources, sorted ascending.
-$allSegs = array_keys(array_merge($auto, $autoclean, $live));
-$allSegs = array_unique($allSegs);
-sort($allSegs); // HH:MM:SS strings sort like real timestamps
+// Union of every segment timestamp across every source.
+$segSet = [];
+foreach ($autoByModel as $segs)      foreach ($segs as $seg => $_) $segSet[$seg] = true;
+foreach ($autocleanByModel as $segs) foreach ($segs as $seg => $_) $segSet[$seg] = true;
+foreach ($liveByseg as $seg => $_)   $segSet[$seg] = true;
+$allSegs = array_keys($segSet);
+sort($allSegs);
 
-$out = [];
-$totals = ['initial_diff_auto' => 0, 'auto_diff_current' => 0, 'initial_diff_current' => 0];
+$rows = [];
 foreach ($allSegs as $seg) {
-    $ti = $auto[$seg]      ?? null;
-    $ta = $autoclean[$seg] ?? null;
-    $tc = $live[$seg]      ?? null;
-
-    if ($ti !== null && $ta !== null && $ti !== $ta) $totals['initial_diff_auto']++;
-    if ($ta !== null && $tc !== null && $ta !== $tc) $totals['auto_diff_current']++;
-    if ($ti !== null && $tc !== null && $ti !== $tc) $totals['initial_diff_current']++;
-
-    $out[] = [
-        'segment'       => $seg,
-        'text_initial'  => $ti,
-        'text_auto_fix' => $ta,
-        'text_current'  => $tc,
-        'edits'         => $editsByseg[$seg] ?? null,
-    ];
+    $cells = [];
+    foreach ($modelCodes as $m) {
+        if (isset($autoByModel[$m]))      $cells[$m . '__auto']      = $autoByModel[$m][$seg]      ?? null;
+        if (isset($autocleanByModel[$m])) $cells[$m . '__autoclean'] = $autocleanByModel[$m][$seg] ?? null;
+    }
+    $cells['current'] = $liveByseg[$seg] ?? null;
+    $rows[] = ['segment' => $seg, 'cells' => $cells];
 }
 
 jsonResponse([
-    'item_key'     => $itemKey,
-    'has_snapshot' => count($auto) > 0 || count($autoclean) > 0,
-    'rows'         => $out,
-    'totals'       => $totals,
+    'item_key' => $itemKey,
+    'has_any'  => !empty($autoByModel) || !empty($autocleanByModel) || !empty($liveByseg),
+    'columns'  => $columns,
+    'rows'     => $rows,
 ]);
