@@ -767,6 +767,15 @@ function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, st
         $rows = whisperApiTranscribe($chunkPath, $apiKey, $prompt, $idx * $chunkSecs, $chunkErr, $model);
         if (!$rows && $chunkErr) {
             $chunkFailures[] = "chunk " . ($idx + 1) . ": $chunkErr";
+            // Bail immediately on permanent API errors — retrying remaining chunks
+            // will produce the same error (quota exhausted, invalid key, etc.).
+            if (strpos($chunkErr, 'insufficient_quota') !== false
+                || strpos($chunkErr, 'invalid_api_key') !== false
+                || strpos($chunkErr, 'account_deactivated') !== false) {
+                @unlink($chunkPath);
+                foreach (array_slice($chunks, $idx + 1) as $remaining) @unlink($remaining);
+                break;
+            }
             // continue rather than abort — partial transcript better than none
         }
         $allRows = array_merge($allRows, $rows);
