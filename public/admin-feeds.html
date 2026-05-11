@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778534335">
+    <meta name="page-version" content="1778537390">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1700,9 +1700,10 @@ function openTranscript(itemKey) {
             + '<button onclick="findTranscriptNext()" title="Next match (Enter)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:0.85rem;">&darr;</button>'
             + '<button onclick="closeTranscriptFind()" title="Close (Esc)" style="background:none;border:none;color:#666;cursor:pointer;font-size:1.2rem;line-height:1;padding:0 6px;">&times;</button>'
             + '</div>'
+            + '<div id="t-speakers-panel" style="display:none;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;background:#f7f8fc;font-size:0.82rem;"></div>'
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
-            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:120px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
+            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:120px;text-align:left;">Time</th><th style="padding:8px;width:80px;text-align:left;">Speaker</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
             + '<tbody id="t-rows"></tbody></table></div>'
             + '</div>'
             + '</div>'
@@ -3178,13 +3179,98 @@ function saveValidation() {
 // only ever shows one line, scrolling horizontally). autosizeTextRow()
 // keeps it at 1 row when content fits and grows to a max of 2 rows
 // otherwise; cells with text longer than 2 rows scroll internally.
-function transcriptRowCells(seg, secs, text) {
+function transcriptRowCells(seg, secs, text, speaker) {
+    var s = (speaker === null || speaker === undefined) ? '' : String(speaker);
     return '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+        + '<td style="padding:6px;border-top:1px solid #eee;vertical-align:top;">'
+        +   speakerChipForRow(s)
+        + '</td>'
         + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1" style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;">' + esc(text || '') + '</textarea></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;vertical-align:top;">'
         +   '<button onmousedown="event.preventDefault()" onclick="splitTranscriptRow(this)" title="Insert a new row after this one — splits text at the cursor if you have one in this row" style="background:none;border:none;color:#27ae60;cursor:pointer;font-size:1.15rem;padding:0 4px;font-weight:700;">+</button>'
         +   '<button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" title="Delete this row" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;padding:0 4px;">&times;</button>'
         + '</td>';
+}
+
+// Speaker chip used in transcript rows. Stores the raw label in a hidden
+// data-field input so saveTranscript() can pick it up; the chip is just
+// a styled span on top, clickable to scroll the Speakers panel to its
+// rename input. Empty label renders a dim "+" affordance.
+function speakerChipForRow(label) {
+    var hiddenInput = '<input type="hidden" data-field="speaker" value="' + esc(label) + '">';
+    if (!label) {
+        return hiddenInput + '<span class="t-spk-chip" data-label="" onclick="focusSpeakerPanel(this)" title="Click to assign a speaker" style="display:inline-block;color:#bbb;font-size:0.75rem;padding:1px 8px;border:1px dashed #ddd;border-radius:8px;cursor:pointer;">—</span>';
+    }
+    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+    var h = 0;
+    for (var i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
+    var bg = palette[Math.abs(h) % palette.length];
+    return hiddenInput
+        + '<span class="t-spk-chip" data-label="' + esc(label) + '" onclick="focusSpeakerPanel(this)"'
+        + ' title="Speaker ' + esc(label) + ' — click to rename in the Speakers panel"'
+        + ' style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:9px;cursor:pointer;">'
+        + esc(label) + '</span>';
+}
+
+// Speakers panel above the transcript table. One row per distinct speaker
+// label, each with an input to bulk-rename it across every row of this
+// item. Hidden when there are no labelled speakers (yet).
+function renderSpeakersPanel(rows) {
+    var panel = document.getElementById('t-speakers-panel');
+    if (!panel) return;
+    var counts = {};
+    rows.forEach(function(r) {
+        var s = (r.feed_item_transcript_speaker == null) ? '' : String(r.feed_item_transcript_speaker);
+        if (s === '') return;
+        counts[s] = (counts[s] || 0) + 1;
+    });
+    var labels = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a]; });
+    if (!labels.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;">Speakers in this transcript</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:10px;">';
+    labels.forEach(function(lbl) {
+        html += '<div data-label="' + esc(lbl) + '" style="display:flex;align-items:center;gap:4px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:4px 8px;">'
+            +   speakerChipForLabel(lbl)
+            +   '<span style="font-size:0.7rem;color:#888;">' + counts[lbl] + ' row' + (counts[lbl] === 1 ? '' : 's') + '</span>'
+            +   '<span style="color:#888;">→</span>'
+            +   '<input class="t-spk-rename" data-from="' + esc(lbl) + '" value="' + esc(lbl) + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)" placeholder="rename…" style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
+            + '</div>';
+    });
+    html += '</div>';
+    panel.innerHTML = html;
+    panel.style.display = '';
+}
+function speakerChipForLabel(label) {
+    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+    var h = 0;
+    for (var i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
+    var bg = palette[Math.abs(h) % palette.length];
+    return '<span style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 7px;border-radius:9px;">' + esc(label) + '</span>';
+}
+function focusSpeakerPanel(chip) {
+    var label = chip.getAttribute('data-label');
+    var input = document.querySelector('#t-speakers-panel input.t-spk-rename[data-from="' + label.replace(/"/g, '\\"') + '"]');
+    if (input) { input.focus(); input.select(); }
+}
+function commitSpeakerRename(inputEl) {
+    var from = inputEl.getAttribute('data-from');
+    var to = inputEl.value.trim();
+    if (to === from) return;
+    if (!_transcriptItemKey) return;
+    var statusEl = document.getElementById('t-status');
+    if (statusEl) statusEl.textContent = 'Renaming speaker…';
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'rename_speaker', item_key: _transcriptItemKey, from: from, to: to})
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (d.error) { if (statusEl) statusEl.textContent = '✗ ' + d.error; return; }
+        if (statusEl) {
+            statusEl.textContent = '✓ Renamed ' + d.renamed + ' row(s)';
+            setTimeout(function() { if (statusEl.textContent.indexOf('Renamed') === 0) statusEl.textContent = ''; }, 2000);
+        }
+        // Reload transcript so chip colors + panel reflect the new label
+        if (_transcriptItemKey) loadTranscript();
+    });
 }
 
 // Resize a transcript text textarea to fit its content, capped at 2
@@ -3218,7 +3304,8 @@ function renderTranscriptRows(rows) {
     _segmentSeconds = [];
     _activeRowIdx = -1;
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" to begin.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" to begin.</td></tr>';
+        renderSpeakersPanel([]);
         return;
     }
     var html = '';
@@ -3227,10 +3314,11 @@ function renderTranscriptRows(rows) {
         var secs = parseSegmentToSeconds(seg);
         _segmentSeconds.push(secs);
         html += '<tr data-idx="' + i + '">'
-            + transcriptRowCells(seg, secs, r.feed_item_transcript_text || '')
+            + transcriptRowCells(seg, secs, r.feed_item_transcript_text || '', r.feed_item_transcript_speaker || '')
             + '</tr>';
     });
     tbody.innerHTML = html;
+    renderSpeakersPanel(rows);
     autosizeAllTextRows();
 
     // Single click anywhere in the time cell seeks the video; double click
@@ -3899,8 +3987,13 @@ function saveTranscript() {
     document.querySelectorAll('#t-rows tr').forEach(function(tr) {
         var seg = tr.querySelector('[data-field="segment"]');
         var txt = tr.querySelector('[data-field="text"]');
+        var spk = tr.querySelector('[data-field="speaker"]');
         if (seg && txt && txt.value.trim()) {
-            rows.push({segment: seg.value.trim(), text: txt.value.trim()});
+            rows.push({
+                segment: seg.value.trim(),
+                text:    txt.value.trim(),
+                speaker: spk ? spk.value : null
+            });
         }
     });
     rows.sort(function(a, b) {

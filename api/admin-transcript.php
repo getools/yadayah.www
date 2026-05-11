@@ -51,7 +51,8 @@ if ($method === 'GET') {
     $itemKeys = getFeedItemKeyCluster($db, $itemKey);
     $placeholders = implode(',', array_fill(0, count($itemKeys), '?'));
     $rowsStmt = $db->prepare("
-        SELECT feed_item_transcript_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort
+        SELECT feed_item_transcript_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort,
+               feed_item_transcript_speaker
         FROM yy_feed_item_transcript
         WHERE feed_item_key IN ($placeholders)
         ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
@@ -215,7 +216,9 @@ if ($method === 'POST') {
         $db->beginTransaction();
         try {
             $db->prepare("DELETE FROM yy_feed_item_transcript WHERE feed_item_key = ?")->execute([$itemKey]);
-            $insStmt = $db->prepare("INSERT INTO yy_feed_item_transcript (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_revision_user_key) VALUES (?, ?::interval, ?, ?, ?)");
+            // INSERT now writes the speaker column too so save doesn't wipe
+            // diarisation labels every time the editor calls save().
+            $insStmt = $db->prepare("INSERT INTO yy_feed_item_transcript (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_revision_user_key, feed_item_transcript_speaker) VALUES (?, ?::interval, ?, ?, ?, ?)");
             $logStmt = $db->prepare("INSERT INTO yy_transcript_edit_log (feed_item_key, edit_segment, edit_original_text, edit_new_text, edit_action, edit_user_key) VALUES (?, ?::interval, ?, ?, ?, ?)");
             $sort = 0;
             $newSegments = [];
@@ -226,7 +229,9 @@ if ($method === 'POST') {
                 $rowSort = isset($r['sort']) ? (int)$r['sort'] : $sort++;
                 if (!preg_match('/^\d+:\d+:\d+(\.\d+)?$|^\d+$/', $segment)) $segment = '00:00:00';
                 $textTrim = mb_substr($text, 0, 2000);
-                $insStmt->execute([$itemKey, $segment, $textTrim, $rowSort, $userKey]);
+                $speaker = (isset($r['speaker']) && $r['speaker'] !== null && $r['speaker'] !== '')
+                    ? mb_substr((string)$r['speaker'], 0, 64) : null;
+                $insStmt->execute([$itemKey, $segment, $textTrim, $rowSort, $userKey, $speaker]);
                 $newSegments[$segment] = $textTrim;
 
                 // Log diff to the audit log. We intentionally do NOT call
@@ -292,6 +297,30 @@ if ($method === 'POST') {
                 validation_user_key         = COALESCE(yy_feed_item_transcript_validation.validation_user_key, EXCLUDED.validation_user_key)
         ")->execute([$itemKey, $userKey, $sec]);
         jsonResponse(['saved' => true, 'seconds' => $sec]);
+    }
+
+    if ($action === 'rename_speaker') {
+        // Bulk-rename one speaker label across every row in this item.
+        // POST { action:'rename_speaker', item_key:N, from:'1', to:'Craig' }
+        // Either side may be the empty string; `to=''` clears the label.
+        // Returns the number of rows that changed.
+        $from = trim((string)($data['from'] ?? ''));
+        $to   = trim((string)($data['to']   ?? ''));
+        if ($from === '') errorResponse("'from' speaker label required");
+        $to = $to === '' ? null : mb_substr($to, 0, 64);
+        // The cluster of feed_item_keys keeps linked duplicates in sync,
+        // matching the read path's getFeedItemKeyCluster behavior.
+        $itemKeys = getFeedItemKeyCluster($db, $itemKey);
+        $placeholders = implode(',', array_fill(0, count($itemKeys), '?'));
+        $upd = $db->prepare("
+            UPDATE yy_feed_item_transcript
+               SET feed_item_transcript_speaker = ?
+             WHERE feed_item_key IN ($placeholders)
+               AND feed_item_transcript_speaker = ?
+        ");
+        $upd->execute(array_merge([$to], $itemKeys, [$from]));
+        $changed = $upd->rowCount();
+        jsonResponse(['renamed' => $changed, 'from' => $from, 'to' => $to]);
     }
 
     if ($action === 'apply_corrections_now') {
