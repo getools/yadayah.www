@@ -48,6 +48,7 @@ var tabs = [
     ['admin-users.html', 'Users'],
     ['admin-test.html', 'Tests'],
     ['admin-monitoring.html', 'Monitor'],
+    ['admin-search.html', 'Search'],
     ['admin-misc.html', 'Misc']
 ];
 

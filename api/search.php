@@ -10,10 +10,69 @@ if ($q === '') {
     errorResponse('Search query is required', 400);
 }
 
-// Strip half-rings, modifiers, apostrophes, and single quotes from search input
-$stripChars = "\u{02BF}\u{02BE}\u{02BC}\u{02BB}\u{02B9}\u{02BA}\u{2018}\u{2019}\u{201C}\u{201D}\u{2013}\u{2014}'";
-$q = str_replace(str_split($stripChars), '', $q);
+// Strip half-rings, modifiers, apostrophes, and single quotes from search input.
+// Same list as normalize_search_text() on the SQL side so query "miqra'ey"
+// matches paragraph_text_plain "Miqraʿey" via the normalized comparison.
+$stripChars = ["\u{02BF}","\u{02BE}","\u{02BC}","\u{02BB}","\u{02B9}","\u{02BA}","\u{2018}","\u{2019}","\u{201C}","\u{201D}","\u{2013}","\u{2014}","'"];
+$q = str_replace($stripChars, '', $q);
 $q = preg_replace('/\s{2,}/', ' ', trim($q));
+
+// Walk both the snippet and a query word in lockstep, skipping any char
+// in $stripChars on the snippet side, so "Miqraʿey" matches "miqraey".
+// Returns the HTML-escaped snippet with <mark>...</mark> wrapping each
+// match. Used by every search tier so all snippets get consistent
+// highlighting even when the source text contains stripped characters
+// (which would otherwise defeat a naive preg_replace highlight).
+function highlightSnippet(string $snippet, array $words, array $stripChars): string {
+    if ($snippet === '' || empty($words)) {
+        return htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
+    }
+    $words = array_values(array_unique(array_filter(array_map(function($w) use ($stripChars) {
+        $w = str_replace($stripChars, '', mb_strtolower((string)$w));
+        return mb_strlen($w) >= 2 ? $w : null;
+    }, $words))));
+    if (empty($words)) {
+        return htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
+    }
+    $lower = mb_strtolower($snippet);
+    $len   = mb_strlen($snippet);
+    $marks = []; // [start, end) character-index pairs
+    foreach ($words as $word) {
+        $wlen = mb_strlen($word);
+        $i = 0;
+        while ($i < $len) {
+            $j = $i;
+            $w = 0;
+            while ($j < $len && $w < $wlen) {
+                $c = mb_substr($lower, $j, 1);
+                if (in_array($c, $stripChars, true)) { $j++; continue; }
+                if ($c !== mb_substr($word, $w, 1)) break;
+                $j++; $w++;
+            }
+            if ($w === $wlen) { $marks[] = [$i, $j]; $i = $j; }
+            else $i++;
+        }
+    }
+    if (empty($marks)) return htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
+    usort($marks, function($a, $b) { return $a[0] - $b[0] ?: $a[1] - $b[1]; });
+    // Merge overlapping / adjacent marks so we don't emit nested <mark>s.
+    $merged = [$marks[0]];
+    for ($k = 1; $k < count($marks); $k++) {
+        $top = &$merged[count($merged) - 1];
+        if ($marks[$k][0] <= $top[1]) { if ($marks[$k][1] > $top[1]) $top[1] = $marks[$k][1]; }
+        else $merged[] = $marks[$k];
+        unset($top);
+    }
+    $out = '';
+    $cursor = 0;
+    foreach ($merged as [$start, $end]) {
+        $out .= htmlspecialchars(mb_substr($snippet, $cursor, $start - $cursor), ENT_QUOTES, 'UTF-8');
+        $out .= '<mark>' . htmlspecialchars(mb_substr($snippet, $start, $end - $start), ENT_QUOTES, 'UTF-8') . '</mark>';
+        $cursor = $end;
+    }
+    $out .= htmlspecialchars(mb_substr($snippet, $cursor), ENT_QUOTES, 'UTF-8');
+    return $out;
+}
 // Cap query to 150 chars to prevent Tier-3 from expanding into dozens of trigram scans.
 // Trim to last complete word so we don't split mid-token.
 if (mb_strlen($q) > 150) {
@@ -28,6 +87,20 @@ $limit  = min(100, max(1, (int)($_GET['limit'] ?? 25)));
 $offset = ($page - 1) * $limit;
 
 $pdo = getDb();
+
+// Snippet length cap — configurable via Admin → Search → Result Snippets.
+// Clamped to a sane range so a misconfigured value can't blow up
+// memory or return absurdly short slices.
+$snippetLen = 500;
+try {
+    $sl = $pdo->prepare("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'page' AND setting_group_code = 'search' AND setting_code = 'snippet-length' LIMIT 1");
+    $sl->execute();
+    $v = (int)($sl->fetchColumn() ?: 0);
+    if ($v >= 80 && $v <= 2000) $snippetLen = $v;
+} catch (Exception $e) { /* fall through to default */ }
+// Substring window is anchored ~30% before the match, so the matched
+// term sits in the front third of the snippet.
+$snippetLead = (int)floor($snippetLen * 0.32);
 
 // --- Alias expansion: look up alternate forms for each word in the query ---
 $queryWords = preg_split('/\s+/', $q);
@@ -91,6 +164,12 @@ $total = (int)$countStmt->fetchColumn();
 $fuzzy = false;
 
 if ($total > 0) {
+    // ts_headline tokenizes paragraph_text_plain (which still contains
+    // half-rings/curly apostrophes), so a stripped query like "miqraey"
+    // never matches "Miqraʿey" and the snippet falls back to the head
+    // of the paragraph with no highlight. Switch to the same substring-
+    // around-normalized-position approach Tier 2/3 use, and highlight
+    // in PHP via highlightSnippet() which walks past strip chars.
     $stmt = $pdo->prepare("
         SELECT v.volume_label AS volume_label,
                v.volume_code AS volume_code,
@@ -101,9 +180,12 @@ if ($total > 0) {
                ch.chapter_number AS chapter_number,
                p.paragraph_page AS page,
                ts_rank(p.paragraph_tsv, $tsqSql) AS rank,
-               ts_headline('english', COALESCE(p.paragraph_text_plain, ''), $tsqSql,
-                   'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=20, MaxFragments=2, FragmentDelimiter= ... '
-               ) AS snippet,
+               CASE WHEN length(p.paragraph_text_plain) > $snippetLen
+                    THEN substring(p.paragraph_text_plain
+                         FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - $snippetLead)
+                         FOR $snippetLen)
+                    ELSE p.paragraph_text_plain
+               END AS snippet,
                p.paragraph_text_html AS html
         FROM yy_paragraph p
         JOIN yy_volume v ON v.volume_key = p.volume_key
@@ -114,26 +196,21 @@ if ($total > 0) {
         LIMIT ? OFFSET ?
     ");
 
-    // Params: ts_rank(?), ts_headline(?), WHERE(?s), LIMIT, OFFSET
-    $stmtParams = array_merge([$tsqParam, $tsqParam], $allParams, [$limit, $offset]);
+    // Anchor the substring on the first query word (or the stripped query
+    // itself if it's a single token). Params: ts_rank, snippet-anchor,
+    // WHERE, LIMIT, OFFSET.
+    $snippetAnchor = $queryWords[0] ?? $q;
+    $snippetAnchor = str_replace($stripChars, '', $snippetAnchor);
+    $stmtParams = array_merge([$tsqParam, $snippetAnchor], $allParams, [$limit, $offset]);
     $stmt->execute($stmtParams);
     $results = $stmt->fetchAll();
 
-    // For alias-matched results (no FTS highlight), highlight alias terms
+    // Highlight using the strip-aware matcher so "Miqraʿey" gets wrapped
+    // even though the query stripped the half-ring out.
+    $highlightWords = array_merge($queryWords, $aliasTargets);
     foreach ($results as &$row) {
-        if ($row['snippet'] && strpos($row['snippet'], '<mark>') === false) {
-            $escaped = htmlspecialchars($row['snippet'], ENT_QUOTES, 'UTF-8');
-            // Highlight each alias target word
-            foreach ($aliasTargets as $at) {
-                foreach (preg_split('/\s+/', $at) as $aw) {
-                    $escaped = preg_replace('/(' . preg_quote($aw, '/') . ')/i', '<mark>$1</mark>', $escaped);
-                }
-            }
-            // Also highlight the original query words
-            foreach ($queryWords as $qw) {
-                $escaped = preg_replace('/(' . preg_quote($qw, '/') . ')/i', '<mark>$1</mark>', $escaped);
-            }
-            $row['snippet'] = $escaped;
+        if ($row['snippet']) {
+            $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars);
         }
     }
     unset($row);
@@ -159,8 +236,8 @@ if ($total > 0) {
                    ch.chapter_number AS chapter_number,
                    p.paragraph_page AS page,
                    similarity(normalize_search_text(p.paragraph_text_plain), ?) AS rank,
-                   CASE WHEN length(p.paragraph_text_plain) > 300
-                        THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - 100) FOR 300)
+                   CASE WHEN length(p.paragraph_text_plain) > $snippetLen
+                        THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - $snippetLead) FOR $snippetLen)
                         ELSE p.paragraph_text_plain
                    END AS snippet,
                    p.paragraph_text_html AS html
@@ -175,13 +252,10 @@ if ($total > 0) {
         $stmt->execute(array_merge([$q, $q], [$likePattern], $filterParams, [$limit, $offset]));
         $results = $stmt->fetchAll();
 
+        $highlightWords = array_merge($queryWords, $aliasTargets);
         foreach ($results as &$row) {
             if ($row['snippet']) {
-                $row['snippet'] = preg_replace(
-                    '/(' . preg_quote($q, '/') . ')/i',
-                    '<mark>$1</mark>',
-                    htmlspecialchars($row['snippet'], ENT_QUOTES, 'UTF-8')
-                );
+                $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars);
             }
         }
         unset($row);
@@ -226,10 +300,10 @@ if ($total > 0) {
                        ch.chapter_number AS chapter_number,
                        p.paragraph_page AS page,
                        ($rankCases)::float / ? AS rank,
-                       CASE WHEN length(p.paragraph_text_plain) > 300
+                       CASE WHEN length(p.paragraph_text_plain) > $snippetLen
                             THEN substring(p.paragraph_text_plain
-                                 FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - 100)
-                                 FOR 300)
+                                 FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - $snippetLead)
+                                 FOR $snippetLen)
                             ELSE p.paragraph_text_plain
                        END AS snippet,
                        p.paragraph_text_html AS html
@@ -251,13 +325,10 @@ if ($total > 0) {
             ));
             $results = $stmt->fetchAll();
 
+            $highlightWords = array_merge($queryWords, $aliasTargets);
             foreach ($results as &$row) {
                 if ($row['snippet']) {
-                    $escaped = htmlspecialchars($row['snippet'], ENT_QUOTES, 'UTF-8');
-                    foreach ($queryWords as $w) {
-                        $escaped = preg_replace('/(' . preg_quote($w, '/') . ')/i', '<mark>$1</mark>', $escaped);
-                    }
-                    $row['snippet'] = $escaped;
+                    $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars);
                 }
             }
             unset($row);

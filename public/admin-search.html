@@ -1,22 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778479203">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flipbook Admin - Yada Yah</title>
+    <title>Search Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/login.css">
     <style>
         .fb-section { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
         .fb-section h3 { margin: 0 0 4px; font-size: 1rem; color: #31345A; }
         .fb-section .desc { font-size: 0.82rem; color: #666; margin: 0 0 14px; }
-        .fb-field { display: grid; grid-template-columns: 200px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+        .fb-field { display: grid; grid-template-columns: 240px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
         .fb-field label { font-size: 0.85rem; font-weight: 600; color: #444; }
         .fb-field input[type=text],
-        .fb-field textarea { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.88rem; font-family: inherit; width: 100%; max-width: 480px; box-sizing: border-box; }
-        .fb-field textarea { min-height: 60px; resize: vertical; }
-        .fb-field input[type=color] { width: 50px; height: 32px; padding: 0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+        .fb-field input[type=number] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.88rem; font-family: inherit; max-width: 200px; box-sizing: border-box; }
         .save-row { position: sticky; bottom: 0; background: #fafafa; border-top: 1px solid #e0e0e0; padding: 12px 16px; margin: 16px -16px -16px; display: flex; justify-content: space-between; align-items: center; border-radius: 0 0 8px 8px; }
     </style>
 </head>
@@ -45,8 +42,8 @@
         </div>
     </div>
 
-    <h1>Flipbook</h1>
-    <p style="color:#666;font-size:0.88rem;margin:-4px 0 16px;">Defaults applied when rendering auto-generated bookmarks (last-viewed-page) whose individual fields are not set. Changes apply immediately.</p>
+    <h1>Search</h1>
+    <p style="color:#666;font-size:0.88rem;margin:-4px 0 16px;">Settings that control how the Books search returns and displays results. Changes apply immediately.</p>
 
     <div id="form-container">
         <div style="text-align:center;padding:30px;color:#888;">Loading…</div>
@@ -58,9 +55,6 @@
 <script>
 var API = '/api';
 
-// Inline auth + login wiring — same pattern as admin-books.html. The shared
-// admin-login.js renders the login modal but doesn't reveal the page itself;
-// each admin page is responsible for showing its own #app div on success.
 function checkAuth() {
     fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.authenticated) {
@@ -93,34 +87,12 @@ function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'in
 function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
 
 // Section field definitions — drives both render and save payload.
-// Same pattern as admin-home.html. setting_code (yy_setting) for each field.
 var SECTIONS = [
     {
-        title: 'Auto Bookmark',
-        desc: 'When a user reads a flipbook, the page they leave on is auto-saved as a bookmark. These defaults are used to render that bookmark when its color/label/note fields are empty.',
+        title: 'Result Snippets',
+        desc: 'How much surrounding text from paragraph_text_plain to slice into each result\'s snippet. Higher = more context but longer rows.',
         fields: [
-            { code: 'auto-bookmark-color', label: 'Color',  type: 'color',    default: '#5b8def' },
-            { code: 'auto-bookmark-label', label: 'Label',  type: 'text',     default: 'Resume reading' },
-            { code: 'auto-bookmark-note',  label: 'Note',   type: 'textarea', default: '' }
-        ]
-    },
-    {
-        title: 'Bookmark Placeholder',
-        desc: 'The faded outline bookmark icon shown in the upper-right of every visible flipbook page when no bookmark exists for that page. Click adds a bookmark.',
-        fields: [
-            { code: 'placeholder-width',   label: 'Width (px)',  type: 'number', default: '18' },
-            { code: 'placeholder-height',  label: 'Height (px)', type: 'number', default: '22' },
-            { code: 'placeholder-color',   label: 'Color',       type: 'color',  default: '#888888' },
-            { code: 'placeholder-tooltip', label: 'Hover text',  type: 'text',   default: 'Add bookmark for page {page}' }
-        ]
-    },
-    {
-        title: 'Bookmark Icon Wrapper',
-        desc: 'The clickable hit-area surrounding the bookmark glyph. Increasing width/height makes the icon easier to tap; the background tints the wrapper itself.',
-        fields: [
-            { code: 'icon-width',  label: 'Width (px)',  type: 'number', default: '24' },
-            { code: 'icon-height', label: 'Height (px)', type: 'number', default: '28' },
-            { code: 'icon-bg',     label: 'Background',  type: 'color',  default: '#ffffff' }
+            { code: 'snippet-length', label: 'Snippet length (chars)', type: 'number', default: '500', min: 80, max: 2000 }
         ]
     }
 ];
@@ -131,15 +103,11 @@ function render(values) {
     SECTIONS.forEach(function(sec) {
         html += '<div class="fb-section"><h3>' + esc(sec.title) + '</h3><p class="desc">' + esc(sec.desc) + '</p>';
         sec.fields.forEach(function(f) {
-            var v = (values[f.code] != null) ? values[f.code] : f.default;
+            var v = (values[f.code] != null && values[f.code] !== '') ? values[f.code] : f.default;
             var input;
-            if (f.type === 'color') {
-                var col = /^#[0-9a-f]{6}$/i.test(v) ? v : f.default;
-                input = '<input type="color" data-code="' + esc(f.code) + '" value="' + esc(col) + '">';
-            } else if (f.type === 'textarea') {
-                input = '<textarea data-code="' + esc(f.code) + '" rows="3">' + esc(v) + '</textarea>';
-            } else if (f.type === 'number') {
-                input = '<input type="number" data-code="' + esc(f.code) + '" value="' + esc(v) + '" min="6" max="200" style="width:120px;">';
+            if (f.type === 'number') {
+                input = '<input type="number" data-code="' + esc(f.code) + '" value="' + esc(v) + '"'
+                      + ' min="' + (f.min != null ? f.min : 0) + '" max="' + (f.max != null ? f.max : 999999) + '">';
             } else {
                 input = '<input type="text" data-code="' + esc(f.code) + '" value="' + esc(v) + '">';
             }
@@ -162,7 +130,7 @@ function esc(s) {
 }
 
 function load() {
-    fetch(API + '/admin-flipbook.php', { credentials: 'include' })
+    fetch(API + '/admin-search.php', { credentials: 'include' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d && d.error) { alert('Load failed: ' + d.error); return; }
@@ -176,7 +144,7 @@ function saveAll() {
     document.querySelectorAll('[data-code]').forEach(function(el) { payload[el.dataset.code] = el.value; });
     var status = document.getElementById('save-status');
     status.textContent = 'Saving…';
-    fetch(API + '/admin-flipbook.php', {
+    fetch(API + '/admin-search.php', {
         method: 'PUT', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
