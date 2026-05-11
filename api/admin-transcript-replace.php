@@ -172,35 +172,18 @@ if ($action === 'apply') {
     if ($selectedKeys !== null && count($selectedKeys) === 0) {
         jsonResponse(['changed' => 0, 'message' => 'No rows selected.']);
     }
+
+    // Decide which apply strategy to use. A pattern is "cross-row capable"
+    // when matches could legitimately span row boundaries — any regex, or a
+    // literal find string containing whitespace. For those we rewrite the
+    // affected items wholesale via applyReplacementsAcrossRows (rows merge
+    // when needed). For single-row-only patterns we keep the existing fast
+    // per-row UPDATE path (which honors selected_keys for the checkbox UI).
+    $crossRowCapable = $isRegex || (preg_match('/\s/u', $find) === 1);
+
     $db->beginTransaction();
     try {
-        // Fetch matching rows so we can log each diff. When the client sent
-        // selected_keys, restrict to that set in addition to the find regex
-        // (the regex check is still needed in case a row's text changed
-        // between preview and apply).
-        $applyWhere  = $where;
-        $applyParams = array_merge([$pattern, $safeReplace, $flags], $params);
-        if ($selectedKeys !== null) {
-            $placeholders = implode(',', array_fill(0, count($selectedKeys), '?'));
-            $applyWhere  .= " AND feed_item_transcript_key IN ($placeholders)";
-            $applyParams = array_merge($applyParams, $selectedKeys);
-        }
-        $rowsStmt = $db->prepare("
-            SELECT feed_item_transcript_key, feed_item_key, feed_item_transcript_segment::text AS segment,
-                   feed_item_transcript_text AS old_text,
-                   regexp_replace(feed_item_transcript_text, ?, ?, ?) AS new_text
-              FROM yy_feed_item_transcript
-             WHERE $applyWhere
-        ");
-        $rowsStmt->execute($applyParams);
-        $rows = $rowsStmt->fetchAll();
-
-        if (!$rows) {
-            $db->rollBack();
-            jsonResponse(['changed' => 0, 'message' => 'No rows matched.']);
-        }
-
-        // Record the batch up front so each edit_log row can link back to it
+        // Record the batch up front (both code paths reference $batchKey).
         $batchStmt = $db->prepare("
             INSERT INTO yy_transcript_bulk_replace
                 (bulk_replace_find, bulk_replace_replace, bulk_replace_case_sensitive,
@@ -212,30 +195,131 @@ if ($action === 'apply') {
             $wordBoundary ? 't' : 'f', $isRegex ? 't' : 'f', $user['user_key']]);
         $batchKey = (int)$batchStmt->fetchColumn();
 
-        // Log each diff and update the row
         $logStmt = $db->prepare("
             INSERT INTO yy_transcript_edit_log
                 (feed_item_key, edit_segment, edit_original_text, edit_new_text,
                  edit_action, edit_user_key, edit_batch_key)
             VALUES (?, ?::interval, ?, ?, 'bulk_replace', ?, ?)
         ");
-        $updStmt = $db->prepare("
-            UPDATE yy_feed_item_transcript
-               SET feed_item_transcript_text = ?,
-                   feed_item_transcript_revision_dtime = NOW()
-             WHERE feed_item_transcript_key = ?
-        ");
         $changed = 0;
-        foreach ($rows as $r) {
-            if ($r['old_text'] === $r['new_text']) continue;
-            $newClipped = mb_substr($r['new_text'], 0, 2000);
-            $logStmt->execute([
-                $r['feed_item_key'], $r['segment'], $r['old_text'], $newClipped,
-                $user['user_key'], $batchKey
-            ]);
-            $updStmt->execute([$newClipped, $r['feed_item_transcript_key']]);
-            $changed++;
+        // Carried into auto-learn below — set inside whichever branch runs.
+        $rowsForAutoLearn = [];
+
+        if (!$crossRowCapable) {
+            // ── Per-row path (existing behavior) ──
+            $applyWhere  = $where;
+            $applyParams = array_merge([$pattern, $safeReplace, $flags], $params);
+            if ($selectedKeys !== null) {
+                $placeholders = implode(',', array_fill(0, count($selectedKeys), '?'));
+                $applyWhere  .= " AND feed_item_transcript_key IN ($placeholders)";
+                $applyParams = array_merge($applyParams, $selectedKeys);
+            }
+            $rowsStmt = $db->prepare("
+                SELECT feed_item_transcript_key, feed_item_key, feed_item_transcript_segment::text AS segment,
+                       feed_item_transcript_text AS old_text,
+                       regexp_replace(feed_item_transcript_text, ?, ?, ?) AS new_text
+                  FROM yy_feed_item_transcript
+                 WHERE $applyWhere
+            ");
+            $rowsStmt->execute($applyParams);
+            $rows = $rowsStmt->fetchAll();
+            if (!$rows) {
+                $db->rollBack();
+                jsonResponse(['changed' => 0, 'message' => 'No rows matched.']);
+            }
+            $updStmt = $db->prepare("
+                UPDATE yy_feed_item_transcript
+                   SET feed_item_transcript_text = ?,
+                       feed_item_transcript_revision_dtime = NOW()
+                 WHERE feed_item_transcript_key = ?
+            ");
+            foreach ($rows as $r) {
+                if ($r['old_text'] === $r['new_text']) continue;
+                $newClipped = mb_substr($r['new_text'], 0, 2000);
+                $logStmt->execute([
+                    $r['feed_item_key'], $r['segment'], $r['old_text'], $newClipped,
+                    $user['user_key'], $batchKey
+                ]);
+                $updStmt->execute([$newClipped, $r['feed_item_transcript_key']]);
+                $changed++;
+            }
+            $rowsForAutoLearn = $rows;
+        } else {
+            // ── Cross-row path ──
+            // Identify items containing at least one match. selected_keys is
+            // ignored here: cross-row matches can collapse rows, so the
+            // per-row selection model from the preview UI doesn't apply.
+            $affectedStmt = $db->prepare("SELECT DISTINCT feed_item_key FROM yy_feed_item_transcript WHERE $where");
+            $affectedStmt->execute($params);
+            $itemKeys = array_column($affectedStmt->fetchAll(), 'feed_item_key');
+            if (!$itemKeys) {
+                $db->rollBack();
+                jsonResponse(['changed' => 0, 'message' => 'No rows matched.']);
+            }
+            $rep = [
+                'wrong'          => $find,
+                'right'          => $replace,
+                'case_sensitive' => (bool)$caseSensitive,
+                'word_boundary'  => (bool)$wordBoundary,
+                'is_regex'       => (bool)$isRegex,
+            ];
+            $insStmt = $db->prepare("
+                INSERT INTO yy_feed_item_transcript
+                    (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort,
+                     feed_item_transcript_revision_user_key)
+                VALUES (?, ?::interval, ?, ?, ?)
+            ");
+            $delStmt = $db->prepare("DELETE FROM yy_feed_item_transcript WHERE feed_item_key = ?");
+            foreach ($itemKeys as $ik) {
+                $allRowsStmt = $db->prepare("
+                    SELECT feed_item_transcript_segment::text AS segment,
+                           feed_item_transcript_text          AS text,
+                           feed_item_transcript_sort          AS sort
+                      FROM yy_feed_item_transcript
+                     WHERE feed_item_key = ?
+                     ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
+                ");
+                $allRowsStmt->execute([$ik]);
+                $origRows = $allRowsStmt->fetchAll();
+                if (!$origRows) continue;
+                $newRows = applyReplacementsAcrossRows($origRows, [$rep]);
+
+                // Diff: for each original segment, find the new text. Missing
+                // segment in newRows means the row merged into an earlier
+                // segment — log it as a removal (edit_new_text = '').
+                $newBySeg = [];
+                foreach ($newRows as $nr) $newBySeg[$nr['segment']] = $nr['text'];
+                $itemChanged = false;
+                foreach ($origRows as $or) {
+                    $newText = $newBySeg[$or['segment']] ?? null;
+                    if ($newText === null) {
+                        $logStmt->execute([$ik, $or['segment'], $or['text'], '',
+                                           $user['user_key'], $batchKey]);
+                        $changed++;
+                        $itemChanged = true;
+                    } elseif ($newText !== $or['text']) {
+                        $logStmt->execute([$ik, $or['segment'], $or['text'],
+                                           mb_substr($newText, 0, 2000),
+                                           $user['user_key'], $batchKey]);
+                        $changed++;
+                        $itemChanged = true;
+                        // Track for auto-learn (token-diff path)
+                        $rowsForAutoLearn[] = ['old_text' => $or['text'], 'new_text' => $newText];
+                    }
+                }
+                if ($itemChanged) {
+                    $delStmt->execute([$ik]);
+                    $sort = 0;
+                    foreach ($newRows as $nr) {
+                        $insStmt->execute([$ik, $nr['segment'],
+                                           mb_substr((string)$nr['text'], 0, 2000),
+                                           $sort, $user['user_key']]);
+                        $sort++;
+                    }
+                }
+            }
         }
+
         $db->prepare("UPDATE yy_transcript_bulk_replace SET bulk_replace_count = ? WHERE bulk_replace_key = ?")
            ->execute([$changed, $batchKey]);
 
@@ -250,9 +334,13 @@ if ($action === 'apply') {
         if ($isCaseOnly) {
             // skip — case-only doesn't belong in the dictionary
         } elseif ($isRegex) {
-            // Per-row token diff captures the literal matched→replacement pairs
-            foreach ($rows as $r) {
-                if ($r['old_text'] === $r['new_text']) continue;
+            // Per-row token diff captures the literal matched→replacement pairs.
+            // $rowsForAutoLearn is populated by both apply paths above with
+            // {old_text, new_text} entries for every changed row (cross-row
+            // collapses are skipped here — they don't fit autoLearn's word-
+            // aligned model).
+            foreach ($rowsForAutoLearn as $r) {
+                if (!isset($r['old_text'], $r['new_text']) || $r['old_text'] === $r['new_text']) continue;
                 autoLearnCorrections($db, $r['old_text'], $r['new_text']);
             }
             $autoLearned = true;
