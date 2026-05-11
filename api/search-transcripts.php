@@ -34,21 +34,28 @@ $offset   = ($page - 1) * $limit;
 
 $queryWords = preg_split('/\s+/', $q);
 
-switch ($mode) {
-    case 'phrase':
-        $tsqSql = "phraseto_tsquery('english', ?)";
-        $tsqParam = $q;
-        break;
-    case 'any':
+// "Exact Phrase" intentionally bypasses FTS to give a literal whole-word(s)
+// match — Postgres's phraseto_tsquery still stems each token, so it would
+// produce the same row count as plainto for short queries. Word-boundary
+// regex on the raw text gives the strict literal match users expect.
+if ($mode === 'phrase') {
+    $matchSql  = "t.feed_item_transcript_text ~* ?";
+    $matchParm = '\m' . preg_quote($q, '/') . '\M';
+    // Stub these for the SELECT below (ts_rank/ts_headline references).
+    $tsqSql   = "plainto_tsquery('english', ?)";
+    $tsqParam = $q;
+} else {
+    if ($mode === 'any') {
         $tsqSql = "to_tsquery('english', ?)";
         $tsqParam = implode(' | ', array_map(function ($w) {
             return preg_replace('/[^a-zA-Z0-9]/', '', $w);
         }, $queryWords));
-        break;
-    default:
+    } else {
         $tsqSql = "plainto_tsquery('english', ?)";
         $tsqParam = $q;
-        break;
+    }
+    $matchSql  = "t.feed_item_transcript_tsv @@ $tsqSql";
+    $matchParm = $tsqParam;
 }
 
 $pdo = getDb();
@@ -56,8 +63,8 @@ $pdo = getDb();
 // Inner query: match transcript rows + apply group/category filter at
 // the feed_item level. We materialize match candidates with their sort
 // keys so the OVER() prev/next lookup below uses the same partitioning.
-$where = ["t.feed_item_transcript_tsv @@ $tsqSql"];
-$params = [$tsqParam];
+$where = [$matchSql];
+$params = [$matchParm];
 
 if ($group !== null) {
     $where[] = "EXISTS (SELECT 1 FROM yy_feed_item_page fip

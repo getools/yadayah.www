@@ -60,18 +60,21 @@
         <table id="alias-tbl" style="width:100%;border-collapse:collapse;font-size:0.9rem">
             <thead>
                 <tr style="background:#f6f8fa;border-bottom:1px solid #e0e0e0">
-                    <th style="text-align:left;padding:6px 8px;width:40%">Search term</th>
-                    <th style="text-align:left;padding:6px 8px;width:40%">Also match</th>
-                    <th style="padding:6px 8px;width:120px"></th>
+                    <th style="text-align:left;padding:6px 8px;width:35%">Search term</th>
+                    <th style="text-align:left;padding:6px 8px;width:35%">Also match</th>
+                    <th style="padding:6px 8px;width:80px">Weight</th>
+                    <th style="padding:6px 8px;width:160px">Source</th>
+                    <th style="padding:6px 8px;width:200px"></th>
                 </tr>
             </thead>
-            <tbody id="alias-rows"><tr><td colspan="3" style="padding:12px;color:#888">Loading…</td></tr></tbody>
+            <tbody id="alias-rows"><tr><td colspan="5" style="padding:12px;color:#888">Loading…</td></tr></tbody>
             <tfoot>
                 <tr>
                     <td style="padding:8px"><input type="text" id="alias-new-term" placeholder="e.g. shemayim"
                         style="width:100%;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem"></td>
                     <td style="padding:8px"><input type="text" id="alias-new-target" placeholder="e.g. shamayim"
                         style="width:100%;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem"></td>
+                    <td colspan="2" style="padding:8px;color:#888;font-size:0.78rem">New entries are marked Curated.</td>
                     <td style="padding:8px;text-align:right"><button class="btn btn-primary btn-sm" onclick="addAlias()">+ Add</button></td>
                 </tr>
             </tfoot>
@@ -215,17 +218,37 @@ function loadAliases() {
 
 function renderAliases(rows) {
     var tbody = document.getElementById('alias-rows');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="3" style="color:#888;padding:12px;font-style:italic">No aliases yet — add one below.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:#888;padding:12px;font-style:italic">No aliases yet — add one below or let user searches auto-detect them.</td></tr>'; return; }
     tbody.innerHTML = rows.map(function(r) {
-        return '<tr data-key="' + r.alias_key + '" style="border-bottom:1px solid #eee">'
+        var curated = !!r.alias_curated_flag;
+        var sourceBadge = curated
+            ? '<span style="background:#d4edda;color:#155724;border:1px solid #b1d8b9;border-radius:10px;padding:2px 8px;font-size:0.72rem;font-weight:600">Curated</span>'
+            : '<span style="background:#fff3cd;color:#856404;border:1px solid #e6c200;border-radius:10px;padding:2px 8px;font-size:0.72rem;font-weight:600">Auto · ' + (r.alias_session_count || 0) + ' session' + ((r.alias_session_count|0) === 1 ? '' : 's') + '</span>';
+        var acceptBtn = curated
+            ? ''
+            : '<button class="btn btn-secondary btn-sm" style="color:#1b5e20;border-color:#a3d4ad" onclick="acceptAlias(' + r.alias_key + ')" title="Mark this auto-detected alias as curated (weight=10 floor)">Accept</button> ';
+        return '<tr data-key="' + r.alias_key + '" style="border-bottom:1px solid #eee' + (curated ? '' : ';background:#fffdf5') + '">'
             +   '<td style="padding:6px 8px"><input type="text" value="' + esc(r.alias_term) + '" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:3px;font-size:0.88rem" data-field="alias_term"></td>'
             +   '<td style="padding:6px 8px"><input type="text" value="' + esc(r.alias_target) + '" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:3px;font-size:0.88rem" data-field="alias_target"></td>'
-            +   '<td style="padding:6px 8px;text-align:right">'
+            +   '<td style="padding:6px 8px;text-align:center;font-variant-numeric:tabular-nums">' + (r.alias_weight || 1) + '</td>'
+            +   '<td style="padding:6px 8px;text-align:center">' + sourceBadge + '</td>'
+            +   '<td style="padding:6px 8px;text-align:right;white-space:nowrap">'
+            +     acceptBtn
             +     '<button class="btn btn-secondary btn-sm" onclick="saveAlias(' + r.alias_key + ', this)">Save</button> '
             +     '<button class="btn btn-secondary btn-sm" style="color:#c0392b" onclick="deleteAlias(' + r.alias_key + ')">Delete</button>'
             +   '</td>'
             + '</tr>';
     }).join('');
+}
+
+function acceptAlias(key) {
+    fetch(API + '/admin-search-aliases.php?action=accept&key=' + key, {
+        method: 'POST', credentials: 'include'
+    }).then(function(r){ return r.json(); })
+      .then(function(d){
+          if (d && d.error) { alert('Accept failed: ' + d.error); return; }
+          loadAliases();
+      });
 }
 
 function addAlias() {

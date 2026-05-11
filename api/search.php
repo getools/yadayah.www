@@ -155,63 +155,69 @@ if ($volume !== null) {
     $filterParams[] = $volume;
 }
 
-// --- TIER 1: Full-text search (handles stemming) ---
-$tsqParam = $q;
-switch ($mode) {
-    case 'phrase':
-        $tsqSql = "phraseto_tsquery('english', ?)";
-        break;
-    case 'any':
+// --- TIER 1: mode-specific match conditions ---
+// "Exact Phrase" is intentionally narrower than the other modes — it uses
+// a literal whole-word(s) regex match on the plain text (no stemming, no
+// substring, no consonant skeleton, no alias broadening). Anything looser
+// would defeat what users expect from a quoted-phrase search and would
+// produce the same row count as "All Words" for short queries (the ILIKE
+// substring branch in the loose path drowns the FTS difference).
+$consonantWordsForHighlight = [];
+if ($mode === 'phrase') {
+    // \m / \M are Postgres word boundaries. preg_quote covers all regex
+    // metachars Postgres recognises (overlapping set with PCRE).
+    $rxPattern = '\m' . preg_quote($q, '/') . '\M';
+    $ftsMatchConditions = ["p.paragraph_text_plain ~* ?"];
+    $ftsMatchParams    = [$rxPattern];
+    // Stub these so the ts_rank/snippet SELECT downstream still binds —
+    // ranking is unused for phrase mode (results are all equal-rank), but
+    // the SQL references $tsqSql / $tsqParam unconditionally.
+    $tsqSql   = "plainto_tsquery('english', ?)";
+    $tsqParam = $q;
+} else {
+    $tsqParam = $q;
+    if ($mode === 'any') {
         $tsqParam = implode(' | ', array_map(function($w) {
             return preg_replace('/[^a-zA-Z0-9]/', '', $w);
         }, $queryWords));
         $tsqSql = "to_tsquery('english', ?)";
-        break;
-    default:
+    } else {
         $tsqSql = "plainto_tsquery('english', ?)";
-        break;
-}
-
-// Build FTS condition. We OR three things:
-//   • FTS match on paragraph_tsv (stem-aware, fast)
-//   • ILIKE substring on normalize_search_text(paragraph_text_plain) for the
-//     user's full query — catches cases the FTS dictionary misses because
-//     of stemming asymmetry (e.g. query "Taruwah" stems to 'taruwah'
-//     which only matches paragraphs indexed with that exact token, while
-//     query "Taruwa" stems to 'taruwa' and substring-matches everything
-//     containing "Taruwa" inside "Taruwah"). Without this, the user gets
-//     dramatically fewer hits when typing the longer form. The
-//     idx_paragraph_norm_gist trigram index keeps the ILIKE fast.
-//   • One ILIKE per alias target.
-$ftsMatchConditions = [
-    "p.paragraph_tsv @@ $tsqSql",
-    "normalize_search_text(p.paragraph_text_plain) ILIKE ?",
-];
-$ftsMatchParams = [
-    $tsqParam,
-    '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%',
-];
-
-// Consonant-skeleton ILIKE — catches Hebrew vowel-transliteration variants
-// (shemayim ↔ shamayim ↔ shamaym all share skeleton "shmym"). Only added
-// when the consonant string is at least 4 chars so we don't trigger
-// runaway substring matches on short tokens like "ten" → "tn".
-$qConsonants = consonantSkel($q);
-$consonantWordsForHighlight = [];
-if (mb_strlen($qConsonants) >= 4) {
-    $ftsMatchConditions[] = "normalize_consonants(p.paragraph_text_plain) ILIKE ?";
-    $ftsMatchParams[] = '%' . str_replace(['%', '_'], ['\%', '\_'], $qConsonants) . '%';
-    // Per-word consonant skeletons drive highlightSnippet's consonant pass.
-    foreach ($queryWords as $qw) {
-        $cs = consonantSkel($qw);
-        if (mb_strlen($cs) >= 3) $consonantWordsForHighlight[] = $cs;
     }
-}
 
-// Add ILIKE for each alias target — search against normalized text (half-rings stripped)
-foreach ($aliasTargets as $at) {
-    $ftsMatchConditions[] = "normalize_search_text(p.paragraph_text_plain) ILIKE ?";
-    $ftsMatchParams[] = '%' . str_replace(['%', '_'], ['\%', '\_'], $at) . '%';
+    // Build a UNION of:
+    //   • FTS match on paragraph_tsv (stem-aware, fast)
+    //   • ILIKE substring on normalize_search_text(paragraph_text_plain) —
+    //     catches stemming-asymmetry misses (query "Taruwah" stems to
+    //     'taruwah' but should still substring-match paragraphs containing
+    //     "Taruwa"). idx_paragraph_norm_gist (trigram) keeps it fast.
+    //   • Consonant-skeleton ILIKE for Hebrew vowel-transliteration variants
+    //     (shemayim ↔ shamayim ↔ shamaym all share skeleton "shmym"); only
+    //     when the skeleton is ≥4 chars so we don't blow up on "ten"→"tn".
+    //   • One ILIKE per alias target.
+    $ftsMatchConditions = [
+        "p.paragraph_tsv @@ $tsqSql",
+        "normalize_search_text(p.paragraph_text_plain) ILIKE ?",
+    ];
+    $ftsMatchParams = [
+        $tsqParam,
+        '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%',
+    ];
+
+    $qConsonants = consonantSkel($q);
+    if (mb_strlen($qConsonants) >= 4) {
+        $ftsMatchConditions[] = "normalize_consonants(p.paragraph_text_plain) ILIKE ?";
+        $ftsMatchParams[]     = '%' . str_replace(['%', '_'], ['\%', '\_'], $qConsonants) . '%';
+        foreach ($queryWords as $qw) {
+            $cs = consonantSkel($qw);
+            if (mb_strlen($cs) >= 3) $consonantWordsForHighlight[] = $cs;
+        }
+    }
+
+    foreach ($aliasTargets as $at) {
+        $ftsMatchConditions[] = "normalize_search_text(p.paragraph_text_plain) ILIKE ?";
+        $ftsMatchParams[]     = '%' . str_replace(['%', '_'], ['\%', '\_'], $at) . '%';
+    }
 }
 
 $allConditions = array_merge(['(' . implode(' OR ', $ftsMatchConditions) . ')'], $filterConditions);
@@ -221,6 +227,54 @@ $allParams = array_merge($ftsMatchParams, $filterParams);
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $ftsWhere");
 $countStmt->execute($allParams);
 $total = (int)$countStmt->fetchColumn();
+
+// ── Search-log + auto-alias learning ─────────────────────────────────
+// Log every query (anonymous-safe fingerprint by IP+UA) so we can
+// detect "Q1 returned few hits, then Q2 returned many, in the same
+// session within ~90s" → auto-promote Q1→Q2 as an alias. Each
+// re-detection bumps alias_weight; admin-curated rows start at
+// weight=10 and stay above auto-detected ones (which start at 1).
+$_logSession = substr(hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '?') . '|' . substr($_SERVER['HTTP_USER_AGENT'] ?? '?', 0, 80)), 0, 32);
+try {
+    // Skip logging only for explicit Tier-1-only paging — page>1 is
+    // a follow-up to the same query and not a new "attempt".
+    if ($page === 1) {
+        $pdo->prepare("INSERT INTO yy_search_log (search_log_session, search_log_query, search_log_result_count) VALUES (?, ?, ?)")
+            ->execute([$_logSession, mb_substr($q, 0, 200), $total]);
+
+        // Detect Q1→Q2 escalation: previous query in this session had <5 hits
+        // AND was made within 90 seconds AND wasn't the same string. If so,
+        // upsert the alias with weight tally.
+        if ($total >= 20) {
+            $prev = $pdo->prepare("
+                SELECT search_log_query
+                  FROM yy_search_log
+                 WHERE search_log_session = ?
+                   AND lower(search_log_query) != lower(?)
+                   AND search_log_result_count < 5
+                   AND search_log_dtime > NOW() - INTERVAL '90 seconds'
+                 ORDER BY search_log_dtime DESC
+                 LIMIT 1
+            ");
+            $prev->execute([$_logSession, $q]);
+            $prevQ = $prev->fetchColumn();
+            if ($prevQ !== false && $prevQ !== '' && mb_strlen($prevQ) <= 100 && mb_strlen($q) <= 100) {
+                // Upsert on the lower(term)/lower(target) unique index; bump
+                // weight on each re-detection. Curated rows (weight>=10) are
+                // left untouched by the conflict update.
+                $pdo->prepare("
+                    INSERT INTO yy_search_alias (alias_term, alias_target, alias_weight, alias_session_count, alias_curated_flag, alias_auto_dtime)
+                    VALUES (?, ?, 1, 1, FALSE, NOW())
+                    ON CONFLICT (lower(alias_term), lower(alias_target)) DO UPDATE
+                        SET alias_weight        = yy_search_alias.alias_weight + 1,
+                            alias_session_count = yy_search_alias.alias_session_count + 1,
+                            alias_auto_dtime    = NOW()
+                        WHERE NOT yy_search_alias.alias_curated_flag
+                ")->execute([$prevQ, $q]);
+            }
+        }
+    }
+} catch (Exception $e) { /* never let logging break search */ }
 
 $fuzzy = false;
 
@@ -275,6 +329,12 @@ if ($total > 0) {
         }
     }
     unset($row);
+} else if ($mode === 'phrase') {
+    // Exact Phrase intentionally has no fuzzy fallback — falling through
+    // to Tier 2/3 ILIKE/trigram would defeat the strict literal contract.
+    // Return zero results so the user sees "no exact phrase match" instead
+    // of a misleading substring-fuzzed count.
+    $results = [];
 } else {
     // --- TIER 2: ILIKE substring search ---
     $fuzzy = true;
