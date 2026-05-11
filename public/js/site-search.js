@@ -948,10 +948,15 @@
     function init() {
         // Admin pages have their own /js/admin-nav.js toolbar + page-specific
         // controls. The public search band would crowd those layouts and the
-        // admin user already has the admin sidebar. Match the same prefixes
-        // admin-nav.js cares about: /admin-* and /test/* (test admin pages).
+        // admin user already has the admin sidebar. The path can take many
+        // shapes — bare /admin, /admin.html, /admin/foo, /admin-foo,
+        // /admin-foo.html — so use a word-boundary match instead of just
+        // the hyphen suffix that an earlier guard relied on. The hyphen-only
+        // version let /admin (the landing page) slip through, which kept
+        // re-introducing the search band on the admin home each time
+        // site-nav.js was reintroduced to that page.
         var p = location.pathname || '';
-        if (/^\/admin-/i.test(p) || /^\/test\//i.test(p)) return;
+        if (/^\/admin\b/i.test(p) || /^\/test\//i.test(p)) return;
         injectFonts();
         injectStyle();
         buildBar();

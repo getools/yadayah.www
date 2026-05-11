@@ -143,9 +143,25 @@ switch ($mode) {
         break;
 }
 
-// Build FTS condition including alias targets as ILIKE OR clauses
-$ftsMatchConditions = ["p.paragraph_tsv @@ $tsqSql"];
-$ftsMatchParams = [$tsqParam];
+// Build FTS condition. We OR three things:
+//   • FTS match on paragraph_tsv (stem-aware, fast)
+//   • ILIKE substring on normalize_search_text(paragraph_text_plain) for the
+//     user's full query — catches cases the FTS dictionary misses because
+//     of stemming asymmetry (e.g. query "Taruwah" stems to 'taruwah'
+//     which only matches paragraphs indexed with that exact token, while
+//     query "Taruwa" stems to 'taruwa' and substring-matches everything
+//     containing "Taruwa" inside "Taruwah"). Without this, the user gets
+//     dramatically fewer hits when typing the longer form. The
+//     idx_paragraph_norm_gist trigram index keeps the ILIKE fast.
+//   • One ILIKE per alias target.
+$ftsMatchConditions = [
+    "p.paragraph_tsv @@ $tsqSql",
+    "normalize_search_text(p.paragraph_text_plain) ILIKE ?",
+];
+$ftsMatchParams = [
+    $tsqParam,
+    '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%',
+];
 
 // Add ILIKE for each alias target — search against normalized text (half-rings stripped)
 foreach ($aliasTargets as $at) {
