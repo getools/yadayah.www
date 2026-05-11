@@ -48,10 +48,17 @@ setCurrentUser($db, (int)$user['user_key']);
 // transcriptions that were not useful enough to justify the spend.
 // Existing _auto rows for those models remain in the DB and show up in
 // Analyze as historical columns, but they're no longer pickable here.
+// Five cloud transcription provider families, each enabled by a separate
+// API key in /opt/yada-www/.env. youtube uses yt-dlp + admin cookies.
 $AVAILABLE_MODELS = [
-    ['code' => 'whisper-1-segment',      'label' => 'OpenAI whisper-1 — segment timestamps ($0.006/min)'],
-    ['code' => 'whisper-1-word',         'label' => 'OpenAI whisper-1 — word-level timestamps ($0.006/min)'],
-    ['code' => 'youtube',                'label' => 'YouTube auto-captions (free, requires fresh cookies)'],
+    ['code' => 'whisper-1-segment',           'label' => 'OpenAI whisper-1 — segment timestamps ($0.006/min)'],
+    ['code' => 'whisper-1-word',              'label' => 'OpenAI whisper-1 — word-level timestamps ($0.006/min)'],
+    ['code' => 'groq-whisper-large-v3-turbo', 'label' => 'Groq whisper-large-v3-turbo (~$0.0004/min, fastest)'],
+    ['code' => 'groq-whisper-large-v3',       'label' => 'Groq whisper-large-v3 (~$0.0011/min)'],
+    ['code' => 'deepgram-nova-3',             'label' => 'Deepgram Nova-3 (~$0.0043/min, smart formatting + diarisation)'],
+    ['code' => 'assemblyai-universal-2',      'label' => 'AssemblyAI Universal-2 (~$0.0062/min)'],
+    ['code' => 'elevenlabs-scribe',           'label' => 'ElevenLabs Scribe (~$0.0067/min)'],
+    ['code' => 'youtube',                     'label' => 'YouTube auto-captions (free, requires fresh cookies)'],
 ];
 
 $method = $_SERVER['REQUEST_METHOD'];

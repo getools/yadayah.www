@@ -18,6 +18,7 @@ $jobKey = (int)$argv[1];
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/transcript-helpers.php'; // applyCorrectionDictionary() for snapshot
+require_once __DIR__ . '/transcribe-providers.php'; // Groq / Deepgram / AssemblyAI / ElevenLabs
 $db = getDb();
 
 // Honor SIGTERM from admin-transcript.php's cancel handler. We don't try to
@@ -284,13 +285,26 @@ if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
 
 bailIfCancelled($db, $jobKey);
 
-// ── Method 3: OpenAI Whisper API ──
+// ── Method 3: Cloud transcription provider ──
 // Skip entirely when the chosen model is 'youtube' (caption-import only).
+// $providerFamily routes the API call to the right vendor — OpenAI for
+// whisper-1-*, Groq for groq-*, Deepgram for deepgram-*, etc. See
+// transcribe-providers.php for the per-provider helpers.
+$providerFamily = providerFamilyForModel($jobModel);
+$providerKeyEnv = [
+    'openai'      => 'OPENAI_API_KEY',
+    'groq'        => 'GROQ_API_KEY',
+    'deepgram'    => 'DEEPGRAM_API_KEY',
+    'assemblyai'  => 'ASSEMBLYAI_API_KEY',
+    'elevenlabs'  => 'ELEVENLABS_API_KEY',
+][$providerFamily] ?? 'OPENAI_API_KEY';
 if (!$rows && !$wantYoutubeCaptions) {
-    $openaiKey = readEnv('OPENAI_API_KEY');
-    if (!$openaiKey) {
-        $methodFailures[] = "whisper_api: OPENAI_API_KEY not set in .env";
+    $providerKey = readEnv($providerKeyEnv);
+    if (!$providerKey) {
+        $methodFailures[] = "$providerFamily: $providerKeyEnv not set in .env";
     } else {
+        // Backward-compat alias so existing OpenAI block code still reads $openaiKey.
+        $openaiKey = $providerKey;
         updateJob($db, $jobKey, ['job_progress' => 20, 'job_message' => 'Preparing audio...']);
         $audioPath = sys_get_temp_dir() . "/transcript_audio_$jobKey.mp3";
         $usedUploadedAudio = false;
@@ -420,15 +434,60 @@ if (!$rows && !$wantYoutubeCaptions) {
                 $glossaryPrompt = buildGlossaryPrompt($db);
                 $whisperErr = '';
                 $whisperChunked = filesize($audioPath) > 24 * 1024 * 1024;
-                if ($whisperChunked) {
-                    $rows = whisperApiTranscribeChunked($db, $jobKey, $audioPath, $openaiKey, $glossaryPrompt, $whisperErr, $jobModel);
-                } else {
-                    $rows = whisperApiTranscribe($audioPath, $openaiKey, $glossaryPrompt, 0, $whisperErr, $jobModel);
+
+                // Public URL for the audio file — used by Deepgram and
+                // AssemblyAI, which prefer to fetch from URL rather than
+                // accept large uploads. Only available when the source was
+                // a durable /opt/yada-www/public/u/audio/... upload (the
+                // common case for admin-recorded MP3s). yt-dlp downloads
+                // land in /tmp and have no public URL.
+                $publicAudioUrl = '';
+                if ($usedUploadedAudio && !empty($job['feed_item_audio_file'])) {
+                    $rel = ltrim((string)$job['feed_item_audio_file'], '/');
+                    $rel = preg_replace('#^public/#', '', $rel);
+                    $publicAudioUrl = 'https://yadayah.com/' . $rel;
+                }
+
+                switch ($providerFamily) {
+                    case 'openai':
+                        if ($whisperChunked) {
+                            $rows = whisperApiTranscribeChunked($db, $jobKey, $audioPath, $openaiKey, $glossaryPrompt, $whisperErr, $jobModel);
+                        } else {
+                            $rows = whisperApiTranscribe($audioPath, $openaiKey, $glossaryPrompt, 0, $whisperErr, $jobModel);
+                        }
+                        break;
+                    case 'groq':
+                        // Groq's free tier caps uploads at 25 MB — always
+                        // chunk, regardless of file size.
+                        $rows = groqTranscribeChunked($db, $jobKey, $audioPath, $providerKey, $glossaryPrompt, $whisperErr, providerNativeModel($jobModel));
+                        break;
+                    case 'deepgram':
+                        if ($publicAudioUrl === '') {
+                            $whisperErr = 'Deepgram needs a public audio URL — only durable uploads supported';
+                            $rows = [];
+                        } else {
+                            $rows = deepgramTranscribe($publicAudioUrl, $providerKey, $whisperErr);
+                        }
+                        break;
+                    case 'assemblyai':
+                        if ($publicAudioUrl === '') {
+                            $whisperErr = 'AssemblyAI needs a public audio URL — only durable uploads supported';
+                            $rows = [];
+                        } else {
+                            $rows = assemblyaiTranscribe($publicAudioUrl, $providerKey, $whisperErr);
+                        }
+                        break;
+                    case 'elevenlabs':
+                        $rows = elevenlabsScribeTranscribe($audioPath, $providerKey, $whisperErr);
+                        break;
+                    default:
+                        $whisperErr = "unknown provider family: $providerFamily";
+                        $rows = [];
                 }
                 // Only delete the audio if we downloaded it ourselves; preserve admin uploads
                 if (!$usedUploadedAudio) @unlink($audioPath);
                 if (!$rows) {
-                    $methodFailures[] = "whisper_api: " . ($whisperErr ?: 'API returned no segments');
+                    $methodFailures[] = "$providerFamily: " . ($whisperErr ?: 'API returned no segments');
                 } else {
                     // Coverage gate: 80% for chunked paths where chunk failures can leave
                     // the transcript truncated. For non-chunked paths Whisper processes the
@@ -449,7 +508,7 @@ if (!$rows && !$wantYoutubeCaptions) {
                         $coverage = $lastEnd / $videoDur;
                         $coverageThreshold = $whisperChunked ? 0.80 : 0.70;
                         if ($coverage < $coverageThreshold) {
-                            $methodFailures[] = "whisper_api: only " . round($coverage * 100) . "% coverage ($lastEnd s of $videoDur s)" . ($whisperErr ? " ($whisperErr)" : '');
+                            $methodFailures[] = "$providerFamily: only " . round($coverage * 100) . "% coverage ($lastEnd s of $videoDur s)" . ($whisperErr ? " ($whisperErr)" : '');
                             $rows = [];
                         } elseif ($whisperErr) {
                             // Partial chunk failures — keep the rows but log.

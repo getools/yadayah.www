@@ -221,7 +221,24 @@ VideoLightbox.configure({
     getVideoId: function(v) { return v.music_video_id || ''; },
     getTitle: function(v) { return v.music_title || ''; },
     getThumbnail: function(v) { return v.music_thumbnail || 'https://i.ytimg.com/vi/' + v.music_video_id + '/hqdefault.jpg'; },
-    getEmbedUrl: function(v) { return 'https://www.youtube.com/embed/' + (v.music_video_id || '') + '?autoplay=1&rel=0'; }
+    // Auto-play through the rest of the song list once the current track
+    // ends. YouTube's embed honours a `playlist=ID2,ID3,…` param: when the
+    // main video finishes, the player advances through that list in order.
+    // We rebuild the param on each open so it reflects whichever song the
+    // user picked (anything BEFORE that song is dropped). The user can
+    // still use the prev/next arrows or YouTube's own skip buttons.
+    getEmbedUrl: function(v) {
+        var url = 'https://www.youtube.com/embed/' + (v.music_video_id || '') + '?autoplay=1&rel=0';
+        var idx = allVideos.indexOf(v);
+        if (idx >= 0) {
+            var rest = [];
+            for (var i = idx + 1; i < allVideos.length; i++) {
+                if (allVideos[i].music_video_id) rest.push(allVideos[i].music_video_id);
+            }
+            if (rest.length) url += '&playlist=' + rest.join(',');
+        }
+        return url;
+    }
 });
 
 function escHtml(s) {
