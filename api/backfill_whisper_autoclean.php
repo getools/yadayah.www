@@ -1,6 +1,6 @@
 <?php
 // One-off: re-run Whisper on a single feed_item and write the raw output to
-// yy_feed_item_transcript_whisper, then apply the correction dictionary and
+// yy_feed_item_transcript_auto (with model='whisper-1'), then apply the correction dictionary and
 // write the cleaned version to yy_feed_item_transcript_autoclean.
 //
 // LIVE TABLE (yy_feed_item_transcript) IS NOT TOUCHED — current human edits
@@ -163,14 +163,15 @@ foreach ($chunks as $idx => $chunkPath) {
 if (!$allRows) { fwrite(STDERR, "no segments returned across any chunk\n"); exit(9); }
 logmsg("total segments: " . count($allRows));
 
-// --- write to _whisper and _autoclean ---
+// --- write to _auto (with model column) and _autoclean ---
+$model = 'whisper-1';  // the OpenAI endpoint this script calls
 $db->beginTransaction();
-$db->prepare("DELETE FROM yy_feed_item_transcript_whisper   WHERE feed_item_key = ?")->execute([$itemKey]);
+$db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ?")->execute([$itemKey]);
 $db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ?")->execute([$itemKey]);
 $insW = $db->prepare("
-    INSERT INTO yy_feed_item_transcript_whisper
-        (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort)
-    VALUES (?, ?::interval, ?, ?)
+    INSERT INTO yy_feed_item_transcript_auto
+        (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)
+    VALUES (?, ?::interval, ?, ?, ?)
 ");
 $insA = $db->prepare("
     INSERT INTO yy_feed_item_transcript_autoclean
@@ -181,12 +182,12 @@ $sort = 0;
 foreach ($allRows as $r) {
     $raw   = mb_substr($r['text'], 0, 2000);
     $clean = mb_substr(applyCorrectionDictionary($db, $raw), 0, 2000);
-    $insW->execute([$itemKey, $r['segment'], $raw,   $sort]);
+    $insW->execute([$itemKey, $r['segment'], $raw,   $sort, $model]);
     $insA->execute([$itemKey, $r['segment'], $clean, $sort]);
     $sort++;
 }
 $db->commit();
-logmsg("wrote $sort row(s) to _whisper and _autoclean");
+logmsg("wrote $sort row(s) to _auto (model=$model) and _autoclean");
 
 // Cleanup downloaded audio (but NOT user-uploaded audio)
 if (strpos($audioPath, '/tmp/backfill_whisper_') === 0) @unlink($audioPath);

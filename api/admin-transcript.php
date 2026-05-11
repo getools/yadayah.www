@@ -86,11 +86,11 @@ if ($method === 'GET') {
     $valStmt->execute([$itemKey]);
     $validation = $valStmt->fetch() ?: null;
 
-    // Do _whisper AND _autoclean both have rows for any item in this cluster?
+    // Do _auto AND _autoclean both have rows for any item in this cluster?
     // Both must be present for the three-version analysis to be meaningful;
     // the UI uses this flag to enable/disable the "Analyze Changes" button.
     $snapStmt = $db->prepare("
-        SELECT EXISTS (SELECT 1 FROM yy_feed_item_transcript_whisper   WHERE feed_item_key IN ($placeholders))
+        SELECT EXISTS (SELECT 1 FROM yy_feed_item_transcript_auto      WHERE feed_item_key IN ($placeholders))
            AND EXISTS (SELECT 1 FROM yy_feed_item_transcript_autoclean WHERE feed_item_key IN ($placeholders))
     ");
     $snapStmt->execute(array_merge($itemKeys, $itemKeys));

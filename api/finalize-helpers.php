@@ -113,8 +113,28 @@ if (!function_exists('partialState')) {
     }
 }
 
+// Kill-switch for auto-transcription after MP3 upload / finalize. Set to
+// true to suppress the auto-queue of transcript-worker.php so freshly
+// uploaded MP3s are NOT immediately sent to the OpenAI Whisper API.
+// The "Transcribe Audio" button on admin-feeds still works for on-demand
+// runs; only the implicit MP3-finalized / MP3-uploaded trigger is paused.
+//
+// Disabled on 2026-05-11 at user's request while OpenAI quota / cost
+// strategy is being reviewed. Flip back to false when ready to re-enable.
+if (!defined('AUTO_TRANSCRIBE_DISABLED')) define('AUTO_TRANSCRIBE_DISABLED', true);
+
 if (!function_exists('spawnTranscribeJob')) {
     function spawnTranscribeJob(PDO $db, int $itemKey, int $userKey): ?int {
+        if (AUTO_TRANSCRIBE_DISABLED) {
+            // Note in monitor_event so it's visible in admin-monitoring that
+            // the trigger fired but was suppressed — no silent disappearance.
+            if (function_exists('logMonitorEvent')) {
+                @logMonitorEvent('transcript_upload', 'info',
+                    'Auto-transcribe suppressed (kill-switch on)',
+                    'item_key=' . $itemKey . ' — flip AUTO_TRANSCRIBE_DISABLED to false in finalize-helpers.php to re-enable.');
+            }
+            return null;
+        }
         $db->prepare("UPDATE yy_feed_item_transcript_job SET job_status = 'cancelled', job_completed_dtime = NOW() WHERE feed_item_key = ? AND job_status IN ('pending', 'running')")
            ->execute([$itemKey]);
         $jobStmt = $db->prepare("INSERT INTO yy_feed_item_transcript_job (feed_item_key, job_status, job_message, user_key) VALUES (?, 'pending', 'Auto-triggered after upload', ?) RETURNING feed_item_transcript_job_key");

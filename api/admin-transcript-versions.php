@@ -3,8 +3,8 @@
  * Three-version comparison data for a single transcript.
  *
  * Returns a row dataset showing, per segment timestamp:
- *   text_initial   — exactly what Whisper produced (yy_feed_item_transcript_whisper)
- *   text_auto_fix  — Whisper output + applyCorrectionDictionary (yy_feed_item_transcript_autoclean)
+ *   text_initial   — exactly what the auto transcriber produced (yy_feed_item_transcript_auto)
+ *   text_auto_fix  — auto output + applyCorrectionDictionary (yy_feed_item_transcript_autoclean)
  *   text_current   — live row in yy_feed_item_transcript
  *
  * Rows are coordinated by SEGMENT TIMESTAMP, not record offset. The three
@@ -22,7 +22,7 @@
  * GET ?item_key=N → { item_key, has_snapshot, rows: [...], totals: {...} }
  *
  * Items that were never re-run through the snapshot pipeline have no rows
- * in _whisper / _autoclean — has_snapshot=false in that case and only
+ * in _auto / _autoclean — has_snapshot=false in that case and only
  * text_current is meaningful.
  */
 require_once __DIR__ . '/config.php';
@@ -53,7 +53,7 @@ function loadByseg(PDO $db, string $table, int $itemKey): array {
     return $byseg;
 }
 
-$whisper   = loadByseg($db, 'yy_feed_item_transcript_whisper',   $itemKey);
+$auto      = loadByseg($db, 'yy_feed_item_transcript_auto',      $itemKey);
 $autoclean = loadByseg($db, 'yy_feed_item_transcript_autoclean', $itemKey);
 $live      = loadByseg($db, 'yy_feed_item_transcript',           $itemKey);
 
@@ -76,14 +76,14 @@ foreach ($editStmt->fetchAll() as $e) {
 }
 
 // Union of all segment timestamps across the three sources, sorted ascending.
-$allSegs = array_keys(array_merge($whisper, $autoclean, $live));
+$allSegs = array_keys(array_merge($auto, $autoclean, $live));
 $allSegs = array_unique($allSegs);
 sort($allSegs); // HH:MM:SS strings sort like real timestamps
 
 $out = [];
 $totals = ['initial_diff_auto' => 0, 'auto_diff_current' => 0, 'initial_diff_current' => 0];
 foreach ($allSegs as $seg) {
-    $ti = $whisper[$seg]   ?? null;
+    $ti = $auto[$seg]      ?? null;
     $ta = $autoclean[$seg] ?? null;
     $tc = $live[$seg]      ?? null;
 
@@ -102,7 +102,7 @@ foreach ($allSegs as $seg) {
 
 jsonResponse([
     'item_key'     => $itemKey,
-    'has_snapshot' => count($whisper) > 0 || count($autoclean) > 0,
+    'has_snapshot' => count($auto) > 0 || count($autoclean) > 0,
     'rows'         => $out,
     'totals'       => $totals,
 ]);
