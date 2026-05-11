@@ -134,7 +134,10 @@ foreach (glob("$tmpBase*") as $stray) @unlink($stray);
 if (!$rows) { fwrite(STDERR, "VTT parsed to zero rows\n"); exit(4); }
 logmsg("parsed " . count($rows) . " caption rows");
 
-// --- write _auto + _autoclean for model='youtube' ---
+// --- write _auto only; _autoclean is no longer auto-generated ---
+// Stale _autoclean rows for this (item, model) get cleared so they don't
+// shadow the new captions. Run rebuild_autoclean.php $itemKey youtube to
+// produce _autoclean on demand.
 $model = 'youtube';
 $db->beginTransaction();
 try {
@@ -145,21 +148,13 @@ try {
             (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)
         VALUES (?, ?::interval, ?, ?, ?)
     ");
-    $insClean = $db->prepare("
-        INSERT INTO yy_feed_item_transcript_autoclean
-            (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model)
-        VALUES (?, ?::interval, ?, ?, ?)
-    ");
     $sort = 0;
     foreach ($rows as $r) {
-        $raw   = mb_substr($r['text'], 0, 2000);
-        $clean = mb_substr(applyCorrectionDictionary($db, $raw), 0, 2000);
-        $insAuto ->execute([$itemKey, $r['segment'], $raw,   $sort, $model]);
-        $insClean->execute([$itemKey, $r['segment'], $clean, $sort, $model]);
+        $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $model]);
         $sort++;
     }
     $db->commit();
-    echo "done: wrote $sort row(s) for item $itemKey model=$model from $srcUrl\n";
+    echo "done: wrote $sort _auto row(s) for item $itemKey model=$model from $srcUrl. Autoclean not generated automatically.\n";
 } catch (Throwable $e) {
     if ($db->inTransaction()) $db->rollBack();
     fwrite(STDERR, "DB write failed: " . $e->getMessage() . "\n");

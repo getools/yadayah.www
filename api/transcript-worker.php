@@ -490,38 +490,27 @@ if (!$rows) {
 bailIfCancelled($db, $jobKey);
 
 // ── Save rows ──
-// Two parallel writes, both tagged with the job's model so per-model
-// history is preserved side-by-side:
-//   1. yy_feed_item_transcript_auto      — raw output of the chosen
-//      model (or YouTube captions when job_model='youtube'). One row
-//      per item the model emitted — no merging.
-//   2. yy_feed_item_transcript_autoclean — the same content after the
-//      YadaYah correction pass. Cross-row aware: a correction whose
-//      `wrong` spans multiple rows merges those rows into one at the
-//      first row's segment timestamp. Crucial for whisper-1-word where
-//      each row is a single word.
-// The live yy_feed_item_transcript is NEVER written here — the user's
-// human edits live there, and "Initialize Transcript" is the explicit
-// path that copies an autoclean version into the live table.
-// Replacement is scoped to (item, model) so re-running one model
-// doesn't disturb another model's stored rows.
+// Single write target now: yy_feed_item_transcript_auto, tagged with the
+// job's model. The corresponding _autoclean rows are NO LONGER produced
+// here automatically — applying the YadaYah correction pass is an
+// explicit step (Initialize Transcript, the rebuild_autoclean.php CLI,
+// or any future on-demand cleaner button). We DO still purge any prior
+// _autoclean rows for this (item, model) because they were derived from
+// the previous _auto data and would otherwise be misleading after a
+// fresh transcription run.
+//
+// The live yy_feed_item_transcript is also never written here — that
+// table is reserved for human edits and the Initialize Transcript path.
 updateJob($db, $jobKey, ['job_progress' => 90, 'job_message' => 'Saving ' . count($rows) . ' segments (model=' . $jobModel . ')...']);
-$cleanedRows = applyCorrectionsAcrossRows($db, $rows);
 $db->beginTransaction();
 try {
     $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $jobModel]);
     $db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ? AND feed_item_transcript_autoclean_model = ?")->execute([$itemKey, $jobModel]);
-    $insAuto  = $db->prepare("INSERT INTO yy_feed_item_transcript_auto      (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)      VALUES (?, ?::interval, ?, ?, ?)");
-    $insClean = $db->prepare("INSERT INTO yy_feed_item_transcript_autoclean (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model) VALUES (?, ?::interval, ?, ?, ?)");
+    $insAuto = $db->prepare("INSERT INTO yy_feed_item_transcript_auto (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model) VALUES (?, ?::interval, ?, ?, ?)");
     $sort = 0;
     foreach ($rows as $r) {
         $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $jobModel]);
         $sort++;
-    }
-    $cleanSort = 0;
-    foreach ($cleanedRows as $r) {
-        $insClean->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $cleanSort, $jobModel]);
-        $cleanSort++;
     }
     $db->commit();
 } catch (Exception $e) {

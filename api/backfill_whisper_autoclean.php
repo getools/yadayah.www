@@ -163,37 +163,26 @@ foreach ($chunks as $idx => $chunkPath) {
 if (!$allRows) { fwrite(STDERR, "no segments returned across any chunk\n"); exit(9); }
 logmsg("total segments: " . count($allRows));
 
-// --- write to _auto (with model column) and _autoclean ---
+// --- write to _auto only; _autoclean is no longer auto-generated ---
+// Stale _autoclean rows for this (item, model) get cleared so they don't
+// shadow the new _auto data. Run rebuild_autoclean.php to populate the
+// clean version on demand.
 $model = 'whisper-1-segment';  // segment-level whisper-1 (the only mode this one-off script invokes)
 $db->beginTransaction();
-$db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ?")->execute([$itemKey]);
-$db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ?")->execute([$itemKey]);
+$db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $model]);
+$db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ? AND feed_item_transcript_autoclean_model = ?")->execute([$itemKey, $model]);
 $insW = $db->prepare("
     INSERT INTO yy_feed_item_transcript_auto
         (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)
     VALUES (?, ?::interval, ?, ?, ?)
 ");
-$insA = $db->prepare("
-    INSERT INTO yy_feed_item_transcript_autoclean
-        (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model)
-    VALUES (?, ?::interval, ?, ?, ?)
-");
-// Write _auto rows raw (one per Whisper segment).
 $sort = 0;
 foreach ($allRows as $r) {
     $insW->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $model]);
     $sort++;
 }
-// _autoclean uses cross-row correction matching so phrases that span row
-// boundaries collapse onto the first row's segment.
-$cleanedRows = applyCorrectionsAcrossRows($db, $allRows);
-$cleanSort = 0;
-foreach ($cleanedRows as $r) {
-    $insA->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $cleanSort, $model]);
-    $cleanSort++;
-}
 $db->commit();
-logmsg("wrote $sort _auto and $cleanSort _autoclean row(s) (model=$model)");
+logmsg("wrote $sort _auto row(s) (model=$model). Autoclean not generated automatically — run rebuild_autoclean.php $itemKey $model to produce it.");
 
 // Cleanup downloaded audio (but NOT user-uploaded audio)
 if (strpos($audioPath, '/tmp/backfill_whisper_') === 0) @unlink($audioPath);

@@ -69,7 +69,9 @@ foreach ($rawRows as $r) {
 }
 fwrite(STDERR, "after dedup: " . count($clean) . " rows (was " . count($rawRows) . ")\n");
 
-// Step 3: write back. DELETE both model's rows, INSERT cleaned.
+// Step 3: write back. _auto only; stale _autoclean is purged so it doesn't
+// shadow the freshly-deduped _auto. Run rebuild_autoclean.php to produce
+// _autoclean on demand.
 $db->beginTransaction();
 try {
     $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $model]);
@@ -79,29 +81,13 @@ try {
             (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)
         VALUES (?, ?::interval, ?, ?, ?)
     ");
-    $insClean = $db->prepare("
-        INSERT INTO yy_feed_item_transcript_autoclean
-            (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model)
-        VALUES (?, ?::interval, ?, ?, ?)
-    ");
-    // Write _auto rows first (the deduped raw text from the dedup pass above).
     $sort = 0;
     foreach ($clean as $r) {
-        $raw = mb_substr($r['text'], 0, 2000);
-        $insAuto->execute([$itemKey, $r['segment'], $raw, $sort, $model]);
+        $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $model]);
         $sort++;
     }
-    // Compute _autoclean rows by running the cross-row correction pass
-    // against the deduped row set. Multi-word corrections that span row
-    // boundaries collapse the affected rows onto the first row's segment.
-    $cleanedRows = applyCorrectionsAcrossRows($db, $clean);
-    $cleanSort = 0;
-    foreach ($cleanedRows as $r) {
-        $insClean->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $cleanSort, $model]);
-        $cleanSort++;
-    }
     $db->commit();
-    echo "done: wrote $sort _auto + $cleanSort _autoclean row(s) for item $itemKey model=$model (was " . count($rawRows) . ")\n";
+    echo "done: wrote $sort _auto row(s) for item $itemKey model=$model (was " . count($rawRows) . " before dedup). Autoclean not generated automatically — run rebuild_autoclean.php $itemKey $model to produce it.\n";
 } catch (Throwable $e) {
     if ($db->inTransaction()) $db->rollBack();
     fwrite(STDERR, "DB write failed: " . $e->getMessage() . "\n");
