@@ -59,12 +59,15 @@ $vttFile = $vttFiles[0];
 logmsg("got VTT: $vttFile (" . filesize($vttFile) . " bytes)");
 
 // --- parse VTT into [{segment, text}, …] ---
-// Minimal WebVTT parser: find "HH:MM:SS.mmm --> HH:MM:SS.mmm" lines,
-// concatenate the text lines that follow until a blank line. Strip the
-// HTML-style speaker/cue tags YouTube embeds.
+// WebVTT parser tuned for YouTube live-stream auto-captions, which use a
+// rolling format: each cue's first text line repeats the LAST line of the
+// previous cue, and the next line is the new content. Naively concatenating
+// every text line in a cue produces duplicated phrases — instead we keep
+// just the last non-empty line of each cue (the new words), then strip
+// rolling-prefix overlap against the running buffer of emitted text.
 function parseVtt(string $path): array {
     $lines = file($path, FILE_IGNORE_NEW_LINES);
-    $rows = [];
+    $rawCues = [];
     $i = 0;
     $n = count($lines);
     while ($i < $n) {
@@ -75,30 +78,54 @@ function parseVtt(string $path): array {
             $i++;
             while ($i < $n && trim($lines[$i]) !== '') {
                 $t = $lines[$i];
-                // Drop the inline timing tags YouTube embeds e.g. <00:00:01.234>
+                // Drop inline word-level timing tags YouTube embeds, e.g. <00:00:01.234>
                 $t = preg_replace('/<\d{2}:\d{2}:\d{2}\.\d{3}>/', '', $t);
-                // Drop <c.colorXXX> ... </c> wrappers
-                $t = preg_replace('#</?c[^>]*>#', '', $t);
+                // Drop YouTube's <c.colorXXX>…</c> color wrappers + any other HTML
                 $t = preg_replace('#</?[^>]+>#', '', $t);
+                // Decode HTML entities (&gt;, &amp;, &#39;, etc.)
+                $t = html_entity_decode($t, ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 $t = trim($t);
                 if ($t !== '') $textBuf[] = $t;
                 $i++;
             }
-            $text = trim(implode(' ', $textBuf));
-            if ($text !== '') $rows[] = ['segment' => $start, 'text' => $text];
+            if (!$textBuf) continue;
+            // Rolling-caption strategy: take ONLY the last non-empty text
+            // line of each cue. The earlier lines are the carry-over from
+            // the previous cue (already emitted). If a cue contains a
+            // single line we still take it — that's the whole new content.
+            $rawCues[] = ['segment' => $start, 'text' => end($textBuf)];
         } else {
             $i++;
         }
     }
-    // Deduplicate consecutive identical lines (auto-caps repeat rolling text)
-    $clean = [];
-    $lastText = null;
-    foreach ($rows as $r) {
-        if ($r['text'] === $lastText) continue;
-        $clean[] = $r;
-        $lastText = $r['text'];
+
+    // Second pass: collapse rolling-prefix overlap. For each cue, if its
+    // text starts with the tail of the previous emitted text, trim the
+    // overlap. Also skip cues that are pure substrings of the previous
+    // emitted text (no new content).
+    $rows = [];
+    $tail = ''; // last emitted text, used to detect overlap
+    foreach ($rawCues as $cue) {
+        $t = $cue['text'];
+        // Skip if this cue's text is wholly contained in the previous tail.
+        if ($tail !== '' && strpos($tail, $t) !== false) continue;
+        // Strip overlap: find the largest suffix of $tail that's a prefix of $t.
+        if ($tail !== '') {
+            $maxOverlap = min(mb_strlen($tail), mb_strlen($t));
+            for ($k = $maxOverlap; $k > 0; $k--) {
+                $tailSuffix = mb_substr($tail, mb_strlen($tail) - $k);
+                $tHead      = mb_substr($t, 0, $k);
+                if (strcasecmp($tailSuffix, $tHead) === 0) {
+                    $t = trim(mb_substr($t, $k));
+                    break;
+                }
+            }
+        }
+        if ($t === '') continue;
+        $rows[] = ['segment' => $cue['segment'], 'text' => $t];
+        $tail = $t;
     }
-    return $clean;
+    return $rows;
 }
 
 $rows = parseVtt($vttFile);

@@ -73,16 +73,16 @@ try {
         VALUES (?, ?::interval, ?, ?, ?)
     ");
 
+    // YadaYah enhancement: apply the correction dictionary across the full
+    // row sequence so multi-word substitutions (e.g. "Yada Yahda" →
+    // "YadaYah") match phrases that straddle row boundaries. The merge
+    // collapses spanning rows onto the first row's segment timestamp.
+    $cleanedRows = applyCorrectionsAcrossRows($db, $rows);
     $count = 0;
-    foreach ($rows as $r) {
-        $raw   = (string)$r['text'];
-        // YadaYah enhancement: apply the correction dictionary. This is the
-        // accumulated history of every literal find/replace and bulk-replace
-        // the admins have ever confirmed — auto-fixes "Yahweh" → "Yahowah",
-        // "Yadayawa" → "Yada Yahowah", etc., in one pass.
-        $clean = mb_substr(applyCorrectionDictionary($db, $raw), 0, 2000);
-        $insClean->execute([$itemKey, $r['segment'], $clean, (int)$r['sort'], $model]);
-        $insLive ->execute([$itemKey, $r['segment'], $clean, (int)$r['sort'], $user['user_key']]);
+    foreach ($cleanedRows as $i => $r) {
+        $clean = mb_substr((string)$r['text'], 0, 2000);
+        $insClean->execute([$itemKey, $r['segment'], $clean, $i, $model]);
+        $insLive ->execute([$itemKey, $r['segment'], $clean, $i, $user['user_key']]);
         $count++;
     }
     $db->commit();

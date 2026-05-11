@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778475445">
+    <meta name="page-version" content="1778478908">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -4077,7 +4077,7 @@ function renderTranscriptAnalysisPicker() {
         var rowCount = 0;
         (d.rows || []).forEach(function(r){ if (r.cells[c.code] !== null && r.cells[c.code] !== undefined) rowCount++; });
         html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f0f0f0;cursor:pointer;">'
-            +   '<input type="checkbox" class="tan-pick" data-code="' + esc(c.code) + '" checked onchange="updateAnalysisShowBtn()">'
+            +   '<input type="checkbox" class="tan-pick" data-code="' + esc(c.code) + '"' + (c.kind === 'autoclean' ? '' : ' checked') + ' onchange="updateAnalysisShowBtn()">'
             +   '<div style="flex:1;">'
             +     '<div style="font-weight:600;color:' + (c.kind === 'current' ? '#a36100' : '#31345A') + ';">' + esc(c.label) + '</div>'
             +     '<div style="font-size:0.72rem;color:#666;">' + rowCount + ' row' + (rowCount === 1 ? '' : 's') + '</div>'

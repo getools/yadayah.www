@@ -35,16 +35,25 @@ $itemKey = (int)($_GET['item_key'] ?? 0);
 if (!$itemKey) errorResponse('item_key required');
 
 // Pull all rows from each source. Cast segment to HH:MM:SS for stable
-// equality across the three tables.
+// equality across the three tables, AND concatenate rows that fall in the
+// same whole second — important for whisper-1-word, where the underlying
+// rows are one-per-word at millisecond precision. The display granularity
+// is whole-second; same-second rows render as one space-joined line.
 function loadRows(PDO $db, string $table, int $itemKey): array {
     $stmt = $db->prepare("
         SELECT to_char(feed_item_transcript_segment, 'HH24:MI:SS') AS segment,
                feed_item_transcript_text AS text
           FROM $table
          WHERE feed_item_key = ?
+         ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
     ");
     $stmt->execute([$itemKey]);
-    return $stmt->fetchAll();
+    $byseg = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $seg = $r['segment'];
+        $byseg[$seg] = isset($byseg[$seg]) ? $byseg[$seg] . ' ' . $r['text'] : $r['text'];
+    }
+    return $byseg;
 }
 function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey): array {
     $stmt = $db->prepare("
@@ -53,11 +62,17 @@ function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey)
                $modelCol AS model
           FROM $table
          WHERE feed_item_key = ?
+         ORDER BY $modelCol, feed_item_transcript_sort, feed_item_transcript_segment
     ");
     $stmt->execute([$itemKey]);
     $byModel = [];
     foreach ($stmt->fetchAll() as $r) {
-        $byModel[$r['model']][$r['segment']] = $r['text'];
+        $m = $r['model']; $seg = $r['segment'];
+        if (isset($byModel[$m][$seg])) {
+            $byModel[$m][$seg] .= ' ' . $r['text'];
+        } else {
+            $byModel[$m][$seg] = $r['text'];
+        }
     }
     return $byModel;
 }
@@ -65,9 +80,7 @@ function loadRowsByModel(PDO $db, string $table, string $modelCol, int $itemKey)
 $autoByModel      = loadRowsByModel($db, 'yy_feed_item_transcript_auto',      'feed_item_transcript_auto_model',      $itemKey);
 $autocleanByModel = loadRowsByModel($db, 'yy_feed_item_transcript_autoclean', 'feed_item_transcript_autoclean_model', $itemKey);
 
-$liveRows = loadRows($db, 'yy_feed_item_transcript', $itemKey);
-$liveByseg = [];
-foreach ($liveRows as $r) $liveByseg[$r['segment']] = $r['text'];
+$liveByseg = loadRows($db, 'yy_feed_item_transcript', $itemKey);
 
 // Stable column ordering: sort model codes alphabetically; for each model,
 // auto comes before autoclean. The live "Current" column lands last so

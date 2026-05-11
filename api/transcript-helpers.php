@@ -113,3 +113,125 @@ function applyCorrectionDictionary(PDO $db, string $text): string {
     }
     return $text;
 }
+
+/**
+ * Apply one find/replace pair to a single string.
+ * Pair shape: ['wrong', 'right', 'case_sensitive', 'word_boundary', 'is_regex']
+ */
+function applyOneReplacement(string $text, array $rep): string {
+    $wrong = (string)($rep['wrong'] ?? '');
+    $right = (string)($rep['right'] ?? '');
+    if ($wrong === '') return $text;
+    $flags = empty($rep['case_sensitive']) ? 'i' : '';
+    if (!empty($rep['is_regex'])) {
+        // User-authored regex — slash-escape only the delimiter.
+        $pattern = '/' . str_replace('/', '\\/', $wrong) . '/u' . $flags;
+    } else {
+        $escaped = preg_quote($wrong, '/');
+        $pattern = !empty($rep['word_boundary'])
+            ? '/\b' . $escaped . '\b/u' . $flags
+            : '/' . $escaped . '/u' . $flags;
+    }
+    $result = @preg_replace($pattern, $right, $text);
+    return $result === null ? $text : $result;
+}
+
+/**
+ * Apply a set of find/replace pairs to a sequence of transcript rows, with
+ * matches that span row boundaries collapsing the affected rows together.
+ *
+ * Two passes:
+ *   1. Single-row pass — every replacement is applied to each row in
+ *      isolation (fast path; catches every match that fits inside one row).
+ *   2. Multi-row pass — for replacements whose `wrong` pattern could match
+ *      across a space (literal wrongs that contain whitespace, or any
+ *      regex), walk consecutive rows in windows up to $maxRowSpan and try
+ *      the replacement against the space-joined window. If it changes the
+ *      window, all $span rows collapse into one row at the FIRST row's
+ *      segment timestamp.
+ *
+ * Returns a new array (possibly fewer rows than the input).
+ *
+ * $rows item shape: ['text' => string, 'segment' => string, 'sort' => int?]
+ *
+ * The $maxRowSpan default of 6 covers practical multi-word phrases (e.g.
+ * "Yada Yahda" across two words, up to 5-6 word phrases). Larger windows
+ * are unusual and cost more time at scan time.
+ */
+function applyReplacementsAcrossRows(array $rows, array $replacements, int $maxRowSpan = 6): array {
+    if (!$rows || !$replacements) return $rows;
+
+    // Pass 1: per-row substitutions (fast path, no merging).
+    foreach ($rows as &$r) {
+        foreach ($replacements as $rep) {
+            $r['text'] = applyOneReplacement((string)$r['text'], $rep);
+        }
+    }
+    unset($r);
+
+    // Identify replacements that could span row boundaries.
+    $spanningReps = array_values(array_filter($replacements, function($rep) {
+        if (!empty($rep['is_regex'])) return true;            // any regex — conservatively eligible
+        $w = (string)($rep['wrong'] ?? '');
+        return $w !== '' && preg_match('/\s/u', $w) === 1;     // literal with whitespace
+    }));
+    if (!$spanningReps) return array_values($rows);
+
+    // Pass 2: cross-row scan. Walk linearly; at each row try the largest
+    // possible window first (so a longer match wins over a shorter false
+    // positive within the same window).
+    $result = [];
+    $i = 0;
+    $n = count($rows);
+    while ($i < $n) {
+        $merged = false;
+        $maxSpan = min($maxRowSpan, $n - $i);
+        for ($span = $maxSpan; $span >= 2 && !$merged; $span--) {
+            $window = (string)$rows[$i]['text'];
+            for ($k = 1; $k < $span; $k++) {
+                $window .= ' ' . (string)$rows[$i + $k]['text'];
+            }
+            $applied = $window;
+            foreach ($spanningReps as $rep) {
+                $applied = applyOneReplacement($applied, $rep);
+            }
+            if ($applied !== $window) {
+                $result[] = [
+                    'segment' => $rows[$i]['segment'],
+                    'sort'    => $rows[$i]['sort'] ?? null,
+                    'text'    => $applied,
+                ];
+                $i += $span;
+                $merged = true;
+            }
+        }
+        if (!$merged) {
+            $result[] = $rows[$i];
+            $i++;
+        }
+    }
+    return $result;
+}
+
+/**
+ * Apply yy_transcript_correction to a row sequence, with cross-row merging.
+ * Loads the active correction list once per call (no per-request cache;
+ * the worker invokes this once per item).
+ */
+function applyCorrectionsAcrossRows(PDO $db, array $rows): array {
+    if (!$rows) return $rows;
+    $stmt = $db->query("SELECT correction_wrong, correction_right, correction_case_sensitive, correction_word_boundary FROM yy_transcript_correction WHERE correction_active_flag = TRUE ORDER BY correction_count DESC, length(correction_wrong) DESC");
+    $corrections = $stmt->fetchAll();
+    if (!$corrections) return $rows;
+    $replacements = [];
+    foreach ($corrections as $c) {
+        $replacements[] = [
+            'wrong'          => $c['correction_wrong'],
+            'right'          => $c['correction_right'],
+            'case_sensitive' => (bool)$c['correction_case_sensitive'],
+            'word_boundary'  => (bool)$c['correction_word_boundary'],
+            'is_regex'       => false,
+        ];
+    }
+    return applyReplacementsAcrossRows($rows, $replacements);
+}

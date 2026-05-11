@@ -490,18 +490,23 @@ if (!$rows) {
 bailIfCancelled($db, $jobKey);
 
 // ── Save rows ──
-// Two parallel writes per row, both tagged with the job's model so
-// per-model history is preserved side-by-side:
+// Two parallel writes, both tagged with the job's model so per-model
+// history is preserved side-by-side:
 //   1. yy_feed_item_transcript_auto      — raw output of the chosen
-//      model (or YouTube captions when job_model='youtube').
-//   2. yy_feed_item_transcript_autoclean — same rows after
-//      applyCorrectionDictionary() (the YadaYah correction pass).
+//      model (or YouTube captions when job_model='youtube'). One row
+//      per item the model emitted — no merging.
+//   2. yy_feed_item_transcript_autoclean — the same content after the
+//      YadaYah correction pass. Cross-row aware: a correction whose
+//      `wrong` spans multiple rows merges those rows into one at the
+//      first row's segment timestamp. Crucial for whisper-1-word where
+//      each row is a single word.
 // The live yy_feed_item_transcript is NEVER written here — the user's
 // human edits live there, and "Initialize Transcript" is the explicit
 // path that copies an autoclean version into the live table.
 // Replacement is scoped to (item, model) so re-running one model
 // doesn't disturb another model's stored rows.
 updateJob($db, $jobKey, ['job_progress' => 90, 'job_message' => 'Saving ' . count($rows) . ' segments (model=' . $jobModel . ')...']);
+$cleanedRows = applyCorrectionsAcrossRows($db, $rows);
 $db->beginTransaction();
 try {
     $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $jobModel]);
@@ -510,11 +515,13 @@ try {
     $insClean = $db->prepare("INSERT INTO yy_feed_item_transcript_autoclean (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model) VALUES (?, ?::interval, ?, ?, ?)");
     $sort = 0;
     foreach ($rows as $r) {
-        $rawText  = mb_substr($r['text'], 0, 2000);
-        $autoText = mb_substr(applyCorrectionDictionary($db, $rawText), 0, 2000);
-        $insAuto ->execute([$itemKey, $r['segment'], $rawText,  $sort, $jobModel]);
-        $insClean->execute([$itemKey, $r['segment'], $autoText, $sort, $jobModel]);
+        $insAuto->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $jobModel]);
         $sort++;
+    }
+    $cleanSort = 0;
+    foreach ($cleanedRows as $r) {
+        $insClean->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $cleanSort, $jobModel]);
+        $cleanSort++;
     }
     $db->commit();
 } catch (Exception $e) {

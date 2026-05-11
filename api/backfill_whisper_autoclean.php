@@ -175,19 +175,25 @@ $insW = $db->prepare("
 ");
 $insA = $db->prepare("
     INSERT INTO yy_feed_item_transcript_autoclean
-        (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort)
-    VALUES (?, ?::interval, ?, ?)
+        (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_autoclean_model)
+    VALUES (?, ?::interval, ?, ?, ?)
 ");
+// Write _auto rows raw (one per Whisper segment).
 $sort = 0;
 foreach ($allRows as $r) {
-    $raw   = mb_substr($r['text'], 0, 2000);
-    $clean = mb_substr(applyCorrectionDictionary($db, $raw), 0, 2000);
-    $insW->execute([$itemKey, $r['segment'], $raw,   $sort, $model]);
-    $insA->execute([$itemKey, $r['segment'], $clean, $sort]);
+    $insW->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $model]);
     $sort++;
 }
+// _autoclean uses cross-row correction matching so phrases that span row
+// boundaries collapse onto the first row's segment.
+$cleanedRows = applyCorrectionsAcrossRows($db, $allRows);
+$cleanSort = 0;
+foreach ($cleanedRows as $r) {
+    $insA->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $cleanSort, $model]);
+    $cleanSort++;
+}
 $db->commit();
-logmsg("wrote $sort row(s) to _auto (model=$model) and _autoclean");
+logmsg("wrote $sort _auto and $cleanSort _autoclean row(s) (model=$model)");
 
 // Cleanup downloaded audio (but NOT user-uploaded audio)
 if (strpos($audioPath, '/tmp/backfill_whisper_') === 0) @unlink($audioPath);
