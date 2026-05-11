@@ -43,11 +43,14 @@ setCurrentUser($db, (int)$user['user_key']);
 //   whisper-1-word    — one row per word, sub-second precision. Same
 //                       OpenAI cost as whisper-1-segment; trades coarse
 //                       segment rows for fine-grained alignment.
+// gpt-4o-mini-transcribe and gpt-4o-transcribe removed 2026-05-11 — they
+// emit one row per ~10-min chunk (no segment timestamps) and produced
+// transcriptions that were not useful enough to justify the spend.
+// Existing _auto rows for those models remain in the DB and show up in
+// Analyze as historical columns, but they're no longer pickable here.
 $AVAILABLE_MODELS = [
     ['code' => 'whisper-1-segment',      'label' => 'OpenAI whisper-1 — segment timestamps ($0.006/min)'],
     ['code' => 'whisper-1-word',         'label' => 'OpenAI whisper-1 — word-level timestamps ($0.006/min)'],
-    ['code' => 'gpt-4o-mini-transcribe', 'label' => 'OpenAI gpt-4o-mini-transcribe ($0.003/min)'],
-    ['code' => 'gpt-4o-transcribe',      'label' => 'OpenAI gpt-4o-transcribe ($0.006/min)'],
     ['code' => 'youtube',                'label' => 'YouTube auto-captions (free, requires fresh cookies)'],
 ];
 
