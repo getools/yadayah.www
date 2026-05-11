@@ -1671,9 +1671,6 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            + '<select id="t-view-select" onchange="switchTranscriptView(this.value)" title="Swap the displayed rows between the editable live transcript and any read-only auto-model version" style="font-size:0.85rem;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff;">'
-            +   '<option value="">Current (editable)</option>'
-            + '</select>'
             + '<button id="t-start-btn" onclick="openTranscribeModal()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
             + '<button id="t-init-btn" onclick="openInitializeModal()" style="background:#31345A;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;" title="Pick one of the auto-transcribed model versions, apply the YadaYah correction pass, and copy it into the live transcript for editing">Initialize Transcript</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
@@ -1701,6 +1698,9 @@ function openTranscript(itemKey) {
             // pre-fill the Find field.
             + '<button onmousedown="event.preventDefault()" onclick="openSearchReplaceFromButton()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Cross-transcript find/replace — pre-fills Find with any text you have highlighted in a transcript row">Search &amp; Replace</button>'
             + '<button id="t-analyze-btn" onclick="openTranscriptAnalysis()" disabled style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;opacity:0.5;" title="No auto-transcript yet — run Transcribe Audio first">Analyze</button>'
+            + '<select id="t-view-select" onchange="switchTranscriptView(this.value)" title="Swap the displayed rows between the editable live transcript and any auto-model version" style="font-size:0.85rem;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff;">'
+            +   '<option value="">Current (editable)</option>'
+            + '</select>'
             + '</div>'
             + '<div id="t-upload-info" style="display:none;font-size:0.78rem;color:#666;background:#fffbe6;border:1px solid #ffe99e;border-radius:4px;padding:6px 10px;"></div>'
             + '<div id="t-find-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:4px;padding:6px 10px;">'
@@ -3041,7 +3041,7 @@ function updateTranscriptViewSelect(availableViews, currentView) {
     if (!sel) return;
     var html = '<option value="">Current (editable)</option>';
     availableViews.forEach(function(code) {
-        html += '<option value="' + esc(code) + '"' + (code === currentView ? ' selected' : '') + '>' + esc(code) + ' (read-only)</option>';
+        html += '<option value="' + esc(code) + '"' + (code === currentView ? ' selected' : '') + '>' + esc(code) + '</option>';
     });
     sel.innerHTML = html;
     sel.value = currentView || '';
@@ -3933,7 +3933,7 @@ function renderTranscribeList() {
             +   '<input type="checkbox" class="tx-pick" data-code="' + esc(m.code) + '" onchange="updateTranscribeProcessBtn()">'
             +   '<div style="flex:1;">'
             +     '<div style="font-weight:600;color:#31345A;">' + esc(m.label) + '</div>'
-            +     '<div style="font-size:0.75rem;color:#666;">Last run: ' + lastTxt + '</div>'
+            +     '<div style="font-size:0.75rem;color:#666;">Last run: <span id="tx-lastrun-' + esc(m.code) + '">' + lastTxt + '</span></div>'
             +   '</div>'
             +   '<div id="tx-prog-wrap-' + esc(m.code) + '" style="flex:0 0 220px;display:none;">'
             +     '<div style="background:#eee;border-radius:10px;height:10px;overflow:hidden;"><div id="tx-prog-' + esc(m.code) + '" style="background:#27ae60;height:100%;width:0;transition:width 0.4s;"></div></div>'
@@ -3969,6 +3969,23 @@ function runNextTranscribeModel() {
         document.getElementById('tx-process-btn').textContent = 'Done';
         // Reload the popover so the Analyze Changes data sees the fresh rows
         if (_transcriptItemKey) loadTranscript();
+        // Authoritative refresh of all Last-run labels — covers cases where
+        // a per-model poll never saw the final 'complete' status (timing,
+        // tab backgrounded, etc.) but the worker did land rows.
+        fetch(API + '/admin-transcript-models.php?action=status&item_key=' + encodeURIComponent(_transcriptItemKey),
+            { credentials:'include' })
+            .then(function(r){ return safeJson(r); })
+            .then(function(d) {
+                if (!d || d.error || !d.models) return;
+                d.models.forEach(function(sm) {
+                    var lr = document.getElementById('tx-lastrun-' + sm.code);
+                    if (!lr) return;
+                    if (sm.last_run) {
+                        lr.textContent = new Date(sm.last_run).toLocaleString();
+                    }
+                });
+                _txModalState.models = d.models;
+            });
         return;
     }
     var code = _txModalState.queue.shift();
@@ -3995,6 +4012,13 @@ function pollTranscribeJob(code, jobKey) {
             setTxProg(code, prog, d.job_message || d.job_status);
             if (d.job_status === 'complete' || d.job_status === 'completed') {
                 setTxProg(code, 100, '✓ done');
+                // Refresh this model's "Last run" label inline; the green bar
+                // alone left users (correctly) unsure whether the row landed.
+                var lr = document.getElementById('tx-lastrun-' + code);
+                if (lr) lr.textContent = new Date().toLocaleString();
+                _txModalState.models.forEach(function(mm){
+                    if (mm.code === code) mm.last_run = new Date().toISOString();
+                });
                 runNextTranscribeModel();
             } else if (d.job_status === 'error' || d.job_status === 'failed' || d.job_status === 'cancelled') {
                 setTxProg(code, 100, '✗ ' + (d.job_error || d.job_message || d.job_status));

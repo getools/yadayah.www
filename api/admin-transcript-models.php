@@ -73,14 +73,16 @@ if ($method === 'GET' && $action === 'status') {
     $itemKey = (int)($_GET['item_key'] ?? 0);
     if (!$itemKey) errorResponse('item_key required');
 
-    // Last-run timestamp per model = MAX revision_dtime where segment is 00:00:00
-    // (Postgres interval '00:00:00' is one canonical first-row marker).
+    // Last-run timestamp per model. Was previously filtered by segment =
+    // '00:00:00'::interval, but whisper-1-word and Deepgram nova-3 start
+    // their first row at sub-second offsets (e.g. 00:00:00.56), so they
+    // never matched and the UI mis-reported them as "never run". Just take
+    // MAX(revision_dtime) across every row for the (item, model) pair.
     $stmt = $db->prepare("
         SELECT feed_item_transcript_auto_model AS model,
                MAX(feed_item_transcript_revision_dtime) AS last_run
           FROM yy_feed_item_transcript_auto
          WHERE feed_item_key = ?
-           AND feed_item_transcript_segment = '00:00:00'::interval
          GROUP BY feed_item_transcript_auto_model
     ");
     $stmt->execute([$itemKey]);
