@@ -524,6 +524,29 @@ try {
     exit(1);
 }
 
+// Auto-derive whisper-1-word-join when this run completed either of the
+// two source models AND both source models now have rows for this item.
+// The CLI script build_whisper_word_join.php remains available for manual
+// runs; the worker calls the same buildWhisperWordJoin() helper inline.
+if (in_array($jobModel, ['whisper-1-word', 'youtube'], true)) {
+    $bothStmt = $db->prepare("
+        SELECT
+          EXISTS (SELECT 1 FROM yy_feed_item_transcript_auto WHERE feed_item_key = ? AND feed_item_transcript_auto_model = 'whisper-1-word') AS has_word,
+          EXISTS (SELECT 1 FROM yy_feed_item_transcript_auto WHERE feed_item_key = ? AND feed_item_transcript_auto_model = 'youtube')        AS has_yt
+    ");
+    $bothStmt->execute([$itemKey, $itemKey]);
+    $rowChk = $bothStmt->fetch();
+    if ($rowChk && $rowChk['has_word'] && $rowChk['has_yt']) {
+        updateJob($db, $jobKey, ['job_progress' => 95, 'job_message' => 'Deriving whisper-1-word-join…']);
+        try {
+            $joinedCount = buildWhisperWordJoin($db, $itemKey, 'youtube');
+            error_log("transcript-worker: built $joinedCount whisper-1-word-join rows for item $itemKey");
+        } catch (Throwable $e) {
+            error_log("transcript-worker: whisper-1-word-join build failed for item $itemKey: " . $e->getMessage());
+        }
+    }
+}
+
 updateJob($db, $jobKey, [
     'job_status' => 'complete',
     'job_progress' => 100,

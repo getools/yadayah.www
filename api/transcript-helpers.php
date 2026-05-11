@@ -235,3 +235,126 @@ function applyCorrectionsAcrossRows(PDO $db, array $rows): array {
     }
     return applyReplacementsAcrossRows($rows, $replacements);
 }
+
+/**
+ * Build the 'whisper-1-word-join' _auto rows for a feed_item from existing
+ * whisper-1-word + reference-model (default 'youtube') _auto data. The
+ * resulting rows are per-phrase (not per-word) but keep whisper-1-word's
+ * word-precise start timestamps, with punctuation copied off the matched
+ * reference tokens. Returns the number of rows written (0 if the inputs
+ * are missing).
+ *
+ * Algorithm: for each reference row at time T with next ref at T', restrict
+ * the candidate whisper words to those with start times in
+ *   [T - SLACK_BEFORE, T' + SLACK_AFTER]
+ * Then greedy-match the reference row's tokens in order. The claimed range
+ * is [first matched whisper idx .. last matched]. The first match gets the
+ * row's segment timestamp. See build_whisper_word_join.php for the CLI
+ * wrapper.
+ */
+function buildWhisperWordJoin(PDO $db, int $itemKey, string $refModel = 'youtube'): int {
+    $loadAuto = function (string $model) use ($db, $itemKey): array {
+        $st = $db->prepare("
+            SELECT feed_item_transcript_segment::text AS segment,
+                   feed_item_transcript_text          AS text,
+                   feed_item_transcript_sort          AS sort
+              FROM yy_feed_item_transcript_auto
+             WHERE feed_item_key = ? AND feed_item_transcript_auto_model = ?
+             ORDER BY feed_item_transcript_sort, feed_item_transcript_segment
+        ");
+        $st->execute([$itemKey, $model]);
+        return $st->fetchAll();
+    };
+    $wordRows = $loadAuto('whisper-1-word');
+    $refRows  = $loadAuto($refModel);
+    if (!$wordRows || !$refRows) return 0;
+
+    $norm = function (string $s): string {
+        return trim(mb_strtolower($s), " \t\n\r.,;:!?\"()[]<>");
+    };
+    $trailPunct = function (string $s): string {
+        return preg_match('/([.,;:!?]+)$/u', $s, $m) ? $m[1] : '';
+    };
+    $secs = function (string $hms): float {
+        if (preg_match('/^(\d+):(\d+):(\d+(?:\.\d+)?)$/', $hms, $m)) {
+            return ((int)$m[1]) * 3600 + ((int)$m[2]) * 60 + (float)$m[3];
+        }
+        return 0.0;
+    };
+
+    $times = array_map(function ($r) use ($secs) { return $secs((string)$r['segment']); }, $wordRows);
+    $nw = count($wordRows);
+    $firstIdxAtOrAfter = function (float $T, int $startIdx) use ($times, $nw): int {
+        for ($i = $startIdx; $i < $nw; $i++) if ($times[$i] >= $T) return $i;
+        return $nw;
+    };
+
+    $SLACK_BEFORE = 2.5;
+    $SLACK_AFTER  = 2.5;
+    $result = [];
+    $wsIdx = 0;
+    $nr = count($refRows);
+    foreach ($refRows as $rIdx => $refRow) {
+        if (!preg_match_all('/\S+/u', (string)$refRow['text'], $mm)) continue;
+        $refTokens = $mm[0];
+        $refT  = $secs((string)$refRow['segment']);
+        $nextT = ($rIdx + 1 < $nr) ? $secs((string)$refRows[$rIdx + 1]['segment']) : INF;
+        $idxLow  = max($wsIdx, $firstIdxAtOrAfter($refT - $SLACK_BEFORE, $wsIdx));
+        $idxHigh = $firstIdxAtOrAfter($nextT + $SLACK_AFTER, $idxLow);
+        if ($idxLow >= $idxHigh) continue;
+
+        $localWs   = $idxLow;
+        $lastMatch = -1;
+        $alignMap  = [];
+        foreach ($refTokens as $rti => $refToken) {
+            $rn = $norm($refToken);
+            if ($rn === '') continue;
+            for ($i = $localWs; $i < $idxHigh; $i++) {
+                if ($norm((string)$wordRows[$i]['text']) === $rn) {
+                    $alignMap[$i] = $rti;
+                    $lastMatch    = $i;
+                    $localWs      = $i + 1;
+                    break;
+                }
+            }
+        }
+        if ($lastMatch < 0) continue;
+        $firstMatch = min(array_keys($alignMap));
+        $parts = [];
+        for ($i = $firstMatch; $i <= $lastMatch; $i++) {
+            $w = (string)$wordRows[$i]['text'];
+            if (isset($alignMap[$i])) {
+                $p = $trailPunct($refTokens[$alignMap[$i]]);
+                if ($p !== '' && !preg_match('/[.,;:!?]$/u', $w)) $w .= $p;
+            }
+            $parts[] = $w;
+        }
+        $result[] = [
+            'segment' => $wordRows[$firstMatch]['segment'],
+            'text'    => implode(' ', $parts),
+        ];
+        $wsIdx = $lastMatch + 1;
+    }
+
+    $model = 'whisper-1-word-join';
+    $db->beginTransaction();
+    try {
+        $db->prepare("DELETE FROM yy_feed_item_transcript_auto      WHERE feed_item_key = ? AND feed_item_transcript_auto_model      = ?")->execute([$itemKey, $model]);
+        $db->prepare("DELETE FROM yy_feed_item_transcript_autoclean WHERE feed_item_key = ? AND feed_item_transcript_autoclean_model = ?")->execute([$itemKey, $model]);
+        $ins = $db->prepare("
+            INSERT INTO yy_feed_item_transcript_auto
+                (feed_item_key, feed_item_transcript_segment, feed_item_transcript_text, feed_item_transcript_sort, feed_item_transcript_auto_model)
+            VALUES (?, ?::interval, ?, ?, ?)
+        ");
+        $sort = 0;
+        foreach ($result as $r) {
+            $ins->execute([$itemKey, $r['segment'], mb_substr($r['text'], 0, 2000), $sort, $model]);
+            $sort++;
+        }
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        return 0;
+    }
+    return count($result);
+}
