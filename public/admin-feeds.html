@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778424544">
+    <meta name="page-version" content="1778470639">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1668,6 +1668,14 @@ function openTranscript(itemKey) {
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
+            // Push the current transcript out to YouTube as a caption
+            // track. The server-side ytCaptionsBuildSrt already emits each
+            // cue with a YT_CAPTIONS_OVERLAP_SECONDS (=1) tail so cues
+            // overlap their neighbor — that's what triggers YouTube's
+            // smooth-scroll caption animation.
+            + '<button id="t-yt-upload-btn" onclick="uploadTranscriptToYouTube()" '
+            + '   title="Upload this transcript to YouTube as a caption track (1-second overlap between cues for smooth scrolling)" '
+            + '   style="background:#ea4335;color:#fff;border:1px solid #ea4335;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload Transcript</button>'
             // "+ Row" toolbar button removed — per-row "+" buttons in the
             // table now insert AND split, which covers the same need
             // without forcing the user to type a timestamp by hand.
@@ -2209,6 +2217,48 @@ function recTranscriptCell(it) {
         + (dateLine ? '<div style="font-size:0.65rem;color:#888;font-family:monospace;font-weight:400;margin-top:2px;">' + dateLine + '</div>' : '')
         + '</button>';
 }
+// Upload the open transcript to YouTube as a caption track. Wraps the
+// same /api/admin-yt-caption-upload.php endpoint as the per-row Upload
+// button; the server's ytCaptionsBuildSrt extends each cue past the
+// next cue's start (by YT_CAPTIONS_OVERLAP_SECONDS, currently 1) so the
+// captions overlap and YouTube renders them with its smooth-scroll
+// animation between segments.
+function uploadTranscriptToYouTube() {
+    if (!_transcriptItemKey) return;
+    var btn = document.getElementById('t-yt-upload-btn');
+    var stEl = document.getElementById('t-status');
+    if (btn) {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.dataset.origText = btn.dataset.origText || btn.textContent;
+        btn.textContent = 'Uploading…';
+    }
+    if (stEl) { stEl.textContent = 'Uploading to YouTube…'; stEl.style.color = '#888'; }
+    fetch('/api/admin-yt-caption-upload.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({feed_item_key: _transcriptItemKey})
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '↑ Upload Transcript'; }
+        if (d && d.ok) {
+            if (stEl) {
+                stEl.textContent = '✓ Uploaded to YouTube';
+                stEl.style.color = '#27ae60';
+                setTimeout(function(){ if (stEl.textContent.indexOf('Uploaded') === 0) stEl.textContent = ''; }, 4000);
+            }
+            if (typeof loadRecordings === 'function') loadRecordings();
+        } else {
+            var msg = (d && (d.message || d.error)) || 'Upload failed';
+            if (stEl) { stEl.textContent = '✗ ' + msg; stEl.style.color = '#c0392b'; }
+            alert('Upload failed: ' + msg);
+        }
+    }).catch(function (e) {
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || '↑ Upload Transcript'; }
+        if (stEl) { stEl.textContent = '✗ ' + e.message; stEl.style.color = '#c0392b'; }
+        alert('Upload failed: ' + e.message);
+    });
+}
+
 function uploadCaptions(feedItemKey, btnEl) {
     if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
     fetch('/api/admin-yt-caption-upload.php', {
@@ -4292,6 +4342,44 @@ function srPayload() {
     }
     return p;
 }
+// Render a transcript row with each match struck through and its
+// replacement bolded inline. Mirrors the server's pattern construction
+// (POSIX-quoted literal find with optional word boundaries, or pass-through
+// regex) so what the user sees matches what apply will actually do.
+// Backreferences in regex-mode replacement are shown literally — JS doesn't
+// expand POSIX `\1`-style refs, and the apply path uses Postgres regex
+// anyway. The bolded value is still informative as "this is what gets
+// substituted at every hit."
+function srHighlightLine(text, find, replace, caseSensitive, wordBoundary, isRegex) {
+    if (!find) return esc(text);
+    var pattern;
+    if (isRegex) {
+        pattern = find;
+    } else {
+        pattern = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (wordBoundary) pattern = '\\b' + pattern + '\\b';
+    }
+    var flags = 'g' + (caseSensitive ? '' : 'i');
+    var re;
+    try { re = new RegExp(pattern, flags); } catch (e) { return esc(text); }
+    var out = '';
+    var lastIdx = 0;
+    var safety = 0;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+        if (safety++ > 1000) break;             // bound runaway
+        if (m.index === re.lastIndex) {         // zero-width match — advance manually
+            re.lastIndex++;
+            continue;
+        }
+        out += esc(text.substring(lastIdx, m.index))
+            +  '<s style="color:#a30;">' + esc(m[0]) + '</s>'
+            +  '<b style="color:#1d6b3a;">' + esc(replace) + '</b>';
+        lastIdx = re.lastIndex;
+    }
+    out += esc(text.substring(lastIdx));
+    return out;
+}
 function srToggleRegexMode() {
     var on = document.getElementById('sr-regex').checked;
     var wbLabel = document.getElementById('sr-wb-label');
@@ -4377,9 +4465,8 @@ function srPreview() {
                         + '</td>'
                         + '<td style="padding:5px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;width:90px;white-space:nowrap;">'
                         +   esc(s.segment) + '</td>'
-                        + '<td style="padding:5px 10px;">'
-                        +   '<div style="color:#a30;text-decoration:line-through;">' + esc(s.old_text) + '</div>'
-                        +   '<div style="color:#1d6b3a;">' + esc(s.new_text) + '</div>'
+                        + '<td style="padding:5px 10px;line-height:1.4;">'
+                        +   srHighlightLine(s.old_text, p.find, p.replace, p.case_sensitive, p.word_boundary, p.regex)
                         + '</td></tr>';
                 });
                 html += '</table>';
