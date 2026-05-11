@@ -17,42 +17,71 @@ $stripChars = ["\u{02BF}","\u{02BE}","\u{02BC}","\u{02BB}","\u{02B9}","\u{02BA}"
 $q = str_replace($stripChars, '', $q);
 $q = preg_replace('/\s{2,}/', ' ', trim($q));
 
+// Consonant skeleton for Hebrew-transliteration fuzzy matching. Mirrors
+// the SQL normalize_consonants() function: lowercase, strip aeiou, drop
+// non-alphanumerics. "shemayim" / "shamaym" / "shamayim" all collapse
+// to "shmym"; "Yahowah" / "Yahuwah" / "Yahweh" all collapse to "yhwh".
+// Used both for matching (ILIKE clause below) AND for highlightSnippet
+// so a consonant-only match still wraps the visible word in <mark>.
+function consonantSkel(string $s): string {
+    $s = mb_strtolower($s);
+    $s = preg_replace('/[aeiou]/u', '', $s);
+    $s = preg_replace('/[^a-z0-9 ]/u', '', $s);
+    return trim(preg_replace('/\s+/u', ' ', (string)$s));
+}
+
 // Walk both the snippet and a query word in lockstep, skipping any char
 // in $stripChars on the snippet side, so "Miqraʿey" matches "miqraey".
-// Returns the HTML-escaped snippet with <mark>...</mark> wrapping each
-// match. Used by every search tier so all snippets get consistent
-// highlighting even when the source text contains stripped characters
-// (which would otherwise defeat a naive preg_replace highlight).
-function highlightSnippet(string $snippet, array $words, array $stripChars): string {
-    if ($snippet === '' || empty($words)) {
-        return htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
-    }
+// When $consonantMode is true, ALSO skip aeiou in the snippet so
+// "Shamayim" matches the consonant skeleton "shmym" — that's what lets
+// the highlight follow a fuzzy/transliteration match into the visible
+// text. Used by every search tier so all snippets get consistent
+// highlighting even when the source contains stripped characters or
+// vowel-variant spellings.
+function highlightSnippet(string $snippet, array $words, array $stripChars, array $consonantWords = []): string {
+    if ($snippet === '') return '';
     $words = array_values(array_unique(array_filter(array_map(function($w) use ($stripChars) {
         $w = str_replace($stripChars, '', mb_strtolower((string)$w));
         return mb_strlen($w) >= 2 ? $w : null;
     }, $words))));
-    if (empty($words)) {
+    $consonantWords = array_values(array_unique(array_filter(array_map(function($w) {
+        $w = (string)$w;
+        return mb_strlen($w) >= 3 ? mb_strtolower($w) : null;
+    }, $consonantWords))));
+    if (empty($words) && empty($consonantWords)) {
         return htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
     }
     $lower = mb_strtolower($snippet);
     $len   = mb_strlen($snippet);
+    $vowels = ['a','e','i','o','u'];
     $marks = []; // [start, end) character-index pairs
-    foreach ($words as $word) {
-        $wlen = mb_strlen($word);
-        $i = 0;
-        while ($i < $len) {
-            $j = $i;
-            $w = 0;
-            while ($j < $len && $w < $wlen) {
-                $c = mb_substr($lower, $j, 1);
-                if (in_array($c, $stripChars, true)) { $j++; continue; }
-                if ($c !== mb_substr($word, $w, 1)) break;
-                $j++; $w++;
-            }
-            if ($w === $wlen) { $marks[] = [$i, $j]; $i = $j; }
-            else $i++;
+
+    // Inner: walk $snippet from index $i, trying to match $word, with
+    // $extraSkip giving the additional chars to skip on the snippet side
+    // beyond $stripChars.
+    $matchAt = function ($i, $word, $extraSkip) use ($lower, $len, $stripChars) {
+        $j = $i; $w = 0; $wlen = mb_strlen($word);
+        while ($j < $len && $w < $wlen) {
+            $c = mb_substr($lower, $j, 1);
+            if (in_array($c, $stripChars, true) || in_array($c, $extraSkip, true)) { $j++; continue; }
+            if ($c !== mb_substr($word, $w, 1)) return -1;
+            $j++; $w++;
         }
-    }
+        return $w === $wlen ? $j : -1;
+    };
+    $scan = function (array $list, array $extraSkip) use (&$marks, $len, $matchAt) {
+        foreach ($list as $word) {
+            $i = 0;
+            while ($i < $len) {
+                $end = $matchAt($i, $word, $extraSkip);
+                if ($end > $i) { $marks[] = [$i, $end]; $i = $end; }
+                else $i++;
+            }
+        }
+    };
+    $scan($words, []);                  // literal pass (strip-chars only)
+    $scan($consonantWords, $vowels);    // consonant pass (also skip vowels)
+
     if (empty($marks)) return htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
     usort($marks, function($a, $b) { return $a[0] - $b[0] ?: $a[1] - $b[1]; });
     // Merge overlapping / adjacent marks so we don't emit nested <mark>s.
@@ -163,6 +192,22 @@ $ftsMatchParams = [
     '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%',
 ];
 
+// Consonant-skeleton ILIKE — catches Hebrew vowel-transliteration variants
+// (shemayim ↔ shamayim ↔ shamaym all share skeleton "shmym"). Only added
+// when the consonant string is at least 4 chars so we don't trigger
+// runaway substring matches on short tokens like "ten" → "tn".
+$qConsonants = consonantSkel($q);
+$consonantWordsForHighlight = [];
+if (mb_strlen($qConsonants) >= 4) {
+    $ftsMatchConditions[] = "normalize_consonants(p.paragraph_text_plain) ILIKE ?";
+    $ftsMatchParams[] = '%' . str_replace(['%', '_'], ['\%', '\_'], $qConsonants) . '%';
+    // Per-word consonant skeletons drive highlightSnippet's consonant pass.
+    foreach ($queryWords as $qw) {
+        $cs = consonantSkel($qw);
+        if (mb_strlen($cs) >= 3) $consonantWordsForHighlight[] = $cs;
+    }
+}
+
 // Add ILIKE for each alias target — search against normalized text (half-rings stripped)
 foreach ($aliasTargets as $at) {
     $ftsMatchConditions[] = "normalize_search_text(p.paragraph_text_plain) ILIKE ?";
@@ -226,7 +271,7 @@ if ($total > 0) {
     $highlightWords = array_merge($queryWords, $aliasTargets);
     foreach ($results as &$row) {
         if ($row['snippet']) {
-            $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars);
+            $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars, $consonantWordsForHighlight);
         }
     }
     unset($row);
@@ -271,7 +316,7 @@ if ($total > 0) {
         $highlightWords = array_merge($queryWords, $aliasTargets);
         foreach ($results as &$row) {
             if ($row['snippet']) {
-                $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars);
+                $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars, $consonantWordsForHighlight);
             }
         }
         unset($row);
@@ -344,7 +389,7 @@ if ($total > 0) {
             $highlightWords = array_merge($queryWords, $aliasTargets);
             foreach ($results as &$row) {
                 if ($row['snippet']) {
-                    $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars);
+                    $row['snippet'] = highlightSnippet((string)$row['snippet'], $highlightWords, $stripChars, $consonantWordsForHighlight);
                 }
             }
             unset($row);

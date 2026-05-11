@@ -48,6 +48,35 @@
     <div id="form-container">
         <div style="text-align:center;padding:30px;color:#888;">Loading…</div>
     </div>
+
+    <div class="fb-section" style="margin-top:24px">
+        <h3>Synonyms / Aliases</h3>
+        <p class="desc">
+            Custom term → alternate-form pairs added to every Books search. Useful when consonant-skeleton fuzzy matching
+            (which already collapses Hebrew vowel variants like shemayim ↔ shamayim) doesn't catch what you want — e.g.
+            mapping <code>heavens</code> → <code>shamayim</code>, or <code>messiah</code> → <code>mashyach</code>. Add a
+            row in each direction if you want symmetric matching.
+        </p>
+        <table id="alias-tbl" style="width:100%;border-collapse:collapse;font-size:0.9rem">
+            <thead>
+                <tr style="background:#f6f8fa;border-bottom:1px solid #e0e0e0">
+                    <th style="text-align:left;padding:6px 8px;width:40%">Search term</th>
+                    <th style="text-align:left;padding:6px 8px;width:40%">Also match</th>
+                    <th style="padding:6px 8px;width:120px"></th>
+                </tr>
+            </thead>
+            <tbody id="alias-rows"><tr><td colspan="3" style="padding:12px;color:#888">Loading…</td></tr></tbody>
+            <tfoot>
+                <tr>
+                    <td style="padding:8px"><input type="text" id="alias-new-term" placeholder="e.g. shemayim"
+                        style="width:100%;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem"></td>
+                    <td style="padding:8px"><input type="text" id="alias-new-target" placeholder="e.g. shamayim"
+                        style="width:100%;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem"></td>
+                    <td style="padding:8px;text-align:right"><button class="btn btn-primary btn-sm" onclick="addAlias()">+ Add</button></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
 </div>
 
 <script src="/js/admin-login.js?v=8"></script>
@@ -101,7 +130,9 @@ function render(values) {
     var c = document.getElementById('form-container');
     var html = '';
     SECTIONS.forEach(function(sec) {
-        html += '<div class="fb-section"><h3>' + esc(sec.title) + '</h3><p class="desc">' + esc(sec.desc) + '</p>';
+        html += '<div class="fb-section"><h3>' + esc(sec.title)
+              + '<span id="save-status" style="font-size:0.78rem;font-weight:400;color:#888;margin-left:10px;"></span>'
+              + '</h3><p class="desc">' + esc(sec.desc) + '</p>';
         sec.fields.forEach(function(f) {
             var v = (values[f.code] != null && values[f.code] !== '') ? values[f.code] : f.default;
             var input;
@@ -115,11 +146,25 @@ function render(values) {
         });
         html += '</div>';
     });
-    html += '<div class="save-row">'
-          + '<span id="save-status" style="font-size:0.85rem;color:#888;"></span>'
-          + '<button class="btn btn-primary" onclick="saveAll()">Save changes</button>'
-          + '</div>';
     c.innerHTML = html;
+    wireAutosave();
+}
+
+// Each setting auto-saves 600ms after the last keystroke (or on blur/change).
+// One short debounce window per field — no Save button needed.
+var _autosaveTimer = null;
+function wireAutosave() {
+    document.querySelectorAll('[data-code]').forEach(function(el) {
+        var fire = function() {
+            clearTimeout(_autosaveTimer);
+            _autosaveTimer = setTimeout(saveAll, 600);
+        };
+        el.addEventListener('input', fire);
+        el.addEventListener('change', function() {
+            clearTimeout(_autosaveTimer);
+            saveAll();
+        });
+    });
 }
 
 function esc(s) {
@@ -159,6 +204,72 @@ function saveAll() {
           status.style.color = '#c0392b';
       });
 }
+
+// ── Synonyms / Aliases table ───────────────────────────────────────
+function loadAliases() {
+    fetch(API + '/admin-search-aliases.php', { credentials: 'include' })
+        .then(function(r){ return r.json(); })
+        .then(function(rows) { renderAliases(Array.isArray(rows) ? rows : []); })
+        .catch(function(){ document.getElementById('alias-rows').innerHTML = '<tr><td colspan="3" style="color:#c0392b;padding:12px">Failed to load.</td></tr>'; });
+}
+
+function renderAliases(rows) {
+    var tbody = document.getElementById('alias-rows');
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="3" style="color:#888;padding:12px;font-style:italic">No aliases yet — add one below.</td></tr>'; return; }
+    tbody.innerHTML = rows.map(function(r) {
+        return '<tr data-key="' + r.alias_key + '" style="border-bottom:1px solid #eee">'
+            +   '<td style="padding:6px 8px"><input type="text" value="' + esc(r.alias_term) + '" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:3px;font-size:0.88rem" data-field="alias_term"></td>'
+            +   '<td style="padding:6px 8px"><input type="text" value="' + esc(r.alias_target) + '" style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:3px;font-size:0.88rem" data-field="alias_target"></td>'
+            +   '<td style="padding:6px 8px;text-align:right">'
+            +     '<button class="btn btn-secondary btn-sm" onclick="saveAlias(' + r.alias_key + ', this)">Save</button> '
+            +     '<button class="btn btn-secondary btn-sm" style="color:#c0392b" onclick="deleteAlias(' + r.alias_key + ')">Delete</button>'
+            +   '</td>'
+            + '</tr>';
+    }).join('');
+}
+
+function addAlias() {
+    var term   = document.getElementById('alias-new-term').value.trim();
+    var target = document.getElementById('alias-new-target').value.trim();
+    if (!term || !target) { alert('Both fields required'); return; }
+    fetch(API + '/admin-search-aliases.php', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias_term: term, alias_target: target })
+    }).then(function(r){ return r.json(); })
+      .then(function(d){
+          if (d && d.error) { alert('Add failed: ' + d.error); return; }
+          document.getElementById('alias-new-term').value = '';
+          document.getElementById('alias-new-target').value = '';
+          loadAliases();
+      });
+}
+
+function saveAlias(key, btn) {
+    var row = btn.closest('tr');
+    var term   = row.querySelector('[data-field=alias_term]').value.trim();
+    var target = row.querySelector('[data-field=alias_target]').value.trim();
+    fetch(API + '/admin-search-aliases.php?key=' + key, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias_term: term, alias_target: target })
+    }).then(function(r){ return r.json(); })
+      .then(function(d){
+          if (d && d.error) { alert('Save failed: ' + d.error); return; }
+          btn.textContent = '✓ Saved';
+          setTimeout(function(){ btn.textContent = 'Save'; }, 1500);
+      });
+}
+
+function deleteAlias(key) {
+    if (!confirm('Delete this alias?')) return;
+    fetch(API + '/admin-search-aliases.php?key=' + key, { method: 'DELETE', credentials: 'include' })
+        .then(function(){ loadAliases(); });
+}
+
+// Hook loadAliases() into the existing load() so both render on auth success.
+var __origLoad = load;
+load = function() { __origLoad(); loadAliases(); };
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
 checkAuth();
