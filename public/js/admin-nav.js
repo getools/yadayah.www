@@ -32,6 +32,7 @@ var tabs = [
     ['admin-timeline.html', 'Timeline'],
     ['admin-memorial.html', 'Memorial'],
     ['admin-media.html', 'Media'],
+    ['admin-tts.html', 'TTS'],
     ['admin-music.html', 'Music'],
     ['admin-chat.html', 'Chat'],
     ['admin-comments.html', 'Comments'],

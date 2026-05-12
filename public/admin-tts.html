@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="page-version" content="1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS Admin - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css?v=10">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .tts-section { background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:16px 20px; margin-bottom:16px; }
+        .tts-section h3 { margin:0 0 4px; font-size:1rem; color:#31345A; display:flex; align-items:center; gap:10px; }
+        .tts-section .desc { font-size:0.82rem; color:#666; margin:0 0 14px; }
+
+        .tts-tabs { display:flex; gap:2px; border-bottom:2px solid #31345A; margin:0 0 20px; }
+        .tts-tabs button { padding:10px 20px; background:#f0f0f0; border:none; border-radius:6px 6px 0 0; cursor:pointer; font-size:0.92rem; font-weight:600; color:#555; }
+        .tts-tabs button.active { background:#31345A; color:#fff; }
+        .tts-tabs button:hover:not(.active) { background:#e0e8ff; }
+
+        .tts-pane { display:none; }
+        .tts-pane.active { display:block; }
+
+        .voice-row { display:grid; grid-template-columns: 220px 1fr 120px; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid #f0f0f0; }
+        .voice-row label { font-weight:600; font-size:0.9rem; color:#444; }
+        .voice-row select, .voice-row input { padding:6px 10px; border:1px solid #ccc; border-radius:4px; font-size:0.88rem; font-family:inherit; }
+        .voice-row .prosody { display:flex; gap:8px; align-items:center; font-size:0.78rem; color:#666; }
+        .voice-row .prosody input { width:60px; }
+        .voice-row .btn-listen { background:#31345A; color:#fff; border:none; border-radius:4px; padding:6px 12px; cursor:pointer; font-size:0.85rem; font-weight:600; }
+        .voice-row .btn-listen:hover { background:#252850; }
+        .voice-row .btn-listen[disabled] { background:#888; cursor:wait; }
+
+        .preview-area { background:#f8f8f8; border:1px solid #ddd; border-radius:6px; padding:14px; margin-top:16px; }
+        .preview-area textarea { width:100%; min-height:60px; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; font-family:inherit; box-sizing:border-box; }
+        .preview-area .preview-controls { display:flex; gap:10px; margin-top:8px; align-items:center; flex-wrap:wrap; }
+        .preview-area select { padding:6px 10px; border:1px solid #ccc; border-radius:4px; font-size:0.88rem; }
+
+        .tts-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+        .tts-table th, .tts-table td { padding:8px 10px; text-align:left; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
+        .tts-table th { background:#f5f5f5; font-weight:600; }
+        .tts-table input[type=text], .tts-table input[type=number] { width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:0.88rem; box-sizing:border-box; }
+        .tts-table .col-actions { width:200px; text-align:right; }
+        .tts-table .btn-sm { background:#31345A; color:#fff; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size:0.82rem; margin-left:4px; }
+        .tts-table .btn-sm.btn-del { background:#c0392b; }
+        .tts-table .btn-sm.btn-sec { background:#888; }
+        .tts-table .btn-sm:hover { opacity:0.85; }
+        .tts-table .col-toggle { width:60px; text-align:center; }
+        .tts-table tr.inactive td { color:#aaa; }
+
+        .add-row-btn { background:#27ae60; color:#fff; border:none; border-radius:4px; padding:7px 14px; cursor:pointer; font-size:0.88rem; font-weight:600; margin-top:12px; }
+        .add-row-btn:hover { background:#229954; }
+
+        .books-controls { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+        .books-controls select { padding:6px 10px; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; min-width:280px; }
+        .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.72rem; font-weight:600; }
+        .badge-complete { background:#d4edda; color:#155724; }
+        .badge-running { background:#fff3cd; color:#856404; }
+        .badge-pending { background:#e8e8e8; color:#555; }
+        .badge-failed { background:#f8d7da; color:#721c24; }
+        .badge-none { background:#fafafa; color:#999; border:1px solid #e0e0e0; }
+
+        .progress { display:inline-block; vertical-align:middle; width:120px; height:6px; background:#eee; border-radius:3px; overflow:hidden; margin-left:8px; }
+        .progress .fill { display:block; height:100%; background:#27ae60; transition:width 0.3s; }
+
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center; }
+        .modal-overlay.visible { display:flex; }
+        .modal-box { background:#fff; border-radius:8px; padding:24px; max-width:680px; width:90%; max-height:85vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+        .modal-box h3 { margin:0 0 14px; font-size:1.05rem; color:#31345A; }
+        .modal-box .modal-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:14px; border-top:1px solid #eee; }
+        .modal-box button { padding:8px 18px; border-radius:4px; border:1px solid #ccc; cursor:pointer; font-size:0.9rem; font-weight:600; }
+        .modal-box .btn-primary { background:#31345A; color:#fff; border-color:#31345A; }
+        .modal-box .btn-cancel { background:#f8f8f8; }
+
+        .status-msg { font-size:0.85rem; color:#666; margin-top:6px; min-height:18px; }
+        .status-msg.error { color:#c0392b; }
+        .status-msg.success { color:#27ae60; }
+    </style>
+</head>
+<body>
+
+<div id="app" class="container">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=12"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Text-to-Speech</h1>
+    <p style="color:#666;font-size:0.88rem;margin:-4px 0 16px;">Configure voices, pronunciations, pauses, and generate audio per book.</p>
+
+    <div class="tts-tabs">
+        <button data-tab="voices"        class="active">Voices</button>
+        <button data-tab="pronunciations">Pronunciations</button>
+        <button data-tab="pauses">Pauses</button>
+        <button data-tab="books">Books</button>
+    </div>
+
+    <!-- ── Voices tab ─────────────────────────────────────────────── -->
+    <div id="pane-voices" class="tts-pane active">
+        <div class="tts-section">
+            <h3>System settings</h3>
+            <p class="desc">Output quality applies to every generated file. Region is the Azure Speech region.</p>
+            <div class="voice-row">
+                <label>Output format</label>
+                <select id="sys-format"></select>
+                <span></span>
+            </div>
+            <div class="voice-row">
+                <label>Region</label>
+                <input type="text" id="sys-region" placeholder="brazilsouth">
+                <button class="btn-listen" onclick="saveSystem()">Save</button>
+            </div>
+            <div id="sys-status" class="status-msg"></div>
+        </div>
+
+        <div class="tts-section">
+            <h3>Default voice per content category</h3>
+            <p class="desc">Each category gets its own voice + style + prosody. Used as defaults for new audio builds (overridable per build).</p>
+            <div id="category-rows"></div>
+        </div>
+
+        <div class="tts-section">
+            <h3>Preview any voice</h3>
+            <p class="desc">Type a phrase, pick a voice, click Listen. Pronunciations + pauses defined in their tabs apply automatically.</p>
+            <div class="preview-area">
+                <textarea id="preview-text" placeholder="Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah.">Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah.</textarea>
+                <div class="preview-controls">
+                    <select id="preview-voice"></select>
+                    <select id="preview-style"><option value="">(no style)</option></select>
+                    <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"></label>%
+                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" style="width:60px"></label>st
+                    <button class="btn-listen" onclick="doPreview()">▶ Listen</button>
+                </div>
+                <div id="preview-status" class="status-msg"></div>
+                <audio id="preview-audio" controls style="width:100%;margin-top:8px;display:none"></audio>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Pronunciations tab ─────────────────────────────────────── -->
+    <div id="pane-pronunciations" class="tts-pane">
+        <div class="tts-section">
+            <h3>Phrase list / pronunciations</h3>
+            <p class="desc">When the TTS engine encounters <em>Print</em>, it says <em>Phonetic</em> instead. Use plain re-spellings for "sub" type (default) or IPA/SAPI for power users.</p>
+            <table class="tts-table">
+                <thead>
+                    <tr>
+                        <th style="width:24%">Print (as in book)</th>
+                        <th style="width:24%">Phonetic / Re-spelling</th>
+                        <th style="width:8%">Type</th>
+                        <th>Note</th>
+                        <th class="col-toggle">Active</th>
+                        <th class="col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="tunes-tbody"></tbody>
+            </table>
+            <button class="add-row-btn" onclick="addTuneRow()">+ Add pronunciation</button>
+            <div id="tunes-status" class="status-msg"></div>
+        </div>
+    </div>
+
+    <!-- ── Pauses tab ─────────────────────────────────────────────── -->
+    <div id="pane-pauses" class="tts-pane">
+        <div class="tts-section">
+            <h3>Pause rules</h3>
+            <p class="desc">When the engine sees <em>Search</em> in the text, insert a pause of the given length. Use surrounding spaces (e.g. <code>&nbsp;|&nbsp;</code>) to anchor a match — without spaces every occurrence of the character pauses, including inside words.</p>
+            <table class="tts-table">
+                <thead>
+                    <tr>
+                        <th style="width:18%">Search (literal)</th>
+                        <th style="width:12%">Pause (ms)</th>
+                        <th>Note</th>
+                        <th style="width:8%">Sort</th>
+                        <th class="col-toggle">Active</th>
+                        <th class="col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="pauses-tbody"></tbody>
+            </table>
+            <button class="add-row-btn" onclick="addPauseRow()">+ Add pause rule</button>
+            <div id="pauses-status" class="status-msg"></div>
+        </div>
+    </div>
+
+    <!-- ── Books tab ──────────────────────────────────────────────── -->
+    <div id="pane-books" class="tts-pane">
+        <div class="tts-section">
+            <h3>Volumes</h3>
+            <p class="desc">Pick a volume to see chapter-level audio status and build new files.</p>
+            <div class="books-controls">
+                <select id="volume-select"><option value="">— Select volume —</option></select>
+                <span id="volume-summary" style="font-size:0.85rem;color:#666"></span>
+            </div>
+            <table class="tts-table" id="chapters-table" style="display:none">
+                <thead>
+                    <tr>
+                        <th style="width:60px">Ch #</th>
+                        <th>Label</th>
+                        <th style="width:90px">Paragraphs</th>
+                        <th style="width:120px">Status</th>
+                        <th style="width:140px">Audio</th>
+                        <th class="col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="chapters-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ── Build-options modal ─────────────────────────────────────────── -->
+<div id="build-modal" class="modal-overlay">
+    <div class="modal-box">
+        <h3 id="build-modal-title">Build audio</h3>
+        <p style="font-size:0.85rem;color:#666;margin:0 0 14px">Defaults shown come from the Voices tab. Override per-build if you want.</p>
+        <div class="voice-row" style="grid-template-columns:160px 1fr">
+            <label>Output format</label>
+            <select id="build-format"></select>
+        </div>
+        <div id="build-category-rows" style="margin-top:10px"></div>
+        <div id="build-status" class="status-msg"></div>
+        <div class="modal-buttons">
+            <button class="btn-cancel" onclick="closeBuildModal()">Cancel</button>
+            <button class="btn-primary" id="build-start-btn" onclick="startBuild()">Start build</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/admin-login.js?v=8"></script>
+<script>
+'use strict';
+var API = '/api';
+var TTS_KEY = 1; // first row in yy_tts
+var CATALOG = { voices: [], formats: [], categories: [] };
+var STATE = { categories: {}, tunes: [], pauses: [], systems: [] };
+
+function $(id) { return document.getElementById(id); }
+function escapeHtml(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
+document.querySelectorAll('.tts-tabs button').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tts-tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tts-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        $('pane-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'pronunciations') loadTunes();
+        if (btn.dataset.tab === 'pauses') loadPauses();
+        if (btn.dataset.tab === 'books') loadVolumes();
+    });
+});
+
+function api(path, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    return fetch(API + path, opts).then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(r.status + ': ' + t); });
+        var ct = r.headers.get('content-type') || '';
+        return ct.indexOf('json') >= 0 ? r.json() : r.blob();
+    });
+}
+
+async function bootstrap() {
+    CATALOG = await api('/admin-tts-config.php?action=catalog');
+    var ov = await api('/admin-tts-config.php?action=overview&tts_key=' + TTS_KEY);
+    STATE.systems = ov.systems || [];
+    if (ov.current) {
+        STATE.system = ov.current.system;
+        (ov.current.categories || []).forEach(c => { STATE.categories[c.tts_category] = c; });
+    }
+    populateSystemUI();
+    renderCategoryRows();
+    populatePreviewVoiceList();
+}
+
+function populateSystemUI() {
+    var fs = $('sys-format');
+    fs.innerHTML = '';
+    CATALOG.formats.forEach(f => {
+        var o = document.createElement('option');
+        o.value = f.code; o.textContent = f.label;
+        fs.appendChild(o);
+    });
+    if (STATE.system) {
+        fs.value = STATE.system.tts_output_format;
+        $('sys-region').value = STATE.system.tts_region || '';
+    }
+}
+
+function renderCategoryRows() {
+    var root = $('category-rows');
+    root.innerHTML = '';
+    CATALOG.categories.forEach(cat => {
+        var saved = STATE.categories[cat.code] || {};
+        var row = document.createElement('div');
+        row.className = 'voice-row';
+        row.style.gridTemplateColumns = '220px 1fr auto auto';
+        row.innerHTML =
+            '<label>' + escapeHtml(cat.label) + '</label>' +
+            '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
+            '<div class="prosody">' +
+                'rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '">%' +
+                'pitch <input type="number" data-field="pitch" min="-12" max="12" step="1" value="' + (saved.tts_voice_pitch_st || 0) + '">st' +
+                'vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '">' +
+            '</div>' +
+            '<button class="btn-listen" data-cat="' + cat.code + '">Save & ▶</button>';
+        root.appendChild(row);
+        var sel = row.querySelector('select');
+        CATALOG.voices.forEach(v => {
+            var o = document.createElement('option');
+            o.value = v.code; o.textContent = v.label;
+            sel.appendChild(o);
+        });
+        if (saved.tts_voice_code) sel.value = saved.tts_voice_code;
+        row.querySelector('button').addEventListener('click', function() {
+            saveAndListenCategory(cat.code, row);
+        });
+    });
+}
+
+function populatePreviewVoiceList() {
+    var sel = $('preview-voice');
+    sel.innerHTML = '';
+    CATALOG.voices.forEach(v => {
+        var o = document.createElement('option');
+        o.value = v.code;
+        o.textContent = v.label;
+        o.dataset.styles = (v.styles || []).join(',');
+        sel.appendChild(o);
+    });
+    sel.addEventListener('change', refreshPreviewStyles);
+    refreshPreviewStyles();
+}
+
+function refreshPreviewStyles() {
+    var sel = $('preview-voice');
+    var styles = (sel.selectedOptions[0]?.dataset.styles || '').split(',').filter(Boolean);
+    var ss = $('preview-style');
+    ss.innerHTML = '<option value="">(no style)</option>';
+    styles.forEach(s => {
+        if (s === 'general') return;
+        var o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        ss.appendChild(o);
+    });
+}
+
+async function saveSystem() {
+    $('sys-status').textContent = 'Saving…';
+    try {
+        await api('/admin-tts-config.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'save_system',
+                tts_key: TTS_KEY,
+                output_format: $('sys-format').value,
+                region: $('sys-region').value,
+            }),
+        });
+        $('sys-status').textContent = 'Saved.'; $('sys-status').className = 'status-msg success';
+    } catch (e) {
+        $('sys-status').textContent = 'Error: ' + e.message; $('sys-status').className = 'status-msg error';
+    }
+}
+
+async function saveAndListenCategory(catCode, rowEl) {
+    var voice  = rowEl.querySelector('select').value;
+    var rate   = parseInt(rowEl.querySelector('[data-field=rate]').value, 10) || 0;
+    var pitch  = parseInt(rowEl.querySelector('[data-field=pitch]').value, 10) || 0;
+    var volume = parseInt(rowEl.querySelector('[data-field=volume]').value, 10) || 100;
+    var btn = rowEl.querySelector('button');
+    btn.disabled = true; btn.textContent = '…';
+    try {
+        await api('/admin-tts-config.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'save_category_voice',
+                tts_key: TTS_KEY,
+                tts_category: catCode,
+                voice_code: voice,
+                rate_pct: rate, pitch_st: pitch, volume: volume,
+            }),
+        });
+        STATE.categories[catCode] = {
+            tts_category: catCode, tts_voice_code: voice,
+            tts_voice_rate_pct: rate, tts_voice_pitch_st: pitch, tts_voice_volume: volume,
+        };
+        var blob = await api('/admin-tts-preview.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tts_key: TTS_KEY,
+                category: catCode,
+                voice_code: voice,
+                rate_pct: rate, pitch_st: pitch, volume: volume,
+                text: $('preview-text').value || 'This is a preview.',
+            }),
+        });
+        var url = URL.createObjectURL(blob);
+        $('preview-audio').src = url;
+        $('preview-audio').style.display = 'block';
+        $('preview-audio').play();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false; btn.textContent = 'Save & ▶';
+    }
+}
+
+async function doPreview() {
+    $('preview-status').textContent = 'Synthesizing…'; $('preview-status').className = 'status-msg';
+    try {
+        var blob = await api('/admin-tts-preview.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tts_key: TTS_KEY,
+                voice_code: $('preview-voice').value,
+                style: $('preview-style').value || null,
+                rate_pct: parseInt($('preview-rate').value, 10) || 0,
+                pitch_st: parseInt($('preview-pitch').value, 10) || 0,
+                text: $('preview-text').value,
+            }),
+        });
+        var url = URL.createObjectURL(blob);
+        $('preview-audio').src = url;
+        $('preview-audio').style.display = 'block';
+        $('preview-audio').play();
+        $('preview-status').textContent = 'Done.'; $('preview-status').className = 'status-msg success';
+    } catch (e) {
+        $('preview-status').textContent = 'Error: ' + e.message; $('preview-status').className = 'status-msg error';
+    }
+}
+
+// ── Pronunciations tab ──────────────────────────────────────────────
+async function loadTunes() {
+    var r = await api('/admin-tts-config.php?action=tunes&tts_key=' + TTS_KEY);
+    STATE.tunes = r.rows || [];
+    renderTunes();
+}
+
+function renderTunes() {
+    var tb = $('tunes-tbody');
+    tb.innerHTML = '';
+    STATE.tunes.forEach(t => tb.appendChild(buildTuneRow(t)));
+}
+
+function buildTuneRow(t) {
+    var tr = document.createElement('tr');
+    if (!t.tts_tune_active_flag) tr.className = 'inactive';
+    tr.dataset.key = t.tts_tune_key || '';
+    tr.innerHTML =
+        '<td><input type="text" class="f-print"    value="' + escapeHtml(t.tts_tune_print    || '') + '"></td>' +
+        '<td><input type="text" class="f-phon"     value="' + escapeHtml(t.tts_tune_phonetic || '') + '"></td>' +
+        '<td><select class="f-type"><option value="sub">sub</option><option value="ipa">ipa</option><option value="sapi">sapi</option></select></td>' +
+        '<td><input type="text" class="f-note"     value="' + escapeHtml(t.tts_tune_note     || '') + '"></td>' +
+        '<td class="col-toggle"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
+        '<td class="col-actions">' +
+            '<button class="btn-sm btn-sec" data-act="listen">▶</button>' +
+            '<button class="btn-sm" data-act="save">Save</button>' +
+            '<button class="btn-sm btn-del" data-act="del">×</button>' +
+        '</td>';
+    tr.querySelector('.f-type').value = t.tts_tune_phonetic_type || 'sub';
+    tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handleTuneAction(tr, b.dataset.act)));
+    return tr;
+}
+
+function addTuneRow() {
+    $('tunes-tbody').appendChild(buildTuneRow({ tts_tune_active_flag: true }));
+}
+
+async function handleTuneAction(tr, act) {
+    var key = parseInt(tr.dataset.key, 10) || 0;
+    var print  = tr.querySelector('.f-print').value.trim();
+    var phon   = tr.querySelector('.f-phon').value.trim();
+    var type   = tr.querySelector('.f-type').value;
+    var note   = tr.querySelector('.f-note').value;
+    var active = tr.querySelector('.f-active').checked;
+    try {
+        if (act === 'save') {
+            if (!print || !phon) { alert('Print and Phonetic are required'); return; }
+            var res = await api('/admin-tts-config.php', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key, print, phonetic: phon, phonetic_type: type, note, active }),
+            });
+            tr.dataset.key = res.tts_tune_key;
+            tr.classList.toggle('inactive', !active);
+            $('tunes-status').textContent = 'Saved "' + print + '"'; $('tunes-status').className='status-msg success';
+        } else if (act === 'del') {
+            if (key && !confirm('Delete "' + print + '"?')) return;
+            if (key) await api('/admin-tts-config.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_tune', tts_tune_key: key }) });
+            tr.remove();
+        } else if (act === 'listen') {
+            // Preview the print word being read with the phonetic substitution applied.
+            var blob = await api('/admin-tts-preview.php', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ tts_key: TTS_KEY, text: print + '. Now in context: We must remember ' + print + ' every day.' }),
+            });
+            var a = $('preview-audio'); a.src = URL.createObjectURL(blob); a.style.display='block'; a.play();
+        }
+    } catch (e) {
+        $('tunes-status').textContent = 'Error: ' + e.message; $('tunes-status').className='status-msg error';
+    }
+}
+
+// ── Pauses tab ──────────────────────────────────────────────────────
+async function loadPauses() {
+    var r = await api('/admin-tts-config.php?action=pauses&tts_key=' + TTS_KEY);
+    STATE.pauses = r.rows || [];
+    renderPauses();
+}
+
+function renderPauses() {
+    var tb = $('pauses-tbody');
+    tb.innerHTML = '';
+    STATE.pauses.forEach(p => tb.appendChild(buildPauseRow(p)));
+}
+
+function buildPauseRow(p) {
+    var tr = document.createElement('tr');
+    if (!p.tts_pause_active_flag) tr.className = 'inactive';
+    tr.dataset.key = p.tts_pause_key || '';
+    tr.innerHTML =
+        '<td><input type="text" class="f-search" value="' + escapeHtml(p.tts_pause_search || '') + '" placeholder=" | "></td>' +
+        '<td><input type="number" class="f-ms"   value="' + (p.tts_pause_ms || 300) + '" min="0" max="5000" step="50"></td>' +
+        '<td><input type="text"   class="f-note" value="' + escapeHtml(p.tts_pause_note || '') + '"></td>' +
+        '<td><input type="number" class="f-sort" value="' + (p.tts_pause_sort || 0) + '" min="0" max="999"></td>' +
+        '<td class="col-toggle"><input type="checkbox" class="f-active"' + (p.tts_pause_active_flag !== false ? ' checked' : '') + '></td>' +
+        '<td class="col-actions">' +
+            '<button class="btn-sm" data-act="save">Save</button>' +
+            '<button class="btn-sm btn-del" data-act="del">×</button>' +
+        '</td>';
+    tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handlePauseAction(tr, b.dataset.act)));
+    return tr;
+}
+
+function addPauseRow() {
+    $('pauses-tbody').appendChild(buildPauseRow({ tts_pause_active_flag: true }));
+}
+
+async function handlePauseAction(tr, act) {
+    var key   = parseInt(tr.dataset.key, 10) || 0;
+    var search= tr.querySelector('.f-search').value;
+    var ms    = parseInt(tr.querySelector('.f-ms').value, 10) || 300;
+    var note  = tr.querySelector('.f-note').value;
+    var sort  = parseInt(tr.querySelector('.f-sort').value, 10) || 0;
+    var active= tr.querySelector('.f-active').checked;
+    try {
+        if (act === 'save') {
+            if (!search) { alert('Search string required'); return; }
+            var res = await api('/admin-tts-config.php', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ action:'save_pause', tts_key: TTS_KEY, tts_pause_key: key, search, ms, note, sort, active }),
+            });
+            tr.dataset.key = res.tts_pause_key;
+            tr.classList.toggle('inactive', !active);
+            $('pauses-status').textContent = 'Saved.'; $('pauses-status').className='status-msg success';
+        } else if (act === 'del') {
+            if (key && !confirm('Delete pause "' + search + '"?')) return;
+            if (key) await api('/admin-tts-config.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_pause', tts_pause_key: key }) });
+            tr.remove();
+        }
+    } catch (e) {
+        $('pauses-status').textContent = 'Error: ' + e.message; $('pauses-status').className='status-msg error';
+    }
+}
+
+// ── Books tab ───────────────────────────────────────────────────────
+var VOLUMES = [];
+var CHAPTERS = [];
+var ACTIVE_VOLUME = 0;
+var POLL_TIMER = null;
+
+async function loadVolumes() {
+    if (VOLUMES.length) return;
+    var r = await api('/admin-tts-books.php?action=volumes&tts_key=' + TTS_KEY);
+    VOLUMES = r.volumes || [];
+    var sel = $('volume-select');
+    sel.innerHTML = '<option value="">— Select volume —</option>';
+    VOLUMES.forEach(v => {
+        var o = document.createElement('option');
+        o.value = v.volume_key;
+        o.textContent = 's' + String(v.series_number).padStart(2,'0') + 'v' + String(v.volume_number).padStart(2,'0') + ' — ' + (v.volume_label || '');
+        if (v.chapters_with_audio > 0) o.textContent += '  (' + v.chapters_with_audio + '/' + v.chapters_total + ' built)';
+        sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => loadChapters(parseInt(sel.value, 10) || 0));
+}
+
+async function loadChapters(volumeKey) {
+    if (POLL_TIMER) { clearInterval(POLL_TIMER); POLL_TIMER = null; }
+    ACTIVE_VOLUME = volumeKey;
+    if (!volumeKey) { $('chapters-table').style.display = 'none'; $('volume-summary').textContent=''; return; }
+    var r = await api('/admin-tts-books.php?action=chapters&volume_key=' + volumeKey + '&tts_key=' + TTS_KEY);
+    CHAPTERS = r.chapters || [];
+    $('volume-summary').textContent = (r.volume.volume_label || '') + ' — ' + CHAPTERS.length + ' chapters';
+    $('chapters-table').style.display = '';
+    renderChapters();
+    // Poll while anything is running.
+    if (CHAPTERS.some(c => c.tts_audio_status === 'running' || c.tts_audio_status === 'pending')) {
+        POLL_TIMER = setInterval(() => loadChapters(ACTIVE_VOLUME), 3000);
+    }
+}
+
+function renderChapters() {
+    var tb = $('chapters-tbody');
+    tb.innerHTML = '';
+    CHAPTERS.forEach(c => {
+        var tr = document.createElement('tr');
+        var st = c.tts_audio_status || 'none';
+        var badge = '<span class="badge badge-' + st + '">' + st + '</span>';
+        var progress = '';
+        if (st === 'running' || st === 'pending') {
+            progress = '<div class="progress"><span class="fill" style="width:' + (c.tts_audio_progress || 0) + '%"></span></div>';
+        }
+        var audio = '';
+        if (st === 'complete' && c.tts_audio_path) {
+            audio = '<audio controls preload="none" style="width:130px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
+        }
+        var actions = '<button class="btn-sm" onclick="openBuildModal(' + c.chapter_key + ',' + (c.tts_audio_key || 'null') + ')">' + (st === 'complete' ? 'Rebuild' : st === 'none' ? 'Build' : 'Settings') + '</button>';
+        if (st === 'running' || st === 'pending') {
+            actions += '<button class="btn-sm btn-del" onclick="cancelBuild(' + c.tts_audio_key + ')">Cancel</button>';
+        }
+        tr.innerHTML =
+            '<td>' + escapeHtml(c.chapter_number) + '</td>' +
+            '<td>' + escapeHtml(c.chapter_label || '') + (c.tts_audio_message ? '<div style="font-size:0.78rem;color:#888">' + escapeHtml(c.tts_audio_message) + '</div>' : '') + '</td>' +
+            '<td>' + escapeHtml(c.paragraph_count || 0) + '</td>' +
+            '<td>' + badge + progress + '</td>' +
+            '<td>' + audio + '</td>' +
+            '<td class="col-actions">' + actions + '</td>';
+        tb.appendChild(tr);
+    });
+}
+
+function openBuildModal(chapterKey, audioKey) {
+    var ch = CHAPTERS.find(c => c.chapter_key === chapterKey);
+    if (!ch) return;
+    $('build-modal-title').textContent = 'Build audio — chapter ' + ch.chapter_number;
+    var fmt = $('build-format');
+    fmt.innerHTML = '';
+    CATALOG.formats.forEach(f => {
+        var o = document.createElement('option');
+        o.value = f.code; o.textContent = f.label;
+        fmt.appendChild(o);
+    });
+    fmt.value = STATE.system?.tts_output_format || 'audio-24khz-48kbitrate-mono-mp3';
+
+    var root = $('build-category-rows');
+    root.innerHTML = '';
+    CATALOG.categories.forEach(cat => {
+        var saved = STATE.categories[cat.code] || {};
+        var row = document.createElement('div');
+        row.className = 'voice-row';
+        row.style.gridTemplateColumns = '180px 1fr';
+        row.innerHTML = '<label>' + escapeHtml(cat.label) + '</label><select data-cat="' + cat.code + '"></select>';
+        root.appendChild(row);
+        var sel = row.querySelector('select');
+        CATALOG.voices.forEach(v => {
+            var o = document.createElement('option');
+            o.value = v.code; o.textContent = v.label;
+            sel.appendChild(o);
+        });
+        if (saved.tts_voice_code) sel.value = saved.tts_voice_code;
+    });
+    $('build-status').textContent = '';
+    $('build-modal').classList.add('visible');
+    $('build-modal').dataset.chapter = chapterKey;
+    $('build-modal').dataset.volume = ACTIVE_VOLUME;
+}
+
+function closeBuildModal() { $('build-modal').classList.remove('visible'); }
+
+async function startBuild() {
+    var btn = $('build-start-btn');
+    btn.disabled = true; $('build-status').textContent = 'Queuing…';
+    var overrides = {};
+    document.querySelectorAll('#build-category-rows select').forEach(s => {
+        overrides[s.dataset.cat] = { voice_code: s.value };
+    });
+    try {
+        var res = await api('/admin-tts-build.php?action=start', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                action:'start',
+                tts_key: TTS_KEY,
+                volume_key: parseInt($('build-modal').dataset.volume, 10),
+                chapter_key: parseInt($('build-modal').dataset.chapter, 10),
+                output_format: $('build-format').value,
+                voice_overrides: overrides,
+            }),
+        });
+        $('build-status').textContent = 'Started (job ' + res.tts_audio_key + '). Polling…';
+        $('build-status').className = 'status-msg success';
+        setTimeout(closeBuildModal, 600);
+        loadChapters(ACTIVE_VOLUME);
+    } catch (e) {
+        $('build-status').textContent = 'Error: ' + e.message; $('build-status').className = 'status-msg error';
+    } finally { btn.disabled = false; }
+}
+
+async function cancelBuild(audioKey) {
+    if (!confirm('Cancel this build?')) return;
+    await api('/admin-tts-build.php?action=cancel', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'cancel', tts_audio_key: audioKey }),
+    });
+    loadChapters(ACTIVE_VOLUME);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    bootstrap().catch(function(e) {
+        // admin-login.js will show its modal if not authenticated; surface
+        // anything else.
+        if (!/401/.test(e.message || '')) console.error('TTS bootstrap failed:', e);
+    });
+});
+</script>
+<script src="/js/session-state.js?v=1"></script>
+</body>
+</html>
