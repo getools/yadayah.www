@@ -148,7 +148,7 @@
                 <thead>
                     <tr>
                         <th style="width:24%">Print (as in book)</th>
-                        <th style="width:24%">Phonetic / Re-spelling</th>
+                        <th style="width:calc(24% - 40px)">Phonetic / Re-spelling</th>
                         <th style="width:8%">Type</th>
                         <th>Note</th>
                         <th class="col-toggle">Active</th>
@@ -173,7 +173,6 @@
                         <th style="width:18%">Search (literal)</th>
                         <th style="width:12%">Pause (ms)</th>
                         <th>Note</th>
-                        <th style="width:8%">Sort</th>
                         <th class="col-toggle">Active</th>
                         <th class="col-actions"></th>
                     </tr>
@@ -528,7 +527,6 @@ function buildPauseRow(p) {
         '<td><input type="text" class="f-search" value="' + escapeHtml(p.tts_pause_search || '') + '" placeholder=" | "></td>' +
         '<td><input type="number" class="f-ms"   value="' + (p.tts_pause_ms || 300) + '" min="0" max="5000" step="50"></td>' +
         '<td><input type="text"   class="f-note" value="' + escapeHtml(p.tts_pause_note || '') + '"></td>' +
-        '<td><input type="number" class="f-sort" value="' + (p.tts_pause_sort || 0) + '" min="0" max="999"></td>' +
         '<td class="col-toggle"><input type="checkbox" class="f-active"' + (p.tts_pause_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td class="col-actions">' +
             '<button class="btn-sm" data-act="save">Save</button>' +
@@ -547,14 +545,13 @@ async function handlePauseAction(tr, act) {
     var search= tr.querySelector('.f-search').value;
     var ms    = parseInt(tr.querySelector('.f-ms').value, 10) || 300;
     var note  = tr.querySelector('.f-note').value;
-    var sort  = parseInt(tr.querySelector('.f-sort').value, 10) || 0;
     var active= tr.querySelector('.f-active').checked;
     try {
         if (act === 'save') {
             if (!search) { alert('Search string required'); return; }
             var res = await api('/admin-tts-config.php', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ action:'save_pause', tts_key: TTS_KEY, tts_pause_key: key, search, ms, note, sort, active }),
+                body: JSON.stringify({ action:'save_pause', tts_key: TTS_KEY, tts_pause_key: key, search, ms, note, active }),
             });
             tr.dataset.key = res.tts_pause_key;
             tr.classList.toggle('inactive', !active);
