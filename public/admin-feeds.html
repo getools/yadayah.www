@@ -1718,13 +1718,13 @@ function openTranscript(itemKey) {
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
             + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
+            +   '<th style="padding:4px 2px;width:1%;text-align:center;" title="Notes / bookmarks on this line"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg></th>'
             +   '<th style="padding:4px 2px;width:1%;text-align:center;white-space:nowrap;" title="Speaker — hover or click to rename">'
             +     '<span id="t-spk-anchor" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" onclick="toggleSpeakerPopover()" style="display:inline-block;cursor:pointer;padding:2px 4px;">'
             +       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
             +     '</span>'
             +   '</th>'
             +   '<th style="padding:8px;width:97px;text-align:left;">Time</th>'
-            +   '<th style="padding:4px 2px;width:1%;text-align:center;" title="Notes / bookmarks on this line"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg></th>'
             +   '<th style="padding:8px;text-align:left;">Text</th>'
             +   '<th style="padding:8px;width:40px;"></th>'
             + '</tr></thead>'
@@ -1818,6 +1818,15 @@ function formatSecondsToSegment(secs) {
     var s = secs % 60;
     var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
     return pad(h) + ':' + pad(m) + ':' + pad(s);
+}
+// Display-only formatter — strips the leading hour zero so 00:53:57 reads
+// as 0:53:57. No video on this site is over 9 hours so the second hour
+// digit is always 0 and just adds visual noise. Storage / lookup keys
+// remain 2-digit (Postgres to_char HH24:MI:SS always pads); only the
+// visible text changes.
+function displaySegment(seg) {
+    if (!seg) return seg;
+    return String(seg).replace(/^0(\d:)/, '$1');
 }
 // Find the whole word containing the given caret position. Word characters:
 // letters, digits, underscore, plus straight + curly apostrophes (so "we're"
@@ -3145,13 +3154,11 @@ function populateValidation(v) {
         sel.value = v.validation_status || 'Pending';
         note.value = v.validation_note || '';
         paintValidationToggle();
-        var who = v.validation_user_code ? 'by ' + v.validation_user_code : '';
-        var when = v.validation_dtime ? new Date(v.validation_dtime).toLocaleString() : '';
-        meta.textContent = (when || who) ? ('Last set ' + when + (who ? ' ' + who : '')) : '';
+        meta.textContent = '';
     } else {
         sel.value = 'Pending';
         note.value = '';
-        meta.textContent = 'Not yet validated';
+        meta.textContent = '';
         paintValidationToggle();
     }
     var bookmarkSec = v && v.validation_bookmark_seconds != null ? parseInt(v.validation_bookmark_seconds, 10) : 0;
@@ -3178,7 +3185,7 @@ function renderBookmarkResume(bookmarkSec) {
     }
     box.style.display = 'flex';
     box.innerHTML = '<span style="flex:1;">📍 You left off at <strong>' + formatSeconds(bookmarkSec) + '</strong></span>'
-        + '<button type="button" onclick="resumeFromBookmark(' + bookmarkSec + ')" style="background:#31345A;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;">▶ Resume</button>'
+        + '<button type="button" onclick="resumeFromBookmark(' + bookmarkSec + ')" title="Resume from ' + formatSeconds(bookmarkSec) + '" style="background:#31345A;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.78rem;">▶</button>'
         + '<button type="button" onclick="clearBookmark()" title="Forget this bookmark" style="background:none;border:none;color:#888;cursor:pointer;font-size:0.95rem;">×</button>';
 }
 
@@ -3240,11 +3247,11 @@ function transcriptRowCells(seg, secs, text, speaker) {
         +   '<button onmousedown="event.preventDefault()" onclick="splitTranscriptRow(this)" title="Insert a new row after this one — splits text at the cursor if you have one in this row" style="background:none;border:none;color:#27ae60;cursor:pointer;font-size:1.15rem;padding:0 4px;font-weight:700;">+</button>'
         +   '<button onclick="this.closest(\'tr\').remove(); scheduleAutoSave();" title="Delete this row" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;padding:0 4px;">&times;</button>'
         + '</td>';
-    return '<td style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
+    return bookmarkCellForRow(seg)
+        + '<td style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
         +   speakerChipForRow(s)
         + '</td>'
-        + '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
-        +   bookmarkCellForRow(seg)
+        + '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(displaySegment(seg)) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1"' + textareaAttr + ' style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;background:' + textareaBg + ';">' + esc(text || '') + '</textarea></td>'
         + actionsCell;
 }
@@ -3261,14 +3268,16 @@ function bookmarkCellForRow(seg) {
     var title = hasAny
         ? (count + ' note' + (count === 1 ? '' : 's') + ' on this line — click to view')
         : 'Add a note for this line';
-    var badge = hasAny
-        ? '<span style="position:absolute;top:-4px;right:-6px;background:#a36100;color:#fff;border-radius:8px;font-size:0.6rem;font-weight:700;padding:0 4px;min-width:13px;text-align:center;line-height:13px;">' + count + '</span>'
-        : '';
+    // SVG: filled circle. When there are no notes, draw the white
+    // exclamation glyph (rect + dot). When there ARE notes, replace it
+    // with the count rendered as white text centered in the circle.
+    var glyph = hasAny
+        ? '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="14" font-weight="700" font-family="system-ui, sans-serif">' + count + '</text>'
+        : '<rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/>';
     return '<td class="t-note-cell" data-seg="' + esc(seg) + '" style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
         +   '<button type="button" class="t-note-btn" data-seg="' + esc(seg) + '" onclick="openRowBookmarkPopover(this, \'' + esc(seg) + '\'); event.stopPropagation();" title="' + esc(title) + '" '
-        +     'style="background:none;border:none;cursor:pointer;padding:2px 4px;position:relative;color:' + color + ';">'
-        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg>'
-        +     badge
+        +     'style="background:none;border:none;cursor:pointer;padding:2px 4px;color:' + color + ';">'
+        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="12" r="10"/>' + glyph + '</svg>'
         +   '</button>'
         + '</td>';
 }
@@ -3752,7 +3761,7 @@ function renderRowBookmarkPopover(seg) {
     var list = (window._bookmarksBySeg[seg] || []).slice();
     var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;display:flex;align-items:center;gap:6px;">'
         + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg>'
-        + 'Notes at ' + esc(seg) + '</div>';
+        + 'Notes at ' + esc(displaySegment(seg)) + '</div>';
     if (list.length) {
         html += '<div style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-bottom:8px;">';
         list.forEach(function(b) {
@@ -3844,18 +3853,24 @@ function renderBookmarksPane() {
         + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
         + '<thead style="background:#f5f5f5;position:sticky;top:0;">'
         + '<tr>'
+        +   '<th onclick="sortBookmarks(\'user\')"    style="padding:4px 4px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:28px;" title="User — click to sort">'
+        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+        +     arrow('user')
+        +   '</th>'
         +   '<th onclick="sortBookmarks(\'segment\')" style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:70px;">Time' + arrow('segment') + '</th>'
-        +   '<th onclick="sortBookmarks(\'user\')"    style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">User'    + arrow('user')    + '</th>'
         +   '<th onclick="sortBookmarks(\'note\')"    style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note'    + arrow('note')    + '</th>'
         + '</tr></thead><tbody>';
     if (!rows.length) {
         html += '<tr><td colspan="3" style="padding:10px;text-align:center;color:#999;font-style:italic;">No bookmarks yet.</td></tr>';
     } else {
         rows.forEach(function(b) {
+            var handle = b.user_handle || b.user_display || '';
             html += '<tr>'
-                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(b.segment) + '</td>'
-                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;color:#555;">@' + esc(b.user_handle || b.user_display) + '</td>'
-                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;color:#222;">' + esc(b.note) + '</td>'
+                +   '<td style="padding:3px 4px;border-top:1px solid #f1f1f1;text-align:center;color:#555;" title="@' + esc(handle) + '">'
+                +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+                +   '</td>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;white-space:nowrap;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(displaySegment(b.segment)) + '</td>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;color:#222;word-break:break-word;">' + esc(b.note) + '</td>'
                 + '</tr>';
         });
     }
@@ -3904,7 +3919,9 @@ function openBookmarksModal() {
             +   '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">'
             +     '<thead style="background:#f5f5f5;position:sticky;top:0;">'
             +       '<tr>'
-            +         '<th id="bm-th-user"    onclick="sortBookmarks(\'user\')"    style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">User</th>'
+            +         '<th id="bm-th-user"    onclick="sortBookmarks(\'user\')"    style="padding:8px 10px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:36px;" title="User — click to sort">'
+            +           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+            +         '</th>'
             +         '<th id="bm-th-segment" onclick="sortBookmarks(\'segment\')" style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:110px;">Timestamp</th>'
             +         '<th id="bm-th-note"    onclick="sortBookmarks(\'note\')"    style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note</th>'
             +         '<th style="padding:8px 10px;width:40px;border-bottom:1px solid #ddd;"></th>'
@@ -3940,9 +3957,10 @@ function renderBookmarksModalTable() {
     var thU = document.getElementById('bm-th-user');
     var thS = document.getElementById('bm-th-segment');
     var thN = document.getElementById('bm-th-note');
-    if (thU) thU.textContent    = 'User'      + arrow('user');
-    if (thS) thS.textContent    = 'Timestamp' + arrow('segment');
-    if (thN) thN.textContent    = 'Note'      + arrow('note');
+    // User header is an SVG icon — rewrite innerHTML so the icon stays.
+    if (thU) thU.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>' + arrow('user');
+    if (thS) thS.textContent = 'Timestamp' + arrow('segment');
+    if (thN) thN.textContent = 'Note'      + arrow('note');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="4" style="padding:24px;text-align:center;color:#999;">No bookmarks for this transcript.</td></tr>';
         return;
@@ -3952,9 +3970,12 @@ function renderBookmarksModalTable() {
         var del = b.is_mine
             ? '<button type="button" onclick="deleteBookmark(' + b.key + ', \'' + esc(b.segment) + '\')" title="Delete" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;line-height:1;">&times;</button>'
             : '';
+        var handle = b.user_handle || b.user_display || '';
         html += '<tr>'
-            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;color:#555;white-space:nowrap;">@' + esc(b.user_handle || b.user_display) + '</td>'
-            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(b.segment) + '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;text-align:center;color:#555;width:36px;" title="@' + esc(handle) + '">'
+            +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+            +   '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;white-space:nowrap;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(displaySegment(b.segment)) + '</td>'
             +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;white-space:pre-wrap;word-break:break-word;color:#222;">' + esc(b.note) + '</td>'
             +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;text-align:center;">' + del + '</td>'
             + '</tr>';
