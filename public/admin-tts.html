@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778621102">
+    <meta name="page-version" content="1">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
@@ -146,16 +146,18 @@
                 <thead>
                     <tr>
                         <th></th>
-                        <th colspan="2" style="background:#fff;border-bottom:0;padding:6px 8px;">
+                        <th colspan="4" style="background:#fff;border-bottom:0;padding:6px 8px;">
                             <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.78rem;font-family:inherit;"></select>
                         </th>
-                        <th colspan="4" style="background:#fff;border-bottom:0;"></th>
+                        <th colspan="5" style="background:#fff;border-bottom:0;"></th>
                     </tr>
                     <tr>
-                        <th style="width:22%">Print (as in book)</th>
-                        <th style="width:18%">Phonetic / Re-spelling</th>
+                        <th onclick="sortTunesBy('print')"      style="width:15%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
+                        <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
+                        <th style="width:15%" title="Re-spelling — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> SUB <span style="color:#999;font-weight:400;">(re-spelling)</span></th>
+                        <th style="width:15%" title="IPA — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> IPA</th>
+                        <th style="width:14%" title="Saved for reference / comparison. Azure neural voices don't accept the SAPI alphabet, so it isn't selectable for synthesis.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
                         <th style="width:36px"></th>
-                        <th style="width:70px">Type</th>
                         <th>Note</th>
                         <th style="width:32px;text-align:center;">Active</th>
                         <th style="width:32px;text-align:right;"></th>
@@ -565,60 +567,139 @@ function populateTunesTestVoiceSelect() {
     sel.dataset.populated = '1';
 }
 
+var TUNES_SORT = { col: 'print', dir: 'asc' };
+function sortTunesBy(col) {
+    if (TUNES_SORT.col === col) {
+        TUNES_SORT.dir = TUNES_SORT.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        TUNES_SORT.col = col;
+        TUNES_SORT.dir = col === 'book_count' ? 'desc' : 'asc';
+    }
+    renderTunes();
+}
 function renderTunes() {
     var tb = $('tunes-tbody');
     tb.innerHTML = '';
-    // Sort by Print ascending (case-insensitive, locale-aware) so rows are
-    // alphabetised on initial render. We don't re-sort while the user is
-    // editing — that would yank rows around mid-keystroke.
+    var dir = TUNES_SORT.dir === 'desc' ? -1 : 1;
     var sorted = STATE.tunes.slice().sort(function(a, b) {
-        return (a.tts_tune_print || '').localeCompare(b.tts_tune_print || '', undefined, { sensitivity: 'base' });
+        if (TUNES_SORT.col === 'book_count') {
+            return ((parseInt(a.tts_tune_book_count,10)||0) - (parseInt(b.tts_tune_book_count,10)||0)) * dir;
+        }
+        return (a.tts_tune_print || '').localeCompare(b.tts_tune_print || '', undefined, { sensitivity: 'base' }) * dir;
     });
     sorted.forEach(t => tb.appendChild(buildTuneRow(t)));
+    // Update sort arrows
+    document.querySelectorAll('#pane-pronunciations .sort-arrow').forEach(function(s) {
+        var col = s.dataset.col;
+        s.textContent = (col === TUNES_SORT.col) ? (TUNES_SORT.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    });
 }
 
+// Mechanical SAPI → IPA phoneme map (en-US). Stress digit on a vowel
+// token becomes the IPA stress mark prefix: 1 → ˈ, 2 → ˌ, 0 → none.
+// Used by buildTuneRow to auto-update the IPA cell whenever SAPI changes.
+var SAPI_TO_IPA = {
+    // vowels
+    AA:'ɑ', AE:'æ', AH:'ʌ', AO:'ɔ', AW:'aʊ', AX:'ə', AY:'aɪ',
+    EH:'ɛ', ER:'ɝ', EY:'eɪ', IH:'ɪ', IX:'ɨ', IY:'i',
+    OW:'oʊ', OY:'ɔɪ', UH:'ʊ', UW:'u',
+    // consonants
+    B:'b', CH:'tʃ', D:'d', DH:'ð', F:'f', G:'ɡ', HH:'h', JH:'dʒ',
+    K:'k', L:'l', M:'m', N:'n', NG:'ŋ', P:'p', R:'ɹ', S:'s',
+    SH:'ʃ', T:'t', TH:'θ', V:'v', W:'w', Y:'j', Z:'z', ZH:'ʒ',
+};
+function sapiToIpa(sapi) {
+    if (!sapi) return '';
+    return String(sapi).trim().split(/\s+/).map(function(tok) {
+        var m = tok.match(/^([A-Za-z]+)([012]?)$/);
+        if (!m) return tok;
+        var ipa = SAPI_TO_IPA[m[1].toUpperCase()];
+        if (ipa === undefined) return tok;
+        if (m[2] === '1') return 'ˈ' + ipa;
+        if (m[2] === '2') return 'ˌ' + ipa;
+        return ipa;
+    }).join('');
+}
+
+var _tuneRowCounter = 0;
 function buildTuneRow(t) {
     var tr = document.createElement('tr');
     if (!t.tts_tune_active_flag) tr.className = 'inactive';
     tr.dataset.key = t.tts_tune_key || '';
+    var count = parseInt(t.tts_tune_book_count, 10) || 0;
+    tr.dataset.print     = (t.tts_tune_print || '').toLowerCase();
+    tr.dataset.bookCount = count;
+    // Unique radio-group name per row so the SUB/IPA radios are mutually
+    // exclusive within this row only. tts_tune_key works for saved rows;
+    // a counter handles new rows that haven't been saved yet.
+    var grp = 'tune-type-' + (t.tts_tune_key || ('new-' + (++_tuneRowCounter)));
+    // Map legacy 'sapi' selection onto 'ipa' visually — the synth path
+    // already substitutes IPA when type=sapi is stored, so checking IPA
+    // here is the honest representation.
+    var savedType = (t.tts_tune_phonetic_type === 'sapi') ? 'ipa' : (t.tts_tune_phonetic_type || 'sub');
+    var subChecked = savedType === 'sub' ? ' checked' : '';
+    var ipaChecked = savedType === 'ipa' ? ' checked' : '';
     tr.innerHTML =
-        '<td><input type="text" class="f-print"    value="' + escapeHtml(t.tts_tune_print    || '') + '"></td>' +
-        '<td><input type="text" class="f-phon"     value="' + escapeHtml(t.tts_tune_phonetic || '') + '"></td>' +
+        '<td><input type="text" class="f-print" value="' + escapeHtml(t.tts_tune_print || '') + '"></td>' +
+        '<td class="f-count" style="text-align:right;font-variant-numeric:tabular-nums;color:#555;">' + count + '</td>' +
+        '<td><label style="display:flex;align-items:center;gap:6px;">'
+            + '<input type="radio" name="' + grp + '" class="f-type-radio" value="sub" title="Use SUB for this rule"' + subChecked + '>'
+            + '<input type="text" class="f-sub" value="' + escapeHtml(t.tts_tune_phonetic_sub || '') + '" placeholder="re-spelling" style="flex:1;">'
+        + '</label></td>' +
+        '<td><label style="display:flex;align-items:center;gap:6px;">'
+            + '<input type="radio" name="' + grp + '" class="f-type-radio" value="ipa" title="Use IPA for this rule"' + ipaChecked + '>'
+            + '<input type="text" class="f-ipa" value="' + escapeHtml(t.tts_tune_phonetic_ipa || '') + '" placeholder="IPA" style="flex:1;font-family:monospace;">'
+        + '</label></td>' +
+        '<td><input type="text" class="f-sapi" value="' + escapeHtml(t.tts_tune_phonetic_sapi || '') + '" placeholder="SAPI (ref)" style="font-family:monospace;"></td>' +
         '<td style="padding:8px 2px;text-align:center;">' +
-            '<button class="btn-sm btn-sec" data-act="listen" title="Play this phrase with the new pronunciation applied" style="margin:0;padding:5px 8px;">▶</button>' +
+            '<button class="btn-sm btn-sec" data-act="listen" title="Play with the selected variant (SUB or IPA)" style="margin:0;padding:5px 8px;">▶</button>' +
         '</td>' +
-        '<td><select class="f-type"><option value="sub">sub</option><option value="ipa">ipa</option><option value="sapi">sapi</option></select></td>' +
-        '<td><input type="text" class="f-note"     value="' + escapeHtml(t.tts_tune_note     || '') + '"></td>' +
+        '<td><input type="text" class="f-note" value="' + escapeHtml(t.tts_tune_note || '') + '"></td>' +
         '<td style="padding:8px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td style="text-align:right;padding:8px 6px;">' +
             '<button class="btn-sm btn-del" data-act="del" title="Delete" style="margin:0;">×</button>' +
         '</td>';
-    tr.querySelector('.f-type').value = t.tts_tune_phonetic_type || 'sub';
     tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handleTuneAction(tr, b.dataset.act)));
-    // Autosave on field changes. Text inputs save on debounced input + on
-    // change (Enter/blur). Select and checkbox save on change.
-    tr.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) {
+    tr.querySelectorAll('input[type=text]').forEach(function(el) {
         el.addEventListener('input',  function() { scheduleAutoSave(el, function() { return saveTuneRow(tr); }, 600); });
         el.addEventListener('change', function() { flushAutoSave(el, function() { return saveTuneRow(tr); }); });
     });
-    tr.querySelector('.f-type').addEventListener('change', function() { saveTuneRow(tr); });
+    tr.querySelectorAll('.f-type-radio').forEach(function(r) {
+        r.addEventListener('change', function() { if (r.checked) saveTuneRow(tr); });
+    });
     tr.querySelector('.f-active').addEventListener('change', function() { saveTuneRow(tr); });
+    // SAPI → IPA auto-translate. As the user types in SAPI, derive the
+    // equivalent IPA and drop it into the IPA cell.
+    var sapiInp = tr.querySelector('.f-sapi');
+    var ipaInp  = tr.querySelector('.f-ipa');
+    sapiInp.addEventListener('input', function() {
+        var derived = sapiToIpa(sapiInp.value);
+        if (derived !== ipaInp.value) ipaInp.value = derived;
+    });
     return tr;
 }
 
 async function saveTuneRow(tr) {
     var key    = parseInt(tr.dataset.key, 10) || 0;
     var print  = tr.querySelector('.f-print').value.trim();
-    var phon   = tr.querySelector('.f-phon').value.trim();
-    var type   = tr.querySelector('.f-type').value;
+    var sub    = tr.querySelector('.f-sub').value.trim();
+    var ipa    = tr.querySelector('.f-ipa').value.trim();
+    var sapi   = tr.querySelector('.f-sapi').value.trim();
+    var typeRadio = tr.querySelector('.f-type-radio:checked');
+    var type   = typeRadio ? typeRadio.value : 'sub';
     var note   = tr.querySelector('.f-note').value;
     var active = tr.querySelector('.f-active').checked;
-    // Skip saves while either required field is empty — avoids creating a
-    // half-finished row when the user is mid-typing the print field.
-    if (!print || !phon) return;
+    if (!print) return;
+    // We allow type to be saved even if the chosen column is empty — the
+    // synthesis path silently skips empty rules. So a user can flip Type
+    // around to compare variants without each empty slot blocking saves.
     var res = await api('/admin-tts-config.php', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key, print, phonetic: phon, phonetic_type: type, note, active }),
+        body: JSON.stringify({
+            action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key,
+            print: print, phonetic_sub: sub, phonetic_ipa: ipa, phonetic_sapi: sapi,
+            phonetic_type: type, note: note, active: active
+        }),
     });
     tr.dataset.key = res.tts_tune_key;
     tr.classList.toggle('inactive', !active);

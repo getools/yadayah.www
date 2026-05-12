@@ -90,18 +90,34 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
     foreach ($tunes as $t) {
         $print = $t['tts_tune_print'];
         if ($print === '') continue;
+        // Each row now stores three independent phonetic representations
+        // (sub / ipa / sapi). The phonetic_type column picks which one is
+        // live. Fall back to the legacy tts_tune_phonetic mirror so this
+        // still works on rows that haven't been re-saved since the
+        // multi-column migration.
+        $type = $t['tts_tune_phonetic_type'] ?? 'sub';
+        // Azure neural voices reject the 'sapi' phoneme alphabet (legacy,
+        // non-neural voices only). Treat type=sapi as a *reference* setting
+        // — at synth time we transparently use the IPA column instead. If
+        // the IPA cell is empty, fall back to SUB.
+        $synthType = ($type === 'sapi') ? 'ipa' : $type;
+        $col  = 'tts_tune_phonetic_' . $synthType;
+        $phon = trim((string)($t[$col] ?? ''));
+        if ($phon === '' && $synthType === 'ipa') {
+            $synthType = 'sub';
+            $phon = trim((string)($t['tts_tune_phonetic_sub'] ?? ''));
+        }
+        if ($phon === '') $phon = (string)($t['tts_tune_phonetic'] ?? '');
+        if ($phon === '') continue; // nothing to substitute with — skip rule
         $regex = tunePrintToRegex($print);
-        // Quick exit if no match at all — avoids the cost of regex replace.
         if (!preg_match($regex, $text)) continue;
         $token = sprintf("\x02TUNE_%d\x02", $t['tts_tune_key']);
-        // Build the actual SSML once for reuse on every match.
-        if ($t['tts_tune_phonetic_type'] === 'ipa' || $t['tts_tune_phonetic_type'] === 'sapi') {
-            $alphabet = htmlspecialchars($t['tts_tune_phonetic_type'], ENT_QUOTES | ENT_XML1);
-            $ph = htmlspecialchars($t['tts_tune_phonetic'], ENT_QUOTES | ENT_XML1);
+        if ($synthType === 'ipa') {
+            $ph = htmlspecialchars($phon, ENT_QUOTES | ENT_XML1);
             $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
-            $repl = "<phoneme alphabet=\"$alphabet\" ph=\"$ph\">$printEsc</phoneme>";
+            $repl = "<phoneme alphabet=\"ipa\" ph=\"$ph\">$printEsc</phoneme>";
         } else {
-            $repl = buildSubReplSsml($print, (string)$t['tts_tune_phonetic']);
+            $repl = buildSubReplSsml($print, $phon);
         }
         $tokenMap[$token] = $repl;
         $text = preg_replace($regex, $token, $text);

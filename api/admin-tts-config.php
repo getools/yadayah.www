@@ -131,36 +131,50 @@ if ($action === 'save_category_voice') {
 if ($action === 'save_tune') {
     $ttsKey = (int)($data['tts_key'] ?? 0);
     $print  = trim((string)($data['print'] ?? ''));
-    $phon   = trim((string)($data['phonetic'] ?? ''));
+    $sub    = trim((string)($data['phonetic_sub']  ?? ''));
+    $ipa    = trim((string)($data['phonetic_ipa']  ?? ''));
+    $sapi   = trim((string)($data['phonetic_sapi'] ?? ''));
     $type   = in_array(($data['phonetic_type'] ?? 'sub'), ['sub', 'ipa', 'sapi'], true) ? $data['phonetic_type'] : 'sub';
     $note   = trim((string)($data['note'] ?? ''));
     $active = !empty($data['active']);
-    if (!$ttsKey || $print === '' || $phon === '') errorResponse('tts_key, print, phonetic required');
+    if (!$ttsKey || $print === '') errorResponse('tts_key, print required');
+    // Legacy tts_tune_phonetic mirror — kept in sync with whichever type
+    // is currently chosen so older code paths keep working. If the chosen
+    // column is empty, fall back to whichever of the three is populated.
+    $chosen = ['sub' => $sub, 'ipa' => $ipa, 'sapi' => $sapi][$type] ?? '';
+    $mirror = $chosen !== '' ? $chosen : ($sub !== '' ? $sub : ($ipa !== '' ? $ipa : $sapi));
+    if ($mirror === '') $mirror = $print; // never let the not-null column go empty
 
     $tuneKey = (int)($data['tts_tune_key'] ?? 0);
     if ($tuneKey > 0) {
         $stmt = $db->prepare("
             UPDATE yy_tts_tune
-               SET tts_tune_print = ?, tts_tune_phonetic = ?, tts_tune_phonetic_type = ?,
-                   tts_tune_note = ?, tts_tune_active_flag = ?,
+               SET tts_tune_print = ?, tts_tune_phonetic = ?,
+                   tts_tune_phonetic_sub = ?, tts_tune_phonetic_ipa = ?, tts_tune_phonetic_sapi = ?,
+                   tts_tune_phonetic_type = ?, tts_tune_note = ?, tts_tune_active_flag = ?,
                    tts_tune_revision_dtime = NOW()
              WHERE tts_tune_key = ? AND tts_key = ?
         ");
-        $stmt->execute([$print, $phon, $type, $note ?: null, $active, $tuneKey, $ttsKey]);
+        $stmt->execute([$print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, $active, $tuneKey, $ttsKey]);
     } else {
         $stmt = $db->prepare("
             INSERT INTO yy_tts_tune
-                (tts_key, tts_tune_print, tts_tune_phonetic, tts_tune_phonetic_type, tts_tune_note, tts_tune_active_flag)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (tts_key, tts_tune_print, tts_tune_phonetic,
+                 tts_tune_phonetic_sub, tts_tune_phonetic_ipa, tts_tune_phonetic_sapi,
+                 tts_tune_phonetic_type, tts_tune_note, tts_tune_active_flag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (tts_key, tts_tune_print) DO UPDATE SET
-                tts_tune_phonetic = EXCLUDED.tts_tune_phonetic,
-                tts_tune_phonetic_type = EXCLUDED.tts_tune_phonetic_type,
-                tts_tune_note = EXCLUDED.tts_tune_note,
-                tts_tune_active_flag = EXCLUDED.tts_tune_active_flag,
+                tts_tune_phonetic       = EXCLUDED.tts_tune_phonetic,
+                tts_tune_phonetic_sub   = EXCLUDED.tts_tune_phonetic_sub,
+                tts_tune_phonetic_ipa   = EXCLUDED.tts_tune_phonetic_ipa,
+                tts_tune_phonetic_sapi  = EXCLUDED.tts_tune_phonetic_sapi,
+                tts_tune_phonetic_type  = EXCLUDED.tts_tune_phonetic_type,
+                tts_tune_note           = EXCLUDED.tts_tune_note,
+                tts_tune_active_flag    = EXCLUDED.tts_tune_active_flag,
                 tts_tune_revision_dtime = NOW()
             RETURNING tts_tune_key
         ");
-        $stmt->execute([$ttsKey, $print, $phon, $type, $note ?: null, $active]);
+        $stmt->execute([$ttsKey, $print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, $active]);
         $tuneKey = (int)$stmt->fetchColumn();
     }
     jsonResponse(['ok' => true, 'tts_tune_key' => $tuneKey]);
