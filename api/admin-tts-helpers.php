@@ -89,7 +89,10 @@ function placeholdersToBreaks(string $escaped): string {
 function applyTunes(string $text, array $tunes, array &$tokenMap): string {
     foreach ($tunes as $t) {
         $print = $t['tts_tune_print'];
-        if ($print === '' || strpos($text, $print) === false) continue;
+        if ($print === '') continue;
+        $regex = tunePrintToRegex($print);
+        // Quick exit if no match at all — avoids the cost of regex replace.
+        if (!preg_match($regex, $text)) continue;
         $token = sprintf("\x02TUNE_%d\x02", $t['tts_tune_key']);
         // Build the actual SSML once for reuse on every match.
         if ($t['tts_tune_phonetic_type'] === 'ipa' || $t['tts_tune_phonetic_type'] === 'sapi') {
@@ -101,9 +104,56 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             $repl = buildSubReplSsml($print, (string)$t['tts_tune_phonetic']);
         }
         $tokenMap[$token] = $repl;
-        $text = str_replace($print, $token, $text);
+        $text = preg_replace($regex, $token, $text);
     }
     return $text;
+}
+
+/**
+ * Build a regex that matches the Print field against the source text,
+ * treating every single-quote-like or half-ring character as equivalent
+ * AND optional. So a Print of "Miqra'ey" matches all of:
+ *   Miqra'ey   Miqra’ey   Miqraʾey   Miqra`ey   ...    (any variant)
+ *   Miqraey                                            (no apostrophe at all)
+ * And a Print of "Miqraey" (no apostrophe) likewise matches "Miqra'ey"
+ * — the apostrophe is optional in both directions.
+ *
+ * Set of equivalent chars covers the most common variants seen in
+ * Hebrew / Greek transliterations and English typographic apostrophes:
+ *   U+0027 '   ASCII apostrophe
+ *   U+0060 `   grave / backtick
+ *   U+00B4 ´   acute accent
+ *   U+02BC ʼ   modifier letter apostrophe
+ *   U+02BE ʾ   modifier letter right half ring (aleph)
+ *   U+02BF ʿ   modifier letter left half ring  (ayin)
+ *   U+02C0 ʔ   modifier letter glottal stop
+ *   U+2018 ‘   left single curly quote
+ *   U+2019 ’   right single curly quote
+ *   U+201B ‛   high reversed-9 quotation
+ *   U+2032 ′   prime
+ *   U+05F3 ׳   Hebrew geresh
+ *
+ * Strategy: strip every apostrophe-class char from Print to get its
+ * "core letters", then insert an optional apostrophe-class between every
+ * pair of cores. The result matches the cores joined by any number of
+ * apostrophe-class chars (0 or 1) at every join point.
+ */
+function tunePrintToRegex(string $print): string {
+    static $APOS_RE       = '/[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]/u';
+    static $APOS_CLASS_OPT = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]?";
+    // 1) Drop apostrophe-class chars to get the core spelling.
+    $core = preg_replace($APOS_RE, '', $print);
+    if ($core === '' || $core === null) {
+        // Degenerate: Print was entirely apostrophes. Fall back to literal match.
+        return '/' . preg_quote($print, '/') . '/u';
+    }
+    // 2) Split the core into single Unicode chars, escape each, then join
+    //    with an optional apostrophe-class. No optional apos at the very
+    //    start or end — only between letters — so we don't match isolated
+    //    apostrophes adjacent to unrelated text.
+    $chars = preg_split('//u', $core, -1, PREG_SPLIT_NO_EMPTY);
+    $escaped = array_map(function($c) { return preg_quote($c, '/'); }, $chars);
+    return '/' . implode($APOS_CLASS_OPT, $escaped) . '/u';
 }
 
 /**

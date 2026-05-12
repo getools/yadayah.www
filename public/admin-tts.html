@@ -80,7 +80,7 @@
 <div id="app" class="container">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=12"></script>
+<script src="/js/admin-nav.js?v=13"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -88,7 +88,6 @@
     </div>
 
     <h1>Text-to-Speech</h1>
-    <p style="color:#666;font-size:0.88rem;margin:-4px 0 16px;">Configure voices, pronunciations, pauses, and generate audio per book.</p>
 
     <div class="tts-tabs">
         <button data-tab="voices"        class="active">Voices</button>
@@ -125,7 +124,7 @@
                     <select id="preview-voice"></select>
                     <select id="preview-style"><option value="">(no style)</option></select>
                     <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></label>
-                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" step="0.1" style="width:60px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12). Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></label>
+                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" step="0.1" style="width:80px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12). Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></label>
                     <button class="btn-listen" onclick="doPreview()">▶ Listen</button>
                 </div>
                 <div id="preview-status" class="status-msg"></div>
@@ -146,15 +145,20 @@
             <table class="tts-table">
                 <thead>
                     <tr>
+                        <th></th>
+                        <th colspan="2" style="background:#fff;border-bottom:0;padding:6px 8px;">
+                            <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.78rem;font-family:inherit;"></select>
+                        </th>
+                        <th colspan="4" style="background:#fff;border-bottom:0;"></th>
+                    </tr>
+                    <tr>
                         <th style="width:22%">Print (as in book)</th>
                         <th style="width:18%">Phonetic / Re-spelling</th>
                         <th style="width:36px"></th>
                         <th style="width:70px">Type</th>
                         <th>Note</th>
                         <th style="width:32px;text-align:center;">Active</th>
-                        <th style="width:170px;text-align:right;">
-                            <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.78rem;font-family:inherit;"></select>
-                        </th>
+                        <th style="width:32px;text-align:right;"></th>
                     </tr>
                 </thead>
                 <tbody id="tunes-tbody"></tbody>
@@ -244,15 +248,23 @@ function escapeHtml(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g,
 // ── Autosave plumbing ──────────────────────────────────────────────────
 // Per-element debounce so typing in one row doesn't trample another row's
 // pending save. Promises chain so a ▶ click can await the in-flight save
-// before issuing the preview request.
+// before issuing the preview request. _pendingSaves is a regular Set so
+// we can iterate every still-pending element when "Listen" is clicked —
+// flushAllAutoSaves() forces them all to run synchronously so the
+// preview sees the freshly-typed rules instead of the previous save.
 var _saveTimers   = new WeakMap();
+var _saveFns      = new WeakMap();
 var _savePromises = new WeakMap();
+var _pendingSaves = new Set();
 function scheduleAutoSave(el, fn, delayMs) {
     delayMs = delayMs == null ? 500 : delayMs;
     var prior = _saveTimers.get(el);
     if (prior) clearTimeout(prior);
+    _saveFns.set(el, fn);
+    _pendingSaves.add(el);
     var t = setTimeout(function() {
         _saveTimers.delete(el);
+        _pendingSaves.delete(el);
         var p = Promise.resolve().then(fn).catch(function(){});
         _savePromises.set(el, p);
     }, delayMs);
@@ -262,9 +274,21 @@ function flushAutoSave(el, fn) {
     // Cancel any pending debounce and run save now. Returns a promise.
     var prior = _saveTimers.get(el);
     if (prior) { clearTimeout(prior); _saveTimers.delete(el); }
-    var p = Promise.resolve().then(fn).catch(function(){});
+    _pendingSaves.delete(el);
+    var saveFn = fn || _saveFns.get(el);
+    if (!saveFn) return Promise.resolve();
+    var p = Promise.resolve().then(saveFn).catch(function(){});
     _savePromises.set(el, p);
     return p;
+}
+// Fire every still-pending autosave RIGHT NOW and wait for them all to
+// complete. Used before any preview/Listen request so the synthesizer
+// sees the latest rules without waiting for the debounce timers.
+function flushAllAutoSaves() {
+    var promises = [];
+    var pending = Array.from(_pendingSaves);
+    pending.forEach(function(el) { promises.push(flushAutoSave(el)); });
+    return Promise.all(promises);
 }
 
 function activateTtsTab(tabName) {
@@ -349,9 +373,9 @@ function renderCategoryRows() {
             '<label>' + escapeHtml(cat.label) + '</label>' +
             '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
             '<div class="prosody">' +
-                'rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span>' +
-                'pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it. Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span>' +
-                'vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '">' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:80px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it. Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '"></span>' +
             '</div>' +
             '<button class="btn-listen" data-cat="' + cat.code + '" title="Play a sample with current settings">▶</button>';
         root.appendChild(row);
@@ -485,6 +509,11 @@ async function saveAndListenCategory(catCode, rowEl) {
 async function doPreview() {
     $('preview-status').textContent = 'Synthesizing…'; $('preview-status').className = 'status-msg';
     try {
+        // Flush any in-flight autosave (tune row edits, pause row edits,
+        // system settings) BEFORE asking the server to synthesize, so the
+        // preview reflects everything the user just typed — not the value
+        // that was on the server before the debounce fired.
+        await flushAllAutoSaves();
         var blob = await api('/admin-tts-preview.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

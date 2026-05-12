@@ -32,7 +32,7 @@ var tabs = [
     ['admin-timeline.html', 'Timeline'],
     ['admin-memorial.html', 'Memorial'],
     ['admin-media.html', 'Media'],
-    ['admin-tts.html', 'TTS'],
+    ['admin-tts.html', 'TTS', 'Configure voices, pronunciations, pauses, and generate audio per book.'],
     ['admin-music.html', 'Music'],
     ['admin-chat.html', 'Chat'],
     ['admin-comments.html', 'Comments'],
@@ -64,7 +64,10 @@ var currentPage = (window.location.pathname.split('/').pop() || '').replace(/\.h
 nav.innerHTML = tabs.map(function(t) {
     var tabPage = t[0].replace(/\.html$/, '');
     var active = (currentPage === tabPage) ? ' active' : '';
-    return '<a href="' + t[0] + '" class="nav-tab' + active + '">' + t[1] + '</a>';
+    // Optional third element of each tuple is a hover tooltip — emitted
+    // as a title attribute only when present so most tabs stay clean.
+    var title = t[2] ? (' title="' + String(t[2]).replace(/"/g, '&quot;') + '"') : '';
+    return '<a href="' + t[0] + '" class="nav-tab' + active + '"' + title + '>' + t[1] + '</a>';
 }).join('\n');
 
 })();
