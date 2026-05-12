@@ -397,6 +397,7 @@ function providerFamilyForModel(string $code): string {
     if (str_starts_with($code, 'deepgram-'))    return 'deepgram';
     if (str_starts_with($code, 'assemblyai-'))  return 'assemblyai';
     if (str_starts_with($code, 'elevenlabs-'))  return 'elevenlabs';
+    if (str_starts_with($code, 'azure-'))       return 'azure';
     if ($code === 'youtube')                    return 'youtube';
     return 'openai';  // whisper-1-*, gpt-4o-*, anything else
 }
@@ -415,4 +416,60 @@ function providerNativeModel(string $code): string {
         case 'elevenlabs-scribe':           return 'scribe_v1';
         default:                            return $code;
     }
+}
+
+/**
+ * Azure Speech Fast Transcription. Synchronous, ≤2h / ≤200MB. Returns one
+ * row per phrase with phrase-level offset timestamps. Same key + region as
+ * the TTS resource (Azure Speech bundles STT and TTS under one resource).
+ *
+ * locales[] is set to en-US since Yada audio is overwhelmingly English. If
+ * mixed-language transcription is needed later, extend with additional
+ * locales (he-IL, el-GR, …) — Fast Transcription auto-detects within the
+ * provided set.
+ */
+function azureSpeechTranscribe(string $audioPath, string $apiKey, string $region, ?string &$err = null): array {
+    $endpoint = "https://{$region}.api.cognitive.microsoft.com/speechtotext/transcriptions:transcribe?api-version=2024-11-15";
+    $definition = json_encode([
+        'locales'             => ['en-US'],
+        'profanityFilterMode' => 'None',
+        'channels'            => [0],
+    ]);
+    $mime = function_exists('mime_content_type') ? (mime_content_type($audioPath) ?: 'audio/mpeg') : 'audio/mpeg';
+    $cf = curl_file_create($audioPath, $mime, basename($audioPath));
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'Ocp-Apim-Subscription-Key: ' . $apiKey,
+            'Accept: application/json',
+        ],
+        CURLOPT_POSTFIELDS     => ['audio' => $cf, 'definition' => $definition],
+        CURLOPT_TIMEOUT        => 600,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $cerr = curl_error($ch);
+    curl_close($ch);
+    if ($resp === false || $code >= 400) {
+        $err = "Azure HTTP $code: " . ($cerr ?: substr((string)$resp, 0, 300));
+        return [];
+    }
+    $j = json_decode($resp, true);
+    if (!is_array($j) || !isset($j['phrases']) || !is_array($j['phrases'])) {
+        $err = 'Azure: no phrases in response — ' . substr((string)$resp, 0, 300);
+        return [];
+    }
+    $rows = [];
+    foreach ($j['phrases'] as $ph) {
+        $text = trim((string)($ph['text'] ?? ''));
+        if ($text === '') continue;
+        $offsetS = ((int)($ph['offsetMilliseconds'] ?? 0)) / 1000.0;
+        $rows[] = [
+            'segment' => secsToIntervalFrac($offsetS),
+            'text'    => $text,
+        ];
+    }
+    return $rows;
 }

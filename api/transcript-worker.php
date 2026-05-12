@@ -297,6 +297,7 @@ $providerKeyEnv = [
     'deepgram'    => 'DEEPGRAM_API_KEY',
     'assemblyai'  => 'ASSEMBLYAI_API_KEY',
     'elevenlabs'  => 'ELEVENLABS_API_KEY',
+    'azure'       => 'AZURE_SPEECH_KEY',
 ][$providerFamily] ?? 'OPENAI_API_KEY';
 if (!$rows && !$wantYoutubeCaptions) {
     $providerKey = readEnv($providerKeyEnv);
@@ -489,6 +490,10 @@ if (!$rows && !$wantYoutubeCaptions) {
                         break;
                     case 'elevenlabs':
                         $rows = elevenlabsScribeTranscribe($audioPath, $providerKey, $whisperErr);
+                        break;
+                    case 'azure':
+                        $azureRegion = readEnv('AZURE_SPEECH_REGION') ?: 'brazilsouth';
+                        $rows = azureSpeechTranscribe($audioPath, $providerKey, $azureRegion, $whisperErr);
                         break;
                     default:
                         $whisperErr = "unknown provider family: $providerFamily";

@@ -58,6 +58,7 @@ $AVAILABLE_MODELS = [
     ['code' => 'deepgram-nova-3',             'label' => 'Deepgram Nova-3 (~$0.0043/min, smart formatting + diarisation)'],
     ['code' => 'assemblyai-universal-2',      'label' => 'AssemblyAI Universal-2 (~$0.0062/min)'],
     ['code' => 'elevenlabs-scribe',           'label' => 'ElevenLabs Scribe (~$0.0067/min)'],
+    ['code' => 'azure-speech-stt',            'label' => 'Azure Speech Fast Transcription (~$0.017/min, 5h/mo free)'],
     ['code' => 'youtube',                     'label' => 'YouTube auto-captions (free, requires fresh cookies)'],
 ];
 
