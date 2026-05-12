@@ -110,7 +110,7 @@
             <div class="voice-row">
                 <label>Region</label>
                 <input type="text" id="sys-region" placeholder="brazilsouth">
-                <button class="btn-listen" onclick="saveSystem()">Save</button>
+                <span></span>
             </div>
             <div id="sys-status" class="status-msg"></div>
         </div>
@@ -129,8 +129,8 @@
                 <div class="preview-controls">
                     <select id="preview-voice"></select>
                     <select id="preview-style"><option value="">(no style)</option></select>
-                    <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"></label>%
-                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" style="width:60px"></label>st
+                    <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></label>
+                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" style="width:60px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12)" style="margin-left:2px;cursor:help;">st</span></label>
                     <button class="btn-listen" onclick="doPreview()">▶ Listen</button>
                 </div>
                 <div id="preview-status" class="status-msg"></div>
@@ -239,6 +239,32 @@ var STATE = { categories: {}, tunes: [], pauses: [], systems: [] };
 function $(id) { return document.getElementById(id); }
 function escapeHtml(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 
+// ── Autosave plumbing ──────────────────────────────────────────────────
+// Per-element debounce so typing in one row doesn't trample another row's
+// pending save. Promises chain so a ▶ click can await the in-flight save
+// before issuing the preview request.
+var _saveTimers   = new WeakMap();
+var _savePromises = new WeakMap();
+function scheduleAutoSave(el, fn, delayMs) {
+    delayMs = delayMs == null ? 500 : delayMs;
+    var prior = _saveTimers.get(el);
+    if (prior) clearTimeout(prior);
+    var t = setTimeout(function() {
+        _saveTimers.delete(el);
+        var p = Promise.resolve().then(fn).catch(function(){});
+        _savePromises.set(el, p);
+    }, delayMs);
+    _saveTimers.set(el, t);
+}
+function flushAutoSave(el, fn) {
+    // Cancel any pending debounce and run save now. Returns a promise.
+    var prior = _saveTimers.get(el);
+    if (prior) { clearTimeout(prior); _saveTimers.delete(el); }
+    var p = Promise.resolve().then(fn).catch(function(){});
+    _savePromises.set(el, p);
+    return p;
+}
+
 document.querySelectorAll('.tts-tabs button').forEach(function(btn) {
     btn.addEventListener('click', function() {
         document.querySelectorAll('.tts-tabs button').forEach(b => b.classList.remove('active'));
@@ -286,6 +312,16 @@ function populateSystemUI() {
         fs.value = STATE.system.tts_output_format;
         $('sys-region').value = STATE.system.tts_region || '';
     }
+    // Autosave on change. Select fires once on commit; the region <input>
+    // also gets a debounced auto-save while typing.
+    if (!fs.dataset.autoBound) {
+        fs.addEventListener('change', saveSystem);
+        $('sys-region').addEventListener('change', saveSystem);
+        $('sys-region').addEventListener('input', function() {
+            scheduleAutoSave(this, saveSystem, 700);
+        });
+        fs.dataset.autoBound = '1';
+    }
 }
 
 function renderCategoryRows() {
@@ -304,7 +340,7 @@ function renderCategoryRows() {
                 'pitch <input type="number" data-field="pitch" min="-12" max="12" step="1" value="' + (saved.tts_voice_pitch_st || 0) + '">st' +
                 'vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '">' +
             '</div>' +
-            '<button class="btn-listen" data-cat="' + cat.code + '">Save & ▶</button>';
+            '<button class="btn-listen" data-cat="' + cat.code + '" title="Play a sample with current settings">▶</button>';
         root.appendChild(row);
         var sel = row.querySelector('select');
         CATALOG.voices.forEach(v => {
@@ -315,6 +351,17 @@ function renderCategoryRows() {
         if (saved.tts_voice_code) sel.value = saved.tts_voice_code;
         row.querySelector('button').addEventListener('click', function() {
             saveAndListenCategory(cat.code, row);
+        });
+        // Autosave on any prosody change. Select fires on commit; number
+        // inputs save on change (Enter / blur / step button) and on
+        // debounced input so typing flushes too.
+        row.querySelectorAll('select, input[data-field]').forEach(function(el) {
+            el.addEventListener('change', function() { saveCategoryOnly(cat.code, row); });
+            if (el.tagName === 'INPUT') {
+                el.addEventListener('input', function() {
+                    scheduleAutoSave(el, function() { return saveCategoryOnly(cat.code, row); }, 600);
+                });
+            }
         });
     });
 }
@@ -365,37 +412,50 @@ async function saveSystem() {
     }
 }
 
+function readCategoryRow(rowEl) {
+    return {
+        voice:  rowEl.querySelector('select').value,
+        rate:   parseInt(rowEl.querySelector('[data-field=rate]').value, 10) || 0,
+        pitch:  parseInt(rowEl.querySelector('[data-field=pitch]').value, 10) || 0,
+        volume: parseInt(rowEl.querySelector('[data-field=volume]').value, 10) || 100,
+    };
+}
+
+async function saveCategoryOnly(catCode, rowEl) {
+    var c = readCategoryRow(rowEl);
+    await api('/admin-tts-config.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'save_category_voice',
+            tts_key: TTS_KEY,
+            tts_category: catCode,
+            voice_code: c.voice,
+            rate_pct: c.rate, pitch_st: c.pitch, volume: c.volume,
+        }),
+    });
+    STATE.categories[catCode] = {
+        tts_category: catCode, tts_voice_code: c.voice,
+        tts_voice_rate_pct: c.rate, tts_voice_pitch_st: c.pitch, tts_voice_volume: c.volume,
+    };
+}
+
 async function saveAndListenCategory(catCode, rowEl) {
-    var voice  = rowEl.querySelector('select').value;
-    var rate   = parseInt(rowEl.querySelector('[data-field=rate]').value, 10) || 0;
-    var pitch  = parseInt(rowEl.querySelector('[data-field=pitch]').value, 10) || 0;
-    var volume = parseInt(rowEl.querySelector('[data-field=volume]').value, 10) || 100;
     var btn = rowEl.querySelector('button');
     btn.disabled = true; btn.textContent = '…';
     try {
-        await api('/admin-tts-config.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'save_category_voice',
-                tts_key: TTS_KEY,
-                tts_category: catCode,
-                voice_code: voice,
-                rate_pct: rate, pitch_st: pitch, volume: volume,
-            }),
-        });
-        STATE.categories[catCode] = {
-            tts_category: catCode, tts_voice_code: voice,
-            tts_voice_rate_pct: rate, tts_voice_pitch_st: pitch, tts_voice_volume: volume,
-        };
+        // Flush any debounced autosave before playing so the preview uses
+        // the latest values.
+        await saveCategoryOnly(catCode, rowEl);
+        var c = readCategoryRow(rowEl);
         var blob = await api('/admin-tts-preview.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 tts_key: TTS_KEY,
                 category: catCode,
-                voice_code: voice,
-                rate_pct: rate, pitch_st: pitch, volume: volume,
+                voice_code: c.voice,
+                rate_pct: c.rate, pitch_st: c.pitch, volume: c.volume,
                 text: $('preview-text').value || 'This is a preview.',
             }),
         });
@@ -406,7 +466,7 @@ async function saveAndListenCategory(catCode, rowEl) {
     } catch (e) {
         alert('Error: ' + e.message);
     } finally {
-        btn.disabled = false; btn.textContent = 'Save & ▶';
+        btn.disabled = false; btn.textContent = '▶';
     }
 }
 
@@ -459,13 +519,39 @@ function buildTuneRow(t) {
         '<td><input type="text" class="f-note"     value="' + escapeHtml(t.tts_tune_note     || '') + '"></td>' +
         '<td class="col-toggle"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td class="col-actions">' +
-            '<button class="btn-sm btn-sec" data-act="listen">▶</button>' +
-            '<button class="btn-sm" data-act="save">Save</button>' +
-            '<button class="btn-sm btn-del" data-act="del">×</button>' +
+            '<button class="btn-sm btn-sec" data-act="listen" title="Play this phrase with the new pronunciation applied">▶</button>' +
+            '<button class="btn-sm btn-del" data-act="del" title="Delete">×</button>' +
         '</td>';
     tr.querySelector('.f-type').value = t.tts_tune_phonetic_type || 'sub';
     tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handleTuneAction(tr, b.dataset.act)));
+    // Autosave on field changes. Text inputs save on debounced input + on
+    // change (Enter/blur). Select and checkbox save on change.
+    tr.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) {
+        el.addEventListener('input',  function() { scheduleAutoSave(el, function() { return saveTuneRow(tr); }, 600); });
+        el.addEventListener('change', function() { flushAutoSave(el, function() { return saveTuneRow(tr); }); });
+    });
+    tr.querySelector('.f-type').addEventListener('change', function() { saveTuneRow(tr); });
+    tr.querySelector('.f-active').addEventListener('change', function() { saveTuneRow(tr); });
     return tr;
+}
+
+async function saveTuneRow(tr) {
+    var key    = parseInt(tr.dataset.key, 10) || 0;
+    var print  = tr.querySelector('.f-print').value.trim();
+    var phon   = tr.querySelector('.f-phon').value.trim();
+    var type   = tr.querySelector('.f-type').value;
+    var note   = tr.querySelector('.f-note').value;
+    var active = tr.querySelector('.f-active').checked;
+    // Skip saves while either required field is empty — avoids creating a
+    // half-finished row when the user is mid-typing the print field.
+    if (!print || !phon) return;
+    var res = await api('/admin-tts-config.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key, print, phonetic: phon, phonetic_type: type, note, active }),
+    });
+    tr.dataset.key = res.tts_tune_key;
+    tr.classList.toggle('inactive', !active);
+    var s = $('tunes-status'); if (s) { s.textContent = 'Saved "' + print + '"'; s.className = 'status-msg success'; }
 }
 
 function addTuneRow() {
@@ -473,31 +559,23 @@ function addTuneRow() {
 }
 
 async function handleTuneAction(tr, act) {
-    var key = parseInt(tr.dataset.key, 10) || 0;
-    var print  = tr.querySelector('.f-print').value.trim();
-    var phon   = tr.querySelector('.f-phon').value.trim();
-    var type   = tr.querySelector('.f-type').value;
-    var note   = tr.querySelector('.f-note').value;
-    var active = tr.querySelector('.f-active').checked;
+    var key   = parseInt(tr.dataset.key, 10) || 0;
+    var print = tr.querySelector('.f-print').value.trim();
     try {
-        if (act === 'save') {
-            if (!print || !phon) { alert('Print and Phonetic are required'); return; }
-            var res = await api('/admin-tts-config.php', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key, print, phonetic: phon, phonetic_type: type, note, active }),
-            });
-            tr.dataset.key = res.tts_tune_key;
-            tr.classList.toggle('inactive', !active);
-            $('tunes-status').textContent = 'Saved "' + print + '"'; $('tunes-status').className='status-msg success';
-        } else if (act === 'del') {
+        if (act === 'del') {
             if (key && !confirm('Delete "' + print + '"?')) return;
             if (key) await api('/admin-tts-config.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_tune', tts_tune_key: key }) });
             tr.remove();
         } else if (act === 'listen') {
-            // Preview the print word being read with the phonetic substitution applied.
+            // Flush any pending autosave so the latest rule is committed
+            // server-side. Then play just the print word — the saved
+            // substitution rule turns it into the phonetic re-spelling,
+            // so the user hears exactly the new pronunciation.
+            await saveTuneRow(tr);
+            if (!print) return;
             var blob = await api('/admin-tts-preview.php', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ tts_key: TTS_KEY, text: print + '. Now in context: We must remember ' + print + ' every day.' }),
+                body: JSON.stringify({ tts_key: TTS_KEY, text: print }),
             });
             var a = $('preview-audio'); a.src = URL.createObjectURL(blob); a.style.display='block'; a.play();
         }
@@ -529,11 +607,31 @@ function buildPauseRow(p) {
         '<td><input type="text"   class="f-note" value="' + escapeHtml(p.tts_pause_note || '') + '"></td>' +
         '<td class="col-toggle"><input type="checkbox" class="f-active"' + (p.tts_pause_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td class="col-actions">' +
-            '<button class="btn-sm" data-act="save">Save</button>' +
-            '<button class="btn-sm btn-del" data-act="del">×</button>' +
+            '<button class="btn-sm btn-del" data-act="del" title="Delete">×</button>' +
         '</td>';
     tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handlePauseAction(tr, b.dataset.act)));
+    tr.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) {
+        el.addEventListener('input',  function() { scheduleAutoSave(el, function() { return savePauseRow(tr); }, 600); });
+        el.addEventListener('change', function() { flushAutoSave(el, function() { return savePauseRow(tr); }); });
+    });
+    tr.querySelector('.f-active').addEventListener('change', function() { savePauseRow(tr); });
     return tr;
+}
+
+async function savePauseRow(tr) {
+    var key    = parseInt(tr.dataset.key, 10) || 0;
+    var search = tr.querySelector('.f-search').value;
+    var ms     = parseInt(tr.querySelector('.f-ms').value, 10) || 300;
+    var note   = tr.querySelector('.f-note').value;
+    var active = tr.querySelector('.f-active').checked;
+    if (!search) return; // Skip until the user has typed a search string.
+    var res = await api('/admin-tts-config.php', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'save_pause', tts_key: TTS_KEY, tts_pause_key: key, search, ms, note, active }),
+    });
+    tr.dataset.key = res.tts_pause_key;
+    tr.classList.toggle('inactive', !active);
+    var s = $('pauses-status'); if (s) { s.textContent = 'Saved.'; s.className = 'status-msg success'; }
 }
 
 function addPauseRow() {
@@ -541,22 +639,10 @@ function addPauseRow() {
 }
 
 async function handlePauseAction(tr, act) {
-    var key   = parseInt(tr.dataset.key, 10) || 0;
-    var search= tr.querySelector('.f-search').value;
-    var ms    = parseInt(tr.querySelector('.f-ms').value, 10) || 300;
-    var note  = tr.querySelector('.f-note').value;
-    var active= tr.querySelector('.f-active').checked;
+    var key    = parseInt(tr.dataset.key, 10) || 0;
+    var search = tr.querySelector('.f-search').value;
     try {
-        if (act === 'save') {
-            if (!search) { alert('Search string required'); return; }
-            var res = await api('/admin-tts-config.php', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ action:'save_pause', tts_key: TTS_KEY, tts_pause_key: key, search, ms, note, active }),
-            });
-            tr.dataset.key = res.tts_pause_key;
-            tr.classList.toggle('inactive', !active);
-            $('pauses-status').textContent = 'Saved.'; $('pauses-status').className='status-msg success';
-        } else if (act === 'del') {
+        if (act === 'del') {
             if (key && !confirm('Delete pause "' + search + '"?')) return;
             if (key) await api('/admin-tts-config.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_pause', tts_pause_key: key }) });
             tr.remove();
