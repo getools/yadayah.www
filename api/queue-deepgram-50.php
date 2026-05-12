@@ -11,6 +11,12 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/spawn-helpers.php';
 
 $db = getDb();
+$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+// Stream output so we can watch progress instead of waiting for the script
+// to terminate — useful when run over `docker exec`.
+ob_implicit_flush(true);
+while (ob_get_level() > 0) ob_end_flush();
 
 $sql = "
     SELECT fi.feed_item_key,
@@ -52,10 +58,11 @@ foreach ($items as $i => $r) {
         continue;
     }
 
+    // user_key is nullable and FK'd to yy_user; NULL = "system / batch job".
     $ins = $db->prepare("
         INSERT INTO yy_feed_item_transcript_job
             (feed_item_key, job_status, job_message, user_key, job_model)
-        VALUES (?, 'pending', ?, 0, 'deepgram-nova-3')
+        VALUES (?, 'pending', ?, NULL, 'deepgram-nova-3')
         RETURNING feed_item_transcript_job_key
     ");
     $ins->execute([$itemKey, 'Batch-queued deepgram-nova-3']);
