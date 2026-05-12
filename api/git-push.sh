@@ -62,6 +62,31 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
     exit 0
 fi
 
+# ── Sanity gate: refuse suspiciously large auto-fix deletions ───────────
+# Auto-fix has historically lost weeks of work by deleting code it thought
+# was unused. Refuse any push that's deleting > MAX_AUTO_DELETIONS lines
+# from a single file UNLESS the caller passed an explicit override message.
+# Manual deploys can override by including '[approved-large-delete]' in the
+# commit message. Auto-fix never sets that token, so its bulk deletes get
+# blocked here and we save the diff for review instead of force-pushing it.
+MAX_AUTO_DELETIONS=80
+if ! echo "$MSG" | grep -q '\[approved-large-delete\]'; then
+    # rsync just ran; changes are unstaged. numstat columns: added removed file.
+    BIG=$(git diff --numstat 2>/dev/null | awk -v cap="$MAX_AUTO_DELETIONS" '$2 > cap { print $3 " -" $2 }')
+    if [ -n "$BIG" ]; then
+        STAMP=$(date +%Y%m%d-%H%M%S)
+        REVIEW=/var/log/git-push-blocked-$STAMP.diff
+        git diff > "$REVIEW" 2>/dev/null
+        echo "[git-push] !!! BLOCKED — suspiciously large deletions:"
+        echo "$BIG"
+        echo "[git-push]   Full diff saved to $REVIEW"
+        echo "[git-push]   To override (manual deploy only), re-run with [approved-large-delete] in the message."
+        # Revert the local rsync so the next cron tick won't re-trigger.
+        git checkout -- .
+        exit 1
+    fi
+fi
+
 # Stage, commit, push
 git add -A
 git commit -m "$MSG
