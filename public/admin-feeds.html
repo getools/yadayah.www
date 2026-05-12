@@ -3795,7 +3795,8 @@ function addBookmarkFromPopover(seg) {
     if (!pop) return;
     var ta = pop.querySelector('textarea[data-role="new-note"]');
     var note = ta ? ta.value.trim() : '';
-    if (!note) { if (ta) ta.focus(); return; }
+    // Empty notes are allowed — a textless bookmark acts as a plain
+    // pin/marker at this timestamp. Server stores it as ''.
     fetch(API + '/admin-transcript-bookmark.php', {
         method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ action:'add', item_key: _transcriptItemKey, segment: seg, note: note })

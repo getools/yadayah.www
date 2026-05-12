@@ -98,7 +98,8 @@ if ($method === 'POST' && $action === 'add') {
     if (!preg_match('/^\d{1,3}:\d{2}:\d{2}(?:\.\d+)?$/', $segment)) {
         errorResponse('segment must be HH:MM:SS');
     }
-    if ($note === '') errorResponse('note cannot be empty');
+    // Empty $note is allowed — a textless bookmark acts as a simple
+    // marker / pin on the line. The DB column defaults to ''.
     if (strlen($note) > 4000) errorResponse('note too long (max 4000 chars)');
 
     $ins = $db->prepare("
