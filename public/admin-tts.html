@@ -151,14 +151,36 @@
                 <code>[brackets]</code> = drawn out / slowed (e.g. <code>Yah-[hoh]-wah</code>),
                 <code>{braces}</code> = clipped / quickened (e.g. <code>Yah-{hoh}-wah</code>).
                 Markers stack: <code>[SHA]-baht</code> is both stressed <em>and</em> drawn out.</p>
+            <div id="tunes-toolbar" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:0.85rem;">
+                <!-- LEFT: items-per-page + paging controls -->
+                <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
+                    <span style="color:#666;">Per page:</span>
+                    <select id="tunes-page-size" onchange="setTunesPageSize(this.value)" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="150">150</option>
+                        <option value="200">200</option>
+                        <option value="250">250</option>
+                        <option value="300">300</option>
+                        <option value="400">400</option>
+                        <option value="500">500</option>
+                        <option value="all">All</option>
+                    </select>
+                    <button id="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">←</button>
+                    <span id="tunes-page-info" style="color:#555;font-variant-numeric:tabular-nums;white-space:nowrap;">Page 1 of 1</span>
+                    <button id="tunes-next" onclick="goTunesPage(1)"  style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">→</button>
+                </div>
+                <!-- CENTER: voice model dropdown -->
+                <div style="flex:1 1 auto;display:flex;justify-content:center;">
+                    <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="min-width:260px;max-width:380px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;"></select>
+                </div>
+                <!-- RIGHT: Add -->
+                <div style="flex:0 0 auto;">
+                    <button class="add-row-btn" onclick="addTuneRow()" style="margin-top:0;padding:5px 14px;">+ Add</button>
+                </div>
+            </div>
             <table class="tts-table">
                 <thead>
-                    <tr>
-                        <th colspan="3" style="background:#fff;border-bottom:0;padding:6px 8px;">
-                            <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.78rem;font-family:inherit;"></select>
-                        </th>
-                        <th colspan="6" style="background:#fff;border-bottom:0;"></th>
-                    </tr>
                     <tr>
                         <th style="width:32px;text-align:center;" title="Active — uncheck to disable this rule"></th>
                         <th onclick="sortTunesBy('print')"      style="width:22%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
@@ -173,7 +195,6 @@
                 </thead>
                 <tbody id="tunes-tbody"></tbody>
             </table>
-            <button class="add-row-btn" onclick="addTuneRow()">+ Add pronunciation</button>
             <div id="tunes-status" class="status-msg"></div>
         </div>
     </div>
@@ -551,6 +572,15 @@ async function loadTunes() {
     var r = await api('/admin-tts-config.php?action=tunes&tts_key=' + TTS_KEY);
     STATE.tunes = r.rows || [];
     populateTunesTestVoiceSelect();
+    // Restore previously-chosen page size + page index from session-state
+    // before the first render, so reloads land you back where you were.
+    if (window.sessionState) {
+        var savedSize = sessionState.load('tunesPageSize', '50');
+        TUNES_PAGE_SIZE = (savedSize === 'all') ? 'all' : (parseInt(savedSize, 10) || 50);
+        var sel = $('tunes-page-size');
+        if (sel) sel.value = (TUNES_PAGE_SIZE === 'all') ? 'all' : String(TUNES_PAGE_SIZE);
+        TUNES_PAGE_IDX = parseInt(sessionState.load('tunesPageIdx', 0), 10) || 0;
+    }
     renderTunes();
 }
 
@@ -575,7 +605,9 @@ function populateTunesTestVoiceSelect() {
     sel.dataset.populated = '1';
 }
 
-var TUNES_SORT = { col: 'print', dir: 'asc' };
+var TUNES_SORT      = { col: 'print', dir: 'asc' };
+var TUNES_PAGE_SIZE = 50;       // 'all' or a positive integer
+var TUNES_PAGE_IDX  = 0;        // zero-based
 function sortTunesBy(col) {
     if (TUNES_SORT.col === col) {
         TUNES_SORT.dir = TUNES_SORT.dir === 'asc' ? 'desc' : 'asc';
@@ -583,6 +615,21 @@ function sortTunesBy(col) {
         TUNES_SORT.col = col;
         TUNES_SORT.dir = col === 'book_count' ? 'desc' : 'asc';
     }
+    TUNES_PAGE_IDX = 0; // re-sort always returns to first page
+    renderTunes();
+}
+function setTunesPageSize(v) {
+    TUNES_PAGE_SIZE = (v === 'all') ? 'all' : (parseInt(v, 10) || 50);
+    TUNES_PAGE_IDX = 0;
+    if (window.sessionState) sessionState.save('tunesPageSize', v);
+    renderTunes();
+}
+function goTunesPage(delta) {
+    var total = STATE.tunes.length;
+    var pageSize = (TUNES_PAGE_SIZE === 'all') ? total : TUNES_PAGE_SIZE;
+    var pages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+    TUNES_PAGE_IDX = Math.max(0, Math.min(pages - 1, TUNES_PAGE_IDX + delta));
+    if (window.sessionState) sessionState.save('tunesPageIdx', TUNES_PAGE_IDX);
     renderTunes();
 }
 function renderTunes() {
@@ -595,8 +642,27 @@ function renderTunes() {
         }
         return (a.tts_tune_print || '').localeCompare(b.tts_tune_print || '', undefined, { sensitivity: 'base' }) * dir;
     });
-    sorted.forEach(t => tb.appendChild(buildTuneRow(t)));
-    // Update sort arrows
+    // Apply pagination.
+    var total = sorted.length;
+    var pageSize = (TUNES_PAGE_SIZE === 'all') ? total : TUNES_PAGE_SIZE;
+    var pages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+    if (TUNES_PAGE_IDX >= pages) TUNES_PAGE_IDX = pages - 1;
+    var start = TUNES_PAGE_IDX * pageSize;
+    var page = sorted.slice(start, start + pageSize);
+    page.forEach(t => tb.appendChild(buildTuneRow(t)));
+    // Update pager UI.
+    var info = $('tunes-page-info');
+    if (info) {
+        var endIdx = Math.min(total, start + page.length);
+        info.textContent = total === 0
+            ? 'No items'
+            : 'Showing ' + (start + 1) + '–' + endIdx + ' of ' + total
+              + (pages > 1 ? '  (page ' + (TUNES_PAGE_IDX + 1) + ' of ' + pages + ')' : '');
+    }
+    var prev = $('tunes-prev'), next = $('tunes-next');
+    if (prev) { prev.disabled = TUNES_PAGE_IDX <= 0;       prev.style.opacity = prev.disabled ? '0.45' : '1'; }
+    if (next) { next.disabled = TUNES_PAGE_IDX >= pages-1; next.style.opacity = next.disabled ? '0.45' : '1'; }
+    // Sort arrows.
     document.querySelectorAll('#pane-pronunciations .sort-arrow').forEach(function(s) {
         var col = s.dataset.col;
         s.textContent = (col === TUNES_SORT.col) ? (TUNES_SORT.dir === 'asc' ? ' ▲' : ' ▼') : '';

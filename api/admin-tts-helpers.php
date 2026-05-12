@@ -107,11 +107,18 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
         // pure ASCII letters with no IPA-specific symbols (no ˈ ˌ ɑ ɛ ɪ
         // ʊ ɔ ʃ θ ð ʒ ŋ ɹ ʔ ʕ etc.) is almost certainly not real IPA.
         if ($synthType === 'ipa' && ($phon === '' || ipaLooksFake($phon))) {
+            // Bad/missing IPA → try SUB. Skip the legacy-mirror fallback
+            // here because for IPA-typed bulk-imported rows the mirror
+            // *is* the same bad IPA, which would just round-trip the
+            // problem back into the regex. SUB-typed rules still get
+            // the mirror fallback below.
             $synthType = 'sub';
             $phon = trim((string)($t['tts_tune_phonetic_sub'] ?? ''));
+            if ($phon === '') continue; // no usable phonetic — skip rule
+        } else {
+            if ($phon === '') $phon = (string)($t['tts_tune_phonetic'] ?? '');
+            if ($phon === '') continue; // nothing to substitute with — skip rule
         }
-        if ($phon === '') $phon = (string)($t['tts_tune_phonetic'] ?? '');
-        if ($phon === '') continue; // nothing to substitute with — skip rule
         $regex = tunePrintToRegex($print);
         if (!preg_match($regex, $text)) continue;
         $token = sprintf("\x02TUNE_%d\x02", $t['tts_tune_key']);
@@ -163,20 +170,28 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
  * apostrophe-class chars (0 or 1) at every join point.
  */
 /**
- * Best-effort detection of "this is plain English spelling, not IPA."
- * Used to avoid sending obvious non-IPA to Azure (which would 400) when
- * the user typed an English re-spelling into the IPA cell by accident.
+ * Best-effort detection of "this is plain English spelling, not IPA, or
+ * contains characters Azure's parser would reject."
  *
- * Returns true if the string contains ZERO characters that are
- * exclusively IPA (stress marks, schwa, half-rings, the lower-case
- * Greek-borrowed letters, etc.). Plain ASCII letters + ASCII apostrophe
- * fail this test and trigger SUB fallback.
+ * Two rules:
+ *   1. Must contain at least ONE genuinely-IPA character (stress mark,
+ *      schwa, half-ring, etc.). Pure ASCII letters fail this test.
+ *   2. Must NOT contain any clearly-invalid characters (ASCII digits,
+ *      capital letters, punctuation Azure doesn't allow). Sneaks in via
+ *      garbage upstream — better to fall back than 400 Azure.
+ *
+ * Returns true if EITHER rule fires (i.e. the IPA is suspect).
  */
 function ipaLooksFake(string $phon): bool {
     if ($phon === '') return true;
-    // Any of these characters proves the string IS attempting IPA.
+    // Rule 1: must contain at least one real IPA marker.
     static $ipaMarkers = '/[\x{02C8}\x{02CC}\x{02D0}\x{02D1}\x{0259}\x{0250}-\x{02AF}\x{025B}\x{025C}\x{0254}\x{028A}\x{026A}\x{0283}\x{0292}\x{014B}\x{0294}\x{0295}\x{03B8}\x{00F0}\x{0279}\x{027E}\x{0281}]/u';
-    return !preg_match($ipaMarkers, $phon);
+    if (!preg_match($ipaMarkers, $phon)) return true;
+    // Rule 2: must NOT contain characters Azure's IPA parser rejects —
+    // digits, ASCII capitals, common ASCII punctuation that isn't a
+    // valid IPA separator.
+    if (preg_match('/[0-9A-Z%=<>"\\\\\\/\\[\\]{}()@#&*+?]/u', $phon)) return true;
+    return false;
 }
 
 function tunePrintToRegex(string $print): string {
