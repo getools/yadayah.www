@@ -4407,7 +4407,53 @@ function srPreview() {
 
         var currentKey = String(_transcriptItemKey || '');
         var html = '';
-        // Master "select all" header — toggles every per-row checkbox below.
+        // Render the find/replace diff inline: only the matched word(s) are
+    // struck through, only the replacement is highlighted green, everything
+    // else stays plain so the reviewer can read the line in context instead
+    // of comparing two whole paragraphs side-by-side. Mirrors the server's
+    // match semantics (case_sensitive / word_boundary / regex). `p` here is
+    // the srPayload() that was used to fetch the matches above.
+    var __srPayloadForDiff = p;
+    function srDiffLine(oldText) {
+        var find = __srPayloadForDiff.find;
+        if (!oldText) return '';
+        if (!find)    return esc(oldText);
+        var flags = __srPayloadForDiff.case_sensitive ? 'g' : 'gi';
+        var pattern;
+        try {
+            if (__srPayloadForDiff.regex) {
+                pattern = find;
+            } else {
+                pattern = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                if (__srPayloadForDiff.word_boundary) pattern = '\\b' + pattern + '\\b';
+            }
+            var re = new RegExp(pattern, flags);
+        } catch (e) {
+            // Bad regex (server-side parser may still accept) — fall back
+            // to the legacy two-line view rather than crashing the preview.
+            return '<div style="color:#a30;text-decoration:line-through;">' + esc(oldText) + '</div>'
+                 + '<div style="color:#1d6b3a;">' + esc(__srPayloadForDiff.replace || '') + '</div>';
+        }
+        var out = '';
+        var pos = 0;
+        var m;
+        var hits = 0;
+        while ((m = re.exec(oldText)) !== null) {
+            out += esc(oldText.slice(pos, m.index));
+            out += '<del style="color:#a30;text-decoration:line-through;">' + esc(m[0]) + '</del>';
+            out += '<ins style="color:#1d6b3a;text-decoration:none;font-weight:600;">' + esc(__srPayloadForDiff.replace || '') + '</ins>';
+            pos = re.lastIndex;
+            hits++;
+            // Zero-length match would loop forever — bump position by one.
+            if (m[0] === '' && re.lastIndex === m.index) re.lastIndex++;
+            // Safety cap in case a pathological regex matches everywhere.
+            if (hits > 50) break;
+        }
+        out += esc(oldText.slice(pos));
+        return out;
+    }
+
+    // Master "select all" header — toggles every per-row checkbox below.
         html += '<div style="background:#f6f7fb;border:1px solid #d8dcec;border-radius:4px;padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:600;color:#31345A;">'
             +   '<input type="checkbox" id="sr-check-all" checked onclick="srToggleAll(this)" style="cursor:pointer;">'
             +   '<label for="sr-check-all" style="cursor:pointer;user-select:none;">Apply all <span style="font-weight:400;color:#666;">(uncheck rows below to skip them)</span></label>'
@@ -4434,9 +4480,8 @@ function srPreview() {
                         + '</td>'
                         + '<td style="padding:5px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;width:90px;white-space:nowrap;">'
                         +   esc(s.segment) + '</td>'
-                        + '<td style="padding:5px 10px;">'
-                        +   '<div style="color:#a30;text-decoration:line-through;">' + esc(s.old_text) + '</div>'
-                        +   '<div style="color:#1d6b3a;">' + esc(s.new_text) + '</div>'
+                        + '<td style="padding:5px 10px;color:#444;line-height:1.45;">'
+                        +   srDiffLine(s.old_text)
                         + '</td></tr>';
                 });
                 html += '</table>';
