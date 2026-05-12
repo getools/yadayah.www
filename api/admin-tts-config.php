@@ -122,7 +122,7 @@ if ($action === 'save_category_voice') {
         $data['style'] ?? null,
         $data['style_degree'] ?? 1.0,
         (int)($data['rate_pct'] ?? 0),
-        (int)($data['pitch_st'] ?? 0),
+        (float)($data['pitch_st'] ?? 0),
         (int)($data['volume'] ?? 100),
     ]);
     jsonResponse(['ok' => true]);

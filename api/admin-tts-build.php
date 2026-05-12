@@ -64,7 +64,7 @@ if ($action === 'start') {
             'style'        => $row['tts_voice_style'],
             'style_degree' => (float)$row['tts_voice_style_degree'],
             'rate_pct'     => (int)$row['tts_voice_rate_pct'],
-            'pitch_st'     => (int)$row['tts_voice_pitch_st'],
+            'pitch_st'     => (float)$row['tts_voice_pitch_st'],
             'volume'       => (int)$row['tts_voice_volume'],
         ];
     }

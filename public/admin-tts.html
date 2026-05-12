@@ -101,15 +101,10 @@
     <div id="pane-voices" class="tts-pane active">
         <div class="tts-section">
             <h3>System settings</h3>
-            <p class="desc">Output quality applies to every generated file. Region is the Azure Speech region.</p>
+            <p class="desc">Output quality applies to every generated file.</p>
             <div class="voice-row">
                 <label>Output format</label>
                 <select id="sys-format"></select>
-                <span></span>
-            </div>
-            <div class="voice-row">
-                <label>Region</label>
-                <input type="text" id="sys-region" placeholder="brazilsouth">
                 <span></span>
             </div>
             <div id="sys-status" class="status-msg"></div>
@@ -130,7 +125,7 @@
                     <select id="preview-voice"></select>
                     <select id="preview-style"><option value="">(no style)</option></select>
                     <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></label>
-                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" style="width:60px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12)" style="margin-left:2px;cursor:help;">st</span></label>
+                    <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" step="0.1" style="width:60px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12). Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></label>
                     <button class="btn-listen" onclick="doPreview()">▶ Listen</button>
                 </div>
                 <div id="preview-status" class="status-msg"></div>
@@ -143,16 +138,23 @@
     <div id="pane-pronunciations" class="tts-pane">
         <div class="tts-section">
             <h3>Phrase list / pronunciations</h3>
-            <p class="desc">When the TTS engine encounters <em>Print</em>, it says <em>Phonetic</em> instead. Use plain re-spellings for "sub" type (default) or IPA/SAPI for power users. In <strong>sub</strong> mode, type any syllable you want <strong>stressed</strong> in ALL CAPS (e.g. <code>Yah-HOH-wah</code>) — it gets wrapped in an &lt;emphasis&gt; tag.</p>
+            <p class="desc">When the TTS engine encounters <em>Print</em>, it says <em>Phonetic</em> instead. Use plain re-spellings for "sub" type (default) or IPA/SAPI for power users. In <strong>sub</strong> mode you can mark a syllable's prosody inline:
+                <code>ALL CAPS</code> = stressed (e.g. <code>Yah-HOH-wah</code>),
+                <code>[brackets]</code> = drawn out / slowed (e.g. <code>Yah-[hoh]-wah</code>),
+                <code>{braces}</code> = clipped / quickened (e.g. <code>Yah-{hoh}-wah</code>).
+                Markers stack: <code>[SHA]-baht</code> is both stressed <em>and</em> drawn out.</p>
             <table class="tts-table">
                 <thead>
                     <tr>
-                        <th style="width:24%">Print (as in book)</th>
-                        <th style="width:calc(24% - 40px)">Phonetic / Re-spelling</th>
-                        <th style="width:8%">Type</th>
+                        <th style="width:22%">Print (as in book)</th>
+                        <th style="width:18%">Phonetic / Re-spelling</th>
+                        <th style="width:36px"></th>
+                        <th style="width:70px">Type</th>
                         <th>Note</th>
-                        <th class="col-toggle">Active</th>
-                        <th class="col-actions"></th>
+                        <th style="width:32px;text-align:center;">Active</th>
+                        <th style="width:170px;text-align:right;">
+                            <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.78rem;font-family:inherit;"></select>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="tunes-tbody"></tbody>
@@ -265,16 +267,33 @@ function flushAutoSave(el, fn) {
     return p;
 }
 
+function activateTtsTab(tabName) {
+    var btn = document.querySelector('.tts-tabs button[data-tab="' + tabName + '"]');
+    if (!btn) return false;
+    document.querySelectorAll('.tts-tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tts-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    var pane = $('pane-' + tabName);
+    if (pane) pane.classList.add('active');
+    if (tabName === 'pronunciations') loadTunes();
+    if (tabName === 'pauses') loadPauses();
+    if (tabName === 'books') loadVolumes();
+    return true;
+}
 document.querySelectorAll('.tts-tabs button').forEach(function(btn) {
     btn.addEventListener('click', function() {
-        document.querySelectorAll('.tts-tabs button').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tts-pane').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        $('pane-' + btn.dataset.tab).classList.add('active');
-        if (btn.dataset.tab === 'pronunciations') loadTunes();
-        if (btn.dataset.tab === 'pauses') loadPauses();
-        if (btn.dataset.tab === 'books') loadVolumes();
+        activateTtsTab(btn.dataset.tab);
+        // Remember the last-selected tab across page loads — same UX as
+        // the other admin pages with session-state.js.
+        if (window.sessionState) sessionState.save('activeTab', btn.dataset.tab);
     });
+});
+// Restore the last-selected tab on load. We wait a tick so session-state
+// has had a chance to hydrate from the server response.
+window.addEventListener('load', function() {
+    if (!window.sessionState) return;
+    var t = sessionState.load('activeTab', '');
+    if (t) activateTtsTab(t);
 });
 
 function api(path, opts) {
@@ -310,16 +329,10 @@ function populateSystemUI() {
     });
     if (STATE.system) {
         fs.value = STATE.system.tts_output_format;
-        $('sys-region').value = STATE.system.tts_region || '';
     }
-    // Autosave on change. Select fires once on commit; the region <input>
-    // also gets a debounced auto-save while typing.
+    // Autosave: select fires once on commit.
     if (!fs.dataset.autoBound) {
         fs.addEventListener('change', saveSystem);
-        $('sys-region').addEventListener('change', saveSystem);
-        $('sys-region').addEventListener('input', function() {
-            scheduleAutoSave(this, saveSystem, 700);
-        });
         fs.dataset.autoBound = '1';
     }
 }
@@ -336,8 +349,8 @@ function renderCategoryRows() {
             '<label>' + escapeHtml(cat.label) + '</label>' +
             '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
             '<div class="prosody">' +
-                'rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '">%' +
-                'pitch <input type="number" data-field="pitch" min="-12" max="12" step="1" value="' + (saved.tts_voice_pitch_st || 0) + '">st' +
+                'rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span>' +
+                'pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it. Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span>' +
                 'vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '">' +
             '</div>' +
             '<button class="btn-listen" data-cat="' + cat.code + '" title="Play a sample with current settings">▶</button>';
@@ -403,7 +416,6 @@ async function saveSystem() {
                 action: 'save_system',
                 tts_key: TTS_KEY,
                 output_format: $('sys-format').value,
-                region: $('sys-region').value,
             }),
         });
         $('sys-status').textContent = 'Saved.'; $('sys-status').className = 'status-msg success';
@@ -416,7 +428,7 @@ function readCategoryRow(rowEl) {
     return {
         voice:  rowEl.querySelector('select').value,
         rate:   parseInt(rowEl.querySelector('[data-field=rate]').value, 10) || 0,
-        pitch:  parseInt(rowEl.querySelector('[data-field=pitch]').value, 10) || 0,
+        pitch:  parseFloat(rowEl.querySelector('[data-field=pitch]').value) || 0,
         volume: parseInt(rowEl.querySelector('[data-field=volume]').value, 10) || 100,
     };
 }
@@ -481,7 +493,7 @@ async function doPreview() {
                 voice_code: $('preview-voice').value,
                 style: $('preview-style').value || null,
                 rate_pct: parseInt($('preview-rate').value, 10) || 0,
-                pitch_st: parseInt($('preview-pitch').value, 10) || 0,
+                pitch_st: parseFloat($('preview-pitch').value) || 0,
                 text: $('preview-text').value,
             }),
         });
@@ -499,7 +511,29 @@ async function doPreview() {
 async function loadTunes() {
     var r = await api('/admin-tts-config.php?action=tunes&tts_key=' + TTS_KEY);
     STATE.tunes = r.rows || [];
+    populateTunesTestVoiceSelect();
     renderTunes();
+}
+
+// Fill the "test voice" dropdown that sits in the last column header. The
+// chosen voice is what plays when ▶ is clicked on any phrase row. We pick
+// the saved 'main' category voice as the default if available, else the
+// first voice in the catalog.
+function populateTunesTestVoiceSelect() {
+    var sel = $('tunes-test-voice');
+    if (!sel) return;
+    if (sel.dataset.populated) return; // Idempotent — voices don't change at runtime.
+    sel.innerHTML = '';
+    CATALOG.voices.forEach(function(v) {
+        var o = document.createElement('option');
+        o.value = v.code;
+        o.textContent = v.label;
+        sel.appendChild(o);
+    });
+    var fallback = (STATE.categories && STATE.categories.main && STATE.categories.main.tts_voice_code)
+        || (CATALOG.voices[0] && CATALOG.voices[0].code) || '';
+    if (fallback) sel.value = fallback;
+    sel.dataset.populated = '1';
 }
 
 function renderTunes() {
@@ -521,12 +555,14 @@ function buildTuneRow(t) {
     tr.innerHTML =
         '<td><input type="text" class="f-print"    value="' + escapeHtml(t.tts_tune_print    || '') + '"></td>' +
         '<td><input type="text" class="f-phon"     value="' + escapeHtml(t.tts_tune_phonetic || '') + '"></td>' +
+        '<td style="padding:8px 2px;text-align:center;">' +
+            '<button class="btn-sm btn-sec" data-act="listen" title="Play this phrase with the new pronunciation applied" style="margin:0;padding:5px 8px;">▶</button>' +
+        '</td>' +
         '<td><select class="f-type"><option value="sub">sub</option><option value="ipa">ipa</option><option value="sapi">sapi</option></select></td>' +
         '<td><input type="text" class="f-note"     value="' + escapeHtml(t.tts_tune_note     || '') + '"></td>' +
-        '<td class="col-toggle"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
-        '<td class="col-actions">' +
-            '<button class="btn-sm btn-sec" data-act="listen" title="Play this phrase with the new pronunciation applied">▶</button>' +
-            '<button class="btn-sm btn-del" data-act="del" title="Delete">×</button>' +
+        '<td style="padding:8px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
+        '<td style="text-align:right;padding:8px 6px;">' +
+            '<button class="btn-sm btn-del" data-act="del" title="Delete" style="margin:0;">×</button>' +
         '</td>';
     tr.querySelector('.f-type').value = t.tts_tune_phonetic_type || 'sub';
     tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handleTuneAction(tr, b.dataset.act)));
@@ -576,12 +612,18 @@ async function handleTuneAction(tr, act) {
             // Flush any pending autosave so the latest rule is committed
             // server-side. Then play just the print word — the saved
             // substitution rule turns it into the phonetic re-spelling,
-            // so the user hears exactly the new pronunciation.
+            // so the user hears exactly the new pronunciation. The voice
+            // dropdown in the column header controls which voice does the
+            // reading; falls back to the category default if unset.
             await saveTuneRow(tr);
             if (!print) return;
+            var voiceSel = $('tunes-test-voice');
+            var voiceCode = voiceSel ? voiceSel.value : '';
+            var body = { tts_key: TTS_KEY, text: print };
+            if (voiceCode) body.voice_code = voiceCode;
             var blob = await api('/admin-tts-preview.php', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ tts_key: TTS_KEY, text: print }),
+                body: JSON.stringify(body),
             });
             var a = $('preview-audio'); a.src = URL.createObjectURL(blob); a.style.display='block'; a.play();
         }

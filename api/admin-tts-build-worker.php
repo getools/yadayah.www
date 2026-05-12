@@ -84,6 +84,47 @@ if (!empty($settings['output_format'])) {
     $cfg['system']['tts_output_format'] = $settings['output_format'];
 }
 
+// Snapshot every setting in effect right now into tts_audio_settings so a
+// future re-render or audit can know exactly which voice + tunes + pauses
+// produced this MP3. Concurrent admin edits to yy_tts_tune /
+// yy_tts_pause / yy_tts_category_voice after this point won't be
+// reflected in the snapshot — by design.
+$snapshot = [
+    'snapshot_dtime' => date('c'),
+    'output_format'  => $cfg['system']['tts_output_format'] ?? null,
+    'region'         => $cfg['system']['tts_region']        ?? null,
+    'categories'     => array_values(array_map(function($code, $row) {
+        return [
+            'category'     => $code,
+            'voice_code'   => $row['tts_voice_code']         ?? null,
+            'style'        => $row['tts_voice_style']        ?? null,
+            'style_degree' => $row['tts_voice_style_degree'] ?? 1.0,
+            'rate_pct'     => (int)($row['tts_voice_rate_pct']  ?? 0),
+            'pitch_st'     => (int)($row['tts_voice_pitch_st']  ?? 0),
+            'volume'       => (int)($row['tts_voice_volume']    ?? 100),
+        ];
+    }, array_keys($cfg['categories'] ?? []), $cfg['categories'] ?? [])),
+    'tunes' => array_values(array_map(function($t) {
+        return [
+            'print'         => $t['tts_tune_print']         ?? '',
+            'phonetic'      => $t['tts_tune_phonetic']      ?? '',
+            'phonetic_type' => $t['tts_tune_phonetic_type'] ?? 'sub',
+            'note'          => $t['tts_tune_note']          ?? '',
+            'active'        => !empty($t['tts_tune_active_flag']),
+        ];
+    }, $cfg['tunes'] ?? [])),
+    'pauses' => array_values(array_map(function($p) {
+        return [
+            'search' => $p['tts_pause_search'] ?? '',
+            'ms'     => (int)($p['tts_pause_ms'] ?? 300),
+            'note'   => $p['tts_pause_note']   ?? '',
+            'active' => !empty($p['tts_pause_active_flag']),
+        ];
+    }, $cfg['pauses'] ?? [])),
+];
+$db->prepare("UPDATE yy_tts_audio SET tts_audio_settings = ?::jsonb WHERE tts_audio_key = ?")
+   ->execute([json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $audioKey]);
+
 // Output directory.
 $outDir = '/opt/yada-www/public/u/tts-audio/' . $volumeKey;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);

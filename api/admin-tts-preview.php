@@ -40,7 +40,7 @@ if ($overrideVoice) {
         'tts_voice_style'        => $data['style'] ?? null,
         'tts_voice_style_degree' => $data['style_degree'] ?? 1.0,
         'tts_voice_rate_pct'     => (int)($data['rate_pct'] ?? 0),
-        'tts_voice_pitch_st'     => (int)($data['pitch_st'] ?? 0),
+        'tts_voice_pitch_st'     => (float)($data['pitch_st'] ?? 0),
         'tts_voice_volume'       => (int)($data['volume'] ?? 100),
     ];
 }

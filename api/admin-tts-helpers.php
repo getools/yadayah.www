@@ -107,32 +107,67 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
 }
 
 /**
- * Build the SSML for a 'sub'-type tune. If the alias contains a
- * contiguous run of 2+ uppercase ASCII letters, that run is treated as a
- * user-marked stressed syllable and wrapped in <emphasis level="strong">
- * (lower-cased so the engine pronounces it as a syllable rather than
- * spelling out letters). If no caps run exists, falls back to the plain
- * <sub alias="…">print</sub> form.
+ * Build the SSML for a 'sub'-type tune. Three optional in-text markers:
+ *   ALL CAPS  → wrap that run in <prosody pitch="+25%" rate="92%">  (stress)
+ *   [word]    → wrap "word" in <prosody rate="80%">                  (slow / drawn out)
+ *   {word}    → wrap "word" in <prosody rate="130%">                 (fast / clipped)
+ * Caps inside brackets/braces still trigger their own nested emphasis
+ * prosody (Azure accepts nested <prosody>). When the alias contains
+ * none of these markers we fall back to plain <sub alias="…">print</sub>
+ * so the historical rules keep working unchanged.
  */
 function buildSubReplSsml(string $print, string $alias): string {
     $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
-    if (!preg_match('/[A-Z]{2,}/', $alias)) {
+    if (!preg_match('/[A-Z]{2,}|[\[\]{}]/', $alias)) {
         $aliasEsc = htmlspecialchars($alias, ENT_QUOTES | ENT_XML1);
         return "<sub alias=\"$aliasEsc\">$printEsc</sub>";
     }
-    $parts = preg_split('/([A-Z]{2,})/', $alias, -1, PREG_SPLIT_DELIM_CAPTURE);
+    return renderSubAlias($alias);
+}
+
+/**
+ * Walk the alias once, splitting on [...] (slow) and {...} (fast) groups.
+ * Plain runs and inner runs both get the CAPS-emphasis transform applied
+ * by renderCapsEmphasis(). Bracketed groups are wrapped in a <prosody>
+ * rate envelope around their (already emphasis-processed) content.
+ */
+function renderSubAlias(string $alias): string {
+    $out = '';
+    $offset = 0;
+    $len = strlen($alias);
+    while ($offset < $len) {
+        if (preg_match('/(\[([^\]]*)\])|(\{([^}]*)\})/', $alias, $m, PREG_OFFSET_CAPTURE, $offset)) {
+            $matchStart = $m[0][1];
+            if ($matchStart > $offset) {
+                $out .= renderCapsEmphasis(substr($alias, $offset, $matchStart - $offset));
+            }
+            if ($m[1][0] !== '') {
+                // [...] = slow
+                $out .= '<prosody rate="80%">' . renderCapsEmphasis($m[2][0]) . '</prosody>';
+            } else {
+                // {...} = fast
+                $out .= '<prosody rate="130%">' . renderCapsEmphasis($m[4][0]) . '</prosody>';
+            }
+            $offset = $matchStart + strlen($m[0][0]);
+        } else {
+            $out .= renderCapsEmphasis(substr($alias, $offset));
+            break;
+        }
+    }
+    return $out;
+}
+
+function renderCapsEmphasis(string $s): string {
+    if (!preg_match('/[A-Z]{2,}/', $s)) {
+        return htmlspecialchars($s, ENT_QUOTES | ENT_XML1);
+    }
+    $parts = preg_split('/([A-Z]{2,})/', $s, -1, PREG_SPLIT_DELIM_CAPTURE);
     $out = '';
     foreach ($parts as $piece) {
         if ($piece === '') continue;
         if (preg_match('/^[A-Z]{2,}$/', $piece)) {
-            // Combine emphasis + prosody so the stress is unmistakable.
-            // <emphasis> alone is too subtle on a one-syllable scope, so
-            // we also raise pitch ~25%, slow the syllable ~8%, and bump
-            // volume — the three acoustic cues English ears parse as stress.
             $emph = htmlspecialchars(strtolower($piece), ENT_QUOTES | ENT_XML1);
-            $out .= '<emphasis level="strong"><prosody pitch="+25%" rate="92%" volume="+3dB">'
-                 .  $emph
-                 .  '</prosody></emphasis>';
+            $out .= '<prosody pitch="+25%" rate="92%">' . $emph . '</prosody>';
         } else {
             $out .= htmlspecialchars($piece, ENT_QUOTES | ENT_XML1);
         }
@@ -168,11 +203,15 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
     $inner = $escaped;
     if ($cat) {
         $rate   = (int)$cat['tts_voice_rate_pct'];
-        $pitch  = (int)$cat['tts_voice_pitch_st'];
+        $pitch  = (float)$cat['tts_voice_pitch_st'];
         $volume = (int)$cat['tts_voice_volume'];
         $prosodyAttrs = [];
         if ($rate   !== 0)   $prosodyAttrs[] = 'rate="'   . ($rate >= 0 ? "+$rate%" : "$rate%") . '"';
-        if ($pitch  !== 0)   $prosodyAttrs[] = 'pitch="'  . ($pitch >= 0 ? "+{$pitch}st" : "{$pitch}st") . '"';
+        if (abs($pitch) > 0.005) {
+            // Trim trailing zeros so "1.50" emits "1.5", "2.00" emits "2".
+            $pitchStr = rtrim(rtrim(number_format($pitch, 2, '.', ''), '0'), '.');
+            $prosodyAttrs[] = 'pitch="' . ($pitch >= 0 ? "+{$pitchStr}st" : "{$pitchStr}st") . '"';
+        }
         if ($volume !== 100) $prosodyAttrs[] = 'volume="' . $volume . '"';
         if ($prosodyAttrs) {
             $inner = '<prosody ' . implode(' ', $prosodyAttrs) . '>' . $inner . '</prosody>';
