@@ -578,6 +578,9 @@
         if (active) { active.classList.add('active'); active.scrollIntoView({block:'nearest', behavior:'smooth'}); }
         syncUrlAndStorage(human);
         if (typeof scrollSearchResultsToCurrentPage === 'function') scrollSearchResultsToCurrentPage();
+        if (window.FlipbookBookmarks && typeof window.FlipbookBookmarks.refresh === 'function') {
+          try { window.FlipbookBookmarks.refresh(); } catch (e) {}
+        }
         if (mode === 'spread') {
           playFlip();
           repopulateNeighbors(human);
@@ -873,6 +876,23 @@
         const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = i;
         wrap.appendChild(btn); wrap.appendChild(lbl);
         thumbsPane.appendChild(wrap);
+      }
+
+      // ── Bookmarks ─────────────────────────────────────────────────────
+      // The actual bookmark UI (sidebar list, corner page icons, marker
+      // lane above the slider, add/edit popover) lives in
+      // /js/flipbook-bookmarks.js and is server-backed via /api/bookmarks.php.
+      // We just hand it the four shims it needs and call refresh() on every
+      // page render.
+      if (window.FlipbookBookmarks && typeof window.FlipbookBookmarks.init === 'function') {
+        try {
+          window.FlipbookBookmarks.init({
+            bookCode: BOOK_CODE,
+            totalPages: TOTAL,
+            getCurrentPage: () => { try { return currentPage(); } catch (e) { return 1; } },
+            gotoPage: (p) => { goto(p); maybeCloseSidebarAfterNav(); },
+          });
+        } catch (e) { console.error('[flipbook] FlipbookBookmarks.init failed', e); }
       }
 
       // ── Search

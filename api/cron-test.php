@@ -139,6 +139,13 @@ foreach ($tests as $test) {
                 $detail = $result['detail'] ?? '';
                 break;
 
+            case 'flipbook_assets':
+                $result = runFlipbookAssetsCheck($config);
+                $status = $result['status'];
+                $message = $result['message'];
+                $detail = $result['detail'] ?? '';
+                break;
+
             default:
                 $status = 'skip';
                 $message = "Unknown test type: {$type}";
@@ -505,4 +512,91 @@ function runRecentRunCheck(PDO $db, array $config): array {
     }
 
     return ['status' => 'fail', 'message' => 'recent_run needs log_file or sql_query in config'];
+}
+
+/**
+ * Probe one asset per built flipbook to catch perm/serving regressions —
+ * e.g. the 2026-05-11 incident where `pages/` directories were left at mode
+ * 700 after a bulk re-render, so every page JPG 403'd while the JPGs sat
+ * on disk readable to nobody but root. The asset failures were invisible
+ * to client-side error-reporter (silent <img> errors filtered out) and to
+ * the Apache error-log monitor (403s go to access.log, not error.log).
+ *
+ * Config:
+ *   asset           Path inside each book dir to probe (default
+ *                   "pages/page-001.jpg"). Use a thumb or text JSON instead
+ *                   if you want a cheaper check.
+ *   webroot         Filesystem root used to enumerate book dirs (default
+ *                   "/var/www/html"). Each subdir matching YY-* with an
+ *                   index.html is considered a built book.
+ *   url_base        Public URL prefix to probe against (default
+ *                   "https://yadayah.com"). Trailing slash optional.
+ *   timeout         Per-request curl timeout in seconds (default 5).
+ *
+ * Fails listing every non-200 book + status code, so auto-fix has enough
+ * to act on without re-deriving which books are broken.
+ */
+function runFlipbookAssetsCheck(array $config): array {
+    $asset   = $config['asset']    ?? 'pages/page-001.jpg';
+    $webroot = $config['webroot']  ?? '/var/www/html';
+    $urlBase = rtrim($config['url_base'] ?? 'https://yadayah.com', '/');
+    $timeout = (int)($config['timeout'] ?? 5);
+
+    $books = [];
+    foreach (glob($webroot . '/YY-*', GLOB_ONLYDIR) ?: [] as $dir) {
+        if (is_file($dir . '/index.html')) {
+            $books[] = basename($dir);
+        }
+    }
+    if (!$books) {
+        return ['status' => 'fail', 'message' => "No YY-* book dirs with index.html found under {$webroot}"];
+    }
+
+    // Use curl_multi so 30+ HEAD requests run in parallel; serial would
+    // take ~30 × timeout = 2.5 min on a bad day, vs ~5 s here.
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach ($books as $b) {
+        $url = "{$urlBase}/{$b}/{$asset}";
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_NOBODY         => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => $timeout,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$b] = ['ch' => $ch, 'url' => $url];
+    }
+    $running = null;
+    do {
+        curl_multi_exec($mh, $running);
+        if ($running) curl_multi_select($mh, 0.2);
+    } while ($running > 0);
+
+    $bad = [];
+    foreach ($handles as $b => $h) {
+        $code = (int)curl_getinfo($h['ch'], CURLINFO_HTTP_CODE);
+        $err  = curl_error($h['ch']);
+        if ($code !== 200) {
+            $bad[] = "{$b}: HTTP {$code}" . ($err ? " ({$err})" : '');
+        }
+        curl_multi_remove_handle($mh, $h['ch']);
+        curl_close($h['ch']);
+    }
+    curl_multi_close($mh);
+
+    $okCount = count($books) - count($bad);
+    if ($bad) {
+        return [
+            'status'  => 'fail',
+            'message' => count($bad) . ' of ' . count($books) . " books returning non-200 for {$asset}",
+            'detail'  => implode("\n", $bad),
+        ];
+    }
+    return [
+        'status'  => 'pass',
+        'message' => "All {$okCount} books serve {$asset} OK",
+    ];
 }

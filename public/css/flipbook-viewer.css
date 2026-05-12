@@ -89,6 +89,9 @@
     .search .hit mark { background: #5a5230; color: #fff; padding: 0 2px; border-radius: 2px; }
     .search .summary { padding: 6px 10px; font-size: 11px; opacity: 0.55; }
 
+    /* Bookmark UI (sidebar list, page-corner ribbons, marker lane) is
+       injected by /js/flipbook-bookmarks.js via its own style block. */
+
     /* main scrolls when zoom > 100% so user can pan around. book-frame is
        the scroll-area with min-size = main's content; explicit width/height
        are set in JS to match (book × zoom) so the scrollable region grows
