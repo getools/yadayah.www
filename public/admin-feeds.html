@@ -1571,7 +1571,13 @@ function syncFeed(key) {
 
 // ── Transcribe popover ──
 var _transcriptItemKey = null;
+var _transcriptJobKey = null;     // current admin-transcript-models.php job
 var _transcriptPollTimer = null;
+// View selector state. '' = live editable transcript. Any other value is a
+// model code (e.g. 'whisper-1-segment') and renders _auto rows read-only.
+var _transcriptView = '';
+var _transcriptReadonly = false;
+var _modelCatalog = [];          // [{code,label,last_run}, …] cached for popover use
 // ETA state for the Transcribe Audio progress bar.
 var _txDurationSec = 0;       // video length in seconds (from feed_item_duration_seconds)
 var _txEtaTotalSec = 0;       // estimated total pipeline time in seconds
@@ -1664,10 +1670,10 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">'
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            + '<button id="t-start-btn" onclick="startTranscript()" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;">Transcribe Audio</button>'
+            + '<select id="t-view-select" onchange="onTranscriptViewChange(this.value)" title="Switch between the live editable transcript and any per-model _auto snapshot. Picking a model with no rows offers to generate it." style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;max-width:320px;background:#fff;"><option value="">Current (editable)</option></select>'
+            + '<button id="t-rerun-btn" onclick="rerunCurrentView()" title="Re-run the currently selected model. Writes to _auto only — live transcript is never touched." style="display:none;background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">Re-run</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
-            + '<a id="t-yt-link" href="#" target="_blank" rel="noopener" title="Open the YouTube video in a new tab to download audio locally" style="display:none;background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;color:#31345A;text-decoration:none;">Open on YouTube ↗</a>'
             // Push the current transcript out to YouTube as a caption
             // track. The server-side ytCaptionsBuildSrt already emits each
             // cue with a YT_CAPTIONS_OVERLAP_SECONDS (=1) tail so cues
@@ -1681,7 +1687,6 @@ function openTranscript(itemKey) {
             // without forcing the user to type a timestamp by hand.
             + '<span id="t-status" style="font-size:0.8rem;color:#888;margin-left:auto;"></span>'
             + '<span style="border-left:1px solid #ddd;height:24px;margin:0 4px;"></span>'
-            + '<button onclick="openYoutubeCookies()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Manage YouTube auth cookies used by yt-dlp">YouTube Cookies</button>'
             + '<button onclick="openTranscriptDict()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Whisper glossary + correction dictionary">Transcript Dictionary</button>'
             + '<button onclick="openTranscriptFind()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Find text within this transcript">Find</button>'
             // onmousedown→preventDefault keeps focus on whichever
@@ -1717,6 +1722,7 @@ function openTranscript(itemKey) {
     }
     ov.style.display = 'flex';
     loadTranscript();
+    populateViewSelect();
 }
 
 function closeTranscript() {
@@ -2971,7 +2977,9 @@ function markRecRow(itemKey, state, err) {
 }
 
 function loadTranscript() {
-    fetch(API + '/admin-transcript.php?item_key=' + _transcriptItemKey, {credentials:'include'})
+    var url = API + '/admin-transcript.php?item_key=' + encodeURIComponent(_transcriptItemKey);
+    if (_transcriptView) url += '&view=' + encodeURIComponent(_transcriptView);
+    fetch(url, {credentials:'include'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
             if (d.error) { alert(d.error); return; }
@@ -2981,6 +2989,8 @@ function loadTranscript() {
             // close (yt-dlp ~2s/min + Whisper API ~13s/min + setup).
             _txDurationSec = parseInt(d.item.feed_item_duration_seconds, 10) || 0;
             _txEtaTotalSec = _txDurationSec ? Math.round(_txDurationSec * 0.25 + 8) : 0;
+            _transcriptReadonly = !!d.view;
+            updateTranscriptRerunBtn();
             renderTranscriptRows(d.rows || []);
             updateJobUI(d.job);
             populateValidation(d.validation);
@@ -3463,57 +3473,183 @@ function splitTranscriptRow(btn) {
     scheduleAutoSave();
 }
 
-function startTranscript() {
-    var existingRows = _segmentSeconds.length;
-    if (existingRows > 0) {
-        // Strong warning before reprocessing. The current transcript +
-        // every manual edit gets blown away by a fresh Whisper run; this
-        // can't be undone, so make sure the operator clicks through it
-        // intentionally rather than reflexively dismissing a generic
-        // confirm.
-        var msg = '⚠ WARNING — REPROCESSING WILL REPLACE EVERYTHING\n\n'
-                + 'This video has ' + existingRows + ' transcript row' + (existingRows === 1 ? '' : 's') + ' with text and timing data already in place.\n\n'
-                + 'Running Transcribe Audio again will:\n'
-                + '   • Permanently DELETE the entire current transcript\n'
-                + '   • Overwrite it with a fresh AI-generated version\n'
-                + '   • DISCARD every manual edit, correction, and validation note\n\n'
-                + 'This cannot be undone. Are you sure you want to continue?';
-        if (!confirm(msg)) {
-            return;
+// Transcribe Audio: the picker shows the live editable transcript and each
+// per-model _auto snapshot side-by-side via a single dropdown. Generation
+// of _auto rows is requested explicitly (popover-confirmed) and NEVER
+// touches yy_feed_item_transcript. The legacy startTranscript() name is
+// kept as an alias so any external caller still works — it routes to the
+// view-aware Re-run flow.
+function startTranscript() { rerunCurrentView(); }
+
+function rerunCurrentView() {
+    if (!_transcriptView) {
+        // No model selected — nudge the user toward the picker rather than
+        // doing anything destructive.
+        var sel = document.getElementById('t-view-select');
+        if (sel) {
+            sel.focus();
+            sel.style.boxShadow = '0 0 0 2px #f0d76a';
+            setTimeout(function() { sel.style.boxShadow = ''; }, 1200);
         }
+        return;
     }
-    // Cancel any pending auto-save so we don't save then immediately overwrite
-    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
-    fetch(API + '/admin-transcript.php', {
+    runAutoForModel(_transcriptView);
+}
+
+function cancelTranscript() {
+    var payload = _transcriptJobKey
+        ? {action:'cancel', job_key: _transcriptJobKey}
+        : {action:'cancel', item_key: _transcriptItemKey};
+    fetch(API + '/admin-transcript-models.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({action:'start', item_key: _transcriptItemKey})
+        body: JSON.stringify(payload)
+    }).then(function(){
+        if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+        _transcriptJobKey = null;
+        document.getElementById('t-progress').style.display = 'none';
+    });
+}
+
+// Build the view dropdown: "Current (editable)" + every available model
+// with its last-run timestamp. Caches the catalog so the change handler
+// can detect models that have no _auto rows yet.
+function populateViewSelect() {
+    if (!_transcriptItemKey) return;
+    fetch(API + '/admin-transcript-models.php?action=status&item_key=' + _transcriptItemKey, {credentials:'include'})
+        .then(function(r){return safeJson(r);})
+        .then(function(d) {
+            if (d.error || !d.models) return;
+            _modelCatalog = d.models;
+            var sel = document.getElementById('t-view-select');
+            if (!sel) return;
+            sel.innerHTML = '';
+            var optCurrent = document.createElement('option');
+            optCurrent.value = '';
+            optCurrent.textContent = 'Current (editable)';
+            sel.appendChild(optCurrent);
+            d.models.forEach(function(m) {
+                var o = document.createElement('option');
+                o.value = m.code;
+                var ts = m.last_run ? new Date(m.last_run).toLocaleString() : 'never run';
+                o.textContent = m.label + '   [last run: ' + ts + ']';
+                sel.appendChild(o);
+            });
+            sel.value = _transcriptView || '';
+            // Resume polling an in-flight job if any.
+            if (d.active_job && d.active_job.job_key) {
+                _transcriptJobKey = d.active_job.job_key;
+                document.getElementById('t-progress').style.display = '';
+                if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
+                _transcriptPollTimer = setInterval(pollJob, 2000);
+            }
+            updateTranscriptRerunBtn();
+        });
+}
+
+function onTranscriptViewChange(newView) {
+    // Cancel any pending autosave: switching away from a stale view shouldn't
+    // write whatever's in the (now-discarded) textareas back to live storage.
+    _savePending = false;
+    // Switch to live editable.
+    if (!newView) {
+        _transcriptView = '';
+        _transcriptReadonly = false;
+        loadTranscript();
+        updateTranscriptRerunBtn();
+        return;
+    }
+    var m = null;
+    for (var i = 0; i < _modelCatalog.length; i++) {
+        if (_modelCatalog[i].code === newView) { m = _modelCatalog[i]; break; }
+    }
+    if (!m || !m.last_run) {
+        // No _auto yet — offer to generate.
+        showGenerateOfferPopover(newView, m ? m.label : newView);
+        return;
+    }
+    _transcriptView = newView;
+    loadTranscript();
+    updateTranscriptRerunBtn();
+}
+
+// Lightweight inline popover anchored under the dropdown. Asks the
+// operator whether to generate the missing _auto version. Yes → kick off
+// the run; the dropdown stays on the previous view (we don't auto-switch
+// to an empty view that won't have rows for several minutes).
+function showGenerateOfferPopover(code, label) {
+    closeGenerateOfferPopover();
+    var sel = document.getElementById('t-view-select');
+    if (!sel) return;
+    var rect = sel.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.id = 't-gen-popover';
+    pop.style.cssText = 'position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;'
+        + 'box-shadow:0 6px 20px rgba(0,0,0,.18);padding:12px 14px;font-size:0.85rem;z-index:10005;'
+        + 'min-width:300px;max-width:420px;';
+    pop.style.left = rect.left + 'px';
+    pop.style.top  = (rect.bottom + 6) + 'px';
+    pop.innerHTML =
+        '<div style="margin-bottom:8px;">No <strong>_auto</strong> transcript yet for<br><strong>' + esc(label) + '</strong>.</div>'
+      + '<div style="margin-bottom:10px;color:#666;font-size:0.78rem;">Generation writes only to <code>yy_feed_item_transcript_auto</code>. Your live, editable transcript will not be touched.</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      +   '<button type="button" id="t-gen-cancel" style="background:#fff;border:1px solid #ccc;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">Cancel</button>'
+      +   '<button type="button" id="t-gen-go" style="background:#27ae60;color:#fff;border:none;padding:5px 14px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.82rem;">Generate _auto</button>'
+      + '</div>';
+    document.body.appendChild(pop);
+
+    function revertSel() {
+        var s = document.getElementById('t-view-select');
+        if (s) s.value = _transcriptView;
+    }
+    document.getElementById('t-gen-cancel').addEventListener('click', function() {
+        closeGenerateOfferPopover();
+        revertSel();
+    });
+    document.getElementById('t-gen-go').addEventListener('click', function() {
+        closeGenerateOfferPopover();
+        revertSel();
+        runAutoForModel(code);
+    });
+    // Click-outside dismiss.
+    setTimeout(function() {
+        document.addEventListener('mousedown', genPopoverOutsideClick, true);
+    }, 0);
+}
+function genPopoverOutsideClick(e) {
+    var pop = document.getElementById('t-gen-popover');
+    if (pop && !pop.contains(e.target)) {
+        closeGenerateOfferPopover();
+        var s = document.getElementById('t-view-select');
+        if (s) s.value = _transcriptView;
+    }
+}
+function closeGenerateOfferPopover() {
+    document.removeEventListener('mousedown', genPopoverOutsideClick, true);
+    var pop = document.getElementById('t-gen-popover');
+    if (pop) pop.parentNode.removeChild(pop);
+}
+
+function runAutoForModel(code) {
+    fetch(API + '/admin-transcript-models.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'run', item_key: _transcriptItemKey, model: code})
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (d.error) { alert(d.error); return; }
+        _transcriptJobKey = d.job_key;
         document.getElementById('t-progress').style.display = '';
-        document.getElementById('t-start-btn').disabled = true;
-        if (d.attached) {
-            // Server attached us to an in-flight job (started in another
-            // tab/window). Surface that briefly so it doesn't look like a
-            // fresh run that finished suspiciously fast.
-            var msg = document.getElementById('t-msg');
-            if (msg) msg.textContent = 'Attached to in-progress transcription…';
-        }
+        var msgEl = document.getElementById('t-msg');
+        if (msgEl) msgEl.textContent = 'Generating _auto for ' + code + '…';
         if (_transcriptPollTimer) clearInterval(_transcriptPollTimer);
         _transcriptPollTimer = setInterval(pollJob, 2000);
     });
 }
 
-function cancelTranscript() {
-    fetch(API + '/admin-transcript.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({action:'cancel', item_key: _transcriptItemKey})
-    }).then(function(){
-        if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
-        document.getElementById('t-progress').style.display = 'none';
-        document.getElementById('t-start-btn').disabled = false;
-    });
+function updateTranscriptRerunBtn() {
+    var btn = document.getElementById('t-rerun-btn');
+    if (!btn) return;
+    btn.style.display = _transcriptView ? '' : 'none';
 }
 
 // Parse a Postgres timestamp-with-timezone string into millis. Postgres
@@ -3565,17 +3701,32 @@ function stopSmoothTicker() {
 }
 
 function pollJob() {
-    fetch(API + '/admin-transcript.php?item_key=' + _transcriptItemKey, {credentials:'include'})
+    if (!_transcriptJobKey) {
+        // Nothing to poll. Stop the timer so we don't loop forever.
+        if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
+        return;
+    }
+    fetch(API + '/admin-transcript-models.php?action=job&job_key=' + _transcriptJobKey, {credentials:'include'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
-            updateJobUI(d.job);
-            if (d.job && (d.job.job_status === 'complete' || d.job.job_status === 'failed' || d.job.job_status === 'cancelled')) {
+            if (d.error) return;
+            updateJobUI(d);
+            if (d.job_status === 'complete' || d.job_status === 'failed' || d.job_status === 'cancelled') {
                 if (_transcriptPollTimer) { clearInterval(_transcriptPollTimer); _transcriptPollTimer = null; }
-                if (d.job.job_status === 'complete') {
-                    renderTranscriptRows(d.rows || []);
+                var msgEl = document.getElementById('t-msg');
+                if (d.job_status === 'complete') {
+                    if (msgEl) msgEl.textContent = '✓ Auto version saved for ' + (d.job_model || '') + ' — live transcript unchanged';
+                    setTimeout(function() { document.getElementById('t-progress').style.display = 'none'; }, 2000);
+                    // Refresh the dropdown so the new last-run timestamp shows.
+                    populateViewSelect();
+                } else if (d.job_status === 'failed') {
+                    if (msgEl) msgEl.textContent = '✗ Failed: ' + (d.job_error || d.job_message || 'unknown');
+                } else {
+                    if (msgEl) msgEl.textContent = '✗ Cancelled';
                     setTimeout(function() { document.getElementById('t-progress').style.display = 'none'; }, 1500);
                 }
                 document.getElementById('t-start-btn').disabled = false;
+                _transcriptJobKey = null;
             }
         });
 }
@@ -3711,6 +3862,9 @@ function scheduleAutoSave() {
 
 function saveTranscript() {
     if (!_transcriptItemKey) return Promise.resolve();
+    // Read-only when viewing a per-model _auto snapshot — never write
+    // those rows back to the live yy_feed_item_transcript.
+    if (_transcriptReadonly) { _savePending = false; return Promise.resolve(); }
     var rows = [];
     document.querySelectorAll('#t-rows tr').forEach(function(tr) {
         var seg = tr.querySelector('[data-field="segment"]');

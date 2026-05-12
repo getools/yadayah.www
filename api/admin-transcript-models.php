@@ -103,7 +103,8 @@ if ($method === 'GET' && $action === 'status') {
 
     // Most recent pending/running job for this item (UI shows progress).
     $jobStmt = $db->prepare("
-        SELECT feed_item_transcript_job_key AS job_key, job_model, job_status, job_progress, job_message
+        SELECT feed_item_transcript_job_key AS job_key, job_model, job_status, job_progress, job_message,
+               job_dtime, job_completed_dtime
           FROM yy_feed_item_transcript_job
          WHERE feed_item_key = ?
            AND job_status IN ('pending', 'running')
@@ -120,7 +121,7 @@ if ($method === 'GET' && $action === 'job') {
     if (!$jobKey) errorResponse('job_key required');
     $stmt = $db->prepare("
         SELECT feed_item_transcript_job_key AS job_key, job_model, job_status, job_progress, job_message,
-               job_completed_dtime, job_error
+               job_dtime, job_completed_dtime, job_error
           FROM yy_feed_item_transcript_job
          WHERE feed_item_transcript_job_key = ?
     ");
@@ -128,6 +129,28 @@ if ($method === 'GET' && $action === 'job') {
     $row = $stmt->fetch();
     if (!$row) errorResponse('job not found', 404);
     jsonResponse($row);
+}
+
+if ($method === 'POST' && $action === 'cancel') {
+    // Worker checks job_status each chunk and bails on 'cancelled'.
+    $jobKey  = (int)($data['job_key']  ?? 0);
+    $itemKey = (int)($data['item_key'] ?? 0);
+    if ($jobKey) {
+        $db->prepare("
+            UPDATE yy_feed_item_transcript_job
+               SET job_status = 'cancelled', job_completed_dtime = NOW()
+             WHERE feed_item_transcript_job_key = ? AND job_status IN ('pending', 'running')
+        ")->execute([$jobKey]);
+    } elseif ($itemKey) {
+        $db->prepare("
+            UPDATE yy_feed_item_transcript_job
+               SET job_status = 'cancelled', job_completed_dtime = NOW()
+             WHERE feed_item_key = ? AND job_status IN ('pending', 'running')
+        ")->execute([$itemKey]);
+    } else {
+        errorResponse('job_key or item_key required');
+    }
+    jsonResponse(['ok' => true]);
 }
 
 if ($method === 'POST' && $action === 'run') {
