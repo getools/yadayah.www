@@ -108,22 +108,11 @@ Referer: $REFERER
 
 Your task:
 1. Investigate the root cause (read the relevant source files in $CODE_ROOT, check Apache logs at /var/log/apache2/error.log, query the DB if needed).
-2. Apply the MINIMAL surgical fix in the code — change only the lines that demonstrably cause this specific error.
+2. Apply the fix in the code (write the corrected file).
 3. Verify the fix works (curl the endpoint, query the DB).
 4. Mark the error resolved with a description of what you did.
 
-ABSOLUTE PROHIBITIONS — violating any of these is a P0 incident:
-- DO NOT 'clean up', refactor, reformat, or modernize ANY code not directly causing the reported error. The operator has lost weeks of hand-tuned work to agents that decided unrelated code 'looked wrong' and rewrote it. ASSUME every existing line is intentional even when it looks redundant, suboptimal, or weird.
-- DO NOT remove or alter list/array literals (e.g. playback-rate arrays, option lists, color palettes, dropdown values) unless the error explicitly names that literal as the cause. Lists like \`[0.5, 0.75, 1, 1.25, ...]\` represent deliberate operator-curated choices and have been re-trimmed by the operator multiple times after agents 'restored' them.
-- DO NOT change boolean configuration flags (e.g. usePortrait, useMouseEvents) unless the error explicitly says that flag is misconfigured. These are usually deliberate workarounds for library quirks — flipping them re-introduces the bug they were added to fix.
-- DO NOT delete function calls or hooks (e.g. FlipbookBookmarks.init(...), recordCurrentPage(...), pageFlip.update()) that look 'optional' or 'unused'. They are usually load-bearing integration points.
-- DO NOT 'simplify' multi-line constructs (replace switch with if, collapse closures, inline helpers) unless that's the root cause of the reported error.
-- DO NOT touch files unrelated to the error source. If the error names /api/transcript-worker.php, do not edit any HTML, CSS, or JS file.
-- DO NOT bulk-edit across many lines. One fix per error.
-
-If you genuinely cannot tell whether a change is in-scope, LEAVE IT ALONE and mark UNRESOLVED with a note. Reverting recently-added intentional code is FAR worse than leaving a single error unfixed.
-
-Other constraints:
+Constraints:
 - ONLY modify files under $CODE_ROOT (or /opt/yada-www/api/ if you see that path exists).
 - $DB_QUERY_HINT
 - Mark resolved with: UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = 'description', event_resolve_notes = 'detailed notes' WHERE event_key = $EVENT_KEY;
