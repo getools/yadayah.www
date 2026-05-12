@@ -37,6 +37,15 @@
         .tts-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
         .tts-table th, .tts-table td { padding:8px 10px; text-align:left; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
         .tts-table th { background:#f5f5f5; font-weight:600; }
+        /* Tighter spacing for the Pronunciations table — many columns. */
+        #pane-pronunciations .tts-table th, #pane-pronunciations .tts-table td { padding:4px 6px; }
+        #pane-pronunciations .f-type-radio { width:13px; height:13px; margin:0; vertical-align:middle; cursor:pointer; }
+        /* Note icon button (replaces inline note textarea). */
+        .t-note-btn { background:none; border:none; cursor:pointer; padding:2px 4px; color:#bbb; line-height:1; }
+        .t-note-btn.has-note { color:#a36100; }
+        .t-note-btn:hover { color:#31345A; }
+        #tune-note-popover { display:none; position:fixed; background:#fff; border:1px solid #ccc; border-radius:6px; box-shadow:0 6px 20px rgba(0,0,0,.18); padding:8px; min-width:280px; max-width:360px; z-index:10005; }
+        #tune-note-popover textarea { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:0.85rem; font-family:inherit; resize:vertical; min-height:60px; }
         .tts-table input[type=text], .tts-table input[type=number] { width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:0.88rem; box-sizing:border-box; }
         .tts-table .col-actions { width:200px; text-align:right; }
         .tts-table .btn-sm { background:#31345A; color:#fff; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size:0.82rem; margin-left:4px; }
@@ -145,21 +154,20 @@
             <table class="tts-table">
                 <thead>
                     <tr>
-                        <th></th>
-                        <th colspan="4" style="background:#fff;border-bottom:0;padding:6px 8px;">
+                        <th colspan="3" style="background:#fff;border-bottom:0;padding:6px 8px;">
                             <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="width:100%;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.78rem;font-family:inherit;"></select>
                         </th>
-                        <th colspan="5" style="background:#fff;border-bottom:0;"></th>
+                        <th colspan="6" style="background:#fff;border-bottom:0;"></th>
                     </tr>
                     <tr>
-                        <th onclick="sortTunesBy('print')"      style="width:15%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
+                        <th style="width:32px;text-align:center;" title="Active — uncheck to disable this rule"></th>
+                        <th onclick="sortTunesBy('print')"      style="width:22%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
                         <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
-                        <th style="width:15%" title="Re-spelling — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> SUB <span style="color:#999;font-weight:400;">(re-spelling)</span></th>
-                        <th style="width:15%" title="IPA — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> IPA</th>
-                        <th style="width:14%" title="Saved for reference / comparison. Azure neural voices don't accept the SAPI alphabet, so it isn't selectable for synthesis.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
+                        <th style="width:23%" title="Re-spelling — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> SUB <span style="color:#999;font-weight:400;">(re-spelling)</span></th>
+                        <th style="width:19%" title="IPA — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> IPA</th>
+                        <th style="width:21%" title="Saved for reference / comparison. Azure neural voices don't accept the SAPI alphabet, so it isn't selectable for synthesis.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
                         <th style="width:36px"></th>
-                        <th>Note</th>
-                        <th style="width:32px;text-align:center;">Active</th>
+                        <th style="width:30px;text-align:center;" title="Click the icon to add or edit a note">Note</th>
                         <th style="width:32px;text-align:right;"></th>
                     </tr>
                 </thead>
@@ -595,9 +603,9 @@ function renderTunes() {
     });
 }
 
-// Mechanical SAPI → IPA phoneme map (en-US). Stress digit on a vowel
-// token becomes the IPA stress mark prefix: 1 → ˈ, 2 → ˌ, 0 → none.
-// Used by buildTuneRow to auto-update the IPA cell whenever SAPI changes.
+// Mechanical SAPI ↔ IPA phoneme maps (en-US). Stress digit on a vowel
+// SAPI token becomes the IPA stress mark prefix: 1 → ˈ, 2 → ˌ, 0 → none.
+// Used by buildTuneRow to auto-update either cell when the other changes.
 var SAPI_TO_IPA = {
     // vowels
     AA:'ɑ', AE:'æ', AH:'ʌ', AO:'ɔ', AW:'aʊ', AX:'ə', AY:'aɪ',
@@ -608,6 +616,28 @@ var SAPI_TO_IPA = {
     K:'k', L:'l', M:'m', N:'n', NG:'ŋ', P:'p', R:'ɹ', S:'s',
     SH:'ʃ', T:'t', TH:'θ', V:'v', W:'w', Y:'j', Z:'z', ZH:'ʒ',
 };
+// Reverse map for IPA → SAPI. Diphthongs and digraphs MUST come before
+// their single-char components so the tokenizer matches them first.
+var IPA_TO_SAPI_LIST = [
+    // digraph diphthongs / long vowels
+    ['oʊ','OW'], ['aɪ','AY'], ['eɪ','EY'], ['ɔɪ','OY'], ['aʊ','AW'],
+    ['uː','UW'], ['iː','IY'],
+    // digraph consonants
+    ['tʃ','CH'], ['dʒ','JH'],
+    // single-char vowels
+    ['ɑ','AA'], ['æ','AE'], ['ʌ','AH'], ['ɔ','AO'], ['ə','AX'],
+    ['ɛ','EH'], ['ɝ','ER'], ['ɪ','IH'], ['ɨ','IX'], ['i','IY'],
+    ['ʊ','UH'], ['u','UW'], ['o','OW'], ['e','EH'],
+    // single-char consonants
+    ['b','B'], ['d','D'], ['ð','DH'], ['f','F'], ['ɡ','G'], ['g','G'],
+    ['h','HH'], ['k','K'], ['l','L'], ['m','M'], ['n','N'], ['ŋ','NG'],
+    ['p','P'], ['ɹ','R'], ['r','R'], ['s','S'], ['ʃ','SH'], ['t','T'],
+    ['θ','TH'], ['v','V'], ['w','W'], ['j','Y'], ['z','Z'], ['ʒ','ZH'],
+    // Hebrew transliteration extras with no exact SAPI: best approximations.
+    ['ʔ',''],   // glottal stop — elided
+    ['ʕ',''],   // ayin — elided
+    ['χ','HH'], // voiceless velar fricative → closest English /h/
+];
 function sapiToIpa(sapi) {
     if (!sapi) return '';
     return String(sapi).trim().split(/\s+/).map(function(tok) {
@@ -620,8 +650,98 @@ function sapiToIpa(sapi) {
         return ipa;
     }).join('');
 }
+// Inverse: tokenize IPA (longest-match first), apply stress digit on the
+// next vowel after every ˈ / ˌ. Returns a SAPI string with phonemes
+// space-separated and a 0/1/2 stress digit on each vowel.
+function ipaToSapi(ipa) {
+    if (!ipa) return '';
+    var out = [];
+    var stressNext = 0; // 0 = none, 1 = primary, 2 = secondary
+    var i = 0, s = String(ipa);
+    // Pre-compute which SAPI symbols are vowels (need stress digit).
+    var vowelSet = {AA:1,AE:1,AH:1,AO:1,AW:1,AX:1,AY:1,EH:1,ER:1,EY:1,
+                    IH:1,IX:1,IY:1,OW:1,OY:1,UH:1,UW:1};
+    while (i < s.length) {
+        // Take 2-char window first for digraph matching.
+        var two = s.substr(i, 2);
+        var one = s.substr(i, 1);
+        if (one === 'ˈ') { stressNext = 1; i++; continue; }
+        if (one === 'ˌ') { stressNext = 2; i++; continue; }
+        if (one === 'ː' || one === 'ˑ') { i++; continue; } // length marks — drop
+        var hit = null, hitLen = 0;
+        for (var k = 0; k < IPA_TO_SAPI_LIST.length; k++) {
+            var pair = IPA_TO_SAPI_LIST[k];
+            if (pair[0].length === 2 && pair[0] === two) { hit = pair[1]; hitLen = 2; break; }
+            if (pair[0].length === 1 && pair[0] === one && hitLen < 1) { hit = pair[1]; hitLen = 1; }
+        }
+        if (hit === null) { i += 1; continue; } // unknown — skip
+        i += hitLen;
+        if (hit === '') continue; // elided phoneme
+        // Apply stress digit on vowels.
+        if (vowelSet[hit]) {
+            hit += (stressNext === 1 ? '1' : (stressNext === 2 ? '2' : '0'));
+            stressNext = 0;
+        }
+        out.push(hit);
+    }
+    return out.join(' ');
+}
 
 var _tuneRowCounter = 0;
+
+// Singleton popover used by every note button. Anchored under the
+// clicked icon. Outside-click dismisses; the underlying textarea
+// autosaves the note on input (debounced) and on close.
+function getTuneNotePopover() {
+    var pop = document.getElementById('tune-note-popover');
+    if (pop) return pop;
+    pop = document.createElement('div');
+    pop.id = 'tune-note-popover';
+    pop.innerHTML = '<textarea placeholder="Note about this rule…"></textarea>'
+        + '<div style="display:flex;justify-content:flex-end;margin-top:6px;">'
+        +   '<button type="button" onclick="closeTuneNotePopover()" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;">Close</button>'
+        + '</div>';
+    document.body.appendChild(pop);
+    // Outside-click dismiss. Bound once.
+    document.addEventListener('mousedown', function(e) {
+        var p = document.getElementById('tune-note-popover');
+        if (!p || p.style.display === 'none') return;
+        if (p.contains(e.target)) return;
+        if (e.target.closest && e.target.closest('.t-note-btn')) return;
+        closeTuneNotePopover();
+    });
+    return pop;
+}
+function openTuneNotePopover(tr) {
+    var pop = getTuneNotePopover();
+    var hidden = tr.querySelector('.f-note');
+    var btn    = tr.querySelector('.t-note-btn');
+    var ta     = pop.querySelector('textarea');
+    ta.value = hidden.value || '';
+    pop.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var top  = r.bottom + 4;
+    var left = r.left - 140;
+    if (left < 8) left = 8;
+    if (left + 300 > window.innerWidth) left = Math.max(8, window.innerWidth - 312);
+    pop.style.top  = top  + 'px';
+    pop.style.left = left + 'px';
+    // Debounced autosave as the user types. Update the hidden field, the
+    // icon's has-note class, and the title tooltip; then trigger the row save.
+    ta.oninput = function() {
+        hidden.value = ta.value;
+        btn.classList.toggle('has-note', !!ta.value.trim());
+        btn.title = ta.value.trim() || 'Add a note';
+        scheduleAutoSave(hidden, function() { return saveTuneRow(tr); }, 600);
+    };
+    setTimeout(function(){ ta.focus(); }, 0);
+}
+function closeTuneNotePopover() {
+    var pop = document.getElementById('tune-note-popover');
+    if (!pop) return;
+    pop.style.display = 'none';
+}
+
 function buildTuneRow(t) {
     var tr = document.createElement('tr');
     if (!t.tts_tune_active_flag) tr.className = 'inactive';
@@ -640,6 +760,7 @@ function buildTuneRow(t) {
     var subChecked = savedType === 'sub' ? ' checked' : '';
     var ipaChecked = savedType === 'ipa' ? ' checked' : '';
     tr.innerHTML =
+        '<td style="padding:4px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td><input type="text" class="f-print" value="' + escapeHtml(t.tts_tune_print || '') + '"></td>' +
         '<td class="f-count" style="text-align:right;font-variant-numeric:tabular-nums;color:#555;">' + count + '</td>' +
         '<td><label style="display:flex;align-items:center;gap:6px;">'
@@ -654,8 +775,12 @@ function buildTuneRow(t) {
         '<td style="padding:8px 2px;text-align:center;">' +
             '<button class="btn-sm btn-sec" data-act="listen" title="Play with the selected variant (SUB or IPA)" style="margin:0;padding:5px 8px;">▶</button>' +
         '</td>' +
-        '<td><input type="text" class="f-note" value="' + escapeHtml(t.tts_tune_note || '') + '"></td>' +
-        '<td style="padding:8px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
+        '<td style="text-align:center;padding:4px 2px;width:30px;">'
+            + '<input type="hidden" class="f-note" value="' + escapeHtml(t.tts_tune_note || '') + '">'
+            + '<button type="button" class="t-note-btn' + ((t.tts_tune_note || '').trim() ? ' has-note' : '') + '" data-act="note" title="' + escapeHtml((t.tts_tune_note || '').trim() || 'Add a note') + '">'
+            + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 4h13l3 3v13H4zM7 8h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/></svg>'
+            + '</button>'
+        + '</td>' +
         '<td style="text-align:right;padding:8px 6px;">' +
             '<button class="btn-sm btn-del" data-act="del" title="Delete" style="margin:0;">×</button>' +
         '</td>';
@@ -668,13 +793,18 @@ function buildTuneRow(t) {
         r.addEventListener('change', function() { if (r.checked) saveTuneRow(tr); });
     });
     tr.querySelector('.f-active').addEventListener('change', function() { saveTuneRow(tr); });
-    // SAPI → IPA auto-translate. As the user types in SAPI, derive the
-    // equivalent IPA and drop it into the IPA cell.
+    // SAPI ↔ IPA bidirectional auto-translate. Programmatic .value
+    // assignment doesn't fire input events, so this can't infinite-loop.
+    // Whichever cell the user types in, the other one tracks.
     var sapiInp = tr.querySelector('.f-sapi');
     var ipaInp  = tr.querySelector('.f-ipa');
     sapiInp.addEventListener('input', function() {
         var derived = sapiToIpa(sapiInp.value);
         if (derived !== ipaInp.value) ipaInp.value = derived;
+    });
+    ipaInp.addEventListener('input', function() {
+        var derived = ipaToSapi(ipaInp.value);
+        if (derived !== sapiInp.value) sapiInp.value = derived;
     });
     return tr;
 }
@@ -714,6 +844,10 @@ async function handleTuneAction(tr, act) {
     var key   = parseInt(tr.dataset.key, 10) || 0;
     var print = tr.querySelector('.f-print').value.trim();
     try {
+        if (act === 'note') {
+            openTuneNotePopover(tr);
+            return;
+        }
         if (act === 'del') {
             if (key && !confirm('Delete "' + print + '"?')) return;
             if (key) await api('/admin-tts-config.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_tune', tts_tune_key: key }) });

@@ -98,12 +98,15 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
         $type = $t['tts_tune_phonetic_type'] ?? 'sub';
         // Azure neural voices reject the 'sapi' phoneme alphabet (legacy,
         // non-neural voices only). Treat type=sapi as a *reference* setting
-        // — at synth time we transparently use the IPA column instead. If
-        // the IPA cell is empty, fall back to SUB.
+        // — at synth time we transparently use the IPA column instead.
         $synthType = ($type === 'sapi') ? 'ipa' : $type;
         $col  = 'tts_tune_phonetic_' . $synthType;
         $phon = trim((string)($t[$col] ?? ''));
-        if ($phon === '' && $synthType === 'ipa') {
+        // If IPA is empty OR looks like obvious English-spelling rather
+        // than IPA, fall back to SUB so we don't 400 Azure. Heuristic:
+        // pure ASCII letters with no IPA-specific symbols (no ˈ ˌ ɑ ɛ ɪ
+        // ʊ ɔ ʃ θ ð ʒ ŋ ɹ ʔ ʕ etc.) is almost certainly not real IPA.
+        if ($synthType === 'ipa' && ($phon === '' || ipaLooksFake($phon))) {
             $synthType = 'sub';
             $phon = trim((string)($t['tts_tune_phonetic_sub'] ?? ''));
         }
@@ -113,6 +116,11 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
         if (!preg_match($regex, $text)) continue;
         $token = sprintf("\x02TUNE_%d\x02", $t['tts_tune_key']);
         if ($synthType === 'ipa') {
+            // Common typo: ASCII apostrophe instead of the IPA primary
+            // stress mark ˈ (U+02C8). Same for the comma → ˌ secondary
+            // stress mark. Auto-fix these so the user gets the result
+            // they probably meant.
+            $phon = strtr($phon, ["'" => "\u{02C8}", '`' => "\u{02C8}"]);
             $ph = htmlspecialchars($phon, ENT_QUOTES | ENT_XML1);
             $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
             $repl = "<phoneme alphabet=\"ipa\" ph=\"$ph\">$printEsc</phoneme>";
@@ -154,6 +162,23 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
  * pair of cores. The result matches the cores joined by any number of
  * apostrophe-class chars (0 or 1) at every join point.
  */
+/**
+ * Best-effort detection of "this is plain English spelling, not IPA."
+ * Used to avoid sending obvious non-IPA to Azure (which would 400) when
+ * the user typed an English re-spelling into the IPA cell by accident.
+ *
+ * Returns true if the string contains ZERO characters that are
+ * exclusively IPA (stress marks, schwa, half-rings, the lower-case
+ * Greek-borrowed letters, etc.). Plain ASCII letters + ASCII apostrophe
+ * fail this test and trigger SUB fallback.
+ */
+function ipaLooksFake(string $phon): bool {
+    if ($phon === '') return true;
+    // Any of these characters proves the string IS attempting IPA.
+    static $ipaMarkers = '/[\x{02C8}\x{02CC}\x{02D0}\x{02D1}\x{0259}\x{0250}-\x{02AF}\x{025B}\x{025C}\x{0254}\x{028A}\x{026A}\x{0283}\x{0292}\x{014B}\x{0294}\x{0295}\x{03B8}\x{00F0}\x{0279}\x{027E}\x{0281}]/u';
+    return !preg_match($ipaMarkers, $phon);
+}
+
 function tunePrintToRegex(string $print): string {
     static $APOS_RE       = '/[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]/u';
     static $APOS_CLASS_OPT = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]?";
