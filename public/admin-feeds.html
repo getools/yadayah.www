@@ -1661,10 +1661,12 @@ function openTranscript(itemKey) {
             + '<button type="button" data-status="Approved" onclick="setValidationStatus(\'Approved\')" style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;">Approved</button>'
             + '</div>'
             + '</div>'
-            + '<div style="display:flex;flex-direction:column;gap:4px;">'
-            + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Note <span style="font-weight:400;color:#999;">(optional)</span></label>'
-            + '<textarea id="t-val-note" rows="3" placeholder="Notes on issues found, what was reviewed, etc." style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;resize:vertical;width:100%;box-sizing:border-box;"></textarea>'
-            + '</div>'
+            // Hidden so saveValidation()'s read of #t-val-note still works
+            // even though the on-screen Note area was replaced with the
+            // bookmark list. validation_note in the DB is now effectively
+            // unused; we keep the input around so old code paths don't 500.
+            + '<input type="hidden" id="t-val-note" value="">'
+            + '<div id="t-val-bookmarks-pane"></div>'
             + '<div id="t-val-meta" style="font-size:0.72rem;color:#888;margin-top:6px;"></div>'
             + '</div>'
             + '<button onclick="doneTranscript()" style="background:#31345A;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">Close</button>'
@@ -1692,6 +1694,7 @@ function openTranscript(itemKey) {
             // YouTube Cookies button moved to the Sources tab on the Feeds page.
             + '<button onclick="openTranscriptDict()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Whisper glossary + correction dictionary">Transcript Dictionary</button>'
             + '<button onclick="openTranscriptFind()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Find text within this transcript">Find</button>'
+            + '<button onclick="openBookmarksModal()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="All notes / bookmarks on this transcript">Bookmarks</button>'
             // onmousedown→preventDefault keeps focus on whichever
             // transcript text input the cursor was in, so the click
             // handler can read its highlighted selection (if any) and
@@ -1720,7 +1723,8 @@ function openTranscript(itemKey) {
             +       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
             +     '</span>'
             +   '</th>'
-            +   '<th style="padding:8px;width:112px;text-align:left;">Time</th>'
+            +   '<th style="padding:8px;width:97px;text-align:left;">Time</th>'
+            +   '<th style="padding:4px 2px;width:1%;text-align:center;" title="Notes / bookmarks on this line"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg></th>'
             +   '<th style="padding:8px;text-align:left;">Text</th>'
             +   '<th style="padding:8px;width:40px;"></th>'
             + '</tr></thead>'
@@ -3008,6 +3012,10 @@ function loadTranscript() {
             _transcriptReadonly = !!d.view;
             updateTranscriptViewSelect(d.available_views || [], d.view || '');
             renderTranscriptRows(d.rows || []);
+            // Pull bookmarks for this item. loadBookmarks() updates the
+            // per-row icon badges and the side-panel list, so we fire it
+            // right after the rows are rendered.
+            loadBookmarks();
             updateJobUI(d.job);
             populateValidation(d.validation);
             // "Analyze" surfaces every rendering of this transcript:
@@ -3236,8 +3244,33 @@ function transcriptRowCells(seg, secs, text, speaker) {
         +   speakerChipForRow(s)
         + '</td>'
         + '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+        +   bookmarkCellForRow(seg)
         + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1"' + textareaAttr + ' style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;background:' + textareaBg + ';">' + esc(text || '') + '</textarea></td>'
         + actionsCell;
+}
+
+// Render the note/bookmark icon cell. Pulls current count from
+// _bookmarksBySeg (loaded by loadBookmarks) so the badge is correct on
+// initial render. updateBookmarkBadge() refreshes the cell when bookmarks
+// are added/deleted without a full row re-render.
+function bookmarkCellForRow(seg) {
+    var list = (window._bookmarksBySeg && window._bookmarksBySeg[seg]) || [];
+    var count = list.length;
+    var hasAny = count > 0;
+    var color = hasAny ? '#a36100' : '#bbb';
+    var title = hasAny
+        ? (count + ' note' + (count === 1 ? '' : 's') + ' on this line — click to view')
+        : 'Add a note for this line';
+    var badge = hasAny
+        ? '<span style="position:absolute;top:-4px;right:-6px;background:#a36100;color:#fff;border-radius:8px;font-size:0.6rem;font-weight:700;padding:0 4px;min-width:13px;text-align:center;line-height:13px;">' + count + '</span>'
+        : '';
+    return '<td class="t-note-cell" data-seg="' + esc(seg) + '" style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
+        +   '<button type="button" class="t-note-btn" data-seg="' + esc(seg) + '" onclick="openRowBookmarkPopover(this, \'' + esc(seg) + '\'); event.stopPropagation();" title="' + esc(title) + '" '
+        +     'style="background:none;border:none;cursor:pointer;padding:2px 4px;position:relative;color:' + color + ';">'
+        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg>'
+        +     badge
+        +   '</button>'
+        + '</td>';
 }
 
 // Speaker chip used in transcript rows. Stores the raw label in a hidden
@@ -3613,13 +3646,329 @@ function autosizeAllTextRows() {
     document.querySelectorAll('#t-rows textarea[data-field="text"]').forEach(autosizeTextRow);
 }
 
+// ── Transcript line bookmarks / notes ────────────────────────────────────
+// Each row in yy_feed_item_transcript_bookmark is anchored to a (feed_item,
+// segment) pair; multiple notes per segment are allowed and the per-row
+// icon shows a count badge. _bookmarksBySeg is the segment-indexed view
+// used by bookmarkCellForRow and the popover; _bookmarksAll is the flat
+// list used by the side panel + Bookmarks modal.
+window._bookmarksBySeg = window._bookmarksBySeg || {};
+window._bookmarksAll   = window._bookmarksAll   || [];
+window._bookmarkSort   = window._bookmarkSort   || { col: 'segment', dir: 'asc' };
+
+function loadBookmarks() {
+    if (!_transcriptItemKey) return Promise.resolve([]);
+    return fetch(API + '/admin-transcript-bookmark.php?item_key=' + encodeURIComponent(_transcriptItemKey),
+        { credentials:'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (!d || d.error) { window._bookmarksAll = []; window._bookmarksBySeg = {}; return []; }
+            window._bookmarksAll = d.bookmarks || [];
+            window._bookmarksBySeg = {};
+            window._bookmarksAll.forEach(function(b) {
+                (window._bookmarksBySeg[b.segment] = window._bookmarksBySeg[b.segment] || []).push(b);
+            });
+            refreshAllBookmarkBadges();
+            renderBookmarksPane();
+            return window._bookmarksAll;
+        })
+        .catch(function(){ return []; });
+}
+
+// Re-render every per-row bookmark icon to match the current count. Cheap
+// — there's one icon per visible row and we just swap its <td> innerHTML.
+function refreshAllBookmarkBadges() {
+    document.querySelectorAll('#t-rows td.t-note-cell').forEach(function(td) {
+        var seg = td.getAttribute('data-seg');
+        var fresh = bookmarkCellForRow(seg);
+        // bookmarkCellForRow returns the FULL <td>...; replace the cell
+        // outerHTML to swap in the new icon + badge.
+        td.outerHTML = fresh;
+    });
+}
+
+function refreshOneBookmarkBadge(seg) {
+    var td = document.querySelector('#t-rows td.t-note-cell[data-seg="' + cssEscapeSeg(seg) + '"]');
+    if (td) td.outerHTML = bookmarkCellForRow(seg);
+}
+function cssEscapeSeg(s) {
+    // Segments are HH:MM:SS — only ":" needs escaping for a CSS attribute
+    // selector value embedded in a string literal. Use \\ form so the
+    // engine treats ":" literally.
+    return String(s).replace(/(["\\])/g, '\\$1');
+}
+
+// Format an ISO timestamp to "YYYY-MM-DD HH:MM" — used in popover meta
+// and the side panel / modal tables.
+function fmtBookmarkDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    var pad = function(n){ return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+// ── Per-row popover ───────────────────────────────────────────────────────
+// Anchored to the clicked icon. Re-uses #t-bookmark-popover (created on
+// first open) so we don't leak overlay nodes across rows.
+function openRowBookmarkPopover(anchorBtn, seg) {
+    var pop = document.getElementById('t-bookmark-popover');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 't-bookmark-popover';
+        pop.style.cssText = 'display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;'
+            + 'box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px;font-size:0.85rem;z-index:10005;'
+            + 'min-width:300px;max-width:380px;';
+        // Click-outside dismiss. We bind once on creation.
+        document.addEventListener('mousedown', function(e) {
+            var p = document.getElementById('t-bookmark-popover');
+            if (!p || p.style.display === 'none') return;
+            if (p.contains(e.target)) return;
+            if (e.target.closest && e.target.closest('.t-note-btn')) return;
+            p.style.display = 'none';
+        });
+        document.body.appendChild(pop);
+    }
+    pop.dataset.seg = seg;
+    renderRowBookmarkPopover(seg);
+    var r = anchorBtn.getBoundingClientRect();
+    pop.style.display = 'block';
+    // Show below+left so the popover doesn't cover the text the user is
+    // about to write into. Clamp to viewport edge so it never bleeds off.
+    var top = r.bottom + 4;
+    var left = r.left - 80;
+    if (left < 8) left = 8;
+    if (left + 340 > window.innerWidth) left = Math.max(8, window.innerWidth - 348);
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+    var ta = pop.querySelector('textarea[data-role="new-note"]');
+    if (ta) ta.focus();
+}
+
+function renderRowBookmarkPopover(seg) {
+    var pop = document.getElementById('t-bookmark-popover');
+    if (!pop) return;
+    var list = (window._bookmarksBySeg[seg] || []).slice();
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;display:flex;align-items:center;gap:6px;">'
+        + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg>'
+        + 'Notes at ' + esc(seg) + '</div>';
+    if (list.length) {
+        html += '<div style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-bottom:8px;">';
+        list.forEach(function(b) {
+            var del = b.is_mine
+                ? '<button type="button" onclick="deleteBookmark(' + b.key + ', \'' + esc(seg) + '\')" title="Delete this note" '
+                  + 'style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;line-height:1;padding:0 4px;flex:0 0 auto;">&times;</button>'
+                : '';
+            html += '<div style="padding:6px 8px;border-bottom:1px solid #f3f3f3;display:flex;align-items:flex-start;gap:6px;">'
+                +    '<div style="flex:1;min-width:0;">'
+                +      '<div style="font-size:0.72rem;color:#888;">@' + esc(b.user_handle || b.user_display) + ' · ' + esc(fmtBookmarkDate(b.created)) + '</div>'
+                +      '<div style="white-space:pre-wrap;word-break:break-word;font-size:0.85rem;color:#222;margin-top:2px;">' + esc(b.note) + '</div>'
+                +    '</div>'
+                +    del
+                + '</div>';
+        });
+        html += '</div>';
+    }
+    html += '<textarea data-role="new-note" rows="2" placeholder="Add a note…" '
+        +     'style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>'
+        + '<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;">'
+        +   '<button type="button" onclick="document.getElementById(\'t-bookmark-popover\').style.display=\'none\';" '
+        +     'style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;">Close</button>'
+        +   '<button type="button" onclick="addBookmarkFromPopover(\'' + esc(seg) + '\')" '
+        +     'style="background:#27ae60;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.8rem;font-weight:600;">Add</button>'
+        + '</div>';
+    pop.innerHTML = html;
+}
+
+function addBookmarkFromPopover(seg) {
+    var pop = document.getElementById('t-bookmark-popover');
+    if (!pop) return;
+    var ta = pop.querySelector('textarea[data-role="new-note"]');
+    var note = ta ? ta.value.trim() : '';
+    if (!note) { if (ta) ta.focus(); return; }
+    fetch(API + '/admin-transcript-bookmark.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'add', item_key: _transcriptItemKey, segment: seg, note: note })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (!d || d.error) { alert((d && d.error) || 'Failed to add note'); return; }
+        var b = d.bookmark;
+        (window._bookmarksBySeg[seg] = window._bookmarksBySeg[seg] || []).push(b);
+        window._bookmarksAll.push(b);
+        refreshOneBookmarkBadge(seg);
+        renderRowBookmarkPopover(seg);
+        renderBookmarksPane();
+        var ta2 = document.querySelector('#t-bookmark-popover textarea[data-role="new-note"]');
+        if (ta2) { ta2.value = ''; ta2.focus(); }
+    });
+}
+
+function deleteBookmark(bookmarkKey, seg) {
+    if (!confirm('Delete this note?')) return;
+    fetch(API + '/admin-transcript-bookmark.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'delete', bookmark_key: bookmarkKey })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (!d || d.error) { alert((d && d.error) || 'Failed to delete'); return; }
+        // Drop from local caches and re-render affected views.
+        if (window._bookmarksBySeg[seg]) {
+            window._bookmarksBySeg[seg] = window._bookmarksBySeg[seg].filter(function(b){ return b.key !== bookmarkKey; });
+            if (!window._bookmarksBySeg[seg].length) delete window._bookmarksBySeg[seg];
+        }
+        window._bookmarksAll = window._bookmarksAll.filter(function(b){ return b.key !== bookmarkKey; });
+        refreshOneBookmarkBadge(seg);
+        var pop = document.getElementById('t-bookmark-popover');
+        if (pop && pop.style.display !== 'none' && pop.dataset.seg === seg) renderRowBookmarkPopover(seg);
+        renderBookmarksPane();
+        // The full Bookmarks modal, if open, re-renders from _bookmarksAll
+        // so the row disappears there too.
+        if (document.getElementById('bm-modal-tbody')) renderBookmarksModalTable();
+    });
+}
+
+// ── Side panel (replaces the old "Validation Note" textarea) ───────────────
+// Sortable mini-table of all bookmarks for this transcript. Columns:
+// Time, User, Note. Clicking a header toggles asc/desc for that column.
+function renderBookmarksPane() {
+    var pane = document.getElementById('t-val-bookmarks-pane');
+    if (!pane) return;
+    var rows = window._bookmarksAll.slice();
+    sortBookmarkRows(rows, window._bookmarkSort);
+    var arrow = function(col) {
+        if (window._bookmarkSort.col !== col) return '';
+        return window._bookmarkSort.dir === 'asc' ? ' ▲' : ' ▼';
+    };
+    var html = '<div style="display:flex;flex-direction:column;gap:4px;">'
+        + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Bookmarks <span style="font-weight:400;color:#999;">(' + rows.length + ')</span></label>'
+        + '<div style="border:1px solid #ddd;border-radius:4px;max-height:220px;overflow-y:auto;background:#fff;">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
+        + '<thead style="background:#f5f5f5;position:sticky;top:0;">'
+        + '<tr>'
+        +   '<th onclick="sortBookmarks(\'segment\')" style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:70px;">Time' + arrow('segment') + '</th>'
+        +   '<th onclick="sortBookmarks(\'user\')"    style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">User'    + arrow('user')    + '</th>'
+        +   '<th onclick="sortBookmarks(\'note\')"    style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note'    + arrow('note')    + '</th>'
+        + '</tr></thead><tbody>';
+    if (!rows.length) {
+        html += '<tr><td colspan="3" style="padding:10px;text-align:center;color:#999;font-style:italic;">No bookmarks yet.</td></tr>';
+    } else {
+        rows.forEach(function(b) {
+            html += '<tr>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(b.segment) + '</td>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;color:#555;">@' + esc(b.user_handle || b.user_display) + '</td>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;color:#222;">' + esc(b.note) + '</td>'
+                + '</tr>';
+        });
+    }
+    html += '</tbody></table></div></div>';
+    pane.innerHTML = html;
+}
+
+function sortBookmarks(col) {
+    if (window._bookmarkSort.col === col) {
+        window._bookmarkSort.dir = (window._bookmarkSort.dir === 'asc') ? 'desc' : 'asc';
+    } else {
+        window._bookmarkSort.col = col;
+        window._bookmarkSort.dir = 'asc';
+    }
+    renderBookmarksPane();
+    if (document.getElementById('bm-modal-tbody')) renderBookmarksModalTable();
+}
+
+function sortBookmarkRows(rows, s) {
+    var dir = (s.dir === 'desc') ? -1 : 1;
+    rows.sort(function(a, b) {
+        var av, bv;
+        if (s.col === 'segment')      { av = a.segment_secs || 0;        bv = b.segment_secs || 0; }
+        else if (s.col === 'user')    { av = (a.user_handle || a.user_display || '').toLowerCase(); bv = (b.user_handle || b.user_display || '').toLowerCase(); }
+        else if (s.col === 'created') { av = a.created || ''; bv = b.created || ''; }
+        else                          { av = (a.note || '').toLowerCase(); bv = (b.note || '').toLowerCase(); }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return  1 * dir;
+        return 0;
+    });
+}
+
+// ── Full Bookmarks modal (toolbar button) ─────────────────────────────────
+function openBookmarksModal() {
+    var ov = document.getElementById('bm-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'bm-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10006;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(800px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<h3 style="margin:0;color:#31345A;font-size:1.05rem;">Bookmarks</h3>'
+            +   '<button onclick="closeBookmarksModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<div id="bm-modal-body" style="padding:0;overflow-y:auto;flex:1;">'
+            +   '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">'
+            +     '<thead style="background:#f5f5f5;position:sticky;top:0;">'
+            +       '<tr>'
+            +         '<th id="bm-th-user"    onclick="sortBookmarks(\'user\')"    style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">User</th>'
+            +         '<th id="bm-th-segment" onclick="sortBookmarks(\'segment\')" style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:110px;">Timestamp</th>'
+            +         '<th id="bm-th-note"    onclick="sortBookmarks(\'note\')"    style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note</th>'
+            +         '<th style="padding:8px 10px;width:40px;border-bottom:1px solid #ddd;"></th>'
+            +       '</tr>'
+            +     '</thead>'
+            +     '<tbody id="bm-modal-tbody"></tbody>'
+            +   '</table>'
+            + '</div>'
+            + '<div style="padding:10px 18px;border-top:1px solid #e0e0e0;display:flex;justify-content:flex-end;background:#f7f8fc;">'
+            +   '<button onclick="closeBookmarksModal()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;">Close</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e){ if (e.target === ov) closeBookmarksModal(); };
+    }
+    ov.style.display = 'flex';
+    renderBookmarksModalTable();
+}
+function closeBookmarksModal() {
+    var ov = document.getElementById('bm-overlay'); if (ov) ov.style.display = 'none';
+}
+
+function renderBookmarksModalTable() {
+    var tbody = document.getElementById('bm-modal-tbody');
+    if (!tbody) return;
+    var rows = window._bookmarksAll.slice();
+    sortBookmarkRows(rows, window._bookmarkSort);
+    // Refresh header arrows.
+    var arrow = function(col) {
+        if (window._bookmarkSort.col !== col) return '';
+        return window._bookmarkSort.dir === 'asc' ? ' ▲' : ' ▼';
+    };
+    var thU = document.getElementById('bm-th-user');
+    var thS = document.getElementById('bm-th-segment');
+    var thN = document.getElementById('bm-th-note');
+    if (thU) thU.textContent    = 'User'      + arrow('user');
+    if (thS) thS.textContent    = 'Timestamp' + arrow('segment');
+    if (thN) thN.textContent    = 'Note'      + arrow('note');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:24px;text-align:center;color:#999;">No bookmarks for this transcript.</td></tr>';
+        return;
+    }
+    var html = '';
+    rows.forEach(function(b) {
+        var del = b.is_mine
+            ? '<button type="button" onclick="deleteBookmark(' + b.key + ', \'' + esc(b.segment) + '\')" title="Delete" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;line-height:1;">&times;</button>'
+            : '';
+        html += '<tr>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;color:#555;white-space:nowrap;">@' + esc(b.user_handle || b.user_display) + '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(b.segment) + '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;white-space:pre-wrap;word-break:break-word;color:#222;">' + esc(b.note) + '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;text-align:center;">' + del + '</td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
 function renderTranscriptRows(rows) {
     var tbody = document.getElementById('t-rows');
     if (!tbody) return;
     _segmentSeconds = [];
     _activeRowIdx = -1;
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" to begin.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" to begin.</td></tr>';
         renderSpeakersPanel([]);
         return;
     }
