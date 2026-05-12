@@ -3518,7 +3518,18 @@ function buildSpeakerPopoverHtml() {
     if (!labels.length) {
         return '<div style="color:#888;padding:6px 4px;">No speaker labels on this transcript yet.</div>';
     }
+    // Disable all editing affordances when viewing an auto-model snapshot
+    // (read-only). Rename / recolor would target the live transcript
+    // rows, not the snapshot rows the user is looking at — confusing UX —
+    // so we just freeze the inputs and remove the change handlers.
+    var ro = !!_transcriptReadonly;
+    var roAttr  = ro ? ' disabled' : '';
+    var roStyle = ro ? 'opacity:0.6;cursor:not-allowed;' : '';
+    var roBanner = ro
+        ? '<div style="font-size:0.7rem;color:#a36100;margin-bottom:6px;">Read-only — switch to Current to edit speakers.</div>'
+        : '';
     var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;font-size:0.78rem;">Speakers in this transcript</div>'
+        + roBanner
         + '<table style="border-collapse:collapse;font-size:0.78rem;">';
     labels.forEach(function(lbl) {
         var parsed = parseSpeakerLabel(lbl);
@@ -3534,29 +3545,32 @@ function buildSpeakerPopoverHtml() {
             +     '<input type="color" class="t-spk-color"'
             +       ' value="' + esc(resolvedColor) + '"'
             +       ' data-default="' + esc(speakerChipPalette(formatSpeakerLabel(parsed.abbrev, parsed.name, ''))) + '"'
-            +       ' onchange="commitSpeakerRename(this)"'
-            +       ' title="Chip color — leave at default to use the auto-picked palette color"'
-            +       ' style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:transparent;">'
+            +       (ro ? '' : ' onchange="commitSpeakerRename(this)"')
+            +       roAttr
+            +       ' title="' + (ro ? 'Read-only' : 'Chip color — leave at default to use the auto-picked palette color') + '"'
+            +       ' style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;background:transparent;' + roStyle + (ro ? '' : 'cursor:pointer;') + '">'
             +   '</td>'
             +   '<td style="padding:3px 4px;">'
             +     '<input class="t-spk-abbrev" value="' + esc(displayAbbrev) + '"'
             +       ' maxlength="4"'
-            +       ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
-            +       ' onblur="commitSpeakerRename(this)"'
+            +       (ro ? '' : ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)"')
+            +       roAttr
             +       ' placeholder="ab"'
-            +       ' style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;">'
+            +       ' style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;' + roStyle + '">'
             +   '</td>'
             +   '<td style="padding:3px 0;">'
             +     '<input class="t-spk-name" value="' + esc(parsed.name) + '"'
-            +       ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
-            +       ' onblur="commitSpeakerRename(this)"'
+            +       (ro ? '' : ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)"')
+            +       roAttr
             +       ' placeholder="name…"'
-            +       ' style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
+            +       ' style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;' + roStyle + '">'
             +   '</td>'
             + '</tr>';
     });
-    html += '</table>'
-        + '<div style="font-size:0.7rem;color:#888;margin-top:6px;">Abbreviation drives the chip; if blank it derives from the name.</div>';
+    html += '</table>';
+    if (!ro) {
+        html += '<div style="font-size:0.7rem;color:#888;margin-top:6px;">Abbreviation drives the chip; if blank it derives from the name.</div>';
+    }
     return html;
 }
 function positionSpeakerPopover() {
@@ -3571,8 +3585,22 @@ function showSpeakerPopover() {
     var pop = document.getElementById('t-spk-popover');
     if (!pop) return;
     if (_speakerPopoverHideTimer) { clearTimeout(_speakerPopoverHideTimer); _speakerPopoverHideTimer = null; }
+    // Only rebuild the inner table when transitioning from hidden → visible.
+    // Re-hovering the anchor while the popover is already open used to
+    // re-run innerHTML, which wiped any in-progress typing in the
+    // abbreviation/name inputs. Keep the live DOM intact while it's open;
+    // refreshSpeakerPopoverIfOpen() handles intentional refreshes after a
+    // rename round-trip.
+    if (pop.style.display !== 'block') {
+        pop.innerHTML = buildSpeakerPopoverHtml();
+        pop.style.display = 'block';
+        positionSpeakerPopover();
+    }
+}
+function refreshSpeakerPopoverIfOpen() {
+    var pop = document.getElementById('t-spk-popover');
+    if (!pop || pop.style.display !== 'block') return;
     pop.innerHTML = buildSpeakerPopoverHtml();
-    pop.style.display = 'block';
     positionSpeakerPopover();
 }
 function hideSpeakerPopover() {
