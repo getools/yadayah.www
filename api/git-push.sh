@@ -70,3 +70,22 @@ Co-Authored-By: Yada Auto-Fix <autofix@yadayah.com>"
 git push origin master
 
 echo "[git-push] Pushed: $MSG"
+
+# ── Post-push smoke verification ────────────────────────────────────────
+# Any change that lands in production should be sanity-checked immediately.
+# Runs yy_test #18 ("Flipbook assets serve") which HEADs one of each bundle
+# asset type per book — pages JPG, thumbs JPG, text JSON, toc.json,
+# search.json. Catches perm regressions (mode 700 dirs → 403), broken
+# rewrites, deleted assets, and Apache routing changes within seconds.
+# Failures log loudly here AND file a row in yy_test_log + yy_monitor_event
+# so auto-fix can act on them next tick instead of waiting for the daily run.
+echo "[git-push] Smoke-testing bundle assets…"
+SMOKE_OUT=$(docker exec yada-www-web-1 \
+    curl -sk "http://localhost/api/cron-test.php?key=yada2026test&test_key=18" 2>&1)
+SMOKE_STATUS=$(echo "$SMOKE_OUT" | grep -oE '"status":"[^"]+"' | head -1 | sed 's/.*:"//;s/"//')
+if [ "$SMOKE_STATUS" = "pass" ]; then
+    echo "[git-push] Smoke test: PASS"
+else
+    echo "[git-push] !!! SMOKE TEST FAILED — see yy_test_log + yy_monitor_event"
+    echo "$SMOKE_OUT" | head -40
+fi

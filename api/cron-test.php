@@ -537,7 +537,22 @@ function runRecentRunCheck(PDO $db, array $config): array {
  * to act on without re-deriving which books are broken.
  */
 function runFlipbookAssetsCheck(array $config): array {
-    $asset   = $config['asset']    ?? 'pages/page-001.jpg';
+    // Probe one asset of EACH bundle type per book — pages/text/thumbs/toc/
+    // search. Previously only checked pages/page-001.jpg, which let the
+    // 2026-05-12 text/ permissions regression slip through unnoticed because
+    // pages/ was already fixed. Each book × asset is a separate HEAD.
+    $assets  = isset($config['assets']) && is_array($config['assets'])
+             ? $config['assets']
+             : [
+                 'pages/page-001.jpg',
+                 'thumbs/thumb-001.jpg',
+                 'text/page-001.json',
+                 'toc.json',
+                 'search.json',
+             ];
+    // Back-compat: older configs may still set `asset` (singular).
+    if (!empty($config['asset'])) $assets = [$config['asset']];
+
     $webroot = $config['webroot']  ?? '/var/www/html';
     $urlBase = rtrim($config['url_base'] ?? 'https://yadayah.com', '/');
     $timeout = (int)($config['timeout'] ?? 5);
@@ -552,22 +567,23 @@ function runFlipbookAssetsCheck(array $config): array {
         return ['status' => 'fail', 'message' => "No YY-* book dirs with index.html found under {$webroot}"];
     }
 
-    // Use curl_multi so 30+ HEAD requests run in parallel; serial would
-    // take ~30 × timeout = 2.5 min on a bad day, vs ~5 s here.
+    // Use curl_multi so all book × asset HEAD requests run in parallel.
     $mh = curl_multi_init();
     $handles = [];
     foreach ($books as $b) {
-        $url = "{$urlBase}/{$b}/{$asset}";
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_NOBODY         => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => $timeout,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-        ]);
-        curl_multi_add_handle($mh, $ch);
-        $handles[$b] = ['ch' => $ch, 'url' => $url];
+        foreach ($assets as $a) {
+            $url = "{$urlBase}/{$b}/{$a}";
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_NOBODY         => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => $timeout,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[] = ['ch' => $ch, 'book' => $b, 'asset' => $a];
+        }
     }
     $running = null;
     do {
@@ -576,27 +592,27 @@ function runFlipbookAssetsCheck(array $config): array {
     } while ($running > 0);
 
     $bad = [];
-    foreach ($handles as $b => $h) {
+    foreach ($handles as $h) {
         $code = (int)curl_getinfo($h['ch'], CURLINFO_HTTP_CODE);
         $err  = curl_error($h['ch']);
         if ($code !== 200) {
-            $bad[] = "{$b}: HTTP {$code}" . ($err ? " ({$err})" : '');
+            $bad[] = "{$h['book']}/{$h['asset']}: HTTP {$code}" . ($err ? " ({$err})" : '');
         }
         curl_multi_remove_handle($mh, $h['ch']);
         curl_close($h['ch']);
     }
     curl_multi_close($mh);
 
-    $okCount = count($books) - count($bad);
+    $totalProbes = count($books) * count($assets);
     if ($bad) {
         return [
             'status'  => 'fail',
-            'message' => count($bad) . ' of ' . count($books) . " books returning non-200 for {$asset}",
+            'message' => count($bad) . ' of ' . $totalProbes . ' bundle assets returning non-200',
             'detail'  => implode("\n", $bad),
         ];
     }
     return [
         'status'  => 'pass',
-        'message' => "All {$okCount} books serve {$asset} OK",
+        'message' => "All {$totalProbes} bundle assets (" . count($books) . " books × " . count($assets) . " types) OK",
     ];
 }
