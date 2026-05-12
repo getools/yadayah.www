@@ -143,7 +143,7 @@
     <div id="pane-pronunciations" class="tts-pane">
         <div class="tts-section">
             <h3>Phrase list / pronunciations</h3>
-            <p class="desc">When the TTS engine encounters <em>Print</em>, it says <em>Phonetic</em> instead. Use plain re-spellings for "sub" type (default) or IPA/SAPI for power users.</p>
+            <p class="desc">When the TTS engine encounters <em>Print</em>, it says <em>Phonetic</em> instead. Use plain re-spellings for "sub" type (default) or IPA/SAPI for power users. In <strong>sub</strong> mode, type any syllable you want <strong>stressed</strong> in ALL CAPS (e.g. <code>Yah-HOH-wah</code>) — it gets wrapped in an &lt;emphasis&gt; tag.</p>
             <table class="tts-table">
                 <thead>
                     <tr>
@@ -505,7 +505,13 @@ async function loadTunes() {
 function renderTunes() {
     var tb = $('tunes-tbody');
     tb.innerHTML = '';
-    STATE.tunes.forEach(t => tb.appendChild(buildTuneRow(t)));
+    // Sort by Print ascending (case-insensitive, locale-aware) so rows are
+    // alphabetised on initial render. We don't re-sort while the user is
+    // editing — that would yank rows around mid-keystroke.
+    var sorted = STATE.tunes.slice().sort(function(a, b) {
+        return (a.tts_tune_print || '').localeCompare(b.tts_tune_print || '', undefined, { sensitivity: 'base' });
+    });
+    sorted.forEach(t => tb.appendChild(buildTuneRow(t)));
 }
 
 function buildTuneRow(t) {

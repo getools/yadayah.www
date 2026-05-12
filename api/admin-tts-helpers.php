@@ -78,8 +78,11 @@ function placeholdersToBreaks(string $escaped): string {
 }
 
 /**
- * Apply pronunciation substitutions. 'sub' type → <sub alias="phonetic">print</sub>.
- * 'ipa' / 'sapi' → <phoneme alphabet="ipa|sapi" ph="…">print</phoneme>.
+ * Apply pronunciation substitutions. 'sub' type → <sub alias="phonetic">print</sub>,
+ * unless the alias contains an ALL-CAPS run (2+ letters), in which case we
+ * split the alias and wrap each caps run in <emphasis level="strong"> so
+ * the engine actually stresses that syllable. "Yah-HOH-wah" → "Yah-" +
+ * <emphasis>hoh</emphasis> + "-wah". 'ipa' / 'sapi' → <phoneme>.
  *
  * Uses a token round-trip so SSML markup isn't double-escaped.
  */
@@ -95,14 +98,46 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
             $repl = "<phoneme alphabet=\"$alphabet\" ph=\"$ph\">$printEsc</phoneme>";
         } else {
-            $alias = htmlspecialchars($t['tts_tune_phonetic'], ENT_QUOTES | ENT_XML1);
-            $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
-            $repl = "<sub alias=\"$alias\">$printEsc</sub>";
+            $repl = buildSubReplSsml($print, (string)$t['tts_tune_phonetic']);
         }
         $tokenMap[$token] = $repl;
         $text = str_replace($print, $token, $text);
     }
     return $text;
+}
+
+/**
+ * Build the SSML for a 'sub'-type tune. If the alias contains a
+ * contiguous run of 2+ uppercase ASCII letters, that run is treated as a
+ * user-marked stressed syllable and wrapped in <emphasis level="strong">
+ * (lower-cased so the engine pronounces it as a syllable rather than
+ * spelling out letters). If no caps run exists, falls back to the plain
+ * <sub alias="…">print</sub> form.
+ */
+function buildSubReplSsml(string $print, string $alias): string {
+    $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
+    if (!preg_match('/[A-Z]{2,}/', $alias)) {
+        $aliasEsc = htmlspecialchars($alias, ENT_QUOTES | ENT_XML1);
+        return "<sub alias=\"$aliasEsc\">$printEsc</sub>";
+    }
+    $parts = preg_split('/([A-Z]{2,})/', $alias, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $out = '';
+    foreach ($parts as $piece) {
+        if ($piece === '') continue;
+        if (preg_match('/^[A-Z]{2,}$/', $piece)) {
+            // Combine emphasis + prosody so the stress is unmistakable.
+            // <emphasis> alone is too subtle on a one-syllable scope, so
+            // we also raise pitch ~25%, slow the syllable ~8%, and bump
+            // volume — the three acoustic cues English ears parse as stress.
+            $emph = htmlspecialchars(strtolower($piece), ENT_QUOTES | ENT_XML1);
+            $out .= '<emphasis level="strong"><prosody pitch="+25%" rate="92%" volume="+3dB">'
+                 .  $emph
+                 .  '</prosody></emphasis>';
+        } else {
+            $out .= htmlspecialchars($piece, ENT_QUOTES | ENT_XML1);
+        }
+    }
+    return $out;
 }
 
 function tokensToSsml(string $escaped, array $tokenMap): string {
