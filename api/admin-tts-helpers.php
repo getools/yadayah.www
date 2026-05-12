@@ -145,15 +145,22 @@ function tunePrintToRegex(string $print): string {
     $core = preg_replace($APOS_RE, '', $print);
     if ($core === '' || $core === null) {
         // Degenerate: Print was entirely apostrophes. Fall back to literal match.
-        return '/' . preg_quote($print, '/') . '/u';
+        return '/(?<![A-Za-z])' . preg_quote($print, '/') . '(?![A-Za-z])/iu';
     }
     // 2) Split the core into single Unicode chars, escape each, then join
-    //    with an optional apostrophe-class. No optional apos at the very
-    //    start or end — only between letters — so we don't match isolated
-    //    apostrophes adjacent to unrelated text.
+    //    with an optional apostrophe-class. Outer optional apos at the
+    //    very start and end so a leading/trailing half-ring in the source
+    //    text (e.g. "ʾadam") matches a Print field without one ("adam").
+    // 3) Wrap with ASCII-letter lookbehinds/lookaheads — whole-word match
+    //    that doesn't extend Print "Yada" into "Yadayah". The lookaround
+    //    is on [A-Za-z] specifically (not \w or \p{L}) so the half-ring
+    //    chars (which are Unicode letters) at word edges don't block the
+    //    match; they're handled by the outer optional apos class instead.
+    // 4) /iu — case-insensitive Unicode; "Yahowah" matches "yahowah" too.
     $chars = preg_split('//u', $core, -1, PREG_SPLIT_NO_EMPTY);
     $escaped = array_map(function($c) { return preg_quote($c, '/'); }, $chars);
-    return '/' . implode($APOS_CLASS_OPT, $escaped) . '/u';
+    $body = $APOS_CLASS_OPT . implode($APOS_CLASS_OPT, $escaped) . $APOS_CLASS_OPT;
+    return '/(?<![A-Za-z])' . $body . '(?![A-Za-z])/iu';
 }
 
 /**

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778424544">
+    <meta name="page-version" content="1778623120">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -1664,6 +1664,7 @@ function openTranscript(itemKey) {
             + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Note <span style="font-weight:400;color:#999;">(optional)</span></label>'
             + '<textarea id="t-val-note" rows="3" placeholder="Notes on issues found, what was reviewed, etc." style="padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;resize:vertical;width:100%;box-sizing:border-box;"></textarea>'
             + '</div>'
+            + '<div id="t-val-bookmarks-pane"></div>'
             + '<div id="t-val-meta" style="font-size:0.72rem;color:#888;margin-top:6px;"></div>'
             + '</div>'
             + '<button onclick="doneTranscript()" style="background:#31345A;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem;">Close</button>'
@@ -1672,6 +1673,7 @@ function openTranscript(itemKey) {
             + '<div id="t-table-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
             + '<select id="t-view-select" onchange="onTranscriptViewChange(this.value)" title="Switch between the live editable transcript and any per-model _auto snapshot. Picking a model with no rows offers to generate it." style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;max-width:320px;background:#fff;"><option value="">Current (editable)</option></select>'
             + '<button id="t-rerun-btn" onclick="rerunCurrentView()" title="Re-run the currently selected model. Writes to _auto only — live transcript is never touched." style="display:none;background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">Re-run</button>'
+            + '<button id="t-init-btn" onclick="openInitializeModal()" title="Pick one of the auto-transcribed model versions, apply the YadaYah correction pass, and copy it into the live transcript for editing" style="background:#31345A;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">Initialize Transcript</button>'
             + '<button onclick="document.getElementById(\'t-upload-input\').click()" title="Upload an MP3 (or M4A/WAV/VTT/SRT) — used as the audio source for transcription instead of downloading from YouTube" style="background:#31345A;color:#fff;border:1px solid #31345A;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:600;">↑ Upload MP3</button>'
             + '<input type="file" id="t-upload-input" accept=".mp3,.m4a,.opus,.wav,.ogg,.aac,.vtt,.srt" style="display:none;" onchange="uploadTranscriptSource(this)">'
             // Push the current transcript out to YouTube as a caption
@@ -1689,6 +1691,7 @@ function openTranscript(itemKey) {
             + '<span style="border-left:1px solid #ddd;height:24px;margin:0 4px;"></span>'
             + '<button onclick="openTranscriptDict()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Whisper glossary + correction dictionary">Transcript Dictionary</button>'
             + '<button onclick="openTranscriptFind()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="Find text within this transcript">Find</button>'
+            + '<button onclick="openBookmarksModal()" style="background:#fff;border:1px solid #ccc;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:0.85rem;" title="All notes / bookmarks on this transcript">Bookmarks</button>'
             // onmousedown→preventDefault keeps focus on whichever
             // transcript text input the cursor was in, so the click
             // handler can read its highlighted selection (if any) and
@@ -1706,7 +1709,19 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
-            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr><th style="padding:8px;width:90px;text-align:left;">Time</th><th style="padding:8px;text-align:left;">Text</th><th style="padding:8px;width:40px;"></th></tr></thead>'
+            + '<div id="t-spk-popover" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;font-size:0.82rem;z-index:10003;min-width:220px;"></div>'
+            + '<div id="t-row-spk-popover" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;font-size:0.82rem;z-index:10004;min-width:240px;"></div>'
+            + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
+            +   '<th style="padding:4px 2px;width:1%;text-align:center;" title="Notes / bookmarks on this line"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg></th>'
+            +   '<th style="padding:4px 2px;width:1%;text-align:center;white-space:nowrap;" title="Speaker — hover or click to rename">'
+            +     '<span id="t-spk-anchor" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" onclick="toggleSpeakerPopover()" style="display:inline-block;cursor:pointer;padding:2px 4px;">'
+            +       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+            +     '</span>'
+            +   '</th>'
+            +   '<th style="padding:8px;width:90px;text-align:left;">Time</th>'
+            +   '<th style="padding:8px;text-align:left;">Text</th>'
+            +   '<th style="padding:8px;width:40px;"></th>'
+            + '</tr></thead>'
             + '<tbody id="t-rows"></tbody></table></div>'
             + '</div>'
             + '</div>'
@@ -2992,6 +3007,9 @@ function loadTranscript() {
             _transcriptReadonly = !!d.view;
             updateTranscriptRerunBtn();
             renderTranscriptRows(d.rows || []);
+            // Bookmarks load asynchronously and refresh the per-row note
+            // badges + side panel once rows are in the DOM.
+            loadBookmarks();
             updateJobUI(d.job);
             populateValidation(d.validation);
             // Analyze Changes is meaningful only when all three versions
@@ -3188,8 +3206,13 @@ function saveValidation() {
 // only ever shows one line, scrolling horizontally). autosizeTextRow()
 // keeps it at 1 row when content fits and grows to a max of 2 rows
 // otherwise; cells with text longer than 2 rows scroll internally.
-function transcriptRowCells(seg, secs, text) {
-    return '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(seg) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
+function transcriptRowCells(seg, secs, text, speaker) {
+    var s = (speaker === null || speaker === undefined) ? '' : String(speaker);
+    return bookmarkCellForRow(seg)
+        + '<td style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
+        +   speakerChipForRow(s)
+        + '</td>'
+        + '<td class="t-time-cell" data-secs="' + secs + '" title="Click to jump video here · double-click to edit" style="padding:6px;border-top:1px solid #eee;vertical-align:top;"><input type="text" value="' + esc(displaySegment(seg)) + '" data-field="segment" readonly style="width:100%;font-size:0.82rem;font-family:monospace;border:1px solid #ddd;border-radius:3px;padding:3px 6px;background:transparent;cursor:pointer;"></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;"><textarea data-field="text" rows="1" style="width:100%;font-size:0.85rem;font-family:inherit;line-height:1.4;border:1px solid #ddd;border-radius:3px;padding:3px 6px;resize:none;overflow-y:hidden;box-sizing:border-box;display:block;">' + esc(text || '') + '</textarea></td>'
         + '<td style="padding:6px;border-top:1px solid #eee;text-align:center;white-space:nowrap;vertical-align:top;">'
         +   '<button onmousedown="event.preventDefault()" onclick="splitTranscriptRow(this)" title="Insert a new row after this one — splits text at the cursor if you have one in this row" style="background:none;border:none;color:#27ae60;cursor:pointer;font-size:1.15rem;padding:0 4px;font-weight:700;">+</button>'
@@ -3228,7 +3251,8 @@ function renderTranscriptRows(rows) {
     _segmentSeconds = [];
     _activeRowIdx = -1;
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;">No transcript yet. Click "Transcribe Audio" to begin.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#999;">No transcript yet. Pick a model from the dropdown to generate one.</td></tr>';
+        renderSpeakersPanel([]);
         return;
     }
     var html = '';
@@ -3237,10 +3261,11 @@ function renderTranscriptRows(rows) {
         var secs = parseSegmentToSeconds(seg);
         _segmentSeconds.push(secs);
         html += '<tr data-idx="' + i + '">'
-            + transcriptRowCells(seg, secs, r.feed_item_transcript_text || '')
+            + transcriptRowCells(seg, secs, r.feed_item_transcript_text || '', r.feed_item_transcript_speaker || '')
             + '</tr>';
     });
     tbody.innerHTML = html;
+    renderSpeakersPanel(rows);
     autosizeAllTextRows();
 
     // Single click anywhere in the time cell seeks the video; double click
@@ -3652,6 +3677,766 @@ function updateTranscriptRerunBtn() {
     btn.style.display = _transcriptView ? '' : 'none';
 }
 
+// ── Initialize Transcript: promote an auto version into the live editor ──
+// Asks which auto-transcribed model to use as the source, then runs the
+// YadaYah correction pass on it and writes the cleaned rows into the live
+// yy_feed_item_transcript (replacing whatever's there). This is the path
+// that actually populates the editor from a generated _auto version.
+function openInitializeModal() {
+    if (!_transcriptItemKey) { alert('No transcript loaded.'); return; }
+    var ov = document.getElementById('init-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'init-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10002;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(560px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<h3 style="margin:0;color:#31345A;font-size:1.05rem;">Initialize Transcript</h3>'
+            +   '<button onclick="closeInitializeModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<div style="padding:14px 18px;font-size:0.82rem;color:#555;border-bottom:1px solid #eee;">'
+            +   'Pick one auto-transcribed version to seed the live editor. The selected model\'s rows will be passed through the correction dictionary (every confirmed Search-&-Replace) and written into the editable transcript. <strong style="color:#a30;">Any existing edits on the current transcript will be overwritten.</strong>'
+            + '</div>'
+            + '<div id="init-list" style="padding:8px 18px;overflow-y:auto;">Loading…</div>'
+            + '<div style="padding:12px 18px;border-top:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<div id="init-status" style="font-size:0.82rem;color:#666;"></div>'
+            +   '<div><button onclick="closeInitializeModal()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;margin-right:8px;">Cancel</button>'
+            +     '<button id="init-go-btn" onclick="doInitialize()" disabled style="background:#a36100;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600;opacity:0.5;">Initialize</button></div>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e){ if (e.target === ov) closeInitializeModal(); };
+    }
+    ov.style.display = 'flex';
+    document.getElementById('init-list').innerHTML = '<div style="padding:30px;text-align:center;color:#999;">Loading…</div>';
+    document.getElementById('init-status').textContent = '';
+    fetch(API + '/admin-transcript-models.php?action=status&item_key=' + encodeURIComponent(_transcriptItemKey),
+        { credentials:'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (d.error) {
+                document.getElementById('init-list').innerHTML = '<div style="padding:14px;color:#c00;">' + esc(d.error) + '</div>';
+                return;
+            }
+            var anyAvailable = false;
+            var html = '';
+            d.models.forEach(function(m) {
+                var has = !!m.last_run;
+                if (has) anyAvailable = true;
+                var lastTxt = has
+                    ? new Date(m.last_run).toLocaleString()
+                    : '<span style="color:#999;">no rows — run this model first via the picker</span>';
+                html += '<label style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid #f0f0f0;cursor:' + (has ? 'pointer' : 'not-allowed') + ';opacity:' + (has ? '1' : '0.55') + ';">'
+                    +   '<input type="radio" name="init-pick" value="' + esc(m.code) + '"' + (has ? '' : ' disabled') + ' onchange="document.getElementById(\'init-go-btn\').disabled=false;document.getElementById(\'init-go-btn\').style.opacity=\'1\';">'
+                    +   '<div style="flex:1;">'
+                    +     '<div style="font-weight:600;color:#31345A;">' + esc(m.label) + '</div>'
+                    +     '<div style="font-size:0.75rem;color:#666;">Last run: ' + lastTxt + '</div>'
+                    +   '</div>'
+                    + '</label>';
+            });
+            if (!anyAvailable) {
+                html = '<div style="padding:24px;color:#a36100;text-align:center;">No auto-transcripts exist for this item yet. Generate at least one model via the view picker first.</div>';
+            }
+            document.getElementById('init-list').innerHTML = html;
+        });
+}
+function closeInitializeModal() {
+    var ov = document.getElementById('init-overlay'); if (ov) ov.style.display = 'none';
+}
+// ── Speakers ──────────────────────────────────────────────────────────────
+// Speaker labels are stored in feed_item_transcript_speaker (varchar 64) in
+// one of these shapes; parseSpeakerLabel / formatSpeakerLabel handle the
+// split. The chip in each row is just a styled span on top of a hidden
+// input that saveTranscript() reads to persist the value.
+//
+//   "Craig"               name only — chip derives abbreviation + color
+//   "Cw|Craig"            explicit abbreviation + name
+//   "Cw|Craig|#ff0000"    explicit abbreviation + name + color
+//   "|Craig|#ff0000"      name + color (no custom abbreviation)
+//   "||#ff0000"           color only — chip uses auto-derived abbrev / no name
+function parseSpeakerLabel(label) {
+    if (label === null || label === undefined) return { abbrev: '', name: '', color: '' };
+    var s = String(label);
+    if (s === '') return { abbrev: '', name: '', color: '' };
+    var parts = s.split('|');
+    if (parts.length === 1) {
+        return { abbrev: '', name: parts[0].trim(), color: '' };
+    }
+    return {
+        abbrev: (parts[0] || '').trim(),
+        name:   (parts[1] || '').trim(),
+        color:  ((parts[2] || '').trim()).toLowerCase(),
+    };
+}
+function formatSpeakerLabel(abbrev, name, color) {
+    abbrev = (abbrev || '').trim();
+    name   = (name   || '').trim();
+    color  = (color  || '').trim().toLowerCase();
+    if (!abbrev && !name && !color) return '';
+    if (color) {
+        return abbrev + '|' + name + '|' + color;
+    }
+    if (!abbrev && !name) return '';
+    if (!abbrev)          return name;
+    if (!name)            return abbrev;
+    if (abbrev === name)  return name;
+    return abbrev + '|' + name;
+}
+
+// Compact ≤4-char abbreviation for a chip. Honors an explicit "Abbrev|Name"
+// stored value; otherwise derives from the name.
+function speakerAbbrev(label) {
+    var parsed = parseSpeakerLabel(label);
+    if (parsed.abbrev) return parsed.abbrev.substring(0, 4);
+    var s = parsed.name;
+    if (s.length === 0) return '';
+    if (s.length <= 2) return s;
+    var parts = s.split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return (s[0].toUpperCase() + s[1]).substring(0, 2);
+}
+function speakerChipPalette(label) {
+    var parsed = parseSpeakerLabel(label);
+    if (parsed.color && /^#[0-9a-f]{6}$/.test(parsed.color)) return parsed.color;
+    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+    // Hash off abbrev + name so a custom color doesn't influence the fallback
+    // (lets the user "reset" by clearing the color).
+    var seed = parsed.abbrev + '|' + parsed.name;
+    var h = 0;
+    for (var i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+    return palette[Math.abs(h) % palette.length];
+}
+
+function speakerChipForRow(label) {
+    var hiddenInput = '<input type="hidden" data-field="speaker" value="' + esc(label) + '">';
+    var clickable = !_transcriptReadonly;
+    var onclickAttr = clickable ? ' onclick="openRowSpeakerPicker(this); event.stopPropagation();"' : '';
+    var cursorRule  = clickable ? 'cursor:pointer;' : '';
+    if (!label) {
+        var title = clickable ? 'Click to assign a speaker' : 'Read-only';
+        return hiddenInput
+            + '<span class="t-spk-chip" data-label=""' + onclickAttr
+            + ' title="' + title + '"'
+            + ' style="display:inline-block;color:#bbb;font-size:0.75rem;padding:1px 6px;border:1px dashed #ddd;border-radius:8px;' + cursorRule + '">—</span>';
+    }
+    var bg = speakerChipPalette(label);
+    var tipSuffix = clickable ? ' — click to change' : '';
+    return hiddenInput
+        + '<span class="t-spk-chip" data-label="' + esc(label) + '"' + onclickAttr
+        + ' title="Speaker ' + esc(label) + tipSuffix + '"'
+        + ' style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:9px;min-width:14px;text-align:center;' + cursorRule + '">'
+        + esc(speakerAbbrev(label)) + '</span>';
+}
+function speakerChipForLabel(label) {
+    var bg = speakerChipPalette(label);
+    return '<span style="display:inline-block;background:' + bg + ';color:#fff;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:9px;min-width:14px;text-align:center;">'
+        + esc(speakerAbbrev(label)) + '</span>';
+}
+
+// Per-row speaker picker. Opens a small popover anchored to the clicked
+// chip with two sections: existing speakers (click to assign) and an
+// "Add new" row (color/abbrev/name + ✓ to compose a new label).
+var _rowSpkAnchor = null;
+function openRowSpeakerPicker(chipEl) {
+    _rowSpkAnchor = chipEl;
+    var pop = document.getElementById('t-row-spk-popover');
+    if (!pop) return;
+    var seen = {};
+    document.querySelectorAll('#t-rows input[data-field="speaker"]').forEach(function(inp) {
+        var v = inp.value.trim();
+        if (v && !seen[v]) seen[v] = true;
+    });
+    var labels = Object.keys(seen);
+    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+    var nextColor = palette[labels.length % palette.length];
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:4px;font-size:0.78rem;padding:0 4px;">Assign speaker</div>'
+        + '<div style="max-height:240px;overflow-y:auto;">';
+    labels.forEach(function(lbl) {
+        var parsed = parseSpeakerLabel(lbl);
+        var nameTxt = parsed.name || lbl;
+        html += '<div class="t-row-spk-opt" onclick="pickRowSpeaker(' + JSON.stringify(lbl).replace(/"/g, '&quot;') + ')"'
+            +   ' style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;"'
+            +   ' onmouseover="this.style.background=\'#f0f4ff\';" onmouseout="this.style.background=\'\';">'
+            +   speakerChipForLabel(lbl)
+            +   '<span style="font-size:0.78rem;color:#31345A;">' + esc(nameTxt) + '</span>'
+            + '</div>';
+    });
+    html += '<div class="t-row-spk-opt" onclick="pickRowSpeaker(\'\')"'
+        +   ' style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;color:#888;border-top:1px dashed #eee;margin-top:4px;"'
+        +   ' onmouseover="this.style.background=\'#f5f5f5\';" onmouseout="this.style.background=\'\';">'
+        +   '<span style="font-size:0.7rem;display:inline-block;border:1px dashed #ccc;border-radius:8px;padding:1px 6px;color:#bbb;">—</span>'
+        +   '<span style="font-size:0.78rem;">No speaker</span>'
+        + '</div>';
+    html += '</div>';
+    html += '<div style="border-top:1px solid #eee;margin-top:6px;padding:6px 4px 2px;">'
+        + '<div style="font-size:0.7rem;color:#888;margin-bottom:4px;">Add new speaker</div>'
+        + '<div style="display:flex;align-items:center;gap:4px;">'
+        +   '<input type="color" id="t-row-spk-new-color" value="' + esc(nextColor) + '" title="Pick chip color" style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:transparent;">'
+        +   '<input id="t-row-spk-new-abbrev" maxlength="4" placeholder="ab" style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;">'
+        +   '<input id="t-row-spk-new-name" placeholder="name…" style="font-size:0.78rem;flex:1;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
+        +   '<button onclick="createAndAssignSpeaker()" title="Create and assign" style="background:#27ae60;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-weight:700;">✓</button>'
+        + '</div>'
+        + '</div>';
+    pop.innerHTML = html;
+    pop.style.display = 'block';
+    var r = chipEl.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, r.left) + 'px';
+    setTimeout(function() {
+        document.addEventListener('click', closeRowSpeakerPickerOnce, { once: true });
+    }, 0);
+}
+function closeRowSpeakerPickerOnce(e) {
+    var pop = document.getElementById('t-row-spk-popover');
+    if (pop && !pop.contains(e.target)) {
+        pop.style.display = 'none';
+        _rowSpkAnchor = null;
+    } else if (pop && pop.contains(e.target)) {
+        document.addEventListener('click', closeRowSpeakerPickerOnce, { once: true });
+    }
+}
+function pickRowSpeaker(label) {
+    if (!_rowSpkAnchor) return;
+    applyRowSpeakerLabel(_rowSpkAnchor, label);
+    var pop = document.getElementById('t-row-spk-popover');
+    if (pop) pop.style.display = 'none';
+    _rowSpkAnchor = null;
+}
+function createAndAssignSpeaker() {
+    var color  = (document.getElementById('t-row-spk-new-color').value || '').toLowerCase();
+    var abbrev =  document.getElementById('t-row-spk-new-abbrev').value.trim();
+    var name   =  document.getElementById('t-row-spk-new-name').value.trim();
+    if (!abbrev && !name) { alert('Enter at least an abbreviation or name'); return; }
+    var baseLabel = formatSpeakerLabel(abbrev, name, '');
+    var hashColor = speakerChipPalette(baseLabel);
+    if (color === hashColor) color = '';
+    if (abbrev && name && abbrev === speakerAbbrev(name)) abbrev = '';
+    var label = formatSpeakerLabel(abbrev, name, color);
+    pickRowSpeaker(label);
+}
+function applyRowSpeakerLabel(chipEl, newLabel) {
+    var td = chipEl.closest('td');
+    if (!td) return;
+    var hidden = td.querySelector('input[data-field="speaker"]');
+    if (hidden) hidden.value = newLabel;
+    td.innerHTML = speakerChipForRow(newLabel);
+    _savePending = true;
+    var st = document.getElementById('t-status');
+    if (st) st.textContent = '…editing';
+    scheduleAutoSave();
+}
+
+// Speakers popover anchored to the person icon in the table header.
+// Hover or click to open; mouse-leave (with a short delay) closes.
+// _speakerPopoverRows is refreshed whenever the transcript loads so the
+// content stays accurate even when reopened without a reload.
+var _speakerPopoverRows = [];
+var _speakerPopoverHideTimer = null;
+function renderSpeakersPanel(rows) { _speakerPopoverRows = rows || []; }
+function buildSpeakerPopoverHtml() {
+    var rows = _speakerPopoverRows;
+    var counts = {};
+    rows.forEach(function(r) {
+        var s = (r.feed_item_transcript_speaker == null) ? '' : String(r.feed_item_transcript_speaker);
+        if (s === '') return;
+        counts[s] = (counts[s] || 0) + 1;
+    });
+    var labels = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a]; });
+    if (!labels.length) {
+        return '<div style="color:#888;padding:6px 4px;">No speaker labels on this transcript yet.</div>';
+    }
+    var ro = !!_transcriptReadonly;
+    var roAttr  = ro ? ' disabled' : '';
+    var roStyle = ro ? 'opacity:0.6;cursor:not-allowed;' : '';
+    var roBanner = ro
+        ? '<div style="font-size:0.7rem;color:#a36100;margin-bottom:6px;">Read-only — switch to Current to edit speakers.</div>'
+        : '';
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;font-size:0.78rem;">Speakers in this transcript</div>'
+        + roBanner
+        + '<table style="border-collapse:collapse;font-size:0.78rem;">';
+    labels.forEach(function(lbl) {
+        var parsed = parseSpeakerLabel(lbl);
+        var displayAbbrev = speakerAbbrev(lbl);
+        var resolvedColor = speakerChipPalette(lbl);
+        html += '<tr data-from="' + esc(lbl) + '">'
+            +   '<td style="padding:3px 8px 3px 0;text-align:right;color:#888;white-space:nowrap;">' + counts[lbl] + '</td>'
+            +   '<td style="padding:3px 4px;text-align:center;">' + speakerChipForLabel(lbl) + '</td>'
+            +   '<td style="padding:3px 2px;text-align:center;">'
+            +     '<input type="color" class="t-spk-color"'
+            +       ' value="' + esc(resolvedColor) + '"'
+            +       ' data-default="' + esc(speakerChipPalette(formatSpeakerLabel(parsed.abbrev, parsed.name, ''))) + '"'
+            +       (ro ? '' : ' onchange="commitSpeakerRename(this)"')
+            +       roAttr
+            +       ' title="' + (ro ? 'Read-only' : 'Chip color — leave at default to use the auto-picked palette color') + '"'
+            +       ' style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;background:transparent;' + roStyle + (ro ? '' : 'cursor:pointer;') + '">'
+            +   '</td>'
+            +   '<td style="padding:3px 4px;">'
+            +     '<input class="t-spk-abbrev" value="' + esc(displayAbbrev) + '"'
+            +       ' maxlength="4"'
+            +       (ro ? '' : ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)"')
+            +       roAttr
+            +       ' placeholder="ab"'
+            +       ' style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;' + roStyle + '">'
+            +   '</td>'
+            +   '<td style="padding:3px 0;">'
+            +     '<input class="t-spk-name" value="' + esc(parsed.name) + '"'
+            +       (ro ? '' : ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)"')
+            +       roAttr
+            +       ' placeholder="name…"'
+            +       ' style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;' + roStyle + '">'
+            +   '</td>'
+            + '</tr>';
+    });
+    html += '</table>';
+    if (!ro) {
+        html += '<div style="font-size:0.7rem;color:#888;margin-top:6px;">Abbreviation drives the chip; if blank it derives from the name.</div>';
+    }
+    return html;
+}
+function positionSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    var anchor = document.getElementById('t-spk-anchor');
+    if (!pop || !anchor) return;
+    var r = anchor.getBoundingClientRect();
+    pop.style.top  = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, r.left - 4) + 'px';
+}
+function showSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    if (!pop) return;
+    if (_speakerPopoverHideTimer) { clearTimeout(_speakerPopoverHideTimer); _speakerPopoverHideTimer = null; }
+    // Rebuild only when transitioning hidden → visible so in-progress typing
+    // in the abbrev/name inputs isn't blown away.
+    if (pop.style.display !== 'block') {
+        pop.innerHTML = buildSpeakerPopoverHtml();
+        pop.style.display = 'block';
+        positionSpeakerPopover();
+    }
+}
+function refreshSpeakerPopoverIfOpen() {
+    var pop = document.getElementById('t-spk-popover');
+    if (!pop || pop.style.display !== 'block') return;
+    pop.innerHTML = buildSpeakerPopoverHtml();
+    positionSpeakerPopover();
+}
+function hideSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    if (pop) pop.style.display = 'none';
+}
+function speakerPopoverEnter() { showSpeakerPopover(); }
+function speakerPopoverLeave() {
+    if (_speakerPopoverHideTimer) clearTimeout(_speakerPopoverHideTimer);
+    _speakerPopoverHideTimer = setTimeout(hideSpeakerPopover, 220);
+}
+function toggleSpeakerPopover() {
+    var pop = document.getElementById('t-spk-popover');
+    if (pop && pop.style.display === 'block') hideSpeakerPopover();
+    else showSpeakerPopover();
+}
+function commitSpeakerRename(inputEl) {
+    var tr = inputEl.closest('tr');
+    if (!tr || !_transcriptItemKey) return;
+    var from = tr.getAttribute('data-from');
+    var abbrevInp = tr.querySelector('.t-spk-abbrev');
+    var nameInp   = tr.querySelector('.t-spk-name');
+    var colorInp  = tr.querySelector('.t-spk-color');
+    var abbrev = abbrevInp ? abbrevInp.value.trim()      : '';
+    var name   = nameInp   ? nameInp.value.trim()        : '';
+    var color  = colorInp  ? colorInp.value.toLowerCase() : '';
+    if (abbrev && name) {
+        var auto = speakerAbbrev(name);
+        if (abbrev === auto) abbrev = '';
+    }
+    if (colorInp) {
+        var defaultColor = (colorInp.getAttribute('data-default') || '').toLowerCase();
+        if (color === defaultColor) color = '';
+    }
+    var to = formatSpeakerLabel(abbrev, name, color);
+    if (to === from) return;
+    var statusEl = document.getElementById('t-status');
+    if (statusEl) statusEl.textContent = 'Renaming speaker…';
+    fetch(API + '/admin-transcript.php', {
+        method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'rename_speaker', item_key: _transcriptItemKey, from: from, to: to})
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (d.error) { if (statusEl) statusEl.textContent = '✗ ' + d.error; return; }
+        if (statusEl) {
+            statusEl.textContent = '✓ Renamed ' + d.renamed + ' row(s)';
+            setTimeout(function() { if (statusEl.textContent.indexOf('Renamed') === 0) statusEl.textContent = ''; }, 2000);
+        }
+        if (_transcriptItemKey) loadTranscript();
+    });
+}
+
+// ── Bookmarks ─────────────────────────────────────────────────────────────
+// _bookmarksBySeg is the per-segment lookup used by bookmarkCellForRow
+// and the per-row popover. _bookmarksAll is the flat list used by the side
+// panel + Bookmarks modal. _bookmarkSort is the current sort state shared
+// by both views. All three live on window so the renderTranscriptRows
+// path (called from many places) can read them without re-fetching.
+window._bookmarksBySeg = window._bookmarksBySeg || {};
+window._bookmarksAll   = window._bookmarksAll   || [];
+window._bookmarkSort   = window._bookmarkSort   || { col: 'segment', dir: 'asc' };
+
+// Strip the leading zero from "0H:MM:SS" so "0:12:34" reads as 0:12:34
+// instead of 00:12:34. DB segments remain 2-digit (Postgres to_char
+// HH24:MI:SS always pads); only the visible text changes.
+function displaySegment(seg) {
+    if (!seg) return seg;
+    return String(seg).replace(/^0(\d:)/, '$1');
+}
+
+function cssEscapeSeg(s) {
+    // Segments are HH:MM:SS — only " and \ need escaping for a CSS attribute
+    // selector value embedded in a string literal.
+    return String(s).replace(/(["\\])/g, '\\$1');
+}
+
+function fmtBookmarkDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    var pad = function(n){ return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function loadBookmarks() {
+    if (!_transcriptItemKey) return Promise.resolve([]);
+    return fetch(API + '/admin-transcript-bookmark.php?item_key=' + encodeURIComponent(_transcriptItemKey),
+        { credentials:'include' })
+        .then(function(r){ return safeJson(r); })
+        .then(function(d) {
+            if (!d || d.error) { window._bookmarksAll = []; window._bookmarksBySeg = {}; return []; }
+            window._bookmarksAll = d.bookmarks || [];
+            window._bookmarksBySeg = {};
+            window._bookmarksAll.forEach(function(b) {
+                (window._bookmarksBySeg[b.segment] = window._bookmarksBySeg[b.segment] || []).push(b);
+            });
+            refreshAllBookmarkBadges();
+            renderBookmarksPane();
+            return window._bookmarksAll;
+        })
+        .catch(function(){ return []; });
+}
+
+// Render the note/bookmark icon cell. Pulls current count from
+// _bookmarksBySeg (loaded by loadBookmarks) so the badge is correct on
+// initial render. refreshOneBookmarkBadge swaps the cell when bookmarks
+// are added/deleted without a full row re-render.
+function bookmarkCellForRow(seg) {
+    var list = (window._bookmarksBySeg && window._bookmarksBySeg[seg]) || [];
+    var count = list.length;
+    var hasAny = count > 0;
+    var color = hasAny ? '#a36100' : '#bbb';
+    var title = hasAny
+        ? (count + ' note' + (count === 1 ? '' : 's') + ' on this line — click to view')
+        : 'Add a note for this line';
+    var glyph = hasAny
+        ? '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="14" font-weight="700" font-family="system-ui, sans-serif">' + count + '</text>'
+        : '<rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/>';
+    return '<td class="t-note-cell" data-seg="' + esc(seg) + '" style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
+        +   '<button type="button" class="t-note-btn" data-seg="' + esc(seg) + '" onclick="openRowBookmarkPopover(this, \'' + esc(seg) + '\'); event.stopPropagation();" title="' + esc(title) + '" '
+        +     'style="background:none;border:none;cursor:pointer;padding:2px 4px;color:' + color + ';">'
+        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="12" r="10"/>' + glyph + '</svg>'
+        +   '</button>'
+        + '</td>';
+}
+
+function refreshAllBookmarkBadges() {
+    document.querySelectorAll('#t-rows td.t-note-cell').forEach(function(td) {
+        var seg = td.getAttribute('data-seg');
+        td.outerHTML = bookmarkCellForRow(seg);
+    });
+}
+function refreshOneBookmarkBadge(seg) {
+    var td = document.querySelector('#t-rows td.t-note-cell[data-seg="' + cssEscapeSeg(seg) + '"]');
+    if (td) td.outerHTML = bookmarkCellForRow(seg);
+}
+
+// Per-row popover. Anchored to the clicked icon. Reuses #t-bookmark-popover
+// (created on first open) so we don't leak overlay nodes across rows.
+function openRowBookmarkPopover(anchorBtn, seg) {
+    var pop = document.getElementById('t-bookmark-popover');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 't-bookmark-popover';
+        pop.style.cssText = 'display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;'
+            + 'box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px;font-size:0.85rem;z-index:10005;'
+            + 'min-width:300px;max-width:380px;';
+        document.addEventListener('mousedown', function(e) {
+            var p = document.getElementById('t-bookmark-popover');
+            if (!p || p.style.display === 'none') return;
+            if (p.contains(e.target)) return;
+            if (e.target.closest && e.target.closest('.t-note-btn')) return;
+            p.style.display = 'none';
+        });
+        document.body.appendChild(pop);
+    }
+    pop.dataset.seg = seg;
+    renderRowBookmarkPopover(seg);
+    var r = anchorBtn.getBoundingClientRect();
+    pop.style.display = 'block';
+    var top = r.bottom + 4;
+    var left = r.left - 80;
+    if (left < 8) left = 8;
+    if (left + 340 > window.innerWidth) left = Math.max(8, window.innerWidth - 348);
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+    var ta = pop.querySelector('textarea[data-role="new-note"]');
+    if (ta) ta.focus();
+}
+
+function renderRowBookmarkPopover(seg) {
+    var pop = document.getElementById('t-bookmark-popover');
+    if (!pop) return;
+    var list = (window._bookmarksBySeg[seg] || []).slice();
+    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;display:flex;align-items:center;gap:6px;">'
+        + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg>'
+        + 'Notes at ' + esc(displaySegment(seg)) + '</div>';
+    if (list.length) {
+        html += '<div style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-bottom:8px;">';
+        list.forEach(function(b) {
+            var del = b.is_mine
+                ? '<button type="button" onclick="deleteBookmark(' + b.key + ', \'' + esc(seg) + '\')" title="Delete this note" '
+                  + 'style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;line-height:1;padding:0 4px;flex:0 0 auto;">&times;</button>'
+                : '';
+            html += '<div style="padding:6px 8px;border-bottom:1px solid #f3f3f3;display:flex;align-items:flex-start;gap:6px;">'
+                +    '<div style="flex:1;min-width:0;">'
+                +      '<div style="font-size:0.72rem;color:#888;">@' + esc(b.user_handle || b.user_display) + ' · ' + esc(fmtBookmarkDate(b.created)) + '</div>'
+                +      '<div style="white-space:pre-wrap;word-break:break-word;font-size:0.85rem;color:#222;margin-top:2px;">' + esc(b.note) + '</div>'
+                +    '</div>'
+                +    del
+                + '</div>';
+        });
+        html += '</div>';
+    }
+    html += '<textarea data-role="new-note" rows="2" placeholder="Add a note…" '
+        +     'style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>'
+        + '<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;">'
+        +   '<button type="button" onclick="document.getElementById(\'t-bookmark-popover\').style.display=\'none\';" '
+        +     'style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;">Close</button>'
+        +   '<button type="button" onclick="addBookmarkFromPopover(\'' + esc(seg) + '\')" '
+        +     'style="background:#27ae60;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.8rem;font-weight:600;">Add</button>'
+        + '</div>';
+    pop.innerHTML = html;
+}
+
+function addBookmarkFromPopover(seg) {
+    var pop = document.getElementById('t-bookmark-popover');
+    if (!pop) return;
+    var ta = pop.querySelector('textarea[data-role="new-note"]');
+    var note = ta ? ta.value.trim() : '';
+    fetch(API + '/admin-transcript-bookmark.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'add', item_key: _transcriptItemKey, segment: seg, note: note })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (!d || d.error) { alert((d && d.error) || 'Failed to add note'); return; }
+        var b = d.bookmark;
+        (window._bookmarksBySeg[seg] = window._bookmarksBySeg[seg] || []).push(b);
+        window._bookmarksAll.push(b);
+        refreshOneBookmarkBadge(seg);
+        renderRowBookmarkPopover(seg);
+        renderBookmarksPane();
+        var ta2 = document.querySelector('#t-bookmark-popover textarea[data-role="new-note"]');
+        if (ta2) { ta2.value = ''; ta2.focus(); }
+    });
+}
+
+function deleteBookmark(bookmarkKey, seg) {
+    if (!confirm('Delete this note?')) return;
+    fetch(API + '/admin-transcript-bookmark.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'delete', bookmark_key: bookmarkKey })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (!d || d.error) { alert((d && d.error) || 'Failed to delete'); return; }
+        if (window._bookmarksBySeg[seg]) {
+            window._bookmarksBySeg[seg] = window._bookmarksBySeg[seg].filter(function(b){ return b.key !== bookmarkKey; });
+            if (!window._bookmarksBySeg[seg].length) delete window._bookmarksBySeg[seg];
+        }
+        window._bookmarksAll = window._bookmarksAll.filter(function(b){ return b.key !== bookmarkKey; });
+        refreshOneBookmarkBadge(seg);
+        var pop = document.getElementById('t-bookmark-popover');
+        if (pop && pop.style.display !== 'none' && pop.dataset.seg === seg) renderRowBookmarkPopover(seg);
+        renderBookmarksPane();
+        if (document.getElementById('bm-modal-tbody')) renderBookmarksModalTable();
+    });
+}
+
+// Side panel — sortable mini-table of all bookmarks for this transcript.
+// Renders into #t-val-bookmarks-pane (if present). Columns: User, Time, Note.
+function renderBookmarksPane() {
+    var pane = document.getElementById('t-val-bookmarks-pane');
+    if (!pane) return;
+    var rows = window._bookmarksAll.slice();
+    sortBookmarkRows(rows, window._bookmarkSort);
+    var arrow = function(col) {
+        if (window._bookmarkSort.col !== col) return '';
+        return window._bookmarkSort.dir === 'asc' ? ' ▲' : ' ▼';
+    };
+    var html = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">'
+        + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Bookmarks <span style="font-weight:400;color:#999;">(' + rows.length + ')</span></label>'
+        + '<div style="border:1px solid #ddd;border-radius:4px;max-height:220px;overflow-y:auto;background:#fff;">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
+        + '<thead style="background:#f5f5f5;position:sticky;top:0;">'
+        + '<tr>'
+        +   '<th onclick="sortBookmarks(\'user\')"    style="padding:4px 4px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:28px;" title="User — click to sort">'
+        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+        +     arrow('user')
+        +   '</th>'
+        +   '<th onclick="sortBookmarks(\'segment\')" style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:70px;">Time' + arrow('segment') + '</th>'
+        +   '<th onclick="sortBookmarks(\'note\')"    style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note'    + arrow('note')    + '</th>'
+        + '</tr></thead><tbody>';
+    if (!rows.length) {
+        html += '<tr><td colspan="3" style="padding:10px;text-align:center;color:#999;font-style:italic;">No bookmarks yet.</td></tr>';
+    } else {
+        rows.forEach(function(b) {
+            var handle = b.user_handle || b.user_display || '';
+            html += '<tr>'
+                +   '<td style="padding:3px 4px;border-top:1px solid #f1f1f1;text-align:center;color:#555;" title="@' + esc(handle) + '">'
+                +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+                +   '</td>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;white-space:nowrap;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(displaySegment(b.segment)) + '</td>'
+                +   '<td style="padding:3px 6px;border-top:1px solid #f1f1f1;color:#222;word-break:break-word;">' + esc(b.note) + '</td>'
+                + '</tr>';
+        });
+    }
+    html += '</tbody></table></div></div>';
+    pane.innerHTML = html;
+}
+
+function sortBookmarks(col) {
+    if (window._bookmarkSort.col === col) {
+        window._bookmarkSort.dir = (window._bookmarkSort.dir === 'asc') ? 'desc' : 'asc';
+    } else {
+        window._bookmarkSort.col = col;
+        window._bookmarkSort.dir = 'asc';
+    }
+    renderBookmarksPane();
+    if (document.getElementById('bm-modal-tbody')) renderBookmarksModalTable();
+}
+
+function sortBookmarkRows(rows, s) {
+    var dir = (s.dir === 'desc') ? -1 : 1;
+    rows.sort(function(a, b) {
+        var av, bv;
+        if (s.col === 'segment')      { av = a.segment_secs || 0;        bv = b.segment_secs || 0; }
+        else if (s.col === 'user')    { av = (a.user_handle || a.user_display || '').toLowerCase(); bv = (b.user_handle || b.user_display || '').toLowerCase(); }
+        else if (s.col === 'created') { av = a.created || ''; bv = b.created || ''; }
+        else                          { av = (a.note || '').toLowerCase(); bv = (b.note || '').toLowerCase(); }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return  1 * dir;
+        return 0;
+    });
+}
+
+// Full Bookmarks modal — opened from the toolbar Bookmarks button.
+function openBookmarksModal() {
+    var ov = document.getElementById('bm-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'bm-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10006;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(800px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<h3 style="margin:0;color:#31345A;font-size:1.05rem;">Bookmarks</h3>'
+            +   '<button onclick="closeBookmarksModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<div id="bm-modal-body" style="padding:0;overflow-y:auto;flex:1;">'
+            +   '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">'
+            +     '<thead style="background:#f5f5f5;position:sticky;top:0;">'
+            +       '<tr>'
+            +         '<th id="bm-th-user"    onclick="sortBookmarks(\'user\')"    style="padding:8px 10px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:36px;" title="User — click to sort">'
+            +           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+            +         '</th>'
+            +         '<th id="bm-th-segment" onclick="sortBookmarks(\'segment\')" style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:110px;">Timestamp</th>'
+            +         '<th id="bm-th-note"    onclick="sortBookmarks(\'note\')"    style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note</th>'
+            +         '<th style="padding:8px 10px;width:40px;border-bottom:1px solid #ddd;"></th>'
+            +       '</tr>'
+            +     '</thead>'
+            +     '<tbody id="bm-modal-tbody"></tbody>'
+            +   '</table>'
+            + '</div>'
+            + '<div style="padding:10px 18px;border-top:1px solid #e0e0e0;display:flex;justify-content:flex-end;background:#f7f8fc;">'
+            +   '<button onclick="closeBookmarksModal()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;">Close</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e){ if (e.target === ov) closeBookmarksModal(); };
+    }
+    ov.style.display = 'flex';
+    renderBookmarksModalTable();
+}
+function closeBookmarksModal() {
+    var ov = document.getElementById('bm-overlay'); if (ov) ov.style.display = 'none';
+}
+
+function renderBookmarksModalTable() {
+    var tbody = document.getElementById('bm-modal-tbody');
+    if (!tbody) return;
+    var rows = window._bookmarksAll.slice();
+    sortBookmarkRows(rows, window._bookmarkSort);
+    var arrow = function(col) {
+        if (window._bookmarkSort.col !== col) return '';
+        return window._bookmarkSort.dir === 'asc' ? ' ▲' : ' ▼';
+    };
+    var thU = document.getElementById('bm-th-user');
+    var thS = document.getElementById('bm-th-segment');
+    var thN = document.getElementById('bm-th-note');
+    if (thU) thU.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>' + arrow('user');
+    if (thS) thS.textContent = 'Timestamp' + arrow('segment');
+    if (thN) thN.textContent = 'Note'      + arrow('note');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:24px;text-align:center;color:#999;">No bookmarks for this transcript.</td></tr>';
+        return;
+    }
+    var html = '';
+    rows.forEach(function(b) {
+        var del = b.is_mine
+            ? '<button type="button" onclick="deleteBookmark(' + b.key + ', \'' + esc(b.segment) + '\')" title="Delete" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;line-height:1;">&times;</button>'
+            : '';
+        var handle = b.user_handle || b.user_display || '';
+        html += '<tr>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;text-align:center;color:#555;width:36px;" title="@' + esc(handle) + '">'
+            +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
+            +   '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;font-family:monospace;color:#31345A;cursor:pointer;white-space:nowrap;" onclick="seekVideoTo(' + (b.segment_secs || 0) + ')" title="Jump video to this time">' + esc(displaySegment(b.segment)) + '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;white-space:pre-wrap;word-break:break-word;color:#222;">' + esc(b.note) + '</td>'
+            +   '<td style="padding:6px 10px;border-top:1px solid #f1f1f1;text-align:center;">' + del + '</td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function doInitialize() {
+    var picked = document.querySelector('#init-list input[name="init-pick"]:checked');
+    if (!picked) return;
+    var model = picked.value;
+    var msg = '⚠ This will REPLACE every row of the live transcript with the cleaned-up version of "' + model + '".\n\nProceed?';
+    if (!confirm(msg)) return;
+    var statusEl = document.getElementById('init-status');
+    var btn = document.getElementById('init-go-btn');
+    btn.disabled = true; btn.style.opacity = '0.5';
+    statusEl.textContent = 'Initializing…';
+    fetch(API + '/admin-transcript-init.php', {
+        method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ item_key: _transcriptItemKey, model: model })
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (d.error) { statusEl.innerHTML = '<span style="color:#c00;">✗ ' + esc(d.error) + '</span>'; btn.disabled = false; btn.style.opacity = '1'; return; }
+        statusEl.innerHTML = '<span style="color:#27ae60;">✓ ' + esc(d.message || ('Wrote ' + d.rows_written + ' rows.')) + '</span>';
+        // After initializing, switch back to live (editable) view and refresh.
+        _transcriptView = '';
+        _transcriptReadonly = false;
+        var sel = document.getElementById('t-view-select');
+        if (sel) sel.value = '';
+        updateTranscriptRerunBtn();
+        if (_transcriptItemKey) loadTranscript();
+        setTimeout(closeInitializeModal, 1500);
+    });
+}
+
 // Parse a Postgres timestamp-with-timezone string into millis. Postgres
 // returns "2026-05-01 04:10:26.297251+00" which Safari and older browsers
 // won't parse — we normalize to ISO-8601 first ("…T…+00:00").
@@ -3984,17 +4769,16 @@ function openTranscriptAnalysis() {
         ov = document.createElement('div');
         ov.id = 'tanalysis-overlay';
         ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10002;';
-        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(1280px,95vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
+        ov.innerHTML = '<div style="background:#fff;border-radius:10px;width:min(1600px,98vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.4);">'
             + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
-            +   '<div><h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcript Version Analysis</h3>'
+            +   '<div><h3 style="margin:0;color:#31345A;font-size:1.05rem;">Transcript Versions</h3>'
             +     '<div id="tanalysis-summary" style="font-size:0.78rem;color:#666;margin-top:4px;">Loading…</div></div>'
             +   '<button onclick="closeTranscriptAnalysis()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
             + '</div>'
             + '<div style="padding:8px 18px;border-bottom:1px solid #eee;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:0.78rem;color:#444;">'
-            +   '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="tan-only-diffs" checked onchange="renderTranscriptAnalysis()"> Show only rows with differences</label>'
-            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fff7d6;border:1px solid #e8d77a;"></span> auto-fix changed it</span>'
-            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#dff5e1;border:1px solid #99cfa6;"></span> human edited it</span>'
-            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fde2e2;border:1px solid #e8a0a0;"></span> deleted by reviewer</span>'
+            +   '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="tan-only-diffs" onchange="renderTranscriptAnalysis()"> Show only rows where versions differ</label>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fff7d6;border:1px solid #e8d77a;"></span> differs from Current</span>'
+            +   '<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:14px;height:14px;background:#fde2e2;border:1px solid #e8a0a0;"></span> Current is empty / deleted</span>'
             + '</div>'
             + '<div id="tanalysis-body" style="overflow:auto;padding:0;"></div>'
             + '</div>';
@@ -4014,7 +4798,8 @@ function openTranscriptAnalysis() {
                 return;
             }
             _tanalysisData = d;
-            renderTranscriptAnalysis();
+            _tanalysisPickedCodes = null;  // forces picker step on every open
+            renderTranscriptAnalysisPicker();
         });
 }
 function closeTranscriptAnalysis() {
@@ -4022,61 +4807,185 @@ function closeTranscriptAnalysis() {
     if (ov) ov.style.display = 'none';
 }
 var _tanalysisData = null;
+// Picker state. null = picker not run yet (open shows picker first);
+// array = the codes the user kept ticked, applied as a column filter.
+var _tanalysisPickedCodes = null;
+// localStorage key — the user's last-clicked set of "show" columns is
+// remembered across opens. New columns the saved set didn't see fall back
+// to the kind-based default (autoclean off, everything else on).
+var TANALYSIS_PICKED_STORAGE_KEY = 'tanalysisPickedCodes_v1';
+function loadSavedAnalysisPicks() {
+    try {
+        var raw = localStorage.getItem(TANALYSIS_PICKED_STORAGE_KEY);
+        if (!raw) return null;
+        var arr = JSON.parse(raw);
+        return (Array.isArray(arr) && arr.length) ? arr : null;
+    } catch (e) { return null; }
+}
+function saveAnalysisPicks(codes) {
+    try { localStorage.setItem(TANALYSIS_PICKED_STORAGE_KEY, JSON.stringify(codes)); }
+    catch (e) {}
+}
+
+// First step on Analyze open: show a checkbox list of every column the
+// backend returned, let the operator pick which to include. Initial check
+// state comes from the persisted set when present, else the kind-based
+// default (autoclean unchecked, everything else on).
+function renderTranscriptAnalysisPicker() {
+    var d = _tanalysisData;
+    var sumEl = document.getElementById('tanalysis-summary');
+    var bodyEl = document.getElementById('tanalysis-body');
+    var cols = d.columns || [];
+    if (!cols.length) {
+        sumEl.innerHTML = '<span style="color:#a36100;">No transcript data for this item.</span>';
+        bodyEl.innerHTML = '';
+        return;
+    }
+    sumEl.innerHTML = 'Select which columns to compare. Untick any you want hidden, then click <strong>Show</strong>. Your selection is remembered for next time.';
+    var saved = loadSavedAnalysisPicks();
+    var savedSet = saved ? Object.fromEntries(saved.map(function(c){ return [c, true]; })) : null;
+    var html = '<div style="padding:14px 18px;">'
+        + '<div style="display:flex;gap:8px;margin-bottom:10px;font-size:0.8rem;">'
+        +   '<button onclick="setAllAnalysisPicks(true)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;">All</button>'
+        +   '<button onclick="setAllAnalysisPicks(false)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:3px;cursor:pointer;">None</button>'
+        + '</div>';
+    cols.forEach(function(c) {
+        var rowCount = 0;
+        (d.rows || []).forEach(function(r){ if (r.cells[c.code] !== null && r.cells[c.code] !== undefined) rowCount++; });
+        var checked = savedSet
+            ? !!savedSet[c.code]
+            : (c.kind !== 'autoclean');
+        html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f0f0f0;cursor:pointer;">'
+            +   '<input type="checkbox" class="tan-pick" data-code="' + esc(c.code) + '"' + (checked ? ' checked' : '') + ' onchange="updateAnalysisShowBtn()">'
+            +   '<div style="flex:1;">'
+            +     '<div style="font-weight:600;color:' + (c.kind === 'current' ? '#a36100' : '#31345A') + ';">' + esc(c.label) + '</div>'
+            +     '<div style="font-size:0.72rem;color:#666;">' + rowCount + ' row' + (rowCount === 1 ? '' : 's') + '</div>'
+            +   '</div>'
+            + '</label>';
+    });
+    html += '<div style="margin-top:14px;text-align:right;">'
+        +    '<button id="tan-show-btn" onclick="commitAnalysisPicker()" style="background:#27ae60;color:#fff;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font-weight:600;">Show</button>'
+        +  '</div>'
+        + '</div>';
+    bodyEl.innerHTML = html;
+    updateAnalysisShowBtn();
+}
+function setAllAnalysisPicks(state) {
+    document.querySelectorAll('#tanalysis-body .tan-pick').forEach(function(c){ c.checked = state; });
+    updateAnalysisShowBtn();
+}
+function updateAnalysisShowBtn() {
+    var anyChecked = !!document.querySelector('#tanalysis-body .tan-pick:checked');
+    var btn = document.getElementById('tan-show-btn');
+    if (!btn) return;
+    btn.disabled = !anyChecked;
+    btn.style.opacity = anyChecked ? '1' : '0.5';
+}
+function commitAnalysisPicker() {
+    var picks = [];
+    document.querySelectorAll('#tanalysis-body .tan-pick:checked').forEach(function(c){ picks.push(c.getAttribute('data-code')); });
+    if (!picks.length) return;
+    _tanalysisPickedCodes = picks;
+    saveAnalysisPicks(picks);
+    renderTranscriptAnalysis();
+}
+
 function renderTranscriptAnalysis() {
     var d = _tanalysisData;
     if (!d) return;
     var sumEl = document.getElementById('tanalysis-summary');
     var bodyEl = document.getElementById('tanalysis-body');
     var rows = d.rows || [];
-    var totals = d.totals || {};
-    if (!d.has_snapshot) {
-        sumEl.innerHTML = '<span style="color:#a36100;">No Whisper snapshot for this transcript</span> — it was transcribed before the snapshot table existed, so only the current text is available below.';
-    } else {
-        sumEl.innerHTML = rows.length + ' segment' + (rows.length === 1 ? '' : 's')
-            + ' &middot; <strong>' + (totals.initial_diff_auto    || 0) + '</strong> changed by auto-fix'
-            + ' &middot; <strong>' + (totals.auto_diff_current    || 0) + '</strong> changed by humans after auto-fix'
-            + ' &middot; <strong>' + (totals.initial_diff_current || 0) + '</strong> total Whisper→current changes';
+    var allColumns = d.columns || [];
+    // Apply the picker filter — only render columns the user kept ticked.
+    var columns = (_tanalysisPickedCodes && _tanalysisPickedCodes.length)
+        ? allColumns.filter(function(c){ return _tanalysisPickedCodes.indexOf(c.code) >= 0; })
+        : allColumns;
+    if (!columns.length) {
+        sumEl.innerHTML = '<span style="color:#a36100;">No transcript data for this item.</span>';
+        bodyEl.innerHTML = '';
+        return;
     }
+    // Per-column row counts.
+    var colCounts = {};
+    columns.forEach(function(c){ colCounts[c.code] = 0; });
+    rows.forEach(function(r){
+        columns.forEach(function(c){
+            if (r.cells[c.code] !== null && r.cells[c.code] !== undefined) colCounts[c.code]++;
+        });
+    });
+    var summaryParts = [];
+    columns.forEach(function(c){
+        summaryParts.push('<span style="color:' + (c.kind === 'current' ? '#a36100' : '#31345A') + ';">'
+            + esc(c.label) + '</span>: <strong>' + colCounts[c.code] + '</strong>');
+    });
+    sumEl.innerHTML = rows.length + ' segment' + (rows.length === 1 ? '' : 's')
+        + ' across <strong>' + columns.length + '</strong> column' + (columns.length === 1 ? '' : 's')
+        + ' &middot; ' + summaryParts.join(' &middot; ')
+        + ' &middot; <a href="javascript:void(0)" onclick="renderTranscriptAnalysisPicker()" style="color:#31345A;">Change models</a>';
+
     var onlyDiffs = !!document.getElementById('tan-only-diffs').checked;
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.83rem;table-layout:fixed;">'
-        + '<colgroup><col style="width:90px;"><col><col><col><col style="width:60px;"></colgroup>'
-        + '<thead><tr style="background:#f7f8fc;color:#31345A;font-weight:600;position:sticky;top:0;">'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Segment</th>'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Whisper raw</th>'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">After auto-fix</th>'
-        +   '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid #d8dcec;">Current</th>'
-        +   '<th style="padding:7px 10px;text-align:center;border-bottom:1px solid #d8dcec;" title="Number of human edit-log entries on this segment">Edits</th>'
-        + '</tr></thead><tbody>';
+
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.83rem;table-layout:auto;">'
+        + '<thead><tr style="background:#f7f8fc;color:#31345A;font-weight:600;position:sticky;top:0;z-index:1;">'
+        +   '<th style="padding:7px 10px;text-align:left;border-bottom:2px solid #d8dcec;width:90px;white-space:nowrap;">Segment</th>';
+    columns.forEach(function(c){
+        var headerBg = c.kind === 'current' ? '#fff8e1'
+                     : c.kind === 'autoclean' ? '#eef7ed' : '#f7f8fc';
+        html += '<th style="padding:7px 10px;text-align:left;border-bottom:2px solid #d8dcec;background:' + headerBg + ';">'
+            + esc(c.label) + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
     var shown = 0;
-    rows.forEach(function(r) {
-        var ti = r.text_initial, ta = r.text_auto_fix, tc = r.text_current;
-        var autoChanged  = (ti !== null && ta !== null && ti !== ta);
-        var humanChanged = (ta !== null && ta !== tc);
-        var deleted      = (tc === null);
-        var added        = (ti === null && ta === null && tc !== null);
-        if (onlyDiffs && !autoChanged && !humanChanged && !deleted && !added) return;
+    rows.forEach(function(r){
+        var distinctValues = {};
+        columns.forEach(function(c){
+            var v = r.cells[c.code];
+            distinctValues[v === null || v === undefined ? '\x00null' : v] = true;
+        });
+        var allAgree = (Object.keys(distinctValues).length <= 1);
+        if (onlyDiffs && allAgree) return;
         shown++;
-        var bgInitial = '#fff';
-        var bgAuto    = autoChanged  ? '#fff7d6' : '#fff';
-        var bgCurrent = deleted      ? '#fde2e2' : (humanChanged ? '#dff5e1' : '#fff');
-        // Edit-log summary: count entries by action type
-        var editsCell = '';
-        if (r.edits) {
-            var parts = [];
-            for (var act in r.edits) parts.push(act.replace(/_/g, ' ') + ':' + r.edits[act].count);
-            editsCell = parts.join('<br>');
-        }
+        var currentVal = r.cells['current'];
         html += '<tr style="border-top:1px solid #eee;">'
-            + '<td style="padding:6px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;white-space:nowrap;">' + esc(r.segment) + '</td>'
-            + '<td style="padding:6px 10px;background:' + bgInitial + ';vertical-align:top;word-wrap:break-word;">' + (ti === null ? '<span style="color:#bbb;font-style:italic;">(added later)</span>' : esc(ti)) + '</td>'
-            + '<td style="padding:6px 10px;background:' + bgAuto    + ';vertical-align:top;word-wrap:break-word;">' + (ta === null ? '<span style="color:#bbb;font-style:italic;">(added later)</span>' : esc(ta)) + '</td>'
-            + '<td style="padding:6px 10px;background:' + bgCurrent + ';vertical-align:top;word-wrap:break-word;">' + (tc === null ? '<span style="color:#a30;font-style:italic;">(deleted)</span>' : esc(tc)) + '</td>'
-            + '<td style="padding:6px 10px;text-align:center;font-size:0.72rem;color:#666;vertical-align:top;">' + editsCell + '</td>'
-            + '</tr>';
+            + '<td style="padding:6px 10px;font-family:monospace;font-size:0.74rem;color:#666;vertical-align:top;white-space:nowrap;">' + esc(r.segment) + '</td>';
+        columns.forEach(function(c){
+            var v = r.cells[c.code];
+            var bg = '#fff';
+            if (c.kind === 'current' && (v === null || v === undefined)) {
+                bg = '#fde2e2';
+            } else if (c.kind !== 'current' && v !== null && v !== undefined
+                       && currentVal !== null && currentVal !== undefined
+                       && v !== currentVal) {
+                bg = '#fff7d6';
+            }
+            var cellHtml;
+            if (v === null || v === undefined) {
+                cellHtml = '<span style="color:#bbb;font-style:italic;">(no row)</span>';
+            } else {
+                // Speaker chip prefix when this row has diarisation info.
+                var spk = (r.speakers && r.speakers[c.code] !== undefined) ? r.speakers[c.code] : null;
+                var chipHtml = '';
+                if (spk !== null && spk !== undefined && spk !== '') {
+                    var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
+                    var spkStr = String(spk);
+                    var hashCode = 0;
+                    for (var hi = 0; hi < spkStr.length; hi++) {
+                        hashCode = (hashCode * 31 + spkStr.charCodeAt(hi)) | 0;
+                    }
+                    var bgChip = palette[Math.abs(hashCode) % palette.length];
+                    chipHtml = '<span title="Speaker ' + esc(spkStr) + '" style="display:inline-block;background:' + bgChip + ';color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:5px;vertical-align:1px;">' + esc(spkStr) + '</span>';
+                }
+                cellHtml = chipHtml + esc(v);
+            }
+            html += '<td style="padding:6px 10px;background:' + bg + ';vertical-align:top;word-break:break-word;">' + cellHtml + '</td>';
+        });
+        html += '</tr>';
     });
     html += '</tbody></table>';
     if (shown === 0) {
-        html += '<div style="padding:30px;text-align:center;color:#999;">No rows differ between versions.</div>';
+        html += '<div style="padding:30px;text-align:center;color:#999;">' + (onlyDiffs ? 'No rows differ between versions.' : 'No rows.') + '</div>';
     }
     bodyEl.innerHTML = html;
 }
