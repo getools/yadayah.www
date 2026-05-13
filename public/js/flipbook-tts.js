@@ -27,6 +27,8 @@
     var audio = null;
     var progressEl = null;       // wrapper around the seek track + fill
     var progressFill = null;     // inner bar that grows with currentTime
+    var playerEl    = null;      // outer flex row: [volume] [progress] [play]
+    var volSlider   = null;      // user-adjustable audio volume (0–1)
     var current = null;     // last fetched chapter payload (see API shape)
     var fetchSeq = 0;       // monotonic — only latest fetch's response wins
     var loadedChapterKey = null;
@@ -42,28 +44,38 @@
         var st = document.createElement('style');
         st.id = 'fb-tts-style';
         st.textContent = [
-            // The button is a fixed circle floating above the bottom nav,
-            // centered horizontally over the seek bar. z-index sits below
-            // any modal masks (bookmark popover @200) but above page content.
-            '.fb-tts-btn { position: fixed; left: 50%; transform: translateX(-50%);',
-            '              bottom: calc(var(--nav, 56px) - 2px); z-index: 12;',
-            '              width: 43px; height: 43px; border-radius: 50%;',
+            // Audio player widget: a fixed-position flex row spanning the
+            // currently-visible page width (same horizontal extent as the
+            // old standalone progress bar). Inside, left-to-right:
+            // [volume slider] [progress scrubber] [play/pause button].
+            '.fb-tts-player { position: fixed; z-index: 12; height: 43px;',
+            '                 display: flex; align-items: center; gap: 10px;',
+            '                 pointer-events: none; /* children re-enable */ }',
+            '.fb-tts-player > * { pointer-events: auto; }',
+            // Volume slider (HTML <input type=range>, minimally styled).
+            '.fb-tts-vol { flex: 0 0 80px; height: 4px; cursor: pointer;',
+            '              -webkit-appearance: none; appearance: none;',
+            '              background: rgba(255,255,255,0.18); border-radius: 2px; outline: none; }',
+            '.fb-tts-vol::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;',
+            '              width: 12px; height: 12px; border-radius: 50%;',
+            '              background: #cfe1ff; cursor: pointer; }',
+            '.fb-tts-vol::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%;',
+            '              background: #cfe1ff; cursor: pointer; border: none; }',
+            // Play/Pause button — flex item, fixed circle on the right.
+            '.fb-tts-btn { flex: 0 0 43px; height: 43px; border-radius: 50%;',
             '              background: #1f3550; color: #cfe1ff; border: 1px solid #2a4d70;',
             '              display: flex; align-items: center; justify-content: center;',
             '              cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.35);',
             '              transition: opacity 0.2s, transform 0.1s, background 0.15s; }',
             '.fb-tts-btn:hover:not(.is-disabled) { background: #28456a; }',
-            '.fb-tts-btn:active:not(.is-disabled) { transform: translateX(-50%) scale(0.95); }',
+            '.fb-tts-btn:active:not(.is-disabled) { transform: scale(0.95); }',
             '.fb-tts-btn.is-disabled { opacity: 0.25; cursor: not-allowed; }',
             '.fb-tts-btn svg { width: 20px; height: 20px; }',
             // Brief amber tint when waiting between chapters.
             '.fb-tts-btn.is-pausing { background: #4d3a1f; border-color: #6d5a3a; color: #f7d77a; }',
-            // MP3 seek bar — sits just below the Play/Pause button and
-            // spans only the visible page(s), so its left/width get
-            // recomputed from the active page rect on every layout change.
-            // Hidden while no chapter audio is available.
-            '.fb-tts-progress { position: fixed; z-index: 11; height: 12px;',
-            '                   transition: opacity 0.2s; pointer-events: auto; }',
+            // MP3 seek bar — middle flex item, takes remaining width.
+            // Hidden (visually) while no chapter audio is available.
+            '.fb-tts-progress { flex: 1; height: 12px; transition: opacity 0.2s; }',
             '.fb-tts-progress.is-hidden { opacity: 0; pointer-events: none; }',
             '.fb-tts-progress-track { position: relative; width: 100%; height: 6px;',
             '                         margin-top: 3px; background: rgba(255,255,255,0.18);',
@@ -90,20 +102,28 @@
     var ICON_PLAY  = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7L7 5z"/></svg>';
     var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
 
-    function ensureButton() {
-        if (btn) return;
-        btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'fb-tts-btn is-disabled';
-        btn.innerHTML = ICON_PLAY;
-        btn.title = 'Loading TTS…';
-        btn.setAttribute('aria-label', 'Play chapter audio');
-        btn.addEventListener('click', onClick);
-        document.body.appendChild(btn);
-    }
+    function ensurePlayer() {
+        if (playerEl) return;
+        playerEl = document.createElement('div');
+        playerEl.className = 'fb-tts-player';
 
-    function ensureProgress() {
-        if (progressEl) return;
+        // Volume slider on the far left. Persist to localStorage so the
+        // setting survives across page loads and book sessions.
+        volSlider = document.createElement('input');
+        volSlider.type = 'range';
+        volSlider.className = 'fb-tts-vol';
+        volSlider.min = '0'; volSlider.max = '100'; volSlider.step = '1';
+        volSlider.value = String(Math.round(initialVolume() * 100));
+        volSlider.title = 'Volume';
+        volSlider.setAttribute('aria-label', 'Volume');
+        volSlider.addEventListener('input', function () {
+            var v = Math.max(0, Math.min(1, (parseInt(volSlider.value, 10) || 0) / 100));
+            if (audio) audio.volume = v;
+            try { localStorage.setItem('fb-tts-volume', String(v)); } catch (e) {}
+        });
+        playerEl.appendChild(volSlider);
+
+        // Audio scrubber (clickable track + fill).
         progressEl = document.createElement('div');
         progressEl.className = 'fb-tts-progress is-hidden';
         var track = document.createElement('div');
@@ -113,35 +133,55 @@
         track.appendChild(progressFill);
         progressEl.appendChild(track);
         track.addEventListener('click', onProgressClick);
-        document.body.appendChild(progressEl);
-        // Keep geometry in sync with whatever's on screen.
-        window.addEventListener('resize', syncProgressGeometry);
-        window.addEventListener('scroll', syncProgressGeometry, true);
+        playerEl.appendChild(progressEl);
+
+        // Play/Pause button on the far right.
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'fb-tts-btn is-disabled';
+        btn.innerHTML = ICON_PLAY;
+        btn.title = 'Loading TTS…';
+        btn.setAttribute('aria-label', 'Play chapter audio');
+        btn.addEventListener('click', onClick);
+        playerEl.appendChild(btn);
+
+        document.body.appendChild(playerEl);
+        // Track the visible page area so the widget aligns with whatever
+        // pages are on screen (carousel: center slot; spread: full book).
+        window.addEventListener('resize', syncPlayerGeometry);
+        window.addEventListener('scroll', syncPlayerGeometry, true);
+        syncPlayerGeometry();
     }
 
-    // Width + horizontal position track the currently visible page area:
+    function initialVolume() {
+        var v = parseFloat(localStorage.getItem('fb-tts-volume'));
+        return (isFinite(v) && v >= 0 && v <= 1) ? v : 0.75;
+    }
+
+    // Pin the player above the bottom nav and span the visible page area:
     //   • carousel (single-page) mode → .cpg.center
     //   • spread (two-page) mode      → #book covers both pages
-    // Vertical position sits just below the play/pause button.
-    function syncProgressGeometry() {
-        if (!progressEl) return;
+    function syncPlayerGeometry() {
+        if (!playerEl) return;
         var pageEl = document.body.classList.contains('mode-carousel')
             ? document.querySelector('#carousel .cpg.center')
             : document.getElementById('book');
         if (!pageEl) return;
         var r = pageEl.getBoundingClientRect();
         if (r.width <= 0) return;
-        progressEl.style.left   = Math.round(r.left)  + 'px';
-        progressEl.style.width  = Math.round(r.width) + 'px';
-        // Button bottom edge ≈ calc(var(--nav, 56px) - 2px). Drop the bar
-        // a few pixels under that so it visually anchors to the button.
-        progressEl.style.bottom = 'calc(var(--nav, 56px) - 22px)';
+        playerEl.style.left   = Math.round(r.left)  + 'px';
+        playerEl.style.width  = Math.round(r.width) + 'px';
+        // Same anchor as the old standalone button — bottom edge sits
+        // just above the nav so it visually attaches to it.
+        playerEl.style.bottom = 'calc(var(--nav, 56px) - 2px)';
     }
 
     function ensureAudio() {
         if (audio) return;
         audio = document.createElement('audio');
         audio.preload = 'metadata';
+        // Restore the user's persisted volume so the first play() honors it.
+        audio.volume = initialVolume();
         audio.addEventListener('timeupdate',     function () { onTimeUpdate(); renderProgress(); });
         audio.addEventListener('loadedmetadata', renderProgress);
         audio.addEventListener('durationchange', renderProgress);
@@ -175,7 +215,7 @@
             var pct = (audio.currentTime / audio.duration) * 100;
             progressFill.style.width = pct.toFixed(2) + '%';
         }
-        syncProgressGeometry();
+        syncPlayerGeometry();
     }
 
     // ── State + render ─────────────────────────────────────────────────
@@ -584,8 +624,7 @@
     BM.init = function (c) {
         cfg = c || {};
         injectStyles();
-        ensureButton();
-        ensureProgress();
+        ensurePlayer();
         ensureAudio();
         var fromHash = readInitialPageFromHash();
         var fromCfg  = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
@@ -610,7 +649,7 @@
             var nowMode = document.body.classList.contains('mode-carousel') ? 'carousel' : 'spread';
             if (nowMode === lastMode) return;
             lastMode = nowMode;
-            syncProgressGeometry();
+            syncPlayerGeometry();
             if (currentParagraphNumber < 0) return;
             // applyHighlight clears existing .tts-current marks across
             // both trees at its top, so we don't call clearHighlight
@@ -627,7 +666,7 @@
         if (!cfg) return;
         // Active page rect just moved (mode switch, zoom, navigation) —
         // realign the seek bar's width + horizontal position.
-        syncProgressGeometry();
+        syncPlayerGeometry();
         console.log('[tts] notifyPageChange', page1, 'lastPage=', lastPage, 'suppress=', suppressPageSync);
         // When OUR auto-turn drives the page change, the text-layer on
         // the new page rebuilds asynchronously; re-apply the highlight
