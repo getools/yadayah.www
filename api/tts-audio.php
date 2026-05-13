@@ -86,7 +86,7 @@ if (!$chapterKey) {
 $aStmt = $db->prepare("
     SELECT c.chapter_key, c.chapter_number, c.chapter_name,
            a.tts_audio_key, a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_status,
-           a.tts_audio_revision_dtime
+           a.tts_audio_revision_dtime, a.tts_audio_failed_paragraphs, a.tts_audio_message
       FROM yy_chapter c
       LEFT JOIN yy_tts_audio a
         ON a.chapter_key = c.chapter_key
@@ -131,13 +131,28 @@ if ($nextChapterKey) {
         SELECT 1 FROM yy_tts_audio
          WHERE volume_key = ? AND chapter_key = ?
            AND tts_audio_status IN ('complete','ready')
+           AND tts_audio_path IS NOT NULL
+           AND (tts_audio_failed_paragraphs IS NULL
+                OR cardinality(tts_audio_failed_paragraphs) = 0)
+           AND (tts_audio_message IS NULL
+                OR tts_audio_message NOT ILIKE '%paragraph failure%')
          LIMIT 1
     ");
     $checkStmt->execute([$volumeKey, $nextChapterKey]);
     $nextAvailable = (bool)$checkStmt->fetchColumn();
 }
 
-$audioReady = !empty($row['tts_audio_path']);
+// Treat any chapter with outstanding paragraph failures as not-yet-playable.
+// Markers/offsets are computed only for paragraphs that actually rendered,
+// so a partial build drifts more and more out of sync the further you play.
+// Better to grey out the play button until an admin retries the failures.
+// Builds done before tts_audio_failed_paragraphs existed won't have it set,
+// so we also sniff the legacy "Done with N paragraph failure(s)" message
+// the worker stamps onto tts_audio_message at completion.
+$rawFailed = $row['tts_audio_failed_paragraphs'] ?? null;
+$hasFailures = ($rawFailed !== null && $rawFailed !== '' && $rawFailed !== '{}')
+            || (stripos((string)($row['tts_audio_message'] ?? ''), 'paragraph failure') !== false);
+$audioReady = !empty($row['tts_audio_path']) && !$hasFailures;
 $markers    = [];
 if ($audioReady) {
     // Join each marker to its paragraph_text_plain so the viewer can

@@ -403,6 +403,10 @@
 
     function onTimeUpdate() {
         if (!current || !current.markers || !cfg.gotoPage) return;
+        // A timeupdate may fire between audio.pause() and the audio element's
+        // paused-state propagation; if the user has navigated off the chapter,
+        // notifyPageChange has paused us — don't fight back with cfg.gotoPage.
+        if (audio && audio.paused) return;
         var ms = audio.currentTime * 1000;
         var nowPage = pageAtMs(current.markers, ms);
         if (!nowPage) return;
@@ -510,8 +514,17 @@
             }
         }
         // Different chapter — pause audio (we don't auto-cross chapters on
-        // manual page turn; only on natural end-of-audio) and refetch.
+        // manual page turn; only on natural end-of-audio) and refetch. Clear
+        // `current` synchronously so any racing timeupdate (between pause()
+        // and the audio element actually stopping) doesn't snap the page
+        // back via cfg.gotoPage. Also cancel any pending inter-chapter
+        // pause timer so audio doesn't resume after the user has left.
         if (audio && !audio.paused) try { audio.pause(); } catch (e) {}
+        if (chapterPauseTimer) { clearTimeout(chapterPauseTimer); chapterPauseTimer = null; }
+        current = null;
+        currentParagraphNumber = -1;
+        clearHighlight();
+        renderButton();
         fetchForPage(page1);
     };
 })();

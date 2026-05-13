@@ -67,7 +67,7 @@ if ($action === 'chapters') {
                a.tts_audio_status, a.tts_audio_progress, a.tts_audio_message,
                a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_size_bytes,
                a.tts_audio_completed_dtime, a.tts_audio_started_dtime, a.tts_audio_settings,
-               a.tts_audio_error, a.tts_audio_key
+               a.tts_audio_error, a.tts_audio_key, a.tts_audio_failed_paragraphs
           FROM yy_chapter c
           LEFT JOIN yy_tts_audio a
             ON a.chapter_key = c.chapter_key

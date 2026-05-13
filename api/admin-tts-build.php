@@ -98,6 +98,9 @@ if ($action === 'start') {
     // attempt (failed or complete). The partial unique index includes
     // a WHERE chapter_key IS NOT NULL predicate, so the ON CONFLICT
     // target must repeat it.
+    // Clear tts_audio_failed_paragraphs on a fresh build so the queue
+    // promoter can use its non-null-ness as the signal that a pending
+    // row should be spawned in retry mode.
     $insStmt = $db->prepare("
         INSERT INTO yy_tts_audio
             (tts_key, volume_key, chapter_key, tts_audio_status, tts_audio_progress,
@@ -105,18 +108,19 @@ if ($action === 'start') {
         VALUES (?, ?, ?, 'pending', 0, 'Queued', ?::jsonb, NOW())
         ON CONFLICT (tts_key, volume_key, chapter_key) WHERE chapter_key IS NOT NULL
         DO UPDATE SET
-            tts_audio_status          = 'pending',
-            tts_audio_progress        = 0,
-            tts_audio_message         = 'Queued',
-            tts_audio_error           = NULL,
-            tts_audio_settings        = EXCLUDED.tts_audio_settings,
-            tts_audio_started_dtime   = NOW(),
-            tts_audio_completed_dtime = NULL,
-            tts_audio_path            = NULL,
-            tts_audio_duration_secs   = NULL,
-            tts_audio_size_bytes      = NULL,
-            tts_audio_worker_pid      = NULL,
-            tts_audio_revision_dtime  = NOW()
+            tts_audio_status             = 'pending',
+            tts_audio_progress           = 0,
+            tts_audio_message            = 'Queued',
+            tts_audio_error              = NULL,
+            tts_audio_settings           = EXCLUDED.tts_audio_settings,
+            tts_audio_started_dtime      = NOW(),
+            tts_audio_completed_dtime    = NULL,
+            tts_audio_path               = NULL,
+            tts_audio_duration_secs      = NULL,
+            tts_audio_size_bytes         = NULL,
+            tts_audio_worker_pid         = NULL,
+            tts_audio_failed_paragraphs  = NULL,
+            tts_audio_revision_dtime     = NOW()
         RETURNING tts_audio_key
     ");
     $insStmt->execute([$ttsKey, $volumeKey, $chapterKey, json_encode($settings)]);
@@ -159,6 +163,59 @@ if ($action === 'cancel') {
            AND tts_audio_status IN ('pending', 'running')
     ")->execute([$audioKey]);
     jsonResponse(['ok' => true]);
+}
+
+// Retry only the paragraphs listed in tts_audio_failed_paragraphs. The
+// worker reads cached per-paragraph bytes for everything else, so the
+// caller doesn't re-pay Azure for already-good paragraphs.
+if ($action === 'retry_failed') {
+    $audioKey = (int)($data['tts_audio_key'] ?? 0);
+    if (!$audioKey) errorResponse('tts_audio_key required');
+
+    $row = $db->prepare("SELECT tts_audio_status, tts_audio_failed_paragraphs FROM yy_tts_audio WHERE tts_audio_key = ?");
+    $row->execute([$audioKey]);
+    $r = $row->fetch();
+    if (!$r) errorResponse('not found', 404);
+    if ($r['tts_audio_status'] !== 'complete') {
+        errorResponse('retry_failed: chapter status must be complete (currently ' . $r['tts_audio_status'] . ')');
+    }
+    $failed = $r['tts_audio_failed_paragraphs'];
+    if ($failed === null || $failed === '' || $failed === '{}') {
+        errorResponse('retry_failed: no failed paragraphs on this chapter');
+    }
+
+    $db->prepare("
+        UPDATE yy_tts_audio
+           SET tts_audio_status        = 'pending',
+               tts_audio_progress      = 0,
+               tts_audio_message       = 'Queued for retry',
+               tts_audio_error         = NULL,
+               tts_audio_started_dtime = NOW(),
+               tts_audio_completed_dtime = NULL,
+               tts_audio_revision_dtime  = NOW(),
+               tts_audio_worker_pid    = NULL
+         WHERE tts_audio_key = ?
+    ")->execute([$audioKey]);
+
+    $maxConcurrent = 2;
+    $running = (int)$db->query("SELECT COUNT(*) FROM yy_tts_audio WHERE tts_audio_status = 'running'")->fetchColumn();
+    $queued = false;
+    $workerScript = __DIR__ . '/admin-tts-build-worker.php';
+    if ($running < $maxConcurrent && file_exists($workerScript)) {
+        $logFile = sys_get_temp_dir() . '/tts_build_' . $audioKey . '.log';
+        $pid = spawnCappedWorker($workerScript, [(string)$audioKey, 'retry'], $logFile, [
+            'cpu_secs' => 3600, 'mem_mb' => 1500, 'nice' => 10,
+        ]);
+        if ($pid > 0) {
+            $db->prepare("UPDATE yy_tts_audio SET tts_audio_worker_pid = ? WHERE tts_audio_key = ?")
+               ->execute([$pid, $audioKey]);
+        }
+    } else {
+        $queued = true;
+        $db->prepare("UPDATE yy_tts_audio SET tts_audio_message = ? WHERE tts_audio_key = ?")
+           ->execute(["Queued — waiting for an open slot (limit: $maxConcurrent concurrent)", $audioKey]);
+    }
+    jsonResponse(['tts_audio_key' => $audioKey, 'queued' => $queued, 'retrying' => $failed]);
 }
 
 errorResponse('Unknown action');

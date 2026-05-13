@@ -1636,6 +1636,20 @@ function renderChapters() {
             audio = '<audio controls preload="none" style="width:305px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
         }
         var actions = '<button class="btn-sm" onclick="openBuildModal(' + c.chapter_key + ',' + (c.tts_audio_key || 'null') + ')">' + (st === 'complete' ? 'Rebuild' : st === 'none' ? 'Build' : 'Settings') + '</button>';
+        // Retry-failed button — visible only when a completed build has
+        // outstanding paragraph failures cached for re-synth. Postgres
+        // ships int[] as '{44,45}' over PDO; parse to count for the label.
+        if (st === 'complete' && c.tts_audio_failed_paragraphs) {
+            var failedList = String(c.tts_audio_failed_paragraphs)
+                .replace(/^\{|\}$/g, '')
+                .split(',').filter(function(s){ return s.length > 0; });
+            if (failedList.length > 0) {
+                actions += ' <button class="btn-sm" style="background:#b85c00;color:#fff;" '
+                         + 'title="Re-synthesize only paragraphs: ' + failedList.join(', ') + '" '
+                         + 'onclick="retryFailed(' + c.tts_audio_key + ',' + failedList.length + ')">'
+                         + 'Retry ' + failedList.length + ' failed</button>';
+            }
+        }
         if (st === 'running' || st === 'pending') {
             actions += '<button class="btn-sm btn-del" onclick="cancelBuild(' + c.tts_audio_key + ')">Cancel</button>';
         }
@@ -1735,6 +1749,25 @@ async function cancelBuild(audioKey) {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ action:'cancel', tts_audio_key: audioKey }),
     });
+    loadChapters(ACTIVE_VOLUME);
+}
+
+// Retry-failed re-synthesizes only the paragraphs flagged as failed in
+// the prior build. Successful paragraphs are reused from cached per-
+// paragraph mp3 files; markers are recomputed against the fresh
+// concatenated MP3 so all downstream timestamps shift correctly.
+async function retryFailed(audioKey, failedCount) {
+    if (!confirm('Re-synthesize ' + failedCount + ' failed paragraph' + (failedCount === 1 ? '' : 's') +
+                 '?\n\nSuccessful paragraphs are reused from cache — only the failures call Azure.')) return;
+    try {
+        await api('/admin-tts-build.php?action=retry_failed', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ action:'retry_failed', tts_audio_key: audioKey }),
+        });
+    } catch (e) {
+        alert('Retry failed: ' + (e.message || e));
+        return;
+    }
     loadChapters(ACTIVE_VOLUME);
 }
 
