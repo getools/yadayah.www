@@ -232,6 +232,11 @@
                 </thead>
                 <tbody id="tunes-tbody"></tbody>
             </table>
+            <!-- Dedicated player for per-row ▶ clicks on this tab so the
+                 progress bar stays in the same context as the buttons that
+                 trigger it (rather than playing through the Voices tab's
+                 #preview-audio element which the user can't see). -->
+            <audio id="tunes-audio" controls preload="none" style="width:100%;margin-top:8px;display:none;"></audio>
             <!-- Bottom pager — mirrors the top pager for long lists -->
             <div id="tunes-toolbar-bot" style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:0.85rem;flex-wrap:wrap;justify-content:flex-end;">
                 <button class="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">←</button>
@@ -250,7 +255,7 @@
     <div id="pane-pauses" class="tts-pane">
         <div class="tts-section">
             <h3>Pause rules</h3>
-            <p class="desc">When the engine sees <em>Search</em> in the text, insert a pause of the given length. Use surrounding spaces (e.g. <code>&nbsp;|&nbsp;</code>) to anchor a match — without spaces every occurrence of the character pauses, including inside words.</p>
+            <p class="desc">When the engine sees the <em>Character(s)</em> string in the text, insert a pause of the given length. Use surrounding spaces (e.g. <code>&nbsp;-&nbsp;</code>) to anchor a match — without spaces every occurrence of the character pauses, including inside words. Set ms = <strong>0</strong> to <em>suppress</em> Azure's natural prosodic pause at that spot (handy for removing the small pause inside hyphenated compounds like "first-person").</p>
             <table class="tts-table">
                 <thead>
                     <tr>
@@ -1314,6 +1319,9 @@ async function handleTuneAction(tr, act) {
             var selType = typeRadio2 ? typeRadio2.value : 'sub';
             var subVal  = tr.querySelector('.f-sub').value;
             var ipaVal  = tr.querySelector('.f-ipa').value;
+            // Use the Pronunciations tab's own audio player so the
+            // progress bar appears in the same context as this button.
+            var tunesAudio = $('tunes-audio');
             // Validation warning for the currently-selected variant.
             var msg = (selType === 'ipa') ? validateIpa(ipaVal) : null;
             var s2 = $('tunes-status');
@@ -1344,7 +1352,8 @@ async function handleTuneAction(tr, act) {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify(body),
             });
-            var a = $('preview-audio'); a.src = URL.createObjectURL(blob); a.style.display='block'; a.play();
+            var a = tunesAudio || $('preview-audio');
+            a.src = URL.createObjectURL(blob); a.style.display='block'; a.play();
         }
     } catch (e) {
         $('tunes-status').textContent = 'Error: ' + e.message; $('tunes-status').className='status-msg error';
@@ -1370,7 +1379,7 @@ function buildPauseRow(p) {
     tr.dataset.key = p.tts_pause_key || '';
     tr.innerHTML =
         '<td><input type="text" class="f-search" value="' + escapeHtml(p.tts_pause_search || '') + '"></td>' +
-        '<td><input type="number" class="f-ms"   value="' + (p.tts_pause_ms || 300) + '" min="0" max="5000" step="50"></td>' +
+        '<td><input type="number" class="f-ms"   value="' + ((p.tts_pause_ms == null) ? 300 : p.tts_pause_ms) + '" min="0" max="5000" step="50" title="Pause length in ms. Type 0 to suppress Azure&#39;s natural pause at this character (useful for removing the slight pause at hyphens)."></td>' +
         '<td><input type="text"   class="f-note" value="' + escapeHtml(p.tts_pause_note || '') + '"></td>' +
         '<td class="col-toggle"><input type="checkbox" class="f-active"' + (p.tts_pause_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td class="col-actions">' +
@@ -1388,7 +1397,8 @@ function buildPauseRow(p) {
 async function savePauseRow(tr) {
     var key    = parseInt(tr.dataset.key, 10) || 0;
     var search = tr.querySelector('.f-search').value;
-    var ms     = parseInt(tr.querySelector('.f-ms').value, 10) || 300;
+    var msRaw  = parseInt(tr.querySelector('.f-ms').value, 10);
+    var ms     = isNaN(msRaw) ? 300 : msRaw;   // permits 0 and negatives
     var note   = tr.querySelector('.f-note').value;
     var active = tr.querySelector('.f-active').checked;
     if (!search) return; // Skip until the user has typed a search string.

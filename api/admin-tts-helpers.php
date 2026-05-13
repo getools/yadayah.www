@@ -72,8 +72,14 @@ function applyPauses(string $text, array $pauses, string &$placeholder): string 
 }
 
 function placeholdersToBreaks(string $escaped): string {
+    // ms > 0 → <break time="Nms"/>  (add the requested pause)
+    // ms = 0 → <break strength="none"/>  (suppress Azure's natural pause
+    //          at that character — useful for hyphenated compounds where
+    //          the engine would otherwise insert a small break).
     return preg_replace_callback('/\x01PAUSE_(\d+)_(\d+)\x01/', function ($m) {
-        return '<break time="' . (int)$m[2] . 'ms"/>';
+        $ms = (int)$m[2];
+        if ($ms > 0) return '<break time="' . $ms . 'ms"/>';
+        return '<break strength="none"/>';
     }, $escaped);
 }
 
@@ -128,7 +134,8 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
         }
         $regex = tunePrintToRegex($print, $caseSensitive);
         if (!preg_match($regex, $text)) continue;
-        $token = sprintf("\x02TUNE_%d\x02", $t['tts_tune_key']);
+        $token   = sprintf("\x02TUNE_%d\x02",  $t['tts_tune_key']);
+        $tokenS  = sprintf("\x02TUNEs%d\x02", $t['tts_tune_key']); // possessive variant
         if ($synthType === 'ipa') {
             // Common typo: ASCII apostrophe instead of the IPA primary
             // stress mark ˈ (U+02C8). Same for the comma → ˌ secondary
@@ -137,15 +144,30 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             $phon = strtr($phon, ["'" => "\u{02C8}", '`' => "\u{02C8}"]);
             $ph = htmlspecialchars($phon, ENT_QUOTES | ENT_XML1);
             $printEsc = htmlspecialchars($print, ENT_QUOTES | ENT_XML1);
-            $repl = "<phoneme alphabet=\"ipa\" ph=\"$ph\">$printEsc</phoneme>";
+            $repl  = "<phoneme alphabet=\"ipa\" ph=\"$ph\">$printEsc</phoneme>";
+            // Possessive variant: append /z/ to the IPA, append "'s" to
+            // the surface print so lipsync / display stays sensible.
+            $phPoss = htmlspecialchars($phon . 'z', ENT_QUOTES | ENT_XML1);
+            $replS = "<phoneme alphabet=\"ipa\" ph=\"$phPoss\">" . $printEsc . "&#39;s</phoneme>";
         } else {
-            $repl = buildSubReplSsml($print, $phon);
+            $repl  = buildSubReplSsml($print, $phon);
+            // Possessive variant in SUB: append plain "s" so the alias
+            // reads "Tor-ahs" as one continuous word instead of getting
+            // broken up at the apostrophe.
+            $replS = buildSubReplSsml($print . "'s", $phon . 's');
         }
-        $tokenMap[$token] = $repl;
+        $tokenMap[$token]  = $repl;
+        $tokenMap[$tokenS] = $replS;
+        // preg_replace_callback so we can choose between the plain and
+        // possessive token based on whether match group 2 captured the
+        // trailing 's. Group 1 is the print word, group 2 the optional 's.
+        $cb = function($m) use ($token, $tokenS) {
+            return !empty($m[2]) ? $tokenS : $token;
+        };
         if ($needsBold || $needsItalic) {
-            $text = applyTuneInTaggedRegions($text, $regex, $token, $needsBold, $needsItalic);
+            $text = applyTuneInTaggedRegions($text, $regex, $cb, $needsBold, $needsItalic);
         } else {
-            $text = preg_replace($regex, $token, $text);
+            $text = preg_replace_callback($regex, $cb, $text);
         }
     }
     return $text;
@@ -160,7 +182,7 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
  * "Yah</b>owah") are intentionally not matched — substitution stays
  * within a single text run for predictability.
  */
-function applyTuneInTaggedRegions(string $text, string $regex, string $token, bool $needsBold, bool $needsItalic): string {
+function applyTuneInTaggedRegions(string $text, string $regex, $replacement, bool $needsBold, bool $needsItalic): string {
     $bold = 0; $italic = 0;
     $out = '';
     if (!preg_match_all('/<\/?[bi]\b[^>]*>|[^<]+/i', $text, $m)) return $text;
@@ -176,7 +198,13 @@ function applyTuneInTaggedRegions(string $text, string $regex, string $token, bo
         } else {
             // Text run — substitute only if current state qualifies.
             $qual = (!$needsBold || $bold > 0) && (!$needsItalic || $italic > 0);
-            $out .= $qual ? preg_replace($regex, $token, $piece) : $piece;
+            if ($qual) {
+                $out .= is_callable($replacement)
+                    ? preg_replace_callback($regex, $replacement, $piece)
+                    : preg_replace($regex, $replacement, $piece);
+            } else {
+                $out .= $piece;
+            }
         }
     }
     return $out;
@@ -232,12 +260,19 @@ function ipaLooksFake(string $phon): bool {
 function tunePrintToRegex(string $print, bool $caseSensitive = false): string {
     static $APOS_RE       = '/[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]/u';
     static $APOS_CLASS_OPT = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]?";
+    // Apostrophe-class for matching the leading apostrophe of a
+    // possessive 's — same set as above but required (not optional).
+    static $APOS_CLASS     = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]";
     // 1) Drop apostrophe-class chars to get the core spelling.
     $core = preg_replace($APOS_RE, '', $print);
     $flags = $caseSensitive ? 'u' : 'iu';
+    // Possessive 's tail: captured separately so applyTunes can detect
+    // when the match swallowed an "'s" and append the right sound to
+    // the substituted form. Optional, so plain matches still work.
+    $possessiveTail = '(' . $APOS_CLASS . 's)?';
     if ($core === '' || $core === null) {
         // Degenerate: Print was entirely apostrophes. Fall back to literal match.
-        return '/(?<![A-Za-z])' . preg_quote($print, '/') . '(?![A-Za-z])/' . $flags;
+        return '/(?<![A-Za-z])(' . preg_quote($print, '/') . ')' . $possessiveTail . '(?![A-Za-z])/' . $flags;
     }
     // 2) Split the core into single Unicode chars, escape each, then join
     //    with an optional apostrophe-class. Outer optional apos at the
@@ -252,7 +287,7 @@ function tunePrintToRegex(string $print, bool $caseSensitive = false): string {
     $chars = preg_split('//u', $core, -1, PREG_SPLIT_NO_EMPTY);
     $escaped = array_map(function($c) { return preg_quote($c, '/'); }, $chars);
     $body = $APOS_CLASS_OPT . implode($APOS_CLASS_OPT, $escaped) . $APOS_CLASS_OPT;
-    return '/(?<![A-Za-z])' . $body . '(?![A-Za-z])/' . $flags;
+    return '/(?<![A-Za-z])(' . $body . ')' . $possessiveTail . '(?![A-Za-z])/' . $flags;
 }
 
 /**
