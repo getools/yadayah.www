@@ -43,7 +43,7 @@ function sanitizeHtml(string $html): string {
         preg_match_all('/(\w[\w-]*)=(?:"([^"]*)"|\'([^\']*)\'|(\S+))/', $m[2], $attrs, PREG_SET_ORDER);
         foreach ($attrs as $attr) {
             $name = strtolower($attr[1]);
-            $val = $attr[2] !== '' ? $attr[2] : ($attr[3] !== '' ? $attr[3] : $attr[4]);
+            $val = ($attr[2] ?? '') . ($attr[3] ?? '') . ($attr[4] ?? ''); // one branch matches; concat is safe
             if (!in_array($name, $allowedAttrs)) continue;
             // Block javascript: URLs
             if (in_array($name, ['href', 'src'])) {
