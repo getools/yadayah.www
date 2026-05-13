@@ -90,7 +90,7 @@
             .filters select { min-width: 140px; }
         }
     </style>
-<script src="/js/site-nav.js?v=45"></script>
+<script src="/js/site-nav.js?v=48"></script>
 </head>
 <body>
 
@@ -137,13 +137,6 @@
                 <option value="100">100</option>
             </select>
         </label>
-        <label>Match:
-            <select id="sb-mode">
-                <option value="all">All Words</option>
-                <option value="phrase">Exact Phrase</option>
-                <option value="any">Any Word</option>
-            </select>
-        </label>
         <button type="button" id="sb-clear-filters" hidden>Clear filters</button>
     </div>
 
@@ -186,7 +179,8 @@ function stateToUrl(push) {
     else      history.replaceState(state, '', url);
 }
 function applyStateToForm() {
-    $('sb-mode').value   = state.mode;
+    // sb-mode dropdown was removed — state.mode is read-only here, set by
+    // the main site-wide Search Bar before navigation.
     $('sb-series').value = state.series;
     populateVolumeDropdown();
     $('sb-volume').value = state.volume;
@@ -393,13 +387,6 @@ $('sb-volume').addEventListener('change', function() {
 
 $('sb-limit').addEventListener('change', function() {
     state.limit = parseInt($('sb-limit').value, 10) || 25;
-    state.page = 1;
-    stateToUrl(true);
-    if (state.q) doSearch();
-});
-
-$('sb-mode').addEventListener('change', function() {
-    state.mode = $('sb-mode').value;
     state.page = 1;
     stateToUrl(true);
     if (state.q) doSearch();

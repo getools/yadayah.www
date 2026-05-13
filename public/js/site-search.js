@@ -993,8 +993,12 @@
             });
         }
         // Auto-search if landed with ?q= (e.g., from a "View all" link).
+        // EXCEPT on /search-books — that page owns its own results pane and
+        // doesn't want the overlay's all-scopes block rendered above it.
         var initialQ = ($('ss-input').value || '').trim();
-        if (initialQ) doSearch(1);
+        var path = (location.pathname || '').replace(/\/+$/, '').toLowerCase();
+        var onDedicatedBooksPage = (path === '/search-books' || path === '/search-books.html');
+        if (initialQ && !onDedicatedBooksPage) doSearch(1);
     }
 
     if (document.readyState === 'loading') {
