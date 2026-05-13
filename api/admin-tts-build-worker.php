@@ -173,10 +173,13 @@ $outDirContainer = dirname(__DIR__) . '/u/tts-audio';
 $outDir = is_dir(dirname(__DIR__)) ? $outDirContainer : $outDirHost;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);
 
-// Chapter row for filename naming.
-$chRow = $db->prepare("SELECT chapter_number FROM yy_chapter WHERE chapter_key = ?");
+// Chapter row for filename naming + heading SSML.
+$chRow = $db->prepare("SELECT chapter_number, chapter_name, chapter_label FROM yy_chapter WHERE chapter_key = ?");
 $chRow->execute([$chapterKey]);
-$chNum = (int)($chRow->fetchColumn() ?: 0);
+$chMeta  = $chRow->fetch() ?: ['chapter_number' => 0, 'chapter_name' => '', 'chapter_label' => ''];
+$chNum   = (int)($chMeta['chapter_number'] ?? 0);
+$chName  = trim((string)($chMeta['chapter_name']  ?? ''));
+$chLabel = trim((string)($chMeta['chapter_label'] ?? ''));
 $ext = (strpos($cfg['system']['tts_output_format'], 'mp3') !== false) ? 'mp3'
      : ((strpos($cfg['system']['tts_output_format'], 'opus') !== false) ? 'opus'
      : ((strpos($cfg['system']['tts_output_format'], 'pcm') !== false) ? 'wav' : 'mp3'));
@@ -354,6 +357,55 @@ foreach ($paragraphs as $idx => $p) {
         }
     }
 
+    // Chapter-heading & subhead special handling.
+    //   - heading = first paragraph in chapter (idx 0). Prepend "Chapter N"
+    //     when the chapter is numbered and the text doesn't already say
+    //     "Chapter"; for non-numeric headings (chapter_label like
+    //     "Prologue", or text not starting with a digit) speak verbatim.
+    //   - subhead = second paragraph (idx 1) but only if it's short
+    //     (< 60 chars) and doesn't end in a period — guards against
+    //     chapters that lack a subhead so we don't pause around real body.
+    // Pause durations live in yy_tts_pause under sentinel search keys.
+    $specialBlocks = null;
+    $specialPlain  = trim((string)($p['paragraph_text_plain'] ?? ''));
+    if ($idx === 0 && $specialPlain !== '') {
+        $beforeMs  = ttsPauseLookup($cfg, '__chapter_before__',  2500);
+        $betweenMs = ttsPauseLookup($cfg, '__chapter_between__', 700);
+        $afterMs   = ttsPauseLookup($cfg, '__chapter_after__',   1500);
+        $hasChapterWord  = (mb_stripos($specialPlain, 'chapter') !== false);
+        $startsWithDigit = (bool)preg_match('/^\d/', $specialPlain);
+        $specialBlocks = '<break time="' . $beforeMs . 'ms"/>';
+        if ($hasChapterWord) {
+            // Heading already includes the word "Chapter" — speak as one.
+            $specialBlocks .= buildVoiceBlock($specialPlain, $cfg, 'main');
+        } elseif ($chLabel !== '') {
+            // Non-numeric label (e.g. "Prologue") — speak label, then title.
+            $specialBlocks .= buildVoiceBlock($chLabel, $cfg, 'main');
+            if ($chName !== '' && strcasecmp($chName, $chLabel) !== 0) {
+                $specialBlocks .= '<break time="' . $betweenMs . 'ms"/>';
+                $specialBlocks .= buildVoiceBlock($chName, $cfg, 'main');
+            }
+        } elseif ($startsWithDigit && $chNum > 0 && $chName !== '') {
+            // Numbered chapter — "Chapter N" + title.
+            $specialBlocks .= buildVoiceBlock('Chapter ' . $chNum, $cfg, 'main');
+            $specialBlocks .= '<break time="' . $betweenMs . 'ms"/>';
+            $specialBlocks .= buildVoiceBlock($chName, $cfg, 'main');
+        } else {
+            // Fallback: speak whatever the first paragraph says, no prefix.
+            $specialBlocks .= buildVoiceBlock($specialPlain, $cfg, 'main');
+        }
+        $specialBlocks .= '<break time="' . $afterMs . 'ms"/>';
+    } elseif ($idx === 1 && $specialPlain !== '') {
+        $tlen = mb_strlen($specialPlain);
+        if ($tlen > 0 && $tlen < 60 && !preg_match('/\.\s*$/u', $specialPlain)) {
+            $beforeMs = ttsPauseLookup($cfg, '__subhead_before__', 800);
+            $afterMs  = ttsPauseLookup($cfg, '__subhead_after__',  500);
+            $specialBlocks  = '<break time="' . $beforeMs . 'ms"/>';
+            $specialBlocks .= buildVoiceBlock($specialPlain, $cfg, 'main');
+            $specialBlocks .= '<break time="' . $afterMs . 'ms"/>';
+        }
+    }
+
     // Apply per-font filtering (skip + pause-on-switch) BEFORE
     // segmenting. The filter strips <span data-font="…"> tags either
     // way; skipped-font content is dropped; pause-marked fonts get a
@@ -362,30 +414,10 @@ foreach ($paragraphs as $idx => $p) {
     $rawHtml = (string)$p['paragraph_text_html'];
     $rawHtml = preprocessFontFilter($rawHtml, $cfg['fonts'] ?? []);
     $segs = segmentParagraph($rawHtml);
-    if (!$segs) continue;
+    if (!$segs && $specialBlocks === null) continue;
 
-    $blocks = '';
-    foreach ($segs as $seg) {
-        $blocks .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
-    }
-    if ($blocks === '') continue;
-    $ssml = wrapSsml($blocks);
-    $paraBytes = '';
-    if (strlen($ssml) > 9500) {
-        // Over Azure's per-request limit — split into one synth call per segment instead.
-        foreach ($segs as $seg) {
-            $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
-            $err = '';
-            $b = azureTtsSynthesizeRetry($oneSsml, $cfg, $err);
-            if ($b === '') {
-                $failures[] = "para {$p['paragraph_number']} seg: $err";
-                $failureCount++;
-                continue;
-            }
-            $paraBytes .= $b;
-            $charsBilled += mb_strlen($seg['text']);
-        }
-    } else {
+    if ($specialBlocks !== null) {
+        $ssml = wrapSsml($specialBlocks);
         $err = '';
         $b = azureTtsSynthesizeRetry($ssml, $cfg, $err);
         if ($b === '') {
@@ -394,7 +426,40 @@ foreach ($paragraphs as $idx => $p) {
             continue;
         }
         $paraBytes = $b;
-        foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
+        $charsBilled += mb_strlen($specialPlain);
+    } else {
+        $blocks = '';
+        foreach ($segs as $seg) {
+            $blocks .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
+        }
+        if ($blocks === '') continue;
+        $ssml = wrapSsml($blocks);
+        $paraBytes = '';
+        if (strlen($ssml) > 9500) {
+            // Over Azure's per-request limit — split into one synth call per segment instead.
+            foreach ($segs as $seg) {
+                $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
+                $err = '';
+                $b = azureTtsSynthesizeRetry($oneSsml, $cfg, $err);
+                if ($b === '') {
+                    $failures[] = "para {$p['paragraph_number']} seg: $err";
+                    $failureCount++;
+                    continue;
+                }
+                $paraBytes .= $b;
+                $charsBilled += mb_strlen($seg['text']);
+            }
+        } else {
+            $err = '';
+            $b = azureTtsSynthesizeRetry($ssml, $cfg, $err);
+            if ($b === '') {
+                $failures[] = "para {$p['paragraph_number']}: $err";
+                $failureCount++;
+                continue;
+            }
+            $paraBytes = $b;
+            foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
+        }
     }
     if ($paraBytes === '') continue;
 

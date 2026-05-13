@@ -69,6 +69,23 @@ function loadTtsConfig(PDO $db, int $ttsKey): array {
 }
 
 /**
+ * Look up a sentinel pause (e.g. '__chapter_before__') from the loaded
+ * config. Returns the configured ms value, or $default if no row exists
+ * (or it's been deactivated). Sentinel keys are used by the build worker
+ * for structural pauses around chapter headings / subheads; they live
+ * alongside text-match pauses in yy_tts_pause so they can be tuned via
+ * the existing admin Pauses panel.
+ */
+function ttsPauseLookup(array $cfg, string $sentinel, int $default): int {
+    foreach ($cfg['pauses'] ?? [] as $p) {
+        if (($p['tts_pause_search'] ?? '') === $sentinel) {
+            return (int)$p['tts_pause_ms'];
+        }
+    }
+    return $default;
+}
+
+/**
  * Apply pause substring replacements. Pauses use a placeholder token so the
  * pause stays intact after XML escaping; the placeholder is rewritten back
  * to the SSML <break> tag after escaping.
