@@ -213,6 +213,104 @@ $paragraphs = $pStmt->fetchAll();
 $nPara = count($paragraphs);
 if (!$nPara) bail($db, $audioKey, "no paragraphs for chapter_key=$chapterKey");
 
+// ── Series 07: chapter-intro Islamic-source detection ──────────────────
+// Series 07 books ("God Damn Religion") open every chapter with a bold
+// (or bold-italic) quote followed by a separate italic-only paragraph
+// holding the source citation, e.g.:
+//   "I pass judgment on them..."          (bold/italic — quote text)
+//   "their women and children..."         (bold/italic — quote continued)
+//   "and their property divided."         (bold/italic — quote ends)
+//   Ishaq:463 & Tabari VIII:34            (italic-only — citation)
+//
+// We scan the first ~8 paragraphs of the chapter for an italic-only
+// citation; if one matches, the run of bold paragraphs immediately
+// before it gets retagged from the generic 'translation' category to
+// the source-specific category (quran / bukhari / tabari / ishaq).
+// Combos like "Ishaq & Tabari" attribute to the first-named source —
+// simpler than minting a 4×4 combo matrix.
+//
+// $introOverrides maps paragraph_number → category code. The synth
+// loop consults this before running segmentParagraph, so a matched
+// paragraph emits a single voice block in the source category instead
+// of segmenting into translation/main pieces.
+$introOverrides = [];
+$isS07 = (stripos($volumeSlug, 'YY-s07') === 0);
+if ($isS07) {
+    // Source name → category code. Order matters for combo matching:
+    // we try the more specific multi-word forms first so they're not
+    // shadowed by a substring of a longer form.
+    static $ISLAMIC_SOURCES = [
+        'Quran'   => 'quran',
+        'Bukhari' => 'bukhari',
+        'Muslim'  => 'muslim',
+        'Tabari'  => 'tabari',
+        'Ishaq'   => 'ishaq',
+    ];
+    // Citation regex anchored to a source name. We match the first source
+    // name and ignore any "& OtherSource" suffix; the first source wins.
+    // - Quran:    "Quran 113.001" or "Quran 17:78"
+    // - Bukhari:  "Bukhari:V5B59N444"   (colon, no spaces)
+    // - Muslim:   "Muslim:C9B1N31"      (colon, same shape as Bukhari)
+    // - Tabari:   "Tabari VIII:28"      (space, roman, colon)
+    // - Ishaq:    "Ishaq:461"           (colon)
+    $citationRe = '/^(?:Quran\s+\d+[.:]\d+|Bukhari\s*:[\w:.\-]+|Muslim\s*:[\w:.\-]+|Tabari\s+[IVXLCDM]+\s*:\s*\d+|Ishaq\s*:\s*\d+)/u';
+
+    // Helper: is this paragraph an "italic-only citation"?
+    //   - Whole text wrapped in <i>…</i> (possibly with stray spaces)
+    //   - Plain text starts with a source name and matches the citation regex
+    //   - No <b>...</b> anywhere (so it's not the quote itself)
+    $isItalicCitation = function (array $p) use ($citationRe): ?string {
+        $html  = (string)$p['paragraph_text_html'];
+        $plain = trim((string)$p['paragraph_text_plain']);
+        if ($plain === '') return null;
+        if (preg_match('/<b\b/i', $html)) return null;     // bold present → not a citation-only line
+        if (!preg_match('/<i\b/i', $html)) return null;    // no italic at all → not a citation
+        if (preg_match($citationRe, $plain, $m)) {
+            return $m[0];
+        }
+        return null;
+    };
+    // Helper: is this paragraph entirely bold (the quote body)?
+    $isBoldQuote = function (array $p): bool {
+        $html = (string)$p['paragraph_text_html'];
+        if (!preg_match('/<b\b/i', $html)) return false;
+        // Strip every <b>...</b> chunk; anything non-whitespace left is
+        // body prose, so this isn't a pure-bold quote paragraph.
+        $stripped = preg_replace('/<b\b[^>]*>.*?<\/b>/is', '', $html);
+        // Also strip italic tags + span tags that wrap our font markers.
+        $stripped = preg_replace('/<\/?(?:i|span)\b[^>]*>/i', '', $stripped);
+        return trim(strip_tags($stripped)) === '';
+    };
+
+    // Walk the first ~8 paragraphs looking for the citation.
+    $scanLimit = min(8, $nPara);
+    for ($k = 0; $k < $scanLimit; $k++) {
+        $citationText = $isItalicCitation($paragraphs[$k]);
+        if ($citationText === null) continue;
+        // Map citation → category code. Match against $ISLAMIC_SOURCES
+        // keys in order so longer source names win if any ever overlap.
+        $sourceCat = null;
+        foreach ($ISLAMIC_SOURCES as $name => $code) {
+            if (stripos($citationText, $name) === 0) { $sourceCat = $code; break; }
+        }
+        if (!$sourceCat) break;     // citation regex matched but source unknown — leave intro alone
+
+        // Walk backward from the citation paragraph collecting bold
+        // quotes. Stop at the first non-bold paragraph or after a
+        // reasonable run length (chapter quotes shouldn't span dozens
+        // of paragraphs).
+        for ($j = $k - 1; $j >= max(0, $k - 6); $j--) {
+            if (!$isBoldQuote($paragraphs[$j])) break;
+            $introOverrides[(int)$paragraphs[$j]['paragraph_number']] = $sourceCat;
+        }
+        fwrite(STDERR, sprintf(
+            "s07 chapter intro: %d paragraph(s) tagged as %s (citation: %s)\n",
+            count($introOverrides), $sourceCat, $citationText
+        ));
+        break; // Only the first intro block per chapter.
+    }
+}
+
 // Clear any stale markers for this audio row — easier than upserting
 // across schema changes and the table is small.
 $db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
@@ -399,6 +497,14 @@ foreach ($paragraphs as $idx => $p) {
             . $titleText
             . "\x01PAUSE_0_{$pauseChapAfter}\x01";
         $segs = [['category' => 'main', 'text' => $headingText]];
+    } else if (isset($introOverrides[(int)$p['paragraph_number']])) {
+        // Series-07 chapter-intro Islamic quote. The full paragraph is
+        // a single bold quote — route it through the matched source's
+        // voice (quran/bukhari/tabari/ishaq) as one segment, bypassing
+        // the bold-→-translation classifier in segmentParagraph.
+        $plainText = trim(preg_replace('/\s+/u', ' ', strip_tags($rawHtml)));
+        if ($plainText === '') continue;
+        $segs = [['category' => $introOverrides[(int)$p['paragraph_number']], 'text' => $plainText]];
     } else {
         $segs = segmentParagraph($rawHtml);
         if (!$segs) continue;

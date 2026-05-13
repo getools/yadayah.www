@@ -52,15 +52,26 @@
             '                 display: flex; align-items: center; gap: 10px;',
             '                 pointer-events: none; /* children re-enable */ }',
             '.fb-tts-player > * { pointer-events: auto; }',
-            // Volume slider (HTML <input type=range>, minimally styled).
-            '.fb-tts-vol { flex: 0 0 80px; height: 4px; cursor: pointer;',
+            // Volume slider. appearance:none alone leaves Chrome/Firefox
+            // with an invisible track unless we explicitly style the
+            // runnable-track and thumb pseudo-elements — the prior pass
+            // collapsed to a 4px hairline that was easy to miss.
+            '.fb-tts-vol { flex: 0 0 80px; height: 18px; cursor: pointer;',
             '              -webkit-appearance: none; appearance: none;',
-            '              background: rgba(255,255,255,0.18); border-radius: 2px; outline: none; }',
+            '              background: transparent; outline: none; padding: 0; margin: 0; }',
+            '.fb-tts-vol::-webkit-slider-runnable-track {',
+            '              height: 6px; background: rgba(200,200,200,0.85);',
+            '              border-radius: 3px; }',
+            '.fb-tts-vol::-moz-range-track {',
+            '              height: 6px; background: rgba(200,200,200,0.85);',
+            '              border-radius: 3px; }',
             '.fb-tts-vol::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;',
-            '              width: 12px; height: 12px; border-radius: 50%;',
-            '              background: #cfe1ff; cursor: pointer; }',
-            '.fb-tts-vol::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%;',
-            '              background: #cfe1ff; cursor: pointer; border: none; }',
+            '              width: 14px; height: 14px; border-radius: 50%;',
+            '              background: #1f3550; border: 1px solid #2a4d70; cursor: pointer;',
+            '              margin-top: -4px; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }',
+            '.fb-tts-vol::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%;',
+            '              background: #1f3550; border: 1px solid #2a4d70; cursor: pointer;',
+            '              box-shadow: 0 1px 3px rgba(0,0,0,0.4); }',
             // Play/Pause button — flex item, fixed circle on the right.
             '.fb-tts-btn { flex: 0 0 43px; height: 43px; border-radius: 50%;',
             '              background: #1f3550; color: #cfe1ff; border: 1px solid #2a4d70;',
@@ -78,10 +89,10 @@
             '.fb-tts-progress { flex: 1; height: 12px; transition: opacity 0.2s; }',
             '.fb-tts-progress.is-hidden { opacity: 0; pointer-events: none; }',
             '.fb-tts-progress-track { position: relative; width: 100%; height: 6px;',
-            '                         margin-top: 3px; background: rgba(255,255,255,0.18);',
+            '                         margin-top: 3px; background: rgba(200,200,200,0.85);',
             '                         border-radius: 3px; cursor: pointer; overflow: hidden; }',
             '.fb-tts-progress-fill  { position: absolute; top: 0; left: 0; height: 100%;',
-            '                         background: #cfe1ff; width: 0%; }',
+            '                         background: #1f3550; width: 0%; }',
             // Subtle read-along highlight — applied to text-layer spans
             // that belong to the paragraph currently being narrated. We
             // only mark spans on the visible page, so a paragraph
