@@ -317,8 +317,10 @@
         var seq = ++fetchSeq;
         var url = '/api/tts-audio.php?book_code=' + encodeURIComponent(cfg.bookCode)
                 + '&page=' + page1;
+        console.log('[tts] fetchForPage', page1, 'seq=', seq);
         fetch(url).then(function (r) { return r.json(); })
             .then(function (data) {
+                console.log('[tts] fetch resp seq=', seq, 'fetchSeq=', fetchSeq, 'available=', data && data.available);
                 if (seq !== fetchSeq) return;   // a newer fetch superseded this
                 current = data;
                 renderButton();
@@ -428,19 +430,39 @@
     }
 
     // ── Public API ─────────────────────────────────────────────────────
+    // At init time cfg.getCurrentPage() returns 1 (carouselCenter default)
+    // because the deep-link nav hasn't applied yet — so trusting it leads
+    // to a wasted fetch for page=1 (which has no chapter, leaving the
+    // button disabled until notifyPageChange fires). Read the URL hash
+    // directly to find the intended landing page so the very first fetch
+    // already targets the right chapter.
+    function readInitialPageFromHash() {
+        try {
+            var hash = (location.hash || '').replace(/^#/, '');
+            if (!hash) return 0;
+            var p = new URLSearchParams(hash).get('page');
+            var n = p ? parseInt(p, 10) : 0;
+            return (n > 0) ? n : 0;
+        } catch (e) { return 0; }
+    }
+
     BM.init = function (c) {
         cfg = c || {};
         injectStyles();
         ensureButton();
         ensureAudio();
-        var p = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
+        var fromHash = readInitialPageFromHash();
+        var fromCfg  = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
+        var p = fromHash || fromCfg;
         lastPage = p;
+        console.log('[tts] init page=', p, 'hash=', fromHash, 'cfg=', fromCfg);
         fetchForPage(p);
     };
 
     // Called from flipbook-viewer.js whenever the visible page changes.
     BM.notifyPageChange = function (page1) {
         if (!cfg) return;
+        console.log('[tts] notifyPageChange', page1, 'lastPage=', lastPage, 'suppress=', suppressPageSync);
         // When OUR auto-turn drives the page change, the text-layer on
         // the new page rebuilds asynchronously; re-apply the highlight
         // for the still-current paragraph once that settles.
