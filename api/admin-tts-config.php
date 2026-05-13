@@ -139,6 +139,7 @@ if ($action === 'save_tune') {
     $active = !empty($data['active']);
     $mBold   = !empty($data['match_bold']);
     $mItalic = !empty($data['match_italic']);
+    $mCase   = !empty($data['match_case_sensitive']);
     if (!$ttsKey || $print === '') errorResponse('tts_key, print required');
     // Legacy tts_tune_phonetic mirror — kept in sync with whichever type
     // is currently chosen so older code paths keep working. If the chosen
@@ -154,33 +155,36 @@ if ($action === 'save_tune') {
                SET tts_tune_print = ?, tts_tune_phonetic = ?,
                    tts_tune_phonetic_sub = ?, tts_tune_phonetic_ipa = ?, tts_tune_phonetic_sapi = ?,
                    tts_tune_phonetic_type = ?, tts_tune_note = ?, tts_tune_active_flag = ?,
-                   tts_tune_match_bold = ?, tts_tune_match_italic = ?,
+                   tts_tune_match_bold = ?, tts_tune_match_italic = ?, tts_tune_match_case_sensitive = ?,
                    tts_tune_revision_dtime = NOW()
              WHERE tts_tune_key = ? AND tts_key = ?
         ");
-        $stmt->execute([$print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, $active, $mBold, $mItalic, $tuneKey, $ttsKey]);
+        // Cast PHP booleans to int (0/1) because PDO's PostgreSQL driver
+        // serialises bool false as "" which Postgres rejects.
+        $stmt->execute([$print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, (int)$active, (int)$mBold, (int)$mItalic, (int)$mCase, $tuneKey, $ttsKey]);
     } else {
         $stmt = $db->prepare("
             INSERT INTO yy_tts_tune
                 (tts_key, tts_tune_print, tts_tune_phonetic,
                  tts_tune_phonetic_sub, tts_tune_phonetic_ipa, tts_tune_phonetic_sapi,
                  tts_tune_phonetic_type, tts_tune_note, tts_tune_active_flag,
-                 tts_tune_match_bold, tts_tune_match_italic)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 tts_tune_match_bold, tts_tune_match_italic, tts_tune_match_case_sensitive)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (tts_key, tts_tune_print) DO UPDATE SET
-                tts_tune_phonetic       = EXCLUDED.tts_tune_phonetic,
-                tts_tune_phonetic_sub   = EXCLUDED.tts_tune_phonetic_sub,
-                tts_tune_phonetic_ipa   = EXCLUDED.tts_tune_phonetic_ipa,
-                tts_tune_phonetic_sapi  = EXCLUDED.tts_tune_phonetic_sapi,
-                tts_tune_phonetic_type  = EXCLUDED.tts_tune_phonetic_type,
-                tts_tune_note           = EXCLUDED.tts_tune_note,
-                tts_tune_active_flag    = EXCLUDED.tts_tune_active_flag,
-                tts_tune_match_bold     = EXCLUDED.tts_tune_match_bold,
-                tts_tune_match_italic   = EXCLUDED.tts_tune_match_italic,
+                tts_tune_phonetic              = EXCLUDED.tts_tune_phonetic,
+                tts_tune_phonetic_sub          = EXCLUDED.tts_tune_phonetic_sub,
+                tts_tune_phonetic_ipa          = EXCLUDED.tts_tune_phonetic_ipa,
+                tts_tune_phonetic_sapi         = EXCLUDED.tts_tune_phonetic_sapi,
+                tts_tune_phonetic_type         = EXCLUDED.tts_tune_phonetic_type,
+                tts_tune_note                  = EXCLUDED.tts_tune_note,
+                tts_tune_active_flag           = EXCLUDED.tts_tune_active_flag,
+                tts_tune_match_bold            = EXCLUDED.tts_tune_match_bold,
+                tts_tune_match_italic          = EXCLUDED.tts_tune_match_italic,
+                tts_tune_match_case_sensitive  = EXCLUDED.tts_tune_match_case_sensitive,
                 tts_tune_revision_dtime = NOW()
             RETURNING tts_tune_key
         ");
-        $stmt->execute([$ttsKey, $print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, $active, $mBold, $mItalic]);
+        $stmt->execute([$ttsKey, $print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, (int)$active, (int)$mBold, (int)$mItalic, (int)$mCase]);
         $tuneKey = (int)$stmt->fetchColumn();
     }
     jsonResponse(['ok' => true, 'tts_tune_key' => $tuneKey]);
@@ -211,7 +215,7 @@ if ($action === 'save_pause') {
                    tts_pause_revision_dtime = NOW()
              WHERE tts_pause_key = ? AND tts_key = ?
         ");
-        $stmt->execute([$search, $ms, $note ?: null, $sort, $active, $pauseKey, $ttsKey]);
+        $stmt->execute([$search, $ms, $note ?: null, $sort, (int)$active, $pauseKey, $ttsKey]);
     } else {
         $stmt = $db->prepare("
             INSERT INTO yy_tts_pause
@@ -225,7 +229,7 @@ if ($action === 'save_pause') {
                 tts_pause_revision_dtime = NOW()
             RETURNING tts_pause_key
         ");
-        $stmt->execute([$ttsKey, $search, $ms, $note ?: null, $sort, $active]);
+        $stmt->execute([$ttsKey, $search, $ms, $note ?: null, $sort, (int)$active]);
         $pauseKey = (int)$stmt->fetchColumn();
     }
     jsonResponse(['ok' => true, 'tts_pause_key' => $pauseKey]);

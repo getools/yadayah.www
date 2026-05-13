@@ -33,6 +33,27 @@ if (!$cfg['system']) errorResponse('Unknown tts_key', 404);
 $category = (string)($data['category'] ?? 'main');
 $overrideVoice = !empty($data['voice_code']) ? (string)$data['voice_code'] : null;
 
+// Per-row tune override: when the user clicks ▶ next to a specific tune,
+// we want THAT tune to fire unconditionally — ignoring its active flag,
+// B/I restrictions, and any other tunes that might match the same text.
+// Replace the loaded tunes with a single synthetic rule built from the
+// caller-supplied print + phonetic + type.
+if (!empty($data['tune_override']) && is_array($data['tune_override'])) {
+    $to = $data['tune_override'];
+    $cfg['tunes'] = [[
+        'tts_tune_key'           => 999999,
+        'tts_tune_print'         => (string)($to['print'] ?? ''),
+        'tts_tune_phonetic'      => '',
+        'tts_tune_phonetic_sub'  => (string)($to['sub']  ?? ''),
+        'tts_tune_phonetic_ipa'  => (string)($to['ipa']  ?? ''),
+        'tts_tune_phonetic_sapi' => '',
+        'tts_tune_phonetic_type' => in_array(($to['type'] ?? 'sub'), ['sub','ipa','sapi'], true) ? $to['type'] : 'sub',
+        'tts_tune_active_flag'   => true,
+        'tts_tune_match_bold'    => false,
+        'tts_tune_match_italic'  => false,
+    ]];
+}
+
 // If the caller passes prosody overrides, splice a synthetic category row in.
 if ($overrideVoice) {
     $cfg['categories'][$category] = [

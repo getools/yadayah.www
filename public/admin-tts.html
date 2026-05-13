@@ -285,7 +285,7 @@
                         <th style="width:90px">Paragraphs</th>
                         <th style="width:90px;white-space:nowrap;" title="Open this chapter in the flipbook">Read</th>
                         <th style="width:120px">Status</th>
-                        <th style="width:260px">Audio</th>
+                        <th style="width:315px">Audio</th>
                         <th class="col-actions"></th>
                     </tr>
                 </thead>
@@ -910,16 +910,38 @@ function getIpaHelperPopover() {
 function showIpaHelper(anchorBtn, ipaInput) {
     var pop = getIpaHelperPopover();
     pop._anchorInput = ipaInput;
+    // Render off-screen first so we can measure the real height.
+    pop.style.visibility = 'hidden';
     pop.style.display = 'block';
+    pop.style.top  = '0px';
+    pop.style.left = '0px';
+    var popH = pop.offsetHeight;
+    var popW = pop.offsetWidth;
     var r = anchorBtn.getBoundingClientRect();
-    var top  = r.bottom + 4;
-    var left = r.left  - 100;
-    if (left + 540 > window.innerWidth) left = Math.max(8, window.innerWidth - 548);
+    var vh = window.innerHeight;
+    var vw = window.innerWidth;
+    // Horizontal placement: prefer slightly left of the anchor, clamp to viewport.
+    var left = r.left - 100;
+    if (left + popW > vw - 8) left = Math.max(8, vw - popW - 8);
     if (left < 8) left = 8;
-    // If the popover would overflow the bottom of the viewport, anchor above.
-    if (top + 360 > window.innerHeight) top = Math.max(8, r.top - 360);
+    // Vertical placement: prefer below the anchor; if that runs off the
+    // bottom AND there's more room above, flip above. Otherwise clamp to
+    // the viewport so the popover never overflows either edge.
+    var topBelow = r.bottom + 4;
+    var topAbove = r.top - popH - 4;
+    var top;
+    if (topBelow + popH <= vh - 8) {
+        top = topBelow;
+    } else if (topAbove >= 8) {
+        top = topAbove;
+    } else {
+        // Neither fits cleanly — pin to the viewport edge that has more space.
+        top = Math.max(8, vh - popH - 8);
+        if (top < 8) top = 8;
+    }
     pop.style.top  = top  + 'px';
     pop.style.left = left + 'px';
+    pop.style.visibility = 'visible';
 }
 function closeIpaHelper() {
     var pop = document.getElementById('ipa-helper-popover');
@@ -1112,12 +1134,14 @@ function buildTuneRow(t) {
     var ipaChecked = savedType === 'ipa' ? ' checked' : '';
     var boldOn   = !!t.tts_tune_match_bold;
     var italicOn = !!t.tts_tune_match_italic;
+    var caseOn   = !!t.tts_tune_match_case_sensitive;
     tr.innerHTML =
         '<td style="padding:4px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td><div style="display:flex;align-items:center;gap:4px;">'
             + '<input type="text" class="f-print" value="' + escapeHtml(t.tts_tune_print || '') + '" style="flex:1;">'
             + '<button type="button" class="f-bi-btn f-bold'   + (boldOn   ? ' on' : '') + '" title="Restrict match to bold text">B</button>'
             + '<button type="button" class="f-bi-btn f-italic' + (italicOn ? ' on' : '') + '" title="Restrict match to italic text">I</button>'
+            + '<button type="button" class="f-bi-btn f-case'   + (caseOn   ? ' on' : '') + '" title="Case-sensitive match (default is case-insensitive)">Aa</button>'
         + '</div></td>' +
         '<td class="f-count" style="text-align:right;font-variant-numeric:tabular-nums;color:#555;">' + count + '</td>' +
         '<td><label style="display:flex;align-items:center;gap:6px;">'
@@ -1234,6 +1258,7 @@ async function saveTuneRow(tr) {
     var active = tr.querySelector('.f-active').checked;
     var mBold   = tr.querySelector('.f-bi-btn.f-bold').classList.contains('on');
     var mItalic = tr.querySelector('.f-bi-btn.f-italic').classList.contains('on');
+    var mCase   = tr.querySelector('.f-bi-btn.f-case').classList.contains('on');
     if (!print) return;
     // We allow type to be saved even if the chosen column is empty — the
     // synthesis path silently skips empty rules. So a user can flip Type
@@ -1244,7 +1269,7 @@ async function saveTuneRow(tr) {
             action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key,
             print: print, phonetic_sub: sub, phonetic_ipa: ipa, phonetic_sapi: sapi,
             phonetic_type: type, note: note, active: active,
-            match_bold: mBold, match_italic: mItalic
+            match_bold: mBold, match_italic: mItalic, match_case_sensitive: mCase
         }),
     });
     tr.dataset.key = res.tts_tune_key;
@@ -1253,7 +1278,16 @@ async function saveTuneRow(tr) {
 }
 
 function addTuneRow() {
-    $('tunes-tbody').appendChild(buildTuneRow({ tts_tune_active_flag: true }));
+    // Prepend so the new row appears at the TOP of the visible page,
+    // immediately under the header — easier to fill in than scrolling
+    // to find it at the bottom.
+    var tb = $('tunes-tbody');
+    var row = buildTuneRow({ tts_tune_active_flag: true });
+    if (tb.firstChild) tb.insertBefore(row, tb.firstChild);
+    else tb.appendChild(row);
+    // Focus the Print input so typing begins immediately.
+    var inp = row.querySelector('.f-print');
+    if (inp) inp.focus();
 }
 
 async function handleTuneAction(tr, act) {
@@ -1269,22 +1303,19 @@ async function handleTuneAction(tr, act) {
             if (key) await api('/admin-tts-config.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'delete_tune', tts_tune_key: key }) });
             tr.remove();
         } else if (act === 'listen') {
-            // Flush any pending autosave so the latest rule is committed
-            // server-side. Then play just the print word — the saved
-            // substitution rule turns it into the phonetic re-spelling,
-            // so the user hears exactly the new pronunciation. The voice
-            // dropdown in the column header controls which voice does the
-            // reading; falls back to the category default if unset.
+            // Flush any pending autosave so the latest typed values are
+            // committed — though the preview now uses the form values
+            // directly via tune_override, the save keeps the DB in sync.
             await saveTuneRow(tr);
             if (!print) return;
-            // Pre-flight validation: tell the user when the selected
-            // variant is going to be skipped due to a validation issue,
-            // so the audio they hear is the voice's default, not the
-            // re-spelling they typed.
+            // Read the row's current form values rather than what's saved
+            // — the preview should reflect exactly what's on screen.
             var typeRadio2 = tr.querySelector('.f-type-radio:checked');
             var selType = typeRadio2 ? typeRadio2.value : 'sub';
-            var msg = null;
-            if (selType === 'ipa') msg = validateIpa(tr.querySelector('.f-ipa').value);
+            var subVal  = tr.querySelector('.f-sub').value;
+            var ipaVal  = tr.querySelector('.f-ipa').value;
+            // Validation warning for the currently-selected variant.
+            var msg = (selType === 'ipa') ? validateIpa(ipaVal) : null;
             var s2 = $('tunes-status');
             if (msg && s2) {
                 s2.textContent = '⚠ Synth will skip this row\'s IPA: ' + msg + ' Playing voice\'s default reading instead.';
@@ -1294,7 +1325,20 @@ async function handleTuneAction(tr, act) {
             }
             var voiceSel = $('tunes-test-voice');
             var voiceCode = voiceSel ? voiceSel.value : '';
-            var body = { tts_key: TTS_KEY, text: print };
+            // tune_override makes the server use a single synthetic rule
+            // for THIS print word — ignoring active flag, B/I match
+            // restrictions, and all other tunes. So ▶ always plays what's
+            // typed in SUB or IPA, regardless of how the row is configured.
+            var body = {
+                tts_key: TTS_KEY,
+                text: print,
+                tune_override: {
+                    print: print,
+                    sub:   subVal,
+                    ipa:   ipaVal,
+                    type:  selType,
+                }
+            };
             if (voiceCode) body.voice_code = voiceCode;
             var blob = await api('/admin-tts-preview.php', {
                 method:'POST', headers:{'Content-Type':'application/json'},
@@ -1476,7 +1520,7 @@ function renderChapters() {
         }
         var audio = '';
         if (st === 'complete' && c.tts_audio_path) {
-            audio = '<audio controls preload="none" style="width:250px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
+            audio = '<audio controls preload="none" style="width:305px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
         }
         var actions = '<button class="btn-sm" onclick="openBuildModal(' + c.chapter_key + ',' + (c.tts_audio_key || 'null') + ')">' + (st === 'complete' ? 'Rebuild' : st === 'none' ? 'Build' : 'Settings') + '</button>';
         if (st === 'running' || st === 'pending') {

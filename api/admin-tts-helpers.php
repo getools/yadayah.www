@@ -94,8 +94,9 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
         // <i> contexts when these are set. Implemented as a tag-aware
         // walker because the substitution target is the same text in
         // both cases; we just need to skip non-qualifying regions.
-        $needsBold   = !empty($t['tts_tune_match_bold']);
-        $needsItalic = !empty($t['tts_tune_match_italic']);
+        $needsBold      = !empty($t['tts_tune_match_bold']);
+        $needsItalic    = !empty($t['tts_tune_match_italic']);
+        $caseSensitive  = !empty($t['tts_tune_match_case_sensitive']);
         // Each row now stores three independent phonetic representations
         // (sub / ipa / sapi). The phonetic_type column picks which one is
         // live. Fall back to the legacy tts_tune_phonetic mirror so this
@@ -125,7 +126,7 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             if ($phon === '') $phon = (string)($t['tts_tune_phonetic'] ?? '');
             if ($phon === '') continue; // nothing to substitute with — skip rule
         }
-        $regex = tunePrintToRegex($print);
+        $regex = tunePrintToRegex($print, $caseSensitive);
         if (!preg_match($regex, $text)) continue;
         $token = sprintf("\x02TUNE_%d\x02", $t['tts_tune_key']);
         if ($synthType === 'ipa') {
@@ -235,14 +236,15 @@ function ipaLooksFake(string $phon): bool {
     return false;
 }
 
-function tunePrintToRegex(string $print): string {
+function tunePrintToRegex(string $print, bool $caseSensitive = false): string {
     static $APOS_RE       = '/[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]/u';
     static $APOS_CLASS_OPT = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]?";
     // 1) Drop apostrophe-class chars to get the core spelling.
     $core = preg_replace($APOS_RE, '', $print);
+    $flags = $caseSensitive ? 'u' : 'iu';
     if ($core === '' || $core === null) {
         // Degenerate: Print was entirely apostrophes. Fall back to literal match.
-        return '/(?<![A-Za-z])' . preg_quote($print, '/') . '(?![A-Za-z])/iu';
+        return '/(?<![A-Za-z])' . preg_quote($print, '/') . '(?![A-Za-z])/' . $flags;
     }
     // 2) Split the core into single Unicode chars, escape each, then join
     //    with an optional apostrophe-class. Outer optional apos at the
@@ -257,7 +259,7 @@ function tunePrintToRegex(string $print): string {
     $chars = preg_split('//u', $core, -1, PREG_SPLIT_NO_EMPTY);
     $escaped = array_map(function($c) { return preg_quote($c, '/'); }, $chars);
     $body = $APOS_CLASS_OPT . implode($APOS_CLASS_OPT, $escaped) . $APOS_CLASS_OPT;
-    return '/(?<![A-Za-z])' . $body . '(?![A-Za-z])/iu';
+    return '/(?<![A-Za-z])' . $body . '(?![A-Za-z])/' . $flags;
 }
 
 /**
