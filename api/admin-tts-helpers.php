@@ -90,6 +90,12 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
     foreach ($tunes as $t) {
         $print = $t['tts_tune_print'];
         if ($print === '') continue;
+        // Per-rule restrictions: the rule only fires inside <b> and/or
+        // <i> contexts when these are set. Implemented as a tag-aware
+        // walker because the substitution target is the same text in
+        // both cases; we just need to skip non-qualifying regions.
+        $needsBold   = !empty($t['tts_tune_match_bold']);
+        $needsItalic = !empty($t['tts_tune_match_italic']);
         // Each row now stores three independent phonetic representations
         // (sub / ipa / sapi). The phonetic_type column picks which one is
         // live. Fall back to the legacy tts_tune_phonetic mirror so this
@@ -135,9 +141,44 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             $repl = buildSubReplSsml($print, $phon);
         }
         $tokenMap[$token] = $repl;
-        $text = preg_replace($regex, $token, $text);
+        if ($needsBold || $needsItalic) {
+            $text = applyTuneInTaggedRegions($text, $regex, $token, $needsBold, $needsItalic);
+        } else {
+            $text = preg_replace($regex, $token, $text);
+        }
     }
     return $text;
+}
+
+/**
+ * Substitute matches of $regex with $token only inside text regions
+ * that are currently nested under <b> (if $needsBold) and/or <i> (if
+ * $needsItalic) tags. Walks the text once, tracking tag depth, and
+ * applies preg_replace per qualifying text run. Tag tokens themselves
+ * pass through unchanged. Words that straddle a tag boundary (e.g.
+ * "Yah</b>owah") are intentionally not matched — substitution stays
+ * within a single text run for predictability.
+ */
+function applyTuneInTaggedRegions(string $text, string $regex, string $token, bool $needsBold, bool $needsItalic): string {
+    $bold = 0; $italic = 0;
+    $out = '';
+    if (!preg_match_all('/<\/?[bi]\b[^>]*>|[^<]+/i', $text, $m)) return $text;
+    foreach ($m[0] as $piece) {
+        if ($piece[0] === '<') {
+            // Tag — update depth state, emit unchanged.
+            $low = strtolower($piece);
+            if    (strpos($low, '<b')  === 0 && $low[1] !== '/') $bold++;
+            elseif (strpos($low, '</b') === 0) $bold = max(0, $bold - 1);
+            elseif (strpos($low, '<i')  === 0 && $low[1] !== '/') $italic++;
+            elseif (strpos($low, '</i') === 0) $italic = max(0, $italic - 1);
+            $out .= $piece;
+        } else {
+            // Text run — substitute only if current state qualifies.
+            $qual = (!$needsBold || $bold > 0) && (!$needsItalic || $italic > 0);
+            $out .= $qual ? preg_replace($regex, $token, $piece) : $piece;
+        }
+    }
+    return $out;
 }
 
 /**

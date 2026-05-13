@@ -41,6 +41,11 @@
         #pane-pronunciations .tts-table th, #pane-pronunciations .tts-table td { padding:4px 6px; }
         #pane-pronunciations .f-type-radio { width:13px; height:13px; margin:0; vertical-align:middle; cursor:pointer; }
         /* Validation warning icon — sits to the right of the input. */
+        .f-bi-btn { background:#fafafa; border:1px solid #ccc; border-radius:3px; padding:2px 6px; cursor:pointer; font-size:0.78rem; line-height:1.2; flex:0 0 auto; color:#888; min-width:20px; }
+        .f-bi-btn.on { background:#31345A; color:#fff; border-color:#31345A; }
+        .f-bi-btn.on.f-italic { font-style:italic; }
+        .f-bi-btn.f-bold { font-weight:700; }
+        .f-bi-btn.f-italic { font-style:italic; }
         .f-warn { display:none; color:#c0392b; cursor:pointer; margin-left:2px; font-size:1rem; line-height:1; flex:0 0 auto; }
         .f-warn.show { display:inline; }
         .f-ipa-helper { background:none; border:1px solid transparent; cursor:pointer; padding:1px 4px; margin-left:2px; font-size:0.78rem; color:#888; line-height:1; flex:0 0 auto; border-radius:3px; }
@@ -176,7 +181,18 @@
             </div>
             <!-- Row 2: Print filter (left) … per-page + pager (right) -->
             <div id="tunes-toolbar-2" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;">
-                <span style="color:#666;">Filter Print:</span>
+                <select id="tunes-maxlen" onchange="setTunesMaxLen(this.value)" title="Filter Print to at-most N characters" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;color:#888;">
+                    <option value="">len</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                </select>
                 <input id="tunes-filter" type="text" placeholder="contains…" oninput="setTunesFilter(this.value)" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;width:180px;">
                 <span id="tunes-filter-status" style="color:#888;font-size:0.78rem;"></span>
                 <div style="flex:1 1 auto;"></div>
@@ -192,13 +208,13 @@
                     <option value="all">All</option>
                 </select>
                 <span style="color:#666;">per page</span>
-                <button id="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;margin-left:8px;">←</button>
+                <button class="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;margin-left:8px;">←</button>
                 <span style="color:#555;font-variant-numeric:tabular-nums;white-space:nowrap;">Page
-                    <input id="tunes-page-input" type="number" min="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onchange="jumpToTunesPage(this.value)" style="width:50px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;text-align:right;">
-                    of <span id="tunes-page-total">1</span>
+                    <input class="tunes-page-input" type="number" min="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onchange="jumpToTunesPage(this.value)" style="width:50px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;text-align:right;">
+                    of <span class="tunes-page-total">1</span>
                 </span>
-                <button id="tunes-next" onclick="goTunesPage(1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">→</button>
-                <span id="tunes-page-info" style="color:#555;font-size:0.78rem;font-variant-numeric:tabular-nums;white-space:nowrap;"></span>
+                <button class="tunes-next" onclick="goTunesPage(1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">→</button>
+                <span class="tunes-page-info" style="color:#555;font-size:0.78rem;font-variant-numeric:tabular-nums;white-space:nowrap;"></span>
             </div>
             <table class="tts-table">
                 <thead>
@@ -206,7 +222,7 @@
                         <th style="width:32px;text-align:center;" title="Active — uncheck to disable this rule"></th>
                         <th onclick="sortTunesBy('print')"      style="width:22%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
                         <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
-                        <th style="width:23%;text-align:left;padding-left:25px;" title="Re-spelling — picked variant has its radio checked">SUB <span style="color:#999;font-weight:400;">(re-spelling)</span></th>
+                        <th style="width:23%;text-align:left;padding-left:25px;" title="Re-spelling — picked variant has its radio checked">SUB</th>
                         <th style="width:19%;text-align:left;padding-left:25px;" title="IPA — picked variant has its radio checked">IPA</th>
                         <th style="width:21%" title="Saved for reference / comparison. Azure neural voices don't accept the SAPI alphabet, so it isn't selectable for synthesis.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
                         <th style="width:36px"></th>
@@ -216,6 +232,16 @@
                 </thead>
                 <tbody id="tunes-tbody"></tbody>
             </table>
+            <!-- Bottom pager — mirrors the top pager for long lists -->
+            <div id="tunes-toolbar-bot" style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:0.85rem;flex-wrap:wrap;justify-content:flex-end;">
+                <button class="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">←</button>
+                <span style="color:#555;font-variant-numeric:tabular-nums;white-space:nowrap;">Page
+                    <input class="tunes-page-input" type="number" min="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onchange="jumpToTunesPage(this.value)" style="width:50px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;text-align:right;">
+                    of <span class="tunes-page-total">1</span>
+                </span>
+                <button class="tunes-next" onclick="goTunesPage(1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">→</button>
+                <span class="tunes-page-info" style="color:#555;font-size:0.78rem;font-variant-numeric:tabular-nums;white-space:nowrap;"></span>
+            </div>
             <div id="tunes-status" class="status-msg"></div>
         </div>
     </div>
@@ -255,11 +281,11 @@
                 <thead>
                     <tr>
                         <th style="width:60px">Ch #</th>
-                        <th style="width:20%">Label</th>
+                        <th style="width:14%">Label</th>
                         <th style="width:90px">Paragraphs</th>
                         <th style="width:90px;white-space:nowrap;" title="Open this chapter in the flipbook">Read</th>
                         <th style="width:120px">Status</th>
-                        <th style="width:220px">Audio</th>
+                        <th style="width:260px">Audio</th>
                         <th class="col-actions"></th>
                     </tr>
                 </thead>
@@ -606,6 +632,13 @@ async function loadTunes() {
         TUNES_FILTER = (sessionState.load('tunesFilter', '') || '').toLowerCase();
         var fi = $('tunes-filter');
         if (fi) fi.value = TUNES_FILTER;
+        var savedLen = parseInt(sessionState.load('tunesMaxLen', '0'), 10) || 0;
+        TUNES_MAX_LEN = (savedLen > 0 && savedLen <= 9) ? savedLen : 0;
+        var ml = $('tunes-maxlen');
+        if (ml) {
+            ml.value = TUNES_MAX_LEN ? String(TUNES_MAX_LEN) : '';
+            ml.style.color = TUNES_MAX_LEN ? '#222' : '#888';
+        }
     }
     renderTunes();
 }
@@ -635,10 +668,20 @@ var TUNES_SORT      = { col: 'print', dir: 'asc' };
 var TUNES_PAGE_SIZE = 50;       // 'all' or a positive integer
 var TUNES_PAGE_IDX  = 0;        // zero-based
 var TUNES_FILTER    = '';       // case-insensitive substring filter on Print
+var TUNES_MAX_LEN   = 0;        // 0 = no max-length filter; otherwise 1..9
 function setTunesFilter(v) {
     TUNES_FILTER = (v || '').trim().toLowerCase();
     TUNES_PAGE_IDX = 0;
     if (window.sessionState) sessionState.save('tunesFilter', TUNES_FILTER);
+    renderTunes();
+}
+function setTunesMaxLen(v) {
+    var n = parseInt(v, 10);
+    TUNES_MAX_LEN = (isFinite(n) && n > 0) ? n : 0;
+    var sel = $('tunes-maxlen');
+    if (sel) sel.style.color = TUNES_MAX_LEN ? '#222' : '#888';
+    TUNES_PAGE_IDX = 0;
+    if (window.sessionState) sessionState.save('tunesMaxLen', String(TUNES_MAX_LEN));
     renderTunes();
 }
 function jumpToTunesPage(v) {
@@ -675,9 +718,15 @@ function goTunesPage(delta) {
 function renderTunes() {
     var tb = $('tunes-tbody');
     tb.innerHTML = '';
-    // Apply Print-substring filter first so the count and pager reflect
-    // only the visible subset.
+    // Apply Print filters first so the count and pager reflect the
+    // visible subset. Max-length filter narrows by character count;
+    // substring filter narrows by content.
     var src = STATE.tunes;
+    if (TUNES_MAX_LEN > 0) {
+        src = src.filter(function(t) {
+            return (t.tts_tune_print || '').length <= TUNES_MAX_LEN;
+        });
+    }
     if (TUNES_FILTER) {
         src = src.filter(function(t) {
             return (t.tts_tune_print || '').toLowerCase().indexOf(TUNES_FILTER) !== -1;
@@ -701,26 +750,25 @@ function renderTunes() {
     page.forEach(t => tb.appendChild(buildTuneRow(t)));
 
     // Pager UI: editable current-page input + total page count + summary.
-    var pageInp = $('tunes-page-input');
-    if (pageInp) {
-        pageInp.value = TUNES_PAGE_IDX + 1;
-        pageInp.max   = pages;
-    }
-    var totalEl = $('tunes-page-total');
-    if (totalEl) totalEl.textContent = pages;
-    var info = $('tunes-page-info');
-    if (info) {
-        var endIdx = Math.min(total, start + page.length);
-        info.textContent = total === 0
-            ? (TUNES_FILTER ? '(no matches)' : 'No items')
-            : '(' + (start + 1) + '–' + endIdx + ' of ' + total + ')';
-    }
-    // Filter-status hint shows the active filter.
+    // Multiple pager rows can exist (top + bottom) — update them all.
+    document.querySelectorAll('.tunes-page-input').forEach(function(inp) {
+        inp.value = TUNES_PAGE_IDX + 1;
+        inp.max   = pages;
+    });
+    document.querySelectorAll('.tunes-page-total').forEach(function(el) { el.textContent = pages; });
+    var endIdx = Math.min(total, start + page.length);
+    var infoText = total === 0
+        ? (TUNES_FILTER ? '(no matches)' : 'No items')
+        : '(' + (start + 1) + '–' + endIdx + ' of ' + total + ')';
+    document.querySelectorAll('.tunes-page-info').forEach(function(el) { el.textContent = infoText; });
     var fs = $('tunes-filter-status');
     if (fs) fs.textContent = TUNES_FILTER ? ('matches: ' + total) : '';
-    var prev = $('tunes-prev'), next = $('tunes-next');
-    if (prev) { prev.disabled = TUNES_PAGE_IDX <= 0;       prev.style.opacity = prev.disabled ? '0.45' : '1'; }
-    if (next) { next.disabled = TUNES_PAGE_IDX >= pages-1; next.style.opacity = next.disabled ? '0.45' : '1'; }
+    document.querySelectorAll('.tunes-prev').forEach(function(b) {
+        b.disabled = TUNES_PAGE_IDX <= 0; b.style.opacity = b.disabled ? '0.45' : '1';
+    });
+    document.querySelectorAll('.tunes-next').forEach(function(b) {
+        b.disabled = TUNES_PAGE_IDX >= pages - 1; b.style.opacity = b.disabled ? '0.45' : '1';
+    });
     document.querySelectorAll('#pane-pronunciations .sort-arrow').forEach(function(s) {
         var col = s.dataset.col;
         s.textContent = (col === TUNES_SORT.col) ? (TUNES_SORT.dir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -1062,9 +1110,15 @@ function buildTuneRow(t) {
     var savedType = (t.tts_tune_phonetic_type === 'sapi') ? 'ipa' : (t.tts_tune_phonetic_type || 'sub');
     var subChecked = savedType === 'sub' ? ' checked' : '';
     var ipaChecked = savedType === 'ipa' ? ' checked' : '';
+    var boldOn   = !!t.tts_tune_match_bold;
+    var italicOn = !!t.tts_tune_match_italic;
     tr.innerHTML =
         '<td style="padding:4px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
-        '<td><input type="text" class="f-print" value="' + escapeHtml(t.tts_tune_print || '') + '"></td>' +
+        '<td><div style="display:flex;align-items:center;gap:4px;">'
+            + '<input type="text" class="f-print" value="' + escapeHtml(t.tts_tune_print || '') + '" style="flex:1;">'
+            + '<button type="button" class="f-bi-btn f-bold'   + (boldOn   ? ' on' : '') + '" title="Restrict match to bold text">B</button>'
+            + '<button type="button" class="f-bi-btn f-italic' + (italicOn ? ' on' : '') + '" title="Restrict match to italic text">I</button>'
+        + '</div></td>' +
         '<td class="f-count" style="text-align:right;font-variant-numeric:tabular-nums;color:#555;">' + count + '</td>' +
         '<td><label style="display:flex;align-items:center;gap:6px;">'
             + '<input type="radio" name="' + grp + '" class="f-type-radio" value="sub" title="Use SUB for this rule"' + subChecked + '>'
@@ -1101,6 +1155,13 @@ function buildTuneRow(t) {
         r.addEventListener('change', function() { if (r.checked) saveTuneRow(tr); });
     });
     tr.querySelector('.f-active').addEventListener('change', function() { saveTuneRow(tr); });
+    // B / I toggle buttons — flip their .on class and save the row.
+    tr.querySelectorAll('.f-bi-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btn.classList.toggle('on');
+            saveTuneRow(tr);
+        });
+    });
     // SAPI ↔ IPA bidirectional auto-translate. Programmatic .value
     // assignment doesn't fire input events, so this can't infinite-loop.
     // Whichever cell the user types in, the other one tracks.
@@ -1171,6 +1232,8 @@ async function saveTuneRow(tr) {
     var type   = typeRadio ? typeRadio.value : 'sub';
     var note   = tr.querySelector('.f-note').value;
     var active = tr.querySelector('.f-active').checked;
+    var mBold   = tr.querySelector('.f-bi-btn.f-bold').classList.contains('on');
+    var mItalic = tr.querySelector('.f-bi-btn.f-italic').classList.contains('on');
     if (!print) return;
     // We allow type to be saved even if the chosen column is empty — the
     // synthesis path silently skips empty rules. So a user can flip Type
@@ -1180,7 +1243,8 @@ async function saveTuneRow(tr) {
         body: JSON.stringify({
             action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key,
             print: print, phonetic_sub: sub, phonetic_ipa: ipa, phonetic_sapi: sapi,
-            phonetic_type: type, note: note, active: active
+            phonetic_type: type, note: note, active: active,
+            match_bold: mBold, match_italic: mItalic
         }),
     });
     tr.dataset.key = res.tts_tune_key;
@@ -1412,7 +1476,7 @@ function renderChapters() {
         }
         var audio = '';
         if (st === 'complete' && c.tts_audio_path) {
-            audio = '<audio controls preload="none" style="width:210px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
+            audio = '<audio controls preload="none" style="width:250px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
         }
         var actions = '<button class="btn-sm" onclick="openBuildModal(' + c.chapter_key + ',' + (c.tts_audio_key || 'null') + ')">' + (st === 'complete' ? 'Rebuild' : st === 'none' ? 'Build' : 'Settings') + '</button>';
         if (st === 'running' || st === 'pending') {
