@@ -194,31 +194,43 @@ function rebuildVolumeMp3Zip(PDO $db, int $volumeKey): bool {
     sort($files);
 
     $zipPath = $dir . '/' . $slug . '.mp3.zip';
-    $zip = new ZipArchive();
-    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+
+    // Keep filenames intact ({volume_code}-ch{NN}.{ext}) inside the zip
+    // so someone unzipping multiple books in one directory ends up with
+    // each chapter clearly tagged to its volume. Container PHP doesn't
+    // ship ext-zip, so we shell out to /usr/bin/zip with -j (junk paths)
+    // since the source files all live in the same directory anyway.
+    $tmpZip = $dir . '/.tmp_' . basename($zipPath) . '.' . bin2hex(random_bytes(4));
+    $cmd = 'zip -q -j ' . escapeshellarg($tmpZip);
+    foreach ($files as $f) $cmd .= ' ' . escapeshellarg($f);
+    $cmd .= ' 2>&1';
+    $out = []; $rc = 0;
+    exec($cmd, $out, $rc);
+    if ($rc !== 0 || !is_file($tmpZip)) {
+        @unlink($tmpZip);
         return false;
     }
-    $prefix = $slug . '-';
-    foreach ($files as $f) {
-        $base = basename($f);
-        // Strip the "{volume_code}-" prefix so entries are "ch02.mp3".
-        if (strpos($base, $prefix) === 0) $entry = substr($base, strlen($prefix));
-        else                              $entry = $base;
-        $zip->addFile($f, $entry);
+    $ok = @rename($tmpZip, $zipPath);
+    if (!$ok) {
+        $ok = @copy($tmpZip, $zipPath);
+        @unlink($tmpZip);
     }
-    $zip->close();
-    return true;
+    return $ok;
 }
 
 function placeholdersToBreaks(string $escaped): string {
     // ms > 0 → <break time="Nms"/>  (add the requested pause)
-    // ms = 0 → <break strength="none"/>  (suppress Azure's natural pause
-    //          at that character — useful for hyphenated compounds where
-    //          the engine would otherwise insert a small break).
+    // ms = 0 → emit NOTHING. We tried <break strength="none"/> here, but
+    //          Azure treats every <break> tag — even strength=none — as
+    //          a prosody-resetting hint, which produced an audible pause
+    //          right where the user was trying to suppress one (most
+    //          obviously around half-ring modifiers like ʿ ʾ inside a
+    //          word, e.g. "ʾAbraham", "Bareʿsyth"). Dropping the marker
+    //          entirely lets the surrounding letters run together cleanly.
     return preg_replace_callback('/\x01PAUSE_(\d+)_(\d+)\x01/', function ($m) {
         $ms = (int)$m[2];
         if ($ms > 0) return '<break time="' . $ms . 'ms"/>';
-        return '<break strength="none"/>';
+        return '';
     }, $escaped);
 }
 

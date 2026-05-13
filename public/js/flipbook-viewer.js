@@ -745,23 +745,34 @@
       };
       document.getElementById('download').onclick = () => { window.location.href = PDF_PATH; };
 
-      // MP3 download — sibling button next to PDF, shown only if the
-      // server has produced a bundled zip of this volume's chapter audio
-      // (rebuilt by admin-tts-build-worker.php at the end of each
-      // chapter synth). Filename pattern: /u/tts-audio/<bookCode>.mp3.zip
+      // MP3 download — sibling button next to PDF. Always inserted; we
+      // HEAD-probe /u/tts-audio/<bookCode>.mp3.zip and disable the button
+      // if no bundled zip has been built yet. The zip is rebuilt by
+      // admin-tts-build-worker.php at the end of each chapter synth.
+      // The download URL carries ?v=<mtime> so Cloudflare's edge cache
+      // can't serve a stale zip after a rebuild.
       (() => {
         const dlBtn = document.getElementById('download');
         if (!dlBtn || !BOOK_CODE) return;
         const MP3_PATH = '/u/tts-audio/' + BOOK_CODE + '.mp3.zip';
-        fetch(MP3_PATH, { method: 'HEAD' }).then(r => {
+        const btn = document.createElement('button');
+        btn.id = 'download-mp3';
+        btn.innerHTML = '↓ <span class="lbl">MP3</span>';
+        btn.className = dlBtn.className;
+        btn.disabled = true;
+        btn.title = 'No bundled MP3 yet — build a chapter first';
+        dlBtn.parentNode.insertBefore(btn, dlBtn.nextSibling);
+        // Probe with a random query so Cloudflare can't serve a cached
+        // HEAD that points us at a stale Last-Modified. The download
+        // URL itself uses ?v=<mtime>, which is stable per build so the
+        // edge can still cache the actual zip once.
+        fetch(MP3_PATH + '?probe=' + Date.now(), { method: 'HEAD', cache: 'no-store' }).then(r => {
           if (!r.ok) return;
-          const btn = document.createElement('button');
-          btn.id = 'download-mp3';
+          const lm = r.headers.get('last-modified');
+          const ts = lm ? Math.floor(new Date(lm).getTime() / 1000) : Date.now();
+          btn.disabled = false;
           btn.title = 'Download all chapter MP3s (zip)';
-          btn.innerHTML = '↓ <span class="lbl">MP3</span>';
-          btn.className = dlBtn.className;
-          btn.onclick = () => { window.location.href = MP3_PATH; };
-          dlBtn.parentNode.insertBefore(btn, dlBtn.nextSibling);
+          btn.onclick = () => { window.location.href = MP3_PATH + '?v=' + ts; };
         }).catch(() => {});
       })();
 

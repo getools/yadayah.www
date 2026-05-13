@@ -173,10 +173,30 @@ $outDirContainer = dirname(__DIR__) . '/u/tts-audio';
 $outDir = is_dir(dirname(__DIR__)) ? $outDirContainer : $outDirHost;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);
 
-// Chapter row for filename naming.
-$chRow = $db->prepare("SELECT chapter_number FROM yy_chapter WHERE chapter_key = ?");
+// Chapter row for filename naming + heading synthesis.
+$chRow = $db->prepare("SELECT chapter_number, chapter_name FROM yy_chapter WHERE chapter_key = ?");
 $chRow->execute([$chapterKey]);
-$chNum = (int)($chRow->fetchColumn() ?: 0);
+$chInfo  = $chRow->fetch();
+$chNum   = (int)($chInfo['chapter_number'] ?? 0);
+$chName  = trim((string)($chInfo['chapter_name'] ?? ''));
+
+// Look up named pseudo-pauses from yy_tts_pause so the heading synthesis
+// below can splice in <break time="…"/> tags. Defaults match the seed
+// rows in the DB so an installation missing these keys still sounds
+// reasonable.
+$getNamedPauseMs = function(string $key, int $default) use ($cfg): int {
+    foreach (($cfg['pauses'] ?? []) as $p) {
+        if (($p['tts_pause_search'] ?? '') !== $key) continue;
+        if (empty($p['tts_pause_active_flag']))     continue;
+        return (int)$p['tts_pause_ms'];
+    }
+    return $default;
+};
+$pauseChapBefore  = $getNamedPauseMs('__chapter_before__',  2500);
+$pauseChapBetween = $getNamedPauseMs('__chapter_between__',  700);
+$pauseChapAfter   = $getNamedPauseMs('__chapter_after__',   1500);
+$pauseSubBefore   = $getNamedPauseMs('__subhead_before__',   800);
+$pauseSubAfter    = $getNamedPauseMs('__subhead_after__',    500);
 $ext = (strpos($cfg['system']['tts_output_format'], 'mp3') !== false) ? 'mp3'
      : ((strpos($cfg['system']['tts_output_format'], 'opus') !== false) ? 'opus'
      : ((strpos($cfg['system']['tts_output_format'], 'pcm') !== false) ? 'wav' : 'mp3'));
@@ -361,8 +381,38 @@ foreach ($paragraphs as $idx => $p) {
     // into <break time="Nms"/> further down the pipeline.
     $rawHtml = (string)$p['paragraph_text_html'];
     $rawHtml = preprocessFontFilter($rawHtml, $cfg['fonts'] ?? []);
-    $segs = segmentParagraph($rawHtml);
-    if (!$segs) continue;
+
+    // Chapter heading (the first paragraph in the chapter — typically
+    // text like "1 Babel ~ Confusion"). Replace it with a synthesized
+    // "Chapter N <pause> <title> <pause>" line so listeners hear the
+    // chapter number announced. The configured __chapter_before__,
+    // __chapter_between__, and __chapter_after__ pauses wrap the line.
+    if ($idx === 0 && $chNum > 0) {
+        $titleText = $chName !== '' ? $chName : (string)$p['paragraph_text_plain'];
+        // Strip a leading "N " (chapter number) from the title text if it's there,
+        // since we're announcing it explicitly via "Chapter $chNum".
+        $titleText = preg_replace('/^\s*\d+\s+/', '', $titleText);
+        $headingText =
+              "\x01PAUSE_0_{$pauseChapBefore}\x01"
+            . "Chapter $chNum"
+            . "\x01PAUSE_0_{$pauseChapBetween}\x01"
+            . $titleText
+            . "\x01PAUSE_0_{$pauseChapAfter}\x01";
+        $segs = [['category' => 'main', 'text' => $headingText]];
+    } else {
+        $segs = segmentParagraph($rawHtml);
+        if (!$segs) continue;
+
+        // Subhead (italic paragraph right after the chapter heading).
+        // YY chapters typically have a short italic subhead at idx=1
+        // (e.g. "Corrupting by Commingling…"). Wrap it with the
+        // configured __subhead_before__/_after__ pauses so it sits as a
+        // clear beat between heading and body.
+        if ($idx === 1 && preg_match('/<i\b/i', $rawHtml)) {
+            $segs[0]['text']                       = "\x01PAUSE_0_{$pauseSubBefore}\x01" . $segs[0]['text'];
+            $segs[count($segs) - 1]['text']       .= "\x01PAUSE_0_{$pauseSubAfter}\x01";
+        }
+    }
 
     $blocks = '';
     foreach ($segs as $seg) {
@@ -475,6 +525,12 @@ if ($ffprobe) {
     if ($out) $duration = (int)round((float)trim($out));
 }
 
+// Mark the file "live" only on a clean build (zero paragraph failures).
+// The flipbook tts-audio.php endpoint gates the Play button on
+// tts_audio_live_dtime being set — so a partial / error-laden build
+// stays complete-but-not-live and the prior known-good audio (if any)
+// keeps serving until a clean rebuild promotes the new file.
+$liveNow = ($failureCount === 0) ? date('Y-m-d H:i:sO') : null;
 updateAudio($db, $audioKey, [
     'tts_audio_status'          => 'complete',
     'tts_audio_progress'        => 100,
@@ -483,6 +539,7 @@ updateAudio($db, $audioKey, [
     'tts_audio_size_bytes'      => $finalSize,
     'tts_audio_duration_secs'   => $duration,
     'tts_audio_completed_dtime' => date('Y-m-d H:i:sO'),
+    'tts_audio_live_dtime'      => $liveNow,
     'tts_audio_error'           => $failures ? implode(' | ', array_slice($failures, 0, 5)) : null,
 ]);
 

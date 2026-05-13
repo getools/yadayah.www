@@ -95,6 +95,7 @@
         .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center; }
         .modal-overlay.visible { display:flex; }
         .modal-box { background:#fff; border-radius:8px; padding:24px; max-width:680px; width:90%; max-height:85vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+        #build-modal .modal-box { max-width:1040px; }
         .modal-box h3 { margin:0 0 14px; font-size:1.05rem; color:#31345A; }
         .modal-box .modal-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:14px; border-top:1px solid #eee; }
         .modal-box button { padding:8px 18px; border-radius:4px; border:1px solid #ccc; cursor:pointer; font-size:0.9rem; font-weight:600; }
@@ -475,10 +476,11 @@ function renderCategoryRows() {
         var saved = STATE.categories[cat.code] || {};
         var row = document.createElement('div');
         row.className = 'voice-row';
-        row.style.gridTemplateColumns = '220px 1fr auto auto';
+        row.style.gridTemplateColumns = '220px 1fr 160px auto auto';
         row.innerHTML =
             '<label>' + escapeHtml(cat.label) + '</label>' +
             '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
+            '<select data-field="style" title="Speaking style (e.g. cheerful, chat, narration). Empty = no style override."></select>' +
             '<div class="prosody">' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></span>' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:80px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it. Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></span>' +
@@ -486,13 +488,17 @@ function renderCategoryRows() {
             '</div>' +
             '<button class="btn-listen" data-cat="' + cat.code + '" title="Play a sample with current settings">▶</button>';
         root.appendChild(row);
-        var sel = row.querySelector('select');
+        var voiceSel = row.querySelector('select[data-field="voice"]');
         CATALOG.voices.forEach(v => {
             var o = document.createElement('option');
             o.value = v.code; o.textContent = v.label;
-            sel.appendChild(o);
+            o.dataset.styles = (v.styles || []).join(',');
+            voiceSel.appendChild(o);
         });
-        if (saved.tts_voice_code) sel.value = saved.tts_voice_code;
+        if (saved.tts_voice_code) voiceSel.value = saved.tts_voice_code;
+        var styleSel = row.querySelector('select[data-field="style"]');
+        populateStyleOptions(voiceSel, styleSel, saved.tts_voice_style || '');
+        voiceSel.addEventListener('change', function() { populateStyleOptions(voiceSel, styleSel, ''); });
         row.querySelector('button').addEventListener('click', function() {
             saveAndListenCategory(cat.code, row);
         });
@@ -508,6 +514,22 @@ function renderCategoryRows() {
             }
         });
     });
+}
+
+// Rebuild a style <select> from the styles list on the currently-selected
+// voice option. `selected` is the style to pre-select (empty string keeps
+// "no style"). Used by both the Voices tab and the Build-audio modal.
+function populateStyleOptions(voiceSel, styleSel, selected) {
+    var styles = (voiceSel.selectedOptions[0]?.dataset.styles || '').split(',').filter(Boolean);
+    styleSel.innerHTML = '<option value="">(no style)</option>';
+    styles.forEach(function(s) {
+        if (s === 'general') return;
+        var o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        styleSel.appendChild(o);
+    });
+    if (selected && styles.indexOf(selected) !== -1) styleSel.value = selected;
+    styleSel.disabled = styles.length === 0;
 }
 
 function populatePreviewVoiceList() {
@@ -556,8 +578,10 @@ async function saveSystem() {
 }
 
 function readCategoryRow(rowEl) {
+    var styleSel = rowEl.querySelector('[data-field=style]');
     return {
-        voice:  rowEl.querySelector('select').value,
+        voice:  rowEl.querySelector('[data-field=voice]').value,
+        style:  styleSel ? styleSel.value : '',
         rate:   parseInt(rowEl.querySelector('[data-field=rate]').value, 10) || 0,
         pitch:  parseFloat(rowEl.querySelector('[data-field=pitch]').value) || 0,
         volume: parseInt(rowEl.querySelector('[data-field=volume]').value, 10) || 100,
@@ -574,11 +598,13 @@ async function saveCategoryOnly(catCode, rowEl) {
             tts_key: TTS_KEY,
             tts_category: catCode,
             voice_code: c.voice,
+            style: c.style || null,
             rate_pct: c.rate, pitch_st: c.pitch, volume: c.volume,
         }),
     });
     STATE.categories[catCode] = {
         tts_category: catCode, tts_voice_code: c.voice,
+        tts_voice_style: c.style || null,
         tts_voice_rate_pct: c.rate, tts_voice_pitch_st: c.pitch, tts_voice_volume: c.volume,
     };
 }
@@ -598,6 +624,7 @@ async function saveAndListenCategory(catCode, rowEl) {
                 tts_key: TTS_KEY,
                 category: catCode,
                 voice_code: c.voice,
+                style: c.style || null,
                 rate_pct: c.rate, pitch_st: c.pitch, volume: c.volume,
                 text: $('preview-text').value || 'This is a preview.',
             }),
@@ -1702,25 +1729,30 @@ function openBuildModal(chapterKey, audioKey) {
         var saved = STATE.categories[cat.code] || {};
         var row = document.createElement('div');
         row.className = 'voice-row';
-        // Match the Voices-tab layout so admins can tweak rate/pitch/vol
-        // for a one-off build without leaving the chapter's row.
-        row.style.gridTemplateColumns = '180px 1fr auto';
+        // Match the Voices-tab layout so admins can tweak voice/style/
+        // rate/pitch/vol for a one-off build without leaving the chapter's row.
+        row.style.gridTemplateColumns = '180px 1fr 160px auto';
         row.innerHTML =
             '<label>' + escapeHtml(cat.label) + '</label>' +
             '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
+            '<select data-field="style" title="Speaking style — defaults to the Voices-tab setting"></select>' +
             '<div class="prosody">' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down" style="margin-left:2px;cursor:help;">%</span></span>' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:80px"><span title="Semitones — 12 = one octave" style="margin-left:2px;cursor:help;">st</span></span>' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '"></span>' +
             '</div>';
         root.appendChild(row);
-        var sel = row.querySelector('select[data-field="voice"]');
+        var voiceSel = row.querySelector('select[data-field="voice"]');
         CATALOG.voices.forEach(v => {
             var o = document.createElement('option');
             o.value = v.code; o.textContent = v.label;
-            sel.appendChild(o);
+            o.dataset.styles = (v.styles || []).join(',');
+            voiceSel.appendChild(o);
         });
-        if (saved.tts_voice_code) sel.value = saved.tts_voice_code;
+        if (saved.tts_voice_code) voiceSel.value = saved.tts_voice_code;
+        var styleSel = row.querySelector('select[data-field="style"]');
+        populateStyleOptions(voiceSel, styleSel, saved.tts_voice_style || '');
+        voiceSel.addEventListener('change', function() { populateStyleOptions(voiceSel, styleSel, ''); });
     });
     $('build-status').textContent = '';
     $('build-modal').classList.add('visible');
@@ -1741,11 +1773,13 @@ async function startBuild() {
     document.querySelectorAll('#build-category-rows .voice-row').forEach(function(row) {
         var sel = row.querySelector('select[data-field="voice"]');
         if (!sel) return;
+        var styleSel = row.querySelector('select[data-field="style"]');
         var rate = row.querySelector('input[data-field="rate"]');
         var pitch = row.querySelector('input[data-field="pitch"]');
         var vol = row.querySelector('input[data-field="volume"]');
         overrides[sel.dataset.cat] = {
             voice_code: sel.value,
+            style:      styleSel && styleSel.value ? styleSel.value : null,
             rate_pct:   rate  ? parseInt(rate.value, 10)    || 0   : 0,
             pitch_st:   pitch ? parseFloat(pitch.value)     || 0   : 0,
             volume:     vol   ? parseInt(vol.value, 10)     || 100 : 100,
