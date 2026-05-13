@@ -64,8 +64,11 @@
                         <th class="sortable" data-col="page_title" onclick="setSort('page_title')">Title<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_toolbar" onclick="setSort('page_toolbar')">Header<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_header_sort" onclick="setSort('page_header_sort')">H.Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="parent_label" onclick="setSort('parent_label')">Parent<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_parent_sort" onclick="setSort('page_parent_sort')">P.Sort<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_footer_col" onclick="setSort('page_footer_col')">Footer<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_footer_sort" onclick="setSort('page_footer_sort')">F.Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_toolbar_flag" onclick="setSort('page_toolbar_flag')" title="Page has a sub-toolbar of children">Sub-T<span class="sort-indicator"></span></th>
                         <th class="sortable" data-col="page_active_flag" onclick="setSort('page_active_flag')">Active<span class="sort-indicator"></span></th>
                         <th></th>
                     </tr>
@@ -121,6 +124,23 @@
                 <div class="field">
                     <label for="f-footer-sort">Footer Sort</label>
                     <input type="number" id="f-footer-sort" value="0" style="width:80px">
+                </div>
+            </div>
+            <!-- Sub-toolbar: parent/child wiring. A page flagged as having
+                 a sub-toolbar can host children; children pick that page as
+                 their parent and their order is set by Parent Sort. -->
+            <div class="form-row">
+                <div class="field">
+                    <label><input type="checkbox" id="f-toolbar-flag"> Has Sub-Toolbar</label>
+                    <div style="font-size:0.74rem;color:#888;margin-top:2px;">When checked, this page can appear as a "Parent" option for other pages.</div>
+                </div>
+                <div class="field">
+                    <label for="f-parent">Parent</label>
+                    <select id="f-parent"><option value="">None</option></select>
+                </div>
+                <div class="field">
+                    <label for="f-parent-sort">Parent Sort</label>
+                    <input type="number" id="f-parent-sort" value="0" style="width:80px">
                 </div>
             </div>
             <div id="aliases-section" style="display:none;margin-top:16px;border-top:1px solid #eee;padding-top:16px;">
@@ -264,13 +284,24 @@ function renderList() {
         var badge = r.page_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';
         var headerLabel = HEADER_LABELS[r.page_toolbar != null ? r.page_toolbar : ''] || r.page_toolbar;
         var footerLabel = FOOTER_LABELS[r.page_footer_col != null ? r.page_footer_col : 0] || 'N/A';
+        var parentLabel = '';
+        if (r.page_parent_key) {
+            var p = allPages.find(function(x){ return x.page_key === r.page_parent_key; });
+            parentLabel = p ? (p.page_title || p.page_code) : ('#' + r.page_parent_key);
+        }
+        var subToolbar = r.page_toolbar_flag
+            ? '<span class="badge-active" title="This page renders a sub-toolbar of its children">✓</span>'
+            : '<span style="color:#bbb">—</span>';
         return '<tr>'
             + '<td>' + esc(r.page_code) + '</td>'
             + '<td>' + esc(r.page_title) + '</td>'
             + '<td>' + headerLabel + '</td>'
             + '<td>' + (r.page_header_sort || 0) + '</td>'
+            + '<td>' + esc(parentLabel) + '</td>'
+            + '<td>' + (r.page_parent_sort || 0) + '</td>'
             + '<td>' + footerLabel + '</td>'
             + '<td>' + (r.page_footer_sort || 0) + '</td>'
+            + '<td style="text-align:center">' + subToolbar + '</td>'
             + '<td>' + badge + '</td>'
             + '<td>'
             + '<button class="btn btn-sm btn-secondary" onclick="editPage(' + r.page_key + ')">Edit</button>'
@@ -294,6 +325,22 @@ function showPageForm(record) {
     document.getElementById('f-footer-col').value = record ? (record.page_footer_col || 0) : 0;
     document.getElementById('f-header-sort').value = record ? (record.page_header_sort || 0) : 0;
     document.getElementById('f-footer-sort').value = record ? (record.page_footer_sort || 0) : 0;
+    // Sub-toolbar fields. Parent dropdown is populated from any page with
+    // page_toolbar_flag=true — INCLUDING the page being edited, because a
+    // parent page is also one of the tabs in its own sub-toolbar (e.g.
+    // Translations appears as the first tab in its own Translations sub-
+    // toolbar alongside Glossary / Dead Sea Scrolls / Grammar).
+    document.getElementById('f-toolbar-flag').checked = record ? !!record.page_toolbar_flag : false;
+    var parentSel = document.getElementById('f-parent');
+    parentSel.innerHTML = '<option value="">None</option>';
+    allPages.filter(function(p){ return p.page_toolbar_flag; }).forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p.page_key;
+        opt.textContent = (p.page_title || p.page_code) + '  [' + p.page_code + ']';
+        parentSel.appendChild(opt);
+    });
+    parentSel.value = record && record.page_parent_key ? String(record.page_parent_key) : '';
+    document.getElementById('f-parent-sort').value = record ? (record.page_parent_sort || 0) : 0;
     document.getElementById('btn-delete').style.display = editingPageKey ? '' : 'none';
     document.getElementById('form-error').style.display = 'none';
 
@@ -421,7 +468,11 @@ function savePage() {
     var headerSort = parseInt(document.getElementById('f-header-sort').value) || 0;
     var url = document.getElementById('f-url').value.trim();
     var footerSort = parseInt(document.getElementById('f-footer-sort').value) || 0;
-    var body = {page_code: code, page_title: title, page_active_flag: active, page_toolbar: toolbar, page_footer_col: footerCol, page_header_sort: headerSort, page_footer_sort: footerSort, page_url: url};
+    var toolbarFlag = document.getElementById('f-toolbar-flag').checked;
+    var parentRaw = document.getElementById('f-parent').value;
+    var parentKey = parentRaw ? parseInt(parentRaw, 10) : null;
+    var parentSort = parseInt(document.getElementById('f-parent-sort').value, 10) || 0;
+    var body = {page_code: code, page_title: title, page_active_flag: active, page_toolbar: toolbar, page_footer_col: footerCol, page_header_sort: headerSort, page_footer_sort: footerSort, page_url: url, page_toolbar_flag: toolbarFlag, page_parent_key: parentKey, page_parent_sort: parentSort};
     var url = API + '/pages.php';
     var method = 'POST';
 

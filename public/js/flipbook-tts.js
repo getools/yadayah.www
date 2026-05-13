@@ -196,31 +196,37 @@
         // Clear previous highlights (cheap — small DOM).
         document.querySelectorAll('.text-layer span.tts-current')
             .forEach(function (el) { el.classList.remove('tts-current'); });
-        if (paragraphNum == null || paragraphNum < 0) return;
-        if (!cfg.getCurrentPage) return;
+        if (paragraphNum == null || paragraphNum < 0) { console.log('[tts hl] bail: paragraphNum', paragraphNum); return; }
+        if (!cfg.getCurrentPage) { console.log('[tts hl] bail: no getCurrentPage'); return; }
         var page = cfg.getCurrentPage();
-        if (!page) return;
+        if (!page) { console.log('[tts hl] bail: page=0'); return; }
 
         // Find the marker for this paragraph_number on the visible page
         // first; if none, fall back to any marker for that paragraph
         // (its text is the same — paragraph_text_plain is whole-para).
         var markers = paragraphMarkers(paragraphNum);
-        if (!markers.length) return;
+        if (!markers.length) { console.log('[tts hl] bail: no markers for paragraph', paragraphNum); return; }
         var paragraphText = '';
         for (var k = 0; k < markers.length; k++) {
             if (markers[k].text) { paragraphText = markers[k].text; break; }
         }
-        if (!paragraphText) return;
+        if (!paragraphText) { console.log('[tts hl] bail: no text on any marker for paragraph', paragraphNum); return; }
         var paraNorm = norm(paragraphText);
-        if (paraNorm.length < 4) return;
+        if (paraNorm.length < 4) { console.log('[tts hl] bail: paraNorm too short', paraNorm.length); return; }
 
         // Grab the text-layer of the currently visible flipbook page.
         // In carousel mode the visible slot is .cpg.center; in spread
         // mode it's any .pg[data-page=N] that's currently displayed.
-        var pgEl = document.querySelector('#book .pg[data-page="' + page + '"]')
-                || document.querySelector('#carousel .cpg.center[data-page="' + page + '"]')
-                || document.querySelector('#carousel .cpg[data-page="' + page + '"]');
+        // Both #book .pg and #carousel .cpg exist simultaneously; the inactive
+        // tree's text-layer is never populated. Gate on the active mode so we
+        // pick the element whose text-layer the viewer is actually filling.
+        var isCarousel = document.body.classList.contains('mode-carousel');
+        var pgEl = isCarousel
+            ? (document.querySelector('#carousel .cpg.center[data-page="' + page + '"]')
+               || document.querySelector('#carousel .cpg[data-page="' + page + '"]'))
+            : document.querySelector('#book .pg[data-page="' + page + '"]');
         if (!pgEl) {
+            console.log('[tts hl] no pgEl for page', page, '(retriesLeft=', retriesLeft, ') carousel=', isCarousel);
             // Page DOM not ready yet — try again shortly.
             if (retriesLeft > 0) {
                 highlightRetryTimer = setTimeout(function () { applyHighlight(paragraphNum, retriesLeft - 1); }, 100);
@@ -229,6 +235,7 @@
         }
         var layer = pgEl.querySelector('.text-layer');
         if (!layer || !layer.children.length) {
+            console.log('[tts hl] empty layer for page', page, '(retriesLeft=', retriesLeft, ') carousel=', isCarousel);
             // Text layer is fetched async (ensureTextLayer / ensureCarouselText).
             // Retry until it's populated or we give up.
             if (retriesLeft > 0) {
@@ -237,6 +244,7 @@
             return;
         }
         var spans = layer.children;
+        console.log('[tts hl] paragraph=', paragraphNum, 'page=', page, 'spans=', spans.length, 'paraLen=', paraNorm.length);
 
         // Build a single normalized string for the page + index of each
         // span's [start, end) into that string. mb-style approach using
@@ -281,13 +289,18 @@
                 }
             }
         }
-        if (hitStart < 0) return;
-
+        if (hitStart < 0) {
+            console.log('[tts hl] NO MATCH. pageNorm sample:', pageStr.substring(0, 200), 'paraNorm sample:', paraNorm.substring(0, 200));
+            return;
+        }
+        console.log('[tts hl] MATCH hitStart=', hitStart, 'hitEnd=', hitEnd, 'pageLen=', pageStr.length);
         // Tag every span whose range overlaps [hitStart, hitEnd).
+        var marked = 0;
         for (var r = 0; r < ranges.length; r++) {
             var rs = ranges[r][0], re = ranges[r][1], el = ranges[r][2];
-            if (re > hitStart && rs < hitEnd) el.classList.add('tts-current');
+            if (re > hitStart && rs < hitEnd) { el.classList.add('tts-current'); marked++; }
         }
+        console.log('[tts hl] marked', marked, 'spans');
     }
 
     function clearHighlight() {

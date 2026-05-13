@@ -170,8 +170,16 @@ case 'POST':
     $itemAllow  = !empty($input['page_item_allow_flag'])  ? 't' : 'f';
     $itemSearch = !empty($input['page_item_search_flag']) ? 't' : 'f';
 
-    $stmt = $db->prepare("INSERT INTO yy_page (page_code, page_title, page_active_flag, page_toolbar, page_header_sort, page_footer_sort, page_footer_col, page_url, page_heading, page_subheading, page_description, page_body, page_heading_color, page_heading_size, page_subheading_color, page_subheading_size, page_description_color, page_description_size, page_background_color, page_item_allow_flag, page_item_search_flag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING page_key");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, $footerCol, $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor, $itemAllow, $itemSearch]);
+    // Sub-toolbar parent / child wiring. toolbar_flag marks a page as a
+    // parent that renders a sub-toolbar of its children; parent_key + sort
+    // place a child within that parent's sub-toolbar.
+    $toolbarFlag = !empty($input['page_toolbar_flag']) ? 't' : 'f';
+    $parentKey   = isset($input['page_parent_key']) && $input['page_parent_key'] !== '' && $input['page_parent_key'] !== null
+                    ? (int)$input['page_parent_key'] : null;
+    $parentSort  = (int)($input['page_parent_sort'] ?? 0);
+
+    $stmt = $db->prepare("INSERT INTO yy_page (page_code, page_title, page_active_flag, page_toolbar, page_header_sort, page_footer_sort, page_footer_col, page_url, page_heading, page_subheading, page_description, page_body, page_heading_color, page_heading_size, page_subheading_color, page_subheading_size, page_description_color, page_description_size, page_background_color, page_item_allow_flag, page_item_search_flag, page_toolbar_flag, page_parent_key, page_parent_sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING page_key");
+    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, $footerCol, $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor, $itemAllow, $itemSearch, $toolbarFlag, $parentKey, $parentSort]);
     $row = $stmt->fetch();
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
@@ -214,8 +222,14 @@ case 'PUT':
     $itemAllow  = !empty($input['page_item_allow_flag'])  ? 't' : 'f';
     $itemSearch = !empty($input['page_item_search_flag']) ? 't' : 'f';
 
-    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_footer_sort = ?, page_footer_col = ?, page_url = ?, page_heading = ?, page_subheading = ?, page_description = ?, page_body = ?, page_heading_color = ?, page_heading_size = ?, page_subheading_color = ?, page_subheading_size = ?, page_description_color = ?, page_description_size = ?, page_background_color = ?, page_item_allow_flag = ?, page_item_search_flag = ? WHERE page_key = ?");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, (int)($input['page_footer_col'] ?? 0), $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor, $itemAllow, $itemSearch, $key]);
+    // Sub-toolbar parent / child wiring (see INSERT for semantics).
+    $toolbarFlag = !empty($input['page_toolbar_flag']) ? 't' : 'f';
+    $parentKey   = isset($input['page_parent_key']) && $input['page_parent_key'] !== '' && $input['page_parent_key'] !== null
+                    ? (int)$input['page_parent_key'] : null;
+    $parentSort  = (int)($input['page_parent_sort'] ?? 0);
+
+    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_footer_sort = ?, page_footer_col = ?, page_url = ?, page_heading = ?, page_subheading = ?, page_description = ?, page_body = ?, page_heading_color = ?, page_heading_size = ?, page_subheading_color = ?, page_subheading_size = ?, page_description_color = ?, page_description_size = ?, page_background_color = ?, page_item_allow_flag = ?, page_item_search_flag = ?, page_toolbar_flag = ?, page_parent_key = ?, page_parent_sort = ? WHERE page_key = ?");
+    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, (int)($input['page_footer_col'] ?? 0), $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor, $itemAllow, $itemSearch, $toolbarFlag, $parentKey, $parentSort, $key]);
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
     jsonResponse(['ok' => true]);
