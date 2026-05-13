@@ -37,6 +37,21 @@ function updateAudio(PDO $db, int $audioKey, array $fields): void {
        ->execute($params);
 }
 
+// Approximate bytes-per-second for the chosen Azure output format. Used to
+// translate the running byte counter into a millisecond offset for
+// yy_tts_audio_marker. Azure mp3 outputs are CBR so byte-position × 8 /
+// bitrate is accurate to within a frame (~26 ms at 48 kbps). For
+// uncompressed PCM (riff-*) the format string carries the sample rate; we
+// assume 16-bit mono. Opus is VBR — the value here is an estimate; if exact
+// timing matters for opus output, switch to ffprobe-based per-paragraph
+// measurement later.
+function bytesPerSecondForFormat(string $fmt): float {
+    if (preg_match('/(\d+)kbitrate/i', $fmt, $m))      return ((int)$m[1] * 1000) / 8.0; // mp3 CBR
+    if (preg_match('/(\d+)khz.*?16bit/i', $fmt, $m))   return (int)$m[1] * 1000 * 2.0;    // pcm 16-bit mono
+    if (strpos($fmt, 'opus') !== false)                return 32000 / 8.0;                 // opus ~32 kbps estimate
+    return 48000 / 8.0;  // safe default — 48 kbps mp3
+}
+
 function bail(PDO $db, int $audioKey, string $err): void {
     updateAudio($db, $audioKey, [
         'tts_audio_status'          => 'failed',
@@ -125,35 +140,51 @@ $snapshot = [
 $db->prepare("UPDATE yy_tts_audio SET tts_audio_settings = ?::jsonb WHERE tts_audio_key = ?")
    ->execute([json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $audioKey]);
 
-// Look up the volume's URL-safe slug (volume_code) — used as both the
-// audio subdirectory name and the part of the relative URL stored in
-// tts_audio_path. Fall back to the numeric key if a slug is missing.
-$vcRow = $db->prepare("SELECT volume_code FROM yy_volume WHERE volume_key = ?");
-$vcRow->execute([$volumeKey]);
-$volumeSlug = (string)($vcRow->fetchColumn() ?: '');
-if ($volumeSlug === '') $volumeSlug = (string)$volumeKey;
-
-// Output directory. The worker runs inside the web container where the
-// host path /opt/yada-www/public/ is bind-mounted at /var/www/html/, so
-// we derive the path relative to __DIR__ (which lives in /api/) to land
-// on the correct container-side mount when running in the container.
-$outDirHost      = '/opt/yada-www/public/u/tts-audio/' . $volumeSlug;
-$outDirContainer = dirname(__DIR__) . '/u/tts-audio/' . $volumeSlug;
+// Output directory — one flat folder at /u/tts/ for every chapter, every
+// volume. The filename itself encodes the book code + chapter number, so
+// per-volume subdirectories aren't needed. The worker runs inside the
+// web container where the host path /opt/yada-www/public/ is bind-mounted
+// at /var/www/html/, so we derive the path relative to __DIR__ (which
+// lives in /api/) to land on the correct container-side mount.
+$outDirHost      = '/opt/yada-www/public/u/tts';
+$outDirContainer = dirname(__DIR__) . '/u/tts';
 $outDir = is_dir(dirname(__DIR__)) ? $outDirContainer : $outDirHost;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);
+$publicBase = '/u/tts';
 
-// Chapter row for filename naming.
-$chRow = $db->prepare("SELECT chapter_number FROM yy_chapter WHERE chapter_key = ?");
+// Chapter row + book code (YY-s##v##) for filename naming. The book code is
+// derived from series_number + volume_number at runtime so we don't depend
+// on a long-form volume_code / volume_flip_code field. Filenames look like
+// "YY-s02v05_ch01.mp3" — short, sortable, unambiguous.
+$chRow = $db->prepare("
+    SELECT c.chapter_number, s.series_number, v.volume_number
+      FROM yy_chapter c
+      JOIN yy_volume v ON c.volume_key = v.volume_key
+      JOIN yy_series s ON v.series_key = s.series_key
+     WHERE c.chapter_key = ?
+");
 $chRow->execute([$chapterKey]);
-$chNum = (int)($chRow->fetchColumn() ?: 0);
+$meta      = $chRow->fetch() ?: [];
+$chNum     = (int)($meta['chapter_number'] ?? 0);
+$seriesNum = (int)($meta['series_number']  ?? 0);
+$volNum    = (int)($meta['volume_number']  ?? 0);
+$bookCode  = sprintf('YY-s%02dv%02d', $seriesNum, $volNum);
+
 $ext = (strpos($cfg['system']['tts_output_format'], 'mp3') !== false) ? 'mp3'
      : ((strpos($cfg['system']['tts_output_format'], 'opus') !== false) ? 'opus'
      : ((strpos($cfg['system']['tts_output_format'], 'pcm') !== false) ? 'wav' : 'mp3'));
-$finalPath = sprintf('%s/ch%02d.%s', $outDir, $chNum, $ext);
-$relPath   = sprintf('/u/tts-audio/%s/ch%02d.%s', $volumeSlug, $chNum, $ext);
+$baseName  = sprintf('%s_ch%02d.%s', $bookCode, $chNum, $ext);
+$finalPath = $outDir . '/' . $baseName;
+$relPath   = $publicBase . '/' . $baseName;
 
-// Load paragraphs.
-$pStmt = $db->prepare("SELECT paragraph_number, paragraph_text_html FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");
+// Load paragraphs. paragraph_key + paragraph_page come along so the marker
+// rows can store them denormalized for direct query without a join.
+$pStmt = $db->prepare("
+    SELECT paragraph_key, paragraph_number, paragraph_page, paragraph_text_html
+      FROM yy_paragraph
+     WHERE chapter_key = ?
+     ORDER BY paragraph_number
+");
 $pStmt->execute([$chapterKey]);
 $paragraphs = $pStmt->fetchAll();
 $nPara = count($paragraphs);
@@ -168,9 +199,35 @@ updateAudio($db, $audioKey, [
 $fh = fopen($finalPath, 'wb');
 if (!$fh) bail($db, $audioKey, "cannot open $finalPath for write");
 
-$charsBilled = 0;
+$charsBilled  = 0;
 $failureCount = 0;
-$failures = [];
+$failures     = [];
+
+// Running byte counter → ms offset for yy_tts_audio_marker. A marker row
+// is inserted at the START of each paragraph (before its bytes are
+// written) so the table reflects "where this paragraph begins in the
+// file." Each row is committed immediately so a UI can poll mid-build.
+$bytesWritten = 0;
+$bytesPerSec  = bytesPerSecondForFormat($cfg['system']['tts_output_format'] ?? '');
+$markerInsert = $db->prepare("
+    INSERT INTO yy_tts_audio_marker
+        (tts_audio_key, paragraph_key, paragraph_page, paragraph_number,
+         tts_audio_marker_offset_ms, tts_audio_marker_byte_offset)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (tts_audio_key, paragraph_number) DO UPDATE SET
+        paragraph_key                = EXCLUDED.paragraph_key,
+        paragraph_page               = EXCLUDED.paragraph_page,
+        tts_audio_marker_offset_ms   = EXCLUDED.tts_audio_marker_offset_ms,
+        tts_audio_marker_byte_offset = EXCLUDED.tts_audio_marker_byte_offset
+");
+
+// Parser state carried across paragraphs so a translation / parenthesized
+// definition that opens on one page and closes on the next is classified
+// correctly. Each paragraph inherits bold/italic/paren depth from the
+// prior paragraph's end-state and updates it as it parses. See
+// segmentParagraph() — the optional &$state argument keeps the depth
+// across calls.
+$parseState = ['bold' => 0, 'italic' => 0, 'paren' => 0];
 
 foreach ($paragraphs as $idx => $p) {
     // Cancellation check.
@@ -186,8 +243,24 @@ foreach ($paragraphs as $idx => $p) {
         }
     }
 
-    $segs = segmentParagraph((string)$p['paragraph_text_html']);
+    // Parse this paragraph with state carried over from the previous one.
+    // After the call, $parseState reflects this paragraph's END depth so
+    // the NEXT paragraph picks up where this one left off (handles
+    // translations / parenthesized definitions that span a page break).
+    $segs = segmentParagraph((string)$p['paragraph_text_html'], $parseState);
     if (!$segs) continue;
+
+    // Marker BEFORE writing any bytes for this paragraph — records the
+    // start offset of this paragraph within the audio file.
+    $offsetMs = (int)round(($bytesWritten / max($bytesPerSec, 1)) * 1000);
+    $markerInsert->execute([
+        $audioKey,
+        $p['paragraph_key'],
+        $p['paragraph_page'],
+        $p['paragraph_number'],
+        $offsetMs,
+        $bytesWritten,
+    ]);
 
     $blocks = '';
     foreach ($segs as $seg) {
@@ -210,7 +283,10 @@ foreach ($paragraphs as $idx => $p) {
             $bytes .= $b;
             $charsBilled += mb_strlen($seg['text']);
         }
-        if ($bytes !== '') fwrite($fh, $bytes);
+        if ($bytes !== '') {
+            fwrite($fh, $bytes);
+            $bytesWritten += strlen($bytes);
+        }
     } else {
         $err = '';
         $bytes = azureTtsSynthesize($ssml, $cfg, $err);
@@ -220,6 +296,7 @@ foreach ($paragraphs as $idx => $p) {
             continue;
         }
         fwrite($fh, $bytes);
+        $bytesWritten += strlen($bytes);
         foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
     }
 
@@ -267,13 +344,19 @@ exit(0);
  * detection is reserved for a future pattern-matching pass — for now
  * paragraphs are classified only by the HTML structure.
  */
-function segmentParagraph(string $html): array {
+// $state is optional — pass an array reference to carry bold/italic/paren
+// depth across paragraph calls. A translation or parenthesized definition
+// that opens on page N and closes on page N+1 lives in two yy_paragraph
+// rows; without carrying state, the second row would reset depth to 0 and
+// classify the trailing definition text as 'main' instead of 'word_definition'.
+// On exit the function writes the end-of-paragraph depths back into $state.
+function segmentParagraph(string $html, ?array &$state = null): array {
     $segments = [];
     $cur = ['category' => null, 'text' => ''];
 
-    $boldDepth = 0;
-    $italicDepth = 0;
-    $parenDepth = 0;
+    $boldDepth   = isset($state['bold'])   ? (int)$state['bold']   : 0;
+    $italicDepth = isset($state['italic']) ? (int)$state['italic'] : 0;
+    $parenDepth  = isset($state['paren'])  ? (int)$state['paren']  : 0;
     $i = 0; $n = strlen($html);
     while ($i < $n) {
         $ch = $html[$i];
@@ -319,6 +402,14 @@ function segmentParagraph(string $html): array {
         }
     }
     if (trim($cur['text']) !== '') $segments[] = $cur;
+
+    // Hand the end-of-paragraph depths back so the next paragraph picks up
+    // where this one left off.
+    if ($state !== null) {
+        $state['bold']   = $boldDepth;
+        $state['italic'] = $italicDepth;
+        $state['paren']  = $parenDepth;
+    }
 
     // Merge adjacent same-category, drop whitespace-only segments after merge,
     // and trim outer whitespace.
