@@ -556,6 +556,7 @@
         }
         urlWrittenOnce = true;
         try { if (window.FlipbookBookmarks) { FlipbookBookmarks.refresh(); FlipbookBookmarks.recordCurrentPage(page1); } } catch (e) {}
+        try { if (window.FlipbookTTS) FlipbookTTS.notifyPageChange(page1); } catch (e) {}
         const ch = chapterForPage(page1);
         const parts = [];
         if (ch && ch.slug) parts.push('chapter=' + encodeURIComponent(ch.slug));
@@ -1053,6 +1054,20 @@
       try {
         if (window.FlipbookBookmarks) {
           FlipbookBookmarks.init({
+            bookCode: cfg.bookCode,
+            totalPages: TOTAL,
+            getCurrentPage: function () { try { return currentPage(); } catch (e) { return 1; } },
+            gotoPage: function (n) { try { goto(n); } catch (e) {} },
+          });
+        }
+      } catch (e) {}
+      // TTS playback — Play/Pause button above the seek bar that syncs
+      // page turns to the audio's per-paragraph markers. Always renders
+      // (disabled+dimmed when no audio is available for the current
+      // chapter) so the toolbar layout stays stable.
+      try {
+        if (window.FlipbookTTS) {
+          FlipbookTTS.init({
             bookCode: cfg.bookCode,
             totalPages: TOTAL,
             getCurrentPage: function () { try { return currentPage(); } catch (e) { return 1; } },

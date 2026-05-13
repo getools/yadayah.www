@@ -1,0 +1,170 @@
+<?php
+/**
+ * Flipbook TTS audio endpoint. Public (read-only); used by
+ * /js/flipbook-tts.js to drive the per-chapter Play/Pause button.
+ *
+ *   GET ?book_code=YY-…&page=N
+ *
+ * Resolves the chapter that contains the given page, then returns the
+ * "complete" TTS audio for that chapter (if any) plus a flat list of
+ * paragraph→offset markers used for page-sync during playback. Also
+ * returns a hint to the next chapter (key + whether its audio is ready)
+ * and the configured "New Chapter" pause length used between MP3s.
+ *
+ * Response shape:
+ *   {
+ *     available: bool,
+ *     audio_url: "/u/...mp3" | null,
+ *     duration_secs: int,
+ *     chapter_key: int,
+ *     chapter_number: string,
+ *     chapter_name: string,
+ *     markers: [{ paragraph_page, paragraph_number, offset_ms }, ...],
+ *     next_chapter_key: int | null,
+ *     next_chapter_available: bool,
+ *     chapter_pause_ms: int   // playback pause between chapters
+ *   }
+ */
+require_once __DIR__ . '/config.php';
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') errorResponse('Method not allowed', 405);
+
+$bookCode = trim((string)($_GET['book_code'] ?? ''));
+$page     = max(1, (int)($_GET['page'] ?? 1));
+$explicitChapter = isset($_GET['chapter_key']) && $_GET['chapter_key'] !== '' ? (int)$_GET['chapter_key'] : null;
+if ($bookCode === '') errorResponse('book_code required');
+
+$db = getDb();
+
+// Resolve volume.
+$vStmt = $db->prepare("SELECT volume_key FROM yy_volume WHERE volume_code = ? LIMIT 1");
+$vStmt->execute([$bookCode]);
+$volumeKey = (int)($vStmt->fetchColumn() ?: 0);
+if (!$volumeKey) jsonResponse(['available' => false, 'reason' => 'book_code not found']);
+
+// "New Chapter" pause — single per-installation setting. We pick the
+// max across any TTS voices that have it configured so disabling one
+// voice's row doesn't accidentally zero this out.
+$pauseStmt = $db->prepare("
+    SELECT COALESCE(MAX(tts_pause_ms), 2000) AS ms
+      FROM yy_tts_pause
+     WHERE tts_pause_search = '__new_chapter__'
+       AND tts_pause_active_flag
+");
+$pauseStmt->execute();
+$chapterPauseMs = (int)$pauseStmt->fetchColumn();
+
+// Find the chapter containing the given page. Use yy_paragraph as the
+// source of truth — every paragraph has chapter_key + paragraph_page.
+if ($explicitChapter) {
+    $chapterKey = $explicitChapter;
+} else {
+    $cStmt = $db->prepare("
+        SELECT chapter_key
+          FROM yy_paragraph
+         WHERE volume_key = ?
+           AND paragraph_page <= ?
+           AND chapter_key IS NOT NULL
+         ORDER BY paragraph_page DESC, paragraph_number DESC
+         LIMIT 1
+    ");
+    $cStmt->execute([$volumeKey, $page]);
+    $chapterKey = (int)($cStmt->fetchColumn() ?: 0);
+}
+
+if (!$chapterKey) {
+    jsonResponse([
+        'available'        => false,
+        'volume_key'       => $volumeKey,
+        'chapter_pause_ms' => $chapterPauseMs,
+        'reason'           => 'no chapter for page',
+    ]);
+}
+
+// Fetch chapter metadata + the audio row (if any). Prefer
+// status='complete'; some installs use 'ready', accept both.
+$aStmt = $db->prepare("
+    SELECT c.chapter_key, c.chapter_number, c.chapter_name,
+           a.tts_audio_key, a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_status
+      FROM yy_chapter c
+      LEFT JOIN yy_tts_audio a
+        ON a.chapter_key = c.chapter_key
+       AND a.volume_key  = ?
+       AND a.tts_audio_status IN ('complete','ready')
+     WHERE c.chapter_key = ?
+     LIMIT 1
+");
+$aStmt->execute([$volumeKey, $chapterKey]);
+$row = $aStmt->fetch();
+
+if (!$row) {
+    jsonResponse([
+        'available'        => false,
+        'volume_key'       => $volumeKey,
+        'chapter_pause_ms' => $chapterPauseMs,
+        'reason'           => 'chapter row not found',
+    ]);
+}
+
+// Compute next chapter key by paragraph order (= same logic the search
+// link UI uses), then check whether its audio is ready too.
+$nStmt = $db->prepare("
+    SELECT p.chapter_key
+      FROM yy_paragraph p
+     WHERE p.volume_key = ?
+       AND p.chapter_key IS NOT NULL
+       AND p.chapter_key <> ?
+       AND p.paragraph_number > (
+            SELECT MAX(paragraph_number) FROM yy_paragraph
+             WHERE volume_key = ? AND chapter_key = ?
+       )
+     ORDER BY p.paragraph_number
+     LIMIT 1
+");
+$nStmt->execute([$volumeKey, $chapterKey, $volumeKey, $chapterKey]);
+$nextChapterKey = (int)($nStmt->fetchColumn() ?: 0) ?: null;
+
+$nextAvailable = false;
+if ($nextChapterKey) {
+    $checkStmt = $db->prepare("
+        SELECT 1 FROM yy_tts_audio
+         WHERE volume_key = ? AND chapter_key = ?
+           AND tts_audio_status IN ('complete','ready')
+         LIMIT 1
+    ");
+    $checkStmt->execute([$volumeKey, $nextChapterKey]);
+    $nextAvailable = (bool)$checkStmt->fetchColumn();
+}
+
+$audioReady = !empty($row['tts_audio_path']);
+$markers    = [];
+if ($audioReady) {
+    $mStmt = $db->prepare("
+        SELECT paragraph_page, paragraph_number, tts_audio_marker_offset_ms AS offset_ms
+          FROM yy_tts_audio_marker
+         WHERE tts_audio_key = ?
+         ORDER BY paragraph_number
+    ");
+    $mStmt->execute([(int)$row['tts_audio_key']]);
+    $markers = array_map(function ($m) {
+        return [
+            'paragraph_page'   => (int)$m['paragraph_page'],
+            'paragraph_number' => (int)$m['paragraph_number'],
+            'offset_ms'        => (int)$m['offset_ms'],
+        ];
+    }, $mStmt->fetchAll());
+}
+
+jsonResponse([
+    'available'              => $audioReady,
+    'volume_key'             => $volumeKey,
+    'chapter_key'            => (int)$row['chapter_key'],
+    'chapter_number'         => $row['chapter_number'],
+    'chapter_name'           => $row['chapter_name'],
+    'audio_url'              => $audioReady ? $row['tts_audio_path'] : null,
+    'duration_secs'          => $audioReady ? (int)$row['tts_audio_duration_secs'] : 0,
+    'markers'                => $markers,
+    'next_chapter_key'       => $nextChapterKey,
+    'next_chapter_available' => $nextAvailable,
+    'chapter_pause_ms'       => $chapterPauseMs,
+]);

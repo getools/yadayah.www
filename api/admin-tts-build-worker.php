@@ -218,7 +218,14 @@ foreach ($paragraphs as $idx => $p) {
         }
     }
 
-    $segs = segmentParagraph((string)$p['paragraph_text_html']);
+    // Apply per-font filtering (skip + pause-on-switch) BEFORE
+    // segmenting. The filter strips <span data-font="…"> tags either
+    // way; skipped-font content is dropped; pause-marked fonts get a
+    // PAUSE placeholder inserted that placeholdersToBreaks rewrites
+    // into <break time="Nms"/> further down the pipeline.
+    $rawHtml = (string)$p['paragraph_text_html'];
+    $rawHtml = preprocessFontFilter($rawHtml, $cfg['fonts'] ?? []);
+    $segs = segmentParagraph($rawHtml);
     if (!$segs) continue;
 
     $blocks = '';

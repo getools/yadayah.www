@@ -98,5 +98,6 @@
           onerror="document.getElementById('err').style.display='block'; document.getElementById('err').textContent='Failed to load page-flip.browser.js';"></script>
   <script src="/js/flipbook-viewer.js?v=15"></script>
   <script src="/js/flipbook-bookmarks.js?v=21"></script>
+  <script src="/js/flipbook-tts.js?v=1"></script>
 </body>
 </html>

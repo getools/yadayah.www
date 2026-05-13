@@ -76,6 +76,52 @@ if ($method === 'GET' && $action === 'pauses') {
     jsonResponse(['rows' => $stmt->fetchAll()]);
 }
 
+if ($method === 'GET' && $action === 'fonts') {
+    $ttsKey = (int)($_GET['tts_key'] ?? 0);
+    if (!$ttsKey) errorResponse('tts_key required');
+    $stmt = $db->prepare("SELECT * FROM yy_tts_font WHERE tts_key = ? ORDER BY tts_font_skip, tts_font_name");
+    $stmt->execute([$ttsKey]);
+    jsonResponse(['rows' => $stmt->fetchAll()]);
+}
+
+if ($action === 'save_font') {
+    $ttsKey   = (int)($data['tts_key'] ?? 0);
+    $fontKey  = (int)($data['tts_font_key'] ?? 0);
+    $name     = trim((string)($data['name'] ?? ''));
+    $skip     = !empty($data['skip']);
+    $pauseMs  = (int)($data['pause_ms'] ?? 0);
+    if (!$ttsKey || $name === '') errorResponse('tts_key and name required');
+    if ($fontKey > 0) {
+        $stmt = $db->prepare("
+            UPDATE yy_tts_font
+               SET tts_font_name = ?, tts_font_skip = ?, tts_font_pause_ms = ?,
+                   tts_font_revision_dtime = NOW()
+             WHERE tts_font_key = ? AND tts_key = ?
+        ");
+        $stmt->execute([$name, (int)$skip, $pauseMs, $fontKey, $ttsKey]);
+    } else {
+        $stmt = $db->prepare("
+            INSERT INTO yy_tts_font (tts_key, tts_font_name, tts_font_skip, tts_font_pause_ms)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (tts_key, tts_font_name) DO UPDATE SET
+                tts_font_skip = EXCLUDED.tts_font_skip,
+                tts_font_pause_ms = EXCLUDED.tts_font_pause_ms,
+                tts_font_revision_dtime = NOW()
+            RETURNING tts_font_key
+        ");
+        $stmt->execute([$ttsKey, $name, (int)$skip, $pauseMs]);
+        $fontKey = (int)$stmt->fetchColumn();
+    }
+    jsonResponse(['ok' => true, 'tts_font_key' => $fontKey]);
+}
+
+if ($action === 'delete_font') {
+    $fontKey = (int)($data['tts_font_key'] ?? 0);
+    if (!$fontKey) errorResponse('tts_font_key required');
+    $db->prepare("DELETE FROM yy_tts_font WHERE tts_font_key = ?")->execute([$fontKey]);
+    jsonResponse(['ok' => true]);
+}
+
 if ($method === 'GET' && $action === 'category_voices') {
     $ttsKey = (int)($_GET['tts_key'] ?? 0);
     if (!$ttsKey) errorResponse('tts_key required');

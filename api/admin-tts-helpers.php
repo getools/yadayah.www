@@ -53,7 +53,19 @@ function loadTtsConfig(PDO $db, int $ttsKey): array {
     $pauseStmt->execute([$ttsKey]);
     $pauses = $pauseStmt->fetchAll();
 
-    return ['system' => $system, 'categories' => $categories, 'tunes' => $tunes, 'pauses' => $pauses];
+    // Font filter rules — keyed by tts_font_name for fast lookup in
+    // preprocessFontFilter(). Each value holds {skip, pause_ms}.
+    $fontStmt = $db->prepare("SELECT tts_font_name, tts_font_skip, tts_font_pause_ms FROM yy_tts_font WHERE tts_key = ?");
+    $fontStmt->execute([$ttsKey]);
+    $fonts = [];
+    foreach ($fontStmt->fetchAll() as $r) {
+        $fonts[$r['tts_font_name']] = [
+            'skip'     => !empty($r['tts_font_skip']),
+            'pause_ms' => (int)$r['tts_font_pause_ms'],
+        ];
+    }
+
+    return ['system' => $system, 'categories' => $categories, 'tunes' => $tunes, 'pauses' => $pauses, 'fonts' => $fonts];
 }
 
 /**
@@ -67,6 +79,86 @@ function applyPauses(string $text, array $pauses, string &$placeholder): string 
         $ms = (int)$p['tts_pause_ms'];
         $token = sprintf("\x01PAUSE_%d_%d\x01", $p['tts_pause_key'], $ms);
         $text = str_replace($needle, $token, $text);
+    }
+    return $text;
+}
+
+/**
+ * Walk paragraph_text_html and apply per-font Skip / Pause-on-switch
+ * rules from $fonts (keyed by font name). For each <span data-font="X">…</span>:
+ *   - If rule says skip → drop the contents entirely.
+ *   - If rule says pause_ms > 0 → emit a pause placeholder (same shape
+ *     as the yy_tts_pause placeholders so placeholdersToBreaks rewrites
+ *     it into <break time="Nms"/> downstream).
+ * The <span data-font> tag itself is always stripped — only its content
+ * is conditionally kept / dropped. <b>/<i> tags pass through untouched
+ * so the existing segmentParagraph + category-voice routing still works.
+ */
+function preprocessFontFilter(string $html, array $fonts): string {
+    if (!$fonts) {
+        // No rules configured — still strip data-font spans so they
+        // don't leak into segmentParagraph.
+        return preg_replace('/<\/?span\b[^>]*>/i', '', $html);
+    }
+    $out = '';
+    $i = 0; $n = strlen($html);
+    // Stack tracks the currently-open data-font value (string) and a
+    // sentinel for non-data-font spans (''). Each open <span> pushes;
+    // each </span> pops.
+    $stack = [];
+    while ($i < $n) {
+        $lt = strpos($html, '<', $i);
+        if ($lt === false) {
+            // Trailing literal text.
+            $out .= fontFilterEmit(substr($html, $i), $stack, $fonts);
+            break;
+        }
+        if ($lt > $i) {
+            $out .= fontFilterEmit(substr($html, $i, $lt - $i), $stack, $fonts);
+        }
+        $gt = strpos($html, '>', $lt);
+        if ($gt === false) break;
+        $tag = substr($html, $lt, $gt - $lt + 1);
+        $low = strtolower($tag);
+        if (strpos($low, '<span') === 0) {
+            // Capture data-font value if present, else empty sentinel.
+            if (preg_match('/data-font="([^"]*)"/', $tag, $m)) {
+                $font = $m[1];
+                // Pause-on-transition: emit a placeholder BEFORE the span
+                // content if this font has a pause_ms set.
+                if (!empty($fonts[$font]) && (int)$fonts[$font]['pause_ms'] > 0) {
+                    $ms = (int)$fonts[$font]['pause_ms'];
+                    $out .= sprintf("\x01PAUSE_%d_%d\x01", 99000 + crc32($font) % 1000, $ms);
+                }
+                $stack[] = $font;
+            } else {
+                $stack[] = '';
+            }
+            // Strip the span tag itself.
+        } elseif (strpos($low, '</span') === 0) {
+            if ($stack) array_pop($stack);
+        } else {
+            // Any other tag (b, i, etc.) — pass through.
+            $out .= $tag;
+        }
+        $i = $gt + 1;
+    }
+    return $out;
+}
+
+/**
+ * Emit (or suppress) literal text based on the current font stack.
+ * If the innermost data-font on the stack is marked skip, the text is
+ * dropped; otherwise it passes through unchanged.
+ */
+function fontFilterEmit(string $text, array $stack, array $fonts): string {
+    // Find the innermost non-empty font on the stack — that's the
+    // active font for this text run.
+    for ($j = count($stack) - 1; $j >= 0; $j--) {
+        $f = $stack[$j];
+        if ($f === '') continue;
+        if (!empty($fonts[$f]) && !empty($fonts[$f]['skip'])) return '';
+        break; // Found innermost real font; not skipped → emit text.
     }
     return $text;
 }
