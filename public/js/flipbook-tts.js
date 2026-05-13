@@ -25,6 +25,8 @@
     var cfg = null;
     var btn = null;
     var audio = null;
+    var progressEl = null;       // wrapper around the seek track + fill
+    var progressFill = null;     // inner bar that grows with currentTime
     var current = null;     // last fetched chapter payload (see API shape)
     var fetchSeq = 0;       // monotonic — only latest fetch's response wins
     var loadedChapterKey = null;
@@ -56,6 +58,18 @@
             '.fb-tts-btn svg { width: 20px; height: 20px; }',
             // Brief amber tint when waiting between chapters.
             '.fb-tts-btn.is-pausing { background: #4d3a1f; border-color: #6d5a3a; color: #f7d77a; }',
+            // MP3 seek bar — sits just below the Play/Pause button and
+            // spans only the visible page(s), so its left/width get
+            // recomputed from the active page rect on every layout change.
+            // Hidden while no chapter audio is available.
+            '.fb-tts-progress { position: fixed; z-index: 11; height: 12px;',
+            '                   transition: opacity 0.2s; pointer-events: auto; }',
+            '.fb-tts-progress.is-hidden { opacity: 0; pointer-events: none; }',
+            '.fb-tts-progress-track { position: relative; width: 100%; height: 6px;',
+            '                         margin-top: 3px; background: rgba(255,255,255,0.18);',
+            '                         border-radius: 3px; cursor: pointer; overflow: hidden; }',
+            '.fb-tts-progress-fill  { position: absolute; top: 0; left: 0; height: 100%;',
+            '                         background: #cfe1ff; width: 0%; }',
             // Subtle read-along highlight — applied to text-layer spans
             // that belong to the paragraph currently being narrated. We
             // only mark spans on the visible page, so a paragraph
@@ -88,19 +102,87 @@
         document.body.appendChild(btn);
     }
 
+    function ensureProgress() {
+        if (progressEl) return;
+        progressEl = document.createElement('div');
+        progressEl.className = 'fb-tts-progress is-hidden';
+        var track = document.createElement('div');
+        track.className = 'fb-tts-progress-track';
+        progressFill = document.createElement('div');
+        progressFill.className = 'fb-tts-progress-fill';
+        track.appendChild(progressFill);
+        progressEl.appendChild(track);
+        track.addEventListener('click', onProgressClick);
+        document.body.appendChild(progressEl);
+        // Keep geometry in sync with whatever's on screen.
+        window.addEventListener('resize', syncProgressGeometry);
+        window.addEventListener('scroll', syncProgressGeometry, true);
+    }
+
+    // Width + horizontal position track the currently visible page area:
+    //   • carousel (single-page) mode → .cpg.center
+    //   • spread (two-page) mode      → #book covers both pages
+    // Vertical position sits just below the play/pause button.
+    function syncProgressGeometry() {
+        if (!progressEl) return;
+        var pageEl = document.body.classList.contains('mode-carousel')
+            ? document.querySelector('#carousel .cpg.center')
+            : document.getElementById('book');
+        if (!pageEl) return;
+        var r = pageEl.getBoundingClientRect();
+        if (r.width <= 0) return;
+        progressEl.style.left   = Math.round(r.left)  + 'px';
+        progressEl.style.width  = Math.round(r.width) + 'px';
+        // Button bottom edge ≈ calc(var(--nav, 56px) - 2px). Drop the bar
+        // a few pixels under that so it visually anchors to the button.
+        progressEl.style.bottom = 'calc(var(--nav, 56px) - 22px)';
+    }
+
     function ensureAudio() {
         if (audio) return;
         audio = document.createElement('audio');
         audio.preload = 'metadata';
-        audio.addEventListener('timeupdate', onTimeUpdate);
+        audio.addEventListener('timeupdate',     function () { onTimeUpdate(); renderProgress(); });
+        audio.addEventListener('loadedmetadata', renderProgress);
+        audio.addEventListener('durationchange', renderProgress);
+        audio.addEventListener('seeked',         renderProgress);
         audio.addEventListener('ended', onEnded);
-        audio.addEventListener('playing', function () { isPlaying = true; renderButton(); });
+        audio.addEventListener('playing', function () { isPlaying = true; renderButton(); renderProgress(); });
         audio.addEventListener('pause',   function () { isPlaying = false; renderButton(); clearHighlight(); });
         document.body.appendChild(audio);
     }
 
+    // Click anywhere on the track to seek. The track lives at .fb-tts-progress-track;
+    // the inner fill is pointer-events transparent (default) so click coords are
+    // always against the track itself.
+    function onProgressClick(e) {
+        if (!current || !current.available || !audio || !audio.duration) return;
+        var trackRect = e.currentTarget.getBoundingClientRect();
+        var ratio = (e.clientX - trackRect.left) / trackRect.width;
+        ratio = Math.max(0, Math.min(1, ratio));
+        try { audio.currentTime = ratio * audio.duration; } catch (err) {}
+    }
+
+    function renderProgress() {
+        if (!progressEl) return;
+        var show = !!(current && current.available);
+        progressEl.classList.toggle('is-hidden', !show);
+        if (!show || !audio || !audio.duration || !isFinite(audio.duration)) {
+            if (progressFill) progressFill.style.width = '0%';
+            return;
+        }
+        if (progressFill) {
+            var pct = (audio.currentTime / audio.duration) * 100;
+            progressFill.style.width = pct.toFixed(2) + '%';
+        }
+        syncProgressGeometry();
+    }
+
     // ── State + render ─────────────────────────────────────────────────
     function renderButton() {
+        // Whenever button state changes, the progress bar's visibility
+        // (and geometry, if it just became visible) follows along.
+        renderProgress();
         if (!btn) return;
         if (chapterPauseTimer) {
             btn.classList.remove('is-disabled');
@@ -193,61 +275,12 @@
     // [start, end) range overlaps the paragraph's [hit, hit+plen) is
     // tagged with .tts-current.
     var highlightRetryTimer = null;
-    function applyHighlight(paragraphNum, retriesLeft) {
-        if (retriesLeft == null) retriesLeft = 12;   // ~12 × 100ms ≈ 1.2s
-        if (highlightRetryTimer) { clearTimeout(highlightRetryTimer); highlightRetryTimer = null; }
-        // Clear previous highlights (cheap — small DOM).
-        document.querySelectorAll('.text-layer span.tts-current')
-            .forEach(function (el) { el.classList.remove('tts-current'); });
-        if (paragraphNum == null || paragraphNum < 0) { console.log('[tts hl] bail: paragraphNum', paragraphNum); return; }
-        if (!cfg.getCurrentPage) { console.log('[tts hl] bail: no getCurrentPage'); return; }
-        var page = cfg.getCurrentPage();
-        if (!page) { console.log('[tts hl] bail: page=0'); return; }
 
-        // Find the marker for this paragraph_number on the visible page
-        // first; if none, fall back to any marker for that paragraph
-        // (its text is the same — paragraph_text_plain is whole-para).
-        var markers = paragraphMarkers(paragraphNum);
-        if (!markers.length) { console.log('[tts hl] bail: no markers for paragraph', paragraphNum); return; }
-        var paragraphText = '';
-        for (var k = 0; k < markers.length; k++) {
-            if (markers[k].text) { paragraphText = markers[k].text; break; }
-        }
-        if (!paragraphText) { console.log('[tts hl] bail: no text on any marker for paragraph', paragraphNum); return; }
-        var paraNorm = norm(paragraphText);
-        if (paraNorm.length < 4) { console.log('[tts hl] bail: paraNorm too short', paraNorm.length); return; }
-
-        // Grab the text-layer of the currently visible flipbook page.
-        // In carousel mode the visible slot is .cpg.center; in spread
-        // mode it's any .pg[data-page=N] that's currently displayed.
-        // Both #book .pg and #carousel .cpg exist simultaneously; the inactive
-        // tree's text-layer is never populated. Gate on the active mode so we
-        // pick the element whose text-layer the viewer is actually filling.
-        var isCarousel = document.body.classList.contains('mode-carousel');
-        var pgEl = isCarousel
-            ? (document.querySelector('#carousel .cpg.center[data-page="' + page + '"]')
-               || document.querySelector('#carousel .cpg[data-page="' + page + '"]'))
-            : document.querySelector('#book .pg[data-page="' + page + '"]');
-        if (!pgEl) {
-            console.log('[tts hl] no pgEl for page', page, '(retriesLeft=', retriesLeft, ') carousel=', isCarousel);
-            // Page DOM not ready yet — try again shortly.
-            if (retriesLeft > 0) {
-                highlightRetryTimer = setTimeout(function () { applyHighlight(paragraphNum, retriesLeft - 1); }, 100);
-            }
-            return;
-        }
-        var layer = pgEl.querySelector('.text-layer');
-        if (!layer || !layer.children.length) {
-            console.log('[tts hl] empty layer for page', page, '(retriesLeft=', retriesLeft, ') carousel=', isCarousel);
-            // Text layer is fetched async (ensureTextLayer / ensureCarouselText).
-            // Retry until it's populated or we give up.
-            if (retriesLeft > 0) {
-                highlightRetryTimer = setTimeout(function () { applyHighlight(paragraphNum, retriesLeft - 1); }, 100);
-            }
-            return;
-        }
+    // Run the match-and-mark logic against a single page's text-layer.
+    // Returns true on a match (so the caller knows whether to retry).
+    function markSpansOnLayer(layer, paraNorm) {
         var spans = layer.children;
-        console.log('[tts hl] paragraph=', paragraphNum, 'page=', page, 'spans=', spans.length, 'paraLen=', paraNorm.length);
+        if (!spans.length) return false;
 
         // Build a single normalized string for the page + index of each
         // span's [start, end) into that string. Since norm() strips all
@@ -269,9 +302,9 @@
         // Locate the paragraph in the page string. Try a full match
         // first; if interior glyphs differ enough to fail it, anchor
         // with the longest prefix AND the longest suffix and mark
-        // everything between them. That way a paragraph with multiple
-        // bold/italic sections still highlights end-to-end even when
-        // only the head and tail align cleanly.
+        // everything between them. For paragraphs that straddle a page
+        // break (typical in spread mode), prefix-only matches on the
+        // first page and suffix-only matches on the second.
         var paraLen = paraNorm.length;
         var hitStart = -1, hitEnd = -1;
         var full = pageStr.indexOf(paraNorm);
@@ -291,14 +324,8 @@
             else if (prefStart >= 0)                   { hitStart = prefStart; hitEnd = prefEnd; }
             else if (suffStart >= 0)                   { hitStart = suffStart; hitEnd = suffEnd; }
         }
-        if (hitStart < 0) {
-            console.log('[tts hl] NO MATCH. pageNorm sample:', pageStr.substring(0, 200), 'paraNorm sample:', paraNorm.substring(0, 200));
-            return;
-        }
-        console.log('[tts hl] MATCH hitStart=', hitStart, 'hitEnd=', hitEnd, 'pageLen=', pageStr.length);
-        // Mark every span whose range falls inside [hitStart, hitEnd).
-        // Zero-width spans (punctuation that normed to nothing) count
-        // when their position sits within the match.
+        if (hitStart < 0) return false;
+
         var marked = 0;
         for (var r = 0; r < ranges.length; r++) {
             var rs = ranges[r][0], re = ranges[r][1], el = ranges[r][2];
@@ -307,7 +334,91 @@
                 : (rs > hitStart && rs < hitEnd);
             if (inside) { el.classList.add('tts-current'); marked++; }
         }
-        console.log('[tts hl] marked', marked, 'spans');
+        return marked > 0;
+    }
+
+    function applyHighlight(paragraphNum, retriesLeft) {
+        if (retriesLeft == null) retriesLeft = 12;   // ~12 × 100ms ≈ 1.2s
+        if (highlightRetryTimer) { clearTimeout(highlightRetryTimer); highlightRetryTimer = null; }
+        // Clear previous highlights (cheap — small DOM).
+        document.querySelectorAll('.text-layer span.tts-current')
+            .forEach(function (el) { el.classList.remove('tts-current'); });
+        if (paragraphNum == null || paragraphNum < 0) { console.log('[tts hl] bail: paragraphNum', paragraphNum); return; }
+        if (!cfg.getCurrentPage) { console.log('[tts hl] bail: no getCurrentPage'); return; }
+        var page = cfg.getCurrentPage();
+        if (!page) { console.log('[tts hl] bail: page=0'); return; }
+
+        // Find the paragraph_text_plain to match against (carried on
+        // every marker for this paragraph; pick the first non-empty).
+        var markers = paragraphMarkers(paragraphNum);
+        if (!markers.length) { console.log('[tts hl] bail: no markers for paragraph', paragraphNum); return; }
+        var paragraphText = '';
+        for (var k = 0; k < markers.length; k++) {
+            if (markers[k].text) { paragraphText = markers[k].text; break; }
+        }
+        if (!paragraphText) { console.log('[tts hl] bail: no text on any marker for paragraph', paragraphNum); return; }
+        var paraNorm = norm(paragraphText);
+        if (paraNorm.length < 4) { console.log('[tts hl] bail: paraNorm too short', paraNorm.length); return; }
+
+        // Pick the relevant pages from the paragraph's own markers — one
+        // per paragraph_page the paragraph appears on. This is the
+        // authoritative answer: a paragraph that straddles pages 7 and 8
+        // has markers for both, regardless of what spread is on screen.
+        // Filtering by markers (rather than "every layer in #book") is
+        // essential after a page turn: PageFlip keeps the previous
+        // spread's .pg elements in the DOM with their text-layer still
+        // populated, so without this filter we'd happily match against
+        // stale content from the spread we just left.
+        var pages = [];
+        var seen = {};
+        for (var pi = 0; pi < markers.length; pi++) {
+            var pg = markers[pi].paragraph_page;
+            if (pg && !seen[pg]) { seen[pg] = true; pages.push(pg); }
+        }
+        if (!pages.length) pages = [page]; // fallback — match on the visible page
+
+        var isCarousel = document.body.classList.contains('mode-carousel');
+        var layers = [];
+        var missingLayer = false;   // page-element exists but no text yet
+        for (var pp = 0; pp < pages.length; pp++) {
+            var pgNum = pages[pp];
+            var pgEl = isCarousel
+                ? (document.querySelector('#carousel .cpg[data-page="' + pgNum + '"]'))
+                : (document.querySelector('#book .pg[data-page="' + pgNum + '"]'));
+            if (!pgEl) continue;
+            var L = pgEl.querySelector('.text-layer');
+            if (!L || !L.children.length) { missingLayer = true; continue; }
+            layers.push(L);
+        }
+
+        if (!layers.length || missingLayer) {
+            // Either no page element rendered yet, or the page is on
+            // screen but its text-layer hasn't been fetched yet. Retry —
+            // text-layers are fetched async by the viewer right after a
+            // page turn settles.
+            console.log('[tts hl] layers not ready (have=', layers.length,
+                        'missing=', missingLayer,
+                        ' retriesLeft=', retriesLeft, ') carousel=', isCarousel);
+            if (retriesLeft > 0) {
+                highlightRetryTimer = setTimeout(function () { applyHighlight(paragraphNum, retriesLeft - 1); }, 100);
+                // If we already have one layer ready, mark its spans now
+                // so the user sees something while we wait for the other.
+                if (layers.length) {
+                    for (var li0 = 0; li0 < layers.length; li0++) {
+                        markSpansOnLayer(layers[li0], paraNorm);
+                    }
+                }
+                return;
+            }
+        }
+
+        var anyMatch = false;
+        for (var li = 0; li < layers.length; li++) {
+            if (markSpansOnLayer(layers[li], paraNorm)) anyMatch = true;
+        }
+        if (!anyMatch) {
+            console.log('[tts hl] NO MATCH across', layers.length, 'layers (pages=', pages.join(','), ')');
+        }
     }
 
     function clearHighlight() {
@@ -474,6 +585,7 @@
         cfg = c || {};
         injectStyles();
         ensureButton();
+        ensureProgress();
         ensureAudio();
         var fromHash = readInitialPageFromHash();
         var fromCfg  = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
@@ -481,11 +593,41 @@
         lastPage = p;
         console.log('[tts] init page=', p, 'hash=', fromHash, 'cfg=', fromCfg);
         fetchForPage(p);
+        observeModeChange();
     };
+
+    // Watch <body> for the mode-carousel ↔ (no class = spread) toggle so
+    // we can re-apply the highlight against the newly-active tree. The
+    // viewer toggles the class on the user's view-mode button; we don't
+    // need to plumb a hook into it. Body class is the source of truth
+    // applyHighlight already reads, so just nudging it after the switch
+    // is enough.
+    var modeObserver = null;
+    function observeModeChange() {
+        if (modeObserver) return;
+        var lastMode = document.body.classList.contains('mode-carousel') ? 'carousel' : 'spread';
+        modeObserver = new MutationObserver(function () {
+            var nowMode = document.body.classList.contains('mode-carousel') ? 'carousel' : 'spread';
+            if (nowMode === lastMode) return;
+            lastMode = nowMode;
+            syncProgressGeometry();
+            if (currentParagraphNumber < 0) return;
+            // applyHighlight clears existing .tts-current marks across
+            // both trees at its top, so we don't call clearHighlight
+            // separately (that would zero currentParagraphNumber too).
+            // Text-layers on the newly-active tree are populated async;
+            // the retry budget inside applyHighlight handles the wait.
+            setTimeout(function () { applyHighlight(currentParagraphNumber); }, 80);
+        });
+        modeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
 
     // Called from flipbook-viewer.js whenever the visible page changes.
     BM.notifyPageChange = function (page1) {
         if (!cfg) return;
+        // Active page rect just moved (mode switch, zoom, navigation) —
+        // realign the seek bar's width + horizontal position.
+        syncProgressGeometry();
         console.log('[tts] notifyPageChange', page1, 'lastPage=', lastPage, 'suppress=', suppressPageSync);
         // When OUR auto-turn drives the page change, the text-layer on
         // the new page rebuilds asynchronously; re-apply the highlight
@@ -509,6 +651,15 @@
                 if (isPlaying) {
                     var m = markerForPage(current.markers, page1);
                     if (m) { try { audio.currentTime = m.offset_ms / 1000; } catch (e) {} }
+                }
+                // Re-apply the highlight against whatever's now visible.
+                // If the paragraph being narrated spans the page we just
+                // left and the one we just landed on, paragraph_number
+                // doesn't change so onTimeUpdate won't trigger a re-match
+                // on its own — and the user would see no highlight on
+                // the new page until the *next* paragraph begins.
+                if (currentParagraphNumber >= 0) {
+                    setTimeout(function () { applyHighlight(currentParagraphNumber); }, 80);
                 }
                 return;
             }
