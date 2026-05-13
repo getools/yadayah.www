@@ -122,8 +122,15 @@ if ($action === 'start') {
     $insStmt->execute([$ttsKey, $volumeKey, $chapterKey, json_encode($settings)]);
     $audioKey = (int)$insStmt->fetchColumn();
 
+    // Concurrency cap: at most TTS_MAX_CONCURRENT chapter builds may run
+    // simultaneously. If we're at the cap, leave the row in 'pending'
+    // status; the next worker to finish will pick it up via the queue
+    // promotion at the end of admin-tts-build-worker.php.
+    $maxConcurrent = 2;
+    $running = (int)$db->query("SELECT COUNT(*) FROM yy_tts_audio WHERE tts_audio_status = 'running'")->fetchColumn();
+    $queued  = false;
     $workerScript = __DIR__ . '/admin-tts-build-worker.php';
-    if (file_exists($workerScript)) {
+    if ($running < $maxConcurrent && file_exists($workerScript)) {
         $logFile = sys_get_temp_dir() . '/tts_build_' . $audioKey . '.log';
         $pid = spawnCappedWorker($workerScript, [(string)$audioKey], $logFile, [
             'cpu_secs' => 3600, 'mem_mb' => 1500, 'nice' => 10,
@@ -132,8 +139,12 @@ if ($action === 'start') {
             $db->prepare("UPDATE yy_tts_audio SET tts_audio_worker_pid = ? WHERE tts_audio_key = ?")
                ->execute([$pid, $audioKey]);
         }
+    } else {
+        $queued = true;
+        $db->prepare("UPDATE yy_tts_audio SET tts_audio_message = ? WHERE tts_audio_key = ?")
+           ->execute(["Queued — waiting for an open slot (limit: $maxConcurrent concurrent)", $audioKey]);
     }
-    jsonResponse(['tts_audio_key' => $audioKey]);
+    jsonResponse(['tts_audio_key' => $audioKey, 'queued' => $queued]);
 }
 
 if ($action === 'cancel') {

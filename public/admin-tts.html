@@ -41,8 +41,20 @@
         #pane-pronunciations .tts-table th, #pane-pronunciations .tts-table td { padding:4px 6px; }
         #pane-pronunciations .f-type-radio { width:13px; height:13px; margin:0; vertical-align:middle; cursor:pointer; }
         /* Validation warning icon — sits to the right of the input. */
-        .f-warn { display:none; color:#c0392b; cursor:help; margin-left:2px; font-size:1rem; line-height:1; flex:0 0 auto; }
+        .f-warn { display:none; color:#c0392b; cursor:pointer; margin-left:2px; font-size:1rem; line-height:1; flex:0 0 auto; }
         .f-warn.show { display:inline; }
+        .f-ipa-helper { background:none; border:1px solid transparent; cursor:pointer; padding:1px 4px; margin-left:2px; font-size:0.78rem; color:#888; line-height:1; flex:0 0 auto; border-radius:3px; }
+        .f-ipa-helper:hover { color:#31345A; border-color:#ccc; background:#f5f7fa; }
+        #ipa-helper-popover { display:none; position:fixed; background:#fff; border:1px solid #ccc; border-radius:6px; box-shadow:0 6px 20px rgba(0,0,0,.22); padding:8px 10px; min-width:520px; max-width:640px; max-height:70vh; overflow-y:auto; z-index:10006; font-size:0.82rem; }
+        #ipa-helper-popover h4 { margin:6px 0 4px; font-size:0.78rem; font-weight:700; color:#31345A; text-transform:uppercase; letter-spacing:.5px; }
+        #ipa-helper-popover .row { display:grid; grid-template-columns: repeat(3, 1fr); gap:4px 6px; }
+        #ipa-helper-popover .chip { cursor:pointer; padding:5px 7px; border:1px solid #ddd; border-radius:4px; background:#fafafa; display:flex; align-items:baseline; gap:6px; line-height:1.2; }
+        #ipa-helper-popover .chip:hover { background:#e8eaf6; border-color:#31345A; }
+        #ipa-helper-popover .chip .ipa { font-size:1rem; font-family:Consolas,Monaco,monospace; color:#31345A; min-width:22px; text-align:center; }
+        #ipa-helper-popover .chip .ex { color:#555; font-size:0.74rem; }
+        #ipa-helper-popover .chip .desc { color:#888; font-size:0.68rem; }
+        #tune-warn-popover { display:none; position:fixed; background:#fff; border:1px solid #c0392b; border-radius:6px; box-shadow:0 6px 20px rgba(0,0,0,.18); padding:10px 14px; max-width:380px; z-index:10006; font-size:0.85rem; color:#222; line-height:1.4; }
+        #tune-warn-popover::before { content:'⚠ '; color:#c0392b; font-weight:bold; }
         /* Note icon button (replaces inline note textarea). */
         .t-note-btn { background:none; border:none; cursor:pointer; padding:2px 4px; color:#bbb; line-height:1; }
         .t-note-btn.has-note { color:#a36100; }
@@ -162,12 +174,12 @@
                 <div style="flex:1 1 auto;"></div>
                 <button class="add-row-btn" onclick="addTuneRow()" style="margin-top:0;padding:5px 14px;flex:0 0 auto;">+ Add</button>
             </div>
-            <!-- Row 2: Print filter + items-per-page + pager -->
+            <!-- Row 2: Print filter (left) … per-page + pager (right) -->
             <div id="tunes-toolbar-2" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;">
                 <span style="color:#666;">Filter Print:</span>
                 <input id="tunes-filter" type="text" placeholder="contains…" oninput="setTunesFilter(this.value)" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;width:180px;">
                 <span id="tunes-filter-status" style="color:#888;font-size:0.78rem;"></span>
-                <span style="color:#666;margin-left:12px;">Per page:</span>
+                <div style="flex:1 1 auto;"></div>
                 <select id="tunes-page-size" onchange="setTunesPageSize(this.value)" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;">
                     <option value="50">50</option>
                     <option value="100">100</option>
@@ -179,8 +191,8 @@
                     <option value="500">500</option>
                     <option value="all">All</option>
                 </select>
-                <div style="flex:1 1 auto;"></div>
-                <button id="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;">←</button>
+                <span style="color:#666;">per page</span>
+                <button id="tunes-prev" onclick="goTunesPage(-1)" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;margin-left:8px;">←</button>
                 <span style="color:#555;font-variant-numeric:tabular-nums;white-space:nowrap;">Page
                     <input id="tunes-page-input" type="number" min="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onchange="jumpToTunesPage(this.value)" style="width:50px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;text-align:right;">
                     of <span id="tunes-page-total">1</span>
@@ -194,8 +206,8 @@
                         <th style="width:32px;text-align:center;" title="Active — uncheck to disable this rule"></th>
                         <th onclick="sortTunesBy('print')"      style="width:22%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
                         <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
-                        <th style="width:23%" title="Re-spelling — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> SUB <span style="color:#999;font-weight:400;">(re-spelling)</span></th>
-                        <th style="width:19%" title="IPA — picked variant has its radio checked"><span style="color:#999;font-weight:400;">●</span> IPA</th>
+                        <th style="width:23%;text-align:left;padding-left:25px;" title="Re-spelling — picked variant has its radio checked">SUB <span style="color:#999;font-weight:400;">(re-spelling)</span></th>
+                        <th style="width:19%;text-align:left;padding-left:25px;" title="IPA — picked variant has its radio checked">IPA</th>
                         <th style="width:21%" title="Saved for reference / comparison. Azure neural voices don't accept the SAPI alphabet, so it isn't selectable for synthesis.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
                         <th style="width:36px"></th>
                         <th style="width:30px;text-align:center;" title="Click the icon to add or edit a note">Note</th>
@@ -216,8 +228,8 @@
             <table class="tts-table">
                 <thead>
                     <tr>
-                        <th style="width:18%">Search (literal)</th>
-                        <th style="width:12%">Pause (ms)</th>
+                        <th style="width:90px">Character(s)</th>
+                        <th style="width:90px">Pause (ms)</th>
                         <th>Note</th>
                         <th class="col-toggle">Active</th>
                         <th class="col-actions"></th>
@@ -243,11 +255,11 @@
                 <thead>
                     <tr>
                         <th style="width:60px">Ch #</th>
-                        <th>Label</th>
+                        <th style="width:20%">Label</th>
                         <th style="width:90px">Paragraphs</th>
-                        <th style="width:60px" title="Open this chapter in the flipbook">Read</th>
+                        <th style="width:90px;white-space:nowrap;" title="Open this chapter in the flipbook">Read</th>
                         <th style="width:120px">Status</th>
-                        <th style="width:140px">Audio</th>
+                        <th style="width:220px">Audio</th>
                         <th class="col-actions"></th>
                     </tr>
                 </thead>
@@ -743,6 +755,156 @@ function validateSapi(s) {
     }
     return null;
 }
+// IPA character helper — opens a popover with clickable IPA symbols,
+// each labeled with an English example word and a short description.
+// Clicking a symbol inserts it at the IPA input's current cursor.
+var IPA_HELPER_GROUPS = [
+    { title: 'Stress & Length', chars: [
+        { ipa:'ˈ', ex:'before stressed syllable', desc:'primary stress' },
+        { ipa:'ˌ', ex:'before lightly stressed',  desc:'secondary stress' },
+        { ipa:'ː', ex:'long vowel (uː = "oo")',   desc:'length mark' },
+    ]},
+    { title: 'Vowels', chars: [
+        { ipa:'ɑ',  ex:'f**a**ther', desc:'open back' },
+        { ipa:'æ',  ex:'c**a**t',    desc:'near-open front' },
+        { ipa:'ʌ',  ex:'b**u**t',    desc:'open-mid back' },
+        { ipa:'ɔ',  ex:'th**ou**ght',desc:'open-mid back rounded' },
+        { ipa:'ə',  ex:'**a**bout',  desc:'schwa (unstressed)' },
+        { ipa:'ɛ',  ex:'b**e**d',    desc:'open-mid front' },
+        { ipa:'ɝ',  ex:'b**ir**d',   desc:'r-coloured schwa' },
+        { ipa:'ɪ',  ex:'b**i**t',    desc:'near-close front' },
+        { ipa:'i',  ex:'s**ee**',    desc:'close front' },
+        { ipa:'ʊ',  ex:'b**oo**k',   desc:'near-close back' },
+        { ipa:'u',  ex:'f**oo**d',   desc:'close back' },
+        { ipa:'e',  ex:'caf**é**',   desc:'close-mid front (non-Eng)' },
+    ]},
+    { title: 'Diphthongs', chars: [
+        { ipa:'aɪ', ex:'l**i**ke',   desc:'pie, time' },
+        { ipa:'aʊ', ex:'c**ow**',    desc:'now, out' },
+        { ipa:'eɪ', ex:'s**ay**',    desc:'day, face' },
+        { ipa:'oʊ', ex:'g**o**',     desc:'boat, slow' },
+        { ipa:'ɔɪ', ex:'b**oy**',    desc:'toy, joy' },
+    ]},
+    { title: 'Consonants', chars: [
+        { ipa:'ʃ',  ex:'**sh**ip',         desc:'voiceless palato-alv.' },
+        { ipa:'ʒ',  ex:'mea**s**ure',      desc:'voiced palato-alv.' },
+        { ipa:'θ',  ex:'**th**ink',        desc:'voiceless dental' },
+        { ipa:'ð',  ex:'**th**is',         desc:'voiced dental' },
+        { ipa:'ŋ',  ex:'si**ng**',         desc:'velar nasal' },
+        { ipa:'tʃ', ex:'**ch**air',        desc:'voiceless affricate' },
+        { ipa:'dʒ', ex:'**j**udge',        desc:'voiced affricate' },
+        { ipa:'ɹ',  ex:'**r**ed',          desc:'English r' },
+        { ipa:'ɡ',  ex:'**g**o',           desc:'voiced velar plosive' },
+    ]},
+    { title: 'Hebrew-specific', chars: [
+        { ipa:'ʔ', ex:'uh-**oh** gap',     desc:'aleph / glottal stop' },
+        { ipa:'ʕ', ex:'(no English)',      desc:'ayin / pharyngeal' },
+        { ipa:'χ', ex:'Ba**ch** (Ger.)',   desc:'chet / vl. velar fric.' },
+    ]},
+];
+
+// Insert text at the cursor of an input, preserving cursor placement
+// and firing an `input` event so the autosave + validator listeners run.
+function insertAtCursor(input, text) {
+    if (!input) return;
+    var s = (typeof input.selectionStart === 'number') ? input.selectionStart : input.value.length;
+    var e = (typeof input.selectionEnd   === 'number') ? input.selectionEnd   : input.value.length;
+    input.value = input.value.slice(0, s) + text + input.value.slice(e);
+    var pos = s + text.length;
+    try { input.setSelectionRange(pos, pos); } catch (err) { /* readonly type */ }
+    input.focus();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function getIpaHelperPopover() {
+    var pop = document.getElementById('ipa-helper-popover');
+    if (pop) return pop;
+    pop = document.createElement('div');
+    pop.id = 'ipa-helper-popover';
+    // Build the HTML once. Click handler is delegated.
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+             + '<span style="font-weight:600;color:#31345A;">IPA helper — click to insert at cursor</span>'
+             + '<button type="button" onclick="closeIpaHelper()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#888;line-height:1;">&times;</button>'
+             + '</div>';
+    IPA_HELPER_GROUPS.forEach(function(g) {
+        html += '<h4>' + g.title + '</h4><div class="row">';
+        g.chars.forEach(function(c) {
+            // Bold the example letters that correspond to the sound.
+            var ex = c.ex.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+            html += '<div class="chip" data-ipa="' + c.ipa + '" title="' + escapeHtml(c.desc) + '">'
+                  + '<span class="ipa">' + c.ipa + '</span>'
+                  + '<span class="ex">' + ex + '</span>'
+                  + '</div>';
+        });
+        html += '</div>';
+    });
+    pop.innerHTML = html;
+    document.body.appendChild(pop);
+    // Click any chip → insert into the currently-anchored input.
+    pop.addEventListener('click', function(e) {
+        var chip = e.target.closest('.chip');
+        if (!chip) return;
+        var ipa = chip.getAttribute('data-ipa');
+        if (!ipa) return;
+        var target = pop._anchorInput;
+        if (target) insertAtCursor(target, ipa);
+    });
+    // Outside click dismiss.
+    document.addEventListener('mousedown', function(e) {
+        var p = document.getElementById('ipa-helper-popover');
+        if (!p || p.style.display === 'none') return;
+        if (p.contains(e.target)) return;
+        if (e.target.classList && e.target.classList.contains('f-ipa-helper')) return;
+        p.style.display = 'none';
+    });
+    return pop;
+}
+function showIpaHelper(anchorBtn, ipaInput) {
+    var pop = getIpaHelperPopover();
+    pop._anchorInput = ipaInput;
+    pop.style.display = 'block';
+    var r = anchorBtn.getBoundingClientRect();
+    var top  = r.bottom + 4;
+    var left = r.left  - 100;
+    if (left + 540 > window.innerWidth) left = Math.max(8, window.innerWidth - 548);
+    if (left < 8) left = 8;
+    // If the popover would overflow the bottom of the viewport, anchor above.
+    if (top + 360 > window.innerHeight) top = Math.max(8, r.top - 360);
+    pop.style.top  = top  + 'px';
+    pop.style.left = left + 'px';
+}
+function closeIpaHelper() {
+    var pop = document.getElementById('ipa-helper-popover');
+    if (pop) pop.style.display = 'none';
+}
+
+// Popover anchored under a warning icon, showing the full validation
+// message. Reliable substitute for native title tooltips, which can be
+// slow or missed.
+function showTuneWarnPopover(anchorEl, msg) {
+    var pop = document.getElementById('tune-warn-popover');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'tune-warn-popover';
+        document.body.appendChild(pop);
+        document.addEventListener('mousedown', function(e) {
+            var p = document.getElementById('tune-warn-popover');
+            if (!p || p.style.display === 'none') return;
+            if (p.contains(e.target)) return;
+            if (e.target.classList && e.target.classList.contains('f-warn')) return;
+            p.style.display = 'none';
+        });
+    }
+    pop.textContent = msg;
+    pop.style.display = 'block';
+    var r = anchorEl.getBoundingClientRect();
+    var top  = r.bottom + 4;
+    var left = r.left  - 8;
+    if (left + 380 > window.innerWidth) left = Math.max(8, window.innerWidth - 388);
+    if (left < 8) left = 8;
+    pop.style.top  = top  + 'px';
+    pop.style.left = left + 'px';
+}
 
 // Mechanical SAPI ↔ IPA phoneme maps (en-US). Stress digit on a vowel
 // SAPI token becomes the IPA stress mark prefix: 1 → ˈ, 2 → ˌ, 0 → none.
@@ -906,15 +1068,16 @@ function buildTuneRow(t) {
         '<td class="f-count" style="text-align:right;font-variant-numeric:tabular-nums;color:#555;">' + count + '</td>' +
         '<td><label style="display:flex;align-items:center;gap:6px;">'
             + '<input type="radio" name="' + grp + '" class="f-type-radio" value="sub" title="Use SUB for this rule"' + subChecked + '>'
-            + '<input type="text" class="f-sub" value="' + escapeHtml(t.tts_tune_phonetic_sub || '') + '" placeholder="re-spelling" style="flex:1;">'
+            + '<input type="text" class="f-sub" value="' + escapeHtml(t.tts_tune_phonetic_sub || '') + '" style="flex:1;">'
         + '</label></td>' +
         '<td><label style="display:flex;align-items:center;gap:6px;">'
             + '<input type="radio" name="' + grp + '" class="f-type-radio" value="ipa" title="Use IPA for this rule"' + ipaChecked + '>'
-            + '<input type="text" class="f-ipa" value="' + escapeHtml(t.tts_tune_phonetic_ipa || '') + '" placeholder="IPA" style="flex:1;font-family:monospace;">'
+            + '<input type="text" class="f-ipa" value="' + escapeHtml(t.tts_tune_phonetic_ipa || '') + '" style="flex:1;font-family:monospace;">'
+            + '<button type="button" class="f-ipa-helper" title="Insert IPA symbols">ⓘ</button>'
             + '<span class="f-warn f-warn-ipa" title="">⚠</span>'
         + '</label></td>' +
         '<td><div style="display:flex;align-items:center;gap:4px;">'
-            + '<input type="text" class="f-sapi" value="' + escapeHtml(t.tts_tune_phonetic_sapi || '') + '" placeholder="SAPI (ref)" style="flex:1;font-family:monospace;">'
+            + '<input type="text" class="f-sapi" value="' + escapeHtml(t.tts_tune_phonetic_sapi || '') + '" style="flex:1;font-family:monospace;">'
             + '<span class="f-warn f-warn-sapi" title="">⚠</span>'
         + '</div></td>' +
         '<td style="padding:8px 2px;text-align:center;">' +
@@ -950,13 +1113,36 @@ function buildTuneRow(t) {
         if (msg) {
             warnEl.classList.add('show');
             warnEl.title = msg;
+            warnEl.dataset.msg = msg;
+            // Mirror the message on the input itself too so hovering the
+            // field (not just the small ⚠) shows the explanation.
+            el.title = msg;
             el.style.borderColor = '#e8a89e';
         } else {
             warnEl.classList.remove('show');
             warnEl.title = '';
+            warnEl.dataset.msg = '';
+            el.title = '';
             el.style.borderColor = '';
         }
     }
+    // Click the ⚠ icon → reliable popover with the full message. Native
+    // tooltips can be slow/missed, so this is the guaranteed reveal.
+    function bindWarnClick(warnEl) {
+        warnEl.style.pointerEvents = 'auto';
+        warnEl.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showTuneWarnPopover(warnEl, warnEl.dataset.msg || warnEl.title || 'Validation issue.');
+        });
+    }
+    bindWarnClick(warnIpa);
+    bindWarnClick(warnSapi);
+    // IPA helper popover trigger — opens a panel of clickable IPA chars.
+    var helperBtn = tr.querySelector('.f-ipa-helper');
+    if (helperBtn) helperBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        showIpaHelper(helperBtn, ipaInp);
+    });
     sapiInp.addEventListener('input', function() {
         var derived = sapiToIpa(sapiInp.value);
         if (derived !== ipaInp.value) ipaInp.value = derived;
@@ -1075,7 +1261,7 @@ function buildPauseRow(p) {
     if (!p.tts_pause_active_flag) tr.className = 'inactive';
     tr.dataset.key = p.tts_pause_key || '';
     tr.innerHTML =
-        '<td><input type="text" class="f-search" value="' + escapeHtml(p.tts_pause_search || '') + '" placeholder=" | "></td>' +
+        '<td><input type="text" class="f-search" value="' + escapeHtml(p.tts_pause_search || '') + '"></td>' +
         '<td><input type="number" class="f-ms"   value="' + (p.tts_pause_ms || 300) + '" min="0" max="5000" step="50"></td>' +
         '<td><input type="text"   class="f-note" value="' + escapeHtml(p.tts_pause_note || '') + '"></td>' +
         '<td class="col-toggle"><input type="checkbox" class="f-active"' + (p.tts_pause_active_flag !== false ? ' checked' : '') + '></td>' +
@@ -1226,7 +1412,7 @@ function renderChapters() {
         }
         var audio = '';
         if (st === 'complete' && c.tts_audio_path) {
-            audio = '<audio controls preload="none" style="width:130px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
+            audio = '<audio controls preload="none" style="width:210px;height:28px" src="' + escapeHtml(c.tts_audio_path) + '"></audio>';
         }
         var actions = '<button class="btn-sm" onclick="openBuildModal(' + c.chapter_key + ',' + (c.tts_audio_key || 'null') + ')">' + (st === 'complete' ? 'Rebuild' : st === 'none' ? 'Build' : 'Settings') + '</button>';
         if (st === 'running' || st === 'pending') {
@@ -1240,7 +1426,7 @@ function renderChapters() {
             var href = '/' + ACTIVE_VOLUME_CODE + '/#page=' + c.chapter_page;
             readCell = '<a href="' + escapeHtml(href) + '" target="_blank" '
                      + 'title="Open chapter ' + escapeHtml(c.chapter_number) + ' on page ' + escapeHtml(c.chapter_page) + ' in the flipbook" '
-                     + 'style="color:#31345A;text-decoration:none;font-weight:600;">p.' + escapeHtml(c.chapter_page) + ' →</a>';
+                     + 'style="color:#31345A;text-decoration:none;font-weight:600;white-space:nowrap;">p.' + escapeHtml(c.chapter_page) + ' →</a>';
         } else {
             readCell = '<span style="color:#bbb;" title="No flipbook page configured for this chapter">—</span>';
         }
@@ -1248,7 +1434,7 @@ function renderChapters() {
             '<td>' + escapeHtml(c.chapter_number) + '</td>' +
             '<td>' + escapeHtml(c.chapter_label || '') + (c.tts_audio_message ? '<div style="font-size:0.78rem;color:#888">' + escapeHtml(c.tts_audio_message) + '</div>' : '') + '</td>' +
             '<td>' + escapeHtml(c.paragraph_count || 0) + '</td>' +
-            '<td>' + readCell + '</td>' +
+            '<td style="white-space:nowrap;">' + readCell + '</td>' +
             '<td>' + badge + progress + '</td>' +
             '<td>' + audio + '</td>' +
             '<td class="col-actions">' + actions + '</td>';

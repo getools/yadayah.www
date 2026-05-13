@@ -15,6 +15,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/admin-tts-helpers.php';
+require_once __DIR__ . '/spawn-helpers.php';
 
 $audioKey = (int)($argv[1] ?? 0);
 if (!$audioKey) {
@@ -23,6 +24,38 @@ if (!$audioKey) {
 }
 
 $db = getDb();
+
+// ── Queue promotion ────────────────────────────────────────────────────
+// Concurrency limit: at most 2 chapter builds may run at a time. When
+// this worker exits (success, failure, or unexpected crash), promote the
+// next pending row that has no worker_pid yet. Registered as a shutdown
+// hook so even fatal errors / out-of-memory exits trigger the promote.
+$MAX_CONCURRENT_BUILDS = 2;
+register_shutdown_function(function() use (&$db, $MAX_CONCURRENT_BUILDS) {
+    try {
+        if (!$db) $db = getDb();
+        $running = (int)$db->query("SELECT COUNT(*) FROM yy_tts_audio WHERE tts_audio_status = 'running'")->fetchColumn();
+        if ($running >= $MAX_CONCURRENT_BUILDS) return;
+        $nextKey = (int)$db->query("
+            SELECT tts_audio_key FROM yy_tts_audio
+             WHERE tts_audio_status = 'pending'
+               AND tts_audio_worker_pid IS NULL
+             ORDER BY tts_audio_dtime ASC
+             LIMIT 1
+        ")->fetchColumn();
+        if (!$nextKey) return;
+        $logFile = sys_get_temp_dir() . '/tts_build_' . $nextKey . '.log';
+        $pid = spawnCappedWorker(__FILE__, [(string)$nextKey], $logFile, [
+            'cpu_secs' => 3600, 'mem_mb' => 1500, 'nice' => 10,
+        ]);
+        if ($pid > 0) {
+            $db->prepare("UPDATE yy_tts_audio SET tts_audio_worker_pid = ? WHERE tts_audio_key = ?")
+               ->execute([$pid, $nextKey]);
+        }
+    } catch (Throwable $e) {
+        fwrite(STDERR, "promote-next failed: " . $e->getMessage() . "\n");
+    }
+});
 
 function updateAudio(PDO $db, int $audioKey, array $fields): void {
     if (!$fields) return;
@@ -35,21 +68,6 @@ function updateAudio(PDO $db, int $audioKey, array $fields): void {
     $params[] = $audioKey;
     $db->prepare("UPDATE yy_tts_audio SET " . implode(', ', $set) . ", tts_audio_revision_dtime = NOW() WHERE tts_audio_key = ?")
        ->execute($params);
-}
-
-// Approximate bytes-per-second for the chosen Azure output format. Used to
-// translate the running byte counter into a millisecond offset for
-// yy_tts_audio_marker. Azure mp3 outputs are CBR so byte-position × 8 /
-// bitrate is accurate to within a frame (~26 ms at 48 kbps). For
-// uncompressed PCM (riff-*) the format string carries the sample rate; we
-// assume 16-bit mono. Opus is VBR — the value here is an estimate; if exact
-// timing matters for opus output, switch to ffprobe-based per-paragraph
-// measurement later.
-function bytesPerSecondForFormat(string $fmt): float {
-    if (preg_match('/(\d+)kbitrate/i', $fmt, $m))      return ((int)$m[1] * 1000) / 8.0; // mp3 CBR
-    if (preg_match('/(\d+)khz.*?16bit/i', $fmt, $m))   return (int)$m[1] * 1000 * 2.0;    // pcm 16-bit mono
-    if (strpos($fmt, 'opus') !== false)                return 32000 / 8.0;                 // opus ~32 kbps estimate
-    return 48000 / 8.0;  // safe default — 48 kbps mp3
 }
 
 function bail(PDO $db, int $audioKey, string $err): void {
@@ -140,51 +158,34 @@ $snapshot = [
 $db->prepare("UPDATE yy_tts_audio SET tts_audio_settings = ?::jsonb WHERE tts_audio_key = ?")
    ->execute([json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $audioKey]);
 
-// Output directory — one flat folder at /u/tts/ for every chapter, every
-// volume. The filename itself encodes the book code + chapter number, so
-// per-volume subdirectories aren't needed. The worker runs inside the
-// web container where the host path /opt/yada-www/public/ is bind-mounted
-// at /var/www/html/, so we derive the path relative to __DIR__ (which
-// lives in /api/) to land on the correct container-side mount.
-$outDirHost      = '/opt/yada-www/public/u/tts';
-$outDirContainer = dirname(__DIR__) . '/u/tts';
+// Look up the volume's URL-safe slug (volume_code) — included in the
+// filename so files are self-identifying without needing the DB.
+$vcRow = $db->prepare("SELECT volume_code FROM yy_volume WHERE volume_key = ?");
+$vcRow->execute([$volumeKey]);
+$volumeSlug = (string)($vcRow->fetchColumn() ?: '');
+if ($volumeSlug === '') $volumeSlug = (string)$volumeKey;
+
+// Flat output: every chapter is a sibling file under /u/tts-audio/.
+// Filename pattern:  {volume_code}-ch{NN}.{ext}
+// Avoids per-volume subdirectories (simpler permissions, simpler cleanup).
+$outDirHost      = '/opt/yada-www/public/u/tts-audio';
+$outDirContainer = dirname(__DIR__) . '/u/tts-audio';
 $outDir = is_dir(dirname(__DIR__)) ? $outDirContainer : $outDirHost;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);
-$publicBase = '/u/tts';
 
-// Chapter row + book code (YY-s##v##) for filename naming. The book code is
-// derived from series_number + volume_number at runtime so we don't depend
-// on a long-form volume_code / volume_flip_code field. Filenames look like
-// "YY-s02v05_ch01.mp3" — short, sortable, unambiguous.
-$chRow = $db->prepare("
-    SELECT c.chapter_number, s.series_number, v.volume_number
-      FROM yy_chapter c
-      JOIN yy_volume v ON c.volume_key = v.volume_key
-      JOIN yy_series s ON v.series_key = s.series_key
-     WHERE c.chapter_key = ?
-");
+// Chapter row for filename naming.
+$chRow = $db->prepare("SELECT chapter_number FROM yy_chapter WHERE chapter_key = ?");
 $chRow->execute([$chapterKey]);
-$meta      = $chRow->fetch() ?: [];
-$chNum     = (int)($meta['chapter_number'] ?? 0);
-$seriesNum = (int)($meta['series_number']  ?? 0);
-$volNum    = (int)($meta['volume_number']  ?? 0);
-$bookCode  = sprintf('YY-s%02dv%02d', $seriesNum, $volNum);
-
+$chNum = (int)($chRow->fetchColumn() ?: 0);
 $ext = (strpos($cfg['system']['tts_output_format'], 'mp3') !== false) ? 'mp3'
      : ((strpos($cfg['system']['tts_output_format'], 'opus') !== false) ? 'opus'
      : ((strpos($cfg['system']['tts_output_format'], 'pcm') !== false) ? 'wav' : 'mp3'));
-$baseName  = sprintf('%s_ch%02d.%s', $bookCode, $chNum, $ext);
+$baseName  = sprintf('%s-ch%02d.%s', $volumeSlug, $chNum, $ext);
 $finalPath = $outDir . '/' . $baseName;
-$relPath   = $publicBase . '/' . $baseName;
+$relPath   = '/u/tts-audio/' . $baseName;
 
-// Load paragraphs. paragraph_key + paragraph_page come along so the marker
-// rows can store them denormalized for direct query without a join.
-$pStmt = $db->prepare("
-    SELECT paragraph_key, paragraph_number, paragraph_page, paragraph_text_html
-      FROM yy_paragraph
-     WHERE chapter_key = ?
-     ORDER BY paragraph_number
-");
+// Load paragraphs.
+$pStmt = $db->prepare("SELECT paragraph_number, paragraph_text_html FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");
 $pStmt->execute([$chapterKey]);
 $paragraphs = $pStmt->fetchAll();
 $nPara = count($paragraphs);
@@ -199,35 +200,9 @@ updateAudio($db, $audioKey, [
 $fh = fopen($finalPath, 'wb');
 if (!$fh) bail($db, $audioKey, "cannot open $finalPath for write");
 
-$charsBilled  = 0;
+$charsBilled = 0;
 $failureCount = 0;
-$failures     = [];
-
-// Running byte counter → ms offset for yy_tts_audio_marker. A marker row
-// is inserted at the START of each paragraph (before its bytes are
-// written) so the table reflects "where this paragraph begins in the
-// file." Each row is committed immediately so a UI can poll mid-build.
-$bytesWritten = 0;
-$bytesPerSec  = bytesPerSecondForFormat($cfg['system']['tts_output_format'] ?? '');
-$markerInsert = $db->prepare("
-    INSERT INTO yy_tts_audio_marker
-        (tts_audio_key, paragraph_key, paragraph_page, paragraph_number,
-         tts_audio_marker_offset_ms, tts_audio_marker_byte_offset)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT (tts_audio_key, paragraph_number) DO UPDATE SET
-        paragraph_key                = EXCLUDED.paragraph_key,
-        paragraph_page               = EXCLUDED.paragraph_page,
-        tts_audio_marker_offset_ms   = EXCLUDED.tts_audio_marker_offset_ms,
-        tts_audio_marker_byte_offset = EXCLUDED.tts_audio_marker_byte_offset
-");
-
-// Parser state carried across paragraphs so a translation / parenthesized
-// definition that opens on one page and closes on the next is classified
-// correctly. Each paragraph inherits bold/italic/paren depth from the
-// prior paragraph's end-state and updates it as it parses. See
-// segmentParagraph() — the optional &$state argument keeps the depth
-// across calls.
-$parseState = ['bold' => 0, 'italic' => 0, 'paren' => 0];
+$failures = [];
 
 foreach ($paragraphs as $idx => $p) {
     // Cancellation check.
@@ -243,24 +218,8 @@ foreach ($paragraphs as $idx => $p) {
         }
     }
 
-    // Parse this paragraph with state carried over from the previous one.
-    // After the call, $parseState reflects this paragraph's END depth so
-    // the NEXT paragraph picks up where this one left off (handles
-    // translations / parenthesized definitions that span a page break).
-    $segs = segmentParagraph((string)$p['paragraph_text_html'], $parseState);
+    $segs = segmentParagraph((string)$p['paragraph_text_html']);
     if (!$segs) continue;
-
-    // Marker BEFORE writing any bytes for this paragraph — records the
-    // start offset of this paragraph within the audio file.
-    $offsetMs = (int)round(($bytesWritten / max($bytesPerSec, 1)) * 1000);
-    $markerInsert->execute([
-        $audioKey,
-        $p['paragraph_key'],
-        $p['paragraph_page'],
-        $p['paragraph_number'],
-        $offsetMs,
-        $bytesWritten,
-    ]);
 
     $blocks = '';
     foreach ($segs as $seg) {
@@ -283,10 +242,7 @@ foreach ($paragraphs as $idx => $p) {
             $bytes .= $b;
             $charsBilled += mb_strlen($seg['text']);
         }
-        if ($bytes !== '') {
-            fwrite($fh, $bytes);
-            $bytesWritten += strlen($bytes);
-        }
+        if ($bytes !== '') fwrite($fh, $bytes);
     } else {
         $err = '';
         $bytes = azureTtsSynthesize($ssml, $cfg, $err);
@@ -296,7 +252,6 @@ foreach ($paragraphs as $idx => $p) {
             continue;
         }
         fwrite($fh, $bytes);
-        $bytesWritten += strlen($bytes);
         foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
     }
 
@@ -344,19 +299,13 @@ exit(0);
  * detection is reserved for a future pattern-matching pass — for now
  * paragraphs are classified only by the HTML structure.
  */
-// $state is optional — pass an array reference to carry bold/italic/paren
-// depth across paragraph calls. A translation or parenthesized definition
-// that opens on page N and closes on page N+1 lives in two yy_paragraph
-// rows; without carrying state, the second row would reset depth to 0 and
-// classify the trailing definition text as 'main' instead of 'word_definition'.
-// On exit the function writes the end-of-paragraph depths back into $state.
-function segmentParagraph(string $html, ?array &$state = null): array {
+function segmentParagraph(string $html): array {
     $segments = [];
     $cur = ['category' => null, 'text' => ''];
 
-    $boldDepth   = isset($state['bold'])   ? (int)$state['bold']   : 0;
-    $italicDepth = isset($state['italic']) ? (int)$state['italic'] : 0;
-    $parenDepth  = isset($state['paren'])  ? (int)$state['paren']  : 0;
+    $boldDepth = 0;
+    $italicDepth = 0;
+    $parenDepth = 0;
     $i = 0; $n = strlen($html);
     while ($i < $n) {
         $ch = $html[$i];
@@ -402,14 +351,6 @@ function segmentParagraph(string $html, ?array &$state = null): array {
         }
     }
     if (trim($cur['text']) !== '') $segments[] = $cur;
-
-    // Hand the end-of-paragraph depths back so the next paragraph picks up
-    // where this one left off.
-    if ($state !== null) {
-        $state['bold']   = $boldDepth;
-        $state['italic'] = $italicDepth;
-        $state['paren']  = $parenDepth;
-    }
 
     // Merge adjacent same-category, drop whitespace-only segments after merge,
     // and trim outer whitespace.
