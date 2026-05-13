@@ -125,19 +125,50 @@ $snapshot = [
 $db->prepare("UPDATE yy_tts_audio SET tts_audio_settings = ?::jsonb WHERE tts_audio_key = ?")
    ->execute([json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $audioKey]);
 
-// Output directory.
-$outDir = '/opt/yada-www/public/u/tts-audio/' . $volumeKey;
+// Output directory. The worker runs inside the web container where the
+// host path /opt/yada-www/public/ is bind-mounted at /var/www/html/, so
+// we must derive the path relative to __DIR__ (which lives in /api/) to
+// land on the correct container-side mount. Earlier code hard-coded the
+// host path, which silently failed to mkdir inside the container.
+//
+// One flat directory — every chapter MP3 lives here regardless of volume,
+// because the filename itself encodes the book code + chapter number.
+$outDirHost      = '/opt/yada-www/public/u/tts';        // host view
+$outDirContainer = dirname(__DIR__) . '/u/tts';          // container view
+$outDir = is_dir(dirname(__DIR__)) ? $outDirContainer : $outDirHost;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);
+// Path stored in DB / served to clients is host-relative under public/.
+$publicBase = '/u/tts';
 
-// Chapter row for filename naming.
-$chRow = $db->prepare("SELECT chapter_number FROM yy_chapter WHERE chapter_key = ?");
+// Chapter row + volume code for filename naming. We prefix every chapter
+// MP3 with the volume's flip_code (already sanitized as a filename — e.g.
+// "YY-s02v05-Yada-Yahowah-Qatsyr-Harvests") followed by a zero-padded
+// chapter number, so file listings sort meaningfully and the file alone
+// tells you which book + chapter it belongs to. Fallback to volume_label
+// (sanitized) if flip_code is empty, then to "v{key}".
+$chRow = $db->prepare("
+    SELECT c.chapter_number, v.volume_flip_code, v.volume_label
+      FROM yy_chapter c JOIN yy_volume v ON c.volume_key = v.volume_key
+     WHERE c.chapter_key = ?
+");
 $chRow->execute([$chapterKey]);
-$chNum = (int)($chRow->fetchColumn() ?: 0);
+$meta = $chRow->fetch() ?: [];
+$chNum = (int)($meta['chapter_number'] ?? 0);
+$rawCode = (string)($meta['volume_flip_code'] ?? '');
+if ($rawCode === '') $rawCode = (string)($meta['volume_label'] ?? '');
+if ($rawCode === '') $rawCode = 'v' . $volumeKey;
+// Filename-safe: keep ASCII letters/digits/dash/underscore, collapse the rest
+// to single dashes, trim leading/trailing dashes.
+$bookCode = preg_replace('/[^A-Za-z0-9_-]+/', '-', $rawCode);
+$bookCode = trim($bookCode, '-');
+if ($bookCode === '') $bookCode = 'v' . $volumeKey;
+
 $ext = (strpos($cfg['system']['tts_output_format'], 'mp3') !== false) ? 'mp3'
      : ((strpos($cfg['system']['tts_output_format'], 'opus') !== false) ? 'opus'
      : ((strpos($cfg['system']['tts_output_format'], 'pcm') !== false) ? 'wav' : 'mp3'));
-$finalPath = sprintf('%s/ch%02d.%s', $outDir, $chNum, $ext);
-$relPath   = sprintf('/u/tts-audio/%d/ch%02d.%s', $volumeKey, $chNum, $ext);
+$baseName  = sprintf('%s_ch%02d.%s', $bookCode, $chNum, $ext);
+$finalPath = $outDir . '/' . $baseName;
+$relPath   = $publicBase . '/' . $baseName;
 
 // Load paragraphs.
 $pStmt = $db->prepare("SELECT paragraph_number, paragraph_text_html FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");

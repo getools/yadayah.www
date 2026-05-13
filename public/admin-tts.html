@@ -67,7 +67,9 @@
         .badge-complete { background:#d4edda; color:#155724; }
         .badge-running { background:#fff3cd; color:#856404; }
         .badge-pending { background:#e8e8e8; color:#555; }
-        .badge-failed { background:#f8d7da; color:#721c24; }
+        .badge-failed { background:#f8d7da; color:#721c24; cursor:help; }
+        .badge-failed.clickable { cursor:pointer; }
+        .badge-failed.clickable:hover { background:#f1c0c0; }
         .badge-none { background:#fafafa; color:#999; border:1px solid #e0e0e0; }
 
         .progress { display:inline-block; vertical-align:middle; width:120px; height:6px; background:#eee; border-radius:3px; overflow:hidden; margin-left:8px; }
@@ -231,11 +233,17 @@
             <p class="desc">Pick a volume to see chapter-level audio status and build new files.</p>
             <div class="books-controls">
                 <select id="volume-select"><option value="">— Select volume —</option></select>
-                <span id="volume-summary" style="font-size:0.85rem;color:#666"></span>
+                <span id="volume-summary" style="font-size:0.85rem;color:#666;flex:1"></span>
+                <button id="bulk-build-btn" onclick="bulkBuildSelected()" disabled
+                        title="Build audio for every chapter ticked below, using the saved voice defaults"
+                        style="display:none;background:#27ae60;color:#fff;border:none;border-radius:4px;padding:7px 18px;font-size:0.88rem;font-weight:600;cursor:pointer;opacity:0.5;">
+                    Build
+                </button>
             </div>
             <table class="tts-table" id="chapters-table" style="display:none">
                 <thead>
                     <tr>
+                        <th style="width:32px;text-align:center"><input type="checkbox" id="chapters-check-all" onchange="toggleAllChapterChecks(this.checked)" title="Select all chapters"></th>
                         <th style="width:60px">Ch #</th>
                         <th>Label</th>
                         <th style="width:90px">Paragraphs</th>
@@ -1119,13 +1127,62 @@ async function loadChapters(volumeKey) {
     }
 }
 
+// Show the full error text for a failed TTS chapter build. Opens a
+// modal-style overlay with the stack/diagnostic info — same plumbing
+// pattern as the build modal but read-only and dismiss-on-overlay-click.
+function showTtsError(audioKey) {
+    var err = (window._ttsErrors && window._ttsErrors[audioKey]) || 'No error recorded.';
+    var ov = document.getElementById('tts-error-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'tts-error-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:10006;';
+        ov.innerHTML = '<div style="background:#fff;border-radius:8px;padding:0;max-width:760px;width:90%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,.4);">'
+            + '<div style="padding:14px 18px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;background:#f7f8fc;">'
+            +   '<h3 style="margin:0;color:#721c24;font-size:1.05rem;">Build failed — error details</h3>'
+            +   '<button onclick="closeTtsError()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">&times;</button>'
+            + '</div>'
+            + '<pre id="tts-error-body" style="margin:0;padding:14px 18px;overflow:auto;flex:1;font-size:0.82rem;line-height:1.4;font-family:Consolas,Monaco,monospace;color:#222;white-space:pre-wrap;word-break:break-word;background:#fff;"></pre>'
+            + '<div style="padding:10px 18px;border-top:1px solid #e0e0e0;text-align:right;background:#f7f8fc;">'
+            +   '<button onclick="closeTtsError()" style="background:#fff;border:1px solid #ccc;padding:6px 14px;border-radius:4px;cursor:pointer;">Close</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        ov.onclick = function(e){ if (e.target === ov) closeTtsError(); };
+    }
+    document.getElementById('tts-error-body').textContent = err;
+    ov.style.display = 'flex';
+}
+function closeTtsError() {
+    var ov = document.getElementById('tts-error-overlay');
+    if (ov) ov.style.display = 'none';
+}
+
 function renderChapters() {
     var tb = $('chapters-tbody');
     tb.innerHTML = '';
     CHAPTERS.forEach(c => {
         var tr = document.createElement('tr');
         var st = c.tts_audio_status || 'none';
-        var badge = '<span class="badge badge-' + st + '">' + st + '</span>';
+        var badge;
+        if (st === 'failed') {
+            // Build a clickable badge that shows the full error in a
+            // popover and the short message as a hover tooltip. The
+            // tts_audio_error column holds the long error; tts_audio_message
+            // is usually the short last-known status line.
+            var fullErr = (c.tts_audio_error || c.tts_audio_message || 'No error message recorded.').toString();
+            var shortErr = (c.tts_audio_message || c.tts_audio_error || '').toString().split('\n')[0].substring(0, 200);
+            // Stash the full error on a window-keyed map so the popover
+            // can look it up by audio key (avoids escaping HTML in the
+            // onclick attribute).
+            window._ttsErrors = window._ttsErrors || {};
+            window._ttsErrors[c.tts_audio_key] = fullErr;
+            badge = '<span class="badge badge-failed clickable" '
+                  + 'onclick="showTtsError(' + c.tts_audio_key + ')" '
+                  + 'title="' + escapeHtml(shortErr || 'Click to view error') + '">failed</span>';
+        } else {
+            badge = '<span class="badge badge-' + st + '">' + st + '</span>';
+        }
         var progress = '';
         if (st === 'running' || st === 'pending') {
             progress = '<div class="progress"><span class="fill" style="width:' + (c.tts_audio_progress || 0) + '%"></span></div>';
@@ -1138,7 +1195,9 @@ function renderChapters() {
         if (st === 'running' || st === 'pending') {
             actions += '<button class="btn-sm btn-del" onclick="cancelBuild(' + c.tts_audio_key + ')">Cancel</button>';
         }
+        var busy = (st === 'running' || st === 'pending');
         tr.innerHTML =
+            '<td style="text-align:center"><input type="checkbox" class="chapter-check" data-chapter="' + c.chapter_key + '"' + (busy ? ' disabled title="Already running"' : '') + ' onchange="updateBulkBuildBtn()"></td>' +
             '<td>' + escapeHtml(c.chapter_number) + '</td>' +
             '<td>' + escapeHtml(c.chapter_label || '') + (c.tts_audio_message ? '<div style="font-size:0.78rem;color:#888">' + escapeHtml(c.tts_audio_message) + '</div>' : '') + '</td>' +
             '<td>' + escapeHtml(c.paragraph_count || 0) + '</td>' +
@@ -1147,6 +1206,72 @@ function renderChapters() {
             '<td class="col-actions">' + actions + '</td>';
         tb.appendChild(tr);
     });
+    // Reset header checkbox + Build button to match the freshly rendered rows.
+    var headerCk = $('chapters-check-all');
+    if (headerCk) headerCk.checked = false;
+    updateBulkBuildBtn();
+}
+
+// Check / uncheck every row's chapter checkbox in one shot. Disabled rows
+// (running/pending) stay unchecked — they can't be queued again until they
+// finish or are cancelled.
+function toggleAllChapterChecks(checked) {
+    document.querySelectorAll('#chapters-tbody .chapter-check:not([disabled])').forEach(function(cb) {
+        cb.checked = checked;
+    });
+    updateBulkBuildBtn();
+}
+
+// Enable the Build button only when at least one chapter is ticked; show a
+// count so the operator knows what's about to run.
+function updateBulkBuildBtn() {
+    var btn = $('bulk-build-btn');
+    if (!btn) return;
+    btn.style.display = '';
+    var n = document.querySelectorAll('#chapters-tbody .chapter-check:checked').length;
+    btn.disabled = (n === 0);
+    btn.style.opacity = n === 0 ? '0.5' : '1';
+    btn.textContent = n === 0 ? 'Build' : ('Build ' + n + ' selected');
+}
+
+// Bulk-build: queue a build for every ticked chapter using the saved voice
+// defaults from the Voices tab. The /admin-tts-build.php?action=start
+// endpoint already snapshots the current category config per job, so we
+// just fire one request per chapter — no per-chapter modal.
+async function bulkBuildSelected() {
+    var picks = Array.from(document.querySelectorAll('#chapters-tbody .chapter-check:checked'))
+        .map(function(cb) { return parseInt(cb.dataset.chapter, 10); })
+        .filter(Boolean);
+    if (!picks.length) return;
+    if (!confirm('Queue ' + picks.length + ' chapter audio build' + (picks.length === 1 ? '' : 's')
+                 + ' using the saved Voices defaults? Each chapter takes a few minutes.')) {
+        return;
+    }
+    var btn = $('bulk-build-btn');
+    btn.disabled = true;
+    btn.textContent = 'Queuing 0 / ' + picks.length + '…';
+    var ok = 0, failed = 0;
+    for (var i = 0; i < picks.length; i++) {
+        try {
+            await api('/admin-tts-build.php?action=start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'start',
+                    tts_key: TTS_KEY,
+                    volume_key: ACTIVE_VOLUME,
+                    chapter_key: picks[i],
+                }),
+            });
+            ok++;
+        } catch (e) {
+            failed++;
+            console.error('bulk-build failed for chapter ' + picks[i] + ':', e);
+        }
+        btn.textContent = 'Queuing ' + (i + 1) + ' / ' + picks.length + '…';
+    }
+    btn.textContent = 'Queued ' + ok + (failed ? ' (' + failed + ' failed)' : '');
+    setTimeout(function() { loadChapters(ACTIVE_VOLUME); }, 400);
 }
 
 function openBuildModal(chapterKey, audioKey) {

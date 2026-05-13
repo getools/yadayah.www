@@ -93,11 +93,30 @@ if ($action === 'start') {
            AND tts_audio_status IN ('pending', 'running')
     ")->execute([$ttsKey, $volumeKey, $chapterKey]);
 
+    // INSERT … ON CONFLICT reuses the existing row when a (tts_key,
+    // volume_key, chapter_key) record already exists from a prior build
+    // attempt (failed or complete). The partial unique index includes
+    // a WHERE chapter_key IS NOT NULL predicate, so the ON CONFLICT
+    // target must repeat it.
     $insStmt = $db->prepare("
         INSERT INTO yy_tts_audio
             (tts_key, volume_key, chapter_key, tts_audio_status, tts_audio_progress,
              tts_audio_message, tts_audio_settings, tts_audio_started_dtime)
         VALUES (?, ?, ?, 'pending', 0, 'Queued', ?::jsonb, NOW())
+        ON CONFLICT (tts_key, volume_key, chapter_key) WHERE chapter_key IS NOT NULL
+        DO UPDATE SET
+            tts_audio_status          = 'pending',
+            tts_audio_progress        = 0,
+            tts_audio_message         = 'Queued',
+            tts_audio_error           = NULL,
+            tts_audio_settings        = EXCLUDED.tts_audio_settings,
+            tts_audio_started_dtime   = NOW(),
+            tts_audio_completed_dtime = NULL,
+            tts_audio_path            = NULL,
+            tts_audio_duration_secs   = NULL,
+            tts_audio_size_bytes      = NULL,
+            tts_audio_worker_pid      = NULL,
+            tts_audio_revision_dtime  = NOW()
         RETURNING tts_audio_key
     ");
     $insStmt->execute([$ttsKey, $volumeKey, $chapterKey, json_encode($settings)]);
