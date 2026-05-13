@@ -40,6 +40,9 @@
         /* Tighter spacing for the Pronunciations table — many columns. */
         #pane-pronunciations .tts-table th, #pane-pronunciations .tts-table td { padding:4px 6px; }
         #pane-pronunciations .f-type-radio { width:13px; height:13px; margin:0; vertical-align:middle; cursor:pointer; }
+        /* Validation warning icon — sits to the right of the input. */
+        .f-warn { display:none; color:#c0392b; cursor:help; margin-left:2px; font-size:1rem; line-height:1; flex:0 0 auto; }
+        .f-warn.show { display:inline; }
         /* Note icon button (replaces inline note textarea). */
         .t-note-btn { background:none; border:none; cursor:pointer; padding:2px 4px; color:#bbb; line-height:1; }
         .t-note-btn.has-note { color:#a36100; }
@@ -669,6 +672,35 @@ function renderTunes() {
     });
 }
 
+// ── IPA / SAPI validation ──────────────────────────────────────────────
+// Mirror the server-side ipaLooksFake() rules client-side so the user
+// gets immediate feedback as they type. Returns null when ok or an
+// error message string when the value would be rejected at synth time.
+function validateIpa(s) {
+    if (s == null || s === '') return null; // empty is allowed (row is inert)
+    var bad = s.match(/[0-9A-Z%=<>"\\\/\[\]{}()@#&*+?]/);
+    if (bad) return 'Azure rejects "' + bad[0] + '" in IPA — strip digits, ASCII capitals, and punctuation';
+    // Must contain at least one true IPA marker (stress mark, schwa,
+    // half-ring, or any char from the IPA extensions block U+0250–U+02AF).
+    if (!/[ˈˌːˑəɐ-ʯɛɜɔʊɪʃʒŋʔʕθðɹɾʁ]/.test(s)) {
+        return 'Looks like plain English spelling — needs at least one IPA symbol (ˈ ˌ ɑ ɛ ɪ ʊ ə ʃ ŋ ʔ etc.). Use SUB for re-spellings.';
+    }
+    return null;
+}
+// SAPI: each whitespace-separated token must be a known phoneme code
+// (uppercase letters) optionally followed by a single 0/1/2 stress digit.
+var SAPI_TOKEN_RE = /^(B|CH|D|DH|F|G|HH|JH|K|L|M|N|NG|P|R|S|SH|T|TH|V|W|Y|Z|ZH|AA|AE|AH|AO|AW|AX|AY|EH|ER|EY|IH|IX|IY|OW|OY|UH|UW)([012])?$/;
+function validateSapi(s) {
+    if (s == null || s === '') return null;
+    var toks = s.trim().split(/\s+/);
+    for (var i = 0; i < toks.length; i++) {
+        if (!SAPI_TOKEN_RE.test(toks[i])) {
+            return 'Unknown SAPI token "' + toks[i] + '" — phonemes are uppercase codes like AA, IH, SH, TH, optionally followed by 0/1/2 stress digit.';
+        }
+    }
+    return null;
+}
+
 // Mechanical SAPI ↔ IPA phoneme maps (en-US). Stress digit on a vowel
 // SAPI token becomes the IPA stress mark prefix: 1 → ˈ, 2 → ˌ, 0 → none.
 // Used by buildTuneRow to auto-update either cell when the other changes.
@@ -836,8 +868,12 @@ function buildTuneRow(t) {
         '<td><label style="display:flex;align-items:center;gap:6px;">'
             + '<input type="radio" name="' + grp + '" class="f-type-radio" value="ipa" title="Use IPA for this rule"' + ipaChecked + '>'
             + '<input type="text" class="f-ipa" value="' + escapeHtml(t.tts_tune_phonetic_ipa || '') + '" placeholder="IPA" style="flex:1;font-family:monospace;">'
+            + '<span class="f-warn f-warn-ipa" title="">⚠</span>'
         + '</label></td>' +
-        '<td><input type="text" class="f-sapi" value="' + escapeHtml(t.tts_tune_phonetic_sapi || '') + '" placeholder="SAPI (ref)" style="font-family:monospace;"></td>' +
+        '<td><div style="display:flex;align-items:center;gap:4px;">'
+            + '<input type="text" class="f-sapi" value="' + escapeHtml(t.tts_tune_phonetic_sapi || '') + '" placeholder="SAPI (ref)" style="flex:1;font-family:monospace;">'
+            + '<span class="f-warn f-warn-sapi" title="">⚠</span>'
+        + '</div></td>' +
         '<td style="padding:8px 2px;text-align:center;">' +
             '<button class="btn-sm btn-sec" data-act="listen" title="Play with the selected variant (SUB or IPA)" style="margin:0;padding:5px 8px;">▶</button>' +
         '</td>' +
@@ -864,14 +900,35 @@ function buildTuneRow(t) {
     // Whichever cell the user types in, the other one tracks.
     var sapiInp = tr.querySelector('.f-sapi');
     var ipaInp  = tr.querySelector('.f-ipa');
+    var warnIpa  = tr.querySelector('.f-warn-ipa');
+    var warnSapi = tr.querySelector('.f-warn-sapi');
+    function refreshWarn(el, warnEl, validator) {
+        var msg = validator(el.value);
+        if (msg) {
+            warnEl.classList.add('show');
+            warnEl.title = msg;
+            el.style.borderColor = '#e8a89e';
+        } else {
+            warnEl.classList.remove('show');
+            warnEl.title = '';
+            el.style.borderColor = '';
+        }
+    }
     sapiInp.addEventListener('input', function() {
         var derived = sapiToIpa(sapiInp.value);
         if (derived !== ipaInp.value) ipaInp.value = derived;
+        refreshWarn(ipaInp, warnIpa, validateIpa);
+        refreshWarn(sapiInp, warnSapi, validateSapi);
     });
     ipaInp.addEventListener('input', function() {
         var derived = ipaToSapi(ipaInp.value);
         if (derived !== sapiInp.value) sapiInp.value = derived;
+        refreshWarn(ipaInp, warnIpa, validateIpa);
+        refreshWarn(sapiInp, warnSapi, validateSapi);
     });
+    // Initial validation pass so existing bad rows are visible.
+    refreshWarn(ipaInp, warnIpa, validateIpa);
+    refreshWarn(sapiInp, warnSapi, validateSapi);
     return tr;
 }
 
@@ -927,6 +984,21 @@ async function handleTuneAction(tr, act) {
             // reading; falls back to the category default if unset.
             await saveTuneRow(tr);
             if (!print) return;
+            // Pre-flight validation: tell the user when the selected
+            // variant is going to be skipped due to a validation issue,
+            // so the audio they hear is the voice's default, not the
+            // re-spelling they typed.
+            var typeRadio2 = tr.querySelector('.f-type-radio:checked');
+            var selType = typeRadio2 ? typeRadio2.value : 'sub';
+            var msg = null;
+            if (selType === 'ipa') msg = validateIpa(tr.querySelector('.f-ipa').value);
+            var s2 = $('tunes-status');
+            if (msg && s2) {
+                s2.textContent = '⚠ Synth will skip this row\'s IPA: ' + msg + ' Playing voice\'s default reading instead.';
+                s2.className = 'status-msg error';
+            } else if (s2 && s2.textContent.indexOf('⚠') === 0) {
+                s2.textContent = '';
+            }
             var voiceSel = $('tunes-test-voice');
             var voiceCode = voiceSel ? voiceSel.value : '';
             var body = { tts_key: TTS_KEY, text: print };
