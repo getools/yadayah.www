@@ -139,18 +139,35 @@ if ($nextChapterKey) {
 $audioReady = !empty($row['tts_audio_path']);
 $markers    = [];
 if ($audioReady) {
+    // Join each marker to its paragraph_text_plain so the viewer can
+    // span-match the currently-spoken paragraph against the page's
+    // text-layer and highlight only the portion on the visible page.
+    // For a chapter with N paragraphs this is one extra TEXT column
+    // per row — ~50-150KB per chapter, fetched once.
+    // Match markers to their paragraph_text_plain via the natural key
+    // (volume + chapter + paragraph_number) rather than the optional
+    // paragraph_key column — older markers were inserted without
+    // paragraph_key set and would otherwise come back without text.
     $mStmt = $db->prepare("
-        SELECT paragraph_page, paragraph_number, tts_audio_marker_offset_ms AS offset_ms
-          FROM yy_tts_audio_marker
-         WHERE tts_audio_key = ?
-         ORDER BY paragraph_number
+        SELECT m.paragraph_page,
+               m.paragraph_number,
+               m.tts_audio_marker_offset_ms AS offset_ms,
+               p.paragraph_text_plain
+          FROM yy_tts_audio_marker m
+          LEFT JOIN yy_paragraph p
+                 ON p.volume_key       = ?
+                AND p.chapter_key      = ?
+                AND p.paragraph_number = m.paragraph_number
+         WHERE m.tts_audio_key = ?
+         ORDER BY m.paragraph_number, m.paragraph_page
     ");
-    $mStmt->execute([(int)$row['tts_audio_key']]);
+    $mStmt->execute([$volumeKey, $chapterKey, (int)$row['tts_audio_key']]);
     $markers = array_map(function ($m) {
         return [
             'paragraph_page'   => (int)$m['paragraph_page'],
             'paragraph_number' => (int)$m['paragraph_number'],
             'offset_ms'        => (int)$m['offset_ms'],
+            'text'             => $m['paragraph_text_plain'] ?? '',
         ];
     }, $mStmt->fetchAll());
 }

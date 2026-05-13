@@ -26,12 +26,13 @@
     var btn = null;
     var audio = null;
     var current = null;     // last fetched chapter payload (see API shape)
-    var fetchingForKey = null;
+    var fetchSeq = 0;       // monotonic — only latest fetch's response wins
     var loadedChapterKey = null;
     var isPlaying = false;
     var chapterPauseTimer = null;
     var suppressPageSync = false;  // set true when WE drive a goto from a marker
     var lastPage = 0;
+    var currentParagraphNumber = -1;  // paragraph being narrated right now
 
     // ── DOM injection ───────────────────────────────────────────────────
     function injectStyles() {
@@ -43,8 +44,8 @@
             // centered horizontally over the seek bar. z-index sits below
             // any modal masks (bookmark popover @200) but above page content.
             '.fb-tts-btn { position: fixed; left: 50%; transform: translateX(-50%);',
-            '              bottom: calc(var(--nav, 56px) + 8px); z-index: 12;',
-            '              width: 48px; height: 48px; border-radius: 50%;',
+            '              bottom: calc(var(--nav, 56px) - 2px); z-index: 12;',
+            '              width: 43px; height: 43px; border-radius: 50%;',
             '              background: #1f3550; color: #cfe1ff; border: 1px solid #2a4d70;',
             '              display: flex; align-items: center; justify-content: center;',
             '              cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.35);',
@@ -52,9 +53,22 @@
             '.fb-tts-btn:hover:not(.is-disabled) { background: #28456a; }',
             '.fb-tts-btn:active:not(.is-disabled) { transform: translateX(-50%) scale(0.95); }',
             '.fb-tts-btn.is-disabled { opacity: 0.25; cursor: not-allowed; }',
-            '.fb-tts-btn svg { width: 22px; height: 22px; }',
+            '.fb-tts-btn svg { width: 20px; height: 20px; }',
             // Brief amber tint when waiting between chapters.
             '.fb-tts-btn.is-pausing { background: #4d3a1f; border-color: #6d5a3a; color: #f7d77a; }',
+            // Subtle read-along highlight — applied to text-layer spans
+            // that belong to the paragraph currently being narrated. We
+            // only mark spans on the visible page, so a paragraph
+            // straddling a page break highlights its portion of each
+            // page as the flipbook turns. !important wins against the
+            // page-specific styles already injected on each span.
+            '.text-layer span.tts-current,',
+            '.pg .text-layer span.tts-current,',
+            '.cpg .text-layer span.tts-current {',
+            '    background: rgba(255,200,80,0.28) !important;',
+            '    box-shadow: 0 0 0 2px rgba(255,200,80,0.28);',
+            '    border-radius: 2px;',
+            '}',
         ].join('\n');
         document.head.appendChild(st);
     }
@@ -81,7 +95,7 @@
         audio.addEventListener('timeupdate', onTimeUpdate);
         audio.addEventListener('ended', onEnded);
         audio.addEventListener('playing', function () { isPlaying = true; renderButton(); });
-        audio.addEventListener('pause',   function () { isPlaying = false; renderButton(); });
+        audio.addEventListener('pause',   function () { isPlaying = false; renderButton(); clearHighlight(); });
         document.body.appendChild(audio);
     }
 
@@ -136,35 +150,182 @@
         return page;
     }
 
+    function markerAtMs(markers, ms) {
+        // Largest marker with offset_ms <= ms.
+        if (!markers || !markers.length) return null;
+        var best = null;
+        for (var i = 0; i < markers.length; i++) {
+            if (markers[i].offset_ms <= ms) best = markers[i];
+            else break;
+        }
+        return best;
+    }
+
+    // ── Read-along highlight ───────────────────────────────────────────
+    // Map paragraph_number → marker so we can fetch the paragraph text
+    // to span-match on the current page. Each marker payload carries
+    // `.text` (paragraph_text_plain) from the API.
+    function paragraphMarkers(num) {
+        if (!current || !current.markers) return [];
+        var out = [];
+        for (var i = 0; i < current.markers.length; i++) {
+            if (current.markers[i].paragraph_number === num) out.push(current.markers[i]);
+        }
+        return out;
+    }
+
+    // Normalize text for fuzzy span matching — collapses whitespace,
+    // strips half-rings/curly apostrophes the PDF text-layer often
+    // renders differently than the DB-stored paragraph_text_plain.
+    var STRIP_RE = /[ʿʾʼʻʹʺ‘’“”–—']/g;
+    function norm(s) {
+        return String(s || '').replace(STRIP_RE, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    // Find all .text-layer spans on the visible page whose concatenated
+    // text falls inside the current paragraph's text. We compute a
+    // normalized "page string" by concatenating all span texts, mark
+    // each span with [startOffset, endOffset) within that string, then
+    // locate the paragraph text (normalized) inside it. Any span whose
+    // [start, end) range overlaps the paragraph's [hit, hit+plen) is
+    // tagged with .tts-current.
+    var highlightRetryTimer = null;
+    function applyHighlight(paragraphNum, retriesLeft) {
+        if (retriesLeft == null) retriesLeft = 12;   // ~12 × 100ms ≈ 1.2s
+        if (highlightRetryTimer) { clearTimeout(highlightRetryTimer); highlightRetryTimer = null; }
+        // Clear previous highlights (cheap — small DOM).
+        document.querySelectorAll('.text-layer span.tts-current')
+            .forEach(function (el) { el.classList.remove('tts-current'); });
+        if (paragraphNum == null || paragraphNum < 0) return;
+        if (!cfg.getCurrentPage) return;
+        var page = cfg.getCurrentPage();
+        if (!page) return;
+
+        // Find the marker for this paragraph_number on the visible page
+        // first; if none, fall back to any marker for that paragraph
+        // (its text is the same — paragraph_text_plain is whole-para).
+        var markers = paragraphMarkers(paragraphNum);
+        if (!markers.length) return;
+        var paragraphText = '';
+        for (var k = 0; k < markers.length; k++) {
+            if (markers[k].text) { paragraphText = markers[k].text; break; }
+        }
+        if (!paragraphText) return;
+        var paraNorm = norm(paragraphText);
+        if (paraNorm.length < 4) return;
+
+        // Grab the text-layer of the currently visible flipbook page.
+        // In carousel mode the visible slot is .cpg.center; in spread
+        // mode it's any .pg[data-page=N] that's currently displayed.
+        var pgEl = document.querySelector('#book .pg[data-page="' + page + '"]')
+                || document.querySelector('#carousel .cpg.center[data-page="' + page + '"]')
+                || document.querySelector('#carousel .cpg[data-page="' + page + '"]');
+        if (!pgEl) {
+            // Page DOM not ready yet — try again shortly.
+            if (retriesLeft > 0) {
+                highlightRetryTimer = setTimeout(function () { applyHighlight(paragraphNum, retriesLeft - 1); }, 100);
+            }
+            return;
+        }
+        var layer = pgEl.querySelector('.text-layer');
+        if (!layer || !layer.children.length) {
+            // Text layer is fetched async (ensureTextLayer / ensureCarouselText).
+            // Retry until it's populated or we give up.
+            if (retriesLeft > 0) {
+                highlightRetryTimer = setTimeout(function () { applyHighlight(paragraphNum, retriesLeft - 1); }, 100);
+            }
+            return;
+        }
+        var spans = layer.children;
+
+        // Build a single normalized string for the page + index of each
+        // span's [start, end) into that string. mb-style approach using
+        // simple chars since norm() already strips multi-byte oddities.
+        var pageStr = '';
+        var ranges = []; // [start, end, spanEl]
+        for (var i = 0; i < spans.length; i++) {
+            var sEl = spans[i];
+            var sText = norm(sEl.dataset.text || sEl.textContent || '');
+            if (!sText) { ranges.push([pageStr.length, pageStr.length, sEl]); continue; }
+            if (pageStr && pageStr[pageStr.length - 1] !== ' ') pageStr += ' ';
+            var start = pageStr.length;
+            pageStr += sText;
+            ranges.push([start, pageStr.length, sEl]);
+        }
+
+        // Locate the paragraph text in the page string. Allow partial
+        // matches: a paragraph spanning a page break only has part of
+        // its text on each page, so try progressively shorter prefixes
+        // / suffixes if a full match misses.
+        var hit = pageStr.indexOf(paraNorm);
+        var hitStart = -1, hitEnd = -1;
+        if (hit >= 0) { hitStart = hit; hitEnd = hit + paraNorm.length; }
+        else {
+            // Try the start of the paragraph (paragraph ends on this page)
+            // — find longest prefix of paraNorm that appears in pageStr.
+            var n = Math.min(paraNorm.length, 200);
+            while (n >= 12 && hitStart < 0) {
+                var pfx = paraNorm.substring(0, n);
+                var h = pageStr.indexOf(pfx);
+                if (h >= 0) { hitStart = h; hitEnd = h + n; break; }
+                n = Math.floor(n * 0.75);
+            }
+            if (hitStart < 0) {
+                // Try the END of the paragraph (paragraph starts on this page).
+                var m = Math.min(paraNorm.length, 200);
+                while (m >= 12 && hitStart < 0) {
+                    var sfx = paraNorm.substring(paraNorm.length - m);
+                    var h2 = pageStr.indexOf(sfx);
+                    if (h2 >= 0) { hitStart = h2; hitEnd = h2 + m; break; }
+                    m = Math.floor(m * 0.75);
+                }
+            }
+        }
+        if (hitStart < 0) return;
+
+        // Tag every span whose range overlaps [hitStart, hitEnd).
+        for (var r = 0; r < ranges.length; r++) {
+            var rs = ranges[r][0], re = ranges[r][1], el = ranges[r][2];
+            if (re > hitStart && rs < hitEnd) el.classList.add('tts-current');
+        }
+    }
+
+    function clearHighlight() {
+        document.querySelectorAll('.text-layer span.tts-current')
+            .forEach(function (el) { el.classList.remove('tts-current'); });
+        currentParagraphNumber = -1;
+    }
+
     // ── Fetching ───────────────────────────────────────────────────────
+    // Init fires with cfg.getCurrentPage()==1 (carouselCenter default
+    // before the deep-link nav lands), so we send a fetch for page=1
+    // that comes back "no chapter" even though the user will end up on,
+    // say, page 26 a moment later. notifyPageChange(26) fires a second
+    // fetch — but whichever resolves LAST wins, so we sometimes saw
+    // the page-1 "unavailable" overwrite the page-26 "available". A
+    // monotonic seq stamp on each fetch fixes that: stale responses
+    // are dropped on arrival.
     function fetchForPage(page1, opts) {
         opts = opts || {};
         if (!cfg.bookCode || !page1) return;
         // Skip redundant fetches when the same chapter still applies.
-        if (current && current.chapter_key && !opts.force) {
-            var stillSameChapter = !!markerForPage(current.markers, page1);
-            // markerForPage always returns something when markers exist,
-            // so test more precisely: this chapter still covers page1 if
-            // page1 is within [minPage, maxPage].
-            if (current.markers && current.markers.length) {
-                var minP = current.markers[0].paragraph_page;
-                var maxP = current.markers[current.markers.length - 1].paragraph_page;
-                if (page1 >= minP && page1 <= maxP) return;
-            }
+        if (current && current.chapter_key && !opts.force && current.markers && current.markers.length) {
+            var minP = current.markers[0].paragraph_page;
+            var maxP = current.markers[current.markers.length - 1].paragraph_page;
+            if (page1 >= minP && page1 <= maxP) return;
         }
-        if (fetchingForKey === page1) return;
-        fetchingForKey = page1;
+        var seq = ++fetchSeq;
         var url = '/api/tts-audio.php?book_code=' + encodeURIComponent(cfg.bookCode)
                 + '&page=' + page1;
         fetch(url).then(function (r) { return r.json(); })
             .then(function (data) {
-                fetchingForKey = null;
+                if (seq !== fetchSeq) return;   // a newer fetch superseded this
                 current = data;
                 renderButton();
                 if (opts.afterLoad) opts.afterLoad();
             })
             .catch(function () {
-                fetchingForKey = null;
+                if (seq !== fetchSeq) return;
                 current = { available: false };
                 renderButton();
             });
@@ -172,10 +333,12 @@
 
     function fetchByChapterKey(chapterKey, afterLoad) {
         if (!cfg.bookCode || !chapterKey) return;
+        var seq = ++fetchSeq;
         fetch('/api/tts-audio.php?book_code=' + encodeURIComponent(cfg.bookCode)
             + '&chapter_key=' + chapterKey)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (seq !== fetchSeq) return;
                 current = data;
                 renderButton();
                 if (afterLoad) afterLoad();
@@ -229,6 +392,13 @@
             // suppress the chapter-refetch path for one tick.
             setTimeout(function () { suppressPageSync = false; }, 0);
         }
+        // Read-along: refresh the highlight when the paragraph_number
+        // changes. Same-paragraph timeupdates skip the DOM work.
+        var m = markerAtMs(current.markers, ms);
+        if (m && m.paragraph_number !== currentParagraphNumber) {
+            currentParagraphNumber = m.paragraph_number;
+            applyHighlight(currentParagraphNumber);
+        }
     }
 
     function onEnded() {
@@ -271,7 +441,15 @@
     // Called from flipbook-viewer.js whenever the visible page changes.
     BM.notifyPageChange = function (page1) {
         if (!cfg) return;
-        if (suppressPageSync) return;          // our own auto-turn — already in-chapter
+        // When OUR auto-turn drives the page change, the text-layer on
+        // the new page rebuilds asynchronously; re-apply the highlight
+        // for the still-current paragraph once that settles.
+        if (suppressPageSync) {
+            setTimeout(function () {
+                if (currentParagraphNumber >= 0) applyHighlight(currentParagraphNumber);
+            }, 80);
+            return;
+        }
         if (page1 === lastPage) return;
         lastPage = page1;
         // If the new page is outside the current chapter's range, refetch.

@@ -184,12 +184,118 @@ $baseName  = sprintf('%s-ch%02d.%s', $volumeSlug, $chNum, $ext);
 $finalPath = $outDir . '/' . $baseName;
 $relPath   = '/u/tts-audio/' . $baseName;
 
-// Load paragraphs.
-$pStmt = $db->prepare("SELECT paragraph_number, paragraph_text_html FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");
+// Load paragraphs. paragraph_page is included so we can emit a row in
+// yy_tts_audio_marker tying each paragraph's audio offset to its page
+// — flipbook-tts.js uses these to auto-turn pages as playback advances.
+$pStmt = $db->prepare("SELECT paragraph_key, paragraph_number, paragraph_page, paragraph_text_html, paragraph_text_plain FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");
 $pStmt->execute([$chapterKey]);
 $paragraphs = $pStmt->fetchAll();
 $nPara = count($paragraphs);
 if (!$nPara) bail($db, $audioKey, "no paragraphs for chapter_key=$chapterKey");
+
+// Clear any stale markers for this audio row — easier than upserting
+// across schema changes and the table is small.
+$db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
+$insertMarker = $db->prepare("
+    INSERT INTO yy_tts_audio_marker (tts_audio_key, paragraph_key, paragraph_page, paragraph_number, tts_audio_marker_offset_ms, tts_audio_marker_byte_offset)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (tts_audio_key, paragraph_number, paragraph_page) DO UPDATE
+        SET tts_audio_marker_offset_ms   = EXCLUDED.tts_audio_marker_offset_ms,
+            tts_audio_marker_byte_offset = EXCLUDED.tts_audio_marker_byte_offset,
+            paragraph_key                = EXCLUDED.paragraph_key
+");
+
+// ffprobe path — used to measure each paragraph's mp3 chunk duration
+// so we know its offset into the cumulative file. ffprobe isn't strictly
+// required (we can fall back to a character-count estimate) but it's
+// always installed in the prod container and gives sample-accurate
+// offsets that align with what the browser sees.
+$ffprobeBin = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
+$tmpDir = sys_get_temp_dir();
+function probeDurationMs(string $bin, string $bytes, string $tmpDir): int {
+    if ($bin === '' || $bytes === '') return 0;
+    $tmp = tempnam($tmpDir, 'tts-chunk-');
+    file_put_contents($tmp, $bytes);
+    $cmd = escapeshellcmd($bin) . ' -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 ' . escapeshellarg($tmp) . ' 2>/dev/null';
+    $out = shell_exec($cmd);
+    @unlink($tmp);
+    $sec = $out !== null ? (float)trim($out) : 0.0;
+    return (int)round($sec * 1000);
+}
+$cumulativeMs    = 0;
+$cumulativeBytes = 0;
+
+// Page-break-within-paragraph detection. Reads text/page-NNN.json from
+// the flipbook bundle to locate where in the paragraph a page break
+// occurs (when the paragraph spans into the next page). The build
+// worker stores an extra marker for each crossed page so playback
+// auto-turns mid-paragraph rather than only at the next paragraph's
+// boundary.
+$bundleDir = '/opt/yada-www/public/' . $volumeSlug;
+if (!is_dir($bundleDir)) {
+    $bundleDir = dirname(__DIR__) . '/' . $volumeSlug;
+}
+$pageTextCache = [];
+
+// Normalize text for fuzzy match — same strip-set the search code uses
+// (curly apostrophes, half-rings, en/em-dashes), plus whitespace collapse.
+function ttsNormalizeForMatch(string $s): string {
+    $s = mb_strtolower($s, 'UTF-8');
+    $s = preg_replace('/[\x{02BF}\x{02BE}\x{02BC}\x{02BB}\x{02B9}\x{02BA}\x{2018}\x{2019}\x{201C}\x{201D}\x{2013}\x{2014}\x{0027}]/u', '', $s);
+    $s = preg_replace('/\s+/u', ' ', $s);
+    return trim((string)$s);
+}
+
+// Returns the concatenated text of a page from text/page-NNN.json
+// (whitespace-separated). Empty string if the file is missing.
+function ttsLoadPageText(string $bundleDir, int $page, array &$cache): string {
+    if (isset($cache[$page])) return $cache[$page];
+    $f = sprintf('%s/text/page-%03d.json', $bundleDir, $page);
+    if (!is_file($f)) return $cache[$page] = '';
+    $j = json_decode((string)file_get_contents($f), true);
+    if (!is_array($j) || empty($j['spans'])) return $cache[$page] = '';
+    $buf = '';
+    foreach ($j['spans'] as $sp) {
+        if (isset($sp[4])) $buf .= $sp[4] . ' ';
+    }
+    return $cache[$page] = $buf;
+}
+
+// findPageBreakRatios: for a paragraph that may span multiple pages,
+// returns a map of [k_offset => ratio_in_paragraph] indicating that
+// page (P_start + k) gets the chars from ratio*len onward. Allows up
+// to ~300 chars of page-header noise (chapter title, page number)
+// before the matched suffix starts on the next page. Returns [] when
+// the paragraph fits on a single page or no good match was found.
+function ttsFindPageBreakRatios(string $paraText, array $nextPageTexts): array {
+    $out = [];
+    $p = ttsNormalizeForMatch($paraText);
+    $plen = mb_strlen($p);
+    if ($plen < 30) return $out;
+    foreach ($nextPageTexts as $k => $pageText) {
+        $g = ttsNormalizeForMatch($pageText);
+        if ($g === '') break;
+        $bestRatio = -1.0;
+        // Shrink the suffix length geometrically until we either match or
+        // hit the floor. Floor at 25 chars to avoid spurious matches on
+        // common short phrases.
+        $minL = 25;
+        for ($L = $plen; $L >= $minL; ) {
+            $suffix = mb_substr($p, -$L);
+            $pos = mb_strpos($g, $suffix);
+            if ($pos !== false && $pos < 400) {
+                $bestRatio = ($plen - $L) / $plen;
+                break;
+            }
+            $next = (int)floor($L * 0.85);
+            if ($next === $L) $next--;
+            $L = $next;
+        }
+        if ($bestRatio < 0) break;   // paragraph doesn't extend further
+        $out[$k] = $bestRatio;
+    }
+    return $out;
+}
 
 updateAudio($db, $audioKey, [
     'tts_audio_message'        => "Synthesizing $nPara paragraphs",
@@ -234,9 +340,9 @@ foreach ($paragraphs as $idx => $p) {
     }
     if ($blocks === '') continue;
     $ssml = wrapSsml($blocks);
+    $paraBytes = '';
     if (strlen($ssml) > 9500) {
         // Over Azure's per-request limit — split into one synth call per segment instead.
-        $bytes = '';
         foreach ($segs as $seg) {
             $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
             $err = '';
@@ -246,20 +352,75 @@ foreach ($paragraphs as $idx => $p) {
                 $failureCount++;
                 continue;
             }
-            $bytes .= $b;
+            $paraBytes .= $b;
             $charsBilled += mb_strlen($seg['text']);
         }
-        if ($bytes !== '') fwrite($fh, $bytes);
     } else {
         $err = '';
-        $bytes = azureTtsSynthesize($ssml, $cfg, $err);
-        if ($bytes === '') {
+        $b = azureTtsSynthesize($ssml, $cfg, $err);
+        if ($b === '') {
             $failures[] = "para {$p['paragraph_number']}: $err";
             $failureCount++;
             continue;
         }
-        fwrite($fh, $bytes);
+        $paraBytes = $b;
         foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
+    }
+    if ($paraBytes === '') continue;
+
+    // Write this paragraph's marker BEFORE appending its bytes to the
+    // output file, so the offset captures the position at which the
+    // paragraph's audio starts in the concatenated file. ffprobe's
+    // per-chunk read is roughly 5-15ms per paragraph — small compared
+    // to Azure's network call so it doesn't materially slow the build.
+    $paraStartMs    = $cumulativeMs;
+    $paraStartBytes = $cumulativeBytes;
+    $paraStartPage  = $p['paragraph_page'] !== null ? (int)$p['paragraph_page'] : null;
+    try {
+        $insertMarker->execute([
+            $audioKey,
+            $p['paragraph_key'] !== null ? (int)$p['paragraph_key'] : null,
+            $paraStartPage,
+            (int)$p['paragraph_number'],
+            $paraStartMs,
+            $paraStartBytes,
+        ]);
+    } catch (Exception $e) { /* don't fail the build if marker write fails */ }
+
+    fwrite($fh, $paraBytes);
+    $cumulativeBytes += strlen($paraBytes);
+    $paragraphMs      = probeDurationMs($ffprobeBin, $paraBytes, $tmpDir);
+    $cumulativeMs    += $paragraphMs;
+
+    // Page-break-within-paragraph markers. Look ahead up to 5 pages —
+    // far more than any real paragraph spans — and emit one marker per
+    // crossed page boundary at the interpolated time offset.
+    if ($paraStartPage !== null && $paragraphMs > 0) {
+        $paraTextPlain = (string)($p['paragraph_text_plain'] ?? '');
+        if ($paraTextPlain !== '') {
+            $nextPageTexts = [];
+            for ($k = 1; $k <= 5; $k++) {
+                $pt = ttsLoadPageText($bundleDir, $paraStartPage + $k, $pageTextCache);
+                if ($pt === '') break;
+                $nextPageTexts[$k] = $pt;
+            }
+            if ($nextPageTexts) {
+                $ratios = ttsFindPageBreakRatios($paraTextPlain, $nextPageTexts);
+                foreach ($ratios as $kOffset => $ratio) {
+                    $brkMs = (int)round($paraStartMs + $ratio * $paragraphMs);
+                    try {
+                        $insertMarker->execute([
+                            $audioKey,
+                            $p['paragraph_key'] !== null ? (int)$p['paragraph_key'] : null,
+                            $paraStartPage + $kOffset,
+                            (int)$p['paragraph_number'],
+                            $brkMs,
+                            null,
+                        ]);
+                    } catch (Exception $e) { /* skip */ }
+                }
+            }
+        }
     }
 
     if (($idx % 5) === 0 || $idx === $nPara - 1) {
