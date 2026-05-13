@@ -212,26 +212,19 @@ function applyTuneInTaggedRegions(string $text, string $regex, string $token, bo
  * apostrophe-class chars (0 or 1) at every join point.
  */
 /**
- * Best-effort detection of "this is plain English spelling, not IPA, or
- * contains characters Azure's parser would reject."
+ * Detect IPA values that Azure's parser would reject and that should
+ * therefore fall back to SUB at synth time.
  *
- * Two rules:
- *   1. Must contain at least ONE genuinely-IPA character (stress mark,
- *      schwa, half-ring, etc.). Pure ASCII letters fail this test.
- *   2. Must NOT contain any clearly-invalid characters (ASCII digits,
- *      capital letters, punctuation Azure doesn't allow). Sneaks in via
- *      garbage upstream — better to fall back than 400 Azure.
- *
- * Returns true if EITHER rule fires (i.e. the IPA is suspect).
+ * Only checks for characters Azure refuses outright — digits, ASCII
+ * capitals, and structural punctuation. Plain ASCII lowercase letters
+ * like e, a, b, r are valid IPA symbols on their own (close-mid front,
+ * open front, voiced bilabial plosive, alveolar trill) so we DON'T
+ * reject pure-ASCII-lowercase strings. Mistyped English in the IPA
+ * field still gets pronounced — usually harmlessly — rather than
+ * silently falling back.
  */
 function ipaLooksFake(string $phon): bool {
     if ($phon === '') return true;
-    // Rule 1: must contain at least one real IPA marker.
-    static $ipaMarkers = '/[\x{02C8}\x{02CC}\x{02D0}\x{02D1}\x{0259}\x{0250}-\x{02AF}\x{025B}\x{025C}\x{0254}\x{028A}\x{026A}\x{0283}\x{0292}\x{014B}\x{0294}\x{0295}\x{03B8}\x{00F0}\x{0279}\x{027E}\x{0281}]/u';
-    if (!preg_match($ipaMarkers, $phon)) return true;
-    // Rule 2: must NOT contain characters Azure's IPA parser rejects —
-    // digits, ASCII capitals, common ASCII punctuation that isn't a
-    // valid IPA separator.
     if (preg_match('/[0-9A-Z%=<>"\\\\\\/\\[\\]{}()@#&*+?]/u', $phon)) return true;
     return false;
 }

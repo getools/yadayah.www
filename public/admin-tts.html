@@ -781,13 +781,13 @@ function renderTunes() {
 // error message string when the value would be rejected at synth time.
 function validateIpa(s) {
     if (s == null || s === '') return null; // empty is allowed (row is inert)
+    // Only flag characters Azure's IPA parser actually rejects — digits,
+    // ASCII capitals, and structural punctuation. Plain ASCII lowercase
+    // letters (a, e, i, o, u, b, d, k, l, m, n, p, r, s, t, etc.) are
+    // VALID IPA symbols on their own. The earlier "looks like English"
+    // rule incorrectly flagged single-character IPA like "e" from café.
     var bad = s.match(/[0-9A-Z%=<>"\\\/\[\]{}()@#&*+?]/);
     if (bad) return 'Azure rejects "' + bad[0] + '" in IPA — strip digits, ASCII capitals, and punctuation';
-    // Must contain at least one true IPA marker (stress mark, schwa,
-    // half-ring, or any char from the IPA extensions block U+0250–U+02AF).
-    if (!/[ˈˌːˑəɐ-ʯɛɜɔʊɪʃʒŋʔʕθðɹɾʁ]/.test(s)) {
-        return 'Looks like plain English spelling — needs at least one IPA symbol (ˈ ˌ ɑ ɛ ɪ ʊ ə ʃ ŋ ʔ etc.). Use SUB for re-spellings.';
-    }
     return null;
 }
 // SAPI: each whitespace-separated token must be a known phoneme code
