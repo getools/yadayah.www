@@ -68,6 +68,29 @@
         }
         .sub-toolbar a:hover { color: #fff; }
         .sub-toolbar a.active { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+        /* Page tabs — matches Media: transparent background, gold text + gold underline on active. */
+        .page-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            margin: 0 -20px 0 -20px;
+            background: transparent;
+        }
+        .page-tabs a {
+            padding: 12px 32px 4px;
+            text-decoration: none;
+            font-family: "Julius Sans One", sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #E5C86C;
+            border-bottom: 3px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .page-tabs a:hover { color: #E5C86C; }
+        .page-tabs a.active {
+            color: #E5C86C;
+            border-bottom-color: #E5C86C;
+        }
 
 
         /* Content */
@@ -189,6 +212,8 @@
     </div>
 </header>
 
+    <div class="page-tabs" data-auto-subtoolbar></div>
+
     <div class="page-heading-wrap"><h1 class="page-heading">Shorts</h1></div>
     <div class="content">
         <div id="video-grid" class="video-grid"></div>
@@ -279,5 +304,6 @@ loadShorts();
 });})();
 </script>
 <script src="/js/site-footer.js?v=127"></script>
+<script src="/js/site-subtoolbar.js?v=1"></script>
 </body>
 </html>

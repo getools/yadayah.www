@@ -65,8 +65,8 @@
             '.text-layer span.tts-current,',
             '.pg .text-layer span.tts-current,',
             '.cpg .text-layer span.tts-current {',
-            '    background: rgba(255,200,80,0.28) !important;',
-            '    box-shadow: 0 0 0 2px rgba(255,200,80,0.28);',
+            '    background: rgba(255,230,150,0.14) !important;',
+            '    box-shadow: 0 0 0 2px rgba(255,230,150,0.14);',
             '    border-radius: 2px;',
             '}',
         ].join('\n');
@@ -174,12 +174,15 @@
         return out;
     }
 
-    // Normalize text for fuzzy span matching — collapses whitespace,
-    // strips half-rings/curly apostrophes the PDF text-layer often
-    // renders differently than the DB-stored paragraph_text_plain.
-    var STRIP_RE = /[ʿʾʼʻʹʺ‘’“”–—']/g;
+    // Normalize text for fuzzy span matching. The PDF text-layer and
+    // the DB-stored paragraph_text_plain disagree on a lot of details:
+    // the layer inserts spaces around parens / before half-rings /
+    // between bold and italic runs, splits "kanaʿ" into "kana ʿ", etc.
+    // Rather than chase every variant, strip ALL non-alphanumeric chars
+    // and lowercase — the remaining alpha+digit stream is identical
+    // across both sources, so substring matching is reliable.
     function norm(s) {
-        return String(s || '').replace(STRIP_RE, '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     }
 
     // Find all .text-layer spans on the visible page whose concatenated
@@ -247,58 +250,62 @@
         console.log('[tts hl] paragraph=', paragraphNum, 'page=', page, 'spans=', spans.length, 'paraLen=', paraNorm.length);
 
         // Build a single normalized string for the page + index of each
-        // span's [start, end) into that string. mb-style approach using
-        // simple chars since norm() already strips multi-byte oddities.
+        // span's [start, end) into that string. Since norm() strips all
+        // non-alphanumerics (including whitespace), we concatenate span
+        // contributions directly with no separator. Spans whose normed
+        // text is empty (punctuation-only, like "(" or "ʿ") get a
+        // zero-width range at the current position so they can still
+        // be marked when they sit inside the matched paragraph run.
         var pageStr = '';
         var ranges = []; // [start, end, spanEl]
         for (var i = 0; i < spans.length; i++) {
             var sEl = spans[i];
             var sText = norm(sEl.dataset.text || sEl.textContent || '');
-            if (!sText) { ranges.push([pageStr.length, pageStr.length, sEl]); continue; }
-            if (pageStr && pageStr[pageStr.length - 1] !== ' ') pageStr += ' ';
             var start = pageStr.length;
             pageStr += sText;
             ranges.push([start, pageStr.length, sEl]);
         }
 
-        // Locate the paragraph text in the page string. Allow partial
-        // matches: a paragraph spanning a page break only has part of
-        // its text on each page, so try progressively shorter prefixes
-        // / suffixes if a full match misses.
-        var hit = pageStr.indexOf(paraNorm);
+        // Locate the paragraph in the page string. Try a full match
+        // first; if interior glyphs differ enough to fail it, anchor
+        // with the longest prefix AND the longest suffix and mark
+        // everything between them. That way a paragraph with multiple
+        // bold/italic sections still highlights end-to-end even when
+        // only the head and tail align cleanly.
+        var paraLen = paraNorm.length;
         var hitStart = -1, hitEnd = -1;
-        if (hit >= 0) { hitStart = hit; hitEnd = hit + paraNorm.length; }
+        var full = pageStr.indexOf(paraNorm);
+        if (full >= 0) { hitStart = full; hitEnd = full + paraLen; }
         else {
-            // Try the start of the paragraph (paragraph ends on this page)
-            // — find longest prefix of paraNorm that appears in pageStr.
-            var n = Math.min(paraNorm.length, 200);
-            while (n >= 12 && hitStart < 0) {
-                var pfx = paraNorm.substring(0, n);
-                var h = pageStr.indexOf(pfx);
-                if (h >= 0) { hitStart = h; hitEnd = h + n; break; }
-                n = Math.floor(n * 0.75);
+            var prefStart = -1, prefEnd = -1;
+            for (var n = Math.min(paraLen, 300); n >= 20; n = Math.floor(n * 0.8)) {
+                var p = pageStr.indexOf(paraNorm.substring(0, n));
+                if (p >= 0) { prefStart = p; prefEnd = p + n; break; }
             }
-            if (hitStart < 0) {
-                // Try the END of the paragraph (paragraph starts on this page).
-                var m = Math.min(paraNorm.length, 200);
-                while (m >= 12 && hitStart < 0) {
-                    var sfx = paraNorm.substring(paraNorm.length - m);
-                    var h2 = pageStr.indexOf(sfx);
-                    if (h2 >= 0) { hitStart = h2; hitEnd = h2 + m; break; }
-                    m = Math.floor(m * 0.75);
-                }
+            var suffStart = -1, suffEnd = -1;
+            for (var n2 = Math.min(paraLen, 300); n2 >= 20; n2 = Math.floor(n2 * 0.8)) {
+                var sp = pageStr.indexOf(paraNorm.substring(paraLen - n2));
+                if (sp >= 0) { suffStart = sp; suffEnd = sp + n2; break; }
             }
+            if (prefStart >= 0 && suffEnd > prefStart) { hitStart = prefStart; hitEnd = suffEnd; }
+            else if (prefStart >= 0)                   { hitStart = prefStart; hitEnd = prefEnd; }
+            else if (suffStart >= 0)                   { hitStart = suffStart; hitEnd = suffEnd; }
         }
         if (hitStart < 0) {
             console.log('[tts hl] NO MATCH. pageNorm sample:', pageStr.substring(0, 200), 'paraNorm sample:', paraNorm.substring(0, 200));
             return;
         }
         console.log('[tts hl] MATCH hitStart=', hitStart, 'hitEnd=', hitEnd, 'pageLen=', pageStr.length);
-        // Tag every span whose range overlaps [hitStart, hitEnd).
+        // Mark every span whose range falls inside [hitStart, hitEnd).
+        // Zero-width spans (punctuation that normed to nothing) count
+        // when their position sits within the match.
         var marked = 0;
         for (var r = 0; r < ranges.length; r++) {
             var rs = ranges[r][0], re = ranges[r][1], el = ranges[r][2];
-            if (re > hitStart && rs < hitEnd) { el.classList.add('tts-current'); marked++; }
+            var inside = (rs < re)
+                ? (rs < hitEnd && re > hitStart)
+                : (rs > hitStart && rs < hitEnd);
+            if (inside) { el.classList.add('tts-current'); marked++; }
         }
         console.log('[tts hl] marked', marked, 'spans');
     }

@@ -85,7 +85,8 @@ if (!$chapterKey) {
 // status='complete'; some installs use 'ready', accept both.
 $aStmt = $db->prepare("
     SELECT c.chapter_key, c.chapter_number, c.chapter_name,
-           a.tts_audio_key, a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_status
+           a.tts_audio_key, a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_status,
+           a.tts_audio_revision_dtime
       FROM yy_chapter c
       LEFT JOIN yy_tts_audio a
         ON a.chapter_key = c.chapter_key
@@ -172,13 +173,27 @@ if ($audioReady) {
     }, $mStmt->fetchAll());
 }
 
+// Cache-bust the MP3: when the audio gets regenerated the markers update
+// alongside it, but the file path stays the same and Cloudflare / the
+// browser will keep serving the old MP3. Append the revision timestamp
+// (unix epoch) so a rebuild forces a fresh fetch.
+$audioUrl = null;
+if ($audioReady) {
+    $audioUrl = $row['tts_audio_path'];
+    $rev = $row['tts_audio_revision_dtime'] ?? null;
+    if ($rev) {
+        $ts = strtotime((string)$rev);
+        if ($ts) $audioUrl .= (strpos($audioUrl, '?') === false ? '?' : '&') . 'v=' . $ts;
+    }
+}
+
 jsonResponse([
     'available'              => $audioReady,
     'volume_key'             => $volumeKey,
     'chapter_key'            => (int)$row['chapter_key'],
     'chapter_number'         => $row['chapter_number'],
     'chapter_name'           => $row['chapter_name'],
-    'audio_url'              => $audioReady ? $row['tts_audio_path'] : null,
+    'audio_url'              => $audioUrl,
     'duration_secs'          => $audioReady ? (int)$row['tts_audio_duration_secs'] : 0,
     'markers'                => $markers,
     'next_chapter_key'       => $nextChapterKey,

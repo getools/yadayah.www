@@ -85,8 +85,7 @@
             justify-content: center;
             gap: 0;
             margin: 0 -20px 0 -20px;
-            background: #f0f0f0;
-            border-bottom: 2px solid #ddd;
+            background: transparent;
         }
         .page-tabs a {
             padding: 12px 32px 4px;
@@ -94,14 +93,14 @@
             font-family: "Julius Sans One", sans-serif;
             font-size: 1.1rem;
             font-weight: 700;
-            color: #666;
+            color: #E5C86C;
             border-bottom: 3px solid transparent;
             transition: color 0.2s, border-color 0.2s;
         }
-        .page-tabs a:hover { color: #31345A; }
+        .page-tabs a:hover { color: #E5C86C; }
         .page-tabs a.active {
-            color: #31345A;
-            border-bottom-color: #31345A;
+            color: #E5C86C;
+            border-bottom-color: #E5C86C;
         }
         .tab-short { display: none; }
         @media (max-width: 600px) {
@@ -356,12 +355,7 @@
 </header>
 
 
-    <div class="page-tabs">
-        <a href="/translations">Translations</a>
-        <a href="/glossary" class="active">Glossary</a>
-        <a href="/dss"><span class="tab-full">Dead Sea Scrolls</span><span class="tab-short">DSS</span></a>
-        <a href="/grammar">Grammar</a>
-    </div>
+    <div class="page-tabs" data-auto-subtoolbar></div>
 
     <div style="max-width:1024px;margin:0 auto;flex:1;">
     <div id="letter-grid" class="letter-grid"></div>
@@ -874,5 +868,6 @@
 });})();
 </script>
 <script src="/js/site-footer.js?v=127"></script>
+<script src="/js/site-subtoolbar.js?v=1"></script>
 </body>
 </html>
