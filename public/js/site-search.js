@@ -902,9 +902,19 @@
                 e.preventDefault();
                 var q = $('ss-input').value.trim();
                 if (!q) return;
+                // "See all in Books" now opens the dedicated, paginated
+                // search page rather than running inline — it keeps the
+                // results focused, supports Series/Volume filters, a
+                // page-size selector, and a numeric page-jump input.
+                if (see.dataset.see === 'books') {
+                    var url = '/search-books?q=' + encodeURIComponent(q);
+                    var mode = getSearchMode();
+                    if (mode && mode !== 'all') url += '&mode=' + encodeURIComponent(mode);
+                    window.location.href = url;
+                    return;
+                }
                 currentPage = 1;
-                if (see.dataset.see === 'books')      searchBooks(q);
-                else if (see.dataset.see === 'video') searchVideo(q);
+                if (see.dataset.see === 'video') searchVideo(q);
                 return;
             }
             var hit = e.target.closest && e.target.closest('[data-hit]');

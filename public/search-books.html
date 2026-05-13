@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="page-version" content="1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Books — Yada Yah</title>
+    <link rel="icon" href="/images/favicon-32x32.png" sizes="32x32" />
+    <link rel="preload" href="fonts/YadaTowrah-Times.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Julius+Sans+One&family=Roboto:wght@400;600&family=Roboto+Slab:wght@400&family=Nunito+Sans:wght@400&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: "Yada Towrah";
+            src: url('fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('fonts/YadaTowrah-Times.ttf') format('truetype');
+            font-weight: normal; font-style: normal; font-display: swap;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        html { height: 100%; }
+        body { font-family: "Nunito Sans", Arial, sans-serif; margin: 0; padding: 0; background: #fff; color: #000; min-height: 100vh; display: flex; flex-direction: column; }
+        a { text-decoration: none; }
+
+        /* ── Header (matches books.html / index.html chrome) ── */
+        header {
+            display: flex; flex-direction: column; align-items: center; padding: 0;
+            background: url('/images/yy-bg-bluewave.jpg') center/cover no-repeat;
+            position: relative; overflow: hidden;
+        }
+        header .header-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; transform: translate(-50%, -50%); object-fit: cover; z-index: 0; }
+        header .header-inner { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 1140px; margin: 0 auto; position: relative; z-index: 1; }
+        header .header-logos { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        header .header-logos img { width: auto; height: auto; }
+        header nav { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
+        header nav .nav-row { display: flex; flex-direction: row; justify-content: center; gap: 0 30px; padding: 4px 0; flex-wrap: wrap; }
+        header nav a { text-decoration: none; color: #E5C86C; font-family: "Julius Sans One", sans-serif; font-size: 1.1em; font-weight: 700; }
+        header nav a:hover { color: #fff; }
+        header nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+
+        /* ── Main Content ── */
+        .content { max-width: 1024px; margin: 0 auto; padding: 16px 20px 40px; flex: 1; width: 100%; }
+        .content > h1 { font-family: "Julius Sans One", sans-serif; font-weight: 600; color: #2F2F29; margin: 8px 0 14px; font-size: 1.4rem; text-align: center; }
+
+        /* ── Filter row (Series → Volume → Per-page) ── */
+        .filters { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 10px 14px; background: #fafbfd; border: 1px solid #e0e0e0; border-radius: 6px; margin: 6px 0 14px; font-size: 0.88rem; color: #555; }
+        .filters label { display: flex; align-items: center; gap: 6px; }
+        .filters select { padding: 6px 8px; font-size: 0.88rem; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-family: inherit; min-width: 180px; }
+        .filters select#sb-volume[disabled] { opacity: 0.55; cursor: not-allowed; }
+        .filters .filters-spacer { flex: 1; }
+        .filters #sb-clear-filters { font-size: 0.78rem; color: #3367d6; cursor: pointer; background: none; border: none; padding: 4px 6px; }
+        .filters #sb-clear-filters[hidden] { display: none; }
+
+        /* ── Result list ── */
+        .sb-meta { font-size: 0.9rem; color: #555; margin: 6px 2px 12px; }
+        .sb-meta strong { color: #31345A; }
+        .results { display: flex; flex-direction: column; gap: 10px; }
+        .ss-result-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 14px; transition: box-shadow 0.15s; }
+        .ss-result-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .ss-result-book { display: flex; gap: 14px; align-items: flex-start; }
+        .ss-result-book .cover { flex: 0 0 50px; }
+        .ss-result-book .cover img { width: 50px; height: auto; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+        .ss-result-book .body { flex: 1; min-width: 0; }
+        .ss-result-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 0.86rem; color: #666; margin-bottom: 6px; }
+        .ss-result-meta .volume { font-weight: 700; color: #31345A; }
+        .ss-result-meta .volume a { color: inherit; text-decoration: none; }
+        .ss-result-meta .volume a:hover { text-decoration: underline; }
+        .ss-result-meta .sep { margin: 0 4px; color: #bbb; }
+        .ss-result-meta .series { font-style: italic; }
+        .ss-result-meta .location-right a { color: #555; text-decoration: none; }
+        .ss-result-meta .location-right a:hover { text-decoration: underline; }
+        .ss-result-snippet { font-size: 0.92rem; line-height: 1.5; color: #222; word-break: break-word; }
+        .ss-result-snippet mark { background: #fff3cd; padding: 0 2px; border-radius: 2px; }
+        .ss-result-snippet .yy-font-yadatowrah-times { font-family: "Yada Towrah", serif; color: #1a5276; }
+
+        .loading, .no-results { text-align: center; color: #888; padding: 40px 10px; font-size: 0.95rem; }
+
+        /* ── Pagination (with page-jump input) ── */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; flex-wrap: wrap; font-size: 0.88rem; }
+        .pagination button { padding: 7px 14px; border: none; background: #31345A; color: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.15); transition: background-color 0.2s; }
+        .pagination button:hover:not(:disabled) { background: #4a4e7a; }
+        .pagination button:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
+        .pagination .page-jump { display: flex; align-items: center; gap: 6px; padding: 0 10px; color: #555; }
+        .pagination .page-jump input { width: 70px; padding: 6px 8px; font-size: 0.9rem; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+        .pagination .page-jump input:focus { outline: none; border-color: #3367d6; }
+        .pagination .page-jump strong { color: #31345A; }
+
+        @media (max-width: 600px) {
+            .filters select { min-width: 140px; }
+        }
+    </style>
+<script src="/js/site-nav.js?v=45"></script>
+</head>
+<body>
+
+<header>
+    <video class="header-video" autoplay muted loop playsinline></video>
+    <div class="header-inner">
+        <div class="header-logos">
+            <a href="/"><img src="/images/yy-logo-80x90.png" alt="Yada Yah"></a>
+        </div>
+        <nav>
+            <div class="nav-row">
+                <a href="/books">Books</a>
+                <a href="/blog">Blog</a>
+                <a href="/resources">Resources</a>
+                <a href="/Craig_Winn">Winn</a>
+                <a href="/timeline">Timeline</a>
+            </div>
+            <div class="nav-row">
+                <a href="/translations">Translations</a>
+                <a href="/media">Media</a>
+                <a href="/music">Music</a>
+                <a href="/ask">Ask</a>
+            </div>
+        </nav>
+    </div>
+</header>
+
+<div class="content">
+    <h1 id="sb-title">Search Results — Books</h1>
+
+    <div class="filters">
+        <label>Series:
+            <select id="sb-series"><option value="">All series</option></select>
+        </label>
+        <label>Volume:
+            <select id="sb-volume" disabled><option value="">— pick a series first —</option></select>
+        </label>
+        <div class="filters-spacer"></div>
+        <label>Per page:
+            <select id="sb-limit">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </label>
+        <label>Match:
+            <select id="sb-mode">
+                <option value="all">All Words</option>
+                <option value="phrase">Exact Phrase</option>
+                <option value="any">Any Word</option>
+            </select>
+        </label>
+        <button type="button" id="sb-clear-filters" hidden>Clear filters</button>
+    </div>
+
+    <div class="sb-meta" id="sb-meta"></div>
+    <div class="results" id="sb-results"></div>
+    <div class="pagination" id="sb-pagination" hidden></div>
+</div>
+
+<footer></footer>
+
+<script>
+'use strict';
+var API = '/api';
+var FILTERS = { series: [], volumes: [] };
+var state = { q:'', mode:'all', series:'', volume:'', page:1, limit:25 };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { var d=document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+// ── URL <-> state ───────────────────────────────────────────────────────
+function stateFromUrl() {
+    var p = new URLSearchParams(location.search);
+    state.q      = p.get('q')      || '';
+    state.mode   = p.get('mode')   || 'all';
+    state.series = p.get('series') || '';
+    state.volume = p.get('volume') || '';
+    state.page   = Math.max(1, parseInt(p.get('page'),  10) || 1);
+    state.limit  = Math.min(100, Math.max(1, parseInt(p.get('limit'), 10) || 25));
+}
+function stateToUrl(push) {
+    var p = new URLSearchParams();
+    if (state.q)      p.set('q',      state.q);
+    if (state.mode !== 'all') p.set('mode', state.mode);
+    if (state.series) p.set('series', state.series);
+    if (state.volume) p.set('volume', state.volume);
+    if (state.page > 1) p.set('page',  state.page);
+    if (state.limit !== 25) p.set('limit', state.limit);
+    var url = location.pathname + (p.toString() ? '?' + p.toString() : '');
+    if (push) history.pushState(state, '', url);
+    else      history.replaceState(state, '', url);
+}
+function applyStateToForm() {
+    $('sb-mode').value   = state.mode;
+    $('sb-series').value = state.series;
+    populateVolumeDropdown();
+    $('sb-volume').value = state.volume;
+    $('sb-limit').value  = String(state.limit);
+    updateClearFiltersVisibility();
+    // Subtitle reflects what we're searching for. The main entry path is
+    // the site-wide search bar in the header; this page is the dedicated
+    // results view that the "See all in Books →" link opens.
+    var h1 = $('sb-title');
+    if (state.q) h1.textContent = 'Search Results — Books · "' + state.q + '"';
+    else         h1.textContent = 'Search Results — Books';
+}
+
+// ── Filters: load + populate ────────────────────────────────────────────
+function loadFilters() {
+    return fetch(API + '/search-books-filters.php')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            FILTERS.series  = d.series  || [];
+            FILTERS.volumes = d.volumes || [];
+            var sSel = $('sb-series');
+            FILTERS.series.forEach(function(s) {
+                var o = document.createElement('option');
+                o.value = s.series_key;
+                var label = (s.series_number != null ? ('s' + String(s.series_number).padStart(2,'0') + ' · ') : '')
+                          + (s.series_label || ('Series ' + s.series_key));
+                o.textContent = label;
+                sSel.appendChild(o);
+            });
+        });
+}
+function populateVolumeDropdown() {
+    var vSel = $('sb-volume');
+    var seriesKey = $('sb-series').value;
+    vSel.innerHTML = '';
+    if (!seriesKey) {
+        vSel.innerHTML = '<option value="">— pick a series first —</option>';
+        vSel.disabled = true;
+        return;
+    }
+    vSel.disabled = false;
+    var optAll = document.createElement('option');
+    optAll.value = '';
+    optAll.textContent = 'All volumes in this series';
+    vSel.appendChild(optAll);
+    FILTERS.volumes
+        .filter(function(v){ return String(v.series_key) === String(seriesKey); })
+        .forEach(function(v) {
+            var o = document.createElement('option');
+            o.value = v.volume_key;
+            var label = (v.volume_number != null ? ('v' + String(v.volume_number).padStart(2,'0') + ' · ') : '')
+                      + (v.volume_label || ('Volume ' + v.volume_key));
+            o.textContent = label;
+            vSel.appendChild(o);
+        });
+}
+function updateClearFiltersVisibility() {
+    $('sb-clear-filters').hidden = !(state.series || state.volume);
+}
+
+// ── Search + render ─────────────────────────────────────────────────────
+function doSearch() {
+    if (!state.q) {
+        $('sb-meta').textContent = '';
+        $('sb-results').innerHTML = '<div class="no-results">Use the search bar above to look across every book.</div>';
+        $('sb-pagination').hidden = true;
+        return;
+    }
+    $('sb-results').innerHTML = '<div class="loading">Searching…</div>';
+    var url = API + '/search.php?q=' + encodeURIComponent(state.q)
+            + '&mode=' + encodeURIComponent(state.mode)
+            + (state.series ? '&series=' + state.series : '')
+            + (state.volume ? '&volume=' + state.volume : '')
+            + '&page=' + state.page
+            + '&limit=' + state.limit;
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){
+        renderResults(data);
+    }).catch(function(){
+        $('sb-results').innerHTML = '<div class="no-results">Search failed. Please try again.</div>';
+    });
+}
+
+function renderResults(data) {
+    var total   = parseInt(data.total || 0, 10);
+    var results = data.results || [];
+    var totalPages = Math.max(1, Math.ceil(total / state.limit));
+    if (state.page > totalPages) { state.page = totalPages; stateToUrl(false); }
+
+    $('sb-meta').innerHTML = total
+        ? '<strong>' + total.toLocaleString() + '</strong> result' + (total === 1 ? '' : 's')
+            + ' for <strong>"' + esc(state.q) + '"</strong>'
+            + (state.series ? ' · in selected series' : '')
+            + (state.volume ? ' · filtered to selected volume' : '')
+        : 'No results for <strong>"' + esc(state.q) + '"</strong>.';
+
+    if (!results.length) {
+        $('sb-results').innerHTML = '<div class="no-results">No results.</div>';
+        $('sb-pagination').hidden = true;
+        return;
+    }
+
+    $('sb-results').innerHTML = results.map(renderCard).join('');
+    renderPagination(state.page, totalPages);
+}
+
+function renderCard(r) {
+    var locParts = [];
+    if (r.chapter_number != null && r.chapter_name)      locParts.push('Ch ' + r.chapter_number + ' · ' + esc(r.chapter_name));
+    else if (r.chapter_number != null)                   locParts.push('Ch ' + r.chapter_number);
+    else if (r.chapter_name)                             locParts.push(esc(r.chapter_name));
+    if (r.page) locParts.push('Page ' + r.page);
+    var locationText = locParts.join(' · ');
+    var bookHref = r.book_url || r.flip_url || r.flipbook_url || '';
+    var locHref  = r.chapter_url || bookHref;
+    var titleLink = bookHref
+        ? '<a href="' + esc(bookHref) + '" target="_blank">' + esc(r.volume_label) + '</a>'
+        : esc(r.volume_label);
+    var locationHtml = locationText
+        ? (locHref ? '<a href="' + esc(locHref) + '" target="_blank">' + locationText + '</a>' : locationText)
+        : '';
+    var coverHtml = '<div class="cover"></div>';
+    if (r.volume_code) {
+        var m = String(r.volume_code).match(/s\d{2}v\d{2}/i);
+        if (m) {
+            var coverUrl = '/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.'
+                         + m[0].toLowerCase() + '-245x300.jpg';
+            coverHtml = '<div class="cover"><img src="' + esc(coverUrl) + '" alt="" loading="lazy" onerror="this.remove()"></div>';
+        }
+    }
+    var snippetHtml = r.snippet || '';
+    return '<div class="ss-result-card">'
+         +   '<div class="ss-result-book">'
+         +     coverHtml
+         +     '<div class="body">'
+         +       '<div class="ss-result-meta">'
+         +         '<div><span class="volume">' + titleLink + '</span>'
+         +           '<span class="sep">·</span><span class="series">' + esc(r.series_label || '') + '</span></div>'
+         +         '<div class="location-right">' + locationHtml + '</div>'
+         +       '</div>'
+         +       '<div class="ss-result-snippet">' + snippetHtml + '</div>'
+         +     '</div>'
+         +   '</div>'
+         + '</div>';
+}
+
+function renderPagination(page, totalPages) {
+    var pag = $('sb-pagination');
+    if (totalPages <= 1) { pag.hidden = true; pag.innerHTML = ''; return; }
+    pag.hidden = false;
+    pag.innerHTML =
+        '<button data-go="first"' + (page === 1 ? ' disabled' : '') + ' title="First page">«</button>'
+      + '<button data-go="prev"'  + (page === 1 ? ' disabled' : '') + ' title="Previous page">‹</button>'
+      + '<span class="page-jump">'
+      +   'Page <input type="number" id="sb-page-input" min="1" max="' + totalPages + '" value="' + page + '" inputmode="numeric" title="Jump to a specific page"> of <strong>' + totalPages + '</strong>'
+      + '</span>'
+      + '<button data-go="next"' + (page === totalPages ? ' disabled' : '') + ' title="Next page">›</button>'
+      + '<button data-go="last"' + (page === totalPages ? ' disabled' : '') + ' title="Last page">»</button>';
+
+    pag.querySelectorAll('button[data-go]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var dest = btn.dataset.go;
+            if      (dest === 'first') state.page = 1;
+            else if (dest === 'prev')  state.page = Math.max(1, page - 1);
+            else if (dest === 'next')  state.page = Math.min(totalPages, page + 1);
+            else if (dest === 'last')  state.page = totalPages;
+            stateToUrl(true);
+            doSearch();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    });
+    var jumpInput = $('sb-page-input');
+    function commitJump() {
+        var n = Math.min(totalPages, Math.max(1, parseInt(jumpInput.value, 10) || page));
+        if (n === page) return;
+        state.page = n;
+        stateToUrl(true);
+        doSearch();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    jumpInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); commitJump(); }
+    });
+    jumpInput.addEventListener('blur', commitJump);
+}
+
+// ── Wire up event handlers ──────────────────────────────────────────────
+$('sb-series').addEventListener('change', function() {
+    state.series = $('sb-series').value;
+    state.volume = '';
+    populateVolumeDropdown();
+    state.page = 1;
+    stateToUrl(true);
+    updateClearFiltersVisibility();
+    if (state.q) doSearch();
+});
+
+$('sb-volume').addEventListener('change', function() {
+    state.volume = $('sb-volume').value;
+    state.page = 1;
+    stateToUrl(true);
+    updateClearFiltersVisibility();
+    if (state.q) doSearch();
+});
+
+$('sb-limit').addEventListener('change', function() {
+    state.limit = parseInt($('sb-limit').value, 10) || 25;
+    state.page = 1;
+    stateToUrl(true);
+    if (state.q) doSearch();
+});
+
+$('sb-mode').addEventListener('change', function() {
+    state.mode = $('sb-mode').value;
+    state.page = 1;
+    stateToUrl(true);
+    if (state.q) doSearch();
+});
+
+$('sb-clear-filters').addEventListener('click', function() {
+    state.series = '';
+    state.volume = '';
+    $('sb-series').value = '';
+    populateVolumeDropdown();
+    state.page = 1;
+    stateToUrl(true);
+    updateClearFiltersVisibility();
+    if (state.q) doSearch();
+});
+
+window.addEventListener('popstate', function() {
+    stateFromUrl();
+    applyStateToForm();
+    doSearch();
+});
+
+// ── Boot ────────────────────────────────────────────────────────────────
+stateFromUrl();
+loadFilters().then(function() {
+    applyStateToForm();
+    if (state.q) doSearch();
+    else $('sb-results').innerHTML = '<div class="no-results">Use the search bar above to look across every book.</div>';
+});
+</script>
+
+<script src="/js/bg-video.js"></script>
+<script src="/js/site-footer.js?v=127"></script>
+</body>
+</html>
