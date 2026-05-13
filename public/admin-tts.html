@@ -233,20 +233,15 @@
             <p class="desc">Pick a volume to see chapter-level audio status and build new files.</p>
             <div class="books-controls">
                 <select id="volume-select"><option value="">— Select volume —</option></select>
-                <span id="volume-summary" style="font-size:0.85rem;color:#666;flex:1"></span>
-                <button id="bulk-build-btn" onclick="bulkBuildSelected()" disabled
-                        title="Build audio for every chapter ticked below, using the saved voice defaults"
-                        style="display:none;background:#27ae60;color:#fff;border:none;border-radius:4px;padding:7px 18px;font-size:0.88rem;font-weight:600;cursor:pointer;opacity:0.5;">
-                    Build
-                </button>
+                <span id="volume-summary" style="font-size:0.85rem;color:#666"></span>
             </div>
             <table class="tts-table" id="chapters-table" style="display:none">
                 <thead>
                     <tr>
-                        <th style="width:32px;text-align:center"><input type="checkbox" id="chapters-check-all" onchange="toggleAllChapterChecks(this.checked)" title="Select all chapters"></th>
                         <th style="width:60px">Ch #</th>
                         <th>Label</th>
                         <th style="width:90px">Paragraphs</th>
+                        <th style="width:60px" title="Open this chapter in the flipbook">Read</th>
                         <th style="width:120px">Status</th>
                         <th style="width:140px">Audio</th>
                         <th class="col-actions"></th>
@@ -1112,12 +1107,14 @@ async function loadVolumes() {
     sel.addEventListener('change', () => loadChapters(parseInt(sel.value, 10) || 0));
 }
 
+var ACTIVE_VOLUME_CODE = '';   // URL slug like "YY-s02v03-Yada-Yahowah-Beyth-In-the-Family"
 async function loadChapters(volumeKey) {
     if (POLL_TIMER) { clearInterval(POLL_TIMER); POLL_TIMER = null; }
     ACTIVE_VOLUME = volumeKey;
     if (!volumeKey) { $('chapters-table').style.display = 'none'; $('volume-summary').textContent=''; return; }
     var r = await api('/admin-tts-books.php?action=chapters&volume_key=' + volumeKey + '&tts_key=' + TTS_KEY);
     CHAPTERS = r.chapters || [];
+    ACTIVE_VOLUME_CODE = (r.volume && r.volume.volume_code) || '';
     $('volume-summary').textContent = (r.volume.volume_label || '') + ' — ' + CHAPTERS.length + ' chapters';
     $('chapters-table').style.display = '';
     renderChapters();
@@ -1195,83 +1192,28 @@ function renderChapters() {
         if (st === 'running' || st === 'pending') {
             actions += '<button class="btn-sm btn-del" onclick="cancelBuild(' + c.tts_audio_key + ')">Cancel</button>';
         }
-        var busy = (st === 'running' || st === 'pending');
+        // Flipbook deep-link cell: opens the chapter at its starting page.
+        // Requires the volume's flip code AND a chapter_page value in the
+        // DB. Missing either → render a dimmed placeholder.
+        var readCell;
+        if (ACTIVE_VOLUME_CODE && c.chapter_page) {
+            var href = '/' + ACTIVE_VOLUME_CODE + '/#page=' + c.chapter_page;
+            readCell = '<a href="' + escapeHtml(href) + '" target="_blank" '
+                     + 'title="Open chapter ' + escapeHtml(c.chapter_number) + ' on page ' + escapeHtml(c.chapter_page) + ' in the flipbook" '
+                     + 'style="color:#31345A;text-decoration:none;font-weight:600;">p.' + escapeHtml(c.chapter_page) + ' →</a>';
+        } else {
+            readCell = '<span style="color:#bbb;" title="No flipbook page configured for this chapter">—</span>';
+        }
         tr.innerHTML =
-            '<td style="text-align:center"><input type="checkbox" class="chapter-check" data-chapter="' + c.chapter_key + '"' + (busy ? ' disabled title="Already running"' : '') + ' onchange="updateBulkBuildBtn()"></td>' +
             '<td>' + escapeHtml(c.chapter_number) + '</td>' +
             '<td>' + escapeHtml(c.chapter_label || '') + (c.tts_audio_message ? '<div style="font-size:0.78rem;color:#888">' + escapeHtml(c.tts_audio_message) + '</div>' : '') + '</td>' +
             '<td>' + escapeHtml(c.paragraph_count || 0) + '</td>' +
+            '<td>' + readCell + '</td>' +
             '<td>' + badge + progress + '</td>' +
             '<td>' + audio + '</td>' +
             '<td class="col-actions">' + actions + '</td>';
         tb.appendChild(tr);
     });
-    // Reset header checkbox + Build button to match the freshly rendered rows.
-    var headerCk = $('chapters-check-all');
-    if (headerCk) headerCk.checked = false;
-    updateBulkBuildBtn();
-}
-
-// Check / uncheck every row's chapter checkbox in one shot. Disabled rows
-// (running/pending) stay unchecked — they can't be queued again until they
-// finish or are cancelled.
-function toggleAllChapterChecks(checked) {
-    document.querySelectorAll('#chapters-tbody .chapter-check:not([disabled])').forEach(function(cb) {
-        cb.checked = checked;
-    });
-    updateBulkBuildBtn();
-}
-
-// Enable the Build button only when at least one chapter is ticked; show a
-// count so the operator knows what's about to run.
-function updateBulkBuildBtn() {
-    var btn = $('bulk-build-btn');
-    if (!btn) return;
-    btn.style.display = '';
-    var n = document.querySelectorAll('#chapters-tbody .chapter-check:checked').length;
-    btn.disabled = (n === 0);
-    btn.style.opacity = n === 0 ? '0.5' : '1';
-    btn.textContent = n === 0 ? 'Build' : ('Build ' + n + ' selected');
-}
-
-// Bulk-build: queue a build for every ticked chapter using the saved voice
-// defaults from the Voices tab. The /admin-tts-build.php?action=start
-// endpoint already snapshots the current category config per job, so we
-// just fire one request per chapter — no per-chapter modal.
-async function bulkBuildSelected() {
-    var picks = Array.from(document.querySelectorAll('#chapters-tbody .chapter-check:checked'))
-        .map(function(cb) { return parseInt(cb.dataset.chapter, 10); })
-        .filter(Boolean);
-    if (!picks.length) return;
-    if (!confirm('Queue ' + picks.length + ' chapter audio build' + (picks.length === 1 ? '' : 's')
-                 + ' using the saved Voices defaults? Each chapter takes a few minutes.')) {
-        return;
-    }
-    var btn = $('bulk-build-btn');
-    btn.disabled = true;
-    btn.textContent = 'Queuing 0 / ' + picks.length + '…';
-    var ok = 0, failed = 0;
-    for (var i = 0; i < picks.length; i++) {
-        try {
-            await api('/admin-tts-build.php?action=start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'start',
-                    tts_key: TTS_KEY,
-                    volume_key: ACTIVE_VOLUME,
-                    chapter_key: picks[i],
-                }),
-            });
-            ok++;
-        } catch (e) {
-            failed++;
-            console.error('bulk-build failed for chapter ' + picks[i] + ':', e);
-        }
-        btn.textContent = 'Queuing ' + (i + 1) + ' / ' + picks.length + '…';
-    }
-    btn.textContent = 'Queued ' + ok + (failed ? ' (' + failed + ' failed)' : '');
-    setTimeout(function() { loadChapters(ACTIVE_VOLUME); }, 400);
 }
 
 function openBuildModal(chapterKey, audioKey) {

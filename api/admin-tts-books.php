@@ -51,8 +51,9 @@ if ($action === 'chapters') {
     if (!$volumeKey || !$ttsKey) errorResponse('volume_key and tts_key required');
 
     $vStmt = $db->prepare("
-        SELECT v.volume_key, v.series_key, v.volume_number, v.volume_label, v.volume_paragraph_count_live AS paragraph_count,
-               s.series_number
+        SELECT v.volume_key, v.series_key, v.volume_number, v.volume_label,
+               v.volume_paragraph_count_live AS paragraph_count,
+               v.volume_code, v.volume_flip_code, s.series_number
           FROM yy_volume v JOIN yy_series s ON v.series_key = s.series_key
          WHERE v.volume_key = ?
     ");
@@ -61,7 +62,7 @@ if ($action === 'chapters') {
     if (!$volume) errorResponse('volume not found', 404);
 
     $cStmt = $db->prepare("
-        SELECT c.chapter_key, c.chapter_number, c.chapter_label,
+        SELECT c.chapter_key, c.chapter_number, c.chapter_label, c.chapter_page,
                (SELECT COUNT(*) FROM yy_paragraph p WHERE p.chapter_key = c.chapter_key) AS paragraph_count,
                a.tts_audio_status, a.tts_audio_progress, a.tts_audio_message,
                a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_size_bytes,
