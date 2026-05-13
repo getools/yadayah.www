@@ -745,6 +745,26 @@
       };
       document.getElementById('download').onclick = () => { window.location.href = PDF_PATH; };
 
+      // MP3 download — sibling button next to PDF, shown only if the
+      // server has produced a bundled zip of this volume's chapter audio
+      // (rebuilt by admin-tts-build-worker.php at the end of each
+      // chapter synth). Filename pattern: /u/tts-audio/<bookCode>.mp3.zip
+      (() => {
+        const dlBtn = document.getElementById('download');
+        if (!dlBtn || !BOOK_CODE) return;
+        const MP3_PATH = '/u/tts-audio/' + BOOK_CODE + '.mp3.zip';
+        fetch(MP3_PATH, { method: 'HEAD' }).then(r => {
+          if (!r.ok) return;
+          const btn = document.createElement('button');
+          btn.id = 'download-mp3';
+          btn.title = 'Download all chapter MP3s (zip)';
+          btn.innerHTML = '↓ <span class="lbl">MP3</span>';
+          btn.className = dlBtn.className;
+          btn.onclick = () => { window.location.href = MP3_PATH; };
+          dlBtn.parentNode.insertBefore(btn, dlBtn.nextSibling);
+        }).catch(() => {});
+      })();
+
       // Print: load PDF in a hidden iframe and trigger its print dialog so
       // the output is the high-quality vector PDF, not the rasterized DOM.
       let printArmed = false;

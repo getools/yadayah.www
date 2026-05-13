@@ -10,12 +10,7 @@
  * each paragraph. Honors cancellation by re-checking tts_audio_status before
  * each paragraph synth.
  *
- * Usage:  php admin-tts-build-worker.php <tts_audio_key> [retry]
- *
- * The optional `retry` mode re-synthesizes only the paragraphs listed in
- * tts_audio_failed_paragraphs, leaves the others as-is by reading their
- * cached bytes from /opt/yada-www/private/tts-parts/<audio_key>/p<NNN>.mp3,
- * and re-stitches the final MP3 + markers from the full set of parts.
+ * Usage:  php admin-tts-build-worker.php <tts_audio_key>
  */
 
 require_once __DIR__ . '/config.php';
@@ -27,7 +22,6 @@ if (!$audioKey) {
     fwrite(STDERR, "tts_audio_key required\n");
     exit(2);
 }
-$mode = (($argv[2] ?? '') === 'retry') ? 'retry' : 'build';
 
 $db = getDb();
 
@@ -42,25 +36,16 @@ register_shutdown_function(function() use (&$db, $MAX_CONCURRENT_BUILDS) {
         if (!$db) $db = getDb();
         $running = (int)$db->query("SELECT COUNT(*) FROM yy_tts_audio WHERE tts_audio_status = 'running'")->fetchColumn();
         if ($running >= $MAX_CONCURRENT_BUILDS) return;
-        // A pending row with tts_audio_failed_paragraphs set was queued by
-        // retry_failed (the start action nulls that column), so spawn it
-        // with the retry arg.
-        $next = $db->query("
-            SELECT tts_audio_key, tts_audio_failed_paragraphs
-              FROM yy_tts_audio
+        $nextKey = (int)$db->query("
+            SELECT tts_audio_key FROM yy_tts_audio
              WHERE tts_audio_status = 'pending'
                AND tts_audio_worker_pid IS NULL
              ORDER BY tts_audio_dtime ASC
              LIMIT 1
-        ")->fetch();
-        if (!$next) return;
-        $nextKey = (int)$next['tts_audio_key'];
-        $args = [(string)$nextKey];
-        if (!empty($next['tts_audio_failed_paragraphs']) && $next['tts_audio_failed_paragraphs'] !== '{}') {
-            $args[] = 'retry';
-        }
+        ")->fetchColumn();
+        if (!$nextKey) return;
         $logFile = sys_get_temp_dir() . '/tts_build_' . $nextKey . '.log';
-        $pid = spawnCappedWorker(__FILE__, $args, $logFile, [
+        $pid = spawnCappedWorker(__FILE__, [(string)$nextKey], $logFile, [
             'cpu_secs' => 3600, 'mem_mb' => 1500, 'nice' => 10,
         ]);
         if ($pid > 0) {
@@ -188,58 +173,16 @@ $outDirContainer = dirname(__DIR__) . '/u/tts-audio';
 $outDir = is_dir(dirname(__DIR__)) ? $outDirContainer : $outDirHost;
 if (!is_dir($outDir)) @mkdir($outDir, 0775, true);
 
-// Chapter row for filename naming + heading SSML.
-$chRow = $db->prepare("SELECT chapter_number, chapter_name, chapter_label FROM yy_chapter WHERE chapter_key = ?");
+// Chapter row for filename naming.
+$chRow = $db->prepare("SELECT chapter_number FROM yy_chapter WHERE chapter_key = ?");
 $chRow->execute([$chapterKey]);
-$chMeta  = $chRow->fetch() ?: ['chapter_number' => 0, 'chapter_name' => '', 'chapter_label' => ''];
-$chNum   = (int)($chMeta['chapter_number'] ?? 0);
-$chName  = trim((string)($chMeta['chapter_name']  ?? ''));
-$chLabel = trim((string)($chMeta['chapter_label'] ?? ''));
+$chNum = (int)($chRow->fetchColumn() ?: 0);
 $ext = (strpos($cfg['system']['tts_output_format'], 'mp3') !== false) ? 'mp3'
      : ((strpos($cfg['system']['tts_output_format'], 'opus') !== false) ? 'opus'
      : ((strpos($cfg['system']['tts_output_format'], 'pcm') !== false) ? 'wav' : 'mp3'));
 $baseName  = sprintf('%s-ch%02d.%s', $volumeSlug, $chNum, $ext);
 $finalPath = $outDir . '/' . $baseName;
 $relPath   = '/u/tts-audio/' . $baseName;
-
-// Per-paragraph cache directory. Each successful synthesis is written
-// out here as p<NNNN>.mp3 alongside the appended bytes in $finalPath.
-// On retry, only the rows listed in tts_audio_failed_paragraphs are
-// re-synthesized; everything else is read back from this dir so the
-// caller doesn't re-burn Azure quota on already-good paragraphs.
-// Mirrors the host/container path resolution used for $outDir above —
-// only /opt/yada-www/public and /opt/yada-www/api are bind-mounted into
-// the PHP container, so private/ is unreachable; co-locate the cache
-// with the final MP3 under u/.
-$partsDirHost      = '/opt/yada-www/public/u/tts-parts/' . $audioKey;
-$partsDirContainer = dirname(__DIR__) . '/u/tts-parts/' . $audioKey;
-$partsDir = is_dir(dirname(__DIR__)) ? $partsDirContainer : $partsDirHost;
-if (!is_dir($partsDir)) {
-    if (!@mkdir($partsDir, 0775, true) && !is_dir($partsDir)) {
-        bail($db, $audioKey, "cannot create parts dir at $partsDir");
-    }
-}
-if ($mode === 'build') {
-    foreach (glob($partsDir . '/p*.' . $ext) ?: [] as $f) @unlink($f);
-}
-
-// Load the existing failed-paragraph list when retrying. Postgres
-// returns int[] as '{44,45}' over PDO, so we parse the literal.
-$failedFromDb = [];
-if ($mode === 'retry') {
-    $r = $db->prepare("SELECT tts_audio_failed_paragraphs FROM yy_tts_audio WHERE tts_audio_key = ?");
-    $r->execute([$audioKey]);
-    $raw = $r->fetchColumn();
-    if (is_string($raw) && $raw !== '' && $raw !== '{}') {
-        $failedFromDb = array_map('intval', preg_split('/,/', trim($raw, '{}'), -1, PREG_SPLIT_NO_EMPTY));
-    } elseif (is_array($raw)) {
-        $failedFromDb = array_map('intval', $raw);
-    }
-    if (!$failedFromDb) bail($db, $audioKey, "retry: no failed paragraphs recorded — nothing to retry");
-}
-$failedFromDbSet = array_flip($failedFromDb);
-// New failures observed during THIS run — replaces $failedFromDb at end.
-$newFailedSet = [];
 
 // Load paragraphs. paragraph_page is included so we can emit a row in
 // yy_tts_audio_marker tying each paragraph's audio offset to its page
@@ -300,8 +243,6 @@ function azureTtsSynthesizeRetry(string $ssml, array $cfg, ?string &$err = null,
             $shouldRetry = true;          // rate-limit / server error
         } else if (preg_match('/HTTP 0\b/', $err)) {
             $shouldRetry = true;          // curl-level error (timeout / dns)
-        } else if (stripos($err, 'timed out') !== false || stripos($err, 'timeout') !== false) {
-            $shouldRetry = true;          // mid-transfer timeout (sometimes lands after HTTP 200 headers)
         }
         if (!$shouldRetry) return '';
         $attempt++;
@@ -413,64 +354,6 @@ foreach ($paragraphs as $idx => $p) {
         }
     }
 
-    // Chapter-heading & subhead special handling.
-    //   - heading = first paragraph in chapter (idx 0). Prepend "Chapter N"
-    //     when the chapter is numbered and the text doesn't already say
-    //     "Chapter"; for non-numeric headings (chapter_label like
-    //     "Prologue", or text not starting with a digit) speak verbatim.
-    //   - subhead = second paragraph (idx 1) but only if it's short
-    //     (< 60 chars) and doesn't end in a period — guards against
-    //     chapters that lack a subhead so we don't pause around real body.
-    // Pause durations live in yy_tts_pause under sentinel search keys.
-    // Azure SSML requires <break> tags to live INSIDE a <voice> element;
-    // emitting them at the top of <speak> earns a 400 with no body. We
-    // splice the heading / between / after pauses into the text passed
-    // to buildVoiceBlock via the same \x01PAUSE_KEY_MS\x01 placeholder
-    // shape applyPauses uses, so placeholdersToBreaks rewrites them to
-    // <break time="Nms"/> inside the voice element.
-    $mkPh = function (int $ms, int $idTag): string {
-        return sprintf("\x01PAUSE_%d_%d\x01", $idTag, max(0, $ms));
-    };
-    $specialBlocks = null;
-    $specialPlain  = trim((string)($p['paragraph_text_plain'] ?? ''));
-    if ($idx === 0 && $specialPlain !== '') {
-        $beforeMs  = ttsPauseLookup($cfg, '__chapter_before__',  2500);
-        $betweenMs = ttsPauseLookup($cfg, '__chapter_between__', 700);
-        $afterMs   = ttsPauseLookup($cfg, '__chapter_after__',   1500);
-        $hasChapterWord  = (mb_stripos($specialPlain, 'chapter') !== false);
-        $startsWithDigit = (bool)preg_match('/^\d/', $specialPlain);
-        $before  = $mkPh($beforeMs, 990001);
-        $between = $mkPh($betweenMs, 990002);
-        $after   = $mkPh($afterMs, 990003);
-        if ($hasChapterWord) {
-            $specialBlocks = buildVoiceBlock($before . $specialPlain . $after, $cfg, 'main');
-        } elseif ($chLabel !== '') {
-            $body = $before . $chLabel;
-            if ($chName !== '' && strcasecmp($chName, $chLabel) !== 0) {
-                $body .= $between . $chName;
-            }
-            $body .= $after;
-            $specialBlocks = buildVoiceBlock($body, $cfg, 'main');
-        } elseif ($startsWithDigit && $chNum > 0 && $chName !== '') {
-            $specialBlocks = buildVoiceBlock(
-                $before . 'Chapter ' . $chNum . $between . $chName . $after,
-                $cfg, 'main'
-            );
-        } else {
-            $specialBlocks = buildVoiceBlock($before . $specialPlain . $after, $cfg, 'main');
-        }
-    } elseif ($idx === 1 && $specialPlain !== '') {
-        $tlen = mb_strlen($specialPlain);
-        if ($tlen > 0 && $tlen < 60 && !preg_match('/\.\s*$/u', $specialPlain)) {
-            $beforeMs = ttsPauseLookup($cfg, '__subhead_before__', 800);
-            $afterMs  = ttsPauseLookup($cfg, '__subhead_after__',  500);
-            $specialBlocks = buildVoiceBlock(
-                $mkPh($beforeMs, 990004) . $specialPlain . $mkPh($afterMs, 990005),
-                $cfg, 'main'
-            );
-        }
-    }
-
     // Apply per-font filtering (skip + pause-on-switch) BEFORE
     // segmenting. The filter strips <span data-font="…"> tags either
     // way; skipped-font content is dropped; pause-marked fonts get a
@@ -479,89 +362,41 @@ foreach ($paragraphs as $idx => $p) {
     $rawHtml = (string)$p['paragraph_text_html'];
     $rawHtml = preprocessFontFilter($rawHtml, $cfg['fonts'] ?? []);
     $segs = segmentParagraph($rawHtml);
-    if (!$segs && $specialBlocks === null) continue;
+    if (!$segs) continue;
 
-    $pNum = (int)$p['paragraph_number'];
-    $partPath = sprintf('%s/p%04d.%s', $partsDir, $pNum, $ext);
+    $blocks = '';
+    foreach ($segs as $seg) {
+        $blocks .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
+    }
+    if ($blocks === '') continue;
+    $ssml = wrapSsml($blocks);
     $paraBytes = '';
-
-    // In retry mode, paragraphs NOT in the failed list keep their bytes
-    // from the prior build — read them back from the cached part file
-    // instead of re-billing Azure. A missing part file means the cache
-    // was wiped or never written; bail rather than produce a corrupt
-    // MP3 that's missing chunks.
-    $shouldSynth = ($mode === 'build') || isset($failedFromDbSet[$pNum]);
-    if (!$shouldSynth) {
-        if (!is_file($partPath)) {
-            bail($db, $audioKey, "retry: missing part file for paragraph $pNum at $partPath — full rebuild required");
+    if (strlen($ssml) > 9500) {
+        // Over Azure's per-request limit — split into one synth call per segment instead.
+        foreach ($segs as $seg) {
+            $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
+            $err = '';
+            $b = azureTtsSynthesizeRetry($oneSsml, $cfg, $err);
+            if ($b === '') {
+                $failures[] = "para {$p['paragraph_number']} seg: $err";
+                $failureCount++;
+                continue;
+            }
+            $paraBytes .= $b;
+            $charsBilled += mb_strlen($seg['text']);
         }
-        $paraBytes = (string)file_get_contents($partPath);
-        if ($paraBytes === '') {
-            bail($db, $audioKey, "retry: empty part file for paragraph $pNum at $partPath — full rebuild required");
-        }
-    } elseif ($specialBlocks !== null) {
-        $ssml = wrapSsml($specialBlocks);
+    } else {
         $err = '';
         $b = azureTtsSynthesizeRetry($ssml, $cfg, $err);
         if ($b === '') {
-            $failures[] = "para $pNum: $err";
+            $failures[] = "para {$p['paragraph_number']}: $err";
             $failureCount++;
-            $newFailedSet[$pNum] = true;
             continue;
         }
         $paraBytes = $b;
-        $charsBilled += mb_strlen($specialPlain);
-    } else {
-        $blocks = '';
-        foreach ($segs as $seg) {
-            $blocks .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
-        }
-        if ($blocks === '') continue;
-        $ssml = wrapSsml($blocks);
-        $paraBytes = '';
-        if (strlen($ssml) > 9500) {
-            // Over Azure's per-request limit — split into one synth call per segment instead.
-            $segFailedAny = false;
-            foreach ($segs as $seg) {
-                $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
-                $err = '';
-                $b = azureTtsSynthesizeRetry($oneSsml, $cfg, $err);
-                if ($b === '') {
-                    $failures[] = "para $pNum seg: $err";
-                    $failureCount++;
-                    $segFailedAny = true;
-                    continue;
-                }
-                $paraBytes .= $b;
-                $charsBilled += mb_strlen($seg['text']);
-            }
-            if ($segFailedAny && $paraBytes === '') {
-                $newFailedSet[$pNum] = true;
-                continue;
-            }
-        } else {
-            $err = '';
-            $b = azureTtsSynthesizeRetry($ssml, $cfg, $err);
-            if ($b === '') {
-                $failures[] = "para $pNum: $err";
-                $failureCount++;
-                $newFailedSet[$pNum] = true;
-                continue;
-            }
-            $paraBytes = $b;
-            foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
-        }
+        foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
     }
     if ($paraBytes === '') continue;
-
-    // Cache the freshly-synthesized bytes so a future retry-failed run
-    // can reuse them without re-calling Azure for this paragraph.
-    if ($shouldSynth) {
-        $wrote = @file_put_contents($partPath, $paraBytes);
-        if ($wrote === false || $wrote !== strlen($paraBytes)) {
-            fwrite(STDERR, "WARN: part cache write failed for p$pNum at $partPath (wrote=" . var_export($wrote, true) . " bytes vs " . strlen($paraBytes) . ")\n");
-        }
-    }
 
     // Write this paragraph's marker BEFORE appending its bytes to the
     // output file, so the offset captures the position at which the
@@ -640,23 +475,28 @@ if ($ffprobe) {
     if ($out) $duration = (int)round((float)trim($out));
 }
 
-// Persist the still-failing paragraph numbers as a Postgres int[] literal
-// so the admin UI can offer Retry-failed without re-billing the rest.
-$finalFailed = array_keys($newFailedSet);
-sort($finalFailed, SORT_NUMERIC);
-$failedLiteral = $finalFailed ? '{' . implode(',', $finalFailed) . '}' : null;
-
 updateAudio($db, $audioKey, [
-    'tts_audio_status'             => 'complete',
-    'tts_audio_progress'           => 100,
-    'tts_audio_message'            => $failureCount ? "Done with $failureCount paragraph failure(s)" : 'Done',
-    'tts_audio_path'               => $relPath,
-    'tts_audio_size_bytes'         => $finalSize,
-    'tts_audio_duration_secs'      => $duration,
-    'tts_audio_completed_dtime'    => date('Y-m-d H:i:sO'),
-    'tts_audio_error'              => $failures ? implode(' | ', array_slice($failures, 0, 5)) : null,
-    'tts_audio_failed_paragraphs'  => $failedLiteral,
+    'tts_audio_status'          => 'complete',
+    'tts_audio_progress'        => 100,
+    'tts_audio_message'         => $failureCount ? "Done with $failureCount paragraph failure(s)" : 'Done',
+    'tts_audio_path'            => $relPath,
+    'tts_audio_size_bytes'      => $finalSize,
+    'tts_audio_duration_secs'   => $duration,
+    'tts_audio_completed_dtime' => date('Y-m-d H:i:sO'),
+    'tts_audio_error'           => $failures ? implode(' | ', array_slice($failures, 0, 5)) : null,
 ]);
+
+// Refresh the volume's bundled mp3.zip so the flipbook's "Download MP3"
+// button always serves the latest chapter set. Best-effort — a zip
+// failure is logged but doesn't fail the build.
+try {
+    if (!rebuildVolumeMp3Zip($db, $volumeKey)) {
+        fwrite(STDERR, "rebuildVolumeMp3Zip returned false for volume $volumeKey\n");
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, "rebuildVolumeMp3Zip failed: " . $e->getMessage() . "\n");
+}
+
 exit(0);
 
 /* ── segmentation ───────────────────────────────────────────────────

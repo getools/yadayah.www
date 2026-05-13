@@ -83,15 +83,20 @@ if (!$chapterKey) {
 
 // Fetch chapter metadata + the audio row (if any). Prefer
 // status='complete'; some installs use 'ready', accept both.
+// The worker only sets tts_audio_live_dtime when it atomically swaps a
+// CLEAN build (zero failures) into the live MP3 path — so its presence
+// is our durable signal that whatever's at tts_audio_path is safe to
+// play, regardless of whether a more recent rebuild attempt failed.
 $aStmt = $db->prepare("
     SELECT c.chapter_key, c.chapter_number, c.chapter_name,
            a.tts_audio_key, a.tts_audio_path, a.tts_audio_duration_secs, a.tts_audio_status,
-           a.tts_audio_revision_dtime, a.tts_audio_failed_paragraphs, a.tts_audio_message
+           a.tts_audio_revision_dtime, a.tts_audio_live_dtime
       FROM yy_chapter c
       LEFT JOIN yy_tts_audio a
         ON a.chapter_key = c.chapter_key
        AND a.volume_key  = ?
-       AND a.tts_audio_status IN ('complete','ready')
+       AND a.tts_audio_path IS NOT NULL
+       AND a.tts_audio_live_dtime IS NOT NULL
      WHERE c.chapter_key = ?
      LIMIT 1
 ");
@@ -130,29 +135,19 @@ if ($nextChapterKey) {
     $checkStmt = $db->prepare("
         SELECT 1 FROM yy_tts_audio
          WHERE volume_key = ? AND chapter_key = ?
-           AND tts_audio_status IN ('complete','ready')
            AND tts_audio_path IS NOT NULL
-           AND (tts_audio_failed_paragraphs IS NULL
-                OR cardinality(tts_audio_failed_paragraphs) = 0)
-           AND (tts_audio_message IS NULL
-                OR tts_audio_message NOT ILIKE '%paragraph failure%')
+           AND tts_audio_live_dtime IS NOT NULL
          LIMIT 1
     ");
     $checkStmt->execute([$volumeKey, $nextChapterKey]);
     $nextAvailable = (bool)$checkStmt->fetchColumn();
 }
 
-// Treat any chapter with outstanding paragraph failures as not-yet-playable.
-// Markers/offsets are computed only for paragraphs that actually rendered,
-// so a partial build drifts more and more out of sync the further you play.
-// Better to grey out the play button until an admin retries the failures.
-// Builds done before tts_audio_failed_paragraphs existed won't have it set,
-// so we also sniff the legacy "Done with N paragraph failure(s)" message
-// the worker stamps onto tts_audio_message at completion.
-$rawFailed = $row['tts_audio_failed_paragraphs'] ?? null;
-$hasFailures = ($rawFailed !== null && $rawFailed !== '' && $rawFailed !== '{}')
-            || (stripos((string)($row['tts_audio_message'] ?? ''), 'paragraph failure') !== false);
-$audioReady = !empty($row['tts_audio_path']) && !$hasFailures;
+// The LEFT JOIN already filtered to rows where tts_audio_live_dtime is
+// set (i.e. the worker promoted a clean build into place). If $row has
+// no audio_key at all, the chapter has never had a successful clean
+// build — return unavailable.
+$audioReady = !empty($row['tts_audio_path']) && !empty($row['tts_audio_live_dtime']);
 $markers    = [];
 if ($audioReady) {
     // Join each marker to its paragraph_text_plain so the viewer can

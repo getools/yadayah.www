@@ -98,9 +98,13 @@ if ($action === 'start') {
     // attempt (failed or complete). The partial unique index includes
     // a WHERE chapter_key IS NOT NULL predicate, so the ON CONFLICT
     // target must repeat it.
-    // Clear tts_audio_failed_paragraphs on a fresh build so the queue
-    // promoter can use its non-null-ness as the signal that a pending
-    // row should be spawned in retry mode.
+    // On a re-build we KEEP tts_audio_path, _duration_secs, _size_bytes,
+    // _live_dtime and the existing markers untouched so the prior live
+    // MP3 (if any) stays playable during the rebuild AND remains the
+    // fallback when the rebuild has failures. The worker swaps in the
+    // fresh audio + markers only when it produces a clean build.
+    // tts_audio_failed_paragraphs is cleared so the queue promoter
+    // treats this pending row as a fresh build, not a retry.
     $insStmt = $db->prepare("
         INSERT INTO yy_tts_audio
             (tts_key, volume_key, chapter_key, tts_audio_status, tts_audio_progress,
@@ -115,9 +119,6 @@ if ($action === 'start') {
             tts_audio_settings           = EXCLUDED.tts_audio_settings,
             tts_audio_started_dtime      = NOW(),
             tts_audio_completed_dtime    = NULL,
-            tts_audio_path               = NULL,
-            tts_audio_duration_secs      = NULL,
-            tts_audio_size_bytes         = NULL,
             tts_audio_worker_pid         = NULL,
             tts_audio_failed_paragraphs  = NULL,
             tts_audio_revision_dtime     = NOW()
@@ -216,6 +217,49 @@ if ($action === 'retry_failed') {
            ->execute(["Queued — waiting for an open slot (limit: $maxConcurrent concurrent)", $audioKey]);
     }
     jsonResponse(['tts_audio_key' => $audioKey, 'queued' => $queued, 'retrying' => $failed]);
+}
+
+// Delete a chapter's audio entirely — the row, the markers, the live MP3
+// file on disk, and the per-paragraph parts cache. Disallowed while a
+// build is in-flight; admin should hit Cancel first.
+if ($action === 'delete') {
+    $audioKey = (int)($data['tts_audio_key'] ?? 0);
+    if (!$audioKey) errorResponse('tts_audio_key required');
+
+    $row = $db->prepare("SELECT tts_audio_status, tts_audio_path FROM yy_tts_audio WHERE tts_audio_key = ?");
+    $row->execute([$audioKey]);
+    $r = $row->fetch();
+    if (!$r) errorResponse('not found', 404);
+    if (in_array($r['tts_audio_status'], ['pending', 'running'], true)) {
+        errorResponse('cannot delete while build is in-flight — cancel first');
+    }
+
+    // Wipe the markers, then the audio row. _rev tables are written by
+    // triggers — no manual cleanup required.
+    $db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
+    $db->prepare("DELETE FROM yy_tts_audio WHERE tts_audio_key = ?")->execute([$audioKey]);
+
+    // Remove the on-disk artifacts. Resolve via the same path-resolution
+    // logic the worker uses so this works whether PHP is in the
+    // container (/var/www/html bind mount) or on the host.
+    $audioBase = is_dir(dirname(__DIR__) . '/u') ? dirname(__DIR__) : '/opt/yada-www/public';
+    $relPath   = (string)($r['tts_audio_path'] ?? '');
+    if ($relPath !== '') {
+        // tts_audio_path may have a ?v=… cache buster appended by tts-audio.php.
+        // The DB column itself shouldn't, but strip defensively just in case.
+        $clean = preg_replace('/\?.*$/', '', $relPath);
+        $diskPath = $audioBase . $clean;
+        if (is_file($diskPath)) @unlink($diskPath);
+        if (is_file($diskPath . '.staging')) @unlink($diskPath . '.staging');
+    }
+    // Per-paragraph parts directory: u/tts-parts/<audio_key>/
+    $partsDir = $audioBase . '/u/tts-parts/' . $audioKey;
+    if (is_dir($partsDir)) {
+        foreach (glob($partsDir . '/*') ?: [] as $f) @unlink($f);
+        @rmdir($partsDir);
+    }
+
+    jsonResponse(['ok' => true, 'tts_audio_key' => $audioKey]);
 }
 
 errorResponse('Unknown action');

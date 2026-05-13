@@ -196,40 +196,65 @@ case 'PUT':
     $existing->execute([$key]);
     if (!$existing->fetch()) errorResponse('Not found', 404);
 
-    $code = trim($input['page_code'] ?? '');
-    if (!$code) errorResponse('page_code is required');
+    if (!isset($input['page_code']) || trim($input['page_code']) === '') {
+        errorResponse('page_code is required');
+    }
 
-    $title = trim($input['page_title'] ?? '') ?: null;
-    $active = ($input['page_active_flag'] ?? true) ? 't' : 'f';
-    $toolbar = (int)($input['page_toolbar'] ?? 1);
-    $headerSort = (int)($input['page_header_sort'] ?? 0);
-    $footerSort = (int)($input['page_footer_sort'] ?? 0);
-    $url = trim($input['page_url'] ?? '') ?: null;
+    // PATCH semantics: only update fields the caller actually sent. The
+    // admin-links UI saves routing fields (code/title/toolbar/parent) but
+    // doesn't ship page_body / page_heading / colors. If we treated missing
+    // fields as "set to empty", every save through admin-links would WIPE
+    // the rich content authored in the admin-pages editor. That happened
+    // to /grammar on 2026-05-13 and the body had to be restored from
+    // yy_page_rev. Never again — only touch what was provided.
+    //
+    // Mapping from JSON key → (sql column, transform). For booleans we use
+    // an array form so missing keys get skipped.
+    $updates = [];
+    $params  = [];
+    $maybe = function (string $jsonKey, string $col, callable $xform) use (&$updates, &$params, $input) {
+        if (array_key_exists($jsonKey, $input)) {
+            $updates[] = "$col = ?";
+            $params[]  = $xform($input[$jsonKey]);
+        }
+    };
+    $trimOrNull = function ($v) { $t = trim((string)$v); return $t === '' ? null : $t; };
+    $intOr0     = function ($v) { return (int)$v; };
+    $boolFlag   = function ($v) { return $v ? 't' : 'f'; };
+    $parentKeyXform = function ($v) {
+        return ($v === '' || $v === null) ? null : (int)$v;
+    };
 
-    $heading = trim($input['page_heading'] ?? '') ?: null;
-    $subheading = trim($input['page_subheading'] ?? '') ?: null;
-    $description = trim($input['page_description'] ?? '') ?: null;
-    $body = trim($input['page_body'] ?? '') ?: null;
+    $maybe('page_code',              'page_code',              fn($v) => trim((string)$v));
+    $maybe('page_title',             'page_title',             $trimOrNull);
+    $maybe('page_active_flag',       'page_active_flag',       $boolFlag);
+    $maybe('page_toolbar',           'page_toolbar',           $intOr0);
+    $maybe('page_header_sort',       'page_header_sort',       $intOr0);
+    $maybe('page_footer_sort',       'page_footer_sort',       $intOr0);
+    $maybe('page_footer_col',        'page_footer_col',        $intOr0);
+    $maybe('page_url',               'page_url',               $trimOrNull);
+    $maybe('page_heading',           'page_heading',           $trimOrNull);
+    $maybe('page_subheading',        'page_subheading',        $trimOrNull);
+    $maybe('page_description',       'page_description',       $trimOrNull);
+    $maybe('page_body',              'page_body',              $trimOrNull);
+    $maybe('page_heading_color',     'page_heading_color',     $trimOrNull);
+    $maybe('page_heading_size',      'page_heading_size',      $trimOrNull);
+    $maybe('page_subheading_color',  'page_subheading_color',  $trimOrNull);
+    $maybe('page_subheading_size',   'page_subheading_size',   $trimOrNull);
+    $maybe('page_description_color', 'page_description_color', $trimOrNull);
+    $maybe('page_description_size',  'page_description_size',  $trimOrNull);
+    $maybe('page_background_color',  'page_background_color',  $trimOrNull);
+    $maybe('page_item_allow_flag',   'page_item_allow_flag',   $boolFlag);
+    $maybe('page_item_search_flag',  'page_item_search_flag',  $boolFlag);
+    $maybe('page_toolbar_flag',      'page_toolbar_flag',      $boolFlag);
+    $maybe('page_parent_key',        'page_parent_key',        $parentKeyXform);
+    $maybe('page_parent_sort',       'page_parent_sort',       $intOr0);
 
-    $headingColor = trim($input['page_heading_color'] ?? '') ?: null;
-    $headingSize = trim($input['page_heading_size'] ?? '') ?: null;
-    $subheadingColor = trim($input['page_subheading_color'] ?? '') ?: null;
-    $subheadingSize = trim($input['page_subheading_size'] ?? '') ?: null;
-    $descColor = trim($input['page_description_color'] ?? '') ?: null;
-    $descSize = trim($input['page_description_size'] ?? '') ?: null;
-    $bgColor = trim($input['page_background_color'] ?? '') ?: null;
+    if (!$updates) { jsonResponse(['ok' => true, 'unchanged' => true]); }
 
-    $itemAllow  = !empty($input['page_item_allow_flag'])  ? 't' : 'f';
-    $itemSearch = !empty($input['page_item_search_flag']) ? 't' : 'f';
-
-    // Sub-toolbar parent / child wiring (see INSERT for semantics).
-    $toolbarFlag = !empty($input['page_toolbar_flag']) ? 't' : 'f';
-    $parentKey   = isset($input['page_parent_key']) && $input['page_parent_key'] !== '' && $input['page_parent_key'] !== null
-                    ? (int)$input['page_parent_key'] : null;
-    $parentSort  = (int)($input['page_parent_sort'] ?? 0);
-
-    $stmt = $db->prepare("UPDATE yy_page SET page_code = ?, page_title = ?, page_active_flag = ?, page_toolbar = ?, page_header_sort = ?, page_footer_sort = ?, page_footer_col = ?, page_url = ?, page_heading = ?, page_subheading = ?, page_description = ?, page_body = ?, page_heading_color = ?, page_heading_size = ?, page_subheading_color = ?, page_subheading_size = ?, page_description_color = ?, page_description_size = ?, page_background_color = ?, page_item_allow_flag = ?, page_item_search_flag = ?, page_toolbar_flag = ?, page_parent_key = ?, page_parent_sort = ? WHERE page_key = ?");
-    $stmt->execute([$code, $title, $active, $toolbar, $headerSort, $footerSort, (int)($input['page_footer_col'] ?? 0), $url, $heading, $subheading, $description, $body, $headingColor, $headingSize, $subheadingColor, $subheadingSize, $descColor, $descSize, $bgColor, $itemAllow, $itemSearch, $toolbarFlag, $parentKey, $parentSort, $key]);
+    $params[] = $key;
+    $stmt = $db->prepare("UPDATE yy_page SET " . implode(', ', $updates) . " WHERE page_key = ?");
+    $stmt->execute($params);
     $navCache = sys_get_temp_dir() . '/yada_page_nav.json';
     if (file_exists($navCache)) @unlink($navCache);
     jsonResponse(['ok' => true]);

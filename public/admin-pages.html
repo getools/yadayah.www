@@ -276,6 +276,12 @@ function initBodyEditor(content) {
             editor.on('init', function() {
                 editor.setContent(content || '');
                 _bodyEditorReady = true;
+                // Mirror the page's chosen background color into the editor
+                // body so author-set text colors (gold on dark, etc.) render
+                // against the same background they'll appear on in production.
+                // Without this the editor stays white and gold/yellow text is
+                // invisible against a near-white surface.
+                applyEditorBg();
                 // Notify dirty-tracking that content changed
                 editor.on('focus', function() {
                     if (typeof window.markDirty === 'function') window.markDirty();
@@ -284,6 +290,30 @@ function initBodyEditor(content) {
         }
     });
 }
+
+// Read the f-background-color picker and apply the rgba into the live editor.
+// Idempotent — safe to call from picker-input listeners as the operator drags
+// the swatch or opacity slider.
+function applyEditorBg() {
+    var editor = tinymce.get('f-body');
+    if (!editor || !editor.getBody) return;
+    var bg = (typeof getPickerValue === 'function') ? getPickerValue('f-background-color') : '';
+    if (!bg) return;
+    try { editor.dom.setStyle(editor.getBody(), 'background-color', bg); } catch (e) {}
+}
+
+// Bind background-color picker → live editor (debounced via input event).
+// We attach once on first call so subsequent showPageForm/initBodyEditor
+// rounds don't stack duplicate listeners.
+function bindEditorBgWatcher() {
+    if (window._editorBgBound) return;
+    window._editorBgBound = true;
+    ['f-background-color-hex', 'f-background-color-opacity'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', applyEditorBg);
+    });
+}
+bindEditorBgWatcher();
 
 function getBodyContent() {
     var editor = tinymce.get('f-body');

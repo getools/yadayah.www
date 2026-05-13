@@ -1652,6 +1652,12 @@ function renderChapters() {
         }
         if (st === 'running' || st === 'pending') {
             actions += '<button class="btn-sm btn-del" onclick="cancelBuild(' + c.tts_audio_key + ')">Cancel</button>';
+        } else if (c.tts_audio_key) {
+            // Delete button — wipes the row, markers, MP3, parts cache.
+            // Disallowed while a build is in-flight (Cancel covers that).
+            actions += ' <button class="btn-sm btn-del" '
+                     + 'title="Delete this chapter\'s MP3, markers, and parts cache" '
+                     + 'onclick="deleteAudio(' + c.tts_audio_key + ',' + c.chapter_number + ')">Delete</button>';
         }
         // Flipbook deep-link cell: opens the chapter at its starting page.
         // Requires the volume's flip code AND a chapter_page value in the
@@ -1696,10 +1702,19 @@ function openBuildModal(chapterKey, audioKey) {
         var saved = STATE.categories[cat.code] || {};
         var row = document.createElement('div');
         row.className = 'voice-row';
-        row.style.gridTemplateColumns = '180px 1fr';
-        row.innerHTML = '<label>' + escapeHtml(cat.label) + '</label><select data-cat="' + cat.code + '"></select>';
+        // Match the Voices-tab layout so admins can tweak rate/pitch/vol
+        // for a one-off build without leaving the chapter's row.
+        row.style.gridTemplateColumns = '180px 1fr auto';
+        row.innerHTML =
+            '<label>' + escapeHtml(cat.label) + '</label>' +
+            '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
+            '<div class="prosody">' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down" style="margin-left:2px;cursor:help;">%</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:80px"><span title="Semitones — 12 = one octave" style="margin-left:2px;cursor:help;">st</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '"></span>' +
+            '</div>';
         root.appendChild(row);
-        var sel = row.querySelector('select');
+        var sel = row.querySelector('select[data-field="voice"]');
         CATALOG.voices.forEach(v => {
             var o = document.createElement('option');
             o.value = v.code; o.textContent = v.label;
@@ -1718,9 +1733,23 @@ function closeBuildModal() { $('build-modal').classList.remove('visible'); }
 async function startBuild() {
     var btn = $('build-start-btn');
     btn.disabled = true; $('build-status').textContent = 'Queuing…';
+    // One override block per category — voice + rate/pitch/volume.
+    // The worker's admin-tts-build.php start action whitelists these
+    // exact keys (voice_code, rate_pct, pitch_st, volume) when merging
+    // into the snapshot, so anything else here is silently dropped.
     var overrides = {};
-    document.querySelectorAll('#build-category-rows select').forEach(s => {
-        overrides[s.dataset.cat] = { voice_code: s.value };
+    document.querySelectorAll('#build-category-rows .voice-row').forEach(function(row) {
+        var sel = row.querySelector('select[data-field="voice"]');
+        if (!sel) return;
+        var rate = row.querySelector('input[data-field="rate"]');
+        var pitch = row.querySelector('input[data-field="pitch"]');
+        var vol = row.querySelector('input[data-field="volume"]');
+        overrides[sel.dataset.cat] = {
+            voice_code: sel.value,
+            rate_pct:   rate  ? parseInt(rate.value, 10)    || 0   : 0,
+            pitch_st:   pitch ? parseFloat(pitch.value)     || 0   : 0,
+            volume:     vol   ? parseInt(vol.value, 10)     || 100 : 100,
+        };
     });
     try {
         var res = await api('/admin-tts-build.php?action=start', {
@@ -1749,6 +1778,22 @@ async function cancelBuild(audioKey) {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ action:'cancel', tts_audio_key: audioKey }),
     });
+    loadChapters(ACTIVE_VOLUME);
+}
+
+// Delete the chapter's MP3 + markers + parts cache. Irreversible from
+// the UI — admin will need to rebuild from scratch to restore audio.
+async function deleteAudio(audioKey, chapterNum) {
+    if (!confirm('Delete chapter ' + chapterNum + ' audio?\n\nThis removes the MP3, markers, and per-paragraph cache. A rebuild will need to re-synthesize every paragraph.')) return;
+    try {
+        await api('/admin-tts-build.php?action=delete', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ action:'delete', tts_audio_key: audioKey }),
+        });
+    } catch (e) {
+        alert('Delete failed: ' + (e.message || e));
+        return;
+    }
     loadChapters(ACTIVE_VOLUME);
 }
 

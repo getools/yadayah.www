@@ -69,23 +69,6 @@ function loadTtsConfig(PDO $db, int $ttsKey): array {
 }
 
 /**
- * Look up a sentinel pause (e.g. '__chapter_before__') from the loaded
- * config. Returns the configured ms value, or $default if no row exists
- * (or it's been deactivated). Sentinel keys are used by the build worker
- * for structural pauses around chapter headings / subheads; they live
- * alongside text-match pauses in yy_tts_pause so they can be tuned via
- * the existing admin Pauses panel.
- */
-function ttsPauseLookup(array $cfg, string $sentinel, int $default): int {
-    foreach ($cfg['pauses'] ?? [] as $p) {
-        if (($p['tts_pause_search'] ?? '') === $sentinel) {
-            return (int)$p['tts_pause_ms'];
-        }
-    }
-    return $default;
-}
-
-/**
  * Apply pause substring replacements. Pauses use a placeholder token so the
  * pause stays intact after XML escaping; the placeholder is rewritten back
  * to the SSML <break> tag after escaping.
@@ -178,6 +161,53 @@ function fontFilterEmit(string $text, array $stack, array $fonts): string {
         break; // Found innermost real font; not skipped → emit text.
     }
     return $text;
+}
+
+/**
+ * Rebuild the volume-level mp3.zip after a chapter audio finishes.
+ *
+ * Finds every chapter audio file for the given volume (matching the
+ * "{volume_code}-ch{NN}.{ext}" naming convention written by the build
+ * worker), bundles them into "{volume_code}.mp3.zip", and writes that
+ * sibling next to the chapter files. Existing zip is overwritten, so
+ * regenerated or replaced chapters always reflect the latest audio.
+ *
+ * Filenames inside the zip drop the volume prefix (just "ch02.mp3") so
+ * the archive is tidy when unpacked.
+ *
+ * Safe to call repeatedly; cheap when only one chapter exists.
+ */
+function rebuildVolumeMp3Zip(PDO $db, int $volumeKey): bool {
+    $stmt = $db->prepare("SELECT volume_code FROM yy_volume WHERE volume_key = ?");
+    $stmt->execute([$volumeKey]);
+    $slug = (string)($stmt->fetchColumn() ?: '');
+    if ($slug === '') return false;
+
+    // Same dual-path logic the build worker uses for the audio dir.
+    $hostDir      = '/opt/yada-www/public/u/tts-audio';
+    $containerDir = dirname(__DIR__) . '/u/tts-audio';
+    $dir = is_dir($containerDir) ? $containerDir : $hostDir;
+    if (!is_dir($dir)) return false;
+
+    $files = glob($dir . '/' . $slug . '-ch*.{mp3,opus,wav}', GLOB_BRACE) ?: [];
+    if (!$files) return false;
+    sort($files);
+
+    $zipPath = $dir . '/' . $slug . '.mp3.zip';
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        return false;
+    }
+    $prefix = $slug . '-';
+    foreach ($files as $f) {
+        $base = basename($f);
+        // Strip the "{volume_code}-" prefix so entries are "ch02.mp3".
+        if (strpos($base, $prefix) === 0) $entry = substr($base, strlen($prefix));
+        else                              $entry = $base;
+        $zip->addFile($f, $entry);
+    }
+    $zip->close();
+    return true;
 }
 
 function placeholdersToBreaks(string $escaped): string {
