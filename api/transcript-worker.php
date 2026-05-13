@@ -197,17 +197,26 @@ $haveCookies = $cookiesContent !== ''
 unset($cookiesContent);
 $cookiesArg  = $haveCookies ? ' --cookies ' . escapeshellarg($cookiesPath) : '';
 // Player client choice:
-//   - With auth cookies: prefer `web` (full formats, accepts cookies). Other
-//     clients fall back automatically. Avoids the `tv` client that yt-dlp
-//     picks as a last resort, which only exposes images.
-//   - Without auth cookies: try `ios` to evade bot-detection.
+//   - With auth cookies or POT provider: prefer `web` (full formats, accepts
+//     cookies and PO tokens). Other clients fall back automatically.
+//   - Without either: try `ios` to evade bot-detection.
 // PO Token provider (bgutil sidecar) defeats Botguard for the `web` client.
+// Fallback to well-known Docker service hostname when env var not set.
 // Joined into the same --extractor-args so yt-dlp parses both keys.
 $potUrl = getenv('POT_PROVIDER_URL') ?: '';
+if (!$potUrl) {
+    // Auto-detect the bgutil sidecar via its Docker-network hostname.
+    // The ping endpoint is cheap; if it responds the provider is ready.
+    $pingCtx = stream_context_create(['http' => ['timeout' => 2, 'ignore_errors' => true]]);
+    $ping = @file_get_contents('http://pot-provider:4416/ping', false, $pingCtx);
+    if ($ping && strpos($ping, 'version') !== false) {
+        $potUrl = 'http://pot-provider:4416';
+    }
+}
 $potBgutil = $potUrl ? ';youtubepot-bgutilhttp:base_url=' . $potUrl : '';
-$playerArg   = $haveCookies
+$playerArg   = ($haveCookies || $potUrl)
     ? " --extractor-args 'youtube:player_client=web,mweb,web_safari" . $potBgutil . "'"
-    : " --extractor-args 'youtube:player_client=ios" . $potBgutil . "'";
+    : " --extractor-args 'youtube:player_client=ios'";
 
 // YouTube's modern n-challenge requires a JS solver. Deno is installed in the
 // container, and `--remote-components ejs:github` lets yt-dlp auto-fetch the
