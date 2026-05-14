@@ -311,6 +311,55 @@ if ($isS07) {
     }
 }
 
+// ── Multi-paragraph extended-quote detection ───────────────────────────
+// Pattern (any series):
+//   • A paragraph that opens with a curly opening quote “ (U+201C)
+//   • That same paragraph does NOT end with a closing quote ” — i.e.
+//     the quote continues to the next paragraph
+//   • One or more continuation paragraphs
+//   • A later paragraph that ends with a closing curly quote ” (U+201D)
+// The whole span is retagged as the 'quote' category so it gets its
+// own voice in the Voices tab, distinct from chapter-intro Islamic
+// quotes (handled above) and from main body prose. Single-paragraph
+// fully-bounded quotes ("… word "X" word …" on one line) are ignored.
+//
+// Note: we deliberately don't require italic formatting here, because
+// the docx→pdf→PyMuPDF pipeline often drops italics on these blocks
+// (verified against the s07v01 Solomon/Sheba quote at ch 359 p1236-1240).
+// Inner dialogue using single curly quotes ‘ ’ is fine — those won't
+// trip the U+201C / U+201D smart-double-quote check.
+for ($k = 0; $k < $nPara; $k++) {
+    $p = $paragraphs[$k];
+    if (isset($introOverrides[(int)$p['paragraph_number']])) continue;
+    $html = (string)$p['paragraph_text_html'];
+    if (preg_match('/<b\b/i', $html)) continue;          // bold-led blocks belong to other classifiers
+    $plain = trim((string)$p['paragraph_text_plain']);
+    if ($plain === '' || mb_substr($plain, 0, 1) !== "\u{201C}") continue;
+    if (mb_substr($plain, -1) === "\u{201D}") continue;  // self-contained quote — likely body prose
+    // Walk forward up to 30 paragraphs looking for the closing quote.
+    $end = -1;
+    for ($j = $k + 1; $j < $nPara && $j < $k + 30; $j++) {
+        $q = $paragraphs[$j];
+        if (isset($introOverrides[(int)$q['paragraph_number']])) break;
+        $qHtml  = (string)$q['paragraph_text_html'];
+        if (preg_match('/<b\b/i', $qHtml)) break;        // a bold paragraph ends the quote stream
+        $jPlain = trim((string)$q['paragraph_text_plain']);
+        if ($jPlain === '') break;
+        if (mb_substr($jPlain, -1) === "\u{201D}") { $end = $j; break; }
+        // A paragraph that opens its OWN U+201C before the previous one
+        // closes is a sign we're misreading the structure — bail out
+        // rather than gluing two unrelated quotes together.
+        if (mb_substr($jPlain, 0, 1) === "\u{201C}") break;
+    }
+    if ($end <= $k) continue;
+    for ($j = $k; $j <= $end; $j++) {
+        $introOverrides[(int)$paragraphs[$j]['paragraph_number']] = 'quote';
+    }
+    fwrite(STDERR, sprintf("extended quote: paragraphs %d..%d tagged as 'quote'\n",
+        (int)$paragraphs[$k]['paragraph_number'], (int)$paragraphs[$end]['paragraph_number']));
+    $k = $end; // skip past the block so we don't re-detect inside it
+}
+
 // Clear any stale markers for this audio row — easier than upserting
 // across schema changes and the table is small.
 $db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
@@ -498,10 +547,12 @@ foreach ($paragraphs as $idx => $p) {
             . "\x01PAUSE_0_{$pauseChapAfter}\x01";
         $segs = [['category' => 'main', 'text' => $headingText]];
     } else if (isset($introOverrides[(int)$p['paragraph_number']])) {
-        // Series-07 chapter-intro Islamic quote. The full paragraph is
-        // a single bold quote — route it through the matched source's
-        // voice (quran/bukhari/tabari/ishaq) as one segment, bypassing
-        // the bold-→-translation classifier in segmentParagraph.
+        // Paragraph was pre-classified by one of the prepass detectors:
+        //   - Series-07 chapter intros → quran/bukhari/muslim/tabari/ishaq
+        //   - Extended multi-paragraph italic blocks → quote
+        // Either way, route the whole paragraph as a single voice block
+        // in the matched category, bypassing segmentParagraph's default
+        // bold-→-translation classifier.
         $plainText = trim(preg_replace('/\s+/u', ' ', strip_tags($rawHtml)));
         if ($plainText === '') continue;
         $segs = [['category' => $introOverrides[(int)$p['paragraph_number']], 'text' => $plainText]];

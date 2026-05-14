@@ -532,13 +532,15 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
     $cat = $cfg['categories'][$category] ?? null;
     if ($cat === null) {
         static $FALLBACK_CHAIN = [
-            'quran'   => ['islam', 'main'],
-            'bukhari' => ['islam', 'main'],
-            'muslim'  => ['islam', 'main'],
-            'tabari'  => ['islam', 'main'],
-            'ishaq'   => ['islam', 'main'],
-            'islam'   => ['main'],
-            'bible'   => ['main'],
+            'quran'             => ['islam', 'main'],
+            'islam_translation' => ['islam', 'main'],
+            'bukhari'           => ['islam', 'main'],
+            'muslim'            => ['islam', 'main'],
+            'tabari'            => ['islam', 'main'],
+            'ishaq'             => ['islam', 'main'],
+            'islam'             => ['main'],
+            'bible'             => ['main'],
+            'quote'             => ['translation', 'main'],
         ];
         foreach (($FALLBACK_CHAIN[$category] ?? ['main']) as $alt) {
             if (isset($cfg['categories'][$alt])) { $cat = $cfg['categories'][$alt]; break; }
@@ -682,16 +684,18 @@ function ttsCategories(): array {
         ['code' => 'translation',     'label' => 'Translation prose (bold text)'],
         ['code' => 'word_definition', 'label' => 'Word definition (parenthesized italic + definition)'],
         ['code' => 'bible',           'label' => 'Bible quotation'],
+        ['code' => 'quote',           'label' => 'General extended quote (non-scripture)'],
         ['code' => 'islam',           'label' => 'Islamic scripture quotation (generic / fallback)'],
         // Source-specific Islamic quote categories. Series 07 chapter
         // intros are tagged with the matching source by the worker —
         // see TTS_ISLAMIC_SOURCES + the chapter-intro classifier in
         // admin-tts-build-worker.php. Quotes whose source can't be
         // identified fall back to 'islam'.
-        ['code' => 'quran',           'label' => 'Quran quotation'],
-        ['code' => 'bukhari',         'label' => 'Bukhari (Hadith) quotation'],
-        ['code' => 'muslim',          'label' => 'Muslim (Sahih Muslim) quotation'],
-        ['code' => 'tabari',          'label' => 'Tabari quotation'],
-        ['code' => 'ishaq',           'label' => 'Ishaq quotation'],
+        ['code' => 'quran',             'label' => 'Quran quotation'],
+        ['code' => 'islam_translation', 'label' => 'Quran translation (Ahmed Ali, Pickthal, Shakir, Yusuf Ali, Noble Quran, Word-by-Word)'],
+        ['code' => 'bukhari',           'label' => 'Bukhari (Hadith) quotation'],
+        ['code' => 'muslim',            'label' => 'Muslim (Sahih Muslim) quotation'],
+        ['code' => 'tabari',            'label' => 'Tabari quotation'],
+        ['code' => 'ishaq',             'label' => 'Ishaq quotation'],
     ];
 }
