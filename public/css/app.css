@@ -357,3 +357,70 @@ select.col-filter {
 
 /* ── TinyMCE ── */
 .tox-tinymce { border-radius: 4px !important; }
+
+/* ── Custom fonts ──
+   Loaded site-wide so admin editors and public renderers can use the
+   same fonts. Display names registered in Admin → Site → CSS → Fonts
+   map to the family names below. Moabite Stone has no file uploaded
+   yet — text styled with it falls back to serif until a .woff2/.ttf
+   is added under /fonts/. */
+@font-face {
+    font-family: "YadaTowrah-Times";
+    src: url("/fonts/YadaTowrah-Times.woff2") format("woff2"),
+         url("/fonts/YadaTowrah-Times.ttf")   format("truetype");
+    font-display: swap;
+}
+@font-face {
+    font-family: "Semitic Early";
+    src: url("/fonts/SemiticEarly.ttf") format("truetype");
+    font-display: swap;
+}
+@font-face {
+    font-family: "Moabite Stone";
+    src: url("/fonts/MoabiteStone.ttf") format("truetype");
+    font-display: swap;
+}
+@font-face {
+    font-family: "Jupiter-Yada";
+    src: url("/fonts/JupiterYada-Regular.woff2") format("woff2"),
+         url("/fonts/JupiterYada-Regular.ttf")   format("truetype");
+    font-display: swap;
+}
+
+/* TinyMCE font-dropdown override for the Hebrew fonts. TinyMCE styles
+   each dropdown label inline with style="font-family: <stack>" so the
+   name renders in the font. For these three we want the NAME in the UI
+   font and an "HWHY" sample shown in the actual font alongside. The
+   attribute selector matches TinyMCE's inline style; the !important
+   beats the inline style. Other fonts (Times, Arial, etc.) keep
+   TinyMCE's stock behavior — name rendered in their own font. */
+.tox-collection__item-label[style*="YadaTowrah-Times"],
+.tox-collection__item-label[style*="Semitic Early"],
+.tox-collection__item-label[style*="Moabite Stone"],
+.tox-collection__item-label[style*="Jupiter-Yada"] {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+.tox-collection__item-label[style*="YadaTowrah-Times"]::after {
+    content: "  HWHY";
+    font-family: "YadaTowrah-Times", serif;
+    margin-left: 14px;
+    color: #555;
+}
+.tox-collection__item-label[style*="Semitic Early"]::after {
+    content: "  HWHY";
+    font-family: "Semitic Early", serif;
+    margin-left: 14px;
+    color: #555;
+}
+.tox-collection__item-label[style*="Moabite Stone"]::after {
+    content: "  HWHY";
+    font-family: "Moabite Stone", serif;
+    margin-left: 14px;
+    color: #555;
+}
+.tox-collection__item-label[style*="Jupiter-Yada"]::after {
+    content: "  HWHY";
+    font-family: "Jupiter-Yada", serif;
+    margin-left: 14px;
+    color: #555;
+}
