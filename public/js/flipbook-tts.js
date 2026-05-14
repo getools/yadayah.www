@@ -52,25 +52,46 @@
             '                 display: flex; align-items: center; gap: 10px;',
             '                 pointer-events: none; /* children re-enable */ }',
             '.fb-tts-player > * { pointer-events: auto; }',
-            // Volume slider. appearance:none alone leaves Chrome/Firefox
-            // with an invisible track unless we explicitly style the
-            // runnable-track and thumb pseudo-elements — the prior pass
-            // collapsed to a 4px hairline that was easy to miss.
-            '.fb-tts-vol { flex: 0 0 80px; height: 18px; cursor: pointer;',
-            '              -webkit-appearance: none; appearance: none;',
-            '              background: transparent; outline: none; padding: 0; margin: 0; }',
+            // Volume control: a small speaker button on the far left that
+            // pops up a vertical slider above itself when clicked. Closes
+            // on outside click. Same circular footprint as the play
+            // button so the player widget reads as a tidy three-control
+            // strip when collapsed.
+            '.fb-tts-vol-wrap { position: relative; flex: 0 0 43px;',
+            '                   display: flex; align-items: center; justify-content: center; }',
+            '.fb-tts-vol-btn { width: 43px; height: 43px; border-radius: 50%;',
+            '                  background: #1f3550; color: #cfe1ff; border: 1px solid #2a4d70;',
+            '                  display: flex; align-items: center; justify-content: center;',
+            '                  cursor: pointer; padding: 0;',
+            '                  transition: background 0.15s, transform 0.1s; }',
+            '.fb-tts-vol-btn:hover { background: #28456a; }',
+            '.fb-tts-vol-btn:active { transform: scale(0.95); }',
+            '.fb-tts-vol-btn svg { width: 22px; height: 22px; }',
+            '.fb-tts-vol-popup { position: absolute; bottom: calc(100% + 8px);',
+            '                    left: 50%; transform: translateX(-50%);',
+            '                    background: #1f3550; border: 1px solid #2a4d70; border-radius: 8px;',
+            '                    padding: 14px 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.45);',
+            '                    display: none; z-index: 14; }',
+            '.fb-tts-vol-popup.is-open { display: flex; align-items: center; justify-content: center; }',
+            // The vertical orient is handled by writing-mode (modern) +
+            // the -webkit-appearance:slider-vertical fallback (Safari).
+            // direction:rtl flips so up = louder.
+            '.fb-tts-vol { writing-mode: vertical-rl; direction: rtl;',
+            '              -webkit-appearance: slider-vertical;',
+            '              width: 24px; height: 110px; padding: 0; margin: 0; cursor: pointer;',
+            '              background: transparent; outline: none; }',
             '.fb-tts-vol::-webkit-slider-runnable-track {',
-            '              height: 6px; background: rgba(200,200,200,0.85);',
+            '              width: 6px; background: rgba(200,200,200,0.85);',
             '              border-radius: 3px; }',
             '.fb-tts-vol::-moz-range-track {',
-            '              height: 6px; background: rgba(200,200,200,0.85);',
+            '              width: 6px; background: rgba(200,200,200,0.85);',
             '              border-radius: 3px; }',
             '.fb-tts-vol::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;',
-            '              width: 14px; height: 14px; border-radius: 50%;',
-            '              background: #1f3550; border: 1px solid #2a4d70; cursor: pointer;',
-            '              margin-top: -4px; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }',
-            '.fb-tts-vol::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%;',
-            '              background: #1f3550; border: 1px solid #2a4d70; cursor: pointer;',
+            '              width: 16px; height: 16px; border-radius: 50%;',
+            '              background: #cfe1ff; border: 1px solid #2a4d70; cursor: pointer;',
+            '              box-shadow: 0 1px 3px rgba(0,0,0,0.4); }',
+            '.fb-tts-vol::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%;',
+            '              background: #cfe1ff; border: 1px solid #2a4d70; cursor: pointer;',
             '              box-shadow: 0 1px 3px rgba(0,0,0,0.4); }',
             // Play/Pause button — flex item, fixed circle on the right.
             '.fb-tts-btn { flex: 0 0 43px; height: 43px; border-radius: 50%;',
@@ -112,14 +133,34 @@
 
     var ICON_PLAY  = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7L7 5z"/></svg>';
     var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
+    // Speaker with sound-waves — collapses to a plain speaker when volume hits 0.
+    var ICON_VOLUME = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05A4.5 4.5 0 0016.5 12zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+    var ICON_VOLUME_MUTE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.96 8.96 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.17v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
 
     function ensurePlayer() {
         if (playerEl) return;
         playerEl = document.createElement('div');
         playerEl.className = 'fb-tts-player';
 
-        // Volume slider on the far left. Persist to localStorage so the
-        // setting survives across page loads and book sessions.
+        // Volume control on the far left: same circular button footprint
+        // as the play button, but shows a speaker icon. Clicking opens a
+        // vertical slider popup directly above the button; clicking
+        // outside (or pressing Escape) closes it. Setting persists to
+        // localStorage across sessions.
+        var volWrap = document.createElement('div');
+        volWrap.className = 'fb-tts-vol-wrap';
+
+        var volBtn = document.createElement('button');
+        volBtn.type = 'button';
+        volBtn.className = 'fb-tts-vol-btn';
+        volBtn.title = 'Volume';
+        volBtn.setAttribute('aria-label', 'Volume');
+        volBtn.innerHTML = ICON_VOLUME;
+        volWrap.appendChild(volBtn);
+
+        var volPopup = document.createElement('div');
+        volPopup.className = 'fb-tts-vol-popup';
+
         volSlider = document.createElement('input');
         volSlider.type = 'range';
         volSlider.className = 'fb-tts-vol';
@@ -127,12 +168,51 @@
         volSlider.value = String(Math.round(initialVolume() * 100));
         volSlider.title = 'Volume';
         volSlider.setAttribute('aria-label', 'Volume');
+        // Firefox honors orient="vertical" even though it's non-standard;
+        // it's a no-op everywhere else, which is fine.
+        volSlider.setAttribute('orient', 'vertical');
         volSlider.addEventListener('input', function () {
             var v = Math.max(0, Math.min(1, (parseInt(volSlider.value, 10) || 0) / 100));
             if (audio) audio.volume = v;
             try { localStorage.setItem('fb-tts-volume', String(v)); } catch (e) {}
+            volBtn.innerHTML = v === 0 ? ICON_VOLUME_MUTE : ICON_VOLUME;
         });
-        playerEl.appendChild(volSlider);
+        volPopup.appendChild(volSlider);
+        volWrap.appendChild(volPopup);
+
+        // Open/close behavior. The mousedown listener attaches AFTER the
+        // open click finishes propagating (next microtask) so the same
+        // click that opens doesn't immediately re-close.
+        var docCloseHandler = null;
+        function closeVol() {
+            volPopup.classList.remove('is-open');
+            if (docCloseHandler) {
+                document.removeEventListener('mousedown', docCloseHandler);
+                document.removeEventListener('touchstart', docCloseHandler);
+                docCloseHandler = null;
+            }
+        }
+        volBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (volPopup.classList.contains('is-open')) { closeVol(); return; }
+            volPopup.classList.add('is-open');
+            docCloseHandler = function (ev) {
+                if (volWrap.contains(ev.target)) return;
+                closeVol();
+            };
+            setTimeout(function () {
+                document.addEventListener('mousedown', docCloseHandler);
+                document.addEventListener('touchstart', docCloseHandler);
+            }, 0);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeVol();
+        });
+
+        // Reflect the persisted initial volume on the icon in case it's 0.
+        if (initialVolume() === 0) volBtn.innerHTML = ICON_VOLUME_MUTE;
+
+        playerEl.appendChild(volWrap);
 
         // Audio scrubber (clickable track + fill).
         progressEl = document.createElement('div');

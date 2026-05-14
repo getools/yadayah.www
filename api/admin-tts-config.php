@@ -37,8 +37,16 @@ if ($method === 'POST') {
 }
 
 if ($method === 'GET' && $action === 'catalog') {
+    // Voices come from yy_tts_voice (active rows only). Admin curates the
+    // dropdown contents in Admin → TTS → Voices. tts_key from query or
+    // first registered active system.
+    $ttsKey = (int)($_GET['tts_key'] ?? 0);
+    if (!$ttsKey) {
+        $row = $db->query("SELECT tts_key FROM yy_tts WHERE tts_active_flag = TRUE ORDER BY tts_sort, tts_key LIMIT 1")->fetch();
+        $ttsKey = (int)($row['tts_key'] ?? 0);
+    }
     jsonResponse([
-        'voices'     => azureVoiceCatalog(),
+        'voices'     => azureVoiceCatalog($db, $ttsKey),
         'formats'    => azureOutputFormats(),
         'categories' => ttsCategories(),
     ]);

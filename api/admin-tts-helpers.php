@@ -556,6 +556,21 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
     $escaped = placeholdersToBreaks($escaped);
     $escaped = tokensToSsml($escaped, $tokenMap);
 
+    // Wrap any contiguous Hebrew-script run in <lang xml:lang="he-IL">
+    // so an outer multilingual voice (en-US-*Multilingual*) switches to
+    // Hebrew pronunciation for those characters. The <lang> tag is a
+    // no-op on monolingual voices but doesn't break them, so it's safe
+    // to emit unconditionally. Half-ring modifiers (ʿ ʾ) are configured
+    // as 0 ms pauses upstream and have already been dropped by this
+    // point, so they don't get pulled into the wrap.
+    if (preg_match('/[\x{0590}-\x{05FF}]/u', $escaped)) {
+        $escaped = preg_replace(
+            '/[\x{0590}-\x{05FF}][\x{0590}-\x{05FF}\s]*[\x{0590}-\x{05FF}]|[\x{0590}-\x{05FF}]/u',
+            '<lang xml:lang="he-IL">$0</lang>',
+            $escaped
+        );
+    }
+
     $inner = $escaped;
     if ($cat) {
         $rate   = (int)$cat['tts_voice_rate_pct'];
@@ -624,7 +639,60 @@ function azureTtsSynthesize(string $ssml, array $cfg, ?string &$err = null): str
  * English, plus key Hebrew/Greek/Arabic for scripture-quote categories).
  * Add/remove entries as needed.
  */
-function azureVoiceCatalog(): array {
+// DB-backed voice catalog. Reads active rows from yy_tts_voice and
+// normalises them to the shape the admin UI + worker have always
+// expected (code/label/lang/gender/styles). Falls back to the
+// hardcoded list below if the table is empty (fresh install / dev
+// without seed) so nothing breaks when the DB isn't set up.
+function azureVoiceCatalog(?PDO $db = null, bool $includeInactive = false): array {
+    if ($db === null) { try { $db = getDb(); } catch (Throwable $e) { $db = null; } }
+    if ($db) {
+        try {
+            $sql = "SELECT tts_voice_code, tts_voice_label, tts_voice_locale, tts_voice_language, tts_voice_region, tts_voice_gender, tts_voice_styles, tts_voice_secondary_locales, tts_voice_active_flag
+                      FROM yy_tts_voice";
+            if (!$includeInactive) $sql .= " WHERE tts_voice_active_flag = TRUE";
+            // Sort by language first, then region — keeps en-* together
+            // (US then GB), then he, el, ar, etc.
+            $sql .= " ORDER BY tts_voice_language, tts_voice_region, tts_voice_gender DESC, tts_voice_label";
+            $rows = $db->query($sql)->fetchAll();
+            if ($rows) {
+                $out = [];
+                foreach ($rows as $r) {
+                    $styles = json_decode((string)$r['tts_voice_styles'], true);
+                    if (!is_array($styles)) $styles = [];
+                    $secondary = json_decode((string)$r['tts_voice_secondary_locales'], true);
+                    $isMulti = is_array($secondary) && !empty($secondary);
+                    $g = strtoupper(substr((string)($r['tts_voice_gender'] ?? ''), 0, 1)) ?: 'N';
+                    $out[] = [
+                        'code'         => $r['tts_voice_code'],
+                        'label'        => $r['tts_voice_label'],
+                        // Keep `lang` (full locale) for back-compat with
+                        // existing JS callers, and expose the two split
+                        // fields for filter/sort UIs that want to group
+                        // by language alone or region alone.
+                        'lang'         => $r['tts_voice_locale'],
+                        'language'     => $r['tts_voice_language'],
+                        'region'       => $r['tts_voice_region'],
+                        'gender'       => $g,
+                        'styles'       => $styles,
+                        'multilingual' => $isMulti,
+                        'active'       => !empty($r['tts_voice_active_flag']),
+                    ];
+                }
+                return $out;
+            }
+        } catch (Throwable $e) {
+            // Schema missing / other DB issue — fall through to the
+            // hardcoded fallback so the UI is still usable.
+        }
+    }
+    return azureVoiceCatalogFallback();
+}
+
+// Last-resort hardcoded catalog. Mirrors the seed in yy_tts_voice so a
+// freshly-cloned env without DB migration still gets a working list of
+// voices. Edit BOTH places when adding/removing voices long-term.
+function azureVoiceCatalogFallback(): array {
     return [
         // ── American English — male, narration-style ──
         ['code' => 'en-US-BrianMultilingualNeural',    'label' => 'Brian (Multilingual, authoritative male, US)',     'lang' => 'en-US', 'gender' => 'M', 'styles' => ['general']],
