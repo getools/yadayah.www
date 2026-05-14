@@ -773,6 +773,56 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'i' || e.key === 'I') { e.preventDefault(); pvFormat('italic'); }
 });
 
+// Paste sanitizer for the preview textarea. Word's clipboard HTML ships
+// with hundreds of <span class="MsoNormal" style="…"> wrappers, MSO-
+// specific tags (<o:p>, <w:WordDocument>), and inline style attributes
+// that easily push a 200-character paragraph past 8 KB. We pre-clean to
+// keep only the text, <b>, <i>, <strong>, <em>, and basic paragraph
+// breaks so the synth endpoint stays well under its size limit.
+(function () {
+    document.addEventListener('paste', function (e) {
+        var el = $('preview-text');
+        if (!el || document.activeElement !== el) return;
+        var cd = e.clipboardData || window.clipboardData;
+        if (!cd) return;
+        // Prefer HTML so bold/italic survive. Fall back to plain.
+        var html  = cd.getData ? cd.getData('text/html')  : '';
+        var plain = cd.getData ? cd.getData('text/plain') : '';
+        if (!html && !plain) return;
+        e.preventDefault();
+        var clean;
+        if (html) {
+            // Strip Office's outer "Version of MSO" wrapper + any
+            // <head>/<style> blocks. Then drop every tag except b/i.
+            html = html.replace(/<!--[\s\S]*?-->/g, '')
+                       .replace(/<\?[\s\S]*?\?>/g, '')
+                       .replace(/<(o|w|m|v|x):[^>]*>/gi, '')
+                       .replace(/<\/(o|w|m|v|x):[^>]*>/gi, '')
+                       .replace(/<head[\s\S]*?<\/head>/gi, '')
+                       .replace(/<style[\s\S]*?<\/style>/gi, '')
+                       .replace(/<script[\s\S]*?<\/script>/gi, '');
+            // Normalise <strong> → <b>, <em> → <i> and drop attributes.
+            html = html.replace(/<\s*strong\b[^>]*>/gi, '<b>')
+                       .replace(/<\s*\/\s*strong\s*>/gi, '</b>')
+                       .replace(/<\s*em\b[^>]*>/gi,     '<i>')
+                       .replace(/<\s*\/\s*em\s*>/gi,    '</i>')
+                       .replace(/<\s*b\b[^>]*>/gi,      '<b>')
+                       .replace(/<\s*i\b[^>]*>/gi,      '<i>');
+            // Convert <br> and </p> to spaces so flow stays one line.
+            html = html.replace(/<br\b[^>]*>/gi, ' ')
+                       .replace(/<\/p>/gi, ' ');
+            // Drop every remaining tag that isn't b/i.
+            html = html.replace(/<(?!\/?(?:b|i)\b)[^>]*>/gi, '');
+            html = html.replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+            clean = html;
+        } else {
+            clean = plain.replace(/\s+/g, ' ').trim();
+        }
+        // Insert at the caret using execCommand so undo still works.
+        document.execCommand('insertHTML', false, clean);
+    }, true);
+})();
+
 // ── Voice catalog ────────────────────────────────────────────────────
 // Reads every row in yy_tts_voice, renders a filterable table, and lets
 // the admin toggle active flags + audition individual voices. Test text
@@ -1681,7 +1731,10 @@ function buildTuneRow(t) {
     // Map legacy 'sapi' selection onto 'ipa' visually — the synth path
     // already substitutes IPA when type=sapi is stored, so checking IPA
     // here is the honest representation.
-    var savedType = (t.tts_tune_phonetic_type === 'sapi') ? 'ipa' : (t.tts_tune_phonetic_type || 'sub');
+    // SUB column is hidden site-wide right now — default new / legacy
+    // rows to 'ipa' so the visible inputs always render. Legacy 'sapi'
+    // is still aliased to ipa since Azure neural voices won't accept SAPI.
+    var savedType = (t.tts_tune_phonetic_type === 'sapi') ? 'ipa' : (t.tts_tune_phonetic_type || 'ipa');
     var subChecked = savedType === 'sub' ? ' checked' : '';
     var ipaChecked = savedType === 'ipa' ? ' checked' : '';
     var boldOn   = !!t.tts_tune_match_bold;
@@ -1923,7 +1976,7 @@ function addTuneRow() {
     // immediately under the header — easier to fill in than scrolling
     // to find it at the bottom.
     var tb = $('tunes-tbody');
-    var row = buildTuneRow({ tts_tune_active_flag: true });
+    var row = buildTuneRow({ tts_tune_active_flag: true, tts_tune_phonetic_type: 'ipa' });
     if (tb.firstChild) tb.insertBefore(row, tb.firstChild);
     else tb.appendChild(row);
     // Focus the Print input so typing begins immediately.

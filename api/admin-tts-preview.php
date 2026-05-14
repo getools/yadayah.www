@@ -25,25 +25,40 @@ $ttsKey = (int)($data['tts_key'] ?? 0);
 $text   = trim((string)($data['text'] ?? ''));
 if (!$ttsKey) errorResponse('tts_key required');
 if ($text === '') errorResponse('text required');
-if (mb_strlen($text) > 2000) errorResponse('text too long (2000 char limit for preview)');
+if (mb_strlen($text) > 8000) errorResponse('text too long (8000 char limit for preview)');
 
-// If the caller sends HTML-formatted text (with <b>/<i> from the
-// contenteditable preview field), strip outer wrappers like <div> /
-// <br> / <p> but keep the inline B/I markup that drives segmentation.
-// Anything else (data-font spans, attributes) is dropped so the
-// preview matches what segmentParagraph already understands.
-$hasFormat = (bool)preg_match('/<\s*(b|i|strong|em)\b/i', $text);
-if ($hasFormat) {
-    // Normalise common contenteditable artifacts to plain inline B/I.
-    $text = preg_replace('/<\s*strong\b[^>]*>/i', '<b>', $text);
-    $text = preg_replace('/<\s*\/\s*strong\s*>/i', '</b>', $text);
-    $text = preg_replace('/<\s*em\b[^>]*>/i',     '<i>', $text);
-    $text = preg_replace('/<\s*\/\s*em\s*>/i',    '</i>', $text);
-    // Drop any other tag — keep only <b>, </b>, <i>, </i>.
-    $text = preg_replace('/<(?!\/?(?:b|i)\b)[^>]+>/i', ' ', $text);
-    $text = preg_replace('/\s+/u', ' ', $text);
-    $text = trim($text);
-}
+// Always pre-strip HTML before synthesis. Word pastes inject
+// <p class="MsoNormal">, <o:p>, <span style="...">, <head>, <style>
+// blocks, etc. — even when no bold/italic is present. Without this
+// strip, htmlspecialchars later escapes the <p ...> brackets and
+// Azure reads them as literal text ("less than p m s o normal…").
+$text = preg_replace('/<!--[\s\S]*?-->/', '', $text);
+$text = preg_replace('/<head\b[\s\S]*?<\/head>/i', '', $text);
+$text = preg_replace('/<style\b[\s\S]*?<\/style>/i', '', $text);
+$text = preg_replace('/<script\b[\s\S]*?<\/script>/i', '', $text);
+// Strip Office namespace tags (<o:p>, <w:WordDocument>, etc.).
+$text = preg_replace('/<\/?[a-z]+:[a-z]+\b[^>]*>/i', '', $text);
+// Normalise <strong>/<em> → <b>/<i> so segmentParagraph routes them.
+$text = preg_replace('/<\s*strong\b[^>]*>/i',  '<b>',  $text);
+$text = preg_replace('/<\s*\/\s*strong\s*>/i', '</b>', $text);
+$text = preg_replace('/<\s*em\b[^>]*>/i',      '<i>',  $text);
+$text = preg_replace('/<\s*\/\s*em\s*>/i',     '</i>', $text);
+// Drop every remaining tag except <b>, </b>, <i>, </i>. Replace with
+// a single space so adjacent words don't fuse together.
+$text = preg_replace('/<(?!\/?(?:b|i)\b)[^>]*>/i', ' ', $text);
+$text = preg_replace('/&nbsp;/', ' ', $text);
+$text = preg_replace('/\s+/u', ' ', $text);
+$text = trim($text);
+// Glue apostrophe-class modifiers (half-rings, curly / straight quotes,
+// primes, etc.) back to adjacent letters that Word's span-per-character
+// paste split apart. "rea ʿ" → "reaʿ"; "ʾ Adam" → "ʾAdam". Without this
+// the apos-anchored tunes (Print "reaʿ" → IPA "ɹˈɛɑʕ") wouldn't match
+// and Azure would fall back to letter-spelling the orphaned 3-letter
+// fragments like "rea".
+$aposCls = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]";
+$text = preg_replace('/(\pL)\s+(' . $aposCls . ')/u', '$1$2', $text);
+$text = preg_replace('/(' . $aposCls . ')\s+(\pL)/u', '$1$2', $text);
+$hasFormat = (bool)preg_match('/<\s*(b|i)\b/i', $text);
 
 $cfg = loadTtsConfig($db, $ttsKey);
 if (!$cfg['system']) errorResponse('Unknown tts_key', 404);
