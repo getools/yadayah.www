@@ -213,9 +213,13 @@ if (!$potUrl) {
         $potUrl = 'http://pot-provider:4416';
     }
 }
-$potBgutil = $potUrl ? ';youtubepot-bgutilhttp:base_url=' . $potUrl : '';
+// The youtubepot-bgutilhttp plugin needs its own --extractor-args flag (not
+// semicolon-appended to the youtube args) so yt-dlp parses it as a separate
+// ie_key and the plugin's _configuration_arg('base_url') returns the correct URL
+// rather than falling back to the default http://127.0.0.1:4416.
+$potBgutil = $potUrl ? " --extractor-args 'youtubepot-bgutilhttp:base_url=" . $potUrl . "'" : '';
 $playerArg   = ($haveCookies || $potUrl)
-    ? " --extractor-args 'youtube:player_client=web,mweb,web_safari" . $potBgutil . "'"
+    ? " --extractor-args 'youtube:player_client=web,mweb,web_safari'" . $potBgutil
     : " --extractor-args 'youtube:player_client=ios'";
 
 // YouTube's modern n-challenge requires a JS solver. Deno is installed in the
