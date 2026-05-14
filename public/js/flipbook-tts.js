@@ -76,10 +76,14 @@
             // The vertical orient is handled by writing-mode (modern) +
             // the -webkit-appearance:slider-vertical fallback (Safari).
             // direction:rtl flips so up = louder.
+            // writing-mode + rtl puts the track flush with the input's
+            // right edge in webkit, which leaves the thumb sitting visibly
+            // left of the popup's optical center. A small left margin
+            // nudges it back so the thumb-circle reads as centered.
             '.fb-tts-vol { writing-mode: vertical-rl; direction: rtl;',
             '              -webkit-appearance: slider-vertical;',
-            '              width: 24px; height: 110px; padding: 0; margin: 0; cursor: pointer;',
-            '              background: transparent; outline: none; }',
+            '              width: 24px; height: 110px; padding: 0; margin: 0 0 0 6px;',
+            '              cursor: pointer; background: transparent; outline: none; }',
             '.fb-tts-vol::-webkit-slider-runnable-track {',
             '              width: 6px; background: rgba(200,200,200,0.85);',
             '              border-radius: 3px; }',
