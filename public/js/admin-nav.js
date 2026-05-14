@@ -20,6 +20,7 @@ if (!document.getElementById('admin-dirty-js')) {
 
 var tabs = [
     ['admin-site.html', 'Site'],
+    ['admin-fonts.html', 'Fonts', 'Central font registry — drives every text editor on the site.'],
     ['admin-home.html', 'Home'],
     ['admin-translation.html', 'Translation'],
     ['admin-series.html', 'Series'],

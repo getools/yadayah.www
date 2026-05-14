@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fonts - Yada Yah Admin</title>
+    <link rel="stylesheet" href="css/app.css?v=12">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .fonts-table { width:100%; border-collapse:collapse; font-size:0.875rem; }
+        .fonts-table th, .fonts-table td { padding:8px 10px; text-align:left; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
+        .fonts-table thead th { background:#f8f9fa; font-weight:600; color:#555; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; }
+        .fonts-table tbody tr:hover { background:#eef6fc; }
+        .fonts-table input[type=text],
+        .fonts-table input[type=number] {
+            width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-size:0.85rem; box-sizing:border-box;
+        }
+        .fonts-table .col-display  { width:160px; }
+        .fonts-table .col-stack    { min-width:240px; }
+        .fonts-table .col-glyph    { width:100px; }
+        .fonts-table .col-group    { width:80px; }
+        .fonts-table .col-sort     { width:60px; }
+        .fonts-table .col-note     { width:140px; }
+        .fonts-table .col-active   { width:80px; text-align:center; }
+        .fonts-table .col-preview  { width:140px; }
+        .fonts-table .col-actions  { width:90px; text-align:right; }
+        .fonts-table .preview { font-size:1.15rem; color:#1a5276; white-space:nowrap; }
+        .fonts-table tr.unsaved { background:#fef9e7; }
+        .fonts-table tr.unsaved:hover { background:#fbf3d8; }
+        .toggle-switch { position:relative; display:inline-block; width:36px; height:20px; }
+        .toggle-switch input { opacity:0; width:0; height:0; }
+        .toggle-switch .track { position:absolute; cursor:pointer; inset:0; background:#bdc3c7; border-radius:20px; transition:background 0.18s; }
+        .toggle-switch .track::before { content:""; position:absolute; height:14px; width:14px; left:3px; top:3px; background:#fff; border-radius:50%; transition:transform 0.18s; box-shadow:0 1px 2px rgba(0,0,0,0.25); }
+        .toggle-switch input:checked + .track { background:#27ae60; }
+        .toggle-switch input:checked + .track::before { transform:translateX(16px); }
+        .add-row-bar { padding:14px; border:1px dashed #b0b8bf; border-radius:6px; background:#f8f9fa; margin-top:14px; }
+        .group-divider td { border-top:2px solid #d0d7de; background:#f8f9fa; font-weight:600; color:#666; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; padding:6px 10px; }
+        #save-status { font-size:0.82rem; color:#888; margin-left:12px; }
+        #save-status.dirty { color:#7a5b00; }
+        #save-status.saving { color:#2980b9; }
+        #save-status.saved  { color:#27ae60; }
+        #save-status.error  { color:#c0392b; }
+        .help { font-size:0.82rem; color:#666; margin-bottom:14px; line-height:1.5; }
+        .help code { background:#f0f2f5; padding:1px 5px; border-radius:3px; font-size:0.85em; }
+
+        /* @font-face for the four custom fonts so the preview column
+           renders correctly on this page even before app.css is bumped. */
+        @font-face { font-family: "YadaTowrah-Times"; src: url("/fonts/YadaTowrah-Times.woff2") format("woff2"), url("/fonts/YadaTowrah-Times.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "Semitic Early";    src: url("/fonts/SemiticEarly.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "Moabite Stone";    src: url("/fonts/MoabiteStone.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "Jupiter-Yada";     src: url("/fonts/JupiterYada-Regular.woff2") format("woff2"), url("/fonts/JupiterYada-Regular.ttf") format("truetype"); font-display:swap; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen" style="display:none">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field"><label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+        <script src="/js/admin-nav.js"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <h1>Fonts</h1>
+        <p class="help">
+            Central font registry. Used by every text editor on the site (TinyMCE on Pages, Ask, etc.).
+            <br>
+            <strong>Group:</strong> empty = main alphabetical list at the top.
+            Number (1, 2, ...) = grouped below the main list, with a divider before each group.
+            <br>
+            <strong>Sort:</strong> tie-breaker within a group; lower numbers first.
+            <br>
+            <strong>Sample / Glyph:</strong> short text shown in the font on the dropdown (e.g. <code>HWHY</code> for Paleo-Hebrew).
+            Leave blank to show the font's display name in its own font (standard preview behavior).
+            <br>
+            <strong>CSS family:</strong> the font stack applied when this entry is picked. Wrap multi-word names in quotes.
+            Examples: <code>YadaTowrah-Times,serif</code>, <code>"Maven Pro",sans-serif</code>.
+        </p>
+        <span id="save-status"></span>
+
+        <table class="fonts-table" id="grid">
+            <thead>
+                <tr>
+                    <th class="col-display">Display name</th>
+                    <th class="col-stack">CSS family</th>
+                    <th class="col-glyph">Sample</th>
+                    <th class="col-group">Group</th>
+                    <th class="col-sort">Sort</th>
+                    <th class="col-note">Note</th>
+                    <th class="col-active">Active</th>
+                    <th class="col-preview">Preview</th>
+                    <th class="col-actions"></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <div class="add-row-bar">
+            <button class="btn btn-primary btn-sm" onclick="addBlankRow()">+ Add font</button>
+            <span style="font-size:0.82rem;color:#888;margin-left:12px">A new row appears at the bottom. Edit and click Save.</span>
+        </div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var rows = [];        // { key, display, stack, glyph, group, sort, note, active, _dirty }
+var nextLocalId = -1; // negative = unsaved
+
+function esc(s){ var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function escAttr(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function togglePassword(){ var p=document.getElementById('login-pass'); p.type = p.type === 'password' ? 'text' : 'password'; }
+function doLogin(){
+    var u = document.getElementById('login-user').value;
+    var p = document.getElementById('login-pass').value;
+    fetch(API + '/auth.php', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u, password:p})})
+        .then(r=>r.json()).then(function(d){
+            if (d.authenticated) location.reload();
+            else { document.getElementById('login-error').textContent = d.error || 'Login failed'; document.getElementById('login-error').style.display=''; }
+        });
+}
+function doLogout(){
+    fetch(API + '/auth.php?action=logout', {credentials:'include'}).then(function(){ location.reload(); });
+}
+
+function checkAuth(){
+    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d){
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            loadRows();
+        } else {
+            document.getElementById('login-screen').style.display = '';
+        }
+    });
+}
+
+function loadRows(){
+    fetch(API + '/admin-fonts.php', {credentials:'include'}).then(r=>r.json()).then(function(d){
+        rows = (d.rows || []).map(function(r){
+            return {
+                key:     r.font_key,
+                display: r.font_display_name || '',
+                stack:   r.font_css_stack || '',
+                glyph:   r.font_glyph_text || '',
+                group:   r.font_section_group,
+                sort:    r.font_sort || 0,
+                note:    r.font_note || '',
+                active:  !!r.font_active_flag,
+                _dirty:  false
+            };
+        });
+        render();
+    });
+}
+
+function setStatus(state, text){
+    var el = document.getElementById('save-status');
+    el.className = state || '';
+    el.textContent = text || '';
+}
+
+function render(){
+    var tbody = document.querySelector('#grid tbody');
+    // Sort: group NULL first, then 1, 2, ...; within group by sort then display.
+    var sorted = rows.slice().sort(function(a, b){
+        var ga = a.group === null || a.group === undefined ? -1 : a.group;
+        var gb = b.group === null || b.group === undefined ? -1 : b.group;
+        if (ga !== gb) return ga - gb;
+        if (a.sort !== b.sort) return a.sort - b.sort;
+        return (a.display || '').localeCompare(b.display || '');
+    });
+    var html = '';
+    var lastGroup = -2;
+    sorted.forEach(function(r, idx){
+        var g = r.group === null || r.group === undefined ? -1 : r.group;
+        if (g !== lastGroup) {
+            var label = g === -1 ? 'Main list' : ('Group ' + g);
+            html += '<tr class="group-divider"><td colspan="9">' + label + '</td></tr>';
+            lastGroup = g;
+        }
+        // localId mirrors row's index in `rows` (not in sorted); look it up.
+        var localIdx = rows.indexOf(r);
+        var preview = (r.glyph || r.display);
+        var previewStack = escAttr(r.stack);
+        html += '<tr' + (r._dirty?' class="unsaved"':'') + ' data-local-idx="' + localIdx + '">'
+              +   '<td><input type="text" value="' + escAttr(r.display) + '" oninput="setField(' + localIdx + ', \'display\', this.value)"></td>'
+              +   '<td><input type="text" value="' + escAttr(r.stack) + '" oninput="setField(' + localIdx + ', \'stack\', this.value)" placeholder="family-name,serif"></td>'
+              +   '<td><input type="text" value="' + escAttr(r.glyph) + '" oninput="setField(' + localIdx + ', \'glyph\', this.value)" placeholder="(optional)"></td>'
+              +   '<td><input type="text" value="' + (r.group === null || r.group === undefined ? '' : r.group) + '" oninput="setField(' + localIdx + ', \'group\', this.value)" placeholder="(none)"></td>'
+              +   '<td><input type="number" value="' + (r.sort || 0) + '" oninput="setField(' + localIdx + ', \'sort\', parseInt(this.value)||0)"></td>'
+              +   '<td><input type="text" value="' + escAttr(r.note) + '" oninput="setField(' + localIdx + ', \'note\', this.value)"></td>'
+              +   '<td class="col-active"><label class="toggle-switch"><input type="checkbox" ' + (r.active?'checked':'') + ' onchange="setField(' + localIdx + ', \'active\', this.checked)"><span class="track"></span></label></td>'
+              +   '<td class="col-preview"><span class="preview" style="font-family:' + previewStack + '">' + esc(preview) + '</span></td>'
+              +   '<td class="col-actions">'
+              +     (r.key ? '<button class="btn btn-secondary btn-sm" onclick="saveRow(' + localIdx + ')">Save</button> ' : '<button class="btn btn-primary btn-sm" onclick="saveRow(' + localIdx + ')">Create</button> ')
+              +     '<button class="btn btn-sm" style="color:#c0392b" onclick="deleteRow(' + localIdx + ')" title="Delete">✕</button>'
+              +   '</td>'
+              + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function setField(idx, field, val){
+    var r = rows[idx]; if (!r) return;
+    if (field === 'group') {
+        // empty string → NULL (main list); otherwise integer
+        r.group = (val === '' || val === null) ? null : (parseInt(val, 10) || 0);
+    } else {
+        r[field] = val;
+    }
+    r._dirty = true;
+    setStatus('dirty', 'Unsaved changes');
+    // Re-render so the unsaved highlight and group placement update.
+    // But avoid losing focus — only rerender on group/active/sort changes
+    // which affect ordering. For text fields, just mark dirty in DOM.
+    if (field === 'group' || field === 'sort' || field === 'active') {
+        render();
+    } else {
+        var tr = document.querySelector('tr[data-local-idx="' + idx + '"]');
+        if (tr) tr.classList.add('unsaved');
+        // update preview cell on glyph / stack / display change
+        var cell = tr ? tr.querySelector('.preview') : null;
+        if (cell) {
+            cell.style.fontFamily = r.stack;
+            cell.textContent = r.glyph || r.display;
+        }
+    }
+}
+
+function addBlankRow(){
+    rows.push({ key:null, display:'', stack:'', glyph:'', group:null, sort:0, note:'', active:true, _dirty:true });
+    render();
+}
+
+function saveRow(idx){
+    var r = rows[idx]; if (!r) return;
+    if (!r.display.trim()) { alert('Display name is required'); return; }
+    if (!r.stack.trim())   { alert('CSS family is required');   return; }
+    var body = {
+        display: r.display, stack: r.stack, glyph: r.glyph, group: r.group,
+        sort: r.sort, note: r.note, active: r.active
+    };
+    setStatus('saving', 'Saving…');
+    var url = API + '/admin-fonts.php' + (r.key ? '?key=' + r.key : '');
+    var method = r.key ? 'PUT' : 'POST';
+    fetch(url, {method: method, credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+        .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, body: j }; }); })
+        .then(function(out){
+            if (!out.ok) {
+                setStatus('error', out.body.error || 'Save failed');
+                return;
+            }
+            if (out.body.font_key) r.key = out.body.font_key;
+            r._dirty = false;
+            setStatus('saved', 'Saved');
+            render();
+        })
+        .catch(function(e){ setStatus('error', 'Save failed: ' + e); });
+}
+
+function deleteRow(idx){
+    var r = rows[idx]; if (!r) return;
+    if (!r.key) { rows.splice(idx, 1); render(); return; }
+    if (!confirm('Delete font "' + r.display + '"?')) return;
+    setStatus('saving', 'Deleting…');
+    fetch(API + '/admin-fonts.php?key=' + r.key, {method:'DELETE', credentials:'include'})
+        .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, body: j }; }); })
+        .then(function(out){
+            if (!out.ok) { setStatus('error', out.body.error || 'Delete failed'); return; }
+            rows.splice(idx, 1);
+            setStatus('saved', 'Deleted');
+            render();
+        });
+}
+
+document.getElementById('login-pass').addEventListener('keydown', function(e){ if (e.key==='Enter') doLogin(); });
+checkAuth();
+</script>
+</body>
+</html>

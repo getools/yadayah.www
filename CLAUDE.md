@@ -12,13 +12,13 @@
 - Source of truth: the Word-rendered PDF at `/opt/yada-www/public/pdf/<stem>.pdf`. Pagination, search hits, flipbook display, and DB rows all derive from it. Never derive page numbers from docx XML.
 - Worker: `/opt/yada-www/book-pipeline-worker.sh` — cron every 2 min, flock'd. **File is `+i` (immutable)** — `chattr -i` to edit, `chattr +i` after.
 - Parser: `/opt/yada-www/parsers/parse_volume_from_bundle.py --volume-key N`. Uses PyMuPDF on the PDF, writes `yy_paragraph` + `yy_translation`. Companion modules: `bundle_paragraphs.py`, `bundle_translations.py`. Older `parse_volume.py` (docx-based) is dead — do not invoke.
-- Flipbook bundle: `/opt/yada-www/rebuild_prototype.sh <stem>` regenerates `pages/`, `thumbs/`, `text/`, `search.json`, `toc.json` from the PDF and bumps `bundleVersion` in `<stem>/index.html`.
 
 ## Flipbook
-- Per-book shell: `<stem>/index.html` — sets `window.FLIPBOOK_CONFIG = {total, title, bookCode, pdfPath, bundleVersion}` and loads the viewer.
-- Central viewer: `/js/flipbook-viewer.js` (cache-bust via `?v=N`). CSS: `/css/flipbook-viewer.css`.
+- Shared shell: `/opt/yada-www/public/_shared/flipbook-frame.php` — owns the full `<html>` markup, all `<script src="…?v=N">` tags, and the CSS link. **All version bumps for `/js/flipbook-*.js` and `/css/flipbook-viewer.css` happen in this one file.**
+- Per-book wrapper: `<stem>/index.php` — sets `$FB = ['total', 'title', 'bookCode', 'bundleVersion'(opt)]` then `require`s the shared shell. Each book is ~6 lines.
+- Central viewer: `/js/flipbook-viewer.js` and friends (`flipbook-bookmarks.js`, `flipbook-tts.js`). CSS: `/css/flipbook-viewer.css`. Cache-busted via `?v=N` set inside the shared shell.
 - URL hash format: `#chapter=<slug>&page=<N>&q=<query>`. Page is physical PDF page (1-indexed). Hashchange triggers seek + search-highlight.
-- Bundle-asset cache-busting: viewer appends `?v=<bundleVersion>` to JPG / text-layer / search.json / toc.json fetches. `rebuild_prototype.sh` bumps it on every rebuild.
+- Bundle-asset cache-busting: viewer appends `?v=<bundleVersion>` to JPG / text-layer / search.json / toc.json fetches. `bundleVersion` is set per-book in `index.php`.
 
 ## Search
 - `/api/search.php` returns `book_url`, `chapter_url`, `flip_url` — deep-link hash (chapter+page+q) baked in. Page = physical PDF page.

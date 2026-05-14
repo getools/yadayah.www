@@ -225,6 +225,7 @@
 </div>
 
 <script src="js/tinymce/tinymce.min.js"></script>
+<script src="/js/admin-fonts-tinymce.js?v=1"></script>
 <script src="js/admin-links.js?v=4"></script>
 <script>
 var API = '/api';
@@ -248,7 +249,7 @@ function initBodyEditor(content) {
         selector: '#f-body',
         base_url: '/js/tinymce',
         plugins: 'autolink link image media lists advlist codesample emoticons fullscreen table autoresize charmap code',
-        toolbar: 'bold italic underline strikethrough | blocks fontfamily fontsize | forecolor backcolor | bullist numlist | blockquote codesample | link image media emoticons charmap | table | code fullscreen',
+        toolbar: 'bold italic underline strikethrough | blocks fontfamily_yy fontsize | forecolor backcolor | bullist numlist | blockquote codesample | link image media emoticons charmap | table | code fullscreen',
         menubar: 'file edit view insert format tools table',
         statusbar: true,
         branding: false,
@@ -257,9 +258,11 @@ function initBodyEditor(content) {
         max_height: 900,
         autoresize_bottom_margin: 20,
         skin: 'oxide',
-        font_family_formats: 'Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Maven Pro=Maven Pro,sans-serif; Semitic Early=Semitic Early; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Yada Towrah=YadaTowrah-Times; Webdings=webdings; Wingdings=wingdings,zapf dingbats',
-        content_css: 'default',
-        content_style: '@font-face { font-family: "YadaTowrah-Times"; src: url("/fonts/YadaTowrah-Times.woff2") format("woff2"), url("/fonts/YadaTowrah-Times.ttf") format("truetype"); } @font-face { font-family: "Semitic Early"; src: url("/fonts/SemiticEarly.ttf") format("truetype"); } body { font-family: "Maven Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 1rem; line-height: 1.7; color: #333; padding: 12px; } img { max-width: 100%; height: auto; border-radius: 6px; } a { color: #31345A; } blockquote { border-left: 3px solid #E5C86C; margin: 8px 0; padding: 8px 16px; background: #fafafa; } pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 8px; }',
+        // Font picker driven by /api/site-fonts.php — registered via the
+        // YYAdminFonts helper below as custom toolbar button fontfamily_yy.
+        content_css: ['default', '/api/site-fonts.css.php'],
+        content_style: 'body { font-family: "Maven Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 1rem; line-height: 1.7; color: #333; padding: 12px; } img { max-width: 100%; height: auto; border-radius: 6px; } a { color: #31345A; } blockquote { border-left: 3px solid #E5C86C; margin: 8px 0; padding: 8px 16px; background: #fafafa; } pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 8px; }',
+        setup: function(editor){ if (window.YYAdminFonts) window.YYAdminFonts.setup(editor); },
         images_upload_handler: function(blobInfo) {
             return new Promise(function(resolve, reject) {
                 var fd = new FormData();
