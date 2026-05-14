@@ -642,7 +642,18 @@ function azureTtsSynthesize(string $ssml, array $cfg, ?string &$err = null): str
     $cerr = curl_error($ch);
     curl_close($ch);
     if ($resp === false || $code >= 400) {
-        $err = "Azure TTS HTTP $code: " . ($cerr ?: substr((string)$resp, 0, 300));
+        $body = $cerr ?: substr((string)$resp, 0, 300);
+        if ($code === 400 && $body === '') {
+            // Azure returns 400 with empty body for unknown voice codes, unsupported
+            // styles, or IPA phoneme strings it cannot parse. Extract SSML hints.
+            $vm = [];
+            preg_match('/<voice name="([^"]+)"/', $ssml, $vm);
+            $body = '(empty Azure body; voice=' . ($vm[1] ?? 'unknown')
+                  . ', ssml_chars=' . mb_strlen($ssml)
+                  . (strpos($ssml, '<phoneme') !== false ? ', has_phoneme=1' : '')
+                  . (strpos($ssml, 'mstts:express-as') !== false ? ', has_style=1' : '') . ')';
+        }
+        $err = "Azure TTS HTTP $code: " . $body;
         return '';
     }
     return (string)$resp;
