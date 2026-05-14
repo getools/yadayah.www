@@ -25,14 +25,25 @@
  * subsequent editors on the same page.
  */
 (function() {
+    // Prefer the synchronous global set by <script src="/api/site-fonts.js.php">.
+    // TinyMCE's setup callback isn't awaited, so the toolbar gets built before
+    // an async fetch can resolve — without the pre-loaded global, fontfamily_yy
+    // would be silently dropped from the toolbar.
     var fontsPromise = null;
     function fetchFonts() {
+        if (window.YY_FONTS && window.YY_FONTS.length) {
+            return Promise.resolve(window.YY_FONTS);
+        }
         if (fontsPromise) return fontsPromise;
         fontsPromise = fetch('/api/site-fonts.php', { credentials: 'omit' })
             .then(function(r) { return r.json(); })
             .then(function(d) { return Array.isArray(d.fonts) ? d.fonts : []; })
             .catch(function() { return []; });
         return fontsPromise;
+    }
+    // Synchronous accessor — returns null if data isn't yet loaded.
+    function fontsSync() {
+        return (window.YY_FONTS && window.YY_FONTS.length) ? window.YY_FONTS : null;
     }
 
     // CSS-quote a font family for inline style/attribute use.
@@ -111,37 +122,50 @@
             });
         },
         // Wire the custom font button into a TinyMCE editor. Call from setup.
+        // Registration MUST happen synchronously inside the setup callback —
+        // TinyMCE builds the toolbar from the registry right after setup
+        // returns and silently drops unrecognized toolbar names. Pages should
+        // include <script src="/api/site-fonts.js.php"> before the editor
+        // initializes so window.YY_FONTS is ready. If fonts aren't yet loaded,
+        // we fall back to async (button shows up post-init via fetch).
         setup: function(editor) {
-            return fetchFonts().then(function(fonts) {
-                // Register one icon per font.
-                fonts.forEach(function(f) {
-                    try {
-                        editor.ui.registry.addIcon('yy-font-' + f.key, buildIconSvg(f));
-                    } catch (e) { /* TinyMCE may not be ready; ignore */ }
-                });
-                editor.ui.registry.addMenuButton('fontfamily_yy', {
-                    text: 'Font',
-                    tooltip: 'Font family',
-                    fetch: function(callback) {
-                        var items = [];
-                        var groups = groupFonts(fonts);
-                        groups.forEach(function(g, idx) {
-                            if (idx > 0) items.push({ type: 'separator' });
-                            g.forEach(function(f) {
-                                items.push({
-                                    type: 'menuitem',
-                                    text: f.display,
-                                    icon: 'yy-font-' + f.key,
-                                    onAction: (function(stack) {
-                                        return function() { editor.execCommand('FontName', false, stack); };
-                                    })(f.stack)
-                                });
-                            });
-                        });
-                        callback(items);
-                    }
-                });
-            });
+            var fonts = fontsSync();
+            if (fonts) {
+                registerFontButton(editor, fonts);
+                return Promise.resolve();
+            }
+            return fetchFonts().then(function(loaded) { registerFontButton(editor, loaded); });
         }
+    };
+
+    function registerFontButton(editor, fonts) {
+        // Register one icon per font (idempotent — addIcon will overwrite).
+        fonts.forEach(function(f) {
+            try {
+                editor.ui.registry.addIcon('yy-font-' + f.key, buildIconSvg(f));
+            } catch (e) { /* ignore */ }
+        });
+        editor.ui.registry.addMenuButton('fontfamily_yy', {
+            text: 'Font',
+            tooltip: 'Font family',
+            fetch: function(callback) {
+                var items = [];
+                var groups = groupFonts(fonts);
+                groups.forEach(function(g, idx) {
+                    if (idx > 0) items.push({ type: 'separator' });
+                    g.forEach(function(f) {
+                        items.push({
+                            type: 'menuitem',
+                            text: f.display,
+                            icon: 'yy-font-' + f.key,
+                            onAction: (function(stack) {
+                                return function() { editor.execCommand('FontName', false, stack); };
+                            })(f.stack)
+                        });
+                    });
+                });
+                callback(items);
+            }
+        });
     };
 })();

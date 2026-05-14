@@ -277,8 +277,9 @@
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
+<script src="/api/site-fonts.js.php"></script>
 <script src="js/tinymce/tinymce.min.js"></script>
-<script src="/js/admin-fonts-tinymce.js?v=1"></script>
+<script src="/js/admin-fonts-tinymce.js?v=2"></script>
 <script>
 var API = '/api';
 function initRichEditor(elementId, content) {
@@ -301,7 +302,6 @@ function initRichEditor(elementId, content) {
         // Custom font dropdown driven by /api/site-fonts.php via YYAdminFonts.
         content_css: ['default', '/api/site-fonts.css.php'],
         content_style: 'body { font-family: "Maven Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.95rem; line-height: 1.6; color: #333; padding: 8px; } a { color: #31345A; }',
-        setup: function(editor){ if (window.YYAdminFonts) window.YYAdminFonts.setup(editor); },
         images_upload_handler: function(blobInfo) {
             return new Promise(function(resolve, reject) {
                 var fd = new FormData();
@@ -315,6 +315,9 @@ function initRichEditor(elementId, content) {
         },
         automatic_uploads: true,
         setup: function(editor) {
+            // Register the central-registry font button — must happen
+            // synchronously here, before TinyMCE builds the toolbar.
+            if (window.YYAdminFonts) window.YYAdminFonts.setup(editor);
             editor.on('init', function() {
                 editor.setContent(content || '');
             });

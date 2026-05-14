@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778738401">
+    <meta name="page-version" content="1">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css?v=12">
+    <link rel="stylesheet" href="css/app.css?v=10">
     <link rel="stylesheet" href="css/login.css">
     <style>
         .tts-section { background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:16px 20px; margin-bottom:16px; }
@@ -1109,40 +1109,44 @@ async function loadTunes() {
     renderTunes();
 }
 
-// Fill the "test voice" dropdown that sits in the last column header. The
-// chosen voice is what plays when ▶ is clicked on any phrase row. Only
-// voices currently assigned to a Default category appear here — testing a
-// pronunciation against a voice that's never used in production is noise.
-// Re-run whenever Defaults change (no dataset.populated guard) so the
-// dropdown stays in sync with the Defaults tab.
+// Fill the "test voice" dropdown that sits in the last column header.
+// Options are the Defaults-tab CATEGORIES (main, translation, islam, etc.),
+// not raw voice codes — picking a category here makes ▶ audition the rule
+// using the voice + rate + pitch + volume + style configured on the
+// Defaults tab for that category. Re-run on every Pronunciations-tab
+// open so edits made on Defaults show up immediately.
 function populateTunesTestVoiceSelect() {
     var sel = $('tunes-test-voice');
     if (!sel) return;
     var prev = sel.value;
-    // Set of voice codes currently assigned to any Default category.
-    var assigned = {};
-    Object.keys(STATE.categories || {}).forEach(function(catCode) {
-        var code = STATE.categories[catCode] && STATE.categories[catCode].tts_voice_code;
-        if (code) assigned[code] = true;
-    });
-    var filtered = (CATALOG.voices || []).filter(function(v) { return assigned[v.code]; });
-    // Fallback: if nothing matches (e.g. defaults not yet saved), fall
-    // back to the full catalog so the dropdown is never empty.
-    if (!filtered.length) filtered = CATALOG.voices || [];
     sel.innerHTML = '';
-    filtered.forEach(function(v) {
+
+    // Map category code → friendly label from ttsCategories() (e.g.
+    // "Main narration (body text)" rather than the bare "main" code).
+    var labelByCat = {};
+    (CATALOG.categories || []).forEach(function (c) { labelByCat[c.code] = c.label; });
+
+    // Preserve the order ttsCategories() returns from the server so the
+    // dropdown reads in the same order admins see on the Defaults tab.
+    var catOrder = (CATALOG.categories || []).map(function (c) { return c.code; });
+    Object.keys(STATE.categories || {}).forEach(function (c) {
+        if (catOrder.indexOf(c) === -1) catOrder.push(c);
+    });
+
+    catOrder.forEach(function (catCode) {
+        var row = (STATE.categories || {})[catCode];
+        if (!row || !row.tts_voice_code) return;
         var o = document.createElement('option');
-        o.value = v.code;
-        o.textContent = v.label;
+        o.value = catCode;
+        o.textContent = labelByCat[catCode] || catCode;
         sel.appendChild(o);
     });
-    // Preserve the previous selection if still present; otherwise prefer
-    // the body category's voice, then any first option.
-    var bodyVoice = STATE.categories && STATE.categories.body && STATE.categories.body.tts_voice_code;
-    var fallback = (prev && assigned[prev]) ? prev
-                 : (bodyVoice && assigned[bodyVoice]) ? bodyVoice
-                 : (filtered[0] && filtered[0].code) || '';
-    if (fallback) sel.value = fallback;
+
+    if (prev && Array.prototype.some.call(sel.options, function (o) { return o.value === prev; })) {
+        sel.value = prev;
+    } else if (sel.options.length) {
+        sel.selectedIndex = 0;
+    }
 }
 
 var TUNES_SORT      = { col: 'print', dir: 'asc' };
@@ -1835,8 +1839,14 @@ async function handleTuneAction(tr, act) {
             } else if (s2 && s2.textContent.indexOf('⚠') === 0) {
                 s2.textContent = '';
             }
-            var voiceSel = $('tunes-test-voice');
-            var voiceCode = voiceSel ? voiceSel.value : '';
+            // The dropdown lists Defaults-tab categories — option.value is
+            // the category code (e.g. "main", "translation"). Pull the
+            // voice + rate + pitch + volume + style from that category's
+            // STATE.categories row so the audition matches how the book
+            // would actually be narrated in that role.
+            var voiceSel  = $('tunes-test-voice');
+            var pickedCat = voiceSel ? voiceSel.value : '';
+            var catRow    = pickedCat && STATE.categories ? STATE.categories[pickedCat] : null;
             // tune_override makes the server use a single synthetic rule
             // for THIS print word — ignoring active flag, B/I match
             // restrictions, and all other tunes. So ▶ always plays what's
@@ -1851,7 +1861,15 @@ async function handleTuneAction(tr, act) {
                     type:  selType,
                 }
             };
-            if (voiceCode) body.voice_code = voiceCode;
+            if (catRow) {
+                body.category     = pickedCat;
+                body.voice_code   = catRow.tts_voice_code;
+                body.style        = catRow.tts_voice_style || null;
+                body.style_degree = catRow.tts_voice_style_degree || 1.0;
+                body.rate_pct     = (catRow.tts_voice_rate_pct | 0);
+                body.pitch_st     = parseFloat(catRow.tts_voice_pitch_st) || 0;
+                body.volume       = catRow.tts_voice_volume | 0 || 100;
+            }
             var blob = await api('/admin-tts-preview.php', {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify(body),

@@ -224,8 +224,9 @@
 
 </div>
 
+<script src="/api/site-fonts.js.php"></script>
 <script src="js/tinymce/tinymce.min.js"></script>
-<script src="/js/admin-fonts-tinymce.js?v=1"></script>
+<script src="/js/admin-fonts-tinymce.js?v=2"></script>
 <script src="js/admin-links.js?v=4"></script>
 <script>
 var API = '/api';
@@ -262,7 +263,6 @@ function initBodyEditor(content) {
         // YYAdminFonts helper below as custom toolbar button fontfamily_yy.
         content_css: ['default', '/api/site-fonts.css.php'],
         content_style: 'body { font-family: "Maven Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 1rem; line-height: 1.7; color: #333; padding: 12px; } img { max-width: 100%; height: auto; border-radius: 6px; } a { color: #31345A; } blockquote { border-left: 3px solid #E5C86C; margin: 8px 0; padding: 8px 16px; background: #fafafa; } pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 8px; }',
-        setup: function(editor){ if (window.YYAdminFonts) window.YYAdminFonts.setup(editor); },
         images_upload_handler: function(blobInfo) {
             return new Promise(function(resolve, reject) {
                 var fd = new FormData();
@@ -276,6 +276,9 @@ function initBodyEditor(content) {
         },
         automatic_uploads: true,
         setup: function(editor) {
+            // Register the central-registry font button — must happen
+            // synchronously here, before TinyMCE builds the toolbar.
+            if (window.YYAdminFonts) window.YYAdminFonts.setup(editor);
             editor.on('init', function() {
                 editor.setContent(content || '');
                 _bodyEditorReady = true;
