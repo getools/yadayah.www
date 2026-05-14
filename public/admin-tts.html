@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778795863">
+    <meta name="page-version" content="1">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
@@ -49,6 +49,17 @@
         #pane-pronunciations tr.tune-mode-sub .f-sapi,
         #pane-pronunciations tr.tune-mode-sub .f-warn-sapi { display:none; }
         #pane-pronunciations tr.tune-mode-ipa .f-sub        { display:none; }
+
+        /* Temporary: hide the SUB column entirely and hide the SUB/IPA
+           mode-toggle radios. With SUB unavailable every row is treated
+           as IPA-mode, so we also un-hide IPA + SAPI inputs in rows
+           whose saved phonetic_type is 'sub'. Warnings keep their own
+           visibility rule (.f-warn vs .f-warn.show). */
+        #pane-pronunciations .col-sub                       { display:none; }
+        #pane-pronunciations .f-type-radio                  { display:none; }
+        #pane-pronunciations tr.tune-mode-sub .f-ipa,
+        #pane-pronunciations tr.tune-mode-sub .f-sapi,
+        #pane-pronunciations tr.tune-mode-sub .f-ipa-helper { display:revert !important; }
         /* Validation warning icon — sits to the right of the input. */
         .f-bi-btn { background:#fafafa; border:1px solid #ccc; border-radius:3px; padding:2px 6px; cursor:pointer; font-size:0.78rem; line-height:1.2; flex:0 0 auto; color:#888; min-width:20px; }
         .f-bi-btn.on { background:#31345A; color:#fff; border-color:#31345A; }
@@ -268,12 +279,28 @@
     <!-- ── Pronunciations tab ─────────────────────────────────────── -->
     <div id="pane-pronunciations" class="tts-pane">
         <div class="tts-section">
-            <h3>Phrase list / pronunciations</h3>
-            <p class="desc">When the TTS engine encounters <em>Print</em>, it says <em>Phonetic</em> instead. Use plain re-spellings for "sub" type (default) or IPA/SAPI for power users. In <strong>sub</strong> mode you can mark a syllable's prosody inline:
-                <code>ALL CAPS</code> = stressed (e.g. <code>Yah-HOH-wah</code>),
-                <code>[brackets]</code> = drawn out / slowed (e.g. <code>Yah-[hoh]-wah</code>),
-                <code>{braces}</code> = clipped / quickened (e.g. <code>Yah-{hoh}-wah</code>).
-                Markers stack: <code>[SHA]-baht</code> is both stressed <em>and</em> drawn out.</p>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+                <h3 style="margin:0;">Phrase list / pronunciations</h3>
+                <button type="button" id="prons-help-toggle" onclick="toggleProns()" title="Show/hide the field reference"
+                        style="background:none;border:none;color:#31345A;cursor:pointer;font-size:0.8rem;padding:2px 4px;line-height:1;">▸</button>
+            </div>
+            <div id="prons-help" style="display:none;margin:6px 0 10px;">
+                <p class="desc">When the TTS engine encounters a row's <strong>Text</strong> string in the source it substitutes the IPA pronunciation instead, wrapped in an Azure <code>&lt;phoneme alphabet="ipa"&gt;</code> tag. Each column controls one piece of how that substitution behaves:</p>
+                <ul class="desc" style="margin-top:0;line-height:1.55;padding-left:1.4em;">
+                    <li><strong>Active</strong> — checkbox at the left toggles the rule on/off without deleting the row.</li>
+                    <li><strong>Text</strong> — the source-text needle. Apostrophe-equivalent characters (straight, curly, half-rings) are interchangeable when the needle contains one; a trailing possessive <code>'s</code> is matched separately and the phonetic gets a <code>z</code> appended.
+                        <strong style="font-weight:600;">B / I / Aa</strong> after the input restrict matching to bold runs, italic runs, or case-sensitive — multiple restrictions combine.</li>
+                    <li><strong>#</strong> — how many times this Text appears across all parsed books. Sortable.</li>
+                    <li><strong>IPA</strong> — phonetic spelling using <a href="https://en.wikipedia.org/wiki/International_Phonetic_Alphabet" target="_blank">IPA symbols</a>. Click the <code>ⓘ</code> for a popover of common IPA characters with example words. Stress marks: <code>ˈ</code> primary, <code>ˌ</code> secondary; length: <code>ː</code>.</li>
+                    <li><strong>SAPI</strong> — reference-only spelling using legacy SAPI phoneme codes (<code>AH1 HH OW0</code>). Azure neural voices reject SAPI, so this column is preserved for cross-checking against older tools; not used by synthesis.</li>
+                    <li><strong>▶</strong> — auditions this rule using the category voice selected in the picker above the table, with that category's saved style, rate, pitch, and volume.</li>
+                    <li><strong>Voice</strong> — optional per-tune voice override. Setting one on a previously-voiceless row creates a clone (the original stays as the voice-NULL catch-all); only one voice-specific clone stays active per Text, others become inactive automatically.</li>
+                    <li><strong>Sort</strong> — manual priority for breaking ties between overlapping rules. Higher value wins; blank/<code>0</code> means use defaults (Text length, then row order).</li>
+                    <li><strong>Note</strong> — pencil icon opens a popover for free-form notes (intent, edge cases, etc.). Amber when a note is set.</li>
+                    <li><strong>×</strong> — delete the row.</li>
+                </ul>
+                <p class="desc" style="margin-top:6px;">Tunes apply <em>before</em> pause rules during synthesis, so the matched text consumes its half-ring / apostrophe characters before the pause filter ever sees them.</p>
+            </div>
             <!-- Row 1: voice model (left) + Add button (right) -->
             <div id="tunes-toolbar-1" style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:0.85rem;">
                 <select id="tunes-test-voice" title="Voice used when you click ▶ next to a row" style="min-width:260px;max-width:380px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;flex:0 0 auto;"></select>
@@ -282,7 +309,7 @@
             </div>
             <!-- Row 2: Print filter (left) … per-page + pager (right) -->
             <div id="tunes-toolbar-2" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;">
-                <select id="tunes-maxlen" onchange="setTunesMaxLen(this.value)" title="Filter Print to at-most N characters" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;color:#888;">
+                <select id="tunes-maxlen" onchange="setTunesMaxLen(this.value)" title="Filter Text to at-most N characters" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;color:#888;">
                     <option value="">len</option>
                     <option value="1">1</option>
                     <option value="2">2</option>
@@ -321,7 +348,7 @@
                 <thead>
                     <tr>
                         <th style="width:32px;text-align:center;" title="Active — uncheck to disable this rule"></th>
-                        <th onclick="sortTunesBy('print')"      style="width:18%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
+                        <th onclick="sortTunesBy('print')"      style="width:18%;cursor:pointer;" title="Click to sort by Text">Text<span class="sort-arrow" data-col="print"></span></th>
                         <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
                         <th class="col-sub"  style="width:22%;text-align:left;padding-left:25px;" title="Re-spelling — visible while SUB radio is selected">SUB</th>
                         <th class="col-ipa"  style="width:18%;text-align:left;padding-left:25px;" title="IPA — visible while IPA radio is selected">IPA</th>
@@ -1093,7 +1120,36 @@ async function playVoiceTest(tr, v) {
 }
 
 // ── Pronunciations tab ──────────────────────────────────────────────
+// Persist the Pronunciations help-text expand/collapse state. Default
+// to collapsed on first visit; user's last toggle wins on subsequent
+// loads. Stored in localStorage so it survives page reloads + new tabs.
+var PRONS_HELP_KEY = 'admin-tts:prons-help-open';
+function initPronsHelpToggle() {
+    var box = $('prons-help');
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = '1';
+    var saved = null;
+    try { saved = localStorage.getItem(PRONS_HELP_KEY); } catch (e) {}
+    setPronsHelpOpen(saved === '1', /*persist*/false);
+}
+function setPronsHelpOpen(open, persist) {
+    var box = $('prons-help');
+    var btn = $('prons-help-toggle');
+    if (!box) return;
+    box.style.display = open ? 'block' : 'none';
+    if (btn) btn.textContent = open ? '▾' : '▸';
+    if (persist !== false) {
+        try { localStorage.setItem(PRONS_HELP_KEY, open ? '1' : '0'); } catch (e) {}
+    }
+}
+function toggleProns() {
+    var box = $('prons-help');
+    if (!box) return;
+    setPronsHelpOpen(box.style.display === 'none');
+}
+
 async function loadTunes() {
+    initPronsHelpToggle();
     var r = await api('/admin-tts-config.php?action=tunes&tts_key=' + TTS_KEY);
     STATE.tunes = r.rows || [];
     populateTunesTestVoiceSelect();
@@ -1636,7 +1692,9 @@ function buildTuneRow(t) {
     // so users can flip between SUB and IPA without an extra step).
     tr.classList.add('tune-mode-' + savedType);
     var voiceCode = (t.tts_tune_voice_code || '');
-    var sortVal   = (t.tts_tune_sort != null && t.tts_tune_sort !== '') ? t.tts_tune_sort : '';
+    // Render 0 / NULL as blank — sort=0 is the default "no priority"
+    // and showing it would clutter the column with zeros.
+    var sortVal   = (parseInt(t.tts_tune_sort, 10) > 0) ? t.tts_tune_sort : '';
     tr.innerHTML =
         '<td style="padding:4px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td><div style="display:flex;align-items:center;gap:4px;">'
@@ -1670,9 +1728,12 @@ function buildTuneRow(t) {
                 '<option value=""></option>' +
             '</select>' +
         '</td>' +
-        // Sort column — manual priority. Higher wins on tie.
+        // Sort column — manual priority. Higher wins on tie. Rendered as
+        // plain text input (no number spinner) since the field is sparse
+        // by default and the up/down chrome implies a wider value range
+        // than it ever uses.
         '<td style="padding:4px 2px;">' +
-            '<input type="number" class="f-sort" value="' + escapeHtml(String(sortVal)) + '" placeholder="0" style="width:100%;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;text-align:right;">' +
+            '<input type="text" inputmode="numeric" class="f-sort" value="' + escapeHtml(String(sortVal)) + '" placeholder="" style="width:100%;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;text-align:right;">' +
         '</td>' +
         '<td style="text-align:center;padding:4px 2px;width:30px;">'
             + '<input type="hidden" class="f-note" value="' + escapeHtml(t.tts_tune_note || '') + '">'
@@ -1691,10 +1752,10 @@ function buildTuneRow(t) {
     voices.forEach(function (v) {
         var o = document.createElement('option');
         o.value = v.code;
-        // Take the part before the first " (" so the labels read just
-        // "Brian", "Davis", "Ava", etc. — the strip also handles labels
-        // like "Brian (Multilingual..." correctly.
-        var shortLabel = (v.label || v.code).split(' (')[0].trim();
+        // Strip everything after the first space so labels read as a
+        // single first name: "Brian (Multilingual...)" → "Brian",
+        // "Shimmer Turbo Multilingual" → "Shimmer", etc.
+        var shortLabel = (v.label || v.code).split(/[\s(]/, 1)[0].trim();
         o.textContent = shortLabel;
         voiceSelEl.appendChild(o);
     });
@@ -1827,6 +1888,20 @@ async function saveTuneRow(tr) {
         tr.dataset.key = res.tts_tune_key;
         tr.classList.toggle('inactive', !active);
         if (s) { s.textContent = 'Saved "' + print + '" (type=' + type + ')'; s.className = 'status-msg success'; }
+        // If the save cloned this row (voice transition NULL→set) OR
+        // deactivated other rows sharing the same Text, the table needs
+        // to redraw so the new row appears and the deactivated ones
+        // gain their inactive styling. Skip the reload for plain edits
+        // so the user doesn't lose their place in long lists.
+        if (res && (res.cloned || (res.deactivated_keys && res.deactivated_keys.length))) {
+            try { await loadTunes(); } catch (e) {}
+            if (s) {
+                var extras = [];
+                if (res.cloned) extras.push('cloned voice override');
+                if (res.deactivated_keys && res.deactivated_keys.length) extras.push('deactivated ' + res.deactivated_keys.length + ' competing row(s)');
+                s.textContent = 'Saved "' + print + '" — ' + extras.join(', ');
+            }
+        }
     } catch (e) {
         // Surface the failure so silent session-expiry / 4xx doesn't look
         // like a successful no-op. The most common cause is the admin

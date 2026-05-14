@@ -204,7 +204,53 @@ if ($action === 'save_tune') {
     if ($mirror === '') $mirror = $print; // never let the not-null column go empty
 
     $tuneKey = (int)($data['tts_tune_key'] ?? 0);
+    $cloned  = false;
+    $deactivatedKeys = [];
+
+    // Look up the row's prior voice_code so we can detect a NULL→set
+    // transition. That transition triggers CLONE-and-keep-original
+    // behavior — the original stays voice=NULL (the catch-all) and a
+    // new row is inserted carrying the chosen voice.
+    $priorVoice = null;
     if ($tuneKey > 0) {
+        $pv = $db->prepare("SELECT tts_tune_voice_code FROM yy_tts_tune WHERE tts_tune_key = ? AND tts_key = ?");
+        $pv->execute([$tuneKey, $ttsKey]);
+        $priorVoice = $pv->fetchColumn();
+        if ($priorVoice === false) $priorVoice = null;
+    }
+    $voiceTransitionNullToSet = ($tuneKey > 0 && $priorVoice === null && $voiceCode !== null && $voiceCode !== '');
+
+    if ($voiceTransitionNullToSet) {
+        // Don't touch the original (voice-NULL) row's voice — only update
+        // its non-voice columns from the form. Insert a CLONE that carries
+        // the new voice. The catch-all stays usable; the clone is the
+        // per-voice override.
+        $upd = $db->prepare("
+            UPDATE yy_tts_tune
+               SET tts_tune_print = ?, tts_tune_phonetic = ?,
+                   tts_tune_phonetic_sub = ?, tts_tune_phonetic_ipa = ?, tts_tune_phonetic_sapi = ?,
+                   tts_tune_phonetic_type = ?, tts_tune_note = ?, tts_tune_active_flag = ?,
+                   tts_tune_match_bold = ?, tts_tune_match_italic = ?, tts_tune_match_case_sensitive = ?,
+                   tts_tune_sort = ?,
+                   tts_tune_revision_dtime = NOW()
+             WHERE tts_tune_key = ? AND tts_key = ?
+        ");
+        $upd->execute([$print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, (int)$active, (int)$mBold, (int)$mItalic, (int)$mCase, $sort, $tuneKey, $ttsKey]);
+
+        $ins = $db->prepare("
+            INSERT INTO yy_tts_tune
+                (tts_key, tts_tune_print, tts_tune_phonetic,
+                 tts_tune_phonetic_sub, tts_tune_phonetic_ipa, tts_tune_phonetic_sapi,
+                 tts_tune_phonetic_type, tts_tune_note, tts_tune_active_flag,
+                 tts_tune_match_bold, tts_tune_match_italic, tts_tune_match_case_sensitive,
+                 tts_tune_voice_code, tts_tune_sort)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?)
+            RETURNING tts_tune_key
+        ");
+        $ins->execute([$ttsKey, $print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, (int)$mBold, (int)$mItalic, (int)$mCase, $voiceCode, $sort]);
+        $tuneKey = (int)$ins->fetchColumn();
+        $cloned  = true;
+    } elseif ($tuneKey > 0) {
         $stmt = $db->prepare("
             UPDATE yy_tts_tune
                SET tts_tune_print = ?, tts_tune_phonetic = ?,
@@ -219,6 +265,9 @@ if ($action === 'save_tune') {
         // serialises bool false as "" which Postgres rejects.
         $stmt->execute([$print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, (int)$active, (int)$mBold, (int)$mItalic, (int)$mCase, $voiceCode, $sort, $tuneKey, $ttsKey]);
     } else {
+        // Brand-new row. Use ON CONFLICT on the (tts_key, Print, voice_code)
+        // tuple — that matches the new unique index that allows multiple
+        // rows per Print as long as each has a distinct voice_code.
         $stmt = $db->prepare("
             INSERT INTO yy_tts_tune
                 (tts_key, tts_tune_print, tts_tune_phonetic,
@@ -227,7 +276,7 @@ if ($action === 'save_tune') {
                  tts_tune_match_bold, tts_tune_match_italic, tts_tune_match_case_sensitive,
                  tts_tune_voice_code, tts_tune_sort)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (tts_key, tts_tune_print) DO UPDATE SET
+            ON CONFLICT (tts_key, tts_tune_print, (COALESCE(tts_tune_voice_code, ''))) DO UPDATE SET
                 tts_tune_phonetic              = EXCLUDED.tts_tune_phonetic,
                 tts_tune_phonetic_sub          = EXCLUDED.tts_tune_phonetic_sub,
                 tts_tune_phonetic_ipa          = EXCLUDED.tts_tune_phonetic_ipa,
@@ -238,7 +287,6 @@ if ($action === 'save_tune') {
                 tts_tune_match_bold            = EXCLUDED.tts_tune_match_bold,
                 tts_tune_match_italic          = EXCLUDED.tts_tune_match_italic,
                 tts_tune_match_case_sensitive  = EXCLUDED.tts_tune_match_case_sensitive,
-                tts_tune_voice_code            = EXCLUDED.tts_tune_voice_code,
                 tts_tune_sort                  = EXCLUDED.tts_tune_sort,
                 tts_tune_revision_dtime = NOW()
             RETURNING tts_tune_key
@@ -246,7 +294,33 @@ if ($action === 'save_tune') {
         $stmt->execute([$ttsKey, $print, $mirror, $sub, $ipa, $sapi, $type, $note ?: null, (int)$active, (int)$mBold, (int)$mItalic, (int)$mCase, $voiceCode, $sort]);
         $tuneKey = (int)$stmt->fetchColumn();
     }
-    jsonResponse(['ok' => true, 'tts_tune_key' => $tuneKey]);
+
+    // After any save where this row ends up with a voice override,
+    // mark OTHER active same-Print voice-override rows inactive so only
+    // ONE voice-specific override remains active per Print (alongside
+    // the voice-NULL catch-all, which stays untouched).
+    if ($voiceCode !== null && $voiceCode !== '') {
+        $deact = $db->prepare("
+            UPDATE yy_tts_tune
+               SET tts_tune_active_flag = FALSE,
+                   tts_tune_revision_dtime = NOW()
+             WHERE tts_key = ?
+               AND tts_tune_print = ?
+               AND tts_tune_voice_code IS NOT NULL
+               AND tts_tune_key <> ?
+               AND tts_tune_active_flag = TRUE
+            RETURNING tts_tune_key
+        ");
+        $deact->execute([$ttsKey, $print, $tuneKey]);
+        $deactivatedKeys = array_map('intval', $deact->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    jsonResponse([
+        'ok'                 => true,
+        'tts_tune_key'       => $tuneKey,
+        'cloned'             => $cloned,
+        'deactivated_keys'   => $deactivatedKeys,
+    ]);
 }
 
 if ($action === 'delete_tune') {
