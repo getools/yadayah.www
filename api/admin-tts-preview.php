@@ -72,9 +72,14 @@ if (!empty($data['tune_override']) && is_array($data['tune_override'])) {
     ]];
 }
 
-// If the caller passes prosody overrides, splice a synthetic category row in.
+// When the caller supplies a voice_code, that's the picker on the
+// Voice catalog row — they want ONE voice for the whole utterance,
+// not the multi-voice (translation/word_definition) routing the
+// actual book build would use. Splice the override into EVERY
+// category so every segment still routes through the same voice
+// while B/I-restricted pronunciation tunes still fire correctly.
 if ($overrideVoice) {
-    $cfg['categories'][$category] = [
+    $overrideRow = [
         'tts_voice_code'         => $overrideVoice,
         'tts_voice_style'        => $data['style'] ?? null,
         'tts_voice_style_degree' => $data['style_degree'] ?? 1.0,
@@ -82,29 +87,23 @@ if ($overrideVoice) {
         'tts_voice_pitch_st'     => (float)($data['pitch_st'] ?? 0),
         'tts_voice_volume'       => (int)($data['volume'] ?? 100),
     ];
+    foreach (array_keys($cfg['categories']) as $catCode) {
+        $cfg['categories'][$catCode] = $overrideRow;
+    }
+    if (!isset($cfg['categories']['main'])) $cfg['categories']['main'] = $overrideRow;
 }
 
-// When the text carries <b>/<i> markup, segment it the same way the
-// build worker does so each B/I run routes through the matching
-// category voice ('translation' for <b>, 'word_definition' for (parens),
-// 'main' otherwise) — pronunciation tunes with B/I match flags then
-// fire correctly. The caller's voice_code override is applied as the
-// main-category voice so the listener still hears their picked voice
-// for the body of the sentence.
+// When the text carries <b>/<i> markup, segment it so B/I-restricted
+// pronunciation tunes match correctly. With $overrideVoice set, every
+// segment uses the same picked voice (via the override-everywhere
+// splice above), so no voice switching happens; without it, segments
+// route through their category defaults as the build worker does.
 if ($hasFormat) {
     $segs = segmentParagraph($text);
     if (!$segs) errorResponse('no audible content after segmentation');
-    if ($overrideVoice && !isset($cfg['categories']['main'])) {
-        $cfg['categories']['main'] = ['tts_voice_code' => $overrideVoice];
-    }
     $voiceBlock = '';
     foreach ($segs as $seg) {
-        // Override applies only to the main category — translation /
-        // word_definition keep their configured category voices so the
-        // preview matches what the synthesized book would actually
-        // sound like.
-        $segOverride = ($seg['category'] === $category) ? $overrideVoice : null;
-        $voiceBlock .= buildVoiceBlock($seg['text'], $cfg, $seg['category'], $segOverride);
+        $voiceBlock .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
     }
 } else {
     $voiceBlock = buildVoiceBlock($text, $cfg, $category, $overrideVoice);

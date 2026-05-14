@@ -96,6 +96,12 @@
         .modal-overlay.visible { display:flex; }
         .modal-box { background:#fff; border-radius:8px; padding:24px; max-width:680px; width:90%; max-height:85vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
         #build-modal .modal-box { max-width:1040px; }
+        /* Placeholder behavior for the contenteditable preview field —
+           shows the data-placeholder text in muted grey only when the
+           div has no content. */
+        #preview-text:empty:before { content: attr(data-placeholder); color: #aaa; pointer-events: none; }
+        #preview-text:focus { border-color:#31345A; }
+        .pv-fmt:hover { background:#f3f3f7; }
         .modal-box h3 { margin:0 0 14px; font-size:1.05rem; color:#31345A; }
         .modal-box .modal-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:14px; border-top:1px solid #eee; }
         .modal-box button { padding:8px 18px; border-radius:4px; border:1px solid #ccc; cursor:pointer; font-size:0.9rem; font-weight:600; }
@@ -122,15 +128,16 @@
     <h1>Text-to-Speech</h1>
 
     <div class="tts-tabs">
-        <button data-tab="voices"        class="active">Voices</button>
+        <button data-tab="defaults"      class="active">Defaults</button>
+        <button data-tab="voices">Voices</button>
         <button data-tab="pronunciations">Pronunciations</button>
         <button data-tab="pauses">Pauses</button>
         <button data-tab="fonts">Fonts</button>
         <button data-tab="books">Books</button>
     </div>
 
-    <!-- ── Voices tab ─────────────────────────────────────────────── -->
-    <div id="pane-voices" class="tts-pane active">
+    <!-- ── Defaults tab — system settings + per-category voice picks ── -->
+    <div id="pane-defaults" class="tts-pane active">
         <div class="tts-section">
             <h3>System settings</h3>
             <p class="desc">Output quality applies to every generated file.</p>
@@ -147,22 +154,102 @@
             <p class="desc">Each category gets its own voice + style + prosody. Used as defaults for new audio builds (overridable per build).</p>
             <div id="category-rows"></div>
         </div>
+    </div>
 
+    <!-- ── Voices tab — preview + catalog ────────────────────────── -->
+    <div id="pane-voices" class="tts-pane">
         <div class="tts-section">
             <h3>Preview any voice</h3>
-            <p class="desc">Type a phrase, pick a voice, click Listen. Pronunciations + pauses defined in their tabs apply automatically.</p>
+            <p class="desc">Type a phrase (bold/italic routes through the translation / word_definition voices). Use the ▶ button on a Voice catalog row below to hear any voice say it. Pronunciations + pauses apply automatically.</p>
             <div class="preview-area">
-                <textarea id="preview-text" placeholder="Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah.">Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah.</textarea>
+                <!-- Tiny toolbar: Bold + Italic apply formatting to the
+                     selection in the contenteditable below. The endpoint
+                     segments the HTML so bold runs route through the
+                     translation voice, parens through word_definition,
+                     and the rest through the chosen voice — same as
+                     the build worker does in production. -->
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                    <button type="button" class="pv-fmt" onclick="pvFormat('bold')"    title="Bold (Ctrl+B) — bold text routes through the translation voice"   style="font-weight:bold;font-style:normal;padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.85rem;">B</button>
+                    <button type="button" class="pv-fmt" onclick="pvFormat('italic')"  title="Italic (Ctrl+I)"                                                  style="font-weight:normal;font-style:italic;padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.85rem;">I</button>
+                    <button type="button" class="pv-fmt" onclick="pvFormat('removeFormat')" title="Clear formatting on the selection"                          style="padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;color:#666;">clear</button>
+                </div>
+                <div id="preview-text" contenteditable="true" data-placeholder="Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah." spellcheck="false" style="min-height:60px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;line-height:1.5;background:#fff;outline:none;">Yahowah commanded the children of <b>Yisraʾel</b> to keep the <b>Shabuwʿah</b>.</div>
                 <div class="preview-controls">
-                    <select id="preview-voice"></select>
-                    <select id="preview-style"><option value="">(no style)</option></select>
                     <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></label>
                     <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" step="0.1" style="width:80px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12). Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></label>
-                    <button class="btn-listen" onclick="doPreview()">▶ Listen</button>
                 </div>
                 <div id="preview-status" class="status-msg"></div>
                 <audio id="preview-audio" controls style="width:100%;margin-top:8px;display:none"></audio>
             </div>
+        </div>
+
+        <!-- ── Voice catalog ──────────────────────────────────────── -->
+        <div class="tts-section">
+            <h3>Voice catalog</h3>
+            <p class="desc">Every voice Azure offers in your region. Uncheck a row to hide it from the picker dropdowns above. Click ▶ to hear a row's voice say the text from <em>Preview any voice</em>, using that section's Rate &amp; Pitch.</p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;justify-content:flex-end;">
+                <span id="vc-summary" style="color:#666;font-size:0.8rem;font-variant-numeric:tabular-nums;"></span>
+            </div>
+            <table class="tts-table" id="voices-table" style="width:100%;font-size:0.85rem;">
+                <thead>
+                    <tr>
+                        <th style="width:36px;text-align:center;" title="Active — uncheck to hide from voice pickers">On</th>
+                        <th style="text-align:left;cursor:pointer;" onclick="sortVoicesBy('label')">Voice<span class="vc-sort-arrow" data-col="label"></span></th>
+                        <th style="width:140px;text-align:center;" title="Speaking style — picked here is used by ▶ play">Style</th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('language')">Lang<span class="vc-sort-arrow" data-col="language"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('region')">Region<span class="vc-sort-arrow" data-col="region"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('gender')">Gender<span class="vc-sort-arrow" data-col="gender"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('type')">Type<span class="vc-sort-arrow" data-col="type"></span></th>
+                        <th style="width:54px;text-align:center;" title="Multilingual (can pronounce languages other than its primary locale)">Multi</th>
+                        <th style="width:100px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('downloaded')" title="Last time the row was refreshed from Azure">Downloaded<span class="vc-sort-arrow" data-col="downloaded"></span></th>
+                        <th style="width:30px;text-align:center;" title="Click the icon to add or edit a note">Note</th>
+                        <th style="width:48px;text-align:center;">▶</th>
+                    </tr>
+                    <!-- Filter row — directly under each column label. -->
+                    <tr id="vc-filter-row" style="background:#fafafa;">
+                        <th style="padding:4px 2px;text-align:center;">
+                            <select id="vc-f-active" onchange="filterVoices()" style="width:46px;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.75rem;font-weight:normal;color:#555;">
+                                <option value="">all</option>
+                                <option value="1">✓</option>
+                                <option value="0">✗</option>
+                            </select>
+                        </th>
+                        <th style="padding:4px;">
+                            <input id="vc-f-name" type="text" placeholder="contains…" oninput="filterVoices()" style="width:100%;box-sizing:border-box;padding:3px 6px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;font-weight:normal;">
+                        </th>
+                        <th style="padding:4px;"></th>
+                        <th style="padding:4px;text-align:center;">
+                            <select id="vc-f-lang" onchange="filterVoices()" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;font-weight:normal;color:#555;"><option value="">all</option></select>
+                        </th>
+                        <th style="padding:4px;text-align:center;">
+                            <select id="vc-f-region" onchange="filterVoices()" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;font-weight:normal;color:#555;"><option value="">all</option></select>
+                        </th>
+                        <th style="padding:4px;text-align:center;">
+                            <select id="vc-f-gender" onchange="filterVoices()" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;font-weight:normal;color:#555;">
+                                <option value="">all</option>
+                                <option value="Male">M</option>
+                                <option value="Female">F</option>
+                            </select>
+                        </th>
+                        <th style="padding:4px;text-align:center;">
+                            <select id="vc-f-type" onchange="filterVoices()" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;font-weight:normal;color:#555;"><option value="">all</option></select>
+                        </th>
+                        <th style="padding:4px;text-align:center;">
+                            <select id="vc-f-multi" onchange="filterVoices()" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;font-weight:normal;color:#555;">
+                                <option value="">all</option>
+                                <option value="1">yes</option>
+                                <option value="0">no</option>
+                            </select>
+                        </th>
+                        <th style="padding:4px;"></th>
+                        <th style="padding:4px;"></th>
+                        <th style="padding:4px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="voices-tbody"></tbody>
+            </table>
+            <audio id="vc-audio" controls preload="none" style="width:100%;margin-top:8px;display:none;"></audio>
+            <div id="vc-status" class="status-msg"></div>
         </div>
     </div>
 
@@ -406,6 +493,7 @@ function activateTtsTab(tabName) {
     btn.classList.add('active');
     var pane = $('pane-' + tabName);
     if (pane) pane.classList.add('active');
+    if (tabName === 'voices') loadVoiceCatalog();
     if (tabName === 'pronunciations') loadTunes();
     if (tabName === 'pauses') loadPauses();
     if (tabName === 'fonts')  loadFonts();
@@ -448,7 +536,6 @@ async function bootstrap() {
     }
     populateSystemUI();
     renderCategoryRows();
-    populatePreviewVoiceList();
 }
 
 function populateSystemUI() {
@@ -532,33 +619,6 @@ function populateStyleOptions(voiceSel, styleSel, selected) {
     styleSel.disabled = styles.length === 0;
 }
 
-function populatePreviewVoiceList() {
-    var sel = $('preview-voice');
-    sel.innerHTML = '';
-    CATALOG.voices.forEach(v => {
-        var o = document.createElement('option');
-        o.value = v.code;
-        o.textContent = v.label;
-        o.dataset.styles = (v.styles || []).join(',');
-        sel.appendChild(o);
-    });
-    sel.addEventListener('change', refreshPreviewStyles);
-    refreshPreviewStyles();
-}
-
-function refreshPreviewStyles() {
-    var sel = $('preview-voice');
-    var styles = (sel.selectedOptions[0]?.dataset.styles || '').split(',').filter(Boolean);
-    var ss = $('preview-style');
-    ss.innerHTML = '<option value="">(no style)</option>';
-    styles.forEach(s => {
-        if (s === 'general') return;
-        var o = document.createElement('option');
-        o.value = s; o.textContent = s;
-        ss.appendChild(o);
-    });
-}
-
 async function saveSystem() {
     $('sys-status').textContent = 'Saving…';
     try {
@@ -626,7 +686,7 @@ async function saveAndListenCategory(catCode, rowEl) {
                 voice_code: c.voice,
                 style: c.style || null,
                 rate_pct: c.rate, pitch_st: c.pitch, volume: c.volume,
-                text: $('preview-text').value || 'This is a preview.',
+                text: previewTextHtml() || 'This is a preview.',
             }),
         });
         var url = URL.createObjectURL(blob);
@@ -640,33 +700,342 @@ async function saveAndListenCategory(catCode, rowEl) {
     }
 }
 
-async function doPreview() {
-    $('preview-status').textContent = 'Synthesizing…'; $('preview-status').className = 'status-msg';
+// ── Preview text formatting helpers ──────────────────────────────────
+// The preview field is a contenteditable div so the user can apply
+// <b> / <i> the same way bold/italic appears in the parsed book HTML.
+// pvFormat() proxies to document.execCommand for the toolbar buttons
+// and the Ctrl+B / Ctrl+I shortcuts; previewTextHtml() returns the
+// current innerHTML, trimmed and whitespace-collapsed (the endpoint
+// strips tags other than b/i before segmenting).
+function pvFormat(cmd) {
+    var el = $('preview-text');
+    if (!el) return;
+    el.focus();
+    try { document.execCommand(cmd, false, null); } catch (e) {}
+}
+
+function previewTextHtml() {
+    var el = $('preview-text');
+    if (!el) return '';
+    // innerHTML carries the inline formatting; .textContent ignores it.
+    var html = el.innerHTML || '';
+    return html.trim();
+}
+
+// Wire Ctrl+B / Ctrl+I once on first focus so the shortcut works even
+// before the user clicks the toolbar buttons.
+document.addEventListener('keydown', function (e) {
+    var el = $('preview-text');
+    if (!el || document.activeElement !== el) return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.key === 'b' || e.key === 'B') { e.preventDefault(); pvFormat('bold');   }
+    if (e.key === 'i' || e.key === 'I') { e.preventDefault(); pvFormat('italic'); }
+});
+
+// ── Voice catalog ────────────────────────────────────────────────────
+// Reads every row in yy_tts_voice, renders a filterable table, and lets
+// the admin toggle active flags + audition individual voices. Test text
+// persists in localStorage so the same phrase is reused across reloads.
+var VC_STATE = {
+    voices: [],
+    sort: { col: 'language', dir: 'asc' },
+};
+var VC_DEFAULT_TEST_TEXT = 'Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah.';
+
+async function loadVoiceCatalog() {
+    var tbody = $('voices-tbody');
+    if (!tbody) return;
+    var s = $('vc-status'); if (s) { s.textContent = 'Loading voices…'; s.className = 'status-msg'; }
     try {
-        // Flush any in-flight autosave (tune row edits, pause row edits,
-        // system settings) BEFORE asking the server to synthesize, so the
-        // preview reflects everything the user just typed — not the value
-        // that was on the server before the debounce fired.
-        await flushAllAutoSaves();
+        var r = await api('/admin-tts-voices.php?action=list&tts_key=' + TTS_KEY);
+        VC_STATE.voices = r.voices || [];
+        populateVoiceFilterOptions();
+        if (s) {
+            var summary = r.summary || {};
+            // Format the timestamp the same way as the cells (yyyyMMdd HH:mm).
+            var stamp = vcFmtDt(summary.last_refresh) || '—';
+            $('vc-summary').textContent = (summary.active_count|0) + ' active of ' + (summary.total|0) + ' total · last refresh: ' + stamp;
+            s.textContent = '';
+        }
+        filterVoices();
+    } catch (e) {
+        if (s) { s.textContent = 'Failed to load: ' + e.message; s.className = 'status-msg error'; }
+    }
+}
+
+// Format a PostgreSQL timestamptz string ("2026-05-13 21:58:12.823711+00")
+// as yyyy-MM-dd HH:mm in the user's local timezone. Empty input → ''.
+function vcFmtDt(s) {
+    if (!s) return '';
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function populateVoiceFilterOptions() {
+    // Collect distinct values once after a load. Sort alphabetically.
+    var langs = new Set(), regions = new Set(), types = new Set();
+    VC_STATE.voices.forEach(function (v) {
+        if (v.tts_voice_language) langs.add(v.tts_voice_language);
+        if (v.tts_voice_region)   regions.add(v.tts_voice_region);
+        if (v.tts_voice_type)     types.add(v.tts_voice_type);
+    });
+    fillSelect('vc-f-lang',   Array.from(langs).sort());
+    fillSelect('vc-f-region', Array.from(regions).sort());
+    fillSelect('vc-f-type',   Array.from(types).sort());
+}
+
+function fillSelect(id, values) {
+    var sel = $(id);
+    if (!sel) return;
+    var prev = sel.value;
+    sel.innerHTML = '<option value="">all</option>';
+    values.forEach(function (v) {
+        var o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        sel.appendChild(o);
+    });
+    if (prev) sel.value = prev;
+}
+
+function sortVoicesBy(col) {
+    if (VC_STATE.sort.col === col) {
+        VC_STATE.sort.dir = (VC_STATE.sort.dir === 'asc') ? 'desc' : 'asc';
+    } else {
+        VC_STATE.sort.col = col;
+        VC_STATE.sort.dir = 'asc';
+    }
+    document.querySelectorAll('.vc-sort-arrow').forEach(function (s) {
+        s.textContent = (s.dataset.col === col) ? (VC_STATE.sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    });
+    filterVoices();
+}
+
+function filterVoices() {
+    var fActive = $('vc-f-active').value;
+    var fName   = ($('vc-f-name').value || '').trim().toLowerCase();
+    var fLang   = $('vc-f-lang').value;
+    var fRegion = $('vc-f-region').value;
+    var fGender = $('vc-f-gender').value;
+    var fType   = $('vc-f-type').value;
+    var fMulti  = $('vc-f-multi').value;
+
+    var rows = VC_STATE.voices.filter(function (v) {
+        if (fActive !== '' && (v.tts_voice_active_flag ? 1 : 0) !== Number(fActive)) return false;
+        if (fName && (v.tts_voice_label || '').toLowerCase().indexOf(fName) === -1
+                 && (v.tts_voice_code  || '').toLowerCase().indexOf(fName) === -1) return false;
+        if (fLang   && v.tts_voice_language !== fLang)   return false;
+        if (fRegion && v.tts_voice_region   !== fRegion) return false;
+        if (fGender && v.tts_voice_gender   !== fGender) return false;
+        if (fType   && v.tts_voice_type     !== fType)   return false;
+        if (fMulti !== '') {
+            var isMulti = Array.isArray(v.tts_voice_secondary_locales) && v.tts_voice_secondary_locales.length > 0;
+            if ((isMulti ? 1 : 0) !== Number(fMulti)) return false;
+        }
+        return true;
+    });
+
+    var col = VC_STATE.sort.col, dir = VC_STATE.sort.dir === 'asc' ? 1 : -1;
+    var keyFns = {
+        label:      function (v) { return (v.tts_voice_label || '').toLowerCase(); },
+        language:   function (v) { return (v.tts_voice_language || '') + '|' + (v.tts_voice_region || '') + '|' + (v.tts_voice_label || ''); },
+        region:     function (v) { return (v.tts_voice_region || '') + '|' + (v.tts_voice_language || ''); },
+        gender:     function (v) { return v.tts_voice_gender || ''; },
+        type:       function (v) { return v.tts_voice_type || ''; },
+        downloaded: function (v) { return v.tts_voice_download_dtime || ''; },
+    };
+    var keyFn = keyFns[col] || keyFns.language;
+    rows.sort(function (a, b) {
+        var ka = keyFn(a), kb = keyFn(b);
+        if (ka < kb) return -1 * dir;
+        if (ka > kb) return  1 * dir;
+        return 0;
+    });
+
+    var tbody = $('voices-tbody');
+    tbody.innerHTML = '';
+    rows.forEach(function (v) { tbody.appendChild(buildVoiceRow(v)); });
+    var summaryEl = $('vc-summary');
+    if (summaryEl) {
+        var totalActive = VC_STATE.voices.filter(function (v) { return v.tts_voice_active_flag; }).length;
+        var lastRefresh = VC_STATE.voices.reduce(function (acc, v) {
+            var d = v.tts_voice_download_dtime; return (d && d > acc) ? d : acc;
+        }, '');
+        summaryEl.textContent = rows.length + ' shown · ' + totalActive + ' active of ' + VC_STATE.voices.length + ' total · last refresh: ' + (vcFmtDt(lastRefresh) || '—');
+    }
+}
+
+function buildVoiceRow(v) {
+    var tr = document.createElement('tr');
+    tr.dataset.voiceKey = v.tts_voice_key;
+    var isMulti = Array.isArray(v.tts_voice_secondary_locales) && v.tts_voice_secondary_locales.length > 0;
+    var active = !!v.tts_voice_active_flag;
+    tr.classList.toggle('inactive', !active);
+
+    // Build the style cell. Only render a dropdown when the voice
+    // actually advertises styles other than "general" (which is the
+    // implicit no-style baseline). Voices with no styles get an empty
+    // cell so the row stays visually clean.
+    var styles = (Array.isArray(v.tts_voice_styles) ? v.tts_voice_styles : []).filter(function (s) { return s && s !== 'general'; });
+    var styleCell;
+    if (styles.length) {
+        var opts = '<option value="">(default)</option>'
+                 + styles.map(function (s) { return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>'; }).join('');
+        styleCell = '<td style="text-align:center;padding:4px 2px;">'
+                  + '<select class="vc-style" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;color:#333;">' + opts + '</select>'
+                  + '</td>';
+    } else {
+        styleCell = '<td style="text-align:center;padding:4px 2px;color:#bbb;">—</td>';
+    }
+
+    tr.innerHTML =
+        '<td style="text-align:center;padding:4px 2px;">' +
+            '<input type="checkbox" class="vc-active"' + (active ? ' checked' : '') + '>' +
+        '</td>' +
+        // Just the label — no voice-code mouseover/subtitle.
+        '<td style="padding:4px 6px;">' + escapeHtml(v.tts_voice_label || v.tts_voice_code || '') + '</td>' +
+        styleCell +
+        '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_language || '') + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_region   || '') + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_gender   || '').charAt(0) + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_type     || '') + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;color:' + (isMulti ? '#2e7d32' : '#aaa') + ';">' + (isMulti ? '✓' : '') + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;font-variant-numeric:tabular-nums;color:#666;font-size:0.78rem;">' + (vcFmtDt(v.tts_voice_download_dtime) || '—') + '</td>' +
+        // Pen-icon note button — mirrors the Pronunciations table's
+        // .t-note-btn so the look + interaction model is consistent.
+        '<td style="text-align:center;padding:4px 2px;width:30px;">'
+            + '<input type="hidden" class="vc-note-hidden" value="' + escapeHtml(v.tts_voice_note || '') + '">'
+            + '<button type="button" class="t-note-btn vc-note-btn' + ((v.tts_voice_note || '').trim() ? ' has-note' : '') + '" title="' + escapeHtml((v.tts_voice_note || '').trim() || 'Add a note') + '">'
+            + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>'
+            + '</button>'
+        + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;">' +
+            '<button type="button" class="btn-sm btn-sec vc-listen" title="Play preview text with this voice">▶</button>' +
+        '</td>';
+    tr.querySelector('.vc-active').addEventListener('change', function () { saveVoiceActive(tr, v); });
+    tr.querySelector('.vc-listen').addEventListener('click',  function () { playVoiceTest(tr, v); });
+    tr.querySelector('.vc-note-btn').addEventListener('click', function () { openVoiceNotePopover(tr, v); });
+    return tr;
+}
+
+// Singleton popover for voice notes. Mirrors getTuneNotePopover/openTuneNotePopover
+// from the Pronunciations tab — same look, same close-on-outside-click,
+// same debounced autosave on input.
+function getVoiceNotePopover() {
+    var pop = document.getElementById('vc-note-popover');
+    if (pop) return pop;
+    pop = document.createElement('div');
+    pop.id = 'vc-note-popover';
+    // Style parity with #tune-note-popover.
+    pop.style.cssText = 'display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px;min-width:280px;max-width:360px;z-index:10005;';
+    pop.innerHTML = '<textarea placeholder="Note about this voice…" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;font-family:inherit;resize:vertical;min-height:60px;"></textarea>'
+        + '<div style="display:flex;justify-content:flex-end;margin-top:6px;">'
+        +   '<button type="button" onclick="closeVoiceNotePopover()" style="background:#fff;border:1px solid #ccc;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;">Close</button>'
+        + '</div>';
+    document.body.appendChild(pop);
+    document.addEventListener('click', function (e) {
+        var p = document.getElementById('vc-note-popover');
+        if (!p || p.style.display === 'none') return;
+        if (p.contains(e.target)) return;
+        if (e.target.closest && e.target.closest('.vc-note-btn')) return;
+        closeVoiceNotePopover();
+    });
+    return pop;
+}
+
+function openVoiceNotePopover(tr, v) {
+    var pop    = getVoiceNotePopover();
+    var btn    = tr.querySelector('.vc-note-btn');
+    var hidden = tr.querySelector('.vc-note-hidden');
+    var ta     = pop.querySelector('textarea');
+    ta.value   = hidden.value;
+    pop.dataset.voiceKey = v.tts_voice_key;
+    // Anchor under the pen icon. Clamp into the viewport horizontally.
+    var r = btn.getBoundingClientRect();
+    pop.style.display = 'block';
+    var top  = r.bottom + 6;
+    var left = Math.min(window.innerWidth - 380, Math.max(8, r.left - 280));
+    pop.style.top  = top  + 'px';
+    pop.style.left = left + 'px';
+    ta.oninput = function () {
+        hidden.value = ta.value;
+        btn.classList.toggle('has-note', !!ta.value.trim());
+        btn.title = ta.value.trim() || 'Add a note';
+        v.tts_voice_note = ta.value;
+        scheduleAutoSave(hidden, function () { return saveVoiceNote(v); }, 600);
+    };
+    setTimeout(function () { ta.focus(); }, 0);
+}
+
+function closeVoiceNotePopover() {
+    var pop = document.getElementById('vc-note-popover');
+    if (!pop) return;
+    // Flush any pending autosave before hiding so a click-away commits.
+    var ta = pop.querySelector('textarea');
+    if (ta) flushAutoSave(ta, null);
+    pop.style.display = 'none';
+}
+
+async function saveVoiceNote(v) {
+    try {
+        await api('/admin-tts-voices.php', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ action:'save_note', tts_voice_key: v.tts_voice_key, note: v.tts_voice_note || '' }),
+        });
+        var s = $('vc-status'); if (s) { s.textContent = 'Saved note on "' + (v.tts_voice_label || v.tts_voice_code) + '"'; s.className = 'status-msg success'; }
+    } catch (e) {
+        var s = $('vc-status'); if (s) { s.textContent = 'Note save failed: ' + e.message; s.className = 'status-msg error'; }
+    }
+}
+
+async function saveVoiceActive(tr, v) {
+    var cb = tr.querySelector('.vc-active');
+    var newActive = !!cb.checked;
+    try {
+        await api('/admin-tts-voices.php', {
+            method: 'POST', headers: { 'Content-Type':'application/json' },
+            body: JSON.stringify({ action:'save_active', tts_voice_key: v.tts_voice_key, active_flag: newActive }),
+        });
+        v.tts_voice_active_flag = newActive;
+        tr.classList.toggle('inactive', !newActive);
+        var s = $('vc-status'); if (s) { s.textContent = (newActive ? 'Activated ' : 'Deactivated ') + (v.tts_voice_label || v.tts_voice_code); s.className = 'status-msg success'; }
+    } catch (e) {
+        cb.checked = !newActive;       // revert toggle
+        var s = $('vc-status'); if (s) { s.textContent = 'Save failed: ' + e.message; s.className = 'status-msg error'; }
+    }
+}
+
+async function playVoiceTest(tr, v) {
+    var btn = tr.querySelector('.vc-listen');
+    btn.disabled = true; btn.textContent = '…';
+    try {
+        // Reuse the Preview any voice section's text + rate + pitch so
+        // there's only one place to tweak audition parameters.
+        var text  = previewTextHtml() || VC_DEFAULT_TEST_TEXT;
+        var rate  = parseInt($('preview-rate').value, 10) || 0;
+        var pitch = parseFloat($('preview-pitch').value) || 0;
+        var styleSel = tr.querySelector('.vc-style');
+        var style    = styleSel && styleSel.value ? styleSel.value : null;
         var blob = await api('/admin-tts-preview.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type':'application/json' },
             body: JSON.stringify({
                 tts_key: TTS_KEY,
-                voice_code: $('preview-voice').value,
-                style: $('preview-style').value || null,
-                rate_pct: parseInt($('preview-rate').value, 10) || 0,
-                pitch_st: parseFloat($('preview-pitch').value) || 0,
-                text: $('preview-text').value,
+                voice_code: v.tts_voice_code,
+                style: style,
+                rate_pct: rate, pitch_st: pitch, volume: 100,
+                text: text,
             }),
         });
-        var url = URL.createObjectURL(blob);
-        $('preview-audio').src = url;
-        $('preview-audio').style.display = 'block';
-        $('preview-audio').play();
-        $('preview-status').textContent = 'Done.'; $('preview-status').className = 'status-msg success';
+        var audio = $('vc-audio');
+        audio.src = URL.createObjectURL(blob);
+        audio.style.display = 'block';
+        audio.play();
     } catch (e) {
-        $('preview-status').textContent = 'Error: ' + e.message; $('preview-status').className = 'status-msg error';
+        var s = $('vc-status'); if (s) { s.textContent = 'Play failed: ' + e.message; s.className = 'status-msg error'; }
+    } finally {
+        btn.disabled = false; btn.textContent = '▶';
     }
 }
 
