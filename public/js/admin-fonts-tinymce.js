@@ -60,18 +60,53 @@
         return first;
     }
 
-    // SVG icon for a font: shows either the glyph (sample text) in the
-    // font, or the display name in the font when no glyph is configured.
+    // SVG icon for a font — renders the FULL visual since we suppress the
+    // menu item's separate text label. Avoids the duplicated "Name (UI
+    // font) | Name (own font)" we'd otherwise show on non-glyph fonts.
+    //
+    //   - With glyph: display name in UI font, sample glyph alongside in
+    //     the target font (e.g. "Yada Towrah  HWHY").
+    //   - Without glyph: display name rendered in the target font only
+    //     (matches TinyMCE's stock font preview behavior).
+    //
+    // The "data-yy-font" attribute lets us target these SVGs (and their
+    // surrounding menu items) with the injected dropdown CSS below.
     function buildIconSvg(font) {
-        var family = esc(primaryFamily(font.stack));
-        var text   = esc(font.glyph || font.display);
-        // 24px high keeps it aligned with TinyMCE's menu item height.
-        // letter-length is variable so we widen the viewBox generously.
-        return '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="20" viewBox="0 0 80 20">'
-             +   '<text x="0" y="15" font-family="' + family + '" font-size="14" fill="currentColor">'
-             +     text
-             +   '</text>'
+        var family  = esc(primaryFamily(font.stack));
+        var display = esc(font.display);
+        var H = 26;
+        var charNarrow = 8;   // ~px/char at UI font, size 15
+        var charWide   = 12;  // ~px/char at sample size 20
+        if (font.glyph) {
+            var glyph  = esc(font.glyph);
+            var nameW  = display.length * charNarrow + 6;
+            var gap    = 18;
+            var glyphW = glyph.length   * charWide   + 6;
+            var W      = nameW + gap + glyphW;
+            return '<svg xmlns="http://www.w3.org/2000/svg" data-yy-font="1" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">'
+                 +   '<text x="0" y="' + (H - 7) + '" font-size="15" fill="currentColor">' + display + '</text>'
+                 +   '<text x="' + (nameW + gap) + '" y="' + (H - 5) + '" font-family="' + family + '" font-size="20" fill="currentColor">' + glyph + '</text>'
+                 + '</svg>';
+        }
+        var size = 20;
+        var w = display.length * charWide + 6;
+        return '<svg xmlns="http://www.w3.org/2000/svg" data-yy-font="1" width="' + w + '" height="' + H + '" viewBox="0 0 ' + w + ' ' + H + '">'
+             +   '<text x="0" y="' + (H - 5) + '" font-family="' + family + '" font-size="' + size + '" fill="currentColor">' + display + '</text>'
              + '</svg>';
+    }
+
+    // One-time CSS injection: widen the icon column so our oversized SVGs
+    // aren't clipped, and hide the empty label slot for our font items.
+    function injectDropdownCss() {
+        if (document.getElementById('yy-font-dropdown-css')) return;
+        var css =
+            '.tox-collection__item-icon:has(svg[data-yy-font]) { width: auto !important; flex: 0 0 auto !important; padding-right: 8px; }' +
+            '.tox-collection__item-icon svg[data-yy-font] { width: auto !important; height: 26px !important; }' +
+            '.tox-collection__item:has(svg[data-yy-font]) .tox-collection__item-label { display: none !important; }';
+        var el = document.createElement('style');
+        el.id = 'yy-font-dropdown-css';
+        el.textContent = css;
+        document.head.appendChild(el);
     }
 
     // Build a TinyMCE @font-face CSS string for fonts that map to a known
@@ -139,6 +174,8 @@
     };
 
     function registerFontButton(editor, fonts) {
+        // Widen icon column + hide empty label slot for our font items.
+        injectDropdownCss();
         // Register one icon per font (idempotent — addIcon will overwrite).
         fonts.forEach(function(f) {
             try {
@@ -156,7 +193,14 @@
                     g.forEach(function(f) {
                         items.push({
                             type: 'menuitem',
-                            text: f.display,
+                            // text intentionally a single space — TinyMCE
+                            // still renders the row, but our injected CSS
+                            // hides the label so the icon is the only
+                            // visible element. Accessible name comes from
+                            // `aria-label` (TinyMCE falls back to icon name
+                            // when text is blank) — set tooltip explicitly.
+                            text: ' ',
+                            tooltip: f.display,
                             icon: 'yy-font-' + f.key,
                             onAction: (function(stack) {
                                 return function() { editor.execCommand('FontName', false, stack); };

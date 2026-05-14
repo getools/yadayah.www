@@ -45,7 +45,20 @@ function loadTtsConfig(PDO $db, int $ttsKey): array {
         $categories[$r['tts_category']] = $r;
     }
 
-    $tuneStmt = $db->prepare("SELECT * FROM yy_tts_tune WHERE tts_key = ? AND tts_tune_active_flag = TRUE ORDER BY length(tts_tune_print) DESC");
+    // Tune precedence when several rows could match the same word:
+    //   1. Higher tts_tune_sort first (admin's manual override).
+    //   2. A rule with an explicit per-tune voice wins over one without
+    //      (the user said "specific voice model version should be implemented").
+    //   3. Longer Print first (so "Yahowah's" beats "Yahowah" on the
+    //      possessive form even when both are unsorted).
+    $tuneStmt = $db->prepare("
+        SELECT *
+          FROM yy_tts_tune
+         WHERE tts_key = ? AND tts_tune_active_flag = TRUE
+         ORDER BY COALESCE(tts_tune_sort, 0) DESC,
+                  (tts_tune_voice_code IS NOT NULL) DESC,
+                  length(tts_tune_print) DESC
+    ");
     $tuneStmt->execute([$ttsKey]);
     $tunes = $tuneStmt->fetchAll();
 
@@ -306,6 +319,18 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             // reads "Tor-ahs" as one continuous word instead of getting
             // broken up at the apostrophe.
             $replS = buildSubReplSsml($print . "'s", $phon . 's');
+        }
+        // Per-tune voice override: wrap the substitution in a nested
+        // <voice name="..."> so this one phrase switches voices while
+        // the surrounding paragraph keeps its category voice. Azure
+        // supports nested <voice> tags in SSML. NB: a nested <voice>
+        // is NOT bound by the outer <prosody>, so a tune-level voice
+        // override speaks at the engine default rate/pitch.
+        $tuneVoice = trim((string)($t['tts_tune_voice_code'] ?? ''));
+        if ($tuneVoice !== '') {
+            $tvEsc = htmlspecialchars($tuneVoice, ENT_QUOTES | ENT_XML1);
+            $repl  = "<voice name=\"$tvEsc\">$repl</voice>";
+            $replS = "<voice name=\"$tvEsc\">$replS</voice>";
         }
         $tokenMap[$token]  = $repl;
         $tokenMap[$tokenS] = $replS;
@@ -642,18 +667,7 @@ function azureTtsSynthesize(string $ssml, array $cfg, ?string &$err = null): str
     $cerr = curl_error($ch);
     curl_close($ch);
     if ($resp === false || $code >= 400) {
-        $body = $cerr ?: substr((string)$resp, 0, 300);
-        if ($code === 400 && $body === '') {
-            // Azure returns 400 with empty body for unknown voice codes, unsupported
-            // styles, or IPA phoneme strings it cannot parse. Extract SSML hints.
-            $vm = [];
-            preg_match('/<voice name="([^"]+)"/', $ssml, $vm);
-            $body = '(empty Azure body; voice=' . ($vm[1] ?? 'unknown')
-                  . ', ssml_chars=' . mb_strlen($ssml)
-                  . (strpos($ssml, '<phoneme') !== false ? ', has_phoneme=1' : '')
-                  . (strpos($ssml, 'mstts:express-as') !== false ? ', has_style=1' : '') . ')';
-        }
-        $err = "Azure TTS HTTP $code: " . $body;
+        $err = "Azure TTS HTTP $code: " . ($cerr ?: substr((string)$resp, 0, 300));
         return '';
     }
     return (string)$resp;

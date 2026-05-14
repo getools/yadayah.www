@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1">
+    <meta name="page-version" content="1778795863">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
@@ -40,6 +40,15 @@
         /* Tighter spacing for the Pronunciations table — many columns. */
         #pane-pronunciations .tts-table th, #pane-pronunciations .tts-table td { padding:4px 6px; }
         #pane-pronunciations .f-type-radio { width:13px; height:13px; margin:0; vertical-align:middle; cursor:pointer; }
+        /* Per-row mode toggle: SUB or IPA selected → show only the text
+           inputs that belong to that mode. Radios stay visible so the
+           user can flip modes from either cell. */
+        #pane-pronunciations tr.tune-mode-sub .f-ipa,
+        #pane-pronunciations tr.tune-mode-sub .f-ipa-helper,
+        #pane-pronunciations tr.tune-mode-sub .f-warn-ipa,
+        #pane-pronunciations tr.tune-mode-sub .f-sapi,
+        #pane-pronunciations tr.tune-mode-sub .f-warn-sapi { display:none; }
+        #pane-pronunciations tr.tune-mode-ipa .f-sub        { display:none; }
         /* Validation warning icon — sits to the right of the input. */
         .f-bi-btn { background:#fafafa; border:1px solid #ccc; border-radius:3px; padding:2px 6px; cursor:pointer; font-size:0.78rem; line-height:1.2; flex:0 0 auto; color:#888; min-width:20px; }
         .f-bi-btn.on { background:#31345A; color:#fff; border-color:#31345A; }
@@ -312,12 +321,14 @@
                 <thead>
                     <tr>
                         <th style="width:32px;text-align:center;" title="Active — uncheck to disable this rule"></th>
-                        <th onclick="sortTunesBy('print')"      style="width:22%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
+                        <th onclick="sortTunesBy('print')"      style="width:18%;cursor:pointer;" title="Click to sort by Print">Print<span class="sort-arrow" data-col="print"></span></th>
                         <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
-                        <th style="width:23%;text-align:left;padding-left:25px;" title="Re-spelling — picked variant has its radio checked">SUB</th>
-                        <th style="width:19%;text-align:left;padding-left:25px;" title="IPA — picked variant has its radio checked">IPA</th>
-                        <th style="width:21%" title="Saved for reference / comparison. Azure neural voices don't accept the SAPI alphabet, so it isn't selectable for synthesis.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
+                        <th class="col-sub"  style="width:22%;text-align:left;padding-left:25px;" title="Re-spelling — visible while SUB radio is selected">SUB</th>
+                        <th class="col-ipa"  style="width:18%;text-align:left;padding-left:25px;" title="IPA — visible while IPA radio is selected">IPA</th>
+                        <th class="col-sapi" style="width:18%" title="Reference SAPI — visible while IPA radio is selected. Azure neural voices don't accept SAPI, so this is for reference only.">SAPI <span style="color:#999;font-weight:400;">(ref)</span></th>
                         <th style="width:36px"></th>
+                        <th onclick="sortTunesBy('voice')" style="width:130px;cursor:pointer;" title="Per-tune voice override. When set, this word switches to that voice mid-sentence. A tune with a voice wins over one without when the same text matches both.">Voice<span class="sort-arrow" data-col="voice"></span></th>
+                        <th onclick="sortTunesBy('sort')" style="width:48px;text-align:right;cursor:pointer;" title="Manual priority — higher value wins when multiple tunes match the same text. Blank/0 = default order.">Sort<span class="sort-arrow" data-col="sort"></span></th>
                         <th style="width:30px;text-align:center;" title="Click the icon to add or edit a note">Note</th>
                         <th style="width:32px;text-align:right;"></th>
                     </tr>
@@ -1620,6 +1631,12 @@ function buildTuneRow(t) {
     var boldOn   = !!t.tts_tune_match_bold;
     var italicOn = !!t.tts_tune_match_italic;
     var caseOn   = !!t.tts_tune_match_case_sensitive;
+    // Drive SUB/IPA/SAPI input visibility from a row-level class. CSS in
+    // the stylesheet block hides the off-mode inputs (radios stay visible
+    // so users can flip between SUB and IPA without an extra step).
+    tr.classList.add('tune-mode-' + savedType);
+    var voiceCode = (t.tts_tune_voice_code || '');
+    var sortVal   = (t.tts_tune_sort != null && t.tts_tune_sort !== '') ? t.tts_tune_sort : '';
     tr.innerHTML =
         '<td style="padding:4px 2px;text-align:center;"><input type="checkbox" class="f-active"' + (t.tts_tune_active_flag !== false ? ' checked' : '') + '></td>' +
         '<td><div style="display:flex;align-items:center;gap:4px;">'
@@ -1629,22 +1646,33 @@ function buildTuneRow(t) {
             + '<button type="button" class="f-bi-btn f-case'   + (caseOn   ? ' on' : '') + '" title="Case-sensitive match (default is case-insensitive)">Aa</button>'
         + '</div></td>' +
         '<td class="f-count" style="text-align:right;font-variant-numeric:tabular-nums;color:#555;">' + count + '</td>' +
-        '<td><label style="display:flex;align-items:center;gap:6px;">'
+        '<td class="col-sub"><label style="display:flex;align-items:center;gap:6px;">'
             + '<input type="radio" name="' + grp + '" class="f-type-radio" value="sub" title="Use SUB for this rule"' + subChecked + '>'
             + '<input type="text" class="f-sub" value="' + escapeHtml(t.tts_tune_phonetic_sub || '') + '" style="flex:1;">'
         + '</label></td>' +
-        '<td><label style="display:flex;align-items:center;gap:6px;">'
+        '<td class="col-ipa"><label style="display:flex;align-items:center;gap:6px;">'
             + '<input type="radio" name="' + grp + '" class="f-type-radio" value="ipa" title="Use IPA for this rule"' + ipaChecked + '>'
             + '<input type="text" class="f-ipa" value="' + escapeHtml(t.tts_tune_phonetic_ipa || '') + '" style="flex:1;font-family:monospace;">'
             + '<button type="button" class="f-ipa-helper" title="Insert IPA symbols">ⓘ</button>'
             + '<span class="f-warn f-warn-ipa" title="">⚠</span>'
         + '</label></td>' +
-        '<td><div style="display:flex;align-items:center;gap:4px;">'
+        '<td class="col-sapi"><div style="display:flex;align-items:center;gap:4px;">'
             + '<input type="text" class="f-sapi" value="' + escapeHtml(t.tts_tune_phonetic_sapi || '') + '" style="flex:1;font-family:monospace;">'
             + '<span class="f-warn f-warn-sapi" title="">⚠</span>'
         + '</div></td>' +
         '<td style="padding:8px 2px;text-align:center;">' +
             '<button class="btn-sm btn-sec" data-act="listen" title="Play with the selected variant (SUB or IPA)" style="margin:0;padding:5px 8px;">▶</button>' +
+        '</td>' +
+        // Voice column — per-tune voice override. Empty value means
+        // "use whatever voice the surrounding category supplies".
+        '<td style="padding:4px 2px;">' +
+            '<select class="f-voice" title="Override voice for this word — wraps the substitution in a nested <voice> tag. Leave blank to inherit the surrounding category voice." style="width:100%;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;">' +
+                '<option value=""></option>' +
+            '</select>' +
+        '</td>' +
+        // Sort column — manual priority. Higher wins on tie.
+        '<td style="padding:4px 2px;">' +
+            '<input type="number" class="f-sort" value="' + escapeHtml(String(sortVal)) + '" placeholder="0" style="width:100%;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;text-align:right;">' +
         '</td>' +
         '<td style="text-align:center;padding:4px 2px;width:30px;">'
             + '<input type="hidden" class="f-note" value="' + escapeHtml(t.tts_tune_note || '') + '">'
@@ -1655,6 +1683,22 @@ function buildTuneRow(t) {
         '<td style="text-align:right;padding:8px 6px;">' +
             '<button class="btn-sm btn-del" data-act="del" title="Delete" style="margin:0;">×</button>' +
         '</td>';
+    // Populate the per-tune voice dropdown from the global catalog,
+    // shortening "Brian (Multilingual, authoritative male, US)" down to
+    // "Brian" so the cell stays narrow. Inactive voices are excluded.
+    var voiceSelEl = tr.querySelector('.f-voice');
+    var voices = (CATALOG && CATALOG.voices) ? CATALOG.voices : [];
+    voices.forEach(function (v) {
+        var o = document.createElement('option');
+        o.value = v.code;
+        // Take the part before the first " (" so the labels read just
+        // "Brian", "Davis", "Ava", etc. — the strip also handles labels
+        // like "Brian (Multilingual..." correctly.
+        var shortLabel = (v.label || v.code).split(' (')[0].trim();
+        o.textContent = shortLabel;
+        voiceSelEl.appendChild(o);
+    });
+    if (voiceCode) voiceSelEl.value = voiceCode;
     tr.querySelectorAll('button').forEach(b => b.addEventListener('click', () => handleTuneAction(tr, b.dataset.act)));
     tr.querySelectorAll('input[type=text]').forEach(function(el) {
         el.addEventListener('input',  function() { scheduleAutoSave(el, function() { return saveTuneRow(tr); }, 600); });
@@ -1668,6 +1712,10 @@ function buildTuneRow(t) {
         // event when click happens inside a wrapping <label>).
         var saveOnSelect = function () {
             if (!r.checked) return;
+            // Toggle the row-level mode class so the inactive SUB or
+            // IPA/SAPI input fields hide via CSS.
+            tr.classList.remove('tune-mode-sub', 'tune-mode-ipa');
+            tr.classList.add('tune-mode-' + r.value);
             console.log('[tts] radio select', r.value, 'row=', tr.dataset.key || '(new)');
             saveTuneRow(tr).catch(function () {});
         };
@@ -1755,9 +1803,13 @@ async function saveTuneRow(tr) {
     var mBold   = tr.querySelector('.f-bi-btn.f-bold').classList.contains('on');
     var mItalic = tr.querySelector('.f-bi-btn.f-italic').classList.contains('on');
     var mCase   = tr.querySelector('.f-bi-btn.f-case').classList.contains('on');
+    var voiceEl = tr.querySelector('.f-voice');
+    var sortEl  = tr.querySelector('.f-sort');
+    var voiceCode = voiceEl ? voiceEl.value : '';
+    var sortVal   = sortEl  ? sortEl.value  : '';
     if (!print) return;
     var s = $('tunes-status');
-    console.log('[tts] saveTuneRow', { key: key, print: print, type: type, sub: sub, ipa: ipa, sapi: sapi });
+    console.log('[tts] saveTuneRow', { key: key, print: print, type: type, sub: sub, ipa: ipa, sapi: sapi, voice: voiceCode, sort: sortVal });
     // We allow type to be saved even if the chosen column is empty — the
     // synthesis path silently skips empty rules. So a user can flip Type
     // around to compare variants without each empty slot blocking saves.
@@ -1768,7 +1820,8 @@ async function saveTuneRow(tr) {
                 action:'save_tune', tts_key: TTS_KEY, tts_tune_key: key,
                 print: print, phonetic_sub: sub, phonetic_ipa: ipa, phonetic_sapi: sapi,
                 phonetic_type: type, note: note, active: active,
-                match_bold: mBold, match_italic: mItalic, match_case_sensitive: mCase
+                match_bold: mBold, match_italic: mItalic, match_case_sensitive: mCase,
+                voice_code: voiceCode || '', sort: sortVal === '' ? '' : (parseInt(sortVal, 10) || 0)
             }),
         });
         tr.dataset.key = res.tts_tune_key;
