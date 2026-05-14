@@ -1110,24 +1110,39 @@ async function loadTunes() {
 }
 
 // Fill the "test voice" dropdown that sits in the last column header. The
-// chosen voice is what plays when ▶ is clicked on any phrase row. We pick
-// the saved 'main' category voice as the default if available, else the
-// first voice in the catalog.
+// chosen voice is what plays when ▶ is clicked on any phrase row. Only
+// voices currently assigned to a Default category appear here — testing a
+// pronunciation against a voice that's never used in production is noise.
+// Re-run whenever Defaults change (no dataset.populated guard) so the
+// dropdown stays in sync with the Defaults tab.
 function populateTunesTestVoiceSelect() {
     var sel = $('tunes-test-voice');
     if (!sel) return;
-    if (sel.dataset.populated) return; // Idempotent — voices don't change at runtime.
+    var prev = sel.value;
+    // Set of voice codes currently assigned to any Default category.
+    var assigned = {};
+    Object.keys(STATE.categories || {}).forEach(function(catCode) {
+        var code = STATE.categories[catCode] && STATE.categories[catCode].tts_voice_code;
+        if (code) assigned[code] = true;
+    });
+    var filtered = (CATALOG.voices || []).filter(function(v) { return assigned[v.code]; });
+    // Fallback: if nothing matches (e.g. defaults not yet saved), fall
+    // back to the full catalog so the dropdown is never empty.
+    if (!filtered.length) filtered = CATALOG.voices || [];
     sel.innerHTML = '';
-    CATALOG.voices.forEach(function(v) {
+    filtered.forEach(function(v) {
         var o = document.createElement('option');
         o.value = v.code;
         o.textContent = v.label;
         sel.appendChild(o);
     });
-    var fallback = (STATE.categories && STATE.categories.main && STATE.categories.main.tts_voice_code)
-        || (CATALOG.voices[0] && CATALOG.voices[0].code) || '';
+    // Preserve the previous selection if still present; otherwise prefer
+    // the body category's voice, then any first option.
+    var bodyVoice = STATE.categories && STATE.categories.body && STATE.categories.body.tts_voice_code;
+    var fallback = (prev && assigned[prev]) ? prev
+                 : (bodyVoice && assigned[bodyVoice]) ? bodyVoice
+                 : (filtered[0] && filtered[0].code) || '';
     if (fallback) sel.value = fallback;
-    sel.dataset.populated = '1';
 }
 
 var TUNES_SORT      = { col: 'print', dir: 'asc' };
