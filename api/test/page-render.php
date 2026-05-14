@@ -19,6 +19,27 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') errorResponse('Method not allowed', 40
 
 $db = getDb();
 
+// ── Load-More paginated request ────────────────────────────────────────
+// When the public renderer's Load More button is clicked, it calls this
+// endpoint with ?section_key=N&offset=M&limit=K to fetch the *next* batch
+// of items for one section. Response is just {items:[...]}; the caller
+// appends them to the existing grid. No auth required (same as the
+// non-paginated path — only active sections are returned).
+$sectionKey = isset($_GET['section_key']) ? (int)$_GET['section_key'] : 0;
+$paginatedLimit = isset($_GET['limit']) ? (int)$_GET['limit'] : 0;
+if ($sectionKey > 0 && $paginatedLimit > 0) {
+    $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
+    if ($paginatedLimit > 200) $paginatedLimit = 200;
+    $st = $db->prepare("SELECT page_section_test_config FROM yy_page_section_test WHERE page_section_test_key = ? AND page_section_test_type = 'items' AND page_section_test_active_flag = TRUE");
+    $st->execute([$sectionKey]);
+    $cfgRow = $st->fetchColumn();
+    if ($cfgRow === false) errorResponse('Section not found', 404);
+    $cfg = is_string($cfgRow) ? (json_decode($cfgRow, true) ?: []) : ($cfgRow ?: []);
+    $cfg['max_count'] = $paginatedLimit;
+    $cfg['_offset']   = $offset;
+    jsonResponse(['items' => resolveItemsSection($db, $cfg)]);
+}
+
 if (!empty($_GET['key'])) {
     $stmt = $db->prepare("SELECT * FROM yy_page_test WHERE page_test_key = ? AND page_test_active_flag = TRUE");
     $stmt->execute([(int)$_GET['key']]);
@@ -232,6 +253,9 @@ function resolveItemsSection(PDO $db, array $cfg): array {
     $maxCount = (int)($cfg['max_count'] ?? 24);
     if ($maxCount < 1) $maxCount = 24;
     if ($maxCount > 200) $maxCount = 200;
+    // _offset is set by the Load More paginated path above to fetch the
+    // next batch. Not exposed as a UI field — it's a transient runtime hint.
+    $offsetVal = max(0, (int)($cfg['_offset'] ?? 0));
 
     $sql = "SELECT i.feed_item_key, i.feed_key, i.feed_item_external_id, i.feed_item_embed_id,
                    COALESCE(i.feed_item_title_override, i.feed_item_title_import) AS feed_item_title,
@@ -242,7 +266,7 @@ function resolveItemsSection(PDO $db, array $cfg): array {
             $joins
             WHERE $where
             ORDER BY $order
-            LIMIT " . (int)$maxCount;
+            LIMIT " . (int)$maxCount . " OFFSET " . (int)$offsetVal;
 
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
