@@ -25,7 +25,25 @@ $ttsKey = (int)($data['tts_key'] ?? 0);
 $text   = trim((string)($data['text'] ?? ''));
 if (!$ttsKey) errorResponse('tts_key required');
 if ($text === '') errorResponse('text required');
-if (mb_strlen($text) > 1000) errorResponse('text too long (1000 char limit for preview)');
+if (mb_strlen($text) > 2000) errorResponse('text too long (2000 char limit for preview)');
+
+// If the caller sends HTML-formatted text (with <b>/<i> from the
+// contenteditable preview field), strip outer wrappers like <div> /
+// <br> / <p> but keep the inline B/I markup that drives segmentation.
+// Anything else (data-font spans, attributes) is dropped so the
+// preview matches what segmentParagraph already understands.
+$hasFormat = (bool)preg_match('/<\s*(b|i|strong|em)\b/i', $text);
+if ($hasFormat) {
+    // Normalise common contenteditable artifacts to plain inline B/I.
+    $text = preg_replace('/<\s*strong\b[^>]*>/i', '<b>', $text);
+    $text = preg_replace('/<\s*\/\s*strong\s*>/i', '</b>', $text);
+    $text = preg_replace('/<\s*em\b[^>]*>/i',     '<i>', $text);
+    $text = preg_replace('/<\s*\/\s*em\s*>/i',    '</i>', $text);
+    // Drop any other tag — keep only <b>, </b>, <i>, </i>.
+    $text = preg_replace('/<(?!\/?(?:b|i)\b)[^>]+>/i', ' ', $text);
+    $text = preg_replace('/\s+/u', ' ', $text);
+    $text = trim($text);
+}
 
 $cfg = loadTtsConfig($db, $ttsKey);
 if (!$cfg['system']) errorResponse('Unknown tts_key', 404);
@@ -66,7 +84,31 @@ if ($overrideVoice) {
     ];
 }
 
-$voiceBlock = buildVoiceBlock($text, $cfg, $category, $overrideVoice);
+// When the text carries <b>/<i> markup, segment it the same way the
+// build worker does so each B/I run routes through the matching
+// category voice ('translation' for <b>, 'word_definition' for (parens),
+// 'main' otherwise) — pronunciation tunes with B/I match flags then
+// fire correctly. The caller's voice_code override is applied as the
+// main-category voice so the listener still hears their picked voice
+// for the body of the sentence.
+if ($hasFormat) {
+    $segs = segmentParagraph($text);
+    if (!$segs) errorResponse('no audible content after segmentation');
+    if ($overrideVoice && !isset($cfg['categories']['main'])) {
+        $cfg['categories']['main'] = ['tts_voice_code' => $overrideVoice];
+    }
+    $voiceBlock = '';
+    foreach ($segs as $seg) {
+        // Override applies only to the main category — translation /
+        // word_definition keep their configured category voices so the
+        // preview matches what the synthesized book would actually
+        // sound like.
+        $segOverride = ($seg['category'] === $category) ? $overrideVoice : null;
+        $voiceBlock .= buildVoiceBlock($seg['text'], $cfg, $seg['category'], $segOverride);
+    }
+} else {
+    $voiceBlock = buildVoiceBlock($text, $cfg, $category, $overrideVoice);
+}
 $ssml = wrapSsml($voiceBlock);
 
 $err = '';

@@ -92,6 +92,15 @@ if ($action === 'save_active') {
     jsonResponse(['ok' => true]);
 }
 
+if ($action === 'save_note') {
+    $voiceKey = (int)($data['tts_voice_key'] ?? 0);
+    if (!$voiceKey) errorResponse('tts_voice_key required');
+    $note = trim((string)($data['note'] ?? ''));
+    $db->prepare("UPDATE yy_tts_voice SET tts_voice_note = ?, tts_voice_revision_dtime = NOW() WHERE tts_voice_key = ?")
+       ->execute([$note === '' ? null : $note, $voiceKey]);
+    jsonResponse(['ok' => true]);
+}
+
 if ($action === 'bulk_save') {
     $items = $data['items'] ?? [];
     if (!is_array($items)) errorResponse('items must be an array');
