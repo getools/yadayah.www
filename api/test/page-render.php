@@ -119,6 +119,10 @@ function resolveItemsSection(PDO $db, array $cfg): array {
         $where .= " AND i.feed_item_type = ?";
         $params[] = $cfg['content_type'];
     }
+    if (!empty($cfg['orientation']) && in_array($cfg['orientation'], ['vertical', 'horizontal'], true)) {
+        $where .= " AND i.feed_item_orientation = ?";
+        $params[] = $cfg['orientation'];
+    }
     // Page/category filters. Preferred shape:
     //   cfg.pages: [{page_key, category_key}, ...]  — items match if any pair matches
     // Legacy shape (still honored for older saved configs):
