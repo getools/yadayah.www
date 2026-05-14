@@ -187,7 +187,10 @@
         <div class="tts-section">
             <h3>Voice catalog</h3>
             <p class="desc">Every voice Azure offers in your region. Uncheck a row to hide it from the picker dropdowns above. Click ▶ to hear a row's voice say the text from <em>Preview any voice</em>, using that section's Rate &amp; Pitch.</p>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;justify-content:flex-end;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;">
+                <button type="button" id="vc-refresh-btn" onclick="refreshVoiceCatalog()" title="Pull the latest /voices/list from Azure and upsert into the catalog. Existing active flags are preserved." style="padding:5px 12px;border:1px solid #31345A;background:#31345A;color:#fff;border-radius:4px;cursor:pointer;font-size:0.85rem;">Check for new voices</button>
+                <span id="vc-refresh-status" style="font-size:0.8rem;"></span>
+                <div style="flex:1 1 auto;"></div>
                 <span id="vc-summary" style="color:#666;font-size:0.8rem;font-variant-numeric:tabular-nums;"></span>
             </div>
             <table class="tts-table" id="voices-table" style="width:100%;font-size:0.85rem;">
@@ -742,6 +745,35 @@ var VC_STATE = {
 };
 var VC_DEFAULT_TEST_TEXT = 'Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah.';
 
+// Fetch Azure's /voices/list and upsert any new/changed voices into
+// yy_tts_voice. Active flags on existing rows are preserved by the
+// endpoint, so this is safe to run any time without re-enabling
+// previously-deactivated voices. New rows arrive with active_flag=false
+// — admins explicitly opt them in from the catalog table.
+async function refreshVoiceCatalog() {
+    var btn = $('vc-refresh-btn');
+    // Inline span right next to the button stays visible after the
+    // table re-renders (and after the page scrolls back to the top
+    // following a row update). #vc-status below the table is too far
+    // down the page to be useful here.
+    var s = $('vc-refresh-status');
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking Azure…'; }
+    if (s)   { s.textContent = ''; s.style.color = '#666'; }
+    try {
+        var r = await api('/admin-tts-voices.php', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ action:'refresh', tts_key: TTS_KEY }),
+        });
+        var msg = (r.added|0) + ' added · ' + (r.updated|0) + ' updated · ' + (r.total|0) + ' total';
+        if (s) { s.textContent = msg; s.style.color = (r.added|0) > 0 ? '#2e7d32' : '#666'; }
+        await loadVoiceCatalog();
+    } catch (e) {
+        if (s) { s.textContent = 'Refresh failed: ' + e.message; s.style.color = '#c0392b'; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Check for new voices'; }
+    }
+}
+
 async function loadVoiceCatalog() {
     var tbody = $('voices-tbody');
     if (!tbody) return;
@@ -764,14 +796,24 @@ async function loadVoiceCatalog() {
 }
 
 // Format a PostgreSQL timestamptz string ("2026-05-13 21:58:12.823711+00")
-// as yyyy-MM-dd HH:mm in the user's local timezone. Empty input → ''.
+// in the user's local timezone. Two variants — the short yyyy-MM-dd
+// goes in table cells (most of the time you only care about the date),
+// the long yyyy-MM-dd HH:mm:ss goes in the cell's title= tooltip for
+// when you hover and want the wallclock.
 function vcFmtDt(s) {
     if (!s) return '';
     var d = new Date(s);
     if (isNaN(d.getTime())) return '';
     var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+function vcFmtDtFull(s) {
+    if (!s) return '';
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
 function populateVoiceFilterOptions() {
@@ -902,7 +944,7 @@ function buildVoiceRow(v) {
         '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_gender   || '').charAt(0) + '</td>' +
         '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_type     || '') + '</td>' +
         '<td style="text-align:center;padding:4px 2px;color:' + (isMulti ? '#2e7d32' : '#aaa') + ';">' + (isMulti ? '✓' : '') + '</td>' +
-        '<td style="text-align:center;padding:4px 2px;font-variant-numeric:tabular-nums;color:#666;font-size:0.78rem;">' + (vcFmtDt(v.tts_voice_download_dtime) || '—') + '</td>' +
+        '<td style="text-align:center;padding:4px 2px;font-variant-numeric:tabular-nums;color:#666;font-size:0.78rem;" title="' + escapeHtml(vcFmtDtFull(v.tts_voice_download_dtime)) + '">' + (vcFmtDt(v.tts_voice_download_dtime) || '—') + '</td>' +
         // Pen-icon note button — mirrors the Pronunciations table's
         // .t-note-btn so the look + interaction model is consistent.
         '<td style="text-align:center;padding:4px 2px;width:30px;">'
