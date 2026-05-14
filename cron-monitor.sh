@@ -28,3 +28,8 @@ if awk -v m="${_flip_age_min:-9999}" 'BEGIN{exit !(m+0 > 55)}'; then
     /opt/yada-www/cron-fliphtml5-match.sh >> /var/log/fliphtml5-match.log 2>&1
 fi
 
+# 6. Every tick: run flipbook retry sweep (was standalone */5 cron; consolidated here).
+# Handles volumes stuck in 'download-pending' or 'warning' FlipHTML5-download states.
+# Script is self-flock'd and processes only one volume per run.
+/opt/yada-www/cron-flipbook-retry.sh >> /var/log/flipbook-download.log 2>&1
+
