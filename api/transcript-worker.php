@@ -234,7 +234,13 @@ $remoteComponentsArg = ' --remote-components ejs:github';
 if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
     updateJob($db, $jobKey, ['job_progress' => 15, 'job_message' => 'Fetching YouTube captions...']);
     $tmpFile = sys_get_temp_dir() . "/transcript_$jobKey";
-    $ytDlp = trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');
+    // Prefer pip-based yt-dlp wrapper: it loads the bgutil POT provider plugin
+    // needed to bypass YouTube's Botguard. The compiled binary at
+    // /usr/local/bin/yt-dlp cannot load external Python plugins.
+    $ytDlpWrapper = __DIR__ . '/yt-dlp-plugin';
+    $ytDlp = is_executable($ytDlpWrapper)
+        ? $ytDlpWrapper
+        : trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');
     if (!$ytDlp) {
         $methodFailures[] = "yt_dlp_captions: yt-dlp binary not found in PATH";
     } elseif (!$videoId) {
@@ -369,7 +375,13 @@ if (!$rows && !$wantYoutubeCaptions) {
             updateJob($db, $jobKey, ['job_progress' => 30, 'job_message' => 'Using audio file: ' . basename($uploadedAudio)]);
         }
 
-        $ytDlp = trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');
+        // Prefer pip-based yt-dlp wrapper: it loads the bgutil POT provider plugin
+        // needed to bypass YouTube's Botguard. The compiled binary at
+        // /usr/local/bin/yt-dlp cannot load external Python plugins.
+        $ytDlpWrapper = __DIR__ . '/yt-dlp-plugin';
+        $ytDlp = is_executable($ytDlpWrapper)
+            ? $ytDlpWrapper
+            : trim(shell_exec('which yt-dlp 2>/dev/null') ?: '');
         if (!$usedUploadedAudio && !$ytDlp) {
             $methodFailures[] = "whisper_api: yt-dlp binary not found (needed to download audio)";
         } elseif (!$usedUploadedAudio && !$videoUrl) {
