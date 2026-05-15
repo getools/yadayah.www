@@ -618,6 +618,14 @@
           // shadow) — re-snap zones after the animation settles.
           setTimeout(positionFlipZones, 750);
         }
+        // After every navigation, give the URL-driven paragraph
+        // highlight another chance — the destination page's text-layer
+        // is typically built right after this fires.
+        try { tryReapplyUrlHighlight(); } catch (e) {}
+        // And one more pass shortly after, once carousel/spread text-
+        // layers have actually populated (their fetches are async).
+        setTimeout(() => { try { tryReapplyUrlHighlight(); } catch (e) {} }, 500);
+        setTimeout(() => { try { tryReapplyUrlHighlight(); } catch (e) {} }, 1500);
       };
       pageFlip.on('flip', update);
       pageFlip.on('init', update);
@@ -1140,22 +1148,49 @@
       // paragraph text via /api/paragraph-text.php and hands it to
       // FlipbookTTS.highlightParagraph which handles fuzzy span match +
       // retry-until-text-layer-ready. Safe to call repeatedly.
+      // Pending paragraph_number for URL-driven highlight. Stays set until
+      // update() (which fires after every page navigation) sees that bands
+      // are actually drawn — then it stops re-attempting. Re-attempts are
+      // necessary because on a deep-link load (#p=N&h=M), the initial fire
+      // happens BEFORE the carousel has navigated to N and built its text-
+      // layer, so the first highlight attempt finds nothing to match.
+      let _urlHighlightPending = 0;
+      let _urlHighlightText    = null;  // cached so re-fires skip the fetch
       function applyUrlHighlight(paragraphNum) {
+        // Always clear any prior URL-driven highlight on a new request.
+        document.querySelectorAll('.text-layer span.url-highlight')
+          .forEach(el => el.classList.remove('url-highlight'));
+        document.querySelectorAll('.text-layer .url-highlight-band')
+          .forEach(el => el.remove());
+        _urlHighlightPending = 0;
+        _urlHighlightText    = null;
         if (!window.FlipbookTTS || !FlipbookTTS.highlightParagraph) return;
-        if (!paragraphNum) {
-          // No highlight requested — clear any prior URL-driven highlight.
-          document.querySelectorAll('.text-layer span.url-highlight')
-            .forEach(el => el.classList.remove('url-highlight'));
-          return;
-        }
+        if (!paragraphNum) return;
+        _urlHighlightPending = paragraphNum;
         const url = '/api/paragraph-text.php?v=' + encodeURIComponent(cfg.bookCode) + '&h=' + paragraphNum;
         fetch(url, { credentials: 'omit' })
           .then(r => r.ok ? r.json() : null)
           .then(d => {
             if (!d || !d.text) return;
+            _urlHighlightText = d.text;
             FlipbookTTS.highlightParagraph(paragraphNum, d.text);
           })
           .catch(() => {});
+      }
+      // Called from update() after every page navigation. If the URL
+      // hash still wants a highlight and we haven't yet seen the band
+      // appear, fire highlightParagraph again — by now the carousel may
+      // have built the text-layer for the target page.
+      function tryReapplyUrlHighlight() {
+        if (!_urlHighlightPending || !_urlHighlightText) return;
+        if (document.querySelectorAll('.text-layer .url-highlight-band').length > 0) {
+          // Bands are already on the page — nothing more to do until the
+          // hash changes (which will reset _urlHighlightPending).
+          return;
+        }
+        if (window.FlipbookTTS && FlipbookTTS.highlightParagraph) {
+          FlipbookTTS.highlightParagraph(_urlHighlightPending, _urlHighlightText);
+        }
       }
       // If the URL hash carries a search query (deep-link from the site-
       // wide search results), seed the in-flipbook search box and run it.

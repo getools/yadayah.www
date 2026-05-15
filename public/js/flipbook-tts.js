@@ -794,7 +794,12 @@
                 markSpansOnLayerWithClass(layers[li], paraNorm, cssClass);
             }
         };
-        attempt(20);
+        // ~6s of retries (60 × 100ms). Carousel mode populates the text-
+        // layer for the focused page only AFTER updateCarousel(p) runs,
+        // which itself waits for pageFlip 'init'. On a deep-link load
+        // (#p=N&h=M), that whole chain can take >2s when the json fetch
+        // is cold; 6s covers slow networks too.
+        attempt(60);
     };
 
     // Variant of markSpansOnLayer that applies an arbitrary class instead

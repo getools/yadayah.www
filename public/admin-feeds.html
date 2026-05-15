@@ -228,6 +228,14 @@
                 flex-direction: column;
                 line-height: 1.15;
             }
+            /* Match Record / Stop / Download widths within their shared <th>.
+               Fixed 90px (includes the button's left+right padding via
+               box-sizing: border-box) so the column doesn't widen as users
+               select rows and the subtotal lines appear. */
+            #rec-process-btn, #rec-stop-btn, #rec-download-btn {
+                width: 115px;
+                box-sizing: border-box;
+            }
             #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.7rem;font-weight:normal; }
             #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer;font-weight:normal;font-size:0.7rem; }
             /* Very light warm tint for rows currently in a finalize /
@@ -256,6 +264,7 @@
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-process-btn" onclick="processSelectedRecordings()" style="background:#c00;border-color:#c00;color:#fff;white-space:nowrap;">▶ Record</button>
                         <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;white-space:nowrap;">⬛ Stop</button>
+                        <button class="btn btn-primary btn-sm" id="rec-download-btn" onclick="downloadSelectedRecordings()" title="Download MP3s for selected items that already have one" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">⬇ Download</button>
                     </th>
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-upload-btn" onclick="uploadCaptionsBulkFromHeader(this)" style="background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;" title="Upload transcripts as YouTube captions for selected rows; if none selected, prompts to upload all queued">↑ Upload</button>
@@ -2843,6 +2852,10 @@ function renderRecordings(d) {
         // Stored in seconds; updateProcessSelectedLabel() sums them across :checked.
         var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '"'
                     + ' data-duration="' + (parseInt(it.feed_item_duration_seconds, 10) || 0) + '"'
+                    // data-mp3: relative path under /u/audio/. Empty when no MP3 exists.
+                    // updateProcessSelectedLabel() reads this to update the Download button
+                    // count + time; downloadSelectedRecordings() iterates only the non-empty ones.
+                    + ' data-mp3="' + esc(it.feed_item_audio_file || '') + '"'
                     + ' onchange="updateRecHeaderCb()"'
                     + (inProgress ? ' disabled title="Locked while ' + esc(inProgressReason) + '"' : '');
         // In-progress rows get a very light warm tint instead of an opacity
@@ -2903,11 +2916,20 @@ function updateRecHeaderCb() {
 // checks so the total reads "" again).
 function updateProcessSelectedLabel() {
     var btn = document.getElementById('rec-process-btn');
+    var dlBtn = document.getElementById('rec-download-btn');
     if (!btn) return;
     var total = 0, n = 0;
+    var dlTotal = 0, dlN = 0;
     document.querySelectorAll('.rec-cb:checked').forEach(function(cb) {
-        total += parseInt(cb.dataset.duration, 10) || 0;
+        var d = parseInt(cb.dataset.duration, 10) || 0;
+        total += d;
         n++;
+        // Only count toward the Download summary if this item has an MP3
+        // on disk. Items without an MP3 row through Record only.
+        if (cb.dataset.mp3) {
+            dlTotal += d;
+            dlN++;
+        }
     });
     var pad = function(x) { return (x < 10 ? '0' : '') + x; };
     var fmt = function(s) {
@@ -2922,6 +2944,55 @@ function updateProcessSelectedLabel() {
     } else {
         btn.innerHTML = '▶ Record';
     }
+    if (dlBtn) {
+        if (dlN > 0) {
+            dlBtn.innerHTML = '⬇ Download'
+                            + '<div style="font-size:0.72rem;font-weight:400;opacity:0.9;margin-top:1px;">'
+                            +   dlN + ' file' + (dlN === 1 ? '' : 's') + ' &middot; ' + fmt(dlTotal)
+                            + '</div>';
+            dlBtn.disabled = false;
+            dlBtn.style.opacity = '1';
+            dlBtn.style.cursor = 'pointer';
+        } else {
+            dlBtn.innerHTML = '⬇ Download';
+            dlBtn.disabled = true;
+            dlBtn.style.opacity = '0.45';
+            dlBtn.style.cursor = 'not-allowed';
+        }
+    }
+}
+
+// Iterate the :checked items that have an MP3 and trigger one
+// browser download per file via a temporary <a download> click. Spacing
+// them by ~120ms gives the browser time to register each download as
+// distinct; without spacing, some browsers coalesce or drop the later
+// ones. Browser will prompt once to allow multi-file downloads.
+function downloadSelectedRecordings() {
+    var items = Array.prototype.filter.call(
+        document.querySelectorAll('.rec-cb:checked'),
+        function(cb) { return !!cb.dataset.mp3; }
+    );
+    if (!items.length) {
+        alert('No selected items have an MP3 to download. Select rows with the headphones icon.');
+        return;
+    }
+    items.forEach(function(cb, i) {
+        setTimeout(function() {
+            var path = cb.dataset.mp3;
+            // Strip any leading slash so we land on /u/audio/<path>.
+            if (path.charAt(0) === '/') path = path.substring(1);
+            var url = '/' + path;
+            // basename for the suggested filename
+            var name = path.split('/').pop() || ('mp3-' + cb.value + '.mp3');
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }, i * 120);
+    });
 }
 function getSelectedRecordingKeys() {
     return Array.prototype.map.call(document.querySelectorAll('.rec-cb:checked'), function(cb){ return parseInt(cb.value); });
