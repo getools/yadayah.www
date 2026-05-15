@@ -86,12 +86,21 @@
             // Stronger highlight for URL-driven paragraph targeting (when a
             // translation/search link includes #h=<N>). Darker and persists
             // until the user navigates away from that paragraph reference.
+            // PDF text-layer spans are one-per-word-cluster and absolutely
+            // positioned, so the inter-word spaces aren't covered by any
+            // span. We use box-shadow as a pair of solid horizontal
+            // extensions (-5px left, +5px right) — each highlighted span
+            // bleeds its color into the gap on either side without
+            // shifting layout, so adjacent highlighted spans read as one
+            // continuous band. The trailing 5px tab past the last
+            // highlighted span on each line is visually acceptable.
             '.text-layer span.url-highlight,',
             '.pg .text-layer span.url-highlight,',
             '.cpg .text-layer span.url-highlight {',
-            '    background: rgba(255,200,60,0.38) !important;',
-            '    box-shadow: 0 0 0 2px rgba(255,200,60,0.38);',
-            '    border-radius: 2px;',
+            '    background: rgba(255,200,60,0.40) !important;',
+            '    box-shadow: -5px 0 0 rgba(255,200,60,0.40),',
+            '                 5px 0 0 rgba(255,200,60,0.40) !important;',
+            '    border-radius: 0 !important;',
             '}',
         ].join('\n');
         document.head.appendChild(st);
