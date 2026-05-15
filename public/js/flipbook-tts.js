@@ -83,6 +83,16 @@
             '    box-shadow: 0 0 0 2px rgba(255,230,150,0.14);',
             '    border-radius: 2px;',
             '}',
+            // Stronger highlight for URL-driven paragraph targeting (when a
+            // translation/search link includes #h=<N>). Darker and persists
+            // until the user navigates away from that paragraph reference.
+            '.text-layer span.url-highlight,',
+            '.pg .text-layer span.url-highlight,',
+            '.cpg .text-layer span.url-highlight {',
+            '    background: rgba(255,200,60,0.38) !important;',
+            '    box-shadow: 0 0 0 2px rgba(255,200,60,0.38);',
+            '    border-radius: 2px;',
+            '}',
         ].join('\n');
         document.head.appendChild(st);
     }
@@ -579,6 +589,111 @@
             var n = p ? parseInt(p, 10) : 0;
             return (n > 0) ? n : 0;
         } catch (e) { return 0; }
+    }
+
+    // ── Public: URL-driven paragraph highlight ────────────────────────
+    //   FlipbookTTS.highlightParagraph(paragraphNum, paragraphText, opts)
+    //     opts: { cssClass: 'url-highlight', pages: [N, ...] }
+    // Spans on the visible page that match the supplied paragraph text are
+    // tagged with the given class (default `url-highlight`). Retries while
+    // the text-layer is still rendering — same behavior as the TTS path.
+    // Returns immediately; takes care of its own retries.
+    var urlRetryTimer = null;
+    BM.highlightParagraph = function (paragraphNum, paragraphText, opts) {
+        opts = opts || {};
+        var cssClass = opts.cssClass || 'url-highlight';
+        // Always clear any prior URL-driven highlight before applying a new one.
+        document.querySelectorAll('.text-layer span.' + cssClass)
+            .forEach(function (el) { el.classList.remove(cssClass); });
+        if (urlRetryTimer) { clearTimeout(urlRetryTimer); urlRetryTimer = null; }
+        if (!paragraphText) return;
+        var paraNorm = norm(paragraphText);
+        if (paraNorm.length < 4) return;
+
+        var pages = Array.isArray(opts.pages) && opts.pages.length ? opts.pages : null;
+        var attempt = function (retriesLeft) {
+            var isCarousel = document.body.classList.contains('mode-carousel');
+            // Resolve target pages. If the caller passed explicit pages,
+            // honor those (a paragraph may straddle a spread). Otherwise
+            // fall back to whatever .pg / .cpg elements are on screen.
+            var pgEls = [];
+            if (pages) {
+                for (var i = 0; i < pages.length; i++) {
+                    var el = isCarousel
+                        ? document.querySelector('#carousel .cpg[data-page="' + pages[i] + '"]')
+                        : document.querySelector('#book .pg[data-page="' + pages[i] + '"]');
+                    if (el) pgEls.push(el);
+                }
+            } else {
+                var sel = isCarousel ? '#carousel .cpg' : '#book .pg';
+                pgEls = Array.prototype.slice.call(document.querySelectorAll(sel));
+            }
+            var layers = [];
+            var missingLayer = false;
+            for (var p = 0; p < pgEls.length; p++) {
+                var L = pgEls[p].querySelector('.text-layer');
+                if (!L || !L.children.length) { missingLayer = true; continue; }
+                layers.push(L);
+            }
+            if (!layers.length || missingLayer) {
+                if (retriesLeft > 0) {
+                    urlRetryTimer = setTimeout(function () { attempt(retriesLeft - 1); }, 100);
+                    return;
+                }
+                if (!layers.length) return;
+            }
+            for (var li = 0; li < layers.length; li++) {
+                // markSpansOnLayer always uses class 'tts-current'; we want a
+                // distinct class for URL-driven highlights so it persists
+                // independently from the read-along band. Use a wrapper that
+                // marks with the desired class instead.
+                markSpansOnLayerWithClass(layers[li], paraNorm, cssClass);
+            }
+        };
+        attempt(20); // up to 2s while page renders
+    };
+
+    // Variant of markSpansOnLayer that applies an arbitrary class instead
+    // of the hardcoded 'tts-current'. Mirrors the same matching logic.
+    function markSpansOnLayerWithClass(layer, paraNorm, cssClass) {
+        var spans = layer.children;
+        if (!spans.length) return false;
+        var pageStr = '';
+        var ranges = [];
+        for (var i = 0; i < spans.length; i++) {
+            var sEl = spans[i];
+            var sText = norm(sEl.dataset.text || sEl.textContent || '');
+            var start = pageStr.length;
+            pageStr += sText;
+            ranges.push([start, pageStr.length, sEl]);
+        }
+        var paraLen = paraNorm.length;
+        var hitStart = -1, hitEnd = -1;
+        var full = pageStr.indexOf(paraNorm);
+        if (full >= 0) { hitStart = full; hitEnd = full + paraLen; }
+        else {
+            var prefStart = -1, prefEnd = -1;
+            for (var n = Math.min(paraLen, 300); n >= 20; n = Math.floor(n * 0.8)) {
+                var pp = pageStr.indexOf(paraNorm.substring(0, n));
+                if (pp >= 0) { prefStart = pp; prefEnd = pp + n; break; }
+            }
+            var suffStart = -1, suffEnd = -1;
+            for (var n2 = Math.min(paraLen, 300); n2 >= 20; n2 = Math.floor(n2 * 0.8)) {
+                var sp = pageStr.indexOf(paraNorm.substring(paraLen - n2));
+                if (sp >= 0) { suffStart = sp; suffEnd = sp + n2; break; }
+            }
+            if (prefStart >= 0 && suffEnd > prefStart) { hitStart = prefStart; hitEnd = suffEnd; }
+            else if (prefStart >= 0)                   { hitStart = prefStart; hitEnd = prefEnd; }
+            else if (suffStart >= 0)                   { hitStart = suffStart; hitEnd = suffEnd; }
+        }
+        if (hitStart < 0) return false;
+        var marked = 0;
+        for (var r = 0; r < ranges.length; r++) {
+            var rs = ranges[r][0], re = ranges[r][1], el = ranges[r][2];
+            var inside = (rs < re) ? (rs < hitEnd && re > hitStart) : (rs > hitStart && rs < hitEnd);
+            if (inside) { el.classList.add(cssClass); marked++; }
+        }
+        return marked > 0;
     }
 
     BM.init = function (c) {

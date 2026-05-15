@@ -1108,10 +1108,36 @@
       } catch (e) {}
       // ── Initial nav: hash > localStorage resume > page 1
       // Use the hash captured at the very top of init — see _hashAtLoad above.
+      // URL convention: `p` is preferred for page (short form); `page` is
+      // accepted for backwards compatibility with older bookmarked links.
+      // `h` carries a paragraph_number for the URL-driven highlight.
       const params = new URLSearchParams(_hashAtLoad.replace(/^#/, ''));
       const hashChapter = params.get('chapter');
-      const hashPage    = parseInt(params.get('page') || '0', 10);
+      const hashPage    = parseInt(params.get('p') || params.get('page') || '0', 10);
+      const hashHighlight = parseInt(params.get('h') || '0', 10);
       const hashQuery   = params.get('q') || '';
+
+      // Apply (or clear) the URL-driven paragraph highlight. Fetches
+      // paragraph text via /api/paragraph-text.php and hands it to
+      // FlipbookTTS.highlightParagraph which handles fuzzy span match +
+      // retry-until-text-layer-ready. Safe to call repeatedly.
+      function applyUrlHighlight(paragraphNum) {
+        if (!window.FlipbookTTS || !FlipbookTTS.highlightParagraph) return;
+        if (!paragraphNum) {
+          // No highlight requested — clear any prior URL-driven highlight.
+          document.querySelectorAll('.text-layer span.url-highlight')
+            .forEach(el => el.classList.remove('url-highlight'));
+          return;
+        }
+        const url = '/api/paragraph-text.php?v=' + encodeURIComponent(cfg.bookCode) + '&h=' + paragraphNum;
+        fetch(url, { credentials: 'omit' })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (!d || !d.text) return;
+            FlipbookTTS.highlightParagraph(paragraphNum, d.text);
+          })
+          .catch(() => {});
+      }
       // If the URL hash carries a search query (deep-link from the site-
       // wide search results), seed the in-flipbook search box and run it.
       // The existing `input` listener wires through runSearch() and
@@ -1137,7 +1163,9 @@
       }
       window.addEventListener('hashchange', () => {
         const p = new URLSearchParams(location.hash.replace(/^#/, ''));
-        const ch = p.get('chapter'); const pg = parseInt(p.get('page') || '0', 10);
+        const ch = p.get('chapter');
+        const pg = parseInt(p.get('p') || p.get('page') || '0', 10);
+        const hh = parseInt(p.get('h') || '0', 10);
         const qq = p.get('q') || '';
         if (pg) goto(pg, { silent: true });
         else if (ch) { const c = chapterBySlug(ch); if (c && c.page) goto(c.page, { silent: true }); }
@@ -1146,6 +1174,9 @@
           searchInput.dispatchEvent(new Event('input'));
           if (qq) focusSearchPane();
         }
+        // URL-driven paragraph highlight (h=N). The helper handles the
+        // "wait until text-layer is rendered" retry loop internally.
+        applyUrlHighlight(hh);
       });
 
       let initialPage = null;
@@ -1192,6 +1223,10 @@
       } else {
         update();
       }
+      // Apply the URL-driven paragraph highlight on initial load. The helper
+      // fetches paragraph text and retries until the text-layer is rendered,
+      // so it's safe to fire immediately — no need to await any page-turn.
+      if (hashHighlight) applyUrlHighlight(hashHighlight);
 
       // Resume-bar bookmark: shows whenever the saved page differs from where
       // we're landing AND the user hasn't dismissed it for that exact page.

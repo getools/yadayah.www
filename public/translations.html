@@ -490,11 +490,19 @@
                 var pageLabel = page ? ' - Page ' + page : '';
                 if (record.translation_book) {
                     var slug = record.translation_book.replace(/['‘’]/g, '').replace(/\s+/g, '-');
-                    // Flipbook viewer parses `#page=N` (1-indexed physical
-                    // PDF page). The DB stores book-internal page numbers,
-                    // so +6 offsets past the front matter to land on the
-                    // matching physical PDF page.
-                    var url = '/' + encodeURIComponent(slug) + '/' + (page ? '#page=' + (page + 6) : '');
+                    // Flipbook viewer URL convention: `p` = physical PDF
+                    // page (1-indexed), `h` = paragraph_number for the
+                    // URL-driven highlight. translation_page in the DB
+                    // already IS the physical PDF page — no offset needed
+                    // (the prior +6 was wrong; it was landing inside the
+                    // right chapter but on the wrong page).
+                    // translation_paragraph carries the paragraph_number
+                    // when known (NULL on legacy rows — falls back to
+                    // page-only navigation in that case).
+                    var hashParts = [];
+                    if (page) hashParts.push('p=' + page);
+                    if (record.translation_paragraph) hashParts.push('h=' + record.translation_paragraph);
+                    var url = '/' + encodeURIComponent(slug) + '/' + (hashParts.length ? '#' + hashParts.join('&') : '');
                     bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + pageLabel + '</a>';
                 } else {
                     bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + pageLabel;

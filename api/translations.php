@@ -35,6 +35,7 @@ function handleGet(PDO $db, array $user): void {
                 COALESCE(ser.series_label, ser.series_name) AS series_display,
                 vol.volume_label AS volume_display,
                 t.translation_page,
+                t.translation_paragraph,
                 ych.chapter_number AS yy_ch_number,
                 s.yah_scroll_sort, ser.series_sort, vol.volume_number, ych.chapter_sort
             FROM yy_translation t

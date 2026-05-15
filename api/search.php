@@ -294,6 +294,7 @@ if ($total > 0) {
                ch.chapter_name AS chapter_name,
                ch.chapter_number AS chapter_number,
                p.paragraph_page AS page,
+               p.paragraph_number AS paragraph_number,
                ts_rank(p.paragraph_tsv, $tsqSql) AS rank,
                CASE WHEN length(p.paragraph_text_plain) > $snippetLen
                     THEN substring(p.paragraph_text_plain
@@ -356,6 +357,7 @@ if ($total > 0) {
                    ch.chapter_name AS chapter_name,
                    ch.chapter_number AS chapter_number,
                    p.paragraph_page AS page,
+                   p.paragraph_number AS paragraph_number,
                    similarity(normalize_search_text(p.paragraph_text_plain), ?) AS rank,
                    CASE WHEN length(p.paragraph_text_plain) > $snippetLen
                         THEN substring(p.paragraph_text_plain FROM greatest(1, position(lower(?) in lower(normalize_search_text(p.paragraph_text_plain))) - $snippetLead) FOR $snippetLen)
@@ -420,6 +422,7 @@ if ($total > 0) {
                        ch.chapter_name AS chapter_name,
                        ch.chapter_number AS chapter_number,
                        p.paragraph_page AS page,
+                       p.paragraph_number AS paragraph_number,
                        ($rankCases)::float / ? AS rank,
                        CASE WHEN length(p.paragraph_text_plain) > $snippetLen
                             THEN substring(p.paragraph_text_plain
@@ -497,17 +500,21 @@ foreach ($results as &$row) {
     // the new flipbook viewer (`page` takes precedence over `chapter`
     // when both are present, which is what we want — page is the more
     // specific destination).
+    // URL convention (see flipbook-viewer.js): `p` = page, `h` = paragraph
+    // (used for the URL-driven highlight), `q` = search query for in-book
+    // re-search, `chapter` = slug fallback when page isn't known. Older
+    // `page=` URLs are still parsed by the viewer for backwards compat.
     $hashParts = [];
     if ($row['chapter_number'] && $row['chapter_name']) {
         $title = $row['chapter_number'] . ' ' . $row['chapter_name'];
         $hashParts[] = 'chapter=' . chapterSlug($title);
     }
     if (!empty($row['page'])) {
-        $hashParts[] = 'page=' . (int)$row['page'];
+        $hashParts[] = 'p=' . (int)$row['page'];
     }
-    // Pass the search query along so the flipbook viewer pre-populates its
-    // own search box on load and highlights matches in the text-layer.
-    // flipbook.js reads params.get('q') from location.hash.
+    if (!empty($row['paragraph_number'])) {
+        $hashParts[] = 'h=' . (int)$row['paragraph_number'];
+    }
     if ($q !== '') {
         $hashParts[] = 'q=' . rawurlencode($q);
     }
@@ -525,6 +532,7 @@ foreach ($results as &$row) {
     $row['flip_url'] = $bookUrl ? ($bookUrl . $hash) : null;
 
     unset($row['rank']);
+    unset($row['paragraph_number']);
 }
 unset($row);
 

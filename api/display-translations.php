@@ -53,6 +53,7 @@ $stmt = $pdo->prepare("
     SELECT t.translation_key AS translation_id,
            vol.volume_file AS translation_book,
            t.translation_page AS translation_page,
+           t.translation_paragraph AS translation_paragraph,
            t.translation_copy AS translation_text_word,
            s.yah_scroll_label_yy || ' / ' || s.yah_scroll_label_common AS translation_cite,
            s.yah_scroll_label_yy AS cite_book_hebrew,
