@@ -118,6 +118,11 @@ Constraints:
 - Mark resolved with: UPDATE yy_monitor_event SET event_resolved_flag = TRUE, event_resolved_dtime = NOW(), event_action_taken = 'description', event_resolve_notes = 'detailed notes' WHERE event_key = $EVENT_KEY;
 - If you can't confidently fix it, leave it unresolved and write a note explaining what you investigated.
 
+REGRESSION SAFETY — start from current production state:
+- BEFORE editing ANY file, read its current contents from $CODE_ROOT with the Read tool. CWD IS the production tree; the Read tool always returns the live bytes. Do not work from memory, training-data assumptions, or notes you remember from a previous session — those will be stale and have caused us to silently overwrite recent features with old versions.
+- Prefer the Edit tool (surgical old_string → new_string replacements) over Write whenever possible. Write replaces the entire file and is the most common way unrelated code gets lost. If you must use Write, re-read the file immediately before writing, include every line you intend to keep, and after writing, re-read to confirm only your intended diff is present.
+- You ARE free to refactor, restructure, remove dead code, or improve adjacent areas while fixing an error — full creative latitude. The rule is only about the BASELINE you build from: it must be the live in-production state at the time of THIS run, not a remembered version.
+
 Be concise. End with a one-line summary: 'RESOLVED: ...' or 'UNRESOLVED: ...'.
 "
 

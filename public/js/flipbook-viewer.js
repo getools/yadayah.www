@@ -525,6 +525,22 @@
         return cur;
       }
       function chapterBySlug(slug) { return toc.find(e => e.slug === slug); }
+      // Resolve a chapter reference from a URL param. Accepts either:
+      //   - a full slug ("2-hayah-existence")
+      //   - just the chapter number as a string ("2")
+      // For pure-digit refs, matches toc entries whose slug starts with
+      // "<num>-" (the parsers always prefix the slug with the chapter
+      // number); falls back to exact slug match if no prefix hit.
+      function chapterByRef(ref) {
+        if (!ref) return null;
+        var s = String(ref).trim();
+        if (!s) return null;
+        if (/^\d+$/.test(s)) {
+          var prefix = s + '-';
+          return toc.find(e => e.slug && (e.slug === s || e.slug.indexOf(prefix) === 0));
+        }
+        return chapterBySlug(s);
+      }
 
       let lastSavedPage = 0;
       let urlWrittenOnce = false;
@@ -1112,7 +1128,10 @@
       // accepted for backwards compatibility with older bookmarked links.
       // `h` carries a paragraph_number for the URL-driven highlight.
       const params = new URLSearchParams(_hashAtLoad.replace(/^#/, ''));
-      const hashChapter = params.get('chapter');
+      // URL convention: `c` is preferred (short form), `chapter` accepted
+      // for backwards compatibility. Both can be a full slug
+      // ("2-hayah-existence") or just the chapter number ("2").
+      const hashChapter = params.get('c') || params.get('chapter');
       const hashPage    = parseInt(params.get('p') || params.get('page') || '0', 10);
       const hashHighlight = parseInt(params.get('h') || '0', 10);
       const hashQuery   = params.get('q') || '';
@@ -1163,12 +1182,12 @@
       }
       window.addEventListener('hashchange', () => {
         const p = new URLSearchParams(location.hash.replace(/^#/, ''));
-        const ch = p.get('chapter');
+        const ch = p.get('c') || p.get('chapter');
         const pg = parseInt(p.get('p') || p.get('page') || '0', 10);
         const hh = parseInt(p.get('h') || '0', 10);
         const qq = p.get('q') || '';
         if (pg) goto(pg, { silent: true });
-        else if (ch) { const c = chapterBySlug(ch); if (c && c.page) goto(c.page, { silent: true }); }
+        else if (ch) { const c = chapterByRef(ch); if (c && c.page) goto(c.page, { silent: true }); }
         if (searchInput && qq !== searchInput.value) {
           searchInput.value = qq;
           searchInput.dispatchEvent(new Event('input'));
@@ -1181,7 +1200,7 @@
 
       let initialPage = null;
       if (hashPage) initialPage = hashPage;
-      else if (hashChapter) { const c = chapterBySlug(hashChapter); if (c && c.page) initialPage = c.page; }
+      else if (hashChapter) { const c = chapterByRef(hashChapter); if (c && c.page) initialPage = c.page; }
 
       // Build carousel DOM up-front so mode toggling is instant. We start in
       // spread mode by default; if storage said carousel, flip it on after
