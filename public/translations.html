@@ -490,7 +490,11 @@
                 var pageLabel = page ? ' - Page ' + page : '';
                 if (record.translation_book) {
                     var slug = record.translation_book.replace(/['‘’]/g, '').replace(/\s+/g, '-');
-                    var url = '/' + encodeURIComponent(slug) + '/' + (page ? '#p=' + (page + 6) : '');
+                    // Flipbook viewer parses `#page=N` (1-indexed physical
+                    // PDF page). The DB stores book-internal page numbers,
+                    // so +6 offsets past the front matter to land on the
+                    // matching physical PDF page.
+                    var url = '/' + encodeURIComponent(slug) + '/' + (page ? '#page=' + (page + 6) : '');
                     bookPage = '<a href="' + url + '" target="_blank"><strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + pageLabel + '</a>';
                 } else {
                     bookPage = '<strong>' + bookName + '</strong>' + (chapterName ? ' - ' + chapterName : '') + pageLabel;
