@@ -221,7 +221,7 @@
                "↑ Upload" matches the two-line "▶ Record" (which gains a
                sub-line showing N files · total duration when rows are
                checked). Without this they jitter at different heights. */
-            #rec-process-btn, #rec-upload-btn, #rec-stop-btn, #rec-tx-download-btn {
+            #rec-process-btn, #rec-upload-btn, #rec-stop-btn, #rec-tx-download-btn, #rec-tx-generate-btn {
                 min-height: 25px;
                 display: inline-flex;
                 align-items: center;
@@ -233,9 +233,9 @@
                includes left+right padding via box-sizing: border-box so the
                column doesn't widen as users select rows and subtotal lines
                appear. Record/Stop/Download live in the Recording column;
-               Upload/Tx-Download live in the Transcripts column. */
+               Upload/Generate/Tx-Download live in the Transcripts column. */
             #rec-process-btn, #rec-stop-btn, #rec-download-btn,
-            #rec-upload-btn, #rec-tx-download-btn {
+            #rec-upload-btn, #rec-tx-generate-btn, #rec-tx-download-btn {
                 width: 115px;
                 box-sizing: border-box;
             }
@@ -271,6 +271,7 @@
                     </th>
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-upload-btn" onclick="uploadCaptionsBulkFromHeader(this)" style="background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;" title="Upload transcripts as YouTube captions for selected rows; if none selected, prompts to upload all queued">↑ Upload</button>
+                        <button class="btn btn-primary btn-sm" id="rec-tx-generate-btn" onclick="openGenerateTranscriptsPopover()" title="Generate transcripts for selected rows using one or more transcription systems" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">&#9881; Generate</button>
                         <button class="btn btn-primary btn-sm" id="rec-tx-download-btn" onclick="downloadSelectedTranscripts()" title="Download .vtt files for selected items whose transcript is Approved, Reviewed, or already Uploaded" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">⬇ Download</button>
                     </th>
                     <th colspan="5" style="background:#fafafa;border-bottom:0;"></th>
@@ -2930,6 +2931,7 @@ function updateProcessSelectedLabel() {
     var btn = document.getElementById('rec-process-btn');
     var dlBtn = document.getElementById('rec-download-btn');
     var txBtn = document.getElementById('rec-tx-download-btn');
+    var genBtn = document.getElementById('rec-tx-generate-btn');
     if (!btn) return;
     var total = 0, n = 0;
     var dlTotal = 0, dlN = 0;
@@ -2996,6 +2998,165 @@ function updateProcessSelectedLabel() {
             txBtn.style.cursor = 'not-allowed';
         }
     }
+    // Generate label mirrors Record: any checked row qualifies, the
+    // popover itself handles per-row eligibility (MP3 presence vs.
+    // YouTube-only model).
+    if (genBtn) {
+        if (n > 0) {
+            genBtn.innerHTML = '&#9881; Generate'
+                             + '<div style="font-size:0.72rem;font-weight:400;opacity:0.9;margin-top:1px;">'
+                             +   n + ' file' + (n === 1 ? '' : 's') + ' &middot; ' + fmt(total)
+                             + '</div>';
+            genBtn.disabled = false;
+            genBtn.style.opacity = '1';
+            genBtn.style.cursor = 'pointer';
+        } else {
+            genBtn.innerHTML = '&#9881; Generate';
+            genBtn.disabled = true;
+            genBtn.style.opacity = '0.45';
+            genBtn.style.cursor = 'not-allowed';
+        }
+    }
+}
+
+// ── Generate-transcripts popover ──────────────────────────────────────
+// Opens a modal listing all transcription providers; on Generate, fires
+// one /api/admin-transcript-models.php?action=run POST per (selected row,
+// selected provider) pair and surfaces per-row outcomes (skipped vs.
+// queued vs. failed).
+var TRANSCRIPT_GEN_MODELS = [
+    { code: 'whisper-1-segment',           label: 'OpenAI whisper-1 — segment timestamps ($0.006/min)' },
+    { code: 'whisper-1-word',              label: 'OpenAI whisper-1 — word-level timestamps ($0.006/min)' },
+    { code: 'groq-whisper-large-v3-turbo', label: 'Groq whisper-large-v3-turbo (~$0.0004/min, fastest)' },
+    { code: 'groq-whisper-large-v3',       label: 'Groq whisper-large-v3 (~$0.0011/min)' },
+    { code: 'deepgram-nova-3',             label: 'Deepgram Nova-3 (~$0.0043/min, smart formatting)' },
+    { code: 'assemblyai-universal-2',      label: 'AssemblyAI Universal-2 (~$0.0062/min)' },
+    { code: 'elevenlabs-scribe',           label: 'ElevenLabs Scribe (~$0.0067/min)' },
+    { code: 'azure-speech-stt',            label: 'Azure Speech Fast Transcription (~$0.017/min)' },
+    { code: 'youtube',                     label: 'YouTube auto-captions (free, requires fresh cookies)' },
+];
+
+function openGenerateTranscriptsPopover() {
+    var checked = Array.prototype.slice.call(document.querySelectorAll('.rec-cb:checked'));
+    if (!checked.length) {
+        alert('Select at least one row first.');
+        return;
+    }
+    var overlay = document.getElementById('gen-tx-overlay');
+    if (overlay) overlay.remove();
+    overlay = document.createElement('div');
+    overlay.id = 'gen-tx-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);'
+                          + 'z-index:1000;display:flex;align-items:flex-start;justify-content:center;'
+                          + 'padding:40px 20px;overflow-y:auto;';
+    overlay.onclick = function(ev) { if (ev.target === overlay) closeGenerateTranscriptsPopover(); };
+
+    var modelsHtml = TRANSCRIPT_GEN_MODELS.map(function(m) {
+        return '<label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;cursor:pointer;font-size:0.88rem;">'
+             +   '<input type="checkbox" class="gen-tx-model" value="' + m.code + '" style="margin-top:3px;">'
+             +   '<span>' + esc(m.label) + '</span>'
+             + '</label>';
+    }).join('');
+
+    overlay.innerHTML =
+        '<div style="background:#fff;border-radius:10px;width:100%;max-width:640px;box-shadow:0 8px 32px rgba(0,0,0,0.25);">'
+      +   '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#f8f8f8;border-radius:10px 10px 0 0;border-bottom:1px solid #ddd;">'
+      +     '<h3 style="margin:0;font-size:1rem;color:#31345A;">Generate Transcripts</h3>'
+      +     '<button onclick="closeGenerateTranscriptsPopover()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;line-height:1;">&times;</button>'
+      +   '</div>'
+      +   '<div style="padding:18px 20px;">'
+      +     '<div style="margin-bottom:14px;color:#555;font-size:0.9rem;">'
+      +        '<strong>' + checked.length + '</strong> row' + (checked.length === 1 ? '' : 's')
+      +        ' selected. Pick one or more transcription systems and click <strong>Generate</strong> to queue a job per row × system.'
+      +     '</div>'
+      +     '<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;margin-bottom:14px;background:#fafafa;">'
+      +        modelsHtml
+      +     '</div>'
+      +     '<div id="gen-tx-results" style="display:none;margin-bottom:14px;max-height:280px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;background:#fff;font-size:0.82rem;font-family:monospace;"></div>'
+      +     '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      +       '<button id="gen-tx-cancel-btn" onclick="closeGenerateTranscriptsPopover()" style="padding:8px 16px;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.9rem;">Cancel</button>'
+      +       '<button id="gen-tx-go-btn" onclick="runGenerateTranscripts()" style="padding:8px 18px;background:#31345A;color:#fff;border:1px solid #31345A;border-radius:4px;cursor:pointer;font-size:0.9rem;font-weight:600;">Generate</button>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(overlay);
+}
+
+function closeGenerateTranscriptsPopover() {
+    var overlay = document.getElementById('gen-tx-overlay');
+    if (overlay) overlay.remove();
+}
+
+function runGenerateTranscripts() {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.rec-cb:checked'));
+    var pickedModels = Array.prototype.map.call(
+        document.querySelectorAll('.gen-tx-model:checked'),
+        function(c) { return c.value; }
+    );
+    if (!rows.length) { alert('No rows selected.'); return; }
+    if (!pickedModels.length) { alert('Pick at least one transcription system.'); return; }
+
+    var results = document.getElementById('gen-tx-results');
+    var goBtn   = document.getElementById('gen-tx-go-btn');
+    results.style.display = 'block';
+    results.innerHTML = '';
+    goBtn.disabled = true;
+    goBtn.style.opacity = '0.55';
+    goBtn.style.cursor = 'wait';
+    goBtn.textContent = 'Working…';
+
+    // Build the full task list up front so the progress counter is stable.
+    var tasks = [];
+    rows.forEach(function(cb) {
+        pickedModels.forEach(function(model) {
+            tasks.push({ key: parseInt(cb.value, 10), hasMp3: !!cb.dataset.mp3, model: model });
+        });
+    });
+
+    var counts = { queued: 0, skipped: 0, failed: 0 };
+    var append = function(html) {
+        results.insertAdjacentHTML('beforeend', html);
+        results.scrollTop = results.scrollHeight;
+    };
+
+    var i = 0;
+    function next() {
+        if (i >= tasks.length) {
+            goBtn.disabled = false;
+            goBtn.style.opacity = '1';
+            goBtn.style.cursor = 'pointer';
+            goBtn.textContent = 'Generate';
+            append('<div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;"><strong>Done.</strong> Queued: ' + counts.queued + ' &middot; Skipped: ' + counts.skipped + ' &middot; Failed: ' + counts.failed + '</div>');
+            return;
+        }
+        var t = tasks[i++];
+        // Pre-flight: every non-youtube model needs an MP3 on disk. The
+        // worker enforces this server-side but checking client-side gives
+        // a faster + cheaper "no MP3" message without round-tripping.
+        if (t.model !== 'youtube' && !t.hasMp3) {
+            counts.skipped++;
+            append('<div style="color:#a36100;">⏭ Skipped item ' + t.key + ' (' + t.model + '): no MP3 on disk</div>');
+            return next();
+        }
+        fetch(API + '/admin-transcript-models.php', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'run', item_key: t.key, model: t.model }),
+        }).then(function(r) { return safeJson(r); }).then(function(d) {
+            if (d && d.job_key) {
+                counts.queued++;
+                append('<div style="color:#1d6b3a;">✓ Queued item ' + t.key + ' (' + t.model + ') — job ' + d.job_key + '</div>');
+            } else {
+                counts.failed++;
+                var msg = (d && (d.error || d.message)) || 'unknown error';
+                append('<div style="color:#c00;">✗ Failed item ' + t.key + ' (' + t.model + '): ' + esc(msg) + '</div>');
+            }
+        }).catch(function(err) {
+            counts.failed++;
+            append('<div style="color:#c00;">✗ Failed item ' + t.key + ' (' + t.model + '): ' + esc(String(err)) + '</div>');
+        }).then(next);
+    }
+    next();
 }
 
 // Trigger one VTT download per :checked row whose transcript is in an

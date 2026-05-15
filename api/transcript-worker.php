@@ -117,38 +117,15 @@ $site = strtolower($job['feed_site_code']);
 $jobModel = $job['job_model'] ?: 'whisper-1-segment';
 $wantYoutubeCaptions = ($jobModel === 'youtube');
 
-// If the operator chose model='youtube' (YT caption import) but a
-// canonical MP3 already exists for this item, override to whisper-1-segment
-// and let the Whisper-API block transcribe the MP3 directly. yt-dlp
-// caption pulls from YouTube get bot-detection-blocked from server IPs
-// often enough that we treat the local MP3 as the authoritative source
-// whenever it's available, per project policy (see
-// feedback_transcripts_use_mp3.md in auto-memory).
-if ($wantYoutubeCaptions) {
-    $rel = $job['feed_item_audio_file'] ?? null;
-    $hasUploadedAudio = false;
-    if ($rel) {
-        $candAbs = dirname(__DIR__) . '/' . ltrim($rel, '/');
-        if (is_file($candAbs) && filesize($candAbs) > 10000) $hasUploadedAudio = true;
-    }
-    if (!$hasUploadedAudio) {
-        $upDir = sys_get_temp_dir() . '/transcript_uploads';
-        foreach (['mp3', 'm4a', 'opus', 'wav', 'ogg', 'aac', 'webm'] as $ext) {
-            $cand = "$upDir/{$itemKey}.{$ext}";
-            if (file_exists($cand) && filesize($cand) > 10000) {
-                $hasUploadedAudio = true; break;
-            }
-        }
-    }
-    if ($hasUploadedAudio) {
-        error_log("transcript-worker job $jobKey: item $itemKey has uploaded audio — overriding model 'youtube' → 'whisper-1-segment'");
-        $jobModel = 'whisper-1-segment';
-        $wantYoutubeCaptions = false;
-        // Persist the override so admin-feeds shows the model that actually ran.
-        $db->prepare("UPDATE yy_feed_item_transcript_job SET job_model = ? WHERE feed_item_transcript_job_key = ?")
-           ->execute([$jobModel, $jobKey]);
-    }
-}
+// NOTE: We used to override model='youtube' → 'whisper-1-segment' whenever
+// an uploaded MP3 existed, on the theory that "we have the audio, just
+// re-transcribe it". That conflated two different things — the durable
+// memory `feedback_transcripts_use_mp3.md` only forbids using YouTube as
+// an *audio* source when an MP3 exists. Importing YouTube *captions* is
+// independent: when explicitly chosen as the model, it's a way to seed
+// the editable transcript with whatever YouTube auto-generated. If
+// yt-dlp gets bot-blocked the job fails cleanly with the actual yt-dlp
+// error in methodFailures, and the operator can pick a different model.
 
 updateJob($db, $jobKey, ['job_status' => 'running', 'job_progress' => 5, 'job_message' => 'Starting transcription...']);
 
