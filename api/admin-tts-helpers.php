@@ -78,7 +78,66 @@ function loadTtsConfig(PDO $db, int $ttsKey): array {
         ];
     }
 
-    return ['system' => $system, 'categories' => $categories, 'tunes' => $tunes, 'pauses' => $pauses, 'fonts' => $fonts];
+    // Bible book names for the citation rewriter (Yashaʿyah 8:15
+    // → "Yashaʿyah Chapter 8, Verse 15"). Hebrew and common columns
+    // both get loaded so Hebrew citations AND English citations match.
+    $bibleStmt = $db->query("SELECT cite_book_hebrew, cite_book_common FROM yy_cite_book WHERE cite_book_hebrew IS NOT NULL");
+    $bibleBooks = [];
+    foreach ($bibleStmt->fetchAll() as $b) {
+        if (!empty($b['cite_book_hebrew'])) $bibleBooks[] = $b['cite_book_hebrew'];
+        if (!empty($b['cite_book_common'])) $bibleBooks[] = $b['cite_book_common'];
+    }
+    $bibleBooks = array_values(array_unique($bibleBooks));
+    return ['system' => $system, 'categories' => $categories, 'tunes' => $tunes, 'pauses' => $pauses, 'fonts' => $fonts, 'bible_books' => $bibleBooks];
+}
+
+/**
+ * Rewrite Bible citations from "BookName N:M" to "BookName Chapter N,
+ * Verse M" so Azure speaks the numbers naturally rather than rattling
+ * them off as "eight colon fifteen". Handles:
+ *   "Yashaʿyah 8:15"               → "Yashaʿyah Chapter 8, Verse 15"
+ *   "Yashaʿyah / Isaiah 8:15"      → "Yashaʿyah / Isaiah Chapter 8, Verse 15"
+ *   "Bareʿsyth 11:18-22"           → "Bareʿsyth Chapter 11, Verses 18 to 22"
+ *
+ * Book name matching uses the same apostrophe-equivalent class as the
+ * tune engine — "Bare'syth" in yy_cite_book matches "Bareʿsyth" with a
+ * half-ring in the source text. Apostrophes in the DB name become
+ * optional apos-class positions in the match.
+ *
+ * Runs BEFORE applyTunes so the rewritten text is still subject to
+ * pronunciation tunes — including the book name itself getting its
+ * own phoneme tag.
+ */
+function rewriteBibleCitations(string $text, array $bookNames): string {
+    if (!$bookNames) return $text;
+    static $aposClassOpt = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]?";
+    static $aposClass    = "[\x{0027}\x{0060}\x{00B4}\x{02BC}\x{02BE}\x{02BF}\x{02C0}\x{2018}\x{2019}\x{201B}\x{2032}\x{05F3}]";
+    $patterns = [];
+    foreach ($bookNames as $name) {
+        $name = (string)$name;
+        if ($name === '') continue;
+        $chars = preg_split('//u', $name, -1, PREG_SPLIT_NO_EMPTY);
+        $out = [];
+        foreach ($chars as $c) {
+            if (preg_match('/' . $aposClass . '/u', $c)) $out[] = $aposClassOpt;
+            else                                          $out[] = preg_quote($c, '/');
+        }
+        $patterns[] = implode('', $out);
+    }
+    // Longest first so "Yashaʿyahuw" beats "Yashaʿyah" on overlap.
+    usort($patterns, function ($a, $b) { return strlen($b) - strlen($a); });
+    $bookAlt = implode('|', $patterns);
+    // Citation pattern: <book><optional " / English-name "><chapter>:<verse>[-<endverse>]
+    $re = '/(?<![A-Za-z])(' . $bookAlt . ')(\s*(?:\/\s*[A-Za-z][A-Za-z\s]+?\s+)?)(\d+):(\d+)(?:-(\d+))?(?![\d:])/iu';
+    return preg_replace_callback($re, function ($m) {
+        $book   = $m[1];
+        $sep    = rtrim($m[2]) === '' ? ' ' : $m[2];
+        $chap   = (int)$m[3];
+        $vFrom  = (int)$m[4];
+        $vTo    = isset($m[5]) ? (int)$m[5] : 0;
+        $verses = $vTo > 0 ? "Verses $vFrom to $vTo" : "Verse $vFrom";
+        return $book . rtrim($sep) . " Chapter $chap, $verses";
+    }, $text);
 }
 
 /**
@@ -581,6 +640,14 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
     }
     $voiceCode = $overrideVoice ?: ($cat['tts_voice_code'] ?? 'en-US-BrianMultilingualNeural');
 
+    // Bible-citation rewriter runs first so the book name + chapter:verse
+    // pattern is expanded BEFORE the book name gets swapped for a phoneme
+    // token by applyTunes. After expansion, applyTunes can still match
+    // the book name normally; the appended "Chapter N, Verse M" is plain
+    // text that Azure reads naturally.
+    if (!empty($cfg['bible_books'])) {
+        $text = rewriteBibleCitations($text, $cfg['bible_books']);
+    }
     // Apply tunes BEFORE pauses so tune regexes see the raw half-ring
     // and apostrophe-equivalent characters in the source. If pauses
     // ran first, "ʾ" (0 ms suppression pause) would have been swapped
