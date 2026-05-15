@@ -891,15 +891,32 @@ function whisperApiTranscribeChunked(PDO $db, int $jobKey, string $audioPath, st
         @rmdir($chunkDir);
         return [];
     }
+    // Per-chunk ETA estimates: ~8s of API time per MB of audio, floor 10s.
+    // Pre-compute the full array so the in-loop message can report the
+    // remaining total (current + upcoming chunks), not just this chunk.
+    $chunkEtas = array_map(function ($p) {
+        $sz = file_exists($p) ? filesize($p) / 1024 / 1024 : 5;
+        return max(10, (int)ceil($sz * 8));
+    }, $chunks);
+    $totalEta = array_sum($chunkEtas);
+    $fmtEta = function (int $secs): string {
+        if ($secs < 60) return $secs . 's';
+        $m = intdiv($secs, 60); $s = $secs % 60;
+        if ($m < 60) return $s ? ($m . 'm ' . $s . 's') : ($m . 'm');
+        $h = intdiv($m, 60); $m = $m % 60;
+        return $m ? ($h . 'h ' . $m . 'm') : ($h . 'h');
+    };
     $allRows = [];
     $chunkFailures = [];
     foreach ($chunks as $idx => $chunkPath) {
         bailIfCancelled($db, $jobKey, [$chunkDir]);
-        $chunkSizeMB = file_exists($chunkPath) ? filesize($chunkPath) / 1024 / 1024 : 5;
-        $chunkEta = max(10, (int)ceil($chunkSizeMB * 8));
+        // Remaining ETA = sum of this chunk's estimate + every chunk after
+        // it. As chunks finish, the number shrinks naturally.
+        $remainingEta = array_sum(array_slice($chunkEtas, $idx));
         updateJob($db, $jobKey, [
             'job_progress' => 40 + (int)(40 * $idx / max(1, count($chunks))),
-            'job_message' => 'Transcribing chunk ' . ($idx + 1) . '/' . count($chunks) . '… (ETA ~' . $chunkEta . 's)',
+            'job_message' => 'Transcribing chunk ' . ($idx + 1) . '/' . count($chunks)
+                           . '… (ETA ~' . $fmtEta($remainingEta) . ' remaining, ~' . $fmtEta($totalEta) . ' total)',
         ]);
         $chunkErr = '';
         $rows = whisperApiTranscribe($chunkPath, $apiKey, $prompt, $idx * $chunkSecs, $chunkErr, $model);
