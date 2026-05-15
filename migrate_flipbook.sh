@@ -28,7 +28,7 @@ set -euo pipefail
 URL_SLUG="${1:?url-slug required, e.g. YY-s02v03-Yada-Yahowah-Beyth-In-the-Family}"
 PUBLIC=/opt/yada-www/public
 ARCHIVE=/opt/yada-www/_archive_fliphtml5
-TEMPLATE=/opt/yada-www/templates/flipbook-index.html.tpl
+TEMPLATE=/opt/yada-www/templates/flipbook-index.php.tpl
 STAGING="$PUBLIC/_staging_flipbook/$URL_SLUG"
 LIVE="$PUBLIC/$URL_SLUG"
 
@@ -121,37 +121,35 @@ python3 /tmp/extract_toc_v3.py "$PDF" "$VOL_KEY" "$TMP/toc.json" >/dev/null 2>&1
     echo '{"toc":[]}' > "$TMP/toc.json"
 }
 
-# ── 3. Render index.html from template ──────────────────────────────
-# PDF path is now apostrophe-free everywhere (URL slug == disk stem ==
-# PDF stem), so no URL-encoding is needed — alphanumerics + hyphens.
-PDF_PATH="/pdf/$PDF_STEM.pdf"
+# ── 3. Render index.php from template ───────────────────────────────
+# All HTML/CSS/JS now lives in /public/_shared/flipbook-frame.php — the
+# per-book file is just a 7-line wrapper setting $FB['total','title',
+# 'bookCode'] and require'ing the shared shell. Bug fixes + cache bumps
+# happen in one place; books pick them up on the next request.
 
-# sed-substitute the four placeholders. Using | as the delimiter so PDF
-# paths with / don't terminate the s/// command. We MUST escape `\`, `&`,
-# and `|` in each replacement value — `&` means "the matched pattern" in
-# sed's RHS (caught us with "Sunnah & Suratun"), `\` introduces escapes,
-# and `|` would close the s/// expression. None of those should appear in
-# normal values but a defensive escape is cheap and stops surprises.
+# Escape the title for embedding in a PHP single-quoted literal: only `\`
+# and `'` need attention. `&` and `|` are also escaped here because they
+# pass through sed below.
 esc_sed_repl() {
-    # Escape \ first (so we don't double-escape the \ we're about to add),
-    # then & and |.
     printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/&/\\&/g' -e 's/|/\\|/g'
 }
-TITLE_E=$(esc_sed_repl "$TITLE")
-PDF_PATH_E=$(esc_sed_repl "$PDF_PATH")
+esc_php_squote() {
+    # PHP single-quoted strings only need backslash + apostrophe escaped.
+    printf '%s' "$1" | sed -e "s/\\\\/\\\\\\\\/g" -e "s/'/\\\\'/g"
+}
+TITLE_PHP=$(esc_sed_repl "$(esc_php_squote "$TITLE")")
 URL_SLUG_E=$(esc_sed_repl "$URL_SLUG")
 
 sed \
-    -e "s|{{TITLE}}|$TITLE_E|g" \
+    -e "s|{{TITLE_PHP}}|$TITLE_PHP|g" \
     -e "s|{{TOTAL}}|$TOTAL|g" \
     -e "s|{{BOOK_CODE}}|$URL_SLUG_E|g" \
-    -e "s|{{PDF_PATH}}|$PDF_PATH_E|g" \
-    "$TEMPLATE" > "$TMP/index.html"
+    "$TEMPLATE" > "$TMP/index.php"
 
 # Sanity: ensure no placeholder slipped through.
-if grep -q '{{[A-Z_]*}}' "$TMP/index.html"; then
-    log "ERROR: unresolved placeholders in rendered index.html — aborting"
-    grep -n '{{[A-Z_]*}}' "$TMP/index.html" | head -5 >&2
+if grep -q '{{[A-Z_]*}}' "$TMP/index.php"; then
+    log "ERROR: unresolved placeholders in rendered index.php — aborting"
+    grep -n '{{[A-Z_]*}}' "$TMP/index.php" | head -5 >&2
     exit 1
 fi
 
@@ -165,7 +163,7 @@ rsync -a --delete "$TMP/thumbs/" "$STAGING/thumbs/"
 rsync -a --delete "$TMP/text/"   "$STAGING/text/"
 cp "$TMP/search.json" "$STAGING/search.json"
 cp "$TMP/toc.json"    "$STAGING/toc.json"
-cp "$TMP/index.html"  "$STAGING/index.html"
+cp "$TMP/index.php"   "$STAGING/index.php"
 
 mkdir -p "$ARCHIVE"
 if [ -d "$LIVE" ]; then

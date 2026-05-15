@@ -618,12 +618,20 @@ if [ -x /opt/yada-www/migrate_flipbook.sh ]; then
         [ -z "$fb_slug" ] && continue
         fb_pdf="$PDF_DIR/$fb_stem.pdf"
         [ ! -f "$fb_pdf" ] && continue
-        fb_index="/opt/yada-www/public/$fb_slug/index.html"
-        if [ ! -f "$fb_index" ]; then
+        # Per-book wrapper now lives at index.php (shared-shell shim);
+        # legacy index.html still exists in a handful of un-migrated
+        # dirs and also counts as "present". Migrate when PDF is newer
+        # than whichever wrapper is in place.
+        fb_index_php="/opt/yada-www/public/$fb_slug/index.php"
+        fb_index_html="/opt/yada-www/public/$fb_slug/index.html"
+        if   [ -f "$fb_index_php" ];  then fb_index="$fb_index_php"
+        elif [ -f "$fb_index_html" ]; then fb_index="$fb_index_html"
+        else
             fb_target_slug="$fb_slug"
             fb_target_reason="flipbook missing"
             break
-        elif [ "$fb_pdf" -nt "$fb_index" ]; then
+        fi
+        if [ "$fb_pdf" -nt "$fb_index" ]; then
             fb_target_slug="$fb_slug"
             fb_target_reason="PDF newer than flipbook"
             break

@@ -49,11 +49,15 @@ if (isset($_GET['grouped'])) {
                COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime,
                fic.category_key,
                COALESCE(fic.feed_item_category_episode, fi.feed_item_episode) AS episode,
-               fi.feed_item_audio_file
+               fi.feed_item_audio_file,
+               -- True when the human-curated transcript is signed off.
+               -- Drives the transcript-download icon on the video card.
+               (tv.validation_status = 'Approved') AS transcript_approved
         FROM yy_feed_item fi
         JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
         LEFT JOIN yy_feed_item_category fic ON fic.feed_item_key = fi.feed_item_key
             AND fic.category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = 1)
+        LEFT JOIN yy_feed_item_transcript_validation tv ON tv.feed_item_key = fi.feed_item_key
         WHERE $where
         ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, feed_item_publish_dtime DESC NULLS LAST
     ");
@@ -82,6 +86,8 @@ if (isset($_GET['grouped'])) {
             'date' => $item['feed_item_publish_dtime'] ?? $item['feed_item_create_dtime'],
             'episode' => $item['episode'] ? (int)$item['episode'] : null,
             'audio' => $item['feed_item_audio_file'] ?? null,
+            'transcript_approved' => !empty($item['transcript_approved']),
+            'feed_item_key' => (int)$item['feed_item_key'],
         ];
     }
 
@@ -126,9 +132,11 @@ $fetchParams = array_merge($params, [$perPage, $offset]);
 $stmt = $db->prepare("
     SELECT fi.feed_item_key, fi.feed_item_external_id, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, fi.feed_item_url,
            fi.feed_item_thumbnail, fi.feed_item_embed_id, fi.feed_item_duration,
-           COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime, fi.feed_item_audio_file
+           COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS feed_item_publish_dtime, fi.feed_item_create_dtime, fi.feed_item_audio_file,
+           (tv.validation_status = 'Approved') AS transcript_approved
     FROM yy_feed_item fi
     JOIN yy_feed_item_page fip ON fi.feed_item_key = fip.feed_item_key
+    LEFT JOIN yy_feed_item_transcript_validation tv ON tv.feed_item_key = fi.feed_item_key
     WHERE $where
     ORDER BY fi.feed_item_sort NULLS LAST, (NULLIF(regexp_replace(fi.feed_item_episode, '[^0-9]', '', 'g'), ''))::int NULLS LAST, feed_item_publish_dtime DESC NULLS LAST
     LIMIT ? OFFSET ?
@@ -148,6 +156,8 @@ foreach ($items as $item) {
         'duration' => $item['feed_item_duration'],
         'date' => $item['feed_item_publish_dtime'] ?? $item['feed_item_create_dtime'],
         'audio' => $item['feed_item_audio_file'] ?? null,
+        'transcript_approved' => !empty($item['transcript_approved']),
+        'feed_item_key' => (int)$item['feed_item_key'],
     ];
 }
 

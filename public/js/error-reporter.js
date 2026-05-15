@@ -39,12 +39,16 @@
     return false;
   }
 
+  // Server endpoint expects { errors: [{...}, ...] } at /api/client-error.php
+  // (NOT /api/log-error — that path doesn't exist and was returning 500,
+  // silently dropping every client-side error so yy_monitor_event never
+  // logged them and the claude-fix runner never saw them).
   function sendError(payload) {
     try {
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/log-error', true);
+      xhr.open('POST', '/api/client-error.php', true);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.send(JSON.stringify(payload));
+      xhr.send(JSON.stringify({ errors: [payload] }));
     } catch (e) {
       // Never throw from error reporter
     }

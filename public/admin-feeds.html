@@ -4510,7 +4510,8 @@ function pollJob() {
                     if (msgEl) msgEl.textContent = '✗ Cancelled';
                     setTimeout(function() { document.getElementById('t-progress').style.display = 'none'; }, 1500);
                 }
-                document.getElementById('t-start-btn').disabled = false;
+                var sb0 = document.getElementById('t-init-btn');
+                if (sb0) sb0.disabled = false;
                 _transcriptJobKey = null;
             }
         });
@@ -4520,7 +4521,12 @@ function updateJobUI(job) {
     var prog = document.getElementById('t-progress');
     var msg = document.getElementById('t-msg');
     var bar = document.getElementById('t-bar');
-    var startBtn = document.getElementById('t-start-btn');
+    // The "start" button was renamed from t-start-btn to t-init-btn
+    // ("Initialize Transcript") during a UI refactor. Keep the variable
+    // name so the rest of the function reads naturally; null-guard
+    // every write below since this function also runs before the
+    // popover has rendered its buttons.
+    var startBtn = document.getElementById('t-init-btn');
 
     // Always reset bar styling on each call
     if (bar) bar.style.background = '#31345A';
@@ -4534,7 +4540,7 @@ function updateJobUI(job) {
 
     if (job.job_status === 'pending' || job.job_status === 'running') {
         // Active job — show full progress UI
-        prog.style.display = '';
+        if (prog) prog.style.display = '';
         // Seed the wall-clock from job_dtime (server timestamp) so the ETA
         // is correct after a page reload — otherwise reload would reset the
         // elapsed-time math and over-estimate remaining time.
@@ -4559,7 +4565,7 @@ function updateJobUI(job) {
                 _txJobStartMs = Date.now(); // restart elapsed counter for this stage
             }
         }
-        msg.textContent = newMsg + etaSuffix(srvPct);
+        if (msg) msg.textContent = newMsg + etaSuffix(srvPct);
         // Server-driven bar for download (job_progress moves on its own as
         // yt-dlp prints percentages); smoothed bar for Whisper phase, where
         // job_progress is a single 70% jump that holds until rows return.
@@ -4567,9 +4573,9 @@ function updateJobUI(job) {
             startSmoothTicker();
         } else {
             stopSmoothTicker();
-            bar.style.width = srvPct + '%';
+            if (bar) bar.style.width = srvPct + '%';
         }
-        startBtn.disabled = true;
+        if (startBtn) startBtn.disabled = true;
         if (!_transcriptPollTimer) _transcriptPollTimer = setInterval(pollJob, 2000);
         renderLastResultNote(null);
     } else {
@@ -4581,8 +4587,8 @@ function updateJobUI(job) {
         // Completed or failed — DON'T show the main progress block.
         // Show a small dismissible note above the toolbar so the user knows
         // the previous result without thinking it's still running.
-        prog.style.display = 'none';
-        startBtn.disabled = false;
+        if (prog) prog.style.display = 'none';
+        if (startBtn) startBtn.disabled = false;
         renderLastResultNote(job);
     }
 }
@@ -5871,6 +5877,6 @@ checkAuth();
 </script>
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/session-state.js?v=1"></script>
-<script src="/js/error-reporter.js?v=2"></script>
+<script src="/js/error-reporter.js?v=3"></script>
 </body>
 </html>
