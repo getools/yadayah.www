@@ -94,6 +94,7 @@
 <script src="/js/admin-nav.js?v=13"></script>
         <div class="user-info">
             <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="openYoutubeCookies()" title="Upload or refresh the YouTube cookies file used by yt-dlp to bypass bot-detection">YT Cookies</button>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
         </div>
     </div>
@@ -220,7 +221,7 @@
                "↑ Upload" matches the two-line "▶ Record" (which gains a
                sub-line showing N files · total duration when rows are
                checked). Without this they jitter at different heights. */
-            #rec-process-btn, #rec-upload-btn, #rec-stop-btn {
+            #rec-process-btn, #rec-upload-btn, #rec-stop-btn, #rec-tx-download-btn {
                 min-height: 25px;
                 display: inline-flex;
                 align-items: center;
@@ -228,11 +229,13 @@
                 flex-direction: column;
                 line-height: 1.15;
             }
-            /* Match Record / Stop / Download widths within their shared <th>.
-               Fixed 90px (includes the button's left+right padding via
-               box-sizing: border-box) so the column doesn't widen as users
-               select rows and the subtotal lines appear. */
-            #rec-process-btn, #rec-stop-btn, #rec-download-btn {
+            /* Match button widths within their shared <th> cells. 115px
+               includes left+right padding via box-sizing: border-box so the
+               column doesn't widen as users select rows and subtotal lines
+               appear. Record/Stop/Download live in the Recording column;
+               Upload/Tx-Download live in the Transcripts column. */
+            #rec-process-btn, #rec-stop-btn, #rec-download-btn,
+            #rec-upload-btn, #rec-tx-download-btn {
                 width: 115px;
                 box-sizing: border-box;
             }
@@ -268,6 +271,7 @@
                     </th>
                     <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-upload-btn" onclick="uploadCaptionsBulkFromHeader(this)" style="background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;" title="Upload transcripts as YouTube captions for selected rows; if none selected, prompts to upload all queued">↑ Upload</button>
+                        <button class="btn btn-primary btn-sm" id="rec-tx-download-btn" onclick="downloadSelectedTranscripts()" title="Download .vtt files for selected items whose transcript is Approved, Reviewed, or already Uploaded" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">⬇ Download</button>
                     </th>
                     <th colspan="5" style="background:#fafafa;border-bottom:0;"></th>
                 </tr>
@@ -2850,12 +2854,20 @@ function renderRecordings(d) {
 
         // data-duration drives the total play-time readout under "Process Selected".
         // Stored in seconds; updateProcessSelectedLabel() sums them across :checked.
+        // data-tx-status: '1' if the transcript is Approved or already Uploaded
+        // (covers the user's "Approved / Completed / Reviewed" set). The
+        // Transcript-Download button counts + iterates only items with '1'.
+        var txDownloadable = (
+            (it.transcript_validation_status === 'Approved')
+            || !!it.yt_caption_uploaded_dtime
+        ) ? '1' : '';
         var cbAttrs = 'class="rec-cb" value="' + it.feed_item_key + '"'
                     + ' data-duration="' + (parseInt(it.feed_item_duration_seconds, 10) || 0) + '"'
                     // data-mp3: relative path under /u/audio/. Empty when no MP3 exists.
                     // updateProcessSelectedLabel() reads this to update the Download button
                     // count + time; downloadSelectedRecordings() iterates only the non-empty ones.
                     + ' data-mp3="' + esc(it.feed_item_audio_file || '') + '"'
+                    + ' data-tx-status="' + txDownloadable + '"'
                     + ' onchange="updateRecHeaderCb()"'
                     + (inProgress ? ' disabled title="Locked while ' + esc(inProgressReason) + '"' : '');
         // In-progress rows get a very light warm tint instead of an opacity
@@ -2917,9 +2929,11 @@ function updateRecHeaderCb() {
 function updateProcessSelectedLabel() {
     var btn = document.getElementById('rec-process-btn');
     var dlBtn = document.getElementById('rec-download-btn');
+    var txBtn = document.getElementById('rec-tx-download-btn');
     if (!btn) return;
     var total = 0, n = 0;
     var dlTotal = 0, dlN = 0;
+    var txTotal = 0, txN = 0;
     document.querySelectorAll('.rec-cb:checked').forEach(function(cb) {
         var d = parseInt(cb.dataset.duration, 10) || 0;
         total += d;
@@ -2929,6 +2943,12 @@ function updateProcessSelectedLabel() {
         if (cb.dataset.mp3) {
             dlTotal += d;
             dlN++;
+        }
+        // Only count toward the Transcripts-Download summary if the
+        // transcript is downloadable (Approved or already Uploaded).
+        if (cb.dataset.txStatus === '1') {
+            txTotal += d;
+            txN++;
         }
     });
     var pad = function(x) { return (x < 10 ? '0' : '') + x; };
@@ -2960,6 +2980,49 @@ function updateProcessSelectedLabel() {
             dlBtn.style.cursor = 'not-allowed';
         }
     }
+    if (txBtn) {
+        if (txN > 0) {
+            txBtn.innerHTML = '⬇ Download'
+                            + '<div style="font-size:0.72rem;font-weight:400;opacity:0.9;margin-top:1px;">'
+                            +   txN + ' file' + (txN === 1 ? '' : 's') + ' &middot; ' + fmt(txTotal)
+                            + '</div>';
+            txBtn.disabled = false;
+            txBtn.style.opacity = '1';
+            txBtn.style.cursor = 'pointer';
+        } else {
+            txBtn.innerHTML = '⬇ Download';
+            txBtn.disabled = true;
+            txBtn.style.opacity = '0.45';
+            txBtn.style.cursor = 'not-allowed';
+        }
+    }
+}
+
+// Trigger one VTT download per :checked row whose transcript is in an
+// Approved/Reviewed/Uploaded state. The browser prompts once for
+// "allow multi-file downloads", then proceeds sequentially.
+function downloadSelectedTranscripts() {
+    var items = Array.prototype.filter.call(
+        document.querySelectorAll('.rec-cb:checked'),
+        function(cb) { return cb.dataset.txStatus === '1'; }
+    );
+    if (!items.length) {
+        alert('No selected items have a downloadable transcript. Eligible states: Approved, Reviewed, or already Uploaded.');
+        return;
+    }
+    items.forEach(function(cb, i) {
+        setTimeout(function() {
+            var a = document.createElement('a');
+            a.href = '/api/admin-transcript-vtt.php?key=' + encodeURIComponent(cb.value);
+            // Filename header from the server will override this hint,
+            // but we set it anyway as a fallback.
+            a.download = 'transcript-' + cb.value + '.vtt';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }, i * 120);
+    });
 }
 
 // Iterate the :checked items that have an MP3 and trigger one
