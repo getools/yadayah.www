@@ -174,10 +174,13 @@ function preprocessFontFilter(string $html, array $fonts): string {
     }
     $out = '';
     $i = 0; $n = strlen($html);
-    // Stack tracks the currently-open data-font value (string) and a
-    // sentinel for non-data-font spans (''). Each open <span> pushes;
-    // each </span> pops.
+    // Two parallel stacks pushed on every open <span> and popped on
+    // </span>. $stack tracks the data-font (or empty sentinel) so
+    // fontFilterEmit can decide whether to drop text. $styleStack
+    // tracks the data-style attr ('kjv'/'nas'/…/null) so the close
+    // tag knows whether to emit a closing Bible-style surrogate.
     $stack = [];
+    $styleStack = [];
     while ($i < $n) {
         $lt = strpos($html, '<', $i);
         if ($lt === false) {
@@ -206,8 +209,20 @@ function preprocessFontFilter(string $html, array $fonts): string {
             } else {
                 $stack[] = '';
             }
-            // Strip the span tag itself.
+            // Bible-style surrogate: emit a bare-tagged <bib-kjv> the
+            // segmenter recognises, and push the style so the matching
+            // </span> knows what closer to emit.
+            $sty = null;
+            if (preg_match('/data-style="([a-z]+)"/i', $tag, $sm)) {
+                $sty = strtolower($sm[1]);
+                $out .= '<bib-' . $sty . '>';
+            }
+            $styleStack[] = $sty;
         } elseif (strpos($low, '</span') === 0) {
+            if ($styleStack) {
+                $sty = array_pop($styleStack);
+                if ($sty) $out .= '</bib-' . $sty . '>';
+            }
             if ($stack) array_pop($stack);
         } else {
             // Any other tag (b, i, etc.) — pass through.
@@ -870,6 +885,13 @@ function segmentParagraph(string $html): array {
     $boldDepth = 0;
     $italicDepth = 0;
     $parenDepth = 0;
+    // Bible-style surrogate stack. preprocessFontFilter rewrites colored
+    // <span data-style="kjv"> from the parser into <bib-kjv>…</bib-kjv>;
+    // each open tag pushes the style here so any text inside routes to
+    // category=bible. We only need to know whether we're inside any
+    // bib-* tag (the exact style isn't used by the worker, but the
+    // future could break out per-translation voices if desired).
+    $bibDepth = 0;
     $i = 0; $n = strlen($html);
     while ($i < $n) {
         $ch = $html[$i];
@@ -884,6 +906,8 @@ function segmentParagraph(string $html): array {
                 $closing ? ($boldDepth > 0 && $boldDepth--) : $boldDepth++;
             } elseif ($name === 'i' || $name === 'em') {
                 $closing ? ($italicDepth > 0 && $italicDepth--) : $italicDepth++;
+            } elseif (strpos($name, 'bib-') === 0) {
+                $closing ? ($bibDepth > 0 && $bibDepth--) : $bibDepth++;
             }
             $i = $end + 1;
             continue;
@@ -902,7 +926,8 @@ function segmentParagraph(string $html): array {
             $i++;
         }
         foreach (mb_str_split($piece) as $c) {
-            if ($c === '(') { $parenDepth++; $cat = 'word_definition'; }
+            if ($bibDepth > 0)        { $cat = 'bible'; }
+            elseif ($c === '(') { $parenDepth++; $cat = 'word_definition'; }
             elseif ($c === ')' && $parenDepth > 0) { $cat = 'word_definition'; $parenDepth--; }
             elseif ($parenDepth > 0) { $cat = 'word_definition'; }
             elseif ($boldDepth  > 0) { $cat = 'translation'; }

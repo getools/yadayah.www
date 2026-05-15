@@ -207,11 +207,38 @@ $relPath   = '/u/tts-audio/' . $baseName;
 // Load paragraphs. paragraph_page is included so we can emit a row in
 // yy_tts_audio_marker tying each paragraph's audio offset to its page
 // — flipbook-tts.js uses these to auto-turn pages as playback advances.
-$pStmt = $db->prepare("SELECT paragraph_key, paragraph_number, paragraph_page, paragraph_text_html, paragraph_text_plain FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");
+$pStmt = $db->prepare("SELECT paragraph_key, paragraph_number, paragraph_page, paragraph_text_html, paragraph_text_plain, paragraph_is_table FROM yy_paragraph WHERE chapter_key = ? ORDER BY paragraph_number");
 $pStmt->execute([$chapterKey]);
 $paragraphs = $pStmt->fetchAll();
+
+// Skip filters:
+//   • paragraph_is_table — auto-flagged at parse time by PyMuPDF's
+//     find_tables() (see bundle_paragraphs.py). Tables of dates,
+//     visibility percentages, etc. don't read well aloud.
+//   • volume_skip_pages — admin-managed comma-separated page ranges
+//     on yy_volume. Manual escape hatch for sections the auto-detector
+//     misses (front matter, appendices, calendar tables, etc.).
+$skipRangesStmt = $db->prepare("SELECT volume_skip_pages FROM yy_volume WHERE volume_key = ?");
+$skipRangesStmt->execute([$volumeKey]);
+$skipPagesRaw = (string)($skipRangesStmt->fetchColumn() ?: '');
+$skipRanges = [];
+foreach (preg_split('/\s*,\s*/', $skipPagesRaw, -1, PREG_SPLIT_NO_EMPTY) as $tok) {
+    if (preg_match('/^\s*(\d+)\s*-\s*(\d+)\s*$/', $tok, $m))      $skipRanges[] = [(int)$m[1], (int)$m[2]];
+    elseif (preg_match('/^\s*(\d+)\s*$/', $tok, $m))              $skipRanges[] = [(int)$m[1], (int)$m[1]];
+}
+$beforeCount = count($paragraphs);
+$paragraphs = array_values(array_filter($paragraphs, function ($p) use ($skipRanges) {
+    if (!empty($p['paragraph_is_table'])) return false;
+    $pg = (int)($p['paragraph_page'] ?? 0);
+    foreach ($skipRanges as $r) if ($pg >= $r[0] && $pg <= $r[1]) return false;
+    return true;
+}));
+$skipped = $beforeCount - count($paragraphs);
+if ($skipped > 0) {
+    fwrite(STDERR, "skipped $skipped paragraph(s): " . count(array_filter($paragraphs, fn($p) => !empty($p['paragraph_is_table']))) . " table-flagged, ranges=" . $skipPagesRaw . "\n");
+}
 $nPara = count($paragraphs);
-if (!$nPara) bail($db, $audioKey, "no paragraphs for chapter_key=$chapterKey");
+if (!$nPara) bail($db, $audioKey, "no paragraphs for chapter_key=$chapterKey (all $beforeCount filtered as table/skipped-pages)");
 
 // ── Series 07: chapter-intro Islamic-source detection ──────────────────
 // Series 07 books ("God Damn Religion") open every chapter with a bold
