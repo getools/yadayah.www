@@ -559,12 +559,12 @@ function runFlipbookAssetsCheck(array $config): array {
 
     $books = [];
     foreach (glob($webroot . '/YY-*', GLOB_ONLYDIR) ?: [] as $dir) {
-        if (is_file($dir . '/index.html')) {
+        if (is_file($dir . '/index.php') || is_file($dir . '/index.html')) {
             $books[] = basename($dir);
         }
     }
     if (!$books) {
-        return ['status' => 'fail', 'message' => "No YY-* book dirs with index.html found under {$webroot}"];
+        return ['status' => 'fail', 'message' => "No YY-* book dirs with index.php or index.html found under {$webroot}"];
     }
 
     // Use curl_multi so all book × asset HEAD requests run in parallel.
