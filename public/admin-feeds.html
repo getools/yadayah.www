@@ -3010,19 +3010,24 @@ function downloadSelectedTranscripts() {
         alert('No selected items have a downloadable transcript. Eligible states: Approved, Reviewed, or already Uploaded.');
         return;
     }
-    items.forEach(function(cb, i) {
-        setTimeout(function() {
-            var a = document.createElement('a');
-            a.href = '/api/admin-transcript-vtt.php?key=' + encodeURIComponent(cb.value);
-            // Filename header from the server will override this hint,
-            // but we set it anyway as a fallback.
-            a.download = 'transcript-' + cb.value + '.vtt';
-            a.rel = 'noopener';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }, i * 120);
-    });
+    // Single → direct single-file VTT endpoint; multiple → server-side zip
+    // so the user gets one combined download instead of N browser prompts.
+    if (items.length === 1) {
+        var a1 = document.createElement('a');
+        a1.href = '/api/admin-transcript-vtt.php?key=' + encodeURIComponent(items[0].value);
+        a1.rel = 'noopener';
+        document.body.appendChild(a1);
+        a1.click();
+        document.body.removeChild(a1);
+        return;
+    }
+    var keys = items.map(function(cb){ return cb.value; }).join(',');
+    var a = document.createElement('a');
+    a.href = '/api/admin-transcript-vtt-zip.php?keys=' + encodeURIComponent(keys);
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 // Iterate the :checked items that have an MP3 and trigger one
@@ -3039,23 +3044,29 @@ function downloadSelectedRecordings() {
         alert('No selected items have an MP3 to download. Select rows with the headphones icon.');
         return;
     }
-    items.forEach(function(cb, i) {
-        setTimeout(function() {
-            var path = cb.dataset.mp3;
-            // Strip any leading slash so we land on /u/audio/<path>.
-            if (path.charAt(0) === '/') path = path.substring(1);
-            var url = '/' + path;
-            // basename for the suggested filename
-            var name = path.split('/').pop() || ('mp3-' + cb.value + '.mp3');
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            a.rel = 'noopener';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }, i * 120);
-    });
+    // Single → direct static MP3 download; multiple → server zips them
+    // into one combined download.
+    if (items.length === 1) {
+        var p = items[0].dataset.mp3;
+        if (p.charAt(0) === '/') p = p.substring(1);
+        var url1 = '/' + p;
+        var name1 = p.split('/').pop() || ('mp3-' + items[0].value + '.mp3');
+        var a1 = document.createElement('a');
+        a1.href = url1;
+        a1.download = name1;
+        a1.rel = 'noopener';
+        document.body.appendChild(a1);
+        a1.click();
+        document.body.removeChild(a1);
+        return;
+    }
+    var keys = items.map(function(cb){ return cb.value; }).join(',');
+    var a = document.createElement('a');
+    a.href = '/api/admin-mp3-zip.php?keys=' + encodeURIComponent(keys);
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 function getSelectedRecordingKeys() {
     return Array.prototype.map.call(document.querySelectorAll('.rec-cb:checked'), function(cb){ return parseInt(cb.value); });
