@@ -328,8 +328,15 @@ if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
             if ($output && preg_match('/^ERROR:.*$/m', $output, $captM)) $captErrLine = $captM[0];
             $captTail = $captErrLine ?: substr(trim($output), 0, 300);
             $captReason = 'yt-dlp produced no VTT';
+            $cookiesRotated = $haveCookies
+                && (stripos($output, 'no longer valid') !== false
+                    || stripos($output, 'rotated in the browser') !== false);
             if (stripos($output, 'not a bot') !== false || stripos($output, 'confirm you') !== false) {
-                $captReason = 'bot-detection blocked captions download';
+                $captReason = $cookiesRotated
+                    ? 'cookies stale/rotated — bot-detection blocked captions download'
+                    : 'bot-detection blocked captions download';
+            } elseif ($cookiesRotated) {
+                $captReason = 'cookies are stale/rotated';
             } elseif (stripos($output, 'age-restricted') !== false || stripos($output, 'age restricted') !== false) {
                 $captReason = 'video is age-restricted';
             } elseif (stripos($output, 'private video') !== false) {
@@ -340,6 +347,35 @@ if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
                 $captReason = 'no auto-captions available';
             }
             $methodFailures[] = "yt_dlp_captions: $captReason — " . $captTail;
+
+            // When the web-client cookies are stale, retry once with the ios client
+            // (no cookies). ios sometimes bypasses Botguard without auth when the
+            // web client fails due to invalid session cookies.
+            if ($cookiesRotated) {
+                updateJob($db, $jobKey, ['job_progress' => 18,
+                    'job_message' => 'Cookies were stale — retrying with ios client (no auth)...']);
+                $cmdRetry = escapeshellcmd($ytDlp)
+                    . " --extractor-args 'youtube:player_client=ios'"
+                    . $remoteComponentsArg
+                    . ' --skip-download --write-auto-subs --sub-lang en --sub-format vtt --output '
+                    . escapeshellarg("$tmpFile.%(ext)s") . ' '
+                    . escapeshellarg("https://www.youtube.com/watch?v=$videoId") . ' 2>&1';
+                $outputRetry = shell_exec($cmdRetry);
+                $vttRetry = glob("$tmpFile*.vtt");
+                if ($vttRetry && file_exists($vttRetry[0])) {
+                    updateJob($db, $jobKey, ['job_progress' => 70, 'job_message' => 'Parsing captions (ios retry)...']);
+                    $rows = parseVtt(file_get_contents($vttRetry[0]));
+                    foreach ($vttRetry as $f) @unlink($f);
+                    if (!$rows) {
+                        $methodFailures[] = 'yt_dlp_captions_ios_retry: VTT parsed but produced 0 rows';
+                    }
+                } else {
+                    $retryErrLine = '';
+                    if ($outputRetry && preg_match('/^ERROR:.*$/m', $outputRetry, $retryM)) $retryErrLine = $retryM[0];
+                    $methodFailures[] = 'yt_dlp_captions_ios_retry: '
+                        . ($retryErrLine ?: substr(trim($outputRetry), 0, 300) ?: 'no VTT produced');
+                }
+            }
         }
     }
 }
