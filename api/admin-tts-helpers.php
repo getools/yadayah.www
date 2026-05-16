@@ -704,7 +704,8 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
         if ($prosodyAttrs) {
             $inner = '<prosody ' . implode(' ', $prosodyAttrs) . '>' . $inner . '</prosody>';
         }
-        if (!empty($cat['tts_voice_style'])) {
+        if (!empty($cat['tts_voice_style']) && stripos($voiceCode, 'Multilingual') === false) {
+            // Azure Multilingual neural voices don't support mstts:express-as styles.
             $style       = htmlspecialchars($cat['tts_voice_style'], ENT_QUOTES | ENT_XML1);
             $styleDegree = htmlspecialchars((string)($cat['tts_voice_style_degree'] ?? '1.0'), ENT_QUOTES | ENT_XML1);
             $inner = "<mstts:express-as style=\"$style\" styledegree=\"$styleDegree\">$inner</mstts:express-as>";
@@ -744,7 +745,10 @@ function azureTtsSynthesize(string $ssml, array $cfg, ?string &$err = null): str
     $cerr = curl_error($ch);
     curl_close($ch);
     if ($resp === false || $code >= 400) {
-        $err = "Azure TTS HTTP $code: " . ($cerr ?: substr((string)$resp, 0, 300));
+        $body = $cerr ?: trim((string)$resp);
+        if ($body === '') $body = '[empty response – voice may not support requested style or region]';
+        else $body = substr($body, 0, 300);
+        $err = "Azure TTS HTTP $code: $body | SSML: " . substr($ssml, 0, 400);
         return '';
     }
     return (string)$resp;
