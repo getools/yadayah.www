@@ -78,11 +78,19 @@ if ($mode === 'chapters') {
     }, $stmt->fetchAll())]);
 }
 
+// paragraph_page in yy_paragraph stores the PDF physical page index,
+// not the footer page the reader sees. The YY books share a 6-page
+// front matter (cover + about author + TOC) before chapter 1's footer
+// page 1 begins, so we shift by this constant when surfacing pages to
+// the operator and when accepting `page` as a filter input — that way
+// the picker speaks the same language as the book itself.
+const PV_FOOTER_OFFSET = 6;
+
 if ($mode === 'pages') {
-    // Distinct content pages for a volume. paragraph_page is the footer
-    // page number (same numbering shown in the flipbook), so it lines up
-    // visually with what an operator sees on screen. Table-only pages are
-    // excluded — the Paragraph picker would have nothing to offer there.
+    // Distinct content pages for a volume, expressed as footer page
+    // numbers. Front-matter pages (paragraph_page <= offset) are hidden;
+    // table-only paragraphs are excluded the same way the build worker
+    // skips them.
     $volumeKey = (int)($_GET['volume_key'] ?? 0);
     if (!$volumeKey) errorResponse('volume_key required');
     $stmt = $db->prepare("
@@ -91,12 +99,13 @@ if ($mode === 'pages') {
          WHERE volume_key = ?
            AND paragraph_is_table = FALSE
            AND paragraph_page IS NOT NULL
+           AND paragraph_page > ?
          ORDER BY paragraph_page
     ");
-    $stmt->execute([$volumeKey]);
+    $stmt->execute([$volumeKey, PV_FOOTER_OFFSET]);
     $rows = array_map(function ($r) {
-        $pg = (int)$r['paragraph_page'];
-        return ['key' => $pg, 'number' => $pg, 'label' => 'p.' . $pg];
+        $footerPg = (int)$r['paragraph_page'] - PV_FOOTER_OFFSET;
+        return ['key' => $footerPg, 'number' => $footerPg, 'label' => 'p.' . $footerPg];
     }, $stmt->fetchAll());
     jsonResponse(['rows' => $rows]);
 }
@@ -115,7 +124,13 @@ if ($mode === 'paragraphs') {
     $where = ['paragraph_is_table = FALSE'];
     $params = [];
     if ($chapterKey) { $where[] = 'chapter_key = ?'; $params[] = $chapterKey; }
-    if ($page)       { $where[] = 'paragraph_page = ?'; $params[] = $page; }
+    if ($page) {
+        // `page` is the footer page (what the operator sees in the dropdown);
+        // the DB stores PDF physical pages, so shift by the same constant
+        // used in mode=pages.
+        $where[] = 'paragraph_page = ?';
+        $params[] = $page + PV_FOOTER_OFFSET;
+    }
     if ($volumeKey)  { $where[] = 'volume_key = ?'; $params[] = $volumeKey; }
     // Skip table paragraphs — they were excluded from the build worker and
     // would not make a sensible TTS starting point either.
@@ -130,12 +145,14 @@ if ($mode === 'paragraphs') {
         $plain = (string)($r['paragraph_text_plain'] ?? '');
         $snippet = mb_substr($plain, 0, 70);
         if (mb_strlen($plain) > 70) $snippet .= '…';
+        $rawPg = (int)($r['paragraph_page'] ?? 0);
+        $footerPg = $rawPg > PV_FOOTER_OFFSET ? ($rawPg - PV_FOOTER_OFFSET) : 0;
         return [
             'key'    => (int)$r['paragraph_key'],
             'number' => (int)$r['paragraph_number'],
-            'page'   => (int)($r['paragraph_page'] ?? 0),
+            'page'   => $footerPg,
             'label'  => '#' . $r['paragraph_number']
-                      . ($r['paragraph_page'] ? ' (p.' . $r['paragraph_page'] . ')' : '')
+                      . ($footerPg ? ' (p.' . $footerPg . ')' : '')
                       . ($snippet ? ' — ' . $snippet : ''),
         ];
     }, $stmt->fetchAll())]);
