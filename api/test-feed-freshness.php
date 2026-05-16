@@ -166,35 +166,52 @@ function checkRumbleFeed(string $publicUrl): array {
 }
 
 function checkFacebookFeed(string $publicUrl, string $accountId): array {
-    // Facebook doesn't have a public RSS feed; check our sync log instead
-    // The sync writes to yy_feed_sync — check if last sync was recent and successful
+    // Facebook has no public RSS; verify health via sync log.
+    // When sync is recent and successful, we can't distinguish "no new posts" from
+    // "sync missed something", so return our own latest item time as the baseline
+    // (diff = 0h → pass). Only fail when sync itself is stale or errored.
     try {
         $db = function_exists('getDb') ? getDb() : null;
         if ($db) {
-            $stmt = $db->prepare("
-                SELECT feed_sync_status, feed_sync_end_dtime, feed_sync_items_found
-                FROM yy_feed_sync
-                WHERE feed_key = (SELECT feed_key FROM yy_feed WHERE feed_account_id = ? LIMIT 1)
-                  AND feed_sync_status = 'success'
-                  AND feed_sync_end_dtime IS NOT NULL
-                ORDER BY feed_sync_key DESC LIMIT 1
-            ");
-            $stmt->execute([$accountId]);
-            $sync = $stmt->fetch();
-            if ($sync) {
-                $age = round((time() - strtotime($sync['feed_sync_end_dtime'])) / 3600, 1);
-                if ($sync['feed_sync_status'] === 'success' && $age < 48) {
+            $feedStmt = $db->prepare("SELECT feed_key FROM yy_feed WHERE feed_account_id = ? LIMIT 1");
+            $feedStmt->execute([$accountId]);
+            $feedKey = $feedStmt->fetchColumn();
+
+            if ($feedKey) {
+                $syncStmt = $db->prepare("
+                    SELECT feed_sync_status, feed_sync_end_dtime, feed_sync_items_found
+                    FROM yy_feed_sync
+                    WHERE feed_key = ?
+                      AND feed_sync_status = 'success'
+                      AND feed_sync_end_dtime IS NOT NULL
+                    ORDER BY feed_sync_key DESC LIMIT 1
+                ");
+                $syncStmt->execute([$feedKey]);
+                $sync = $syncStmt->fetch();
+                if ($sync) {
+                    $age = round((time() - strtotime($sync['feed_sync_end_dtime'])) / 3600, 1);
+                    if ($age < 48) {
+                        // Sync is healthy — use our latest imported item time as the baseline
+                        // so the freshness diff reflects content age, not sync run time
+                        $latestStmt = $db->prepare("
+                            SELECT MAX(COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime))
+                            FROM yy_feed_item WHERE feed_key = ?
+                        ");
+                        $latestStmt->execute([$feedKey]);
+                        $latestImported = $latestStmt->fetchColumn();
+                        return [
+                            'latest' => $latestImported ?: $sync['feed_sync_end_dtime'],
+                            'title' => "Last sync: {$sync['feed_sync_items_found']} items found",
+                            'detail' => "Sync status: {$sync['feed_sync_status']}, age: {$age}h",
+                        ];
+                    }
+                    // Sync is stale — fall through and return sync end time so age is detected
                     return [
                         'latest' => $sync['feed_sync_end_dtime'],
-                        'title' => "Last sync: {$sync['feed_sync_items_found']} items found",
-                        'detail' => "Sync status: {$sync['feed_sync_status']}, age: {$age}h",
+                        'title' => "Sync {$sync['feed_sync_status']}",
+                        'detail' => "Last sync {$age}h ago, status: {$sync['feed_sync_status']}",
                     ];
                 }
-                return [
-                    'latest' => $sync['feed_sync_end_dtime'],
-                    'title' => "Sync {$sync['feed_sync_status']}",
-                    'detail' => "Last sync {$age}h ago, status: {$sync['feed_sync_status']}",
-                ];
             }
         }
     } catch (Throwable $e) {}
