@@ -1,3 +1,11 @@
+// NodeList/HTMLCollection forEach polyfill for browsers that lack it (e.g. Firefox <50)
+if (typeof NodeList !== 'undefined' && NodeList.prototype && !NodeList.prototype.forEach) {
+    NodeList.prototype.forEach = Array.prototype.forEach;
+}
+if (typeof HTMLCollection !== 'undefined' && HTMLCollection.prototype && !HTMLCollection.prototype.forEach) {
+    HTMLCollection.prototype.forEach = Array.prototype.forEach;
+}
+
 (function () {
     // Inject hiding style immediately (before first paint) to prevent flicker
     var _style = document.createElement('style');

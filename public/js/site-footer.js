@@ -79,7 +79,7 @@ footer.innerHTML = '<video class="footer-video" autoplay muted loop playsinline>
 fetch('/api/page-footer.php')
     .then(function(r) { return r.json(); })
     .then(function(cols) {
-        footer.querySelectorAll('[data-footer-col]').forEach(function(el) {
+        Array.prototype.forEach.call(footer.querySelectorAll('[data-footer-col]'), function(el) {
             var col = el.getAttribute('data-footer-col');
             var links = cols[col] || [];
             if (links.length) {
@@ -94,7 +94,7 @@ fetch('/api/page-footer.php')
 fetch('/api/site-config.php')
     .then(function(r) { return r.json(); })
     .then(function(cfg) {
-        footer.querySelectorAll('[data-config]').forEach(function(el) {
+        Array.prototype.forEach.call(footer.querySelectorAll('[data-config]'), function(el) {
             var k = el.getAttribute('data-config');
             if (cfg[k] != null) el.textContent = cfg[k];
         });
@@ -259,7 +259,7 @@ if (typeof MutationObserver !== 'undefined') {
     function applyState(d) {
         // Remove ALL existing live indicators (defensive — handles edge cases
         // where multiple may have been inserted, e.g. cached/stale versions)
-        document.querySelectorAll('#live-indicator').forEach(function(el) { el.remove(); });
+        Array.prototype.forEach.call(document.querySelectorAll('#live-indicator'), function(el) { el.remove(); });
 
         if (d && d.live) {
             // Skip rendering if user dismissed THIS specific stream this session

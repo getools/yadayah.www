@@ -299,7 +299,7 @@
             .shorts-grid { grid-template-columns: 1fr; }
         }
     </style>
-<script src="/js/site-nav.js?v=48"></script>
+<script src="/js/site-nav.js?v=49"></script>
 </head>
 <body>
 
@@ -458,7 +458,7 @@ function goToSlide(i) {
     currentSlide = i;
     document.getElementById('carousel-track').style.transform = 'translateX(-' + (i * 100) + '%)';
     var dots = document.querySelectorAll('.carousel-dots .dot');
-    dots.forEach(function(d, j) { d.classList.toggle('active', j === i); });
+    Array.prototype.forEach.call(dots, function(d, j) { d.classList.toggle('active', j === i); });
     startCarouselTimer();
 }
 
@@ -634,13 +634,13 @@ loadFeatured();
     var r=document.documentElement;
     if(cfg['toolbar-color-bg'])r.style.setProperty('--toolbar-bg','#'+cfg['toolbar-color-bg']);
     if(cfg['toolbar-color-text'])r.style.setProperty('--toolbar-text','#'+cfg['toolbar-color-text']);
-    document.querySelectorAll('[data-config]').forEach(function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
+    Array.prototype.forEach.call(document.querySelectorAll('[data-config]'), function(el){var k=el.getAttribute('data-config');if(cfg[k]!=null)el.textContent=cfg[k];});
 
     // Home-page component switches (set via Admin → Home). Each key is
     // namespaced 'home-' on the wire so it can't collide with global
     // config. A missing/blank value means "use the original default".
     var truthy = function(v){ return v==='1'||v==='true'||v===1||v===true; };
-    function hide(sel){ document.querySelectorAll(sel).forEach(function(el){ el.style.display='none'; }); }
+    function hide(sel){ Array.prototype.forEach.call(document.querySelectorAll(sel), function(el){ el.style.display='none'; }); }
     if (cfg['home-carousel-show'] != null && !truthy(cfg['home-carousel-show'])) hide('.carousel, .carousel-dots');
     if (cfg['home-shorts-show']   != null &&  truthy(cfg['home-shorts-show'])) {
         // Reveal the shorts section (it ships with display:none baseline).
@@ -652,7 +652,7 @@ loadFeatured();
     window.YY_HOME_CFG = cfg;
 });})();
 </script>
-<script src="/js/site-footer.js?v=127"></script>
+<script src="/js/site-footer.js?v=128"></script>
 <script src="/js/video-comments.js"></script>
 </body>
 </html>
