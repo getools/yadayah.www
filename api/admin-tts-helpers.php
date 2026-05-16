@@ -631,27 +631,22 @@ function tokensToSsml(string $escaped, array $tokenMap): string {
  * Wrapped in a <voice> element with prosody from the category config.
  */
 function buildVoiceBlock(string $text, array $cfg, string $category, ?string $overrideVoice = null): string {
-    // Resolve the category through a fallback chain so segments tagged
-    // with a source-specific Islamic category (quran/bukhari/tabari/ishaq)
-    // route to the generic 'islam' voice — and ultimately 'main' — when
-    // the admin hasn't picked a dedicated voice yet. Same idea for any
-    // other future sub-category that doesn't have its own row.
+    // Resolve the category through the parent chain so segments tagged
+    // with a source-specific category (kjv, bukhari, esv, …) route to
+    // their generic parent voice — and ultimately to 'main' — when the
+    // admin hasn't configured a dedicated voice. Parent relationships
+    // are declared in ttsCategories(); this loop just walks them.
     $cat = $cfg['categories'][$category] ?? null;
-    if ($cat === null) {
-        static $FALLBACK_CHAIN = [
-            'quran'             => ['islam', 'main'],
-            'islam_translation' => ['islam', 'main'],
-            'bukhari'           => ['islam', 'main'],
-            'muslim'            => ['islam', 'main'],
-            'tabari'            => ['islam', 'main'],
-            'ishaq'             => ['islam', 'main'],
-            'islam'             => ['main'],
-            'bible'             => ['main'],
-            'quote'             => ['translation', 'main'],
-        ];
-        foreach (($FALLBACK_CHAIN[$category] ?? ['main']) as $alt) {
-            if (isset($cfg['categories'][$alt])) { $cat = $cfg['categories'][$alt]; break; }
-        }
+    $cur = $category;
+    while ($cat === null && $cur !== null) {
+        $cur = ttsCategoryParent($cur);
+        if ($cur !== null) $cat = $cfg['categories'][$cur] ?? null;
+    }
+    // Ultimate fallback: if even 'main' has no row, use whatever the
+    // category catalog happens to define first; if that's also missing
+    // the voiceCode default below picks up the hardcoded Brian voice.
+    if ($cat === null && !empty($cfg['categories'])) {
+        $cat = reset($cfg['categories']);
     }
     $voiceCode = $overrideVoice ?: ($cat['tts_voice_code'] ?? 'en-US-BrianMultilingualNeural');
 
@@ -887,11 +882,12 @@ function segmentParagraph(string $html): array {
     $parenDepth = 0;
     // Bible-style surrogate stack. preprocessFontFilter rewrites colored
     // <span data-style="kjv"> from the parser into <bib-kjv>…</bib-kjv>;
-    // each open tag pushes the style here so any text inside routes to
-    // category=bible. We only need to know whether we're inside any
-    // bib-* tag (the exact style isn't used by the worker, but the
-    // future could break out per-translation voices if desired).
-    $bibDepth = 0;
+    // each open tag pushes its style suffix so text inside routes to the
+    // matching per-translation category (kjv/nas/nlt/jps/niv/esv). When
+    // the stack is non-empty the innermost style wins; when empty we
+    // fall back to no Bible context. If the style isn't a known child
+    // category, buildVoiceBlock's parent-walk falls back to 'bible'.
+    $bibStack = [];
     $i = 0; $n = strlen($html);
     while ($i < $n) {
         $ch = $html[$i];
@@ -907,7 +903,11 @@ function segmentParagraph(string $html): array {
             } elseif ($name === 'i' || $name === 'em') {
                 $closing ? ($italicDepth > 0 && $italicDepth--) : $italicDepth++;
             } elseif (strpos($name, 'bib-') === 0) {
-                $closing ? ($bibDepth > 0 && $bibDepth--) : $bibDepth++;
+                if ($closing) {
+                    if ($bibStack) array_pop($bibStack);
+                } else {
+                    $bibStack[] = substr($name, 4); // 'kjv', 'nas', 'esv', …
+                }
             }
             $i = $end + 1;
             continue;
@@ -926,7 +926,12 @@ function segmentParagraph(string $html): array {
             $i++;
         }
         foreach (mb_str_split($piece) as $c) {
-            if ($bibDepth > 0)        { $cat = 'bible'; }
+            if ($bibStack) {
+                // Innermost-bib-style wins; falls back to 'bible' if the
+                // tag doesn't match a known child category, via the
+                // parent walk in buildVoiceBlock.
+                $cat = end($bibStack) ?: 'bible';
+            }
             elseif ($c === '(') { $parenDepth++; $cat = 'word_definition'; }
             elseif ($c === ')' && $parenDepth > 0) { $cat = 'word_definition'; $parenDepth--; }
             elseif ($parenDepth > 0) { $cat = 'word_definition'; }
@@ -960,23 +965,55 @@ function segmentParagraph(string $html): array {
 }
 
 function ttsCategories(): array {
+    // Three top-level parents (`parent` => null) — Other, Bible, Islam.
+    // Children inherit voice/style/prosody from their parent when they
+    // don't have their own row in yy_tts_category_voice. The ordering
+    // here drives the rendering order in the Defaults tab and the Build
+    // modal; children sit directly under their parent.
     return [
-        ['code' => 'main',            'label' => 'Main narration (body text)'],
-        ['code' => 'translation',     'label' => 'Translation prose (bold text)'],
-        ['code' => 'word_definition', 'label' => 'Word definition (parenthesized italic + definition)'],
-        ['code' => 'bible',           'label' => 'Bible quotation'],
-        ['code' => 'quote',           'label' => 'General extended quote (non-scripture)'],
-        ['code' => 'islam',           'label' => 'Islamic scripture quotation (generic / fallback)'],
-        // Source-specific Islamic quote categories. Series 07 chapter
-        // intros are tagged with the matching source by the worker —
-        // see TTS_ISLAMIC_SOURCES + the chapter-intro classifier in
-        // admin-tts-build-worker.php. Quotes whose source can't be
-        // identified fall back to 'islam'.
-        ['code' => 'quran',             'label' => 'Quran quotation'],
-        ['code' => 'islam_translation', 'label' => 'Quran translation (Ahmed Ali, Pickthal, Shakir, Yusuf Ali, Noble Quran, Word-by-Word)'],
-        ['code' => 'bukhari',           'label' => 'Bukhari (Hadith) quotation'],
-        ['code' => 'muslim',            'label' => 'Muslim (Sahih Muslim) quotation'],
-        ['code' => 'tabari',            'label' => 'Tabari quotation'],
-        ['code' => 'ishaq',             'label' => 'Ishaq quotation'],
+        // ── Other ── catch-all for non-scripture body text.
+        ['code' => 'main',            'parent' => null,    'label' => 'Other — main narration (body text)'],
+        ['code' => 'translation',     'parent' => 'main',  'label' => 'Translation prose (bold text)'],
+        ['code' => 'word_definition', 'parent' => 'main',  'label' => 'Word definition (parenthesized italic + definition)'],
+        ['code' => 'quote',           'parent' => 'main',  'label' => 'General extended quote (non-scripture)'],
+
+        // ── Bible ── per-translation children are color-tagged by the
+        // parser (data-style="kjv" etc., see BIBLE_STYLE_BY_COLOR in
+        // bundle_paragraphs.py). When a translation has no specific
+        // voice mapping the segment falls back to the generic Bible
+        // voice — i.e. this parent.
+        ['code' => 'bible',           'parent' => null,    'label' => 'Bible — generic / fallback'],
+        ['code' => 'kjv',             'parent' => 'bible', 'label' => 'King James Version (KJV)'],
+        ['code' => 'nas',             'parent' => 'bible', 'label' => 'New American Standard (NAS / NASB)'],
+        ['code' => 'nlt',             'parent' => 'bible', 'label' => 'New Living Translation (NLT)'],
+        ['code' => 'jps',             'parent' => 'bible', 'label' => 'Jewish Publication Society (JPS)'],
+        ['code' => 'niv',             'parent' => 'bible', 'label' => 'New International Version (NIV)'],
+        ['code' => 'esv',             'parent' => 'bible', 'label' => 'English Standard Version (ESV)'],
+
+        // ── Islam ── source-specific children are tagged by the worker
+        // (see TTS_ISLAMIC_SOURCES + the chapter-intro classifier in
+        // admin-tts-build-worker.php). Quotes whose source can't be
+        // identified fall back to the generic Islam voice — this parent.
+        ['code' => 'islam',           'parent' => null,    'label' => 'Islam — generic / fallback'],
+        ['code' => 'quran',           'parent' => 'islam', 'label' => 'Quran'],
+        ['code' => 'islam_translation', 'parent' => 'islam', 'label' => 'Quran translation (Ahmed Ali, Pickthal, Shakir, Yusuf Ali, Noble Quran, Word-by-Word)'],
+        ['code' => 'bukhari',         'parent' => 'islam', 'label' => 'Bukhari (Hadith)'],
+        ['code' => 'muslim',          'parent' => 'islam', 'label' => 'Muslim (Sahih Muslim)'],
+        ['code' => 'tabari',          'parent' => 'islam', 'label' => 'Tabari'],
+        ['code' => 'ishaq',           'parent' => 'islam', 'label' => 'Ishaq'],
     ];
+}
+
+/**
+ * Resolve a category code back to its parent (or null for top-level).
+ * Built once per request from ttsCategories(); used by buildVoiceBlock
+ * to walk the parent chain when picking a voice.
+ */
+function ttsCategoryParent(string $code): ?string {
+    static $map = null;
+    if ($map === null) {
+        $map = [];
+        foreach (ttsCategories() as $c) $map[$c['code']] = $c['parent'];
+    }
+    return $map[$code] ?? null;
 }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778916996">
+    <meta name="page-version" content="1778882402">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
@@ -627,10 +627,19 @@ function renderCategoryRows() {
         var saved = STATE.categories[cat.code] || {};
         var row = document.createElement('div');
         row.className = 'voice-row';
-        row.style.gridTemplateColumns = '220px 1fr 160px auto auto';
+        row.style.gridTemplateColumns = '260px 1fr 160px auto auto';
+        var isParent = !cat.parent;
+        // Visual hierarchy: parents get a top border + bold; children
+        // indent and dim. Same treatment is used in the Build modal so
+        // both popovers read the same way.
+        if (isParent) row.style.cssText += 'border-top:1px solid #ccd;margin-top:8px;padding-top:6px;';
+        var labelStyle = isParent
+            ? 'font-weight:700;color:#31345A;'
+            : 'padding-left:22px;color:#555;';
+        var voicePlaceholder = isParent ? '' : ' (inherits ' + cat.parent + ' if unset)';
         row.innerHTML =
-            '<label>' + escapeHtml(cat.label) + '</label>' +
-            '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
+            '<label style="' + labelStyle + '">' + escapeHtml(cat.label) + '</label>' +
+            '<select data-cat="' + cat.code + '" data-field="voice" title="' + escapeHtml('Voice for ' + cat.code + voicePlaceholder) + '"></select>' +
             '<select data-field="style" title="Speaking style (e.g. cheerful, chat, narration). Empty = no style override."></select>' +
             '<div class="prosody">' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></span>' +
@@ -2562,10 +2571,20 @@ function openBuildModal(chapterKey, audioKey) {
         row.className = 'voice-row';
         // Match the Voices-tab layout so admins can tweak voice/style/
         // rate/pitch/vol for a one-off build without leaving the chapter's row.
-        row.style.gridTemplateColumns = '180px 1fr 160px auto';
+        row.style.gridTemplateColumns = '260px 1fr 160px auto';
+        var isParent = !cat.parent;
+        // Same parent-children visual treatment as the Defaults tab so
+        // both popovers read consistently.
+        if (isParent) row.style.cssText += 'border-top:1px solid #ccd;margin-top:8px;padding-top:6px;';
+        var labelStyle = isParent
+            ? 'font-weight:700;color:#31345A;'
+            : 'padding-left:22px;color:#555;';
+        var voiceTitle = isParent
+            ? 'Voice for ' + cat.code
+            : 'Voice for ' + cat.code + ' (inherits ' + cat.parent + ' if unset)';
         row.innerHTML =
-            '<label>' + escapeHtml(cat.label) + '</label>' +
-            '<select data-cat="' + cat.code + '" data-field="voice"></select>' +
+            '<label style="' + labelStyle + '">' + escapeHtml(cat.label) + '</label>' +
+            '<select data-cat="' + cat.code + '" data-field="voice" title="' + escapeHtml(voiceTitle) + '"></select>' +
             '<select data-field="style" title="Speaking style — defaults to the Voices-tab setting"></select>' +
             '<div class="prosody">' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down" style="margin-left:2px;cursor:help;">%</span></span>' +
