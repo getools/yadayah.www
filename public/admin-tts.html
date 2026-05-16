@@ -649,13 +649,23 @@ function renderCategoryRows() {
             '<button class="btn-listen" data-cat="' + cat.code + '" title="Play a sample with current settings">▶</button>';
         root.appendChild(row);
         var voiceSel = row.querySelector('select[data-field="voice"]');
+        // Blank option at the top means "inherit from parent" for children;
+        // for top-level rows it means "no voice picked" (the build worker
+        // falls back to whatever the deeper parent walk surfaces, which
+        // for top-levels is just the next existing entry).
+        var blankOpt = document.createElement('option');
+        blankOpt.value = '';
+        blankOpt.textContent = cat.parent
+            ? '— inherit from ' + cat.parent + ' —'
+            : '— (no voice set) —';
+        voiceSel.appendChild(blankOpt);
         CATALOG.voices.forEach(v => {
             var o = document.createElement('option');
             o.value = v.code; o.textContent = v.label;
             o.dataset.styles = (v.styles || []).join(',');
             voiceSel.appendChild(o);
         });
-        if (saved.tts_voice_code) voiceSel.value = saved.tts_voice_code;
+        voiceSel.value = saved.tts_voice_code || '';
         var styleSel = row.querySelector('select[data-field="style"]');
         populateStyleOptions(voiceSel, styleSel, saved.tts_voice_style || '');
         voiceSel.addEventListener('change', function() { populateStyleOptions(voiceSel, styleSel, ''); });
@@ -2593,13 +2603,22 @@ function openBuildModal(chapterKey, audioKey) {
             '</div>';
         root.appendChild(row);
         var voiceSel = row.querySelector('select[data-field="voice"]');
+        // Blank option = inherit from parent in this build run (the
+        // worker walks the same parent chain when no voice is supplied
+        // for a category in voice_overrides).
+        var blankOpt = document.createElement('option');
+        blankOpt.value = '';
+        blankOpt.textContent = cat.parent
+            ? '— inherit from ' + cat.parent + ' —'
+            : '— (use saved default) —';
+        voiceSel.appendChild(blankOpt);
         CATALOG.voices.forEach(v => {
             var o = document.createElement('option');
             o.value = v.code; o.textContent = v.label;
             o.dataset.styles = (v.styles || []).join(',');
             voiceSel.appendChild(o);
         });
-        if (saved.tts_voice_code) voiceSel.value = saved.tts_voice_code;
+        voiceSel.value = saved.tts_voice_code || '';
         var styleSel = row.querySelector('select[data-field="style"]');
         populateStyleOptions(voiceSel, styleSel, saved.tts_voice_style || '');
         voiceSel.addEventListener('change', function() { populateStyleOptions(voiceSel, styleSel, ''); });

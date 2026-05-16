@@ -148,7 +148,15 @@ if ($action === 'save_category_voice') {
     $ttsKey   = (int)($data['tts_key'] ?? 0);
     $category = trim((string)($data['tts_category'] ?? ''));
     $voice    = trim((string)($data['voice_code'] ?? ''));
-    if (!$ttsKey || $category === '' || $voice === '') errorResponse('tts_key, tts_category, voice_code required');
+    if (!$ttsKey || $category === '') errorResponse('tts_key, tts_category required');
+    // Blank voice_code means "inherit from parent" — drop any existing
+    // row for this (tts_key, category) so buildVoiceBlock's parent walk
+    // resolves to the parent's voice. No row = no override.
+    if ($voice === '') {
+        $db->prepare("DELETE FROM yy_tts_category_voice WHERE tts_key = ? AND tts_category = ?")
+           ->execute([$ttsKey, $category]);
+        jsonResponse(['ok' => true, 'cleared' => true]);
+    }
     $stmt = $db->prepare("
         INSERT INTO yy_tts_category_voice
             (tts_key, tts_category, tts_voice_code, tts_voice_style, tts_voice_style_degree,
