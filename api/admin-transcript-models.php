@@ -116,6 +116,28 @@ if ($method === 'GET' && $action === 'status') {
     jsonResponse(['models' => $models, 'active_job' => $activeJob]);
 }
 
+if ($method === 'GET' && $action === 'running') {
+    // All in-flight transcription jobs across every item — used by the
+    // Generate-Transcripts popover so closing + re-opening it shows the
+    // current state of every job (not just ones dispatched this session).
+    $stmt = $db->query("
+        SELECT j.feed_item_transcript_job_key AS job_key,
+               j.feed_item_key,
+               j.job_model,
+               j.job_status,
+               j.job_progress,
+               j.job_message,
+               j.job_dtime,
+               COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS item_title
+          FROM yy_feed_item_transcript_job j
+          LEFT JOIN yy_feed_item fi USING (feed_item_key)
+         WHERE j.job_status IN ('pending', 'running')
+         ORDER BY j.job_dtime DESC
+         LIMIT 200
+    ");
+    jsonResponse(['jobs' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
 if ($method === 'GET' && $action === 'job') {
     $jobKey = (int)($_GET['job_key'] ?? 0);
     if (!$jobKey) errorResponse('job_key required');

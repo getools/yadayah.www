@@ -65,13 +65,18 @@ $abort = function(string $err) use ($itemKey) {
 // an orphan MP3 nothing references. Caused event 4558: item deleted at
 // 00:45, finalize kicked off at 01:08, ffmpeg ran 60s, then DB write
 // went to /dev/null.
-$existsStmt = $db->prepare("SELECT 1 FROM yy_feed_item WHERE feed_item_key = ?");
+$existsStmt = $db->prepare("SELECT feed_item_allow_silent_recording FROM yy_feed_item WHERE feed_item_key = ?");
 $existsStmt->execute([$itemKey]);
-if (!$existsStmt->fetchColumn()) {
+$existsRow = $existsStmt->fetch();
+if (!$existsRow) {
     // Best-effort cleanup of the orphaned parts so they don't accumulate.
     foreach (listParts($PARTS_DIR_ABS, $itemKey) as $f) @unlink($f);
     $abort('Item ' . $itemKey . ' was deleted before finalize ran. Parts removed.');
 }
+// Per-item override: when set, validateAudioFile() skips its -70 dB
+// mean-volume silence rejection so parts of an intentionally-silent
+// section don't get dropped from the final MP3.
+$allowSilent = (bool)$existsRow['feed_item_allow_silent_recording'];
 
 $parts = listParts($PARTS_DIR_ABS, $itemKey);
 if (!$parts) $abort('No parts to finalize');
@@ -83,7 +88,7 @@ $validParts = [];
 $invalidParts = [];
 $skipped = [];
 foreach ($parts as $idx => $f) {
-    $check = validateAudioFile($f);
+    $check = validateAudioFile($f, $allowSilent);
     if ($check['ok']) {
         $validParts[$idx] = $f;
     } else {
@@ -116,7 +121,7 @@ if (count($validParts) === count($parts)) {
         }
         fclose($fpOut);
     }
-    $mergedCheck = is_file($mergedTmp) ? validateAudioFile($mergedTmp) : ['ok' => false, 'reason' => 'merge write failed'];
+    $mergedCheck = is_file($mergedTmp) ? validateAudioFile($mergedTmp, $allowSilent) : ['ok' => false, 'reason' => 'merge write failed'];
     if ($mergedCheck['ok']) {
         $encodeInputs = [$mergedTmp];
         $strategy = 'byte-concat-recovery (' . count($parts) . ' parts -> '

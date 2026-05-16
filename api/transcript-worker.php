@@ -256,8 +256,40 @@ if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
     } elseif (!$videoId) {
         $methodFailures[] = "yt_dlp_captions: no videoId on item";
     } else {
+        // Serialize concurrent yt-dlp YouTube fetches with a flock so that
+        // even when multiple `youtube`-model jobs are spawned in parallel,
+        // only one yt-dlp call is in flight at a time. Two reasons:
+        //   1. Parallel requests from the same IP get bot-blocked faster
+        //      than serial ones — YouTube's anti-abuse heuristics
+        //      penalise bursts.
+        //   2. The cookies file at /tmp/youtube-cookies.txt is per-session;
+        //      yt-dlp can write back to it on close, and racing writers
+        //      could corrupt it.
+        // The job's progress message updates so the admin sees "waiting
+        // for yt-dlp lock" rather than appearing to stall silently.
+        $ytLockPath = sys_get_temp_dir() . '/yt-dlp-youtube.lock';
+        $ytLockFp = @fopen($ytLockPath, 'c');
+        if ($ytLockFp) {
+            // Try non-blocking once so we can surface "waiting" status
+            // before settling in for a blocking wait.
+            if (!flock($ytLockFp, LOCK_EX | LOCK_NB)) {
+                updateJob($db, $jobKey, ['job_progress' => 12,
+                    'job_message' => 'Waiting for another YouTube caption job to finish (serialised to avoid bot-detection)…']);
+                flock($ytLockFp, LOCK_EX);
+                updateJob($db, $jobKey, ['job_progress' => 15,
+                    'job_message' => 'Fetching YouTube captions...']);
+            }
+        }
         $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg . " --skip-download --write-auto-subs --sub-lang en --sub-format vtt --output " . escapeshellarg("$tmpFile.%(ext)s") . " " . escapeshellarg("https://www.youtube.com/watch?v=$videoId") . " 2>&1";
         $output = shell_exec($cmd);
+        // Release the yt-dlp lock immediately after the shell call returns
+        // so the next queued YouTube job can start while this one parses /
+        // saves rows. Parsing is local CPU work — no need to hold the
+        // network-fairness lock through it.
+        if ($ytLockFp) {
+            flock($ytLockFp, LOCK_UN);
+            fclose($ytLockFp);
+        }
         $vttFiles = glob("$tmpFile*.vtt");
         if ($vttFiles && file_exists($vttFiles[0])) {
             updateJob($db, $jobKey, ['job_progress' => 70, 'job_message' => 'Parsing captions...']);

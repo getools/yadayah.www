@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778866909">
+    <meta name="page-version" content="1778882402">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Record — Yada Yah</title>
@@ -97,6 +97,13 @@
         </div>
         <div id="banner" style="display:none;"></div>
         <div id="audio-warn" style="display:none;margin-bottom:10px;padding:10px 14px;background:#ffebee;border:2px solid #c00;border-radius:6px;font-size:0.9rem;color:#7a0000;line-height:1.5;"></div>
+        <div id="allow-silent-row" style="margin-bottom:10px;padding:6px 10px;background:#fffbe6;border:1px solid #e4d27a;border-radius:4px;font-size:0.82rem;color:#5b4a00;display:flex;align-items:center;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
+                <input type="checkbox" id="allow-silent-cb" onchange="toggleAllowSilent(this.checked)" style="margin:0;">
+                <span>Allow silent sections — this video intentionally has long quiet stretches (skips the −70 dB upload rejection for this item).</span>
+            </label>
+            <span id="allow-silent-status" style="margin-left:auto;font-size:0.75rem;opacity:0.7;"></span>
+        </div>
         <div id="finalize-progress" style="display:none;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#444;margin-bottom:4px;">
                 <span id="finalize-progress-label">Concatenating + encoding MP3…</span>
@@ -1072,6 +1079,10 @@
         // Re-point the heartbeat lock to the new current item (releases the
         // previous one in batch mode).
         acquireRecordingLock(itemKey);
+        // Refresh the "Allow silent sections" checkbox from the DB flag for
+        // the item we're now on; the per-item flag is independent across
+        // items in the queue.
+        loadAllowSilent();
         partCount = 0;
         initialResumeSec = 0;
         lastRecordedSeconds = 0;
@@ -1097,6 +1108,42 @@
         }
         $('banner').style.display = 'none';
         await bootstrap();
+    }
+
+    // ── Allow-silent toggle ──
+    // Mirrors feed_item.feed_item_allow_silent_recording. When TRUE, the
+    // server-side -70 dB rejection in admin-transcript-upload.php and
+    // finalize-worker.php is skipped — used for videos whose ending is
+    // intentionally silent and would otherwise be dropped as a bad
+    // tab-share capture.
+    function loadAllowSilent() {
+        var cb = document.getElementById('allow-silent-cb');
+        var st = document.getElementById('allow-silent-status');
+        if (!cb || !itemKey) return;
+        if (st) st.textContent = '';
+        fetch(API + '/admin-item-allow-silent.php?item_key=' + itemKey, { credentials: 'include' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) {
+                if (d && typeof d.allow_silent === 'boolean') {
+                    cb.checked = d.allow_silent;
+                }
+            })
+            .catch(function() { /* best-effort; checkbox stays at its current state */ });
+    }
+    function toggleAllowSilent(checked) {
+        var st = document.getElementById('allow-silent-status');
+        if (!itemKey) { if (st) st.textContent = 'no item loaded'; return; }
+        if (st) st.textContent = 'saving…';
+        fetch(API + '/admin-item-allow-silent.php', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_key: itemKey, allow_silent: !!checked })
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (st) st.textContent = (d && d.ok) ? (checked ? 'silent uploads allowed' : 'silence rejection re-enabled') : ('error: ' + (d && d.error || 'failed'));
+            setTimeout(function() { if (st) st.textContent = ''; }, 4000);
+        }).catch(function(err) {
+            if (st) st.textContent = 'error: ' + err.message;
+        });
     }
 
     // ── Buttons ──

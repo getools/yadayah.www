@@ -141,6 +141,16 @@ if ($method === 'POST') {
     $isPartial = !empty($_POST['partial']);
     $partialSeconds = (int)($_POST['seconds'] ?? 0);
 
+    // Per-item override: when feed_item_allow_silent_recording is TRUE, the
+    // -70 dB silence rejection in validateAudioFile() is skipped. Used for
+    // videos with intentional silent sections (e.g. closing meditation).
+    $allowSilent = false;
+    if ($isAudio) {
+        $asStmt = $db->prepare("SELECT feed_item_allow_silent_recording FROM yy_feed_item WHERE feed_item_key = ?");
+        $asStmt->execute([$itemKey]);
+        $allowSilent = (bool)$asStmt->fetchColumn();
+    }
+
     if ($isAudio && $isPartial) {
         // Append as next part. Browser captures webm so we save as .webm
         // regardless of inbound extension; ffmpeg will read it correctly.
@@ -153,7 +163,9 @@ if ($method === 'POST') {
         // and remove it if the container is corrupt or the audio is silent
         // (mean volume < -70 dB → tab share missed the audio source). This
         // stops bad parts from accumulating and poisoning the finalize.
-        $check = validateAudioFile($partAbs);
+        // The silence check is skipped when the item is flagged
+        // allow_silent_recording.
+        $check = validateAudioFile($partAbs, $allowSilent);
         if (!$check['ok']) {
             @unlink($partAbs);
             logMonitorEvent('transcript_upload', 'warning',

@@ -46,8 +46,12 @@ if (!function_exists('validateAudioFile')) {
      * Validate an audio file using ffprobe. Returns:
      *   ['ok' => true,  'duration' => float, 'mean_db' => float|null]
      *   ['ok' => false, 'reason' => string]
+     *
+     * $allowSilent — when true, the -70 dB mean-volume rejection is skipped.
+     * Used for items flagged feed_item_allow_silent_recording = TRUE; the
+     * container-corrupt and no-audio-stream checks still run.
      */
-    function validateAudioFile(string $absPath): array {
+    function validateAudioFile(string $absPath, bool $allowSilent = false): array {
         if (!is_file($absPath) || filesize($absPath) < 256) {
             return ['ok' => false, 'reason' => 'file too small (' . (is_file($absPath) ? filesize($absPath) : 0) . ' bytes)'];
         }
@@ -79,7 +83,7 @@ if (!function_exists('validateAudioFile')) {
                 $meanDb = (float)$m[1];
             }
         }
-        if ($meanDb !== null && $meanDb < -70.0) {
+        if (!$allowSilent && $meanDb !== null && $meanDb < -70.0) {
             return ['ok' => false, 'reason' => 'silent recording (mean ' . $meanDb . ' dB) — tab share probably did not capture audio'];
         }
         return ['ok' => true, 'duration' => $duration, 'mean_db' => $meanDb];

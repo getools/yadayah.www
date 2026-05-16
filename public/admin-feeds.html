@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1778876146">
+    <meta name="page-version" content="1778910898">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
@@ -94,7 +94,6 @@
 <script src="/js/admin-nav.js?v=13"></script>
         <div class="user-info">
             <span id="user-display"></span>
-            <button class="btn btn-secondary btn-sm" onclick="openYoutubeCookies()" title="Upload or refresh the YouTube cookies file used by yt-dlp to bypass bot-detection">YT Cookies</button>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
         </div>
     </div>
@@ -108,8 +107,9 @@
 
     <!-- Sources Tab -->
     <div id="tab-sources" class="feed-tab">
-        <div style="margin-bottom:12px;">
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
             <button class="btn btn-primary" onclick="openFeedSourceForm({})">+ New Feed</button>
+            <button class="btn btn-secondary btn-sm" onclick="openYoutubeCookies()" title="Upload or refresh the YouTube cookies file used by yt-dlp to bypass bot-detection">YT Cookies</button>
         </div>
         <table class="feeds-table">
             <thead>
@@ -2203,6 +2203,29 @@ function recTranscriptCellFmtDate(s) {
          + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 function recTranscriptCell(it) {
+    // Highest-priority state: an in-flight transcription job. The
+    // background poller populates _genTxRunningJobs from
+    // /api/admin-transcript-models.php?action=running; when present,
+    // render a "Generating N%" / "Queued" badge so the row reflects the
+    // queue without the user needing to open the Generate popover.
+    var running = (typeof _genTxRunningJobs === 'object' && _genTxRunningJobs && _genTxRunningJobs[it.feed_item_key])
+                || null;
+    if (running) {
+        var rPct = parseInt(running.job_progress, 10) || 0;
+        var rLabel = (running.job_status === 'running')
+            ? 'Generating ' + rPct + '%'
+            : 'Queued';
+        var rModelShort = (running.job_model || '').replace(/^groq-|^assemblyai-|^elevenlabs-|^azure-|^deepgram-|^whisper-1-/, '');
+        var rTitle = (running.job_model || 'transcription') + (running.job_message ? ': ' + running.job_message : '');
+        return '<button onclick="openTranscript(' + it.feed_item_key + ')" '
+            + 'title="' + esc(rTitle) + '" '
+            + 'style="border:1px solid #b0c4ff;background:#eef2ff;color:#1d4d8a;'
+            +        'padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;'
+            +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
+            + rLabel
+            + '<div style="font-size:0.65rem;color:#5a73a0;font-family:monospace;font-weight:400;margin-top:2px;">' + esc(rModelShort) + '</div>'
+            + '</button>';
+    }
     var hasTx     = it.has_transcript === true || it.has_transcript === 't';
     var uploadDt  = it.yt_caption_uploaded_dtime || null;
     var reviewSt  = it.transcript_validation_status || null;
@@ -2891,7 +2914,7 @@ function renderRecordings(d) {
                     ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3" style="text-decoration:none;font-size:1.1rem;">&#127911;</a>'
                     : '<button onclick="recMp3UploadClick(' + it.feed_item_key + ')" title="Upload MP3 for this video" style="background:none;border:none;cursor:pointer;font-size:1rem;color:#31345A;padding:2px 6px;">&#11014;</button>') + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
-            +     '<td style="font-size:0.78rem;text-align:center;">' + recTranscriptCell(it) + '</td>'
+            +     '<td class="tx-cell-td" data-item-key="' + it.feed_item_key + '" style="font-size:0.78rem;text-align:center;">' + recTranscriptCell(it) + '</td>'
             +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
             +     '<td style="font-size:0.75rem;color:#888;">' + (function() {
@@ -2998,26 +3021,112 @@ function updateProcessSelectedLabel() {
             txBtn.style.cursor = 'not-allowed';
         }
     }
-    // Generate label mirrors Record: any checked row qualifies, the
-    // popover itself handles per-row eligibility (MP3 presence vs.
-    // YouTube-only model).
+    // Generate label mirrors Record (any checked row qualifies; popover
+    // handles per-row eligibility), AND reflects background-job state so
+    // users can re-open the popover to monitor jobs they dispatched
+    // earlier. Button is clickable whenever rows are selected OR jobs
+    // are running site-wide.
     if (genBtn) {
+        var running = (typeof _genTxRunningCount === 'number') ? _genTxRunningCount : 0;
+        var subParts = [];
         if (n > 0) {
+            subParts.push(n + ' file' + (n === 1 ? '' : 's') + ' &middot; ' + fmt(total));
+        }
+        if (running > 0) {
+            subParts.push('<span style="color:#ffd54a;font-weight:600;">' + running + ' running</span>');
+        }
+        if (n > 0 || running > 0) {
             genBtn.innerHTML = '&#9881; Generate'
-                             + '<div style="font-size:0.72rem;font-weight:400;opacity:0.9;margin-top:1px;">'
-                             +   n + ' file' + (n === 1 ? '' : 's') + ' &middot; ' + fmt(total)
+                             + '<div style="font-size:0.72rem;font-weight:400;opacity:0.95;margin-top:1px;line-height:1.2;">'
+                             +   subParts.join('<br>')
                              + '</div>';
             genBtn.disabled = false;
             genBtn.style.opacity = '1';
             genBtn.style.cursor = 'pointer';
+            // Subtle visual cue when jobs are running but no rows are
+            // selected — slightly brighter border so the button still
+            // reads as "actionable" rather than "idle".
+            genBtn.style.boxShadow = running > 0 ? '0 0 0 2px rgba(255,213,74,0.45)' : '';
         } else {
             genBtn.innerHTML = '&#9881; Generate';
             genBtn.disabled = true;
             genBtn.style.opacity = '0.45';
             genBtn.style.cursor = 'not-allowed';
+            genBtn.style.boxShadow = '';
         }
     }
 }
+
+// ── Background poller that keeps the Generate button's "M running"
+// indicator current. Light-touch: a single GET every 30s pulling just
+// the count from /api/admin-transcript-models.php?action=running. This
+// is what gives users a way to discover that jobs are still in flight
+// when they've closed the popover.
+var _genTxRunningCount = 0;
+var _genTxRunningJobs = {};  // { feed_item_key: { job_status, job_progress, job_message, job_model } }
+var _genTxBgPollTimer = null;
+
+function _genTxRefreshRunningCount() {
+    fetch(API + '/admin-transcript-models.php?action=running',
+          { credentials: 'include' })
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            var jobs = (d && d.jobs) || [];
+            var prevKeys = Object.keys(_genTxRunningJobs);
+            var newMap = {};
+            jobs.forEach(function(j) {
+                newMap[j.feed_item_key] = {
+                    job_status: j.job_status,
+                    job_progress: j.job_progress,
+                    job_message: j.job_message,
+                    job_model: j.job_model,
+                    job_key: j.job_key,
+                };
+            });
+            _genTxRunningJobs = newMap;
+            if (jobs.length !== _genTxRunningCount) {
+                _genTxRunningCount = jobs.length;
+                if (typeof updateProcessSelectedLabel === 'function') updateProcessSelectedLabel();
+            }
+            // Refresh row-level Transcript badges: the union of items that
+            // had a running job last tick and items that have one this
+            // tick, so transitions out of "running" also update.
+            var keysToRefresh = {};
+            prevKeys.forEach(function(k) { keysToRefresh[k] = true; });
+            Object.keys(newMap).forEach(function(k) { keysToRefresh[k] = true; });
+            Object.keys(keysToRefresh).forEach(_genTxRefreshOneTxCell);
+        })
+        .catch(function() { /* silent — transient network errors */ });
+}
+
+// Re-render the Transcript cell for one feed_item_key. Looks up the row
+// data from _recItems (the cache populated by loadRecordings) and re-runs
+// recTranscriptCell, which now consults _genTxRunningJobs at the top.
+function _genTxRefreshOneTxCell(itemKey) {
+    var td = document.querySelector('.tx-cell-td[data-item-key="' + itemKey + '"]');
+    if (!td) return;
+    var it = null;
+    if (typeof _recItems !== 'undefined' && Array.isArray(_recItems)) {
+        it = _recItems.find(function(x) { return String(x.feed_item_key) === String(itemKey); });
+    }
+    // Minimal fallback if the row data isn't cached for some reason —
+    // build a stub with just the key so recTranscriptCell can render
+    // the in-flight badge (which is the only state that doesn't need
+    // the original fields).
+    if (!it) it = { feed_item_key: parseInt(itemKey, 10), has_transcript: false };
+    td.innerHTML = recTranscriptCell(it);
+}
+
+function _genTxStartBgPoller() {
+    if (_genTxBgPollTimer) return;
+    // First fetch shortly after load; subsequent every 30s.
+    setTimeout(_genTxRefreshRunningCount, 1500);
+    _genTxBgPollTimer = setInterval(_genTxRefreshRunningCount, 30000);
+}
+// Kick off as soon as this script defines it. Safe to call before DOM
+// ready — the fetch is async and updateProcessSelectedLabel is no-op
+// without the button.
+_genTxStartBgPoller();
 
 // ── Generate-transcripts popover ──────────────────────────────────────
 // Opens a modal listing all transcription providers; on Generate, fires
@@ -3080,11 +3189,170 @@ function openGenerateTranscriptsPopover() {
       +   '</div>'
       + '</div>';
     document.body.appendChild(overlay);
+    // Load any currently-running jobs (across all items) so re-opening
+    // the popover after a Close shows the live state without needing the
+    // user to remember which ones they queued.
+    _genTxLoadRunningJobs();
+}
+
+// Pull every pending/running job from the server and seed the results
+// panel + tracking list so the existing _genTxPollTick loop picks up
+// where it left off. Called on every popover open.
+function _genTxLoadRunningJobs() {
+    fetch(API + '/admin-transcript-models.php?action=running', { credentials: 'include' })
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            var jobs = (d && d.jobs) || [];
+            if (!jobs.length) return;
+            // Stop any leftover poller; we'll restart with the new set.
+            _genTxStopPolling();
+            _genTxJobs = [];
+            var results = document.getElementById('gen-tx-results');
+            if (!results) return;
+            results.style.display = 'block';
+            results.innerHTML = '<div id="gen-tx-summary" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #ddd;color:#555;"></div>'
+                              + '<div style="font-size:0.75rem;color:#888;margin-bottom:6px;">Currently running across the site (' + jobs.length + ')</div>'
+                              + '<div id="gen-tx-lines"></div>';
+            var lines = document.getElementById('gen-tx-lines');
+            jobs.forEach(function(j) {
+                var t = { key: j.feed_item_key, model: j.job_model };
+                var state = j.job_status === 'running' ? 'running' : 'queued';
+                var line = document.createElement('div');
+                line.setAttribute('data-job-key', String(j.job_key));
+                line.innerHTML = _genTxLineHtml(state, t, {
+                    jobKey: j.job_key,
+                    progress: j.job_progress,
+                    message: j.job_message,
+                });
+                lines.appendChild(line);
+                _genTxJobs.push({ jobKey: j.job_key, key: t.key, model: t.model, lineEl: line, state: state });
+            });
+            _genTxUpdateSummary();
+            _genTxPollTimer = setInterval(_genTxPollTick, 2000);
+        })
+        .catch(function(){ /* silent — nothing-to-show is fine */ });
 }
 
 function closeGenerateTranscriptsPopover() {
+    // Stop any live-progress poller so it doesn't keep firing fetches
+    // after the modal is gone (the lineEl references become orphaned).
+    if (typeof _genTxStopPolling === 'function') _genTxStopPolling();
     var overlay = document.getElementById('gen-tx-overlay');
     if (overlay) overlay.remove();
+    // Refresh the button indicator so it picks up any state changes that
+    // happened while the popover was open (e.g., a job completed).
+    if (typeof _genTxRefreshRunningCount === 'function') _genTxRefreshRunningCount();
+}
+
+// Tracking state for the live-progress polling phase after dispatch.
+// Each entry: { jobKey, key, model, lineEl, terminal }. The setInterval
+// in _genTxPollTick walks this list and updates lineEl.innerHTML based
+// on the latest /api/admin-transcript-models.php?action=job response.
+var _genTxJobs = [];
+var _genTxPollTimer = null;
+
+function _genTxLineHtml(state, t, opts) {
+    // state: 'queued' | 'running' | 'complete' | 'failed' | 'skipped' | 'dispatchFailed'
+    // opts: { jobKey, progress, message, error }
+    opts = opts || {};
+    var color, prefix, body;
+    switch (state) {
+        case 'skipped':
+            color = '#a36100'; prefix = '⏭ Skipped';
+            body = 'item ' + t.key + ' (' + t.model + '): no MP3 on disk';
+            break;
+        case 'dispatchFailed':
+            color = '#c00'; prefix = '✗ Failed';
+            body = 'item ' + t.key + ' (' + t.model + '): ' + esc(opts.error || 'unknown error');
+            break;
+        case 'queued':
+            color = '#6f7a99'; prefix = '⏳ Queued';
+            body = 'item ' + t.key + ' (' + t.model + ') — job ' + opts.jobKey;
+            break;
+        case 'running':
+            color = '#1d4d8a'; prefix = '⟳ Running';
+            body = 'item ' + t.key + ' (' + t.model + ') — '
+                 + (typeof opts.progress === 'number' ? opts.progress + '%' : '…')
+                 + (opts.message ? ' (' + esc(opts.message) + ')' : '');
+            break;
+        case 'complete':
+            color = '#1d6b3a'; prefix = '✓ Complete';
+            body = 'item ' + t.key + ' (' + t.model + ')'
+                 + (opts.message ? ' — ' + esc(opts.message) : '');
+            break;
+        case 'failed':
+            color = '#c00'; prefix = '✗ Failed';
+            body = 'item ' + t.key + ' (' + t.model + '): ' + esc(opts.error || opts.message || 'unknown');
+            break;
+        case 'cancelled':
+            color = '#888'; prefix = '⊘ Cancelled';
+            body = 'item ' + t.key + ' (' + t.model + ')';
+            break;
+        default:
+            color = '#333'; prefix = state; body = 'item ' + t.key + ' (' + t.model + ')';
+    }
+    return '<span style="color:' + color + ';">' + prefix + '</span> ' + body;
+}
+
+function _genTxUpdateSummary() {
+    var footer = document.getElementById('gen-tx-summary');
+    if (!footer) return;
+    var queued = 0, running = 0, complete = 0, failed = 0, skipped = 0;
+    _genTxJobs.forEach(function(j) {
+        switch (j.state) {
+            case 'queued': queued++; break;
+            case 'running': running++; break;
+            case 'complete': complete++; break;
+            case 'failed': case 'dispatchFailed': case 'cancelled': failed++; break;
+            case 'skipped': skipped++; break;
+        }
+    });
+    var done = complete + failed + skipped;
+    var pending = queued + running;
+    footer.innerHTML = '<strong>' + (pending ? 'In progress' : 'Done') + '</strong> · '
+                    + 'Complete: ' + complete + ' · '
+                    + (pending ? 'Running: ' + running + ' · Queued: ' + queued + ' · ' : '')
+                    + 'Failed: ' + failed + ' · Skipped: ' + skipped
+                    + ' (' + done + '/' + _genTxJobs.length + ')';
+}
+
+function _genTxStopPolling() {
+    if (_genTxPollTimer) { clearInterval(_genTxPollTimer); _genTxPollTimer = null; }
+}
+
+function _genTxPollTick() {
+    // Pick the still-in-flight jobs (queued or running) and re-fetch
+    // their status. Terminal states freeze the line text.
+    var inFlight = _genTxJobs.filter(function(j) { return j.state === 'queued' || j.state === 'running'; });
+    if (!inFlight.length) {
+        _genTxStopPolling();
+        _genTxUpdateSummary();
+        return;
+    }
+    inFlight.forEach(function(j) {
+        fetch(API + '/admin-transcript-models.php?action=job&job_key=' + j.jobKey,
+              { credentials: 'include' })
+            .then(function(r) { return safeJson(r); })
+            .then(function(d) {
+                if (!d || !d.job_status) return;
+                var st = d.job_status;
+                if (st === 'complete') {
+                    j.state = 'complete';
+                    j.lineEl.innerHTML = _genTxLineHtml('complete', j, { message: d.job_message });
+                } else if (st === 'failed') {
+                    j.state = 'failed';
+                    j.lineEl.innerHTML = _genTxLineHtml('failed', j, { error: d.job_error || d.job_message });
+                } else if (st === 'cancelled') {
+                    j.state = 'cancelled';
+                    j.lineEl.innerHTML = _genTxLineHtml('cancelled', j, {});
+                } else if (st === 'running') {
+                    j.state = 'running';
+                    j.lineEl.innerHTML = _genTxLineHtml('running', j, { progress: d.job_progress, message: d.job_message });
+                }
+                // 'pending' → leave as 'queued'
+                _genTxUpdateSummary();
+            }).catch(function() { /* ignore transient fetch errors */ });
+    });
 }
 
 function runGenerateTranscripts() {
@@ -3099,11 +3367,16 @@ function runGenerateTranscripts() {
     var results = document.getElementById('gen-tx-results');
     var goBtn   = document.getElementById('gen-tx-go-btn');
     results.style.display = 'block';
-    results.innerHTML = '';
+    results.innerHTML = '<div id="gen-tx-summary" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #ddd;color:#555;"></div><div id="gen-tx-lines"></div>';
     goBtn.disabled = true;
     goBtn.style.opacity = '0.55';
     goBtn.style.cursor = 'wait';
     goBtn.textContent = 'Working…';
+
+    // Stop any leftover poller from a prior run.
+    _genTxStopPolling();
+    _genTxJobs = [];
+    var lines = document.getElementById('gen-tx-lines');
 
     // Build the full task list up front so the progress counter is stable.
     var tasks = [];
@@ -3113,20 +3386,51 @@ function runGenerateTranscripts() {
         });
     });
 
-    var counts = { queued: 0, skipped: 0, failed: 0 };
-    var append = function(html) {
-        results.insertAdjacentHTML('beforeend', html);
-        results.scrollTop = results.scrollHeight;
-    };
-
     var i = 0;
     function next() {
         if (i >= tasks.length) {
+            // Dispatch phase complete. Re-enable Generate (so the operator
+            // can fire another batch without closing) and insert a Close
+            // button between Cancel and Generate — both Cancel and Close
+            // close the popover, but Close is the explicit "I'm done"
+            // option after a successful dispatch. Background jobs continue
+            // server-side regardless of whether the popover stays open.
             goBtn.disabled = false;
             goBtn.style.opacity = '1';
             goBtn.style.cursor = 'pointer';
             goBtn.textContent = 'Generate';
-            append('<div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;"><strong>Done.</strong> Queued: ' + counts.queued + ' &middot; Skipped: ' + counts.skipped + ' &middot; Failed: ' + counts.failed + '</div>');
+            if (!document.getElementById('gen-tx-close-btn')) {
+                var closeBtn = document.createElement('button');
+                closeBtn.id = 'gen-tx-close-btn';
+                closeBtn.type = 'button';
+                closeBtn.textContent = 'Close';
+                closeBtn.onclick = closeGenerateTranscriptsPopover;
+                closeBtn.style.cssText = 'padding:8px 16px;background:#fff;color:#31345A;border:1px solid #31345A;border-radius:4px;cursor:pointer;font-size:0.9rem;font-weight:600;';
+                // Sits between Cancel and Generate. goBtn is the rightmost
+                // child of its row; insertBefore(closeBtn, goBtn) places
+                // Close just to its left, which is right of Cancel.
+                goBtn.parentNode.insertBefore(closeBtn, goBtn);
+            }
+            // Small hint so the user understands closing won't stop jobs.
+            if (!document.getElementById('gen-tx-bg-hint')) {
+                var hint = document.createElement('div');
+                hint.id = 'gen-tx-bg-hint';
+                hint.style.cssText = 'font-size:0.78rem;color:#666;margin-top:6px;text-align:right;';
+                hint.textContent = 'Jobs continue running in the background even if you close this window.';
+                goBtn.parentNode.parentNode.insertBefore(hint, goBtn.parentNode);
+            }
+            _genTxUpdateSummary();
+            // Start the live-progress poller (~2s ticks) if any jobs are
+            // actually waiting on the worker.
+            var anyInFlight = _genTxJobs.some(function(j) {
+                return j.state === 'queued' || j.state === 'running';
+            });
+            if (anyInFlight) {
+                _genTxPollTimer = setInterval(_genTxPollTick, 2000);
+                // First tick immediately so 'pending' rows transition to
+                // 'running' as soon as the worker picks them up.
+                setTimeout(_genTxPollTick, 300);
+            }
             return;
         }
         var t = tasks[i++];
@@ -3134,26 +3438,43 @@ function runGenerateTranscripts() {
         // worker enforces this server-side but checking client-side gives
         // a faster + cheaper "no MP3" message without round-tripping.
         if (t.model !== 'youtube' && !t.hasMp3) {
-            counts.skipped++;
-            append('<div style="color:#a36100;">⏭ Skipped item ' + t.key + ' (' + t.model + '): no MP3 on disk</div>');
+            var line = document.createElement('div');
+            line.innerHTML = _genTxLineHtml('skipped', t, {});
+            lines.appendChild(line);
+            results.scrollTop = results.scrollHeight;
+            _genTxJobs.push({ jobKey: null, key: t.key, model: t.model, lineEl: line, state: 'skipped' });
+            _genTxUpdateSummary();
             return next();
         }
+        // Pre-create the line so we can update it in place once the
+        // dispatch returns (job_key) and again during polling.
+        var line = document.createElement('div');
+        line.innerHTML = '<span style="color:#888;">… dispatching</span> item ' + t.key + ' (' + t.model + ')';
+        lines.appendChild(line);
+        results.scrollTop = results.scrollHeight;
+        var entry = { jobKey: null, key: t.key, model: t.model, lineEl: line, state: 'pending' };
+        _genTxJobs.push(entry);
+
         fetch(API + '/admin-transcript-models.php', {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'run', item_key: t.key, model: t.model }),
         }).then(function(r) { return safeJson(r); }).then(function(d) {
             if (d && d.job_key) {
-                counts.queued++;
-                append('<div style="color:#1d6b3a;">✓ Queued item ' + t.key + ' (' + t.model + ') — job ' + d.job_key + '</div>');
+                entry.jobKey = d.job_key;
+                entry.state = 'queued';
+                line.setAttribute('data-job-key', String(d.job_key));
+                line.innerHTML = _genTxLineHtml('queued', t, { jobKey: d.job_key });
             } else {
-                counts.failed++;
+                entry.state = 'dispatchFailed';
                 var msg = (d && (d.error || d.message)) || 'unknown error';
-                append('<div style="color:#c00;">✗ Failed item ' + t.key + ' (' + t.model + '): ' + esc(msg) + '</div>');
+                line.innerHTML = _genTxLineHtml('dispatchFailed', t, { error: msg });
             }
+            _genTxUpdateSummary();
         }).catch(function(err) {
-            counts.failed++;
-            append('<div style="color:#c00;">✗ Failed item ' + t.key + ' (' + t.model + '): ' + esc(String(err)) + '</div>');
+            entry.state = 'dispatchFailed';
+            line.innerHTML = _genTxLineHtml('dispatchFailed', t, { error: String(err) });
+            _genTxUpdateSummary();
         }).then(next);
     }
     next();
