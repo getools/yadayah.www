@@ -50,13 +50,25 @@ if ($method === 'GET') {
     foreach ($volumes as &$v) {
         $docxAbs = !empty($v['volume_docx'])  ? $publicRoot . '/u/books-word/' . $v['volume_docx']  : null;
         $pdfAbs  = !empty($v['volume_pdf'])   ? $publicRoot . '/pdf/'          . $v['volume_pdf']   : null;
-        // Flipbook lives at /<volume_code>/ (top-level, post-migration). Detect
-        // by index.html — that's what the migration script writes last, so its
-        // presence proves a complete rebuild.
-        $flipIdx = !empty($v['volume_code']) ? $publicRoot . '/' . $v['volume_code'] . '/index.html' : null;
+        // Flipbook lives at /<volume_code>/ (top-level, post-migration).
+        // Detect by index.php (current shell, post-2026-05-15 migration)
+        // OR index.html (pre-migration shell) — whichever exists is the
+        // live entry point. The migration moved every book to a 6-line
+        // index.php pointer that requires _shared/flipbook-frame.php, but
+        // a future book built fresh might still emit index.html. Either
+        // proves the bundle is in place.
+        $flipDir   = !empty($v['volume_code']) ? $publicRoot . '/' . $v['volume_code'] : null;
+        $flipIdx   = $flipDir ? $flipDir . '/index.php'  : null;
+        $flipIdxAlt = $flipDir ? $flipDir . '/index.html' : null;
         $v['volume_docx_mtime'] = ($docxAbs && is_file($docxAbs)) ? date('c', filemtime($docxAbs)) : null;
         $v['volume_pdf_mtime']  = ($pdfAbs  && is_file($pdfAbs))  ? date('c', filemtime($pdfAbs))  : null;
-        $v['volume_flip_mtime'] = ($flipIdx && is_file($flipIdx)) ? date('c', filemtime($flipIdx)) : null;
+        if ($flipIdx && is_file($flipIdx)) {
+            $v['volume_flip_mtime'] = date('c', filemtime($flipIdx));
+        } elseif ($flipIdxAlt && is_file($flipIdxAlt)) {
+            $v['volume_flip_mtime'] = date('c', filemtime($flipIdxAlt));
+        } else {
+            $v['volume_flip_mtime'] = null;
+        }
     }
     unset($v);
 

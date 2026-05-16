@@ -2133,7 +2133,7 @@ function startRecordingForItem(itemKey) {
     }
     var url = '/admin-record-popout.html?item=' + itemKey;
     var w = window.open(url, 'yy-record-' + itemKey,
-        'width=920,height=760,menubar=no,toolbar=no,location=no,status=no');
+        'width=920,height=900,menubar=no,toolbar=no,location=no,status=no');
     if (!w || w.closed || typeof w.closed === 'undefined') {
         alert('The browser blocked the popup window. Please allow popups for this site, then click Partial/New again.\n\n' +
               'Once allowed, the recording will open in a separate window — your admin tab can navigate freely while it records.');
@@ -3621,7 +3621,7 @@ function processSelectedRecordings() {
 
     var url = '/admin-record-popout.html?items=' + ids.join(',');
     var w = window.open(url, 'yy-record-batch',
-        'width=920,height=760,menubar=no,toolbar=no,location=no,status=no');
+        'width=920,height=900,menubar=no,toolbar=no,location=no,status=no');
     if (!w || w.closed || typeof w.closed === 'undefined') {
         alert('The browser blocked the popup window. Please allow popups for this site, then click Record again.');
         cleanupBatch();
