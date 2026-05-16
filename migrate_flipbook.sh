@@ -116,8 +116,12 @@ python3 /tmp/extract_text_layer.py "$PDF" "$TMP/text" >/dev/null 2>&1 || {
 }
 
 log "extract_toc → toc.json…"
-python3 /tmp/extract_toc_v3.py "$PDF" "$VOL_KEY" "$TMP/toc.json" >/dev/null 2>&1 || {
-    log "WARN: extract_toc failed; writing empty TOC"
+# Reads doc.get_toc() from the PDF and writes the flipbook viewer's
+# expected JSON shape. The previous /tmp/extract_toc_v3.py was wiped
+# silently and migrations had been falling through to {"toc":[]}
+# placeholders for months — the durable copy now lives in /parsers/.
+python3 /opt/yada-www/parsers/extract_toc.py "$PDF" "$VOL_KEY" "$TMP/toc.json" 2>>"$TMP/extract_toc.err" || {
+    log "WARN: extract_toc failed ($(tail -1 "$TMP/extract_toc.err" 2>/dev/null)); writing empty TOC"
     echo '{"toc":[]}' > "$TMP/toc.json"
 }
 

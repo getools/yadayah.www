@@ -194,6 +194,29 @@
                     <button type="button" class="pv-fmt" onclick="pvFormat('removeFormat')" title="Clear formatting on the selection"                          style="padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;color:#666;">clear</button>
                 </div>
                 <div id="preview-text" contenteditable="true" data-placeholder="Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah." spellcheck="false" style="min-height:60px;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;line-height:1.5;background:#fff;outline:none;">Yahowah commanded the children of <b>Yisraʾel</b> to keep the <b>Shabuwʿah</b>.</div>
+                <!-- Cascading starting-point picker: each dropdown is disabled
+                     until the one before it has a selection. Picking a
+                     paragraph drops its HTML into #preview-text above so the
+                     existing ▶ button picks it up. -->
+                <div class="pv-pick" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;font-size:0.82rem;">
+                    <span style="color:#666;">Load from book:</span>
+                    <select id="pv-series" onchange="pvOnSeriesChange()" style="min-width:160px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.82rem;">
+                        <option value="">Series…</option>
+                    </select>
+                    <select id="pv-volume" onchange="pvOnVolumeChange()" disabled style="min-width:180px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.82rem;">
+                        <option value="">Volume…</option>
+                    </select>
+                    <select id="pv-chapter" onchange="pvOnChapterChange()" disabled style="min-width:220px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.82rem;">
+                        <option value="">Chapter…</option>
+                    </select>
+                    <select id="pv-page" onchange="pvOnPageChange()" disabled style="min-width:100px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.82rem;" title="Both Chapter and Page filter the Paragraph list when set; either can be left blank.">
+                        <option value="">Page…</option>
+                    </select>
+                    <select id="pv-paragraph" onchange="pvOnParagraphChange()" disabled style="min-width:260px;flex:1 1 260px;padding:3px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.82rem;">
+                        <option value="">Paragraph…</option>
+                    </select>
+                    <span id="pv-pick-status" style="color:#888;font-size:0.78rem;"></span>
+                </div>
                 <div class="preview-controls">
                     <label>Rate <input type="number" id="preview-rate" value="0" min="-50" max="200" style="width:60px"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></label>
                     <label>Pitch <input type="number" id="preview-pitch" value="0" min="-12" max="12" step="0.1" style="width:80px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it (range -12 to +12). Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></label>
@@ -534,7 +557,7 @@ function activateTtsTab(tabName) {
     btn.classList.add('active');
     var pane = $('pane-' + tabName);
     if (pane) pane.classList.add('active');
-    if (tabName === 'voices') loadVoiceCatalog();
+    if (tabName === 'voices') { loadVoiceCatalog(); pvEnsureSeriesLoaded(); }
     if (tabName === 'pronunciations') loadTunes();
     if (tabName === 'pauses') loadPauses();
     if (tabName === 'fonts')  loadFonts();
@@ -761,6 +784,161 @@ function previewTextHtml() {
     // innerHTML carries the inline formatting; .textContent ignores it.
     var html = el.innerHTML || '';
     return html.trim();
+}
+
+// ── Starting-point picker (Series → Volume → Chapter → Paragraph) ──
+// Lazy-loads each level when its parent dropdown gets a selection. Each
+// reset clears every downstream dropdown back to its placeholder + disabled.
+// Picking a paragraph loads its HTML into #preview-text so the existing
+// ▶ button reads from the chosen starting point.
+function pvFillSelect(sel, rows, placeholder) {
+    sel.innerHTML = '';
+    var opt = document.createElement('option');
+    opt.value = ''; opt.textContent = placeholder;
+    sel.appendChild(opt);
+    (rows || []).forEach(function (r) {
+        var o = document.createElement('option');
+        o.value = String(r.key);
+        o.textContent = r.label;
+        sel.appendChild(o);
+    });
+}
+function pvResetDownstream(level) {
+    // level = 'volume' | 'chapter-and-page' | 'paragraph' — clears that
+    // level and below. Chapter and Page are siblings populated from
+    // Volume, so 'chapter-and-page' clears both at once before
+    // re-populating them in parallel.
+    var groups;
+    if (level === 'volume')           groups = ['volume', 'chapter', 'page', 'paragraph'];
+    else if (level === 'chapter-and-page') groups = ['chapter', 'page', 'paragraph'];
+    else if (level === 'paragraph')   groups = ['paragraph'];
+    else return;
+    for (var i = 0; i < groups.length; i++) {
+        var sel = $('pv-' + groups[i]);
+        if (!sel) continue;
+        pvFillSelect(sel, [], groups[i].charAt(0).toUpperCase() + groups[i].slice(1) + '…');
+        sel.disabled = true;
+    }
+}
+function pvSetStatus(msg) {
+    var el = $('pv-pick-status');
+    if (el) el.textContent = msg || '';
+}
+async function pvFetchRows(qs) {
+    var r = await fetch(API + '/admin-tts-content-picker.php?' + qs, { credentials: 'include' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var d = await r.json();
+    return d.rows || [];
+}
+async function pvLoadSeries() {
+    pvSetStatus('loading series…');
+    try {
+        var rows = await pvFetchRows('mode=series');
+        pvFillSelect($('pv-series'), rows, 'Series…');
+        pvSetStatus('');
+    } catch (e) {
+        pvSetStatus('error: ' + e.message);
+    }
+}
+async function pvOnSeriesChange() {
+    pvResetDownstream('volume');
+    var key = $('pv-series').value;
+    if (!key) return;
+    pvSetStatus('loading volumes…');
+    try {
+        var rows = await pvFetchRows('mode=volumes&series_key=' + encodeURIComponent(key));
+        pvFillSelect($('pv-volume'), rows, 'Volume…');
+        $('pv-volume').disabled = false;
+        pvSetStatus('');
+    } catch (e) {
+        pvSetStatus('error: ' + e.message);
+    }
+}
+async function pvOnVolumeChange() {
+    pvResetDownstream('chapter-and-page');
+    var key = $('pv-volume').value;
+    if (!key) return;
+    pvSetStatus('loading chapters + pages…');
+    try {
+        // Chapter and Page are siblings — both populate from the volume so
+        // the operator can pick whichever they think in (chapter title vs
+        // physical page).
+        var results = await Promise.all([
+            pvFetchRows('mode=chapters&volume_key=' + encodeURIComponent(key)),
+            pvFetchRows('mode=pages&volume_key='    + encodeURIComponent(key)),
+        ]);
+        pvFillSelect($('pv-chapter'), results[0], 'Chapter…');
+        $('pv-chapter').disabled = false;
+        pvFillSelect($('pv-page'), results[1], 'Page…');
+        $('pv-page').disabled = false;
+        pvSetStatus((results[0].length || results[1].length) ? '' : 'no chapters or paragraphs parsed for this volume yet');
+    } catch (e) {
+        pvSetStatus('error: ' + e.message);
+    }
+}
+// Build the paragraphs query string from whichever of chapter/page are
+// currently selected. The endpoint accepts either or both and ANDs them
+// together — picking Chapter alone lists the chapter's paragraphs,
+// picking Page alone lists that page's paragraphs, picking both shows
+// only paragraphs that are simultaneously in that chapter AND on that
+// page.
+function pvParagraphsQuery() {
+    var volKey  = $('pv-volume').value;
+    var chKey   = $('pv-chapter').value;
+    var pgValue = $('pv-page').value;
+    if (!chKey && !pgValue) return null;
+    var parts = [];
+    if (chKey)   parts.push('chapter_key=' + encodeURIComponent(chKey));
+    if (pgValue) parts.push('page='        + encodeURIComponent(pgValue));
+    if (volKey)  parts.push('volume_key='  + encodeURIComponent(volKey));
+    return 'mode=paragraphs&' + parts.join('&');
+}
+async function pvLoadParagraphs() {
+    // Clear paragraph list before reloading so the prior selection can't
+    // linger after Chapter / Page changes.
+    pvResetDownstream('paragraph');
+    var qs = pvParagraphsQuery();
+    if (!qs) return;
+    pvSetStatus('loading paragraphs…');
+    try {
+        var rows = await pvFetchRows(qs);
+        pvFillSelect($('pv-paragraph'), rows, 'Paragraph…');
+        $('pv-paragraph').disabled = false;
+        pvSetStatus(rows.length ? '' : 'no paragraphs match this Chapter+Page combination');
+    } catch (e) {
+        pvSetStatus('error: ' + e.message);
+    }
+}
+function pvOnChapterChange() { pvLoadParagraphs(); }
+function pvOnPageChange()    { pvLoadParagraphs(); }
+async function pvOnParagraphChange() {
+    var key = $('pv-paragraph').value;
+    if (!key) return;
+    pvSetStatus('loading paragraph…');
+    try {
+        var r = await fetch(API + '/admin-tts-content-picker.php?mode=paragraph_text&paragraph_key=' + encodeURIComponent(key),
+                            { credentials: 'include' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var el = $('preview-text');
+        if (el) {
+            // Trust the stored HTML — it's the same shape (b/i runs) the
+            // build worker already accepts and the preview endpoint already
+            // segments. Anything else would diverge from production.
+            el.innerHTML = d.html || d.plain || '';
+        }
+        pvSetStatus('loaded — click ▶ on any voice to hear it.');
+    } catch (e) {
+        pvSetStatus('error: ' + e.message);
+    }
+}
+// Defer series load until the Voices tab is shown the first time so we
+// don't fire the query for users who never open this pane.
+function pvEnsureSeriesLoaded() {
+    var sel = $('pv-series');
+    if (!sel) return;
+    // Only one real option means we haven't loaded yet.
+    if (sel.options.length <= 1) pvLoadSeries();
 }
 
 // Wire Ctrl+B / Ctrl+I once on first focus so the shortcut works even

@@ -109,6 +109,22 @@
         document.head.appendChild(el);
     }
 
+    // Inject the @font-face declarations into the parent document so the
+    // SVG-icon <text font-family="…"> resolves to the actual custom font.
+    // TinyMCE menus are rendered in the parent document (not the editor's
+    // iframe), so the page's CSS must declare these fonts for the dropdown
+    // glyph sample to display correctly. Without this, the HWHY sample
+    // falls back to the default UI font instead of Jupiter-Yada / etc.
+    function injectFontFaces(fonts) {
+        if (document.getElementById('yy-font-faces')) return;
+        var css = buildFontFaceCss(fonts);
+        if (!css) return;
+        var el = document.createElement('style');
+        el.id = 'yy-font-faces';
+        el.textContent = css;
+        document.head.appendChild(el);
+    }
+
     // Build a TinyMCE @font-face CSS string for fonts that map to a known
     // file at /fonts/<family>.{woff2|ttf}. Static for now — the file naming
     // is conventional. If a font isn't in this map it's assumed system or
@@ -176,6 +192,10 @@
     function registerFontButton(editor, fonts) {
         // Widen icon column + hide empty label slot for our font items.
         injectDropdownCss();
+        // Make the custom fonts available to the document hosting the
+        // dropdown — otherwise SVG <text font-family> for the HWHY glyph
+        // sample resolves to the default font.
+        injectFontFaces(fonts);
         // Register one icon per font (idempotent — addIcon will overwrite).
         fonts.forEach(function(f) {
             try {

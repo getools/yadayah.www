@@ -29,6 +29,7 @@
     var progressFill = null;     // inner bar that grows with currentTime
     var playerEl    = null;      // outer flex row: [volume] [progress] [play]
     var volSlider   = null;      // user-adjustable audio volume (0–1)
+    var volBtnEl    = null;      // speaker button — mirrors play-button disabled state
     var current = null;     // last fetched chapter payload (see API shape)
     var fetchSeq = 0;       // monotonic — only latest fetch's response wins
     var loadedChapterKey = null;
@@ -106,6 +107,10 @@
             '.fb-tts-btn:hover:not(.is-disabled) { background: #28456a; }',
             '.fb-tts-btn:active:not(.is-disabled) { transform: scale(0.95); }',
             '.fb-tts-btn.is-disabled { opacity: 0.25; cursor: not-allowed; }',
+            // Speaker button mirrors the play button's disabled visual when
+            // there's no TTS audio loaded — same opacity + not-allowed cursor
+            // so the two read as a single "audio-controls offline" state.
+            '.fb-tts-vol-btn.is-disabled { opacity: 0.25; cursor: not-allowed; }',
             '.fb-tts-btn svg { width: 20px; height: 20px; }',
             // Brief amber tint when waiting between chapters.
             '.fb-tts-btn.is-pausing { background: #4d3a1f; border-color: #6d5a3a; color: #f7d77a; }',
@@ -179,11 +184,14 @@
 
         var volBtn = document.createElement('button');
         volBtn.type = 'button';
-        volBtn.className = 'fb-tts-vol-btn';
-        volBtn.title = 'Volume';
+        // Starts disabled, like the play button — both wait until a TTS-
+        // backed chapter loads. renderButton() flips the state in sync.
+        volBtn.className = 'fb-tts-vol-btn is-disabled';
+        volBtn.title = 'Volume (no TTS audio for this chapter)';
         volBtn.setAttribute('aria-label', 'Volume');
         volBtn.innerHTML = ICON_VOLUME;
         volWrap.appendChild(volBtn);
+        volBtnEl = volBtn;
 
         var volPopup = document.createElement('div');
         volPopup.className = 'fb-tts-vol-popup';
@@ -221,6 +229,9 @@
         }
         volBtn.addEventListener('click', function (e) {
             e.stopPropagation();
+            // Block interaction while the speaker is greyed out — mirrors
+            // the play button which can't be clicked in this state.
+            if (volBtn.classList.contains('is-disabled')) return;
             if (volPopup.classList.contains('is-open')) { closeVol(); return; }
             volPopup.classList.add('is-open');
             docCloseHandler = function (ev) {
@@ -337,6 +348,20 @@
     }
 
     // ── State + render ─────────────────────────────────────────────────
+    // Keep the volume button's enabled state in lockstep with the play
+    // button. Both wait for a chapter that has TTS audio; before that,
+    // the speaker icon is greyed out so it's clear there's nothing for
+    // the volume slider to control.
+    function setVolDisabled(disabled, reason) {
+        if (!volBtnEl) return;
+        if (disabled) {
+            volBtnEl.classList.add('is-disabled');
+            volBtnEl.title = reason || 'Volume (no TTS audio yet)';
+        } else {
+            volBtnEl.classList.remove('is-disabled');
+            volBtnEl.title = 'Volume';
+        }
+    }
     function renderButton() {
         // Whenever button state changes, the progress bar's visibility
         // (and geometry, if it just became visible) follows along.
@@ -347,6 +372,7 @@
             btn.classList.add('is-pausing');
             btn.innerHTML = ICON_PAUSE;
             btn.title = 'Pausing between chapters — click to cancel';
+            setVolDisabled(false);
             return;
         }
         btn.classList.remove('is-pausing');
@@ -354,9 +380,11 @@
             btn.classList.add('is-disabled');
             btn.innerHTML = ICON_PLAY;
             btn.title = 'No TTS audio for this chapter';
+            setVolDisabled(true, 'Volume (no TTS audio for this chapter)');
             return;
         }
         btn.classList.remove('is-disabled');
+        setVolDisabled(false);
         if (isPlaying) {
             btn.innerHTML = ICON_PAUSE;
             btn.title = 'Pause (' + (current.chapter_number || '') + ' ' + (current.chapter_name || '') + ')';
