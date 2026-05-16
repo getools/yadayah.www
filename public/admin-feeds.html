@@ -3181,6 +3181,10 @@ function openGenerateTranscriptsPopover() {
       +     '<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;margin-bottom:14px;background:#fafafa;">'
       +        modelsHtml
       +     '</div>'
+      +     '<label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:0.85rem;color:#555;cursor:pointer;">'
+      +       '<input type="checkbox" id="gen-tx-force" style="margin:0;">'
+      +       '<span>Re-generate even if an _auto transcript for this (item, system) pair already exists. Default: skip already-generated pairs.</span>'
+      +     '</label>'
       +     '<div id="gen-tx-results" style="display:none;margin-bottom:14px;max-height:280px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;background:#fff;font-size:0.82rem;font-family:monospace;"></div>'
       +     '<div style="display:flex;gap:8px;justify-content:flex-end;">'
       +       '<button id="gen-tx-cancel-btn" onclick="closeGenerateTranscriptsPopover()" style="padding:8px 16px;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.9rem;">Cancel</button>'
@@ -3261,6 +3265,12 @@ function _genTxLineHtml(state, t, opts) {
             color = '#a36100'; prefix = '⏭ Skipped';
             body = 'item ' + t.key + ' (' + t.model + '): no MP3 on disk';
             break;
+        case 'alreadyExists':
+            color = '#6e7585'; prefix = '⏭ Already generated';
+            body = 'item ' + t.key + ' (' + t.model + ')'
+                 + (opts.lastDtime ? ' on ' + esc(String(opts.lastDtime).substring(0, 10)) : '')
+                 + (opts.rowCount  ? ' (' + opts.rowCount + ' segments)' : '');
+            break;
         case 'dispatchFailed':
             color = '#c00'; prefix = '✗ Failed';
             body = 'item ' + t.key + ' (' + t.model + '): ' + esc(opts.error || 'unknown error');
@@ -3304,7 +3314,7 @@ function _genTxUpdateSummary() {
             case 'running': running++; break;
             case 'complete': complete++; break;
             case 'failed': case 'dispatchFailed': case 'cancelled': failed++; break;
-            case 'skipped': skipped++; break;
+            case 'skipped': case 'alreadyExists': skipped++; break;
         }
     });
     var done = complete + failed + skipped;
@@ -3386,6 +3396,32 @@ function runGenerateTranscripts() {
         });
     });
 
+    // Pre-flight: unless the operator explicitly checked "Re-generate even
+    // if already exists", ask the server which (item, model) pairs already
+    // have a populated _auto transcript. Skip those without dispatching a
+    // job — saves both API spend and worker time.
+    var forceRegen = !!(document.getElementById('gen-tx-force') && document.getElementById('gen-tx-force').checked);
+    var keysList = rows.map(function(cb){ return cb.value; }).join(',');
+    var modelsList = pickedModels.join(',');
+    var existingPromise = forceRegen
+        ? Promise.resolve({ existing: [] })
+        : fetch(API + '/admin-transcript-models.php?action=existing'
+                + '&keys=' + encodeURIComponent(keysList)
+                + '&models=' + encodeURIComponent(modelsList),
+                { credentials: 'include' })
+              .then(function(r){ return safeJson(r); })
+              .catch(function(){ return { existing: [] }; });
+
+    existingPromise.then(function(d) {
+        var existingMap = {};
+        ((d && d.existing) || []).forEach(function(e) {
+            existingMap[e.item_key + '|' + e.model] = e;
+        });
+        _runGenerateTranscriptsDispatch(tasks, lines, results, goBtn, existingMap);
+    });
+}
+
+function _runGenerateTranscriptsDispatch(tasks, lines, results, goBtn, existingMap) {
     var i = 0;
     function next() {
         if (i >= tasks.length) {
@@ -3434,7 +3470,24 @@ function runGenerateTranscripts() {
             return;
         }
         var t = tasks[i++];
-        // Pre-flight: every non-youtube model needs an MP3 on disk. The
+        // Pre-flight 1: already has an _auto transcript for this
+        // (item, model) pair. Skip unless the operator opted into
+        // re-generation via the popover checkbox.
+        var existingKey = t.key + '|' + t.model;
+        if (existingMap && existingMap[existingKey]) {
+            var e = existingMap[existingKey];
+            var line = document.createElement('div');
+            line.innerHTML = _genTxLineHtml('alreadyExists', t, {
+                lastDtime: e.last_dtime,
+                rowCount: e.row_count,
+            });
+            lines.appendChild(line);
+            results.scrollTop = results.scrollHeight;
+            _genTxJobs.push({ jobKey: null, key: t.key, model: t.model, lineEl: line, state: 'alreadyExists' });
+            _genTxUpdateSummary();
+            return next();
+        }
+        // Pre-flight 2: every non-youtube model needs an MP3 on disk. The
         // worker enforces this server-side but checking client-side gives
         // a faster + cheaper "no MP3" message without round-tripping.
         if (t.model !== 'youtube' && !t.hasMp3) {

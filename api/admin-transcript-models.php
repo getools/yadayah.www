@@ -116,6 +116,41 @@ if ($method === 'GET' && $action === 'status') {
     jsonResponse(['models' => $models, 'active_job' => $activeJob]);
 }
 
+if ($method === 'GET' && $action === 'existing') {
+    // Which (item, model) pairs already have rows in
+    // yy_feed_item_transcript_auto. Used by the Generate-Transcripts
+    // popover to skip work that's already been done.
+    //
+    //   GET ?action=existing&keys=11,22,33&models=youtube,whisper-1-segment
+    //
+    // Returns: { existing: [ { item_key, model, row_count, last_dtime }, … ] }
+    //
+    // Only counts non-empty transcript rows, so a previously-failed run
+    // that left zero rows doesn't block re-generation.
+    $keysRaw   = $_GET['keys']   ?? '';
+    $modelsRaw = $_GET['models'] ?? '';
+    $keys = array_values(array_filter(array_map('intval', explode(',', $keysRaw)), function ($k) { return $k > 0; }));
+    $models = array_values(array_filter(array_map('trim', explode(',', $modelsRaw)), function ($m) { return $m !== ''; }));
+    if (!$keys || !$models) {
+        jsonResponse(['existing' => []]);
+    }
+    $kPh = implode(',', array_fill(0, count($keys),   '?'));
+    $mPh = implode(',', array_fill(0, count($models), '?'));
+    $stmt = $db->prepare("
+        SELECT feed_item_key                     AS item_key,
+               feed_item_transcript_auto_model   AS model,
+               COUNT(*)                          AS row_count,
+               MAX(feed_item_transcript_revision_dtime) AS last_dtime
+          FROM yy_feed_item_transcript_auto
+         WHERE feed_item_key                   IN ($kPh)
+           AND feed_item_transcript_auto_model IN ($mPh)
+         GROUP BY feed_item_key, feed_item_transcript_auto_model
+        HAVING COUNT(*) > 0
+    ");
+    $stmt->execute(array_merge($keys, $models));
+    jsonResponse(['existing' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
 if ($method === 'GET' && $action === 'running') {
     // All in-flight transcription jobs across every item — used by the
     // Generate-Transcripts popover so closing + re-opening it shows the
