@@ -969,17 +969,26 @@ function segmentParagraph(string $html): array {
 }
 
 function ttsCategories(): array {
-    // Three top-level parents (`parent` => null) — Other, Bible, Islam.
+    // Four top-level parents (`parent` => null):
+    //   - Yada   ── YY-book content (general narration / translation / word definition)
+    //   - Bible  ── per-translation children (KJV / NAS / NLT / JPS / NIV / ESV)
+    //   - Islam  ── source-specific children (Quran / Bukhari / Muslim / Tabari / Ishaq / …)
+    //   - Other  ── catch-all for non-Yada, non-scriptural text (quote, mein_kampf, …)
     // Children inherit voice/style/prosody from their parent when they
     // don't have their own row in yy_tts_category_voice. The ordering
     // here drives the rendering order in the Defaults tab and the Build
     // modal; children sit directly under their parent.
+    //
+    // Codes 'main', 'translation', 'word_definition', 'quote' are kept
+    // unchanged for backwards-compatibility with existing rows in
+    // yy_tts_category_voice and with segmentParagraph's output. Only
+    // their parent and label changed.
     return [
-        // ── Other ── catch-all for non-scripture body text.
-        ['code' => 'main',            'parent' => null,    'label' => 'Other — main narration (body text)'],
-        ['code' => 'translation',     'parent' => 'main',  'label' => 'Translation prose (bold text)'],
-        ['code' => 'word_definition', 'parent' => 'main',  'label' => 'Word definition (parenthesized italic + definition)'],
-        ['code' => 'quote',           'parent' => 'main',  'label' => 'General extended quote (non-scripture)'],
+        // ── Yada ── core YY-book content categories.
+        ['code' => 'yada',            'parent' => null,    'label' => 'Yada — YY-book content (default)'],
+        ['code' => 'main',            'parent' => 'yada',  'label' => 'General narration (body text)'],
+        ['code' => 'translation',     'parent' => 'yada',  'label' => 'Translation prose (bold text)'],
+        ['code' => 'word_definition', 'parent' => 'yada',  'label' => 'Word / Hebrew definition (parenthesized)'],
 
         // ── Bible ── per-translation children are color-tagged by the
         // parser (data-style="kjv" etc., see BIBLE_STYLE_BY_COLOR in
@@ -1005,6 +1014,14 @@ function ttsCategories(): array {
         ['code' => 'muslim',          'parent' => 'islam', 'label' => 'Muslim (Sahih Muslim)'],
         ['code' => 'tabari',          'parent' => 'islam', 'label' => 'Tabari'],
         ['code' => 'ishaq',           'parent' => 'islam', 'label' => 'Ishaq'],
+
+        // ── Other ── catch-all for non-Yada, non-scriptural text.
+        // 'quote' carries the historical extended-quote category; 'mein_kampf'
+        // is for citations from Hitler's Mein Kampf that the YY books quote
+        // extensively (especially the s05 Babel and s06 Twistianity volumes).
+        ['code' => 'other',           'parent' => null,    'label' => 'Other — generic catch-all'],
+        ['code' => 'quote',           'parent' => 'other', 'label' => 'General extended quote (non-scripture)'],
+        ['code' => 'mein_kampf',      'parent' => 'other', 'label' => 'Mein Kampf'],
     ];
 }
 

@@ -559,7 +559,7 @@ $MODEL_MAP = [
     'gemini-flash'  => ['name' => 'gemini-2.0-flash', 'env' => 'GOOGLE_API_KEY',    'label' => 'Gemini 2.0 Flash'],
     'gpt-4o-mini'   => ['name' => 'gpt-4o-mini',      'env' => 'OPENAI_API_KEY',    'label' => 'GPT-4o mini'],
     'claude-haiku'  => ['name' => 'claude-haiku-4-5-20251001', 'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Haiku 4.5'],
-    'claude-sonnet' => ['name' => 'claude-sonnet-4-20250514',  'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Sonnet 4'],
+    'claude-sonnet' => ['name' => 'claude-sonnet-4-6',         'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Sonnet 4.6'],
 ];
 
 $modelSetting = getAskModel($pdo);

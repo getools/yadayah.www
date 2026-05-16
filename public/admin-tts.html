@@ -643,8 +643,8 @@ function renderCategoryRows() {
             '<select data-field="style" title="Speaking style (e.g. cheerful, chat, narration). Empty = no style override."></select>' +
             '<div class="prosody">' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down (range -50 to +200)" style="margin-left:2px;cursor:help;">%</span></span>' +
-                '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:80px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it. Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></span>' +
-                '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '"></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:73px"><span title="Semitones — 12 = one octave. Positive raises the voice, negative lowers it. Fractional values like 0.5 give finer control." style="margin-left:2px;cursor:help;">st</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '" style="width:60px"></span>' +
             '</div>' +
             '<button class="btn-listen" data-cat="' + cat.code + '" title="Play a sample with current settings">▶</button>';
         root.appendChild(row);
@@ -2598,8 +2598,8 @@ function openBuildModal(chapterKey, audioKey) {
             '<select data-field="style" title="Speaking style — defaults to the Voices-tab setting"></select>' +
             '<div class="prosody">' +
                 '<span style="display:inline-flex;align-items:center;gap:4px;">rate <input type="number" data-field="rate" min="-50" max="200" step="5" value="' + (saved.tts_voice_rate_pct || 0) + '"><span title="Percent — positive speeds the voice up, negative slows it down" style="margin-left:2px;cursor:help;">%</span></span>' +
-                '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:80px"><span title="Semitones — 12 = one octave" style="margin-left:2px;cursor:help;">st</span></span>' +
-                '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '"></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">pitch <input type="number" data-field="pitch" min="-12" max="12" step="0.1" value="' + (saved.tts_voice_pitch_st || 0) + '" style="width:73px"><span title="Semitones — 12 = one octave" style="margin-left:2px;cursor:help;">st</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:4px;">vol <input type="number" data-field="volume" min="0" max="100" step="5" value="' + (saved.tts_voice_volume || 100) + '" style="width:60px"></span>' +
             '</div>';
         root.appendChild(row);
         var voiceSel = row.querySelector('select[data-field="voice"]');
