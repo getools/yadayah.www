@@ -375,7 +375,7 @@ if (!$rows && !$wantYoutubeCaptions) {
                 }
             }
             if ($videoDur > 60 && $audioDur > 0 && ($audioDur / $videoDur) < 0.8) {
-                $methodFailures[] = "whisper_api: uploaded audio (" . basename($uploadedAudio) . ") is only " . round($audioDur / $videoDur * 100) . "% of video duration ($audioDur s of $videoDur s) — likely partial recording";
+                $methodFailures[] = "$providerFamily: uploaded audio (" . basename($uploadedAudio) . ") is only " . round($audioDur / $videoDur * 100) . "% of video duration ($audioDur s of $videoDur s) — likely partial recording";
                 $uploadedAudio = null;
             }
         }
@@ -455,7 +455,7 @@ if (!$rows && !$wantYoutubeCaptions) {
                 } elseif (stripos($haystack, 'only images are available') !== false) {
                     $reason = 'YouTube Community post or image-only item — no audio track available';
                 }
-                $methodFailures[] = "whisper_api: $reason$hint — " . $tail;
+                $methodFailures[] = "$providerFamily: $reason$hint — " . $tail;
             } else {
                 // Estimate Whisper turnaround from audio file size. Whisper-1
                 // typically processes ~10-15× real-time; 64 kbps mp3 ≈ 8 KB/s,
