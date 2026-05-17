@@ -324,6 +324,16 @@ function fullDt(iso) {
 // i.e. the in-database paragraphs/translations are out of sync with the
 // current source. Tooltip shows the last-parse timestamp + status message.
 function dataCell(v) {
+    // When the volume has been explicitly opted out of parsing
+    // (volume_parse_flag = false), the in-DB paragraph/translation
+    // counts will always be zero and the "stale" / "error" states are
+    // meaningless. Render just a plain empty circle with an explanatory
+    // tooltip and skip the T/P count + stale-vs-source logic entirely.
+    var parseFlagOff = (v.volume_parse_flag === false || v.volume_parse_flag === 'f');
+    if (parseFlagOff) {
+        return '<div class="status-cell" title="Parse disabled — this book is excluded from translation/glossary/paragraph extraction">'
+             + '<span class="status-icon status-miss">○</span></div>';
+    }
     var pc = v.paragraph_count_live || 0;
     var tc = v.translation_count_live || 0;
     var parseStatus = (v.volume_parse_status || '').toLowerCase();
