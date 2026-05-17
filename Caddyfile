@@ -21,7 +21,11 @@ yadayah.com, www.yadayah.com {
 }
 
 inthecompanyofgoodandevil.com, www.inthecompanyofgoodandevil.com {
-    redir / /In-the-Company-of-Good-and-Evil/ permanent
+    # Everything except shared site assets is rewritten under the book root,
+    # so the user-visible URL stays at "/" while relative asset paths
+    # (pages/..., text/..., toc.json, thumbs/...) resolve correctly.
+    @bookpath not path /js/* /css/* /images/* /pdf/* /api/* /u/* /fonts/* /favicon.ico /robots.txt
+    rewrite @bookpath /In-the-Company-of-Good-and-Evil{path}
     reverse_proxy web:80
 }
 
