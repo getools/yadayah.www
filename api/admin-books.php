@@ -137,7 +137,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
                volume_docx = ?,
                volume_pdf  = COALESCE(volume_pdf, ?),
                volume_pipeline_status = 'queued',
-               volume_pipeline_message = 'Awaiting host worker (libreoffice + fliphtml5)',
+               volume_pipeline_message = 'Awaiting host worker (libreoffice + flipbook build)',
                volume_pipeline_retry_count = 0,
                volume_parse_status = 'queued',
                volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
@@ -146,8 +146,8 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
     ")->execute([$bookCode, $docxName, $pdfName, $key]);
 
     // Drop a job file the host-side worker watches.
-    // The worker runs LibreOffice (DOCX→PDF), then re-uploads to FlipHTML5,
-    // then downloads the published flipbook .zip and extracts to /flipbook/<code>/.
+    // The worker runs LibreOffice (DOCX→PDF), then rebuilds the
+    // self-hosted flipbook under /<volume_code>/ via rebuild_prototype.sh.
     //
     // Path discipline: $publicRoot is /var/www/html inside the container,
     // which is bind-mounted to /opt/yada-www/public on the host. Anything we
@@ -172,7 +172,7 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
         'docx'        => $docxName,
         'pdf'         => $pdfName,
         'job_queued'  => basename($jobFile),
-        'message'     => 'Uploaded. Conversion + FlipHTML5 build will run on the host (typically 1–3 minutes).',
+        'message'     => 'Uploaded. Conversion + flipbook build will run on the host (typically 1–3 minutes).',
     ]);
 }
 
@@ -442,7 +442,7 @@ if ($method === 'POST') {
 
     $stmt = $db->prepare("
         INSERT INTO yy_volume (series_key, volume_label, volume_number, volume_sort,
-                               volume_code, volume_flip_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating)
+                               volume_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
     $stmt->execute([
@@ -451,7 +451,6 @@ if ($method === 'POST') {
         (int)($data['volume_number'] ?? 0),
         (int)($data['volume_sort'] ?? 0),
         $code,
-        trim($data['volume_flip_code'] ?? '') ?: null,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
         (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
@@ -547,7 +546,7 @@ if ($method === 'PUT') {
     // rename fired, otherwise honored.
     if ($renamedDocx !== null) { $fields[] = "volume_docx = ?"; $params[] = $renamedDocx; }
     if ($renamedPdf  !== null) { $fields[] = "volume_pdf  = ?"; $params[] = $renamedPdf;  }
-    foreach (['volume_label', 'volume_flip_code', 'volume_pdf', 'volume_docx'] as $col) {
+    foreach (['volume_label', 'volume_pdf', 'volume_docx'] as $col) {
         if ($col === 'volume_pdf'  && $renamedPdf  !== null) continue;
         if ($col === 'volume_docx' && $renamedDocx !== null) continue;
         if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = trim($data[$col] ?? '') ?: null; }
@@ -575,33 +574,6 @@ if ($method === 'PUT') {
     $params[] = $key;
     $db->prepare("UPDATE yy_volume SET " . implode(', ', $fields) . " WHERE volume_key = ?")->execute($params);
 
-    // Path A: if the admin pasted a flip_code (uploaded the PDF to FlipHTML5
-    // by hand) and the rendered package isn't yet on disk, flip the volume
-    // into 'download-pending'. cron-flipbook-retry.sh runs every 5 min,
-    // sees this status, and pulls the .zip → unzips to /flipbook/<code>/.
-    // The Puppeteer upload step is intentionally bypassed for this path —
-    // FlipHTML5's Vue dynamic file-input doesn't bridge cleanly to
-    // headless Chrome's FileChooser, so we let the human handle the click
-    // and automate everything else.
-    $autoTriggered = false;
-    if (array_key_exists('volume_flip_code', $data)) {
-        $flipCode = trim($data['volume_flip_code'] ?? '');
-        if ($flipCode !== '') {
-            $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : (dirname(__DIR__) . '/public');
-            $flipDir = $publicRoot . '/flipbook/' . $flipCode;
-            if (!is_dir($flipDir) || !glob($flipDir . '/*')) {
-                $db->prepare("
-                    UPDATE yy_volume
-                       SET volume_pipeline_status  = 'download-pending',
-                           volume_pipeline_message = 'Awaiting host download of FlipHTML5 package (cron picks up within 5 min)',
-                           volume_revision_dtime   = NOW()
-                     WHERE volume_key = ?
-                ")->execute([$key]);
-                $autoTriggered = true;
-            }
-        }
-    }
-
     // Tell the client which paths changed (with both forms) so it can offer
     // to register 301 redirects from the old URLs to the new ones.
     $renames = [];
@@ -612,7 +584,6 @@ if ($method === 'PUT') {
         'renamed_docx' => $renamedDocx,
         'renamed_pdf'  => $renamedPdf,
         'renames'      => $renames,
-        'flip_download_queued' => $autoTriggered,
     ]);
 }
 
