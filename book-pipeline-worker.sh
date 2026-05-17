@@ -605,7 +605,7 @@ done <<< "$sweep_rows"
 if [ -x /opt/yada-www/migrate_flipbook.sh ]; then
     flipbook_rows=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -F'|' -c "
         SELECT replace(replace(volume_file, ' ', '-'), '''', '') AS slug,
-               replace(volume_file, ' ', '-') AS stem
+               volume_pdf                                          AS pdf_name
           FROM yy_volume
          WHERE volume_file IS NOT NULL
            AND volume_file <> ''
@@ -614,9 +614,16 @@ if [ -x /opt/yada-www/migrate_flipbook.sh ]; then
 
     fb_target_slug=""
     fb_target_reason=""
-    while IFS='|' read -r fb_slug fb_stem; do
+    # Use volume_pdf directly as the on-disk PDF filename. Deriving the
+    # stem from `replace(volume_file, ' ', '-')` previously kept apostrophes
+    # that the actual files don't have (e.g. Mow'ed-Appointments vs
+    # Mowed-Appointments.pdf), making the [-f "$fb_pdf"] check fail for
+    # apostrophe-containing labels and silently skipping those volumes
+    # every sweep tick.
+    while IFS='|' read -r fb_slug fb_pdf_name; do
         [ -z "$fb_slug" ] && continue
-        fb_pdf="$PDF_DIR/$fb_stem.pdf"
+        [ -z "$fb_pdf_name" ] && continue
+        fb_pdf="$PDF_DIR/$fb_pdf_name"
         [ ! -f "$fb_pdf" ] && continue
         # Per-book wrapper now lives at index.php (shared-shell shim);
         # legacy index.html still exists in a handful of un-migrated
