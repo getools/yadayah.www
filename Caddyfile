@@ -21,7 +21,8 @@ yadayah.com, www.yadayah.com {
 }
 
 inthecompanyofgoodandevil.com, www.inthecompanyofgoodandevil.com {
-    reverse_proxy itcoge-web:80
+    redir / /In-the-Company-of-Good-and-Evil/ permanent
+    reverse_proxy web:80
 }
 
 book.yadayah.com {
