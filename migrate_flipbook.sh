@@ -105,14 +105,17 @@ fi
 log "rendered $TOTAL pages"
 
 log "extract_text → search.json…"
-python3 /tmp/extract_text.py "$PDF" "$TMP/search.json" >/dev/null 2>&1 || {
-    log "WARN: extract_text failed; writing empty search.json"
+# Same `/tmp/extract_text.py-vanished` regression as extract_toc — the
+# durable copy now lives in /parsers/. Without it every migrate has been
+# falling through to an empty search index for months.
+python3 /opt/yada-www/parsers/extract_text.py "$PDF" "$TMP/search.json" 2>>"$TMP/extract_text.err" || {
+    log "WARN: extract_text failed ($(tail -1 "$TMP/extract_text.err" 2>/dev/null)); writing empty search.json"
     echo '{"pages":[]}' > "$TMP/search.json"
 }
 
 log "extract_text_layer → text/…"
-python3 /tmp/extract_text_layer.py "$PDF" "$TMP/text" >/dev/null 2>&1 || {
-    log "WARN: extract_text_layer failed; text overlays will be empty"
+python3 /opt/yada-www/parsers/extract_text_layer.py "$PDF" "$TMP/text" 2>>"$TMP/extract_text_layer.err" || {
+    log "WARN: extract_text_layer failed ($(tail -1 "$TMP/extract_text_layer.err" 2>/dev/null)); text overlays will be empty"
 }
 
 log "extract_toc → toc.json…"
