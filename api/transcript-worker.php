@@ -328,11 +328,12 @@ if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
             if ($output && preg_match('/^ERROR:.*$/m', $output, $captM)) $captErrLine = $captM[0];
             $captTail = $captErrLine ?: substr(trim($output), 0, 300);
             $captReason = 'yt-dlp produced no VTT';
+            $botBlocked = stripos($output, 'not a bot') !== false || stripos($output, 'confirm you') !== false;
             $cookiesRotated = $haveCookies
                 && (stripos($output, 'no longer valid') !== false
                     || stripos($output, 'rotated in the browser') !== false);
-            if (stripos($output, 'not a bot') !== false || stripos($output, 'confirm you') !== false) {
-                $captReason = $cookiesRotated
+            if ($botBlocked) {
+                $captReason = ($cookiesRotated || $haveCookies)
                     ? 'cookies stale/rotated — bot-detection blocked captions download'
                     : 'bot-detection blocked captions download';
             } elseif ($cookiesRotated) {
@@ -348,10 +349,13 @@ if (!$rows && $site === 'youtube' && $wantYoutubeCaptions) {
             }
             $methodFailures[] = "yt_dlp_captions: $captReason — " . $captTail;
 
-            // When the web-client cookies are stale, retry once with the ios client
-            // (no cookies). ios sometimes bypasses Botguard without auth when the
-            // web client fails due to invalid session cookies.
-            if ($cookiesRotated) {
+            // When cookies are stale/expired (bot-detection fires despite having a
+            // cookies file), retry once with the ios client (no auth). ios sometimes
+            // bypasses Botguard without a session when the web client is rejected.
+            // Previously only triggered on explicit "rotated" messages; widened to
+            // cover the common case where YouTube just says "Sign in to confirm
+            // you're not a bot" without including the rotation verbiage.
+            if ($cookiesRotated || ($haveCookies && $botBlocked)) {
                 updateJob($db, $jobKey, ['job_progress' => 18,
                     'job_message' => 'Cookies were stale — retrying with ios client (no auth)...']);
                 $cmdRetry = escapeshellcmd($ytDlp)
