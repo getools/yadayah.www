@@ -60,10 +60,12 @@ foreach ($sec->fetchAll() as $s) {
     $cfg = $s['page_section_test_config'];
     $cfg = is_string($cfg) ? (json_decode($cfg, true) ?: []) : ($cfg ?: []);
     $section = [
-        'key'    => (int)$s['page_section_test_key'],
-        'type'   => $s['page_section_test_type'],
-        'title'  => $s['page_section_test_title'],
-        'config' => $cfg,
+        'key'        => (int)$s['page_section_test_key'],
+        'parent_key' => $s['page_section_test_parent_key'] !== null ? (int)$s['page_section_test_parent_key'] : null,
+        'sort'       => (int)$s['page_section_test_sort'],
+        'type'       => $s['page_section_test_type'],
+        'title'      => $s['page_section_test_title'],
+        'config'     => $cfg,
     ];
     if ($section['type'] === 'items') {
         $section['items'] = resolveItemsSection($db, $cfg);

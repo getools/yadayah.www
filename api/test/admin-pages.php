@@ -67,20 +67,33 @@ case 'POST':
         $check->execute([$pageKey]);
         if (!$check->fetch()) errorResponse('Page not found', 404);
 
-        $allowedTypes = ['static', 'carousel', 'items', 'custom'];
+        $allowedTypes = ['static', 'carousel', 'items', 'custom', 'layout'];
         $sections = $input['sections'] ?? [];
         $deleted  = $input['deleted']  ?? [];
         if (!is_array($sections)) errorResponse('sections must be an array');
 
+        // Sections arrive in pre-order traversal (parent before child) so a
+        // single forward pass can resolve parent_key references via the
+        // local_id → db_key map we build as we go.
         $db->beginTransaction();
         try {
             foreach ($deleted as $delKey) {
                 $db->prepare("DELETE FROM yy_page_section_test WHERE page_section_test_key = ? AND page_test_key = ?")
                    ->execute([(int)$delKey, $pageKey]);
             }
-            $upd = $db->prepare("UPDATE yy_page_section_test SET page_section_test_type = ?, page_section_test_title = ?, page_section_test_config = ?::jsonb, page_section_test_active_flag = ?, page_section_test_sort = ? WHERE page_section_test_key = ? AND page_test_key = ?");
-            $ins = $db->prepare("INSERT INTO yy_page_section_test (page_test_key, page_section_test_type, page_section_test_title, page_section_test_config, page_section_test_active_flag, page_section_test_sort) VALUES (?, ?, ?, ?::jsonb, ?, ?) RETURNING page_section_test_key");
+            // Two UPDATE variants:
+            //   updWith — touches parent_key (used when the payload declares
+            //             tree info via parent_local_id / parent_key /
+            //             parent_resolved).
+            //   updWithout — leaves parent_key alone (legacy payload from an
+            //             editor build that doesn't know about layouts).
+            // Avoids accidentally NULL'ing parent_key when an old editor
+            // saves over a migrated row.
+            $updWith    = $db->prepare("UPDATE yy_page_section_test SET page_section_test_type = ?, page_section_test_title = ?, page_section_test_config = ?::jsonb, page_section_test_active_flag = ?, page_section_test_sort = ?, page_section_test_parent_key = ? WHERE page_section_test_key = ? AND page_test_key = ?");
+            $updWithout = $db->prepare("UPDATE yy_page_section_test SET page_section_test_type = ?, page_section_test_title = ?, page_section_test_config = ?::jsonb, page_section_test_active_flag = ?, page_section_test_sort = ? WHERE page_section_test_key = ? AND page_test_key = ?");
+            $ins = $db->prepare("INSERT INTO yy_page_section_test (page_test_key, page_section_test_type, page_section_test_title, page_section_test_config, page_section_test_active_flag, page_section_test_sort, page_section_test_parent_key) VALUES (?, ?, ?, ?::jsonb, ?, ?, ?) RETURNING page_section_test_key");
             $newKeys = [];
+            $localMap = []; // local_id (string|int) → db_key
             foreach ($sections as $i => $s) {
                 $type = $s['page_section_test_type'] ?? '';
                 if (!in_array($type, $allowedTypes, true)) {
@@ -91,16 +104,49 @@ case 'POST':
                 $cfgJson = json_encode($config, JSON_UNESCAPED_UNICODE) ?: '{}';
                 $active = !empty($s['page_section_test_active_flag']) ? 't' : 'f';
                 $sort   = (int)($s['page_section_test_sort'] ?? $i);
-                if (!empty($s['page_section_test_key'])) {
-                    $upd->execute([$type, $title ?: null, $cfgJson, $active, $sort, (int)$s['page_section_test_key'], $pageKey]);
-                    $newKeys[] = (int)$s['page_section_test_key'];
-                } else {
-                    $ins->execute([$pageKey, $type, $title ?: null, $cfgJson, $active, $sort]);
-                    $newKeys[] = (int)$ins->fetchColumn();
+
+                // Tree info detection: the editor build that understands
+                // layouts sets parent_local_id (string) or
+                // page_section_test_parent_key (int/null) or sends an
+                // explicit parent_resolved=true marker. Old payloads have
+                // none of these — we preserve the existing parent_key.
+                $hasTreeInfo = array_key_exists('parent_local_id', $s)
+                            || array_key_exists('page_section_test_parent_key', $s)
+                            || !empty($s['parent_resolved']);
+                $parentKey = null;
+                if (isset($s['parent_local_id']) && $s['parent_local_id'] !== null && $s['parent_local_id'] !== '') {
+                    $pid = (string)$s['parent_local_id'];
+                    if (isset($localMap[$pid])) {
+                        $parentKey = $localMap[$pid];
+                    } elseif (ctype_digit($pid)) {
+                        $parentKey = (int)$pid;
+                    }
+                } elseif (array_key_exists('page_section_test_parent_key', $s)
+                          && $s['page_section_test_parent_key'] !== null
+                          && $s['page_section_test_parent_key'] !== '') {
+                    $parentKey = (int)$s['page_section_test_parent_key'];
                 }
+
+                if (!empty($s['page_section_test_key'])) {
+                    $dbKey = (int)$s['page_section_test_key'];
+                    if ($hasTreeInfo) {
+                        $updWith->execute([$type, $title ?: null, $cfgJson, $active, $sort, $parentKey, $dbKey, $pageKey]);
+                    } else {
+                        $updWithout->execute([$type, $title ?: null, $cfgJson, $active, $sort, $dbKey, $pageKey]);
+                    }
+                } else {
+                    $ins->execute([$pageKey, $type, $title ?: null, $cfgJson, $active, $sort, $parentKey]);
+                    $dbKey = (int)$ins->fetchColumn();
+                }
+                $newKeys[] = $dbKey;
+                $localId = isset($s['local_id']) ? (string)$s['local_id'] : null;
+                if ($localId !== null && $localId !== '') $localMap[$localId] = $dbKey;
+                // Also map by old db_key so a child referencing an existing
+                // parent by parent_local_id = old_db_key still resolves.
+                $localMap[(string)$dbKey] = $dbKey;
             }
             $db->commit();
-            jsonResponse(['ok' => true, 'section_keys' => $newKeys]);
+            jsonResponse(['ok' => true, 'section_keys' => $newKeys, 'local_map' => $localMap]);
         } catch (Exception $e) {
             $db->rollBack();
             errorResponse('Save failed: ' . $e->getMessage());
