@@ -416,6 +416,11 @@ function fetchYouTubeVideoDetails(array $videoIds, string $apiKey): array {
             if (!$id) continue;
             $iso = $item['contentDetails']['duration'] ?? '';
             $seconds = $iso ? parseIsoDuration($iso) : 0;
+            // A currently-broadcasting stream reports contentDetails.duration
+            // of "P0D"/PT0S (parses to 0). Surface it as "LIVE" instead of
+            // 0:00; a later sync (after the stream ends) replaces it with the
+            // real runtime via the COALESCE upsert.
+            $isLive = (($item['snippet']['liveBroadcastContent'] ?? 'none') === 'live');
             // Determine orientation from thumbnail aspect ratio
             $thumbs = $item['snippet']['thumbnails'] ?? [];
             $thumbInfo = $thumbs['high'] ?? $thumbs['medium'] ?? $thumbs['default'] ?? [];
@@ -427,8 +432,8 @@ function fetchYouTubeVideoDetails(array $videoIds, string $apiKey): array {
             }
 
             $details[$id] = [
-                'seconds' => $seconds,
-                'formatted' => formatDuration($seconds),
+                'seconds' => $isLive ? 0 : $seconds,
+                'formatted' => $isLive ? 'LIVE' : formatDuration($seconds),
                 'description' => $item['snippet']['description'] ?? '',
                 'orientation' => $orient,
             ];

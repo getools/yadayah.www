@@ -238,6 +238,36 @@ foreach ($feeds as $feed) {
                     if ($row['inserted']) $totalInserted++;
                     else $totalUpdated++;
                 }
+
+                // Capture video duration via the Graph API `length` field
+                // (seconds). The posts edge doesn't include it, so it needs a
+                // per-video call — but only when we don't already have it, so
+                // established items don't re-hit the API on every sync.
+                if ($postType === 'video' && $videoId) {
+                    // Re-fetch while duration is missing/zero OR currently
+                    // flagged LIVE — so an in-progress broadcast flips to its
+                    // real runtime once it ends.
+                    $needDur = $db->prepare("SELECT 1 FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ? AND (feed_item_duration_seconds IS NULL OR feed_item_duration_seconds = 0 OR feed_item_duration = 'LIVE')");
+                    $needDur->execute([$feedKey, $postId]);
+                    if ($needDur->fetchColumn()) {
+                        $lenResp = @file_get_contents("https://graph.facebook.com/v23.0/" . rawurlencode($videoId) . "?fields=length,live_status&access_token=" . urlencode($token));
+                        if ($lenResp !== false) {
+                            $lenData = json_decode($lenResp, true);
+                            if (is_array($lenData)) {
+                                $upd = $db->prepare("UPDATE yy_feed_item SET feed_item_duration = ?, feed_item_duration_seconds = ? WHERE feed_key = ? AND feed_item_external_id = ?");
+                                if (($lenData['live_status'] ?? '') === 'LIVE') {
+                                    // Currently broadcasting — show "LIVE" rather than 0:00.
+                                    $upd->execute(['LIVE', 0, $feedKey, $postId]);
+                                } elseif (isset($lenData['length']) && (float)$lenData['length'] > 0) {
+                                    $secs = (int)round((float)$lenData['length']);
+                                    $h = intdiv($secs, 3600); $mm = intdiv($secs % 3600, 60); $ss = $secs % 60;
+                                    $durStr = $h > 0 ? sprintf('%d:%02d:%02d', $h, $mm, $ss) : sprintf('%d:%02d', $mm, $ss);
+                                    $upd->execute([$durStr, $secs, $feedKey, $postId]);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             $url = $json['paging']['next'] ?? null;
