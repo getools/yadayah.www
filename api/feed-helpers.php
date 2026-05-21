@@ -105,3 +105,100 @@ function getPageKey(PDO $db, string $pageCode): ?int {
     $cache[$pageCode] = $key ? (int)$key : null;
     return $cache[$pageCode];
 }
+
+/**
+ * Append the shared Items-section filter conditions to a query's WHERE.
+ * Used by BOTH the public page renderer (page-render.php → resolveItems-
+ * Section) and the admin "Selected Titles" typeahead (feed-items-search.php),
+ * so the titles a user can pin are exactly the items the section would show.
+ *
+ * Item rows MUST be aliased `i` in the calling query. Does NOT handle the
+ * pinned `feed_item_keys` set (render returns those verbatim; search
+ * excludes already-pinned items) — that's the caller's concern.
+ *
+ * Recognized $cfg keys: feed_keys[], age_min_h, age_max_h, duration_min_sec,
+ * duration_max_sec, content_type, orientation, pages[]/page_key+category_key,
+ * include_hashtags, exclude_hashtags, title_include, title_exclude.
+ */
+function appendItemsSectionFilters(array $cfg, string &$where, array &$params): void {
+    if (!empty($cfg['feed_keys']) && is_array($cfg['feed_keys'])) {
+        $ids = array_values(array_filter(array_map('intval', $cfg['feed_keys'])));
+        if ($ids) {
+            $place = implode(',', array_fill(0, count($ids), '?'));
+            $where .= " AND i.feed_key IN ($place)";
+            array_push($params, ...$ids);
+        }
+    }
+    $ageMinH = (int)($cfg['age_min_h'] ?? 0);
+    if ($ageMinH > 0) {
+        $where .= " AND COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) <= NOW() - (? || ' hours')::interval";
+        $params[] = (string)$ageMinH;
+    }
+    $ageMaxH = (int)($cfg['age_max_h'] ?? 0);
+    if ($ageMaxH > 0) {
+        $where .= " AND COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) >= NOW() - (? || ' hours')::interval";
+        $params[] = (string)$ageMaxH;
+    }
+    if (isset($cfg['duration_min_sec']) && $cfg['duration_min_sec'] !== '' && $cfg['duration_min_sec'] !== null) {
+        $where .= " AND i.feed_item_duration_seconds >= ?";
+        $params[] = (int)$cfg['duration_min_sec'];
+    }
+    if (isset($cfg['duration_max_sec']) && $cfg['duration_max_sec'] !== '' && $cfg['duration_max_sec'] !== null) {
+        $where .= " AND i.feed_item_duration_seconds <= ?";
+        $params[] = (int)$cfg['duration_max_sec'];
+    }
+    if (!empty($cfg['content_type'])) {
+        $where .= " AND i.feed_item_type = ?";
+        $params[] = $cfg['content_type'];
+    }
+    if (!empty($cfg['orientation']) && in_array($cfg['orientation'], ['vertical', 'horizontal'], true)) {
+        $where .= " AND i.feed_item_orientation = ?";
+        $params[] = $cfg['orientation'];
+    }
+    // Page/category filters: cfg.pages [{page_key, category_key}], OR legacy
+    // single page_key + category_key.
+    $pageEntries = [];
+    if (!empty($cfg['pages']) && is_array($cfg['pages'])) {
+        foreach ($cfg['pages'] as $e) {
+            if (!empty($e['page_key'])) {
+                $pageEntries[] = ['page_key' => (int)$e['page_key'], 'category_key' => !empty($e['category_key']) ? (int)$e['category_key'] : null];
+            }
+        }
+    } elseif (!empty($cfg['page_key'])) {
+        $pageEntries[] = ['page_key' => (int)$cfg['page_key'], 'category_key' => !empty($cfg['category_key']) ? (int)$cfg['category_key'] : null];
+    }
+    if ($pageEntries) {
+        $orParts = [];
+        foreach ($pageEntries as $e) {
+            if ($e['category_key']) {
+                $orParts[] = "EXISTS (SELECT 1 FROM yy_feed_item_page fip JOIN yy_feed_item_category fic ON fic.feed_item_key = fip.feed_item_key WHERE fip.feed_item_key = i.feed_item_key AND fip.page_key = ? AND fic.category_key = ?)";
+                $params[] = $e['page_key'];
+                $params[] = $e['category_key'];
+            } else {
+                $orParts[] = "EXISTS (SELECT 1 FROM yy_feed_item_page fip WHERE fip.feed_item_key = i.feed_item_key AND fip.page_key = ?)";
+                $params[] = $e['page_key'];
+            }
+        }
+        $where .= " AND (" . implode(' OR ', $orParts) . ")";
+    }
+    // Hashtag filters (feed_item_tags only).
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['include_hashtags'] ?? ''))) as $term) {
+        [$tagSql, $tagParams] = tagFilterClause('i.feed_item_tags', $term, false);
+        $where .= " AND $tagSql";
+        foreach ($tagParams as $p) $params[] = $p;
+    }
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['exclude_hashtags'] ?? ''))) as $term) {
+        [$tagSql, $tagParams] = tagFilterClause('i.feed_item_tags', $term, true);
+        $where .= " AND $tagSql";
+        foreach ($tagParams as $p) $params[] = $p;
+    }
+    // Title include/exclude (wildcard convention via filterLikePattern).
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['title_include'] ?? ''))) as $term) {
+        $where .= " AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) ILIKE ?";
+        $params[] = filterLikePattern($term);
+    }
+    foreach (array_filter(array_map('trim', preg_split('/[,|]/', $cfg['title_exclude'] ?? ''))) as $term) {
+        $where .= " AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) NOT ILIKE ?";
+        $params[] = filterLikePattern($term);
+    }
+}

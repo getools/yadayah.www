@@ -13,10 +13,9 @@ require_once __DIR__ . '/../config.php';
 requireAuth();
 $db = getDb();
 
-$q        = trim($_GET['q']         ?? '');
-$keys     = trim($_GET['keys']      ?? '');
-$feedKeys = trim($_GET['feed_keys'] ?? '');
-$limit    = (int)($_GET['limit']    ?? 8);
+$q     = trim($_GET['q']    ?? '');
+$keys  = trim($_GET['keys'] ?? '');
+$limit = (int)($_GET['limit'] ?? 8);
 if ($limit < 1) $limit = 8;
 if ($limit > 50) $limit = 50;
 
@@ -24,6 +23,7 @@ $where  = "i.feed_item_active_flag = TRUE";
 $params = [];
 
 if ($keys !== '') {
+    // Chip-rendering lookup by exact keys — no filtering.
     $ids = array_values(array_filter(array_map('intval', explode(',', $keys))));
     if (!$ids) jsonResponse(['items' => []]);
     $place = implode(',', array_fill(0, count($ids), '?'));
@@ -32,16 +32,30 @@ if ($keys !== '') {
 } elseif ($q !== '') {
     $where .= " AND COALESCE(i.feed_item_title_override, i.feed_item_title_import) ILIKE ?";
     $params[] = '%' . $q . '%';
-    // Title search may be scoped to a subset of feeds — when the parent Items section
-    // has feeds checked, the pinned-items typeahead only suggests items from those feeds.
-    if ($feedKeys !== '') {
-        $fids = array_values(array_filter(array_map('intval', explode(',', $feedKeys))));
-        if ($fids) {
-            $place = implode(',', array_fill(0, count($fids), '?'));
-            $where .= " AND i.feed_key IN ($place)";
-            array_push($params, ...$fids);
-        }
+    // Scope the typeahead to the SAME filters the Items section uses, so a
+    // pinned title is always an item the section would actually display.
+    // The editor passes the section config fields as query params; feed_keys
+    // arrives comma-separated and pages as a JSON array.
+    $cfg = [
+        'content_type'     => $_GET['content_type']    ?? '',
+        'orientation'      => $_GET['orientation']      ?? '',
+        'include_hashtags' => $_GET['include_hashtags'] ?? '',
+        'exclude_hashtags' => $_GET['exclude_hashtags'] ?? '',
+        'title_include'    => $_GET['title_include']    ?? '',
+        'title_exclude'    => $_GET['title_exclude']    ?? '',
+        'duration_min_sec' => $_GET['duration_min_sec'] ?? '',
+        'duration_max_sec' => $_GET['duration_max_sec'] ?? '',
+        'age_min_h'        => $_GET['age_min_h']        ?? '',
+        'age_max_h'        => $_GET['age_max_h']        ?? '',
+    ];
+    if (!empty($_GET['feed_keys'])) {
+        $cfg['feed_keys'] = array_values(array_filter(array_map('intval', explode(',', $_GET['feed_keys']))));
     }
+    if (!empty($_GET['pages'])) {
+        $decoded = json_decode($_GET['pages'], true);
+        if (is_array($decoded)) $cfg['pages'] = $decoded;
+    }
+    appendItemsSectionFilters($cfg, $where, $params);
 } else {
     jsonResponse(['items' => []]);
 }
