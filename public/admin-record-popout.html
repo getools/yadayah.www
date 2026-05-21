@@ -67,6 +67,8 @@
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         #continue-btn { background: var(--green); color: #fff; }
         #pause-btn { background: #444; color: #fff; }
+        #pause-break-btn { background: #fff; color: #8a6d00; border: 1px solid #e0c000; }
+        #pause-break-btn.armed { background: #8a6d00; color: #fff; border-color: #8a6d00; }
         #restart-btn { background: #fff; color: var(--red); border: 1px solid var(--red); padding: 8px 12px; font-size: 0.85rem; }
         #clear-queue-btn { background: #fff; color: #c97a00; border: 1px solid #c97a00; padding: 8px 12px; font-size: 0.85rem; }
         #status { font-size: 0.9rem; color: #666; flex: 1; }
@@ -115,7 +117,8 @@
         </div>
         <div id="controls">
             <button id="continue-btn" style="display:none;" onclick="continueRecording()">▶ Continue Recording</button>
-            <button id="pause-btn" style="display:none;" onclick="pauseRecording()">⏸ Pause Recording</button>
+            <button id="pause-btn" style="display:none;" onclick="pauseRecording()">⏸ Pause Now</button>
+            <button id="pause-break-btn" style="display:none;" onclick="pauseAtBreak()" title="Keep recording until the next 5-minute checkpoint finishes saving, then stop cleanly at that segment boundary instead of cutting mid-segment.">⏸ Pause Next Break</button>
             <button id="restart-btn" style="display:none;" onclick="restartRecording()">⟲ Restart from Beginning</button>
             <button id="clear-queue-btn" style="display:none;" onclick="clearQueue()" title="Allows the current video recording to complete, but removes all the remaining items from the queue of upcoming videos to process in this window.  This frees up these videos for others to process while also providing a clean stopping point for processing recordings.">Clear Queue</button>
             <button id="retry-upload-btn" style="display:none;background:#fff3a8;border:1px solid #e0c000;color:#8a6d00;" onclick="retryPendingUpload()">⟳ Retry Upload</button>
@@ -417,6 +420,10 @@
     var CHECKPOINT_MS = 5 * 60 * 1000;
     var checkpointTimer = null;
     var autoCheckpointPending = false;
+    // "Pause Next Break": when armed, the next auto-checkpoint writes its
+    // part as usual but we DON'T resume playback afterward — recording
+    // stops cleanly at the 5-min segment boundary instead of mid-segment.
+    var pauseAtNextCheckpoint = false;
     // Silence watchdog: 30 seconds after recording starts, peek at the live
     // capture stream and warn the user prominently if it has been silent the
     // whole time. Without this they wouldn't find out until the first 5-min
@@ -686,6 +693,8 @@
         rec.start();
         recorder = rec;
         startedMs = Date.now();
+        // Each fresh segment starts disarmed; the user re-arms per segment.
+        pauseAtNextCheckpoint = false;
         startCheckpointTimer();
         startSilenceWatchdog();
         startVolumeWatcher();
@@ -856,6 +865,13 @@
             if (atEnd) {
                 setStatus('🎬 Video ended — finalizing audio…');
                 await finalizeNow(true);
+            } else if (wasAutoCheckpoint && pauseAtNextCheckpoint) {
+                // User armed "Pause Next Break" — this checkpoint just wrote
+                // a complete part at a 5-min boundary, so stop here instead
+                // of resuming. The video stays paused; partCount>0 so
+                // updateControls() surfaces Continue / Restart.
+                pauseAtNextCheckpoint = false;
+                setStatus('⏸ Paused at ' + fmt(nowSec) + ' (segment boundary) — safe to close window.');
             } else if (wasAutoCheckpoint) {
                 setStatus('💾 Auto-saved at ' + fmt(nowSec) + ' — resuming…');
                 // Resume playback; PLAYING handler will restart the recorder
@@ -1174,9 +1190,19 @@
         }
     }
     function pauseRecording() {
+        // "Pause Now" — an immediate manual pause supersedes any armed
+        // next-break pause.
+        pauseAtNextCheckpoint = false;
         if (ytPlayer && ytPlayer.pauseVideo) {
             try { ytPlayer.pauseVideo(); } catch (e) {}
         }
+    }
+    // "Pause Next Break" toggle — arm/disarm stopping at the next 5-min
+    // checkpoint. No-op unless we're actively recording.
+    function pauseAtBreak() {
+        if (!(recorder && recorder.state === 'recording')) return;
+        pauseAtNextCheckpoint = !pauseAtNextCheckpoint;
+        updateControls();
     }
     async function restartRecording() {
         // Heavy guardrails: this action permanently deletes recorded audio.
@@ -1211,6 +1237,7 @@
     // ── UI ──
     function updateControls() {
         var pauseBtn = $('pause-btn'), continueBtn = $('continue-btn'), restartBtn = $('restart-btn');
+        var pauseBreakBtn = $('pause-break-btn');
         var blocker = $('player-blocker');
         var rec = !!(recorder && recorder.state === 'recording');
         // While an upload is in flight (between pause and finalize), HIDE all
@@ -1219,6 +1246,7 @@
         // completed — leading to races where audio progress gets clobbered.
         if (uploadInFlight) {
             pauseBtn.style.display = 'none';
+            if (pauseBreakBtn) pauseBreakBtn.style.display = 'none';
             continueBtn.style.display = 'none';
             restartBtn.style.display = 'none';
             if (blocker) blocker.style.display = 'none';
@@ -1227,6 +1255,13 @@
         }
         if (rec) {
             pauseBtn.style.display = '';
+            if (pauseBreakBtn) {
+                pauseBreakBtn.style.display = '';
+                pauseBreakBtn.classList.toggle('armed', pauseAtNextCheckpoint);
+                pauseBreakBtn.textContent = pauseAtNextCheckpoint
+                    ? '⏸ Pausing at next break ✓ (click to cancel)'
+                    : '⏸ Pause Next Break';
+            }
             continueBtn.style.display = 'none';
             restartBtn.style.display = 'none';
             if (blocker) blocker.style.display = 'block';
@@ -1234,6 +1269,7 @@
             durationTimer = setInterval(updateTime, 500);
         } else {
             pauseBtn.style.display = 'none';
+            if (pauseBreakBtn) pauseBreakBtn.style.display = 'none';
             if (partCount > 0) {
                 continueBtn.style.display = '';
                 restartBtn.style.display = '';
