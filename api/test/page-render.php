@@ -15,6 +15,12 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../feed-helpers.php';
 
+// This file is both an endpoint AND a function library (resolveItemsSection,
+// below). Other endpoints (e.g. items-preview.php) require it for the
+// functions; define PAGE_RENDER_LIB before requiring to skip the endpoint
+// body so the GET-only method guard and request handling don't fire.
+if (!defined('PAGE_RENDER_LIB')) {
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') errorResponse('Method not allowed', 405);
 
 $db = getDb();
@@ -74,6 +80,8 @@ foreach ($sec->fetchAll() as $s) {
 }
 
 jsonResponse(['page' => $page, 'sections' => $out]);
+
+} // end endpoint body (skipped when included as a library)
 
 
 /**
@@ -150,6 +158,11 @@ function resolveItemsSection(PDO $db, array $cfg): array {
                 break;
             case 'duration':
                 $orderParts[] = "i.feed_item_duration_seconds $dir NULLS LAST";
+                break;
+            case 'sort':
+                // Manual ordering field (feed_item_sort). Mirrors the
+                // production music page's primary ordering.
+                $orderParts[] = "i.feed_item_sort $dir NULLS LAST";
                 break;
             case 'random':
                 $orderParts[] = "RANDOM()";
