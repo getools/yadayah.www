@@ -10,6 +10,7 @@
  * Auth required (admin tool).
  */
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../feed-helpers.php';  // appendItemsSectionFilters + tag/title helpers
 requireAuth();
 $db = getDb();
 
@@ -71,4 +72,11 @@ $sql = "SELECT i.feed_item_key, i.feed_item_thumbnail, i.feed_item_embed_id,
         LIMIT " . (int)$limit;
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
-jsonResponse(['items' => $stmt->fetchAll()]);
+$rows = $stmt->fetchAll();
+// Normalize relative thumbnail paths so they render from the web root
+// (the admin page lives at /test/, where "u/blog/…" would resolve wrong).
+foreach ($rows as &$row) {
+    if (isset($row['feed_item_thumbnail'])) $row['feed_item_thumbnail'] = normalizeMediaUrl($row['feed_item_thumbnail']);
+}
+unset($row);
+jsonResponse(['items' => $rows]);

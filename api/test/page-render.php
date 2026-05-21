@@ -182,5 +182,12 @@ function resolveItemsSection(PDO $db, array $cfg): array {
 
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
-    return $stmt->fetchAll();
+    $rows = $stmt->fetchAll();
+    // Normalize relative thumbnail paths (e.g. "u/blog/…") to absolute so
+    // they render from the web root, not relative to /test/page.php.
+    foreach ($rows as &$r) {
+        if (isset($r['feed_item_thumbnail'])) $r['feed_item_thumbnail'] = normalizeMediaUrl($r['feed_item_thumbnail']);
+    }
+    unset($r);
+    return $rows;
 }

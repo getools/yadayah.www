@@ -107,6 +107,21 @@ function getPageKey(PDO $db, string $pageCode): ?int {
 }
 
 /**
+ * Normalize a stored media URL to one the browser can resolve from any
+ * page path. Feed thumbnails are stored either as absolute URLs
+ * (YouTube: https://i.ytimg.com/…) or as web-root-relative paths WITHOUT
+ * a leading slash (blog/Facebook images: u/blog/img_….jpg). The latter
+ * break when rendered from a sub-path like /test/admin-pages.html or
+ * /test/page.php (they resolve to /test/u/blog/…). Prepend a leading
+ * slash so they always resolve from the web root.
+ */
+function normalizeMediaUrl(?string $u): ?string {
+    if ($u === null || $u === '') return $u;
+    if ($u[0] === '/' || preg_match('#^(https?:)?//#i', $u) || strpos($u, 'data:') === 0) return $u;
+    return '/' . $u;
+}
+
+/**
  * Append the shared Items-section filter conditions to a query's WHERE.
  * Used by BOTH the public page renderer (page-render.php → resolveItems-
  * Section) and the admin "Selected Titles" typeahead (feed-items-search.php),
