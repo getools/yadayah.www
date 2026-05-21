@@ -487,6 +487,17 @@
             if (resp.status === 401) throw new Error('Not signed in to admin. Open admin-feeds.html in another tab and sign in, then reload this page.');
             var d = await resp.json();
             if (d.error || !d.item) throw new Error(d.error || 'Item not found');
+            // Skip live / not-fully-ready items. A normal VOD always carries a
+            // real runtime from the YouTube Data API sync; live broadcasts,
+            // upcoming premieres, and still-processing uploads come back with
+            // feed_item_duration_seconds = 0 (duration "LIVE" / "0:00").
+            // Recording those yields a broken capture — getDuration() is
+            // unreliable, so the 5-min checkpoint guard misfires and the timer
+            // runs past the reported length — so skip past them.
+            if ((parseInt(d.item.feed_item_duration_seconds, 10) || 0) <= 0) {
+                skipNotReadyItem(d.item.title || ('Item ' + itemKey));
+                return;
+            }
             setTitle((d.item.title || 'Item ' + itemKey).substring(0, 90));
             setStatus('Reading any saved progress…');
             // Read partial state
@@ -1089,6 +1100,22 @@
     // Reused on initial load and on batch advancement. Stream + once-prompted
     // flag are intentionally NOT reset so we keep the same screen-share
     // permission across all items.
+    // Advance past a live / not-ready item without recording it. Releases
+    // the item's lock (we're not capturing it) and moves to the next queue
+    // entry, or stops cleanly if this was the last one. Consecutive
+    // not-ready items chain-skip because each load re-runs this check.
+    function skipNotReadyItem(title) {
+        var label = '[' + itemKey + '] ' + (title || '').toString().substring(0, 40);
+        dropFinishedItemLock(itemKey);
+        if (BATCH_MODE && queueIndex < queue.length - 1) {
+            queueIndex++;
+            setStatus('⏭ Skipped ' + label + ' — still streaming / not ready. Loading next (' + (queueIndex + 1) + '/' + queue.length + ')…');
+            setTimeout(loadCurrentItem, 1000);
+        } else {
+            setStatus('⏹ ' + label + ' is still streaming / not ready to record — nothing left in the queue.');
+        }
+    }
+
     async function loadCurrentItem() {
         if (queueIndex >= queue.length) return;
         itemKey = queue[queueIndex];
