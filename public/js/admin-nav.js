@@ -44,6 +44,7 @@ var tabs = [
     ['admin-backgrounds.html', 'Backgrounds'],
     ['admin-feeds.html', 'Feeds'],
     ['admin-pages.html', 'Pages'],
+    ['/test/admin-pages.html', 'Pages-New', 'Prototype multi-section page builder (yy_page_test) — the new test page editor.'],
     ['admin-redirects.html', 'Redirects'],
     ['admin-links.html', 'Links'],
     ['admin-resources.html', 'Resources'],
