@@ -228,15 +228,27 @@ VideoLightbox.configure({
     // user picked (anything BEFORE that song is dropped). The user can
     // still use the prev/next arrows or YouTube's own skip buttons.
     getEmbedUrl: function(v) {
-        var url = 'https://www.youtube.com/embed/' + (v.music_video_id || '') + '?autoplay=1&rel=0';
+        // Build the ordered ID list from the clicked song through the end
+        // of the loaded list. YouTube's embed plays the `playlist` param
+        // starting at its FIRST entry — so the current song MUST be the
+        // first element. Previously the playlist held only the SONGS
+        // AFTER the current one, so the player skipped the clicked song
+        // and started on the next (off-by-one: song N played song N+1,
+        // and the last two both played the final song).
         var idx = allVideos.indexOf(v);
+        var ids = [];
         if (idx >= 0) {
-            var rest = [];
-            for (var i = idx + 1; i < allVideos.length; i++) {
-                if (allVideos[i].music_video_id) rest.push(allVideos[i].music_video_id);
+            for (var i = idx; i < allVideos.length; i++) {
+                if (allVideos[i].music_video_id) ids.push(allVideos[i].music_video_id);
             }
-            if (rest.length) url += '&playlist=' + rest.join(',');
+        } else if (v.music_video_id) {
+            ids.push(v.music_video_id);
         }
+        var first = ids[0] || (v.music_video_id || '');
+        var url = 'https://www.youtube.com/embed/' + first + '?autoplay=1&rel=0';
+        // playlist must lead with `first` so playback begins on the
+        // clicked song, then continues through the rest in order.
+        if (ids.length > 1) url += '&playlist=' + ids.join(',');
         return url;
     }
 });
