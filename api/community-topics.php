@@ -353,7 +353,7 @@ if ($method === 'POST') {
         header('Content-Length: ' . strlen($responseJson));
         echo $responseJson;
         if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
-        else { ob_end_flush(); flush(); }
+        else { flush(); }
 
         // Load configurable email template
         $tplStmt = $db->query("SELECT setting_code, setting_value FROM yy_setting WHERE setting_scope_code = 'config' AND setting_group_code = 'comments' AND setting_code IN ('notify-reply-subject','notify-reply-body')");

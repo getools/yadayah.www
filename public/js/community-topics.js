@@ -570,7 +570,7 @@ CommunityTopics.toggleLike = function(ev, type, key) {
         if (heart) heart.innerHTML = data.liked ? '&#9829;' : '&#9825;';
         var countEl = btn.querySelector('.like-count');
         if (countEl && typeof data.count === 'number') countEl.textContent = data.count;
-    });
+    }).catch(function() {});
     return false;
 };
 
@@ -585,7 +585,7 @@ CommunityTopics.toggleReaction = function(type, key, code) {
         if (hash.indexOf('#topic/') === 0) {
             CommunityTopics.loadTopic(parseInt(hash.split('/')[1]));
         }
-    });
+    }).catch(function() {});
 };
 
 // ── Watch ──
@@ -596,7 +596,7 @@ CommunityTopics.toggleWatch = function(topicKey) {
         body: { topic_key: topicKey }
     }).then(function() {
         CommunityTopics.loadTopic(topicKey);
-    });
+    }).catch(function() {});
 };
 
 // ── Bookmark ──
@@ -617,7 +617,7 @@ CommunityTopics.toggleBookmark = function(topicKey) {
         body: { topic_key: topicKey }
     }).then(function() {
         CommunityTopics.loadTopic(topicKey);
-    });
+    }).catch(function() {});
 };
 
 // ── Bookmarks view ──
@@ -733,6 +733,8 @@ CommunityTopics.submitTopic = function() {
                     body: { action: 'create', topic_key: data.topic_key, question: payload.poll.question, options: payload.poll.options }
                 }).then(function() {
                     window.location.hash = '#topic/' + data.topic_key;
+                }).catch(function() {
+                    window.location.hash = '#topic/' + data.topic_key;
                 });
             } else {
                 window.location.hash = '#topic/' + data.topic_key;
@@ -740,6 +742,8 @@ CommunityTopics.submitTopic = function() {
         } else {
             alert(data.error || 'Failed');
         }
+    }).catch(function(err) {
+        alert('Error posting topic: ' + (err && err.message ? err.message : 'Please try again'));
     });
 };
 
