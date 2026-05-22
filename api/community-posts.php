@@ -3,9 +3,10 @@ require_once __DIR__ . '/config.php';
 
 $db = getDb();
 $UPLOAD_DIR = __DIR__ . '/../u/community/posts';
+$method = $_SERVER['REQUEST_METHOD'] ?? '';
 
 // GET: paginated feed
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+if ($method === 'GET') {
     $page = max(1, (int)($_GET['page'] ?? 1));
     $perPage = 20;
     $offset = ($page - 1) * $perPage;
@@ -43,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 // POST: create new post
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($method === 'POST') {
     $account = requireCommunityAuth();
 
     $text = trim($_POST['post_text'] ?? '');
@@ -77,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // PUT: edit own post
-if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
+if ($method === 'PUT') {
     $account = requireCommunityAuth();
     $input = json_decode(file_get_contents('php://input'), true);
     $postKey = (int)($input['post_key'] ?? 0);
@@ -99,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
 }
 
 // DELETE: soft-delete own post
-if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+if ($method === 'DELETE') {
     $account = requireCommunityAuth();
     $input = json_decode(file_get_contents('php://input'), true);
     $postKey = (int)($input['post_key'] ?? 0);
