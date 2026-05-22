@@ -16,14 +16,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $total = (int)$countStmt->fetchColumn();
 
     $sql = "SELECT p.*, a.account_name, a.account_avatar,
-            EXISTS(SELECT 1 FROM yy_community_like l WHERE l.post_key = p.post_key AND l.account_key = :ak) as user_liked
+            FALSE as user_liked
             FROM yy_community_post p
             JOIN yy_account a ON a.account_key = p.account_key
             WHERE p.post_active_flag = TRUE
             ORDER BY p.post_pinned_flag DESC, p.post_dtime DESC
             LIMIT :lim OFFSET :off";
     $stmt = $db->prepare($sql);
-    $stmt->bindValue(':ak', $accountKey, PDO::PARAM_INT);
     $stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
     $stmt->execute();
