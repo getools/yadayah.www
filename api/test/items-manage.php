@@ -14,7 +14,7 @@
  * Sort & Episode are item-level (yy_feed_item). Category assignment lives in
  * yy_feed_item_category, page-scoped (one category per page per item).
  *
- * ── New-system category list (yy_category, scoped per page_section_key) ──
+ * ── New-system category list (yy_category, scoped per section_key) ──
  * The prototype editor's Categories panel manages each Items section's OWN
  * category set in yy_category. These are display/definition only for now:
  * item COUNTS are bridged from the matching page category (page_key + slug),
@@ -94,7 +94,7 @@ if ($action === 'category' && $method === 'DELETE') {
     jsonResponse(['deleted' => true]);
 }
 
-// ── Section categories (NEW system — yy_category, scoped by page_section_key) ──
+// ── Section categories (NEW system — yy_category, scoped by section_key) ──
 // The editor's Categories panel reads/writes these. Item counts are bridged
 // from the page's yy_feed_page_category (matched by page_key + slug, which is
 // unique within a page) so the column stays meaningful without re-pointing the
@@ -112,7 +112,7 @@ if ($action === 'section_categories' && $method === 'GET') {
                       AND fi.feed_item_active_flag = TRUE
                ), 0) AS item_count
           FROM yy_category yc
-         WHERE yc.page_section_key = ? AND yc.category_active_flag = TRUE
+         WHERE yc.section_key = ? AND yc.category_active_flag = TRUE
          ORDER BY yc.category_sort, yc.category_title
     ");
     $st->execute([$pageKey, $sectionKey]);
@@ -127,7 +127,7 @@ if ($action === 'section_category' && $method === 'POST') {
     if ($title === '') errorResponse('Category title is required');
     $sub  = trim($d['category_subtitle'] ?? '');
     $sort = (int)($d['category_sort'] ?? 0);
-    $st = $db->prepare("INSERT INTO yy_category (page_section_key, category_title, category_subtitle, category_slug, category_sort) VALUES (?, ?, ?, ?, ?) RETURNING category_key");
+    $st = $db->prepare("INSERT INTO yy_category (section_key, category_title, category_subtitle, category_slug, category_sort) VALUES (?, ?, ?, ?, ?) RETURNING category_key");
     $st->execute([$sectionKey, $title, $sub ?: null, tslug($title), $sort]);
     jsonResponse(['saved' => true, 'category_key' => (int)$st->fetchColumn()]);
 }

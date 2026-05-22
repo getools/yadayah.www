@@ -36,7 +36,7 @@ $paginatedLimit = isset($_GET['limit']) ? (int)$_GET['limit'] : 0;
 if ($sectionKey > 0 && $paginatedLimit > 0) {
     $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
     if ($paginatedLimit > 200) $paginatedLimit = 200;
-    $st = $db->prepare("SELECT page_section_config FROM yy_page_section WHERE page_section_key = ? AND page_section_type = 'items' AND page_section_active_flag = TRUE");
+    $st = $db->prepare("SELECT section_config FROM yy_section WHERE section_key = ? AND section_type = 'items' AND section_active_flag = TRUE");
     $st->execute([$sectionKey]);
     $cfgRow = $st->fetchColumn();
     if ($cfgRow === false) errorResponse('Section not found', 404);
@@ -58,19 +58,19 @@ if (!empty($_GET['key'])) {
 $page = $stmt->fetch();
 if (!$page) errorResponse('Page not found', 404);
 
-$sec = $db->prepare("SELECT * FROM yy_page_section WHERE page_test_key = ? AND page_section_active_flag = TRUE ORDER BY page_section_sort, page_section_key");
+$sec = $db->prepare("SELECT * FROM yy_section WHERE page_test_key = ? AND section_active_flag = TRUE ORDER BY section_sort, section_key");
 $sec->execute([$page['page_test_key']]);
 
 $out = [];
 foreach ($sec->fetchAll() as $s) {
-    $cfg = $s['page_section_config'];
+    $cfg = $s['section_config'];
     $cfg = is_string($cfg) ? (json_decode($cfg, true) ?: []) : ($cfg ?: []);
     $section = [
-        'key'        => (int)$s['page_section_key'],
-        'parent_key' => $s['page_section_parent_key'] !== null ? (int)$s['page_section_parent_key'] : null,
-        'sort'       => (int)$s['page_section_sort'],
-        'type'       => $s['page_section_type'],
-        'title'      => $s['page_section_title'],
+        'key'        => (int)$s['section_key'],
+        'parent_key' => $s['section_parent_key'] !== null ? (int)$s['section_parent_key'] : null,
+        'sort'       => (int)$s['section_sort'],
+        'type'       => $s['section_type'],
+        'title'      => $s['section_title'],
         'config'     => $cfg,
     ];
     if ($section['type'] === 'items') {

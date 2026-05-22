@@ -32,7 +32,7 @@ case 'GET':
         $row = $page->fetch();
         if (!$row) errorResponse('Not found', 404);
 
-        $sections = $db->prepare("SELECT * FROM yy_page_section WHERE page_key = ? ORDER BY page_section_sort, page_section_key");
+        $sections = $db->prepare("SELECT * FROM yy_section WHERE page_key = ? ORDER BY section_sort, section_key");
         $sections->execute([$key]);
         $row['sections'] = $sections->fetchAll();
 
@@ -43,7 +43,7 @@ case 'GET':
     }
 
     // List all pages
-    $stmt = $db->query("SELECT p.*, (SELECT COUNT(*) FROM yy_page_section ps WHERE ps.page_key = p.page_key) AS section_count FROM yy_page p ORDER BY page_code");
+    $stmt = $db->query("SELECT p.*, (SELECT COUNT(*) FROM yy_section ps WHERE ps.page_key = p.page_key) AS section_count FROM yy_page p ORDER BY page_code");
     jsonResponse($stmt->fetchAll());
 
 case 'POST':
@@ -62,26 +62,26 @@ case 'POST':
         $db->beginTransaction();
         try {
             foreach ($input['sections'] as $s) {
-                if (!empty($s['page_section_key'])) {
+                if (!empty($s['section_key'])) {
                     // Update existing
-                    $stmt = $db->prepare("UPDATE yy_page_section SET page_section_code = ?, page_section_value = ?, page_section_active_flag = ?, page_section_sort = ? WHERE page_section_key = ? AND page_key = ?");
+                    $stmt = $db->prepare("UPDATE yy_section SET section_code = ?, section_value = ?, section_active_flag = ?, section_sort = ? WHERE section_key = ? AND page_key = ?");
                     $stmt->execute([
-                        $s['page_section_code'] ?? '',
-                        $s['page_section_value'] ?? '',
-                        ($s['page_section_active_flag'] ?? true) ? 't' : 'f',
-                        (int)($s['page_section_sort'] ?? 0),
-                        (int)$s['page_section_key'],
+                        $s['section_code'] ?? '',
+                        $s['section_value'] ?? '',
+                        ($s['section_active_flag'] ?? true) ? 't' : 'f',
+                        (int)($s['section_sort'] ?? 0),
+                        (int)$s['section_key'],
                         $pageKey,
                     ]);
                 } else {
                     // Insert new
-                    $stmt = $db->prepare("INSERT INTO yy_page_section (page_key, page_section_code, page_section_value, page_section_active_flag, page_section_sort) VALUES (?, ?, ?, ?, ?)");
+                    $stmt = $db->prepare("INSERT INTO yy_section (page_key, section_code, section_value, section_active_flag, section_sort) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([
                         $pageKey,
-                        $s['page_section_code'] ?? '',
-                        $s['page_section_value'] ?? '',
-                        ($s['page_section_active_flag'] ?? true) ? 't' : 'f',
-                        (int)($s['page_section_sort'] ?? 0),
+                        $s['section_code'] ?? '',
+                        $s['section_value'] ?? '',
+                        ($s['section_active_flag'] ?? true) ? 't' : 'f',
+                        (int)($s['section_sort'] ?? 0),
                     ]);
                 }
             }
@@ -89,7 +89,7 @@ case 'POST':
             // Delete removed sections
             if (isset($input['deleted_sections'])) {
                 foreach ($input['deleted_sections'] as $delKey) {
-                    $db->prepare("DELETE FROM yy_page_section WHERE page_section_key = ? AND page_key = ?")
+                    $db->prepare("DELETE FROM yy_section WHERE section_key = ? AND page_key = ?")
                        ->execute([(int)$delKey, $pageKey]);
                 }
             }

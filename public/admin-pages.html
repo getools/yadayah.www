@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1779386678">
+    <meta name="page-version" content="1779429158">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pages Admin - Yada Yah</title>
@@ -697,17 +697,17 @@ function renderSections(sections) {
         return;
     }
     container.innerHTML = sections.map(function(s, i) {
-        var inactive = !s.page_section_active_flag ? ' inactive' : '';
-        return '<div class="section-item' + inactive + '" data-key="' + (s.page_section_key || '') + '">'
+        var inactive = !s.section_active_flag ? ' inactive' : '';
+        return '<div class="section-item' + inactive + '" data-key="' + (s.section_key || '') + '">'
             + '<div class="section-header-row">'
             + '<span class="drag-handle" title="Drag to reorder">&#9776;</span>'
-            + '<input type="text" class="s-code" value="' + escAttr(s.page_section_code) + '" placeholder="Section code">'
-            + '<label style="white-space:nowrap;margin:0"><input type="checkbox" class="s-active"' + (s.page_section_active_flag ? ' checked' : '') + '> Active</label>'
-            + '<input type="number" class="s-sort" value="' + (s.page_section_sort || 0) + '" title="Sort order" style="width:60px">'
+            + '<input type="text" class="s-code" value="' + escAttr(s.section_code) + '" placeholder="Section code">'
+            + '<label style="white-space:nowrap;margin:0"><input type="checkbox" class="s-active"' + (s.section_active_flag ? ' checked' : '') + '> Active</label>'
+            + '<input type="number" class="s-sort" value="' + (s.section_sort || 0) + '" title="Sort order" style="width:60px">'
             + '<button class="btn btn-danger btn-sm" onclick="removeSection(this)">Remove</button>'
             + '</div>'
             + '<div class="section-value-wrap">'
-            + '<textarea class="s-value" placeholder="Section content (HTML, text, JSON, etc.)">' + escHtml(s.page_section_value || '') + '</textarea>'
+            + '<textarea class="s-value" placeholder="Section content (HTML, text, JSON, etc.)">' + escHtml(s.section_value || '') + '</textarea>'
             + '</div>'
             + '</div>';
     }).join('');
@@ -752,11 +752,11 @@ function saveSections() {
         var item = items[i];
         var key = item.getAttribute('data-key');
         sections.push({
-            page_section_key: key ? parseInt(key) : null,
-            page_section_code: item.querySelector('.s-code').value.trim(),
-            page_section_value: item.querySelector('.s-value').value,
-            page_section_active_flag: item.querySelector('.s-active').checked,
-            page_section_sort: parseInt(item.querySelector('.s-sort').value) || 0,
+            section_key: key ? parseInt(key) : null,
+            section_code: item.querySelector('.s-code').value.trim(),
+            section_value: item.querySelector('.s-value').value,
+            section_active_flag: item.querySelector('.s-active').checked,
+            section_sort: parseInt(item.querySelector('.s-sort').value) || 0,
         });
     }
 

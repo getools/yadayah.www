@@ -1,7 +1,7 @@
 <?php
 /**
  * TEST endpoint — multi-section pages CRUD.
- * Parallel to api/pages.php; writes to yy_page_test / yy_page_section.
+ * Parallel to api/pages.php; writes to yy_page_test / yy_section.
  *
  * Routes:
  *   GET                     → list pages
@@ -13,10 +13,12 @@
  *                           → bulk save sections; body { sections:[...], deleted:[ids] }
  *
  * A section row looks like:
- *   { page_section_key, page_section_type, page_section_title,
- *     page_section_config (object), page_section_active_flag, page_section_sort }
+ *   { section_key, section_type, section_title,
+ *     section_config (object), section_active_flag, section_sort }
  */
 require_once __DIR__ . '/../config.php';
+define('SECTION_ITEMS_LIB', true);
+require_once __DIR__ . '/section-items.php';   // rebuildSectionItems() — recompute yy_section_item on save
 
 $user = requireAuth();
 $db = getDb();
@@ -28,16 +30,16 @@ function fetchPageWithSections(PDO $db, int $key): ?array {
     $stmt->execute([$key]);
     $row = $stmt->fetch();
     if (!$row) return null;
-    $sec = $db->prepare("SELECT * FROM yy_page_section WHERE page_test_key = ? ORDER BY page_section_sort, page_section_key");
+    $sec = $db->prepare("SELECT * FROM yy_section WHERE page_test_key = ? ORDER BY section_sort, section_key");
     $sec->execute([$key]);
     $sections = [];
     foreach ($sec->fetchAll() as $s) {
-        $cfg = $s['page_section_config'];
+        $cfg = $s['section_config'];
         if (is_string($cfg) && $cfg !== '') {
             $decoded = json_decode($cfg, true);
-            $s['page_section_config'] = is_array($decoded) ? $decoded : new stdClass();
+            $s['section_config'] = is_array($decoded) ? $decoded : new stdClass();
         } elseif (!$cfg) {
-            $s['page_section_config'] = new stdClass();
+            $s['section_config'] = new stdClass();
         }
         $sections[] = $s;
     }
@@ -53,7 +55,7 @@ case 'GET':
         if (!$page) errorResponse('Not found', 404);
         jsonResponse($page);
     }
-    $list = $db->query("SELECT p.*, (SELECT COUNT(*) FROM yy_page_section s WHERE s.page_test_key = p.page_test_key) AS section_count FROM yy_page_test p ORDER BY page_test_code")->fetchAll();
+    $list = $db->query("SELECT p.*, (SELECT COUNT(*) FROM yy_section s WHERE s.page_test_key = p.page_test_key) AS section_count FROM yy_page_test p ORDER BY page_test_code")->fetchAll();
     jsonResponse($list);
 
 case 'POST':
@@ -78,7 +80,7 @@ case 'POST':
         $db->beginTransaction();
         try {
             foreach ($deleted as $delKey) {
-                $db->prepare("DELETE FROM yy_page_section WHERE page_section_key = ? AND page_test_key = ?")
+                $db->prepare("DELETE FROM yy_section WHERE section_key = ? AND page_test_key = ?")
                    ->execute([(int)$delKey, $pageKey]);
             }
             // Two UPDATE variants:
@@ -89,29 +91,29 @@ case 'POST':
             //             editor build that doesn't know about layouts).
             // Avoids accidentally NULL'ing parent_key when an old editor
             // saves over a migrated row.
-            $updWith    = $db->prepare("UPDATE yy_page_section SET page_section_type = ?, page_section_title = ?, page_section_config = ?::jsonb, page_section_active_flag = ?, page_section_sort = ?, page_section_parent_key = ? WHERE page_section_key = ? AND page_test_key = ?");
-            $updWithout = $db->prepare("UPDATE yy_page_section SET page_section_type = ?, page_section_title = ?, page_section_config = ?::jsonb, page_section_active_flag = ?, page_section_sort = ? WHERE page_section_key = ? AND page_test_key = ?");
-            $ins = $db->prepare("INSERT INTO yy_page_section (page_test_key, page_section_type, page_section_title, page_section_config, page_section_active_flag, page_section_sort, page_section_parent_key) VALUES (?, ?, ?, ?::jsonb, ?, ?, ?) RETURNING page_section_key");
+            $updWith    = $db->prepare("UPDATE yy_section SET section_type = ?, section_title = ?, section_config = ?::jsonb, section_active_flag = ?, section_sort = ?, section_parent_key = ? WHERE section_key = ? AND page_test_key = ?");
+            $updWithout = $db->prepare("UPDATE yy_section SET section_type = ?, section_title = ?, section_config = ?::jsonb, section_active_flag = ?, section_sort = ? WHERE section_key = ? AND page_test_key = ?");
+            $ins = $db->prepare("INSERT INTO yy_section (page_test_key, section_type, section_title, section_config, section_active_flag, section_sort, section_parent_key) VALUES (?, ?, ?, ?::jsonb, ?, ?, ?) RETURNING section_key");
             $newKeys = [];
             $localMap = []; // local_id (string|int) → db_key
             foreach ($sections as $i => $s) {
-                $type = $s['page_section_type'] ?? '';
+                $type = $s['section_type'] ?? '';
                 if (!in_array($type, $allowedTypes, true)) {
                     throw new RuntimeException("Invalid section type at index $i: $type");
                 }
-                $title  = isset($s['page_section_title']) ? trim((string)$s['page_section_title']) : '';
-                $config = $s['page_section_config'] ?? new stdClass();
+                $title  = isset($s['section_title']) ? trim((string)$s['section_title']) : '';
+                $config = $s['section_config'] ?? new stdClass();
                 $cfgJson = json_encode($config, JSON_UNESCAPED_UNICODE) ?: '{}';
-                $active = !empty($s['page_section_active_flag']) ? 't' : 'f';
-                $sort   = (int)($s['page_section_sort'] ?? $i);
+                $active = !empty($s['section_active_flag']) ? 't' : 'f';
+                $sort   = (int)($s['section_sort'] ?? $i);
 
                 // Tree info detection: the editor build that understands
                 // layouts sets parent_local_id (string) or
-                // page_section_parent_key (int/null) or sends an
+                // section_parent_key (int/null) or sends an
                 // explicit parent_resolved=true marker. Old payloads have
                 // none of these — we preserve the existing parent_key.
                 $hasTreeInfo = array_key_exists('parent_local_id', $s)
-                            || array_key_exists('page_section_parent_key', $s)
+                            || array_key_exists('section_parent_key', $s)
                             || !empty($s['parent_resolved']);
                 $parentKey = null;
                 if (isset($s['parent_local_id']) && $s['parent_local_id'] !== null && $s['parent_local_id'] !== '') {
@@ -121,14 +123,14 @@ case 'POST':
                     } elseif (ctype_digit($pid)) {
                         $parentKey = (int)$pid;
                     }
-                } elseif (array_key_exists('page_section_parent_key', $s)
-                          && $s['page_section_parent_key'] !== null
-                          && $s['page_section_parent_key'] !== '') {
-                    $parentKey = (int)$s['page_section_parent_key'];
+                } elseif (array_key_exists('section_parent_key', $s)
+                          && $s['section_parent_key'] !== null
+                          && $s['section_parent_key'] !== '') {
+                    $parentKey = (int)$s['section_parent_key'];
                 }
 
-                if (!empty($s['page_section_key'])) {
-                    $dbKey = (int)$s['page_section_key'];
+                if (!empty($s['section_key'])) {
+                    $dbKey = (int)$s['section_key'];
                     if ($hasTreeInfo) {
                         $updWith->execute([$type, $title ?: null, $cfgJson, $active, $sort, $parentKey, $dbKey, $pageKey]);
                     } else {
@@ -146,6 +148,16 @@ case 'POST':
                 $localMap[(string)$dbKey] = $dbKey;
             }
             $db->commit();
+            // Recompute the materialized yy_section_item pool for any Items
+            // section just saved (config now persisted). Each rebuild runs in
+            // its own transaction; a failure is logged but never blocks the
+            // save response.
+            foreach ($sections as $i => $s) {
+                if (($s['section_type'] ?? '') === 'items' && isset($newKeys[$i])) {
+                    try { rebuildSectionItems($db, (int)$newKeys[$i]); }
+                    catch (Exception $e) { error_log('yy_section_item rebuild failed for section ' . $newKeys[$i] . ': ' . $e->getMessage()); }
+                }
+            }
             jsonResponse(['ok' => true, 'section_keys' => $newKeys, 'local_map' => $localMap]);
         } catch (Exception $e) {
             $db->rollBack();
