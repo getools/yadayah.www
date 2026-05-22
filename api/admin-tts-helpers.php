@@ -394,18 +394,13 @@ function applyTunes(string $text, array $tunes, array &$tokenMap): string {
             // broken up at the apostrophe.
             $replS = buildSubReplSsml($print . "'s", $phon . 's');
         }
-        // Per-tune voice override: wrap the substitution in a nested
-        // <voice name="..."> so this one phrase switches voices while
-        // the surrounding paragraph keeps its category voice. Azure
-        // supports nested <voice> tags in SSML. NB: a nested <voice>
-        // is NOT bound by the outer <prosody>, so a tune-level voice
-        // override speaks at the engine default rate/pitch.
-        $tuneVoice = trim((string)($t['tts_tune_voice_code'] ?? ''));
-        if ($tuneVoice !== '') {
-            $tvEsc = htmlspecialchars($tuneVoice, ENT_QUOTES | ENT_XML1);
-            $repl  = "<voice name=\"$tvEsc\">$repl</voice>";
-            $replS = "<voice name=\"$tvEsc\">$replS</voice>";
-        }
+        // Per-tune voice overrides (tts_tune_voice_code) are intentionally
+        // NOT emitted as nested <voice> elements. Azure's synthesize REST
+        // API rejects nested <voice> inside <voice> (and especially inside
+        // <mstts:express-as>) with HTTP 400. The phoneme/sub pronunciation
+        // correction from the tune is still applied; only the voice switch
+        // is suppressed. A proper implementation would split the text into
+        // sibling <voice> blocks at the <speak> level.
         $tokenMap[$token]  = $repl;
         $tokenMap[$tokenS] = $replS;
         // preg_replace_callback so we can choose between the plain and
@@ -704,7 +699,9 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
         if ($prosodyAttrs) {
             $inner = '<prosody ' . implode(' ', $prosodyAttrs) . '>' . $inner . '</prosody>';
         }
-        if (!empty($cat['tts_voice_style']) && stripos($voiceCode, 'Multilingual') === false) {
+        if (!empty($cat['tts_voice_style'])
+            && $cat['tts_voice_style'] !== 'general'   // UI sentinel meaning "no style"
+            && stripos($voiceCode, 'Multilingual') === false) {
             // Azure Multilingual neural voices don't support mstts:express-as styles.
             $style       = htmlspecialchars($cat['tts_voice_style'], ENT_QUOTES | ENT_XML1);
             $styleDegree = htmlspecialchars((string)($cat['tts_voice_style_degree'] ?? '1.0'), ENT_QUOTES | ENT_XML1);
