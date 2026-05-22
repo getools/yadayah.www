@@ -77,6 +77,17 @@ function rebuildSectionItems(PDO $db, int $sectionKey): int {
     if (!empty($cfg['page_key'])) $pageKeys[] = (int)$cfg['page_key'];
     $pageKeys = array_values(array_unique($pageKeys));
 
+    // Preserve the category each item already has in this section — the editor
+    // writes yy_section_item.category_key directly, so it's authoritative once
+    // set. Rebuild only re-derives the category (via the page bridge) for items
+    // newly entering the section; surviving items keep their stored value.
+    $prevCat = [];
+    $pst = $db->prepare("SELECT feed_item_key, category_key FROM yy_section_item WHERE section_key = ?");
+    $pst->execute([$sectionKey]);
+    foreach ($pst->fetchAll() as $pr) {
+        $prevCat[(int)$pr['feed_item_key']] = $pr['category_key'] !== null ? (int)$pr['category_key'] : null;
+    }
+
     $db->beginTransaction();
     $db->prepare("DELETE FROM yy_section_item WHERE section_key = ?")->execute([$sectionKey]);
     $ins = $db->prepare("INSERT INTO yy_section_item (section_key, feed_item_key, category_key, section_item_sort)
@@ -91,7 +102,10 @@ function rebuildSectionItems(PDO $db, int $sectionKey): int {
         $fik = (int)$it['feed_item_key'];
         if (isset($seen[$fik])) continue;   // dedupe (pinned + filter overlap)
         $seen[$fik] = true;
-        $catKey = sectionItemCategory($db, $sectionKey, $fik, $pageKeys);
+        // Surviving item keeps its stored category; new item derives via bridge.
+        $catKey = array_key_exists($fik, $prevCat)
+                ? $prevCat[$fik]
+                : sectionItemCategory($db, $sectionKey, $fik, $pageKeys);
         $ins->execute([$sectionKey, $fik, $catKey, $sort++]);
     }
     $db->commit();

@@ -25,8 +25,17 @@
  *   POST   ?action=section_category&section_key=K   body {category_title, category_subtitle?, category_sort?}
  *   PUT    ?action=section_category&key=K           body {category_title?, category_subtitle?, category_sort?}
  *   DELETE ?action=section_category&key=K
+ *
+ * ── New-system item list (yy_section_item, the materialized matching pool) ──
+ * The editor's Matching-items list reads these (membership + order from the
+ * filter rebuild) and assigns each item's section-scoped category directly on
+ * yy_section_item.category_key (NOT yy_feed_item_category). Sort/episode stay
+ * item-level on yy_feed_item via ?action=item.
+ *   GET    ?action=section_items&section_key=K
+ *   PUT    ?action=section_item&section_key=K&key=FEED_ITEM_KEY  body {category_key}
  */
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../feed-helpers.php';   // normalizeMediaUrl()
 requireAuth();
 
 $db      = getDb();
@@ -160,6 +169,58 @@ if ($action === 'section_category' && $method === 'DELETE') {
     // The _rev trigger records the delete.
     $db->prepare("DELETE FROM yy_category WHERE category_key = ?")->execute([$key]);
     jsonResponse(['deleted' => true]);
+}
+
+// ── Section items (NEW system — yy_section_item: the materialized matching pool) ──
+if ($action === 'section_items' && $method === 'GET') {
+    $sectionKey = (int)($_GET['section_key'] ?? 0);
+    if (!$sectionKey) errorResponse('section_key required');
+    $st = $db->prepare("
+        SELECT si.feed_item_key,
+               COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS title,
+               fi.feed_item_thumbnail AS thumbnail,
+               fi.feed_item_duration  AS duration,
+               COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) AS posted,
+               fi.feed_item_sort      AS sort,
+               fi.feed_item_episode   AS episode,
+               si.category_key,
+               c.category_title       AS category
+          FROM yy_section_item si
+          JOIN yy_feed_item fi ON fi.feed_item_key = si.feed_item_key
+          LEFT JOIN yy_category c ON c.category_key = si.category_key
+         WHERE si.section_key = ?
+         ORDER BY si.section_item_sort, si.feed_item_key
+    ");
+    $st->execute([$sectionKey]);
+    $items = $st->fetchAll();
+    foreach ($items as &$it) {
+        if (isset($it['thumbnail'])) $it['thumbnail'] = normalizeMediaUrl($it['thumbnail']);
+        $it['feed_item_key'] = (int)$it['feed_item_key'];
+        $it['sort']          = $it['sort'] !== null ? (int)$it['sort'] : null;
+        $it['category_key']  = $it['category_key'] !== null ? (int)$it['category_key'] : null;
+    }
+    unset($it);
+    jsonResponse(['items' => $items, 'total' => count($items)]);
+}
+
+// Assign an item's section-scoped category directly on yy_section_item.
+if ($action === 'section_item' && $method === 'PUT') {
+    $sectionKey = (int)($_GET['section_key'] ?? 0);
+    if (!$sectionKey) errorResponse('section_key required');
+    if (!$key)        errorResponse('item (feed_item_key) required');
+    $d = json_decode(file_get_contents('php://input'), true) ?: [];
+    if (!array_key_exists('category_key', $d)) errorResponse('category_key required');
+    $catKey = ($d['category_key'] !== null && $d['category_key'] !== '') ? (int)$d['category_key'] : null;
+    // Only categories belonging to this section may be assigned (or NULL).
+    if ($catKey !== null) {
+        $chk = $db->prepare("SELECT 1 FROM yy_category WHERE category_key = ? AND section_key = ?");
+        $chk->execute([$catKey, $sectionKey]);
+        if (!$chk->fetchColumn()) errorResponse('Category does not belong to this section');
+    }
+    // The row must already exist (the list is the materialized pool).
+    $upd = $db->prepare("UPDATE yy_section_item SET category_key = ?, section_item_dtime = NOW() WHERE section_key = ? AND feed_item_key = ?");
+    $upd->execute([$catKey, $sectionKey, $key]);
+    jsonResponse(['saved' => true, 'updated' => $upd->rowCount()]);
 }
 
 // ── Item (sort / episode / category) ─────────────────────────────────────
