@@ -96,7 +96,7 @@ CommunityNotifications.fetchUnread = function() {
             _unreadDm = data.user.unread_dm || 0;
         }
         CommunityNotifications.renderBell();
-    });
+    }).catch(function() {});
 };
 
 // ── Start real-time updates: SSE + polling fallback ──

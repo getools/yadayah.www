@@ -522,8 +522,11 @@ CommunityTopics.loadTopic = function(key) {
                         if (body) body.insertAdjacentElement('afterend', pollContainer);
                     }
                 }
-            });
+            }).catch(function() {});
         }
+    }).catch(function() {
+        el.innerHTML = '<div class="empty-state">Unable to load topic. Please try refreshing.</div>'
+            + '<a href="#topics" class="back-link" style="margin-top:12px;display:inline-block;">&larr; Back to topics</a>';
     });
 };
 

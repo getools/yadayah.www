@@ -142,6 +142,8 @@ window.addEventListener('message', function(e) {
             if (d.user && typeof CommunityNotifications !== 'undefined') CommunityNotifications.startPolling();
             if (typeof Community.route === 'function') Community.route();
             if (typeof VideoComments !== 'undefined') VideoComments.load();
+        }).catch(function() {
+            if (typeof Community.route === 'function') Community.route();
         });
     }
 });
