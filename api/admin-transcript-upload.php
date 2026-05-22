@@ -171,6 +171,20 @@ if ($method === 'POST') {
             logMonitorEvent('transcript_upload', 'warning',
                 'Rejected invalid part upload for item ' . $itemKey . ': ' . $check['reason'],
                 'by user ' . ($user['user_code'] ?? '?'), false);
+            // Distinguish a silence rejection from a hard validation failure
+            // (corrupt container, no audio stream). The recorder popout lets
+            // the operator opt into "allow silent sections" for THIS video
+            // and re-send the same segment — so a silence rejection must be
+            // recoverable, not a retry-the-bytes 4xx. Return HTTP 200 with a
+            // silence_rejected marker so the client reads the body instead of
+            // burning its retry budget re-POSTing the identical blob.
+            $isSilence = stripos($check['reason'], 'silent recording') !== false;
+            if ($isSilence) {
+                jsonResponse([
+                    'error'           => 'Upload rejected — ' . $check['reason'],
+                    'silence_rejected' => true,
+                ]);
+            }
             errorResponse('Upload rejected — ' . $check['reason']);
         }
         // Never regress: a stale or out-of-order partial upload should not

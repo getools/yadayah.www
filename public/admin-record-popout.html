@@ -431,6 +431,16 @@
     var SILENCE_WATCHDOG_MS = 30 * 1000;
     var SILENCE_RMS_THRESH = 0.001;     // ~−60 dB; below this is effectively silent
     var silenceCtx = null, silenceTimer = null, silenceSamples = 0, silenceSum = 0;
+    // Silence-rejection recovery state. allowSilentThisRecording is an
+    // in-memory, per-RECORDING opt-in: once the operator confirms a silent
+    // segment is intentional, every later silent segment in the same video
+    // sails through without re-prompting. It's reset for each queue item in
+    // loadCurrentItem(), so it never leaks onto the remaining queued videos.
+    // lastUploadSilenceRejected carries the most recent upload's rejection
+    // reason out of uploadPartialWithRetry() so onRecorderStopped() can tell
+    // a silence rejection apart from a hard failure.
+    var allowSilentThisRecording = false;
+    var lastUploadSilenceRejected = false;
     // Volume watchdog: the YouTube player's volume slider is the gain control
     // for the captured tab audio. Anything less than 100% reduces recording
     // quality / level, so we force it to 100 on every player and bail out of
@@ -864,6 +874,37 @@
                   + ' — do NOT close the window… (' + (blob.size/1024/1024).toFixed(1) + ' MB)');
 
         var ok = await uploadPartialWithRetry(blob, nowSec, wasAutoCheckpoint);
+
+        // Silence-rejection recovery. The server dropped this segment because
+        // it was below −70 dB and the item isn't flagged allow-silent. Rather
+        // than halting the whole recording (the old behavior — which forced
+        // the operator to have ticked the box BEFORE any silence appeared),
+        // give them the choice right here, retroactively:
+        //   • If they already opted in earlier this recording, auto-continue.
+        //   • Otherwise prompt stop-vs-continue.
+        // Choosing continue flips the per-item DB flag, re-sends THIS exact
+        // segment (now accepted), and falls through to the normal resume path.
+        if (!ok && lastUploadSilenceRejected) {
+            var proceed = allowSilentThisRecording;
+            if (!proceed) {
+                proceed = confirm(
+                    'Silence detected in this segment (mean volume below −70 dB).\n\n' +
+                    'If this video has intentional quiet stretches, allow silent sections ' +
+                    'and keep recording — this choice sticks for the rest of this video.\n\n' +
+                    'If you expected audio, the tab share probably is not capturing it; ' +
+                    'cancel to stop and fix the share.\n\n' +
+                    'OK = Allow silence & continue recording\n' +
+                    'Cancel = Stop recording'
+                );
+            }
+            if (proceed) {
+                allowSilentThisRecording = true;
+                setStatus('🔈 Allowing silent sections for this video — re-saving segment…');
+                await setItemAllowSilent(true);        // per-item DB flag for itemKey only
+                ok = await uploadPartialWithRetry(blob, nowSec, wasAutoCheckpoint);
+            }
+        }
+
         uploadInFlight = false;
         autoCheckpointPending = false;
 
@@ -906,6 +947,7 @@
     async function uploadPartialWithRetry(blob, seconds, wasAutoCheckpoint) {
         var maxAttempts = 4;
         var backoffs = [0, 2000, 5000, 15000]; // ms before each attempt
+        lastUploadSilenceRejected = false;     // reset; set below if the server flags silence
         for (var attempt = 1; attempt <= maxAttempts; attempt++) {
             if (backoffs[attempt - 1] > 0) {
                 setStatus('⟳ Retrying upload (attempt ' + attempt + '/' + maxAttempts + ') in '
@@ -927,7 +969,11 @@
                 var d = await res.json();
                 if (d.error) {
                     // Application-level error from the server (e.g. file
-                    // validation). Don't retry — surface it.
+                    // validation). Don't retry — surface it. A silence
+                    // rejection comes back HTTP 200 with silence_rejected so
+                    // the caller can offer "allow silence & continue" instead
+                    // of treating it as a dead end.
+                    lastUploadSilenceRejected = !!d.silence_rejected;
                     setStatus('✗ ' + d.error);
                     return false;
                 }
@@ -1122,6 +1168,12 @@
         // Re-point the heartbeat lock to the new current item (releases the
         // previous one in batch mode).
         acquireRecordingLock(itemKey);
+        // New video → start with silence prompting armed again. The opt-in
+        // is per-recording, so a "yes, allow silence" on the previous queued
+        // item must NOT carry over to this one. loadAllowSilent() re-sets it
+        // to true only if THIS item's DB flag is already on.
+        allowSilentThisRecording = false;
+        lastUploadSilenceRejected = false;
         // Refresh the "Allow silent sections" checkbox from the DB flag for
         // the item we're now on; the per-item flag is independent across
         // items in the queue.
@@ -1169,24 +1221,43 @@
             .then(function(d) {
                 if (d && typeof d.allow_silent === 'boolean') {
                     cb.checked = d.allow_silent;
+                    // Keep the in-memory recording flag in sync: an item that
+                    // already allows silence shouldn't prompt at the first
+                    // silent segment.
+                    if (d.allow_silent) allowSilentThisRecording = true;
                 }
             })
             .catch(function() { /* best-effort; checkbox stays at its current state */ });
     }
-    function toggleAllowSilent(checked) {
+    // Persist feed_item_allow_silent_recording for the CURRENT item only.
+    // Awaitable so the silence-recovery path can flip the flag and then
+    // immediately re-upload the rejected segment (server reads the fresh
+    // value). Also keeps the checkbox + in-memory flag in sync.
+    function setItemAllowSilent(checked) {
         var st = document.getElementById('allow-silent-status');
-        if (!itemKey) { if (st) st.textContent = 'no item loaded'; return; }
+        var cb = document.getElementById('allow-silent-cb');
+        if (!itemKey) { if (st) st.textContent = 'no item loaded'; return Promise.resolve(false); }
+        if (cb) cb.checked = !!checked;
+        if (checked) allowSilentThisRecording = true;
         if (st) st.textContent = 'saving…';
-        fetch(API + '/admin-item-allow-silent.php', {
+        return fetch(API + '/admin-item-allow-silent.php', {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ item_key: itemKey, allow_silent: !!checked })
         }).then(function(r) { return r.json(); }).then(function(d) {
-            if (st) st.textContent = (d && d.ok) ? (checked ? 'silent uploads allowed' : 'silence rejection re-enabled') : ('error: ' + (d && d.error || 'failed'));
+            if (st) st.textContent = (d && d.ok) ? (checked ? 'silent sections allowed for this video' : 'silence rejection re-enabled') : ('error: ' + (d && d.error || 'failed'));
             setTimeout(function() { if (st) st.textContent = ''; }, 4000);
+            return !!(d && d.ok);
         }).catch(function(err) {
             if (st) st.textContent = 'error: ' + err.message;
+            return false;
         });
+    }
+    // Checkbox onchange handler. Unchecking clears the per-recording opt-in
+    // so the next silent segment re-prompts.
+    function toggleAllowSilent(checked) {
+        if (!checked) allowSilentThisRecording = false;
+        setItemAllowSilent(checked);
     }
 
     // ── Buttons ──
