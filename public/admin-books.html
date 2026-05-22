@@ -387,10 +387,27 @@ function dataCell(v) {
 //   - mtime present → ✓ + age (or ↻ if stale vs. the source PDF)
 //   - PDF present, no flipbook → ⌛ "pending" (rebuild it via Edit form's Regenerate button)
 //   - No PDF → ○ (no source to build from)
+// Return the more-recent of two ISO mtimes (nulls ignored). Used to roll
+// a multi-step pipeline's ancestor mtimes into one "effective source" so a
+// downstream artifact is flagged stale when ANY ancestor is newer.
+function laterMtime(a, b) {
+    var ta = a ? new Date(a).getTime() : 0;
+    var tb = b ? new Date(b).getTime() : 0;
+    if (!ta && !tb) return null;
+    return (ta >= tb) ? (a || b) : (b || a);
+}
+
 function flipCell(v) {
     var ps = (v.volume_pipeline_status || '').toLowerCase();
     if (v.volume_flip_mtime) {
-        return artifactCell(true, v.volume_flip_mtime, v.volume_pdf_mtime, ps, 'Flipbook');
+        // The flipbook is built from the PDF, which is built from the DOCX.
+        // Comparing only to the PDF misses the common case where the DOCX
+        // was just re-uploaded but the PDF hasn't regenerated yet — the
+        // flipbook would read as fresh against the still-old PDF. Compare
+        // against the most-recent ancestor (PDF or DOCX) so a DOCX update
+        // immediately marks the flipbook stale.
+        var effSource = laterMtime(v.volume_pdf_mtime, v.volume_docx_mtime);
+        return artifactCell(true, v.volume_flip_mtime, effSource, ps, 'Flipbook');
     }
     if (!v.volume_pdf) {
         return '<div class="status-cell"><span class="status-icon status-miss" title="No PDF — upload a DOCX first">○</span></div>';
