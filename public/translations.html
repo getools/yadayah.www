@@ -261,21 +261,25 @@
 
         // ── Load cite books ──
         async function loadCiteBooks() {
-            var response = await fetch('/api/cite-books.php');
-            var books = await response.json();
-            var select = document.getElementById('cite');
-            books.forEach(function(book) {
-                var option = document.createElement('option');
-                option.value = book.cite_book_key;
-                option.textContent = book.cite_book_hebrew + ' / ' + book.cite_book_common;
-                select.appendChild(option);
-                if (book.yah_scroll_key) {
-                    citeBookScrollMap[book.cite_book_key] = book.yah_scroll_key;
+            try {
+                var response = await fetch('/api/cite-books.php');
+                var books = await response.json();
+                var select = document.getElementById('cite');
+                books.forEach(function(book) {
+                    var option = document.createElement('option');
+                    option.value = book.cite_book_key;
+                    option.textContent = book.cite_book_hebrew + ' / ' + book.cite_book_common;
+                    select.appendChild(option);
+                    if (book.yah_scroll_key) {
+                        citeBookScrollMap[book.cite_book_key] = book.yah_scroll_key;
+                    }
+                });
+                if (select.options.length > 0) {
+                    select.selectedIndex = 0;
+                    select.dispatchEvent(new Event('change'));
                 }
-            });
-            if (select.options.length > 0) {
-                select.selectedIndex = 0;
-                select.dispatchEvent(new Event('change'));
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error('[loadCiteBooks] error:', err);
             }
         }
 
@@ -311,7 +315,7 @@
                     } else if (!initialLoad) {
                         fetchResults();
                     }
-                });
+                }).catch(function(err) { if (err.name !== 'AbortError') console.error('[chapters fetch] error:', err); });
         });
 
         document.getElementById('chapter').addEventListener('change', function() {
@@ -341,7 +345,7 @@
                     } else {
                         fetchResults();
                     }
-                });
+                }).catch(function(err) { if (err.name !== 'AbortError') console.error('[verses fetch] error:', err); });
         });
 
         document.getElementById('verse').addEventListener('change', function() {
