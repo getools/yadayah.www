@@ -173,7 +173,22 @@ VideoComments._doLoad = function() {
         var composeArea = _inlineTarget ? body : document.getElementById('vc-compose-area');
         var composeHtml = '';
         if (user) {
-            composeHtml = '<div class="vc-compose"><textarea id="vc-input" placeholder="Add a comment..." rows="2"></textarea><button class="vc-submit-btn" onclick="VideoComments.submit()">' + esc(_saveText) + '</button></div>';
+            // The compose box carries its own thread context in data-*
+            // attributes and uses a CLASS (not a shared id) for the textarea.
+            // The blog renders one inline thread per post, so a fixed
+            // id="vc-input" produced duplicates — getElementById then grabbed
+            // the first (often empty) one and submit() silently no-op'd after
+            // the first post. Scoping every lookup to the clicked button's
+            // own .vc-compose box fixes posting across multiple open threads.
+            composeHtml = '<div class="vc-compose"'
+                + ' data-video-id="'  + escAttr(_currentVideoId) + '"'
+                + ' data-source="'    + escAttr(_currentVideoSource) + '"'
+                + ' data-page-code="' + escAttr(_currentPageCode) + '"'
+                + ' data-title="'     + escAttr(_currentVideoTitle) + '"'
+                + ' data-thumbnail="' + escAttr(_currentThumbnail) + '"'
+                + ' data-target="'    + (_inlineTarget ? escAttr(_inlineTarget.id) : '') + '">'
+                + '<textarea class="vc-input" placeholder="Add a comment..." rows="2"></textarea>'
+                + '<button class="vc-submit-btn" onclick="VideoComments.submit(this)">' + esc(_saveText) + '</button></div>';
         } else {
             composeHtml = '<div class="vc-signin"><a href="javascript:void(0)" onclick="if(typeof CommunityAuth!==\'undefined\')CommunityAuth.openLoginModal(\'login\')">Sign in</a> to comment</div>';
         }
@@ -182,9 +197,16 @@ VideoComments._doLoad = function() {
         } else {
             composeArea.innerHTML = composeHtml;
         }
-        var input = document.getElementById('vc-input');
+        // Bind Enter-to-submit on the compose box we just rendered, scoped to
+        // its own thread (no cross-thread id collision).
+        var justRendered = _inlineTarget ? body : composeArea;
+        var input = justRendered ? justRendered.querySelector('.vc-input') : null;
         if (input) input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); VideoComments.submit(); }
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                var box = this.closest('.vc-compose');
+                VideoComments.submit(box ? box.querySelector('.vc-submit-btn') : null);
+            }
         });
     });
 };
@@ -197,44 +219,60 @@ var _submitting = false;
 // disabled "Posting..." and the user has to refresh the page to post
 // again. Bug report: "I can only do one, then I have to refresh the page
 // to post another."
-function _resetComposeUI(clearInput) {
+// Restore a compose box to a usable state after a submit settles. `box` is
+// the specific .vc-compose element (so the right thread's button/textarea
+// are reset when several inline threads are open); falls back to the first
+// one if not supplied.
+function _resetComposeUI(box, clearInput) {
     _submitting = false;
-    var btn = document.querySelector('.vc-submit-btn');
+    var scope = (box && box.querySelector) ? box : document;
+    var btn = scope.querySelector('.vc-submit-btn') || document.querySelector('.vc-submit-btn');
     if (btn) { btn.disabled = false; btn.textContent = _saveText; }
     if (clearInput) {
-        var input = document.getElementById('vc-input');
+        var input = scope.querySelector('.vc-input') || document.querySelector('.vc-input');
         if (input) input.value = '';
     }
 }
 
-VideoComments.submit = function() {
+// `btn` is the clicked Comment button (or the submit button paired with the
+// Enter-key handler). Everything is resolved relative to its .vc-compose box
+// so multiple open threads on the blog don't collide on a shared id.
+VideoComments.submit = function(btn) {
     if (_submitting) return;
-    var input = document.getElementById('vc-input');
+    var box = (btn && btn.closest) ? btn.closest('.vc-compose') : document.querySelector('.vc-compose');
+    var input = box ? box.querySelector('.vc-input') : null;
     if (!input) return;
     var body = input.value.trim();
     if (!body) return;
+    var ds = box.dataset || {};
     _submitting = true;
-    var btn = document.querySelector('.vc-submit-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Posting...'; }
+    var sbtn = box.querySelector('.vc-submit-btn');
+    if (sbtn) { sbtn.disabled = true; sbtn.textContent = 'Posting...'; }
     fetch('/api/video-comments.php', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', video_id: _currentVideoId, video_source: _currentVideoSource, page_code: _currentPageCode, video_title: _currentVideoTitle, thumbnail: _currentThumbnail, body: body })
+        body: JSON.stringify({ action: 'add', video_id: ds.videoId, video_source: ds.source, page_code: ds.pageCode, video_title: ds.title, thumbnail: ds.thumbnail, body: body })
     }).then(function(r) { return r.json(); }).then(function(data) {
         if (data.error) {
             alert(data.error);
-            _resetComposeUI(false);  // keep typed text so user can retry
+            _resetComposeUI(box, false);  // keep typed text so user can retry
             return;
         }
-        // Success: clear the textarea and re-enable the button BEFORE
-        // VideoComments.load() rebuilds the comments list. If load() ever
-        // fails or renders the sign-in bar instead of compose, the user
-        // is still left with a working compose area.
-        _resetComposeUI(true);
+        // Success: clear + re-enable THIS box, then reload THIS thread. Restore
+        // the thread's context into the module globals first because load()
+        // still reads them — this also fixes posting to the correct post when
+        // another thread was opened more recently.
+        _resetComposeUI(box, true);
+        _currentVideoId     = ds.videoId;
+        _currentVideoSource = ds.source;
+        _currentPageCode    = ds.pageCode;
+        _currentVideoTitle  = ds.title;
+        _currentThumbnail   = ds.thumbnail;
+        _inlineTarget       = ds.target ? document.getElementById(ds.target) : null;
         VideoComments.load();
     }).catch(function(err) {
         alert('Comment failed to post — please retry.');
-        _resetComposeUI(false);
+        _resetComposeUI(box, false);
     });
 };
 
@@ -306,6 +344,9 @@ VideoComments.link = function(videoId, pageCode, videoSource) {
 };
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+// Attribute-safe escape: esc() handles & < >; also escape quotes so a value
+// with a " (e.g. a video title) can't break out of a double-quoted attr.
+function escAttr(s) { return esc(s == null ? '' : String(s)).replace(/"/g, '&quot;'); }
 function initials(n) { if (!n) return '?'; var p = n.trim().split(/\s+/); return p.length > 1 ? (p[0][0]+p[p.length-1][0]).toUpperCase() : p[0].substring(0,2).toUpperCase(); }
 function timeAgo(dt) {
     if (!dt) return '';

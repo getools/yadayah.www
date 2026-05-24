@@ -36,7 +36,7 @@
         .qa-meta { padding: 6px 14px; background: #f9f9f9; border-top: 1px solid #eee; font-size: 0.78rem; color: #888; display: flex; gap: 16px; flex-wrap: wrap; }
         .qa-error { color: #c0392b; font-weight: 600; }
         .qa-note { padding: 8px 14px; background: #fffde7; border-top: 1px solid #f0e68c; }
-        .qa-note textarea { width: 100%; min-height: 50px; padding: 8px; border: 1px solid #e0d88c; border-radius: 4px; font-family: inherit; font-size: 0.85rem; resize: vertical; box-sizing: border-box; }
+        .qa-note textarea { width: 100%; min-height: 90px; max-height: 600px; padding: 8px; border: 1px solid #e0d88c; border-radius: 4px; font-family: inherit; font-size: 0.85rem; resize: vertical; box-sizing: border-box; overflow-y: auto; }
         .qa-note textarea:focus { outline: none; border-color: #c0a830; }
         .qa-note-actions { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
         .qa-note-actions button { padding: 3px 10px; font-size: 0.78rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; }
@@ -877,6 +877,34 @@ function closeDetail() {
     selectedKey = null;
 }
 
+// Fit a single Admin Notes textarea to its content (bounded by the CSS
+// max-height, after which the textarea scrolls). Skipped once the user has
+// dragged the resize handle — a manual height (data-user-sized) wins so we
+// don't fight their choice on the next keystroke.
+function fitNoteArea(ta) {
+    if (!ta || ta.dataset.userSized === '1') return;
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+}
+// Auto-size every Admin Notes textarea in the detail panel, and wire each so
+// it grows as the reviewer types and remembers a manual drag-resize.
+function autosizeNoteAreas() {
+    var areas = document.querySelectorAll('.qa-note textarea');
+    for (var i = 0; i < areas.length; i++) {
+        var ta = areas[i];
+        if (ta.dataset.autoBound !== '1') {
+            ta.addEventListener('input', function() { fitNoteArea(this); });
+            // A mouseup on the textarea after a drag means the user set a
+            // height by hand — lock it in and stop auto-fitting.
+            ta.addEventListener('mouseup', function() {
+                if (Math.abs(this.offsetHeight - this.scrollHeight) > 4) this.dataset.userSized = '1';
+            });
+            ta.dataset.autoBound = '1';
+        }
+        fitNoteArea(ta);
+    }
+}
+
 function renderDetail(session, logs) {
     var html = '<div class="session-detail">';
     html += '<div class="session-meta">';
@@ -957,6 +985,11 @@ function renderDetail(session, logs) {
     }
     html += '</div></div>';
     document.getElementById('detail-container').innerHTML = html;
+    // Grow the Admin Notes textareas to fit their existing content so a
+    // reviewer sees the whole note at a glance instead of a 3-line window.
+    // resize:vertical still lets them drag taller/shorter; the max-height +
+    // overflow:auto cap keeps a very long note from pushing the page around.
+    autosizeNoteAreas();
     // Check ban status for this IP
     if (session.ip_address) {
         fetch(API + '/ask-ip-ban.php?check=' + encodeURIComponent(session.ip_address), {credentials:'include'})
