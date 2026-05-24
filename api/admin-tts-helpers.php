@@ -88,7 +88,25 @@ function loadTtsConfig(PDO $db, int $ttsKey): array {
         if (!empty($b['cite_book_common'])) $bibleBooks[] = $b['cite_book_common'];
     }
     $bibleBooks = array_values(array_unique($bibleBooks));
-    return ['system' => $system, 'categories' => $categories, 'tunes' => $tunes, 'pauses' => $pauses, 'fonts' => $fonts, 'bible_books' => $bibleBooks];
+
+    // Provider registry (engine catalog) + voice→provider map, so a segment's
+    // category can be routed to the engine that synthesizes it. Guarded: if the
+    // provider_key column / yy_provider table aren't present (pre-migration),
+    // this degrades to empty maps and callers fall back to Azure (provider 1).
+    $providers = [];
+    $voiceProvider = [];
+    try {
+        foreach ($db->query("SELECT * FROM yy_provider")->fetchAll() as $pr) {
+            $providers[(int)$pr['provider_key']] = $pr;
+        }
+        foreach ($db->query("SELECT tts_voice_code, provider_key FROM yy_tts_voice")->fetchAll() as $vr) {
+            $voiceProvider[$vr['tts_voice_code']] = (int)$vr['provider_key'];
+        }
+    } catch (Throwable $e) {
+        $providers = []; $voiceProvider = [];
+    }
+
+    return ['system' => $system, 'categories' => $categories, 'tunes' => $tunes, 'pauses' => $pauses, 'fonts' => $fonts, 'bible_books' => $bibleBooks, 'providers' => $providers, 'voice_provider' => $voiceProvider];
 }
 
 /**
@@ -661,7 +679,12 @@ function buildVoiceBlock(string $text, array $cfg, string $category, ?string $ov
     // Pauses still apply to any apostrophe-class chars that no tune
     // consumes — the leftover ones get the 0 ms suppression treatment.
     $tokenMap = [];
-    $text = applyTunes($text, $cfg['tunes'], $tokenMap);
+    // Resolve tunes for this segment's engine: a word's provider-specific
+    // override (if any) wins over its default (provider_key=0). With only
+    // default rows present this is exactly $cfg['tunes'], so Azure output is
+    // unchanged.
+    $segProviderKey = ttsResolveProviderKey($cfg, $category);
+    $text = applyTunes($text, ttsTunesForProvider($cfg, $segProviderKey), $tokenMap);
     $placeholder = '';
     $text = applyPauses($text, $cfg['pauses'], $placeholder);
     $escaped = htmlspecialchars($text, ENT_QUOTES | ENT_XML1, 'UTF-8');
@@ -1034,4 +1057,177 @@ function ttsCategoryParent(string $code): ?string {
         foreach (ttsCategories() as $c) $map[$c['code']] = $c['parent'];
     }
     return $map[$code] ?? null;
+}
+
+/* ── provider routing & per-provider pronunciation ──────────────────────
+ * These power the multi-engine swap: a segment's category resolves to a
+ * voice, the voice to an engine (provider), and the provider decides both
+ * the synthesis path (Azure SSML vs. local HTTP) and which pronunciation
+ * override applies. Until a category is pointed at a self-hosted voice,
+ * every segment resolves to Azure (provider 1) and behavior is unchanged.
+ */
+
+/** Resolve a category to its voice code, walking parents like buildVoiceBlock(). */
+function ttsResolveVoiceCode(array $cfg, string $category): ?string {
+    $cat = $cfg['categories'][$category] ?? null;
+    $cur = $category;
+    while ($cat === null && $cur !== null) {
+        $cur = ttsCategoryParent($cur);
+        if ($cur !== null) $cat = $cfg['categories'][$cur] ?? null;
+    }
+    if ($cat === null && !empty($cfg['categories'])) $cat = reset($cfg['categories']);
+    return $cat['tts_voice_code'] ?? null;
+}
+
+/** Resolve a category to the provider_key of its voice's engine. Defaults to 1 (Azure). */
+function ttsResolveProviderKey(array $cfg, string $category): int {
+    $vc = ttsResolveVoiceCode($cfg, $category);
+    if ($vc !== null && isset($cfg['voice_provider'][$vc])) {
+        return (int)$cfg['voice_provider'][$vc];
+    }
+    return 1; // Azure — preserves historical all-Azure behavior
+}
+
+/** True when a provider uses SSML markup (Azure). Local engines (plain/ipa) → false. Unknown → true (safe Azure path). */
+function ttsProviderUsesSsml(array $cfg, int $providerKey): bool {
+    $p = $cfg['providers'][$providerKey] ?? null;
+    if (!$p) return true;
+    return (($p['provider_markup_format'] ?? 'ssml') === 'ssml');
+}
+
+/**
+ * Active tune list resolved for one provider. Each Print may have a default
+ * row (provider_key=0) and an optional provider-specific override; the override
+ * wins. Application order from loadTtsConfig is preserved. With only default
+ * rows present this returns exactly $cfg['tunes'].
+ */
+function ttsTunesForProvider(array $cfg, int $providerKey): array {
+    $tunes = $cfg['tunes'] ?? [];
+    // A provider override only suppresses the default row for the SAME rule
+    // identity (Print + bold/italic/case flags) — never a different rule that
+    // merely shares a Print. First pass: which rule identities have an override
+    // for THIS provider.
+    $overridden = [];
+    foreach ($tunes as $t) {
+        if ($providerKey !== 0 && (int)($t['provider_key'] ?? 0) === $providerKey) {
+            $overridden[ttsTuneRuleId($t)] = true;
+        }
+    }
+    // Second pass, preserving order: keep this provider's own rows; keep default
+    // (0) rows unless an override exists for their rule identity; drop rows that
+    // belong to a different engine. With no overrides present this returns the
+    // full default list unchanged (so the Azure path is byte-identical).
+    $out = [];
+    foreach ($tunes as $t) {
+        $pk = (int)($t['provider_key'] ?? 0);
+        if ($pk === $providerKey && $providerKey !== 0) { $out[] = $t; continue; }
+        if ($pk !== 0) continue;                                   // another engine's override
+        if (isset($overridden[ttsTuneRuleId($t)])) continue;       // default suppressed by an override
+        $out[] = $t;
+    }
+    return $out;
+}
+
+/** Stable identity of a tune rule for override matching: Print + match flags. */
+function ttsTuneRuleId(array $t): string {
+    return ($t['tts_tune_print'] ?? '') . "\x1f"
+        . (!empty($t['tts_tune_match_bold']) ? '1' : '0')
+        . (!empty($t['tts_tune_match_italic']) ? '1' : '0')
+        . (!empty($t['tts_tune_match_case_sensitive']) ? '1' : '0');
+}
+
+/**
+ * Plain-text pronunciation substitution for engines that don't take SSML.
+ * Uses the 'sub' respelling (the portable default), stripping the SSML-only
+ * [slow] / {fast} markers. IPA/SAPI rows fall back to their sub spelling.
+ * (True IPA passthrough for phoneme engines like Kokoro is a future refinement.)
+ */
+function applyTunesPlain(string $text, array $tunes): string {
+    foreach ($tunes as $t) {
+        $print = (string)($t['tts_tune_print'] ?? '');
+        if ($print === '') continue;
+        $alias = trim((string)($t['tts_tune_phonetic_sub'] ?? ''));
+        if ($alias === '') $alias = trim((string)($t['tts_tune_phonetic'] ?? ''));
+        if ($alias === '') continue;
+        $alias = str_replace(['[', ']', '{', '}'], '', $alias);
+        $regex = tunePrintToRegex($print, !empty($t['tts_tune_match_case_sensitive']));
+        $text = preg_replace_callback($regex, function ($m) use ($alias) {
+            return !empty($m[2]) ? $alias . 's' : $alias;   // possessive 's
+        }, $text);
+    }
+    return $text;
+}
+
+/**
+ * Build a provider-neutral plain-text request for a local-engine segment.
+ * Mirrors buildVoiceBlock's citation-rewrite + tune steps but emits plain text
+ * (no SSML) plus the category's prosody numbers.
+ */
+function buildLocalSegment(string $text, array $cfg, string $category): array {
+    $providerKey = ttsResolveProviderKey($cfg, $category);
+    $voiceCode   = ttsResolveVoiceCode($cfg, $category) ?? '';
+    if (!empty($cfg['bible_books'])) {
+        $text = rewriteBibleCitations($text, $cfg['bible_books']);
+    }
+    $text = applyTunesPlain($text, ttsTunesForProvider($cfg, $providerKey));
+    $text = preg_replace('/\x01PAUSE_\d+_(\d+)\x01/', ' ', $text);   // drop pause placeholders
+    $text = preg_replace('/[\x{02BF}\x{02BE}]/u', '', $text);        // drop half-rings ʿ ʾ
+    $text = trim((string)preg_replace('/\s+/u', ' ', $text));
+    // Category prosody (parent-walked like buildVoiceBlock).
+    $cat = $cfg['categories'][$category] ?? null;
+    $cur = $category;
+    while ($cat === null && $cur !== null) { $cur = ttsCategoryParent($cur); if ($cur !== null) $cat = $cfg['categories'][$cur] ?? null; }
+    if ($cat === null && !empty($cfg['categories'])) $cat = reset($cfg['categories']);
+    return [
+        'provider_key' => $providerKey,
+        'voice'        => $voiceCode,
+        'text'         => $text,
+        'phonemes'     => null,
+        'rate'         => (int)($cat['tts_voice_rate_pct']  ?? 0),
+        'pitch'        => (float)($cat['tts_voice_pitch_st'] ?? 0),
+        'volume'       => (int)($cat['tts_voice_volume']     ?? 100),
+    ];
+}
+
+/**
+ * Synthesize one segment on a local engine via its HTTP endpoint (the Docker
+ * engine server on the Puget box). Contract mirrors azureTtsSynthesize():
+ * returns audio bytes, or '' with $err set.
+ */
+function localTtsSynthesize(array $cfg, array $seg, string $outputFormat, ?string &$err = null): string {
+    $prov = $cfg['providers'][$seg['provider_key']] ?? null;
+    if (!$prov) { $err = 'unknown provider_key ' . ($seg['provider_key'] ?? '?'); return ''; }
+    $endpoint = rtrim((string)($prov['provider_endpoint'] ?? ''), '/');
+    if ($endpoint === '') { $err = 'provider ' . $seg['provider_key'] . ' has no endpoint'; return ''; }
+    $settings = json_decode((string)($prov['provider_settings'] ?? '{}'), true) ?: [];
+    $engine   = $settings['engine'] ?? ($prov['provider_model_id'] ?? '');
+    $fmt = (strpos($outputFormat, 'opus') !== false) ? 'opus'
+         : ((strpos($outputFormat, 'pcm') !== false || strpos($outputFormat, 'wav') !== false) ? 'wav' : 'mp3');
+    $payload = json_encode([
+        'provider' => $engine,
+        'voice'    => $seg['voice'],
+        'text'     => $seg['text'],
+        'phonemes' => $seg['phonemes'],
+        'rate'     => (int)$seg['rate'],
+        'pitch'    => (float)$seg['pitch'],
+        'volume'   => (int)$seg['volume'],
+        'format'   => $fmt,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $ch = curl_init($endpoint . '/synthesize');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_TIMEOUT        => 300,
+    ]);
+    $resp = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $cerr = curl_error($ch);
+    curl_close($ch);
+    if ($resp === false || $code >= 400) {
+        $err = "local TTS HTTP $code: " . ($cerr ?: substr((string)$resp, 0, 200));
+        return '';
+    }
+    return (string)$resp;
 }

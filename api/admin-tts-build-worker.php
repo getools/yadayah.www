@@ -449,6 +449,27 @@ function azureTtsSynthesizeRetry(string $ssml, array $cfg, ?string &$err = null,
     return '';
 }
 
+// Local-engine retry wrapper, mirroring azureTtsSynthesizeRetry. Self-hosted
+// engines (Chatterbox/Qwen3/Kokoro) on the Puget box; transient / HTTP 0 / 429
+// / 5xx responses are retried with backoff. localTtsSynthesize() lives in
+// admin-tts-helpers.php.
+function localTtsSynthesizeRetry(array $cfg, array $seg, string $outputFormat, ?string &$err = null, int $maxAttempts = 4): string {
+    $attempt = 0;
+    $delay   = 1;
+    while ($attempt < $maxAttempts) {
+        $bytes = localTtsSynthesize($cfg, $seg, $outputFormat, $err);
+        if ($bytes !== '') return $bytes;
+        $retry = ($err === null || $err === '' || preg_match('/HTTP (0|429|5\d\d)\b/', (string)$err));
+        if (!$retry) return '';
+        $attempt++;
+        if ($attempt >= $maxAttempts) break;
+        fwrite(STDERR, "local-tts retry $attempt after {$delay}s — $err\n");
+        sleep($delay);
+        $delay = min($delay * 2, 15);
+    }
+    return '';
+}
+
 // Page-break-within-paragraph detection. Reads text/page-NNN.json from
 // the flipbook bundle to locate where in the paragraph a page break
 // occurs (when the paragraph spans into the next page). The build
@@ -598,19 +619,62 @@ foreach ($paragraphs as $idx => $p) {
         }
     }
 
-    $blocks = '';
+    // Does every segment route to an SSML (Azure) provider? If so, use the
+    // original Azure path verbatim. Only a paragraph containing a self-hosted
+    // engine segment takes the per-segment local path. Today all voices are
+    // Azure (provider 1), so the original path always runs → byte-identical.
+    $allSsml = true;
     foreach ($segs as $seg) {
-        $blocks .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
+        if (!ttsProviderUsesSsml($cfg, ttsResolveProviderKey($cfg, $seg['category']))) { $allSsml = false; break; }
     }
-    if ($blocks === '') continue;
-    $ssml = wrapSsml($blocks);
+
     $paraBytes = '';
-    if (strlen($ssml) > 9500) {
-        // Over Azure's per-request limit — split into one synth call per segment instead.
+    if ($allSsml) {
+        $blocks = '';
         foreach ($segs as $seg) {
-            $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
+            $blocks .= buildVoiceBlock($seg['text'], $cfg, $seg['category']);
+        }
+        if ($blocks === '') continue;
+        $ssml = wrapSsml($blocks);
+        if (strlen($ssml) > 9500) {
+            // Over Azure's per-request limit — split into one synth call per segment instead.
+            foreach ($segs as $seg) {
+                $oneSsml = wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category']));
+                $err = '';
+                $b = azureTtsSynthesizeRetry($oneSsml, $cfg, $err);
+                if ($b === '') {
+                    $failures[] = "para {$p['paragraph_number']} seg: $err";
+                    $failureCount++;
+                    continue;
+                }
+                $paraBytes .= $b;
+                $charsBilled += mb_strlen($seg['text']);
+            }
+        } else {
             $err = '';
-            $b = azureTtsSynthesizeRetry($oneSsml, $cfg, $err);
+            $b = azureTtsSynthesizeRetry($ssml, $cfg, $err);
+            if ($b === '') {
+                $failures[] = "para {$p['paragraph_number']}: $err";
+                $failureCount++;
+                continue;
+            }
+            $paraBytes = $b;
+            foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
+        }
+    } else {
+        // Mixed / local path — synth each segment on its own engine and concat.
+        // DORMANT until a category is pointed at a self-hosted voice whose engine
+        // server is online. Naive byte-concat mirrors the Azure >9500 split;
+        // cross-format / sample-rate normalization is a TODO before first real
+        // local use.
+        foreach ($segs as $seg) {
+            $pk = ttsResolveProviderKey($cfg, $seg['category']);
+            $err = '';
+            if (ttsProviderUsesSsml($cfg, $pk)) {
+                $b = azureTtsSynthesizeRetry(wrapSsml(buildVoiceBlock($seg['text'], $cfg, $seg['category'])), $cfg, $err);
+            } else {
+                $b = localTtsSynthesizeRetry($cfg, buildLocalSegment($seg['text'], $cfg, $seg['category']), $cfg['system']['tts_output_format'], $err);
+            }
             if ($b === '') {
                 $failures[] = "para {$p['paragraph_number']} seg: $err";
                 $failureCount++;
@@ -619,16 +683,6 @@ foreach ($paragraphs as $idx => $p) {
             $paraBytes .= $b;
             $charsBilled += mb_strlen($seg['text']);
         }
-    } else {
-        $err = '';
-        $b = azureTtsSynthesizeRetry($ssml, $cfg, $err);
-        if ($b === '') {
-            $failures[] = "para {$p['paragraph_number']}: $err";
-            $failureCount++;
-            continue;
-        }
-        $paraBytes = $b;
-        foreach ($segs as $seg) $charsBilled += mb_strlen($seg['text']);
     }
     if ($paraBytes === '') continue;
 
