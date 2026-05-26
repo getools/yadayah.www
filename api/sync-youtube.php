@@ -267,12 +267,14 @@ foreach ($feeds as $feed) {
 }
 
 // ── Check for restricted/private videos ──
-// Rotate through every item's thumbnail across successive sync runs.
-// 404 = private/deleted/unlisted on YouTube → mark Restricted.
-// yy_feed_item_check tracks last-checked timestamp per item; ORDER BY
-// least-recently-checked (NULL first = never checked yet) so the queue
-// fairly cycles. With LIMIT 200 × 3 runs/day, ~3,300-item libraries
-// complete a full sweep in ~6 days.
+// Rotate through items across successive sync runs (least-recently-checked
+// first). Preferred path: pull privacy status straight from the YouTube Data
+// API (videos.list?part=status) — the same API that brings the rest of the
+// video info. A public/unlisted video returns privacyStatus; a private or
+// deleted video is omitted from the response entirely. Either omission or
+// privacyStatus 'private' => Restricted. Falls back to a thumbnail-404 probe
+// only when no API key is configured. yy_feed_item_check records the per-item
+// last-checked time + result so the queue cycles fairly (200/run × 3/day).
 $restrictStmt = $db->query("
     SELECT fi.feed_item_key, fi.feed_item_thumbnail, fi.feed_item_external_id
     FROM yy_feed_item fi
@@ -294,20 +296,52 @@ $recordCheckStmt = $db->prepare(
             feed_item_check_result = EXCLUDED.feed_item_check_result"
 );
 $restrictCount = 0;
-$checkedCount = 0;
-foreach ($restrictStmt->fetchAll() as $ri) {
-    $headers = @get_headers($ri['feed_item_thumbnail'], true);
-    $httpCode = $headers ? (int)substr($headers[0], 9, 3) : 0;
-    $result = $httpCode === 404 ? '404' : ($httpCode === 200 ? 'ok' : ('http_' . $httpCode));
-    if ($httpCode === 404) {
-        $markRestrictedStmt->execute([$ri['feed_item_key']]);
-        $restrictCount++;
-        if ($isCli) echo "Restricted: {$ri['feed_item_external_id']} (thumbnail 404)\n";
+$checkedCount  = 0;
+$sweepRows = $restrictStmt->fetchAll();
+// API key for the sweep: env first, else the last active YouTube feed's key
+// ($apiKey survives the per-feed loop above).
+$sweepApiKey = getenv('YOUTUBE_API_KEY') ?: ($apiKey ?? '');
+
+if ($sweepApiKey && $sweepRows) {
+    // Map external_id (= YouTube video id) → feed_item_key for the batch.
+    $byExt = [];
+    foreach ($sweepRows as $ri) {
+        if (!empty($ri['feed_item_external_id'])) $byExt[$ri['feed_item_external_id']] = $ri['feed_item_key'];
     }
-    $recordCheckStmt->execute([$ri['feed_item_key'], $result]);
-    $checkedCount++;
+    $probe = fetchYouTubePrivacyStatus(array_keys($byExt), $sweepApiKey);
+    foreach ($byExt as $ext => $fik) {
+        // Only act on IDs whose API chunk actually succeeded. A failed or
+        // quota'd call leaves the id out of `checked` — never read that as
+        // "missing", or a transient error would mass-restrict the library.
+        if (empty($probe['checked'][$ext])) continue;
+        $ps = $probe['status'][$ext] ?? null;     // null = omitted by API = private/deleted
+        $restricted = ($ps === null || $ps === 'private');
+        $result = ($ps === null) ? 'api_missing' : ('api_' . $ps);
+        if ($restricted) {
+            $markRestrictedStmt->execute([$fik]);
+            $restrictCount++;
+            if ($isCli) echo "Restricted: $ext ($result)\n";
+        }
+        $recordCheckStmt->execute([$fik, $result]);
+        $checkedCount++;
+    }
+    if ($isCli) echo "Privacy check (API): {$checkedCount} probed, {$restrictCount} marked restricted\n";
+} else {
+    // Fallback (no API key): probe the thumbnail URL — 404 = gone/private.
+    foreach ($sweepRows as $ri) {
+        $headers = @get_headers($ri['feed_item_thumbnail'], true);
+        $httpCode = $headers ? (int)substr($headers[0], 9, 3) : 0;
+        $result = $httpCode === 404 ? '404' : ($httpCode === 200 ? 'ok' : ('http_' . $httpCode));
+        if ($httpCode === 404) {
+            $markRestrictedStmt->execute([$ri['feed_item_key']]);
+            $restrictCount++;
+            if ($isCli) echo "Restricted: {$ri['feed_item_external_id']} (thumbnail 404)\n";
+        }
+        $recordCheckStmt->execute([$ri['feed_item_key'], $result]);
+        $checkedCount++;
+    }
+    if ($isCli) echo "Privacy check (thumbnail): {$checkedCount} item(s) probed, {$restrictCount} marked restricted\n";
 }
-if ($isCli) echo "Privacy check: {$checkedCount} item(s) probed, {$restrictCount} marked restricted\n";
 
 // Update feed item → page associations after sync
 require_once __DIR__ . '/feed-item-pages.php';
@@ -397,6 +431,37 @@ function fetchYouTubeApi(string $channelId, string $apiKey): array {
 }
 
 // ── Helper: Fetch durations + descriptions for a list of video IDs (batches of 50) ──
+// Probe privacy status for a set of video IDs via the YouTube Data API.
+// Returns ['status' => [id => privacyStatus], 'checked' => [id => true]].
+// `checked` marks IDs whose API chunk returned cleanly; an ID present in
+// `checked` but absent from `status` is private or deleted (the API omits
+// such videos for a non-owner key). Callers MUST ignore IDs not in `checked`
+// (network failure / quota error) so a transient API problem can't be
+// misread as "video gone" and wrongly mark items restricted.
+function fetchYouTubePrivacyStatus(array $videoIds, string $apiKey): array {
+    $ctx = stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]);
+    $status  = [];
+    $checked = [];
+    foreach (array_chunk($videoIds, 50) as $batch) {
+        $url = "https://www.googleapis.com/youtube/v3/videos?" . http_build_query([
+            'part' => 'status',
+            'id'   => implode(',', $batch),
+            'key'  => $apiKey,
+        ]);
+        $json = @file_get_contents($url, false, $ctx);
+        if ($json === false) continue;                          // network failure → inconclusive
+        $res = json_decode($json, true);
+        if (!is_array($res) || isset($res['error'])) continue;  // quota / API error → inconclusive
+        // Chunk succeeded — every requested id is now conclusively checked.
+        foreach ($batch as $id) $checked[$id] = true;
+        foreach (($res['items'] ?? []) as $it) {
+            $id = $it['id'] ?? '';
+            if ($id) $status[$id] = $it['status']['privacyStatus'] ?? 'public';
+        }
+    }
+    return ['status' => $status, 'checked' => $checked];
+}
+
 function fetchYouTubeVideoDetails(array $videoIds, string $apiKey): array {
     $ctx = stream_context_create(['http' => ['timeout' => 10]]);
     $details = [];

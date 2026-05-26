@@ -85,7 +85,7 @@
             Central font registry. Used by every text editor on the site (TinyMCE on Pages, Ask, etc.).
             <br>
             <strong>Group:</strong> empty = main alphabetical list at the top.
-            Number (1, 2, ...) = grouped below the main list, with a divider before each group.
+            <code>1</code> = the <strong>Glyphs</strong> group (Paleo-Hebrew / sample-glyph fonts), shown below the main list under a divider. Higher numbers (2, 3, …) make additional groups.
             <br>
             <strong>Sort:</strong> tie-breaker within a group; lower numbers first.
             <br>
@@ -195,7 +195,7 @@ function render(){
     sorted.forEach(function(r, idx){
         var g = r.group === null || r.group === undefined ? -1 : r.group;
         if (g !== lastGroup) {
-            var label = g === -1 ? 'Main list' : ('Group ' + g);
+            var label = g === -1 ? 'Main list' : (g === 1 ? 'Glyphs' : ('Group ' + g));
             html += '<tr class="group-divider"><td colspan="9">' + label + '</td></tr>';
             lastGroup = g;
         }

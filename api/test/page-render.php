@@ -106,7 +106,10 @@ jsonResponse(['page' => $page, 'sections' => $out]);
  *   max_count:        int (default 24, capped at 200)
  */
 function resolveItemsSection(PDO $db, array $cfg): array {
-    $where  = "i.feed_item_active_flag = TRUE";
+    // Exclude restricted items everywhere (private/deleted on YouTube set
+    // feed_item_restricted_flag during sync). Treated like active_flag — a
+    // hard gate on every section query, pinned items included.
+    $where  = "i.feed_item_active_flag = TRUE AND i.feed_item_restricted_flag = FALSE";
     $params = [];
     $joins  = "";
 
@@ -171,6 +174,23 @@ function resolveItemsSection(PDO $db, array $cfg): array {
             default:
                 $orderParts[] = "COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) $dir";
                 break;
+        }
+    }
+    // Per-section manual sort. cfg.item_sorts maps feed_item_key → integer
+    // weight, set per item in this section's editor. It's PER SECTION (lives
+    // in this section's config), so the same feed_item can sort -2 here and 0
+    // elsewhere. Lower sorts first; items without an entry fall through to the
+    // configured sorts below them. Keys/values are forced to int so the CASE
+    // expression is injection-safe to inline.
+    if (!empty($cfg['item_sorts']) && is_array($cfg['item_sorts'])) {
+        $whenParts = [];
+        foreach ($cfg['item_sorts'] as $k => $v) {
+            if ($v === '' || $v === null) continue;
+            $whenParts[] = 'WHEN ' . (int)$k . ' THEN ' . (int)$v;
+        }
+        if ($whenParts) {
+            array_unshift($orderParts,
+                '(CASE i.feed_item_key ' . implode(' ', $whenParts) . ' ELSE NULL END) ASC NULLS LAST');
         }
     }
     $order = implode(', ', $orderParts);
