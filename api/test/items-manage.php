@@ -203,23 +203,43 @@ if ($action === 'section_items' && $method === 'GET') {
     jsonResponse(['items' => $items, 'total' => count($items)]);
 }
 
-// Assign an item's section-scoped category directly on yy_section_item.
+// Update an item's section-scoped fields on yy_section_item: category_key
+// and/or section_item_sort (the per-section manual order — the Items+Section
+// table, independent of the global feed_item_sort). PATCH style: only fields
+// present in the body are touched, so the editor can save just Sort or just
+// Category.
 if ($action === 'section_item' && $method === 'PUT') {
     $sectionKey = (int)($_GET['section_key'] ?? 0);
     if (!$sectionKey) errorResponse('section_key required');
     if (!$key)        errorResponse('item (feed_item_key) required');
     $d = json_decode(file_get_contents('php://input'), true) ?: [];
-    if (!array_key_exists('category_key', $d)) errorResponse('category_key required');
-    $catKey = ($d['category_key'] !== null && $d['category_key'] !== '') ? (int)$d['category_key'] : null;
-    // Only categories belonging to this section may be assigned (or NULL).
-    if ($catKey !== null) {
-        $chk = $db->prepare("SELECT 1 FROM yy_category WHERE category_key = ? AND section_key = ?");
-        $chk->execute([$catKey, $sectionKey]);
-        if (!$chk->fetchColumn()) errorResponse('Category does not belong to this section');
+
+    $sets = [];
+    $vals = [];
+    if (array_key_exists('category_key', $d)) {
+        $catKey = ($d['category_key'] !== null && $d['category_key'] !== '') ? (int)$d['category_key'] : null;
+        // Only categories belonging to this section may be assigned (or NULL).
+        if ($catKey !== null) {
+            $chk = $db->prepare("SELECT 1 FROM yy_category WHERE category_key = ? AND section_key = ?");
+            $chk->execute([$catKey, $sectionKey]);
+            if (!$chk->fetchColumn()) errorResponse('Category does not belong to this section');
+        }
+        $sets[] = 'category_key = ?';
+        $vals[] = $catKey;
     }
+    if (array_key_exists('section_item_sort', $d)) {
+        $sv = $d['section_item_sort'];
+        $sets[] = 'section_item_sort = ?';
+        $vals[] = ($sv === null || $sv === '') ? 0 : (int)$sv;
+    }
+    if (!$sets) errorResponse('category_key or section_item_sort required');
+
     // The row must already exist (the list is the materialized pool).
-    $upd = $db->prepare("UPDATE yy_section_item SET category_key = ?, section_item_dtime = NOW() WHERE section_key = ? AND feed_item_key = ?");
-    $upd->execute([$catKey, $sectionKey, $key]);
+    $sets[] = 'section_item_dtime = NOW()';
+    $vals[] = $sectionKey;
+    $vals[] = $key;
+    $upd = $db->prepare("UPDATE yy_section_item SET " . implode(', ', $sets) . " WHERE section_key = ? AND feed_item_key = ?");
+    $upd->execute($vals);
     jsonResponse(['saved' => true, 'updated' => $upd->rowCount()]);
 }
 

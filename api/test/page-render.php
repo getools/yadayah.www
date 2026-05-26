@@ -43,7 +43,7 @@ if ($sectionKey > 0 && $paginatedLimit > 0) {
     $cfg = is_string($cfgRow) ? (json_decode($cfgRow, true) ?: []) : ($cfgRow ?: []);
     $cfg['max_count'] = $paginatedLimit;
     $cfg['_offset']   = $offset;
-    jsonResponse(['items' => resolveItemsSection($db, $cfg)]);
+    jsonResponse(['items' => resolveItemsSection($db, $cfg, $sectionKey)]);
 }
 
 if (!empty($_GET['key'])) {
@@ -74,7 +74,7 @@ foreach ($sec->fetchAll() as $s) {
         'config'     => $cfg,
     ];
     if ($section['type'] === 'items') {
-        $section['items'] = resolveItemsSection($db, $cfg);
+        $section['items'] = resolveItemsSection($db, $cfg, (int)$s['section_key']);
     }
     $out[] = $section;
 }
@@ -105,13 +105,23 @@ jsonResponse(['page' => $page, 'sections' => $out]);
  *   sort_dir:         'asc'|'desc'    — ignored when sort='random'
  *   max_count:        int (default 24, capped at 200)
  */
-function resolveItemsSection(PDO $db, array $cfg): array {
+function resolveItemsSection(PDO $db, array $cfg, int $sectionKey = 0): array {
     // Exclude restricted items everywhere (private/deleted on YouTube set
     // feed_item_restricted_flag during sync). Treated like active_flag — a
     // hard gate on every section query, pinned items included.
     $where  = "i.feed_item_active_flag = TRUE AND i.feed_item_restricted_flag = FALSE";
     $params = [];
     $joins  = "";
+    // Per-section ordering source: the Items+Section table (yy_section_item).
+    // When a section_key is supplied, LEFT JOIN it so the ORDER BY can lead
+    // with this section's own section_item_sort — the same value the editor's
+    // Matching-items list edits. Falls back to the configured sorts for items
+    // not yet in the materialized pool (NULLS LAST).
+    $secJoin = '';
+    if ($sectionKey > 0) {
+        $secJoin = " LEFT JOIN yy_section_item si ON si.section_key = " . (int)$sectionKey
+                 . " AND si.feed_item_key = i.feed_item_key";
+    }
 
     if (!empty($cfg['feed_item_keys']) && is_array($cfg['feed_item_keys'])) {
         $ids = array_values(array_filter(array_map('intval', $cfg['feed_item_keys'])));
@@ -176,22 +186,12 @@ function resolveItemsSection(PDO $db, array $cfg): array {
                 break;
         }
     }
-    // Per-section manual sort. cfg.item_sorts maps feed_item_key → integer
-    // weight, set per item in this section's editor. It's PER SECTION (lives
-    // in this section's config), so the same feed_item can sort -2 here and 0
-    // elsewhere. Lower sorts first; items without an entry fall through to the
-    // configured sorts below them. Keys/values are forced to int so the CASE
-    // expression is injection-safe to inline.
-    if (!empty($cfg['item_sorts']) && is_array($cfg['item_sorts'])) {
-        $whenParts = [];
-        foreach ($cfg['item_sorts'] as $k => $v) {
-            if ($v === '' || $v === null) continue;
-            $whenParts[] = 'WHEN ' . (int)$k . ' THEN ' . (int)$v;
-        }
-        if ($whenParts) {
-            array_unshift($orderParts,
-                '(CASE i.feed_item_key ' . implode(' ', $whenParts) . ' ELSE NULL END) ASC NULLS LAST');
-        }
+    // Per-section manual order leads: this section's own section_item_sort
+    // from the Items+Section table (yy_section_item) — the value the editor's
+    // Matching-items list edits. Lower first; items not in the materialized
+    // pool sort NULLS LAST and fall through to the configured sorts.
+    if ($sectionKey > 0) {
+        array_unshift($orderParts, 'si.section_item_sort ASC NULLS LAST');
     }
     $order = implode(', ', $orderParts);
 
@@ -209,6 +209,7 @@ function resolveItemsSection(PDO $db, array $cfg): array {
                    COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) AS feed_item_posted_dtime
             FROM yy_feed_item i
             $joins
+            $secJoin
             WHERE $where
             ORDER BY $order
             LIMIT " . (int)$maxCount . " OFFSET " . (int)$offsetVal;

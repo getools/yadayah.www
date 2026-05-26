@@ -77,15 +77,20 @@ function rebuildSectionItems(PDO $db, int $sectionKey): int {
     if (!empty($cfg['page_key'])) $pageKeys[] = (int)$cfg['page_key'];
     $pageKeys = array_values(array_unique($pageKeys));
 
-    // Preserve the category each item already has in this section — the editor
-    // writes yy_section_item.category_key directly, so it's authoritative once
-    // set. Rebuild only re-derives the category (via the page bridge) for items
-    // newly entering the section; surviving items keep their stored value.
-    $prevCat = [];
-    $pst = $db->prepare("SELECT feed_item_key, category_key FROM yy_section_item WHERE section_key = ?");
+    // Preserve the category AND per-section sort each item already has — the
+    // editor writes yy_section_item.category_key and section_item_sort
+    // directly (Matching-items list), so both are authoritative once set.
+    // Rebuild derives a value only for items NEWLY entering the section;
+    // surviving items keep their stored category + sort, so a filter refresh
+    // never wipes a manual ordering.
+    $prevCat  = [];
+    $prevSort = [];
+    $pst = $db->prepare("SELECT feed_item_key, category_key, section_item_sort FROM yy_section_item WHERE section_key = ?");
     $pst->execute([$sectionKey]);
     foreach ($pst->fetchAll() as $pr) {
-        $prevCat[(int)$pr['feed_item_key']] = $pr['category_key'] !== null ? (int)$pr['category_key'] : null;
+        $fk = (int)$pr['feed_item_key'];
+        $prevCat[$fk]  = $pr['category_key'] !== null ? (int)$pr['category_key'] : null;
+        $prevSort[$fk] = $pr['section_item_sort'] !== null ? (int)$pr['section_item_sort'] : null;
     }
 
     $db->beginTransaction();
@@ -96,20 +101,27 @@ function rebuildSectionItems(PDO $db, int $sectionKey): int {
                            SET category_key       = EXCLUDED.category_key,
                                section_item_sort  = EXCLUDED.section_item_sort,
                                section_item_dtime = NOW()");
-    $sort = 0;
+    // `idx` is the fallback sort for NEW items (their position in the resolved
+    // pool). Surviving items keep their stored section_item_sort; ties are
+    // broken by the render's secondary sort.
+    $idx  = 0;
     $seen = [];
     foreach ($items as $it) {
         $fik = (int)$it['feed_item_key'];
         if (isset($seen[$fik])) continue;   // dedupe (pinned + filter overlap)
         $seen[$fik] = true;
-        // Surviving item keeps its stored category; new item derives via bridge.
+        // Surviving item keeps its stored category + sort; new item derives.
         $catKey = array_key_exists($fik, $prevCat)
                 ? $prevCat[$fik]
                 : sectionItemCategory($db, $sectionKey, $fik, $pageKeys);
-        $ins->execute([$sectionKey, $fik, $catKey, $sort++]);
+        $sortVal = (array_key_exists($fik, $prevSort) && $prevSort[$fik] !== null)
+                 ? $prevSort[$fik]
+                 : $idx;
+        $ins->execute([$sectionKey, $fik, $catKey, $sortVal]);
+        $idx++;
     }
     $db->commit();
-    return $sort;
+    return $idx;
 }
 
 /** Rebuild every active Items section. Returns [{section_key, items}, ...]. */
