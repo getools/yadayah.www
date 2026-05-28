@@ -1726,7 +1726,7 @@ function openTranscript(itemKey) {
             + '<div id="t-spk-popover" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;font-size:0.82rem;z-index:10003;min-width:220px;"></div>'
             + '<div id="t-row-spk-popover" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;font-size:0.82rem;z-index:10004;min-width:240px;"></div>'
             + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
-            +   '<th style="padding:4px 2px;width:1%;text-align:center;" title="Notes / bookmarks on this line"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg></th>'
+            +   '<th style="padding:4px 2px;width:1%;text-align:center;color:#888;" title="Notes / bookmarks on this line"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" style="vertical-align:middle;"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></th>'
             +   '<th style="padding:4px 2px;width:1%;text-align:center;white-space:nowrap;" title="Speaker — hover or click to rename">'
             +     '<span id="t-spk-anchor" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" onclick="toggleSpeakerPopover()" style="display:inline-block;cursor:pointer;padding:2px 4px;">'
             +       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
@@ -4806,21 +4806,24 @@ function loadBookmarks() {
 // _bookmarksBySeg (loaded by loadBookmarks) so the badge is correct on
 // initial render. refreshOneBookmarkBadge swaps the cell when bookmarks
 // are added/deleted without a full row re-render.
+// Visual: Chrome-bookmark style — outline gray star when no notes, filled
+// gold star when at least one note is present. Count stays in the tooltip.
+var STAR_PATH = 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z';
 function bookmarkCellForRow(seg) {
     var list = (window._bookmarksBySeg && window._bookmarksBySeg[seg]) || [];
     var count = list.length;
     var hasAny = count > 0;
-    var color = hasAny ? '#a36100' : '#bbb';
+    var color = hasAny ? '#e0a800' : '#bbb';
     var title = hasAny
         ? (count + ' note' + (count === 1 ? '' : 's') + ' on this line — click to view')
         : 'Add a note for this line';
-    var glyph = hasAny
-        ? '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="14" font-weight="700" font-family="system-ui, sans-serif">' + count + '</text>'
-        : '<rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/>';
+    var svgInner = hasAny
+        ? '<path d="' + STAR_PATH + '" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>'
+        : '<path d="' + STAR_PATH + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>';
     return '<td class="t-note-cell" data-seg="' + esc(seg) + '" style="padding:6px 2px;border-top:1px solid #eee;vertical-align:top;text-align:center;white-space:nowrap;">'
         +   '<button type="button" class="t-note-btn" data-seg="' + esc(seg) + '" onclick="openRowBookmarkPopover(this, \'' + esc(seg) + '\'); event.stopPropagation();" title="' + esc(title) + '" '
         +     'style="background:none;border:none;cursor:pointer;padding:2px 4px;color:' + color + ';">'
-        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="12" r="10"/>' + glyph + '</svg>'
+        +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">' + svgInner + '</svg>'
         +   '</button>'
         + '</td>';
 }
@@ -4874,7 +4877,7 @@ function renderRowBookmarkPopover(seg) {
     if (!pop) return;
     var list = (window._bookmarksBySeg[seg] || []).slice();
     var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;display:flex;align-items:center;gap:6px;">'
-        + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><circle cx="12" cy="12" r="10"/><rect x="11" y="6" width="2" height="8" fill="#fff"/><rect x="11" y="16" width="2" height="2" fill="#fff"/></svg>'
+        + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" style="color:#e0a800;"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>'
         + 'Notes at ' + esc(displaySegment(seg)) + '</div>';
     if (list.length) {
         html += '<div style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:4px;margin-bottom:8px;">';

@@ -1,9 +1,12 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/search-log-helpers.php';   // logSearch(), session-key + IP helpers
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
     errorResponse('Method not allowed', 405);
 }
+
+$_t0 = microtime(true);
 
 $q = trim($_GET['q'] ?? '');
 if ($q === '') {
@@ -234,13 +237,17 @@ $total = (int)$countStmt->fetchColumn();
 // session within ~90s" → auto-promote Q1→Q2 as an alias. Each
 // re-detection bumps alias_weight; admin-curated rows start at
 // weight=10 and stay above auto-detected ones (which start at 1).
-$_logSession = substr(hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '?') . '|' . substr($_SERVER['HTTP_USER_AGENT'] ?? '?', 0, 80)), 0, 32);
+$_logSession = searchLogSessionKey();   // same algorithm as before — reused below for the alias lookback
 try {
     // Skip logging only for explicit Tier-1-only paging — page>1 is
     // a follow-up to the same query and not a new "attempt".
     if ($page === 1) {
-        $pdo->prepare("INSERT INTO yy_search_log (search_log_session, search_log_query, search_log_result_count) VALUES (?, ?, ?)")
-            ->execute([$_logSession, mb_substr($q, 0, 200), $total]);
+        $_filters = array_filter([
+            'series' => $series,
+            'volume' => $volume,
+            'limit'  => $limit,
+        ], function ($v) { return $v !== null; });
+        logSearch($pdo, 'books', $q, $mode, $total, $_filters, (int)((microtime(true) - $_t0) * 1000));
 
         // Detect Q1→Q2 escalation: previous query in this session had <5 hits
         // AND was made within 90 seconds AND wasn't the same string. If so,

@@ -15,10 +15,13 @@
 // at the previous row's timestamp. Edge cases: if the matching row is the
 // first or last in its transcript, prev / next are null.
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/search-log-helpers.php';   // logSearch() — see ../yy_search_log
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     errorResponse('Method not allowed', 405);
 }
+
+$_t0 = microtime(true);
 
 $q = trim($_GET['q'] ?? '');
 if ($q === '') {
@@ -211,6 +214,18 @@ if ($total > 0) {
             ] : null,
         ];
     }
+}
+
+// Log to yy_search_log on the first page only (paging is a continuation of
+// the same search "attempt", not a new one — keeps the row-per-query
+// semantics consistent with how /api/search.php logs).
+if ($page === 1) {
+    $_filters = array_filter([
+        'group'    => $group,
+        'category' => $category,
+        'limit'    => $limit,
+    ], function ($v) { return $v !== null; });
+    logSearch($pdo, 'transcripts', $q, $mode, $total, $_filters, (int)((microtime(true) - $_t0) * 1000));
 }
 
 jsonResponse([
