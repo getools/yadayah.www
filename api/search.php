@@ -137,8 +137,17 @@ $snippetLead = (int)floor($snippetLen * 0.32);
 // --- Alias expansion: look up alternate forms for each word in the query ---
 $queryWords = preg_split('/\s+/', $q);
 $aliasTargets = [];
+// Auto-detected aliases must be corroborated by at least 3 distinct sessions
+// before they affect anyone's results. A single user pivoting between thematic
+// terms (e.g. nakam → nacham → shaar) used to be enough to poison the search;
+// this gate keeps weak rows in the table for tracking without applying them.
+// alias_curated_flag = TRUE always wins (admin-curated entries are trusted).
 foreach ($queryWords as $w) {
-    $aliasStmt = $pdo->prepare("SELECT alias_target FROM yy_search_alias WHERE lower(alias_term) = lower(?)");
+    $aliasStmt = $pdo->prepare("
+        SELECT alias_target FROM yy_search_alias
+         WHERE lower(alias_term) = lower(?)
+           AND (alias_curated_flag = TRUE OR alias_session_count >= 3)
+    ");
     $aliasStmt->execute([$w]);
     $targets = $aliasStmt->fetchAll(PDO::FETCH_COLUMN);
     foreach ($targets as $t) {
@@ -266,18 +275,28 @@ try {
             $prev->execute([$_logSession, $q]);
             $prevQ = $prev->fetchColumn();
             if ($prevQ !== false && $prevQ !== '' && mb_strlen($prevQ) <= 100 && mb_strlen($q) <= 100) {
-                // Upsert on the lower(term)/lower(target) unique index; bump
-                // weight on each re-detection. Curated rows (weight>=10) are
-                // left untouched by the conflict update.
+                // Upsert on the lower(term)/lower(target) unique index. On
+                // re-detection, weight + session_count only bump when the
+                // detecting session differs from the last one that bumped it,
+                // so a single user exploring a thematic neighborhood can't
+                // ratchet a bad alias above the runtime gate of 3. Curated
+                // rows are still skipped by the WHERE clause.
                 $pdo->prepare("
-                    INSERT INTO yy_search_alias (alias_term, alias_target, alias_weight, alias_session_count, alias_curated_flag, alias_auto_dtime)
-                    VALUES (?, ?, 1, 1, FALSE, NOW())
+                    INSERT INTO yy_search_alias
+                        (alias_term, alias_target, alias_weight, alias_session_count,
+                         alias_curated_flag, alias_auto_dtime, alias_last_session)
+                    VALUES (?, ?, 1, 1, FALSE, NOW(), ?)
                     ON CONFLICT (lower(alias_term), lower(alias_target)) DO UPDATE
-                        SET alias_weight        = yy_search_alias.alias_weight + 1,
-                            alias_session_count = yy_search_alias.alias_session_count + 1,
+                        SET alias_weight =
+                                yy_search_alias.alias_weight +
+                                CASE WHEN yy_search_alias.alias_last_session IS DISTINCT FROM EXCLUDED.alias_last_session THEN 1 ELSE 0 END,
+                            alias_session_count =
+                                yy_search_alias.alias_session_count +
+                                CASE WHEN yy_search_alias.alias_last_session IS DISTINCT FROM EXCLUDED.alias_last_session THEN 1 ELSE 0 END,
+                            alias_last_session  = EXCLUDED.alias_last_session,
                             alias_auto_dtime    = NOW()
                         WHERE NOT yy_search_alias.alias_curated_flag
-                ")->execute([$prevQ, $q]);
+                ")->execute([$prevQ, $q, $_logSession]);
             }
         }
     }
