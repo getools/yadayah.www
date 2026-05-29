@@ -3,11 +3,16 @@
 # Host-side worker that processes book pipeline jobs queued by admin-books.php.
 #
 # For each job in /opt/yada-www/jobs/book-pipeline/:
-#   1. Convert .docx → .pdf via LibreOffice headless
+#   1. Convert .docx → .pdf via Microsoft Graph (Word's own renderer).
+#      Hard requirement: PDFs are bit-for-bit Word output. OnlyOffice and
+#      LibreOffice paths kept below as legacy code but no longer reachable.
+#      Fail-loud if Graph is down — never silently fall back to a renderer
+#      that has produced kerning-collapse bugs in the past.
 #   2. Move PDF to /opt/yada-www/public/pdf/
-#   3. Trigger FlipHTML5 upload (re-uses upload_fliphtml5.py via the rsshub container)
-#   4. Download published flipbook .zip and extract to /opt/yada-www/public/flipbook/<code>/
-#   5. Update yy_volume.volume_pdf, .volume_flip_code, and .volume_pipeline_*
+#   3. (FlipHTML5 phase preserved as legacy; the self-hosted flipbook
+#      system under /<volume_code>/ replaces it and is rebuilt elsewhere.)
+#   4. Update yy_volume.volume_pdf, .volume_flip_code, and .volume_pipeline_*
+#   5. Run parse_volume_from_bundle.py to refresh paragraphs + translations.
 #
 # Crontab (every 15 minutes):
 #   */15 * * * * /opt/yada-www/book-pipeline-worker.sh >> /var/log/book-pipeline.log 2>&1
@@ -231,82 +236,62 @@ process_job() {
         return
     fi
 
-    # ── Phase 1: DOCX → PDF ──
-    # Primary path: ONLYOFFICE Document Server (12-20s, ~800MB peak).
-    # Fallback: LibreOffice 2-step DOCX→ODT→PDF bridge (10-60min, plateaus
-    # at 1.2-2GB — slower but a known-good safety net).
-    # On retry (after FlipHTML5 auto-requeue) the PDF is already on disk —
-    # skip conversion so retries don't waste cycles re-converting an
-    # unchanged docx.
-    local tmp_out="" lo_output="" lo_rc=0
+    # ── Phase 1: DOCX → PDF via Microsoft Graph (Word's own renderer) ──
+    # The Graph API exposes desktop Word's PDF exporter as REST. Output is
+    # bit-for-bit identical to File → Save As PDF in Word. This replaces
+    # the OnlyOffice + LibreOffice paths (both still defined above as
+    # legacy code, but no longer reachable) which produced kerning-collapse
+    # bugs that destroyed inter-word spaces in justified condensed-spacing
+    # paragraphs (Snake/Satanic had 200+ each).
+    #
+    # No fallback path. If Graph is down, the job remains queued (cron will
+    # pick it up next tick) and the admin sees the failure clearly. Silent
+    # fallback to a renderer with known PDF-text-quality issues was the
+    # original sin we are eliminating.
+    #
+    # On retry the PDF is already on disk — skip conversion so retries
+    # don't waste cycles re-converting an unchanged docx.
     if [ -f "$PDF_DIR/$pdf_name" ] && [ -s "$PDF_DIR/$pdf_name" ] && [ ! "$docx_path" -nt "$PDF_DIR/$pdf_name" ]; then
         log "PDF already on disk — skipping conversion (retry path): $PDF_DIR/$pdf_name"
-    elif convert_via_onlyoffice "$docx_path" "$PDF_DIR/$pdf_name"; then
-        log "ONLYOFFICE wrote PDF: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
     else
-        # ── LibreOffice fallback (2-step bridge) ──
-        log "Falling back to LibreOffice 2-step bridge for $docx_name"
-        tmp_out=$(mktemp -d)
-        local odt_tmp; odt_tmp=$(mktemp -d)
-        # ────────────────────────────────────────────────────────────────
-        # DO NOT AUTO-FIX OR REVERT THIS BLOCK. Two-step DOCX->ODT->PDF
-        # bridge is intentional. Direct DOCX->PDF triggers a memory leak
-        # in LibreOffice's combined import+export pipeline that explodes
-        # RSS past 7GB on s02v01/v06/v07 and gets cgroup-OOM killed.
-        # The bridge plateaus at ~1.2-2GB (bounded). Slower (10-60 min
-        # per volume) but always completes. Bumping MemoryMax / adding
-        # swap / extending timeout does NOT fix the leak — only the
-        # bridge does. See: hand-debugged 2026-05-05 by Joe.
-        # ────────────────────────────────────────────────────────────────
-        local odt_rc=0 odt_output
-        odt_output=$(systemd-run --scope --quiet \
-            --property=MemoryMax=$SOFFICE_MEM_MAX \
-            --property=MemorySwapMax=0 \
-            --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-            timeout 900 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_${$}_odt" --convert-to odt --outdir "$odt_tmp" "$docx_path" 2>&1) || odt_rc=$?
-        odt_rc=${odt_rc:-0}
-        echo "$odt_output" >> /var/log/book-pipeline.log
-        local odt_path; odt_path=$(ls "$odt_tmp"/*.odt 2>/dev/null | head -1)
-        if [ "$odt_rc" -ne 0 ] || [ -z "$odt_path" ]; then
-            log "DOCX->ODT step failed (rc=$odt_rc)"
-            update_status "$volume_key" "error" "LibreOffice DOCX->ODT step failed (exit $odt_rc)" "$odt_output"
+        local graph_output graph_rc=0
+        graph_output=$(/opt/yada-www/parsers/docx_to_pdf_via_graph.py \
+            --input  "$docx_path" \
+            --output "$PDF_DIR/$pdf_name" 2>&1) || graph_rc=$?
+        graph_rc=${graph_rc:-0}
+        echo "$graph_output" >> /var/log/book-pipeline.log
+        if [ "$graph_rc" -eq 2 ]; then
+            # Exit 2 = PDF was written but failed validation
+            # (producer not Word, or run-on tokens > threshold).
+            log "Graph conversion produced suspect PDF for $docx_name — refusing to publish (rc=2)"
+            update_status "$volume_key" "error" \
+                "Graph PDF validation failed (producer != Word, or kerning regression)" \
+                "$graph_output"
+            # Remove the suspect output so a future re-run actually re-converts.
+            rm -f "$PDF_DIR/$pdf_name"
             mv "$job" "$JOBS_DIR/failed/"
-            rm -rf "$tmp_out" "$odt_tmp"
             return
         fi
-        log "DOCX->ODT bridge ok ($(stat -c%s "$odt_path") bytes); rendering ODT->PDF"
-        lo_output=$(systemd-run --scope --quiet \
-            --property=MemoryMax=$SOFFICE_MEM_MAX \
-            --property=MemorySwapMax=0 \
-            --property=CPUQuota=$SOFFICE_CPU_QUOTA \
-            timeout 14400 env HOME=/tmp soffice --headless --norestore --nologo --nofirststartwizard "-env:UserInstallation=file:///tmp/lo_profile_${$}_pdf" --convert-to "pdf:writer_pdf_Export:UseTaggedPDF=false:ExportBookmarks=false:ExportNotes=false" --outdir "$tmp_out" "$odt_path" 2>&1) || lo_rc=$?
-        lo_rc=${lo_rc:-0}
-        echo "$lo_output" >> /var/log/book-pipeline.log
-        rm -rf "$odt_tmp"
-    fi
-    if [ "$lo_rc" -ne 0 ]; then
-        log "LibreOffice failed for $docx_name (exit $lo_rc)"
-        update_status "$volume_key" "error" "LibreOffice conversion failed (exit $lo_rc)" "$lo_output"
-        mv "$job" "$JOBS_DIR/failed/"
-        [ -n "$tmp_out" ] && rm -rf "$tmp_out"
-        return
-    fi
-    if [ ! -f "$PDF_DIR/$pdf_name" ] || [ ! -s "$PDF_DIR/$pdf_name" ]; then
-        # Only when LibreOffice ran (skipped on retry path where PDF existed).
-        local generated
-        generated=$(ls "${tmp_out:-/nonexistent}"/*.pdf 2>/dev/null | head -1)
-        if [ -z "$generated" ] || [ ! -f "$generated" ]; then
-            log "LibreOffice produced no PDF"
-            update_status "$volume_key" "error" "LibreOffice produced no output" "$lo_output"
-            mv "$job" "$JOBS_DIR/failed/"
-            [ -n "$tmp_out" ] && rm -rf "$tmp_out"
+        if [ "$graph_rc" -ne 0 ]; then
+            log "Graph conversion failed for $docx_name (rc=$graph_rc) — leaving job queued for next tick"
+            update_status "$volume_key" "warning" \
+                "Microsoft Graph DOCX→PDF failed (rc=$graph_rc) — auto-retry on next cron tick" \
+                "$graph_output"
+            # Leave job file in JOBS_DIR for next tick. Don't move to failed/
+            # — transient network / Graph 5xx is expected and resolves on its own.
             return
         fi
-        mv "$generated" "$PDF_DIR/$pdf_name"
+        if [ ! -s "$PDF_DIR/$pdf_name" ] || [ $(stat -c%s "$PDF_DIR/$pdf_name") -lt 10000 ]; then
+            log "Graph produced missing/tiny PDF for $docx_name — failing job"
+            update_status "$volume_key" "error" \
+                "Graph PDF output missing or implausibly small" "$graph_output"
+            rm -f "$PDF_DIR/$pdf_name"
+            mv "$job" "$JOBS_DIR/failed/"
+            return
+        fi
         chmod 644 "$PDF_DIR/$pdf_name" 2>/dev/null
-        log "PDF written: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
+        log "Graph wrote PDF: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
     fi
-    [ -n "$tmp_out" ] && rm -rf "$tmp_out"
 
     update_outputs "$volume_key" "$pdf_name" ""
     update_status "$volume_key" "running" "PDF generated; uploading to FlipHTML5"
