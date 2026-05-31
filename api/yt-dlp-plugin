@@ -1,0 +1,15 @@
+#!/bin/bash
+# Invoke the pip-installed yt-dlp so external plugins (bgutil POT provider, etc.)
+# in /var/www/.config/yt-dlp/plugins/ are loaded.  The compiled
+# /usr/local/bin/yt-dlp binary ships its own Python interpreter and cannot
+# load external .py plugin files.
+#
+# Auto-installs pip + yt-dlp the first time it is called after a container
+# restart (takes ~10 s; subsequent calls are instant).
+if ! python3 -c 'import yt_dlp' 2>/dev/null; then
+    curl -s https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py \
+      && python3 /tmp/get-pip.py --break-system-packages -q \
+      && pip install yt-dlp --break-system-packages -q \
+      || exit 1
+fi
+HOME=/var/www exec python3 -m yt_dlp --config-location /var/www/html/api/yt-dlp.conf "$@"

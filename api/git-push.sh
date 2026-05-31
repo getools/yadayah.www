@@ -27,9 +27,11 @@ git rebase --abort 2>/dev/null || true
 git fetch origin master 2>&1
 git checkout -B master origin/master 2>&1
 
-# Sync API PHP files
+# Sync API PHP files and supporting config/scripts without extensions
 rsync -a --delete "$DEPLOY_DIR/api/" "$GIT_DIR/api/" \
-    --include='*.php' --include='*.sh' --include='*/' --exclude='*'
+    --include='*.php' --include='*.sh' --include='*.conf' \
+    --include='yt-dlp-plugin' \
+    --include='*/' --exclude='*'
 
 # Sync only specific public subdirectories that contain code
 rsync -a "$DEPLOY_DIR/public/css/" "$GIT_DIR/public/css/" \
