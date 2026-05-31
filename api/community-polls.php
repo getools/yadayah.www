@@ -23,13 +23,13 @@ if ($method === 'GET') {
 
     // Get options with vote counts
     $stmt = $db->prepare("
-        SELECT o.option_key, o.option_text, o.option_sort_order,
+        SELECT o.option_key, o.option_text, o.option_sort,
                COUNT(v.vote_key) AS vote_count
         FROM yy_community_poll_option o
         LEFT JOIN yy_community_poll_vote v ON o.option_key = v.option_key
         WHERE o.poll_key = ?
         GROUP BY o.option_key
-        ORDER BY o.option_sort_order
+        ORDER BY o.option_sort
     ");
     $stmt->execute([$poll['poll_key']]);
     $options = $stmt->fetchAll();
@@ -94,7 +94,7 @@ if ($method === 'POST') {
         $stmt->execute([$topicKey, $userKey, $question, $multiVote ? 'TRUE' : 'FALSE']);
         $pollKey = $stmt->fetchColumn();
 
-        $optStmt = $db->prepare("INSERT INTO yy_community_poll_option (poll_key, option_text, option_sort_order) VALUES (?, ?, ?)");
+        $optStmt = $db->prepare("INSERT INTO yy_community_poll_option (poll_key, option_text, option_sort) VALUES (?, ?, ?)");
         foreach ($options as $i => $optText) {
             $optStmt->execute([$pollKey, trim($optText), $i + 1]);
         }
