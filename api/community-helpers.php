@@ -7,6 +7,9 @@
  * Sanitize HTML - strip dangerous tags/attributes, allow safe ones.
  */
 function sanitizeHtml(string $html): string {
+    if (strlen($html) > 524288) { // 512KB hard limit — strip_tags on larger inputs can exhaust 128MB PHP memory
+        return '';
+    }
     // Allowed tags and their allowed attributes
     $allowed = [
         'b' => [], 'i' => [], 'em' => [], 'strong' => [], 'u' => [], 's' => [], 'del' => [], 'sub' => [], 'sup' => [],

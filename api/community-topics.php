@@ -233,6 +233,11 @@ if ($method === 'POST') {
     if ($verified === false || $verified === 'f') errorResponse('Please verify your email before posting. Check your inbox or resend from your profile.');
 
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
+    foreach (['topic_body_html', 'reply_body_html'] as $htmlField) {
+        if (isset($data[$htmlField]) && strlen($data[$htmlField]) > 500000) {
+            errorResponse('Content is too large (max 500KB)', 400);
+        }
+    }
     $action = $data['action'] ?? 'create_topic';
 
     if ($action === 'create_topic') {
