@@ -254,6 +254,7 @@ process_job() {
     if [ -f "$PDF_DIR/$pdf_name" ] && [ -s "$PDF_DIR/$pdf_name" ] && [ ! "$docx_path" -nt "$PDF_DIR/$pdf_name" ]; then
         log "PDF already on disk — skipping conversion (retry path): $PDF_DIR/$pdf_name"
     else
+        # 1a. Primary: Microsoft Graph (fast, ~30s, but 60s server-side cap)
         local graph_output graph_rc=0
         graph_output=$(/opt/yada-www/parsers/docx_to_pdf_via_graph.py \
             --input  "$docx_path" \
@@ -267,30 +268,70 @@ process_job() {
             update_status "$volume_key" "error" \
                 "Graph PDF validation failed (producer != Word, or kerning regression)" \
                 "$graph_output"
-            # Remove the suspect output so a future re-run actually re-converts.
             rm -f "$PDF_DIR/$pdf_name"
             mv "$job" "$JOBS_DIR/failed/"
             return
         fi
         if [ "$graph_rc" -ne 0 ]; then
-            log "Graph conversion failed for $docx_name (rc=$graph_rc) — leaving job queued for next tick"
-            update_status "$volume_key" "warning" \
-                "Microsoft Graph DOCX→PDF failed (rc=$graph_rc) — auto-retry on next cron tick" \
-                "$graph_output"
-            # Leave job file in JOBS_DIR for next tick. Don't move to failed/
-            # — transient network / Graph 5xx is expected and resolves on its own.
-            return
+            # 1b. Fallback: Word for the Web via headless Playwright.
+            # Graph fails on files that need >60s to render. Word Online
+            # uses the same render engine but has no 60s cap on its UI
+            # path, so the fallback handles the timeout-bound stragglers.
+            if echo "$graph_output" | grep -qE "Timeout_TaskCanceled|wordcs\.officeapps\.live\.com"; then
+                log "Graph hit WRS timeout for $docx_name — falling back to Word for the Web"
+                update_status "$volume_key" "running" "Graph timed out — falling back to Word for the Web"
+                local wol_output wol_rc=0
+                wol_output=$(/opt/yada-www/parsers/docx_to_pdf_via_word_online.py \
+                    --input  "$docx_path" \
+                    --output "$PDF_DIR/$pdf_name" 2>&1) || wol_rc=$?
+                wol_rc=${wol_rc:-0}
+                echo "$wol_output" >> /var/log/book-pipeline.log
+                if [ "$wol_rc" -eq 3 ]; then
+                    log "Word Online auth expired for $docx_name — manual re-bootstrap required"
+                    update_status "$volume_key" "error" \
+                        "Word Online auth state expired — re-run refresh_word_online_auth.py on a Windows machine and SCP the result to /opt/yada-www/secrets/" \
+                        "$wol_output"
+                    mv "$job" "$JOBS_DIR/failed/"
+                    return
+                fi
+                if [ "$wol_rc" -eq 2 ]; then
+                    log "Word Online produced suspect PDF for $docx_name — refusing to publish"
+                    update_status "$volume_key" "error" \
+                        "Word Online PDF validation failed (producer != Word, or kerning regression)" \
+                        "$wol_output"
+                    rm -f "$PDF_DIR/$pdf_name"
+                    mv "$job" "$JOBS_DIR/failed/"
+                    return
+                fi
+                if [ "$wol_rc" -ne 0 ]; then
+                    log "Word Online fallback failed for $docx_name (rc=$wol_rc) — leaving job queued for next tick"
+                    update_status "$volume_key" "warning" \
+                        "Both Graph and Word Online failed (Graph rc=$graph_rc, WOL rc=$wol_rc) — retry next tick" \
+                        "$wol_output"
+                    return
+                fi
+                log "Word Online fallback succeeded for $docx_name"
+            else
+                # Graph failed for some non-timeout reason — likely transient
+                # network / 5xx. Leave queued for next tick rather than
+                # fall through to Word Online.
+                log "Graph conversion failed for $docx_name (rc=$graph_rc, non-timeout) — leaving job queued for next tick"
+                update_status "$volume_key" "warning" \
+                    "Microsoft Graph DOCX→PDF failed (rc=$graph_rc) — auto-retry on next cron tick" \
+                    "$graph_output"
+                return
+            fi
         fi
         if [ ! -s "$PDF_DIR/$pdf_name" ] || [ $(stat -c%s "$PDF_DIR/$pdf_name") -lt 10000 ]; then
-            log "Graph produced missing/tiny PDF for $docx_name — failing job"
+            log "PDF output missing/tiny for $docx_name — failing job"
             update_status "$volume_key" "error" \
-                "Graph PDF output missing or implausibly small" "$graph_output"
+                "PDF output missing or implausibly small after Graph + Word-Online" ""
             rm -f "$PDF_DIR/$pdf_name"
             mv "$job" "$JOBS_DIR/failed/"
             return
         fi
         chmod 644 "$PDF_DIR/$pdf_name" 2>/dev/null
-        log "Graph wrote PDF: $PDF_DIR/$pdf_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
+        log "PDF generated for $docx_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
     fi
 
     update_outputs "$volume_key" "$pdf_name" ""
