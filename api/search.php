@@ -59,10 +59,26 @@ function highlightSnippet(string $snippet, array $words, array $stripChars, arra
     $vowels = ['a','e','i','o','u'];
     $marks = []; // [start, end) character-index pairs
 
+    // Word-boundary check that matches Postgres \m / \M semantics used by
+    // the search regex side. Treats [a-z0-9_] as word chars; everything
+    // else (whitespace, punctuation, non-ASCII letters) is a boundary.
+    // Without this, searching for "he" highlighted the "he" inside
+    // "the", "When", "them" — substring rather than whole-word.
+    $isWordChar = function ($c) {
+        return $c !== '' && preg_match('/[a-z0-9_]/u', $c) === 1;
+    };
+
     // Inner: walk $snippet from index $i, trying to match $word, with
     // $extraSkip giving the additional chars to skip on the snippet side
-    // beyond $stripChars.
-    $matchAt = function ($i, $word, $extraSkip) use ($lower, $len, $stripChars) {
+    // beyond $stripChars. Requires a word boundary on both sides of the
+    // match so highlights respect the same regex semantics as the
+    // search itself (`\msurely\M`, etc.).
+    $matchAt = function ($i, $word, $extraSkip) use ($lower, $len, $stripChars, $isWordChar) {
+        // Boundary at start: char at $i-1 must not be a word char.
+        if ($i > 0) {
+            $prev = mb_substr($lower, $i - 1, 1);
+            if ($isWordChar($prev)) return -1;
+        }
         $j = $i; $w = 0; $wlen = mb_strlen($word);
         while ($j < $len && $w < $wlen) {
             $c = mb_substr($lower, $j, 1);
@@ -70,7 +86,13 @@ function highlightSnippet(string $snippet, array $words, array $stripChars, arra
             if ($c !== mb_substr($word, $w, 1)) return -1;
             $j++; $w++;
         }
-        return $w === $wlen ? $j : -1;
+        if ($w !== $wlen) return -1;
+        // Boundary at end: char at $j must not be a word char.
+        if ($j < $len) {
+            $next = mb_substr($lower, $j, 1);
+            if ($isWordChar($next)) return -1;
+        }
+        return $j;
     };
     $scan = function (array $list, array $extraSkip) use (&$marks, $len, $matchAt) {
         foreach ($list as $word) {
