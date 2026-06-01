@@ -233,8 +233,25 @@ if ($mode === 'phrase') {
 }
 
 $allConditions = array_merge(['(' . implode(' OR ', $ftsMatchConditions) . ')'], $filterConditions);
-$ftsWhere = 'WHERE ' . implode(' AND ', $allConditions);
 $allParams = array_merge($ftsMatchParams, $filterParams);
+
+// "All Words" gate: in addition to the OR'd FTS/ILIKE conditions above,
+// require each query word to appear as a literal word in the paragraph.
+// Postgres `plainto_tsquery('english', …)` drops common stopwords ('he',
+// 'and', 'the', …), so without this gate a search for "surely he would"
+// would match paragraphs containing only "surely" and "would" — which
+// users correctly identify as "Any Word"-like behavior, not "All Words".
+// \m and \M are Postgres word-boundary anchors (start/end of word).
+if ($mode === 'all') {
+    foreach ($queryWords as $qw) {
+        $qwTrim = preg_replace('/[^A-Za-z0-9]/', '', $qw);
+        if ($qwTrim === '') continue;
+        $allConditions[] = "normalize_search_text(p.paragraph_text_plain) ~* ?";
+        $allParams[]     = '\m' . preg_quote(strtolower($qwTrim), '/') . '\M';
+    }
+}
+
+$ftsWhere = 'WHERE ' . implode(' AND ', $allConditions);
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key $ftsWhere");
 $countStmt->execute($allParams);
