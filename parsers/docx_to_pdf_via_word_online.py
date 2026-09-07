@@ -87,7 +87,7 @@ def _get_file_web_url(item_id: str) -> str:
 
 # ── Word for the Web automation ───────────────────────────────────────
 
-def _get_word_frame(page, timeout_ms=PAGE_LOAD_TIMEOUT_MS):
+def _get_word_frame(page, timeout_ms=PAGE_LOAD_TIMEOUT_MS, nav_url=None):
     """Word for the Web's actual editor UI lives inside an iframe named
     'WacFrame_Word_0' pointing at word-edit.officeapps.live.com. We need
     to switch into that frame to interact with the ribbon/menus."""
@@ -95,17 +95,66 @@ def _get_word_frame(page, timeout_ms=PAGE_LOAD_TIMEOUT_MS):
     page.wait_for_selector("iframe[name='WacFrame_Word_0']", timeout=timeout_ms)
     deadline = time.time() + (timeout_ms / 1000)
     last_log = 0.0
+    blank_since = None
+    reload_count = 0
+    _wacframe_give_up = False
     while time.time() < deadline:
         for f in page.frames:
             if f.name == "WacFrame_Word_0":
+                # Cache f.url once per iteration: Playwright frame.url is a live
+                # browser call; reading it twice in one iteration can return
+                # different values if the frame is mid-navigation, causing us to
+                # miss the word-edit URL during the brief window it is set.
+                frame_url = f.url
                 # Make sure the frame's URL has actually settled at word-edit
-                if "word-edit.officeapps.live.com" in f.url:
-                    sys.stderr.write(f"[word-online] found Word editor frame: {f.url[:120]}\n")
+                if "word-edit.officeapps.live.com" in frame_url:
+                    sys.stderr.write(f"[word-online] found Word editor frame: {frame_url[:120]}\n")
                     return f
                 now = time.time()
+                if frame_url in ("about:blank", ""):
+                    if blank_since is None:
+                        blank_since = now
+                    # If WacFrame stuck at about:blank for 60s, do a full fresh
+                    # navigation (page.goto rather than page.reload) — a browser
+                    # reload doesn't reset Word Online's WacFrame initialisation
+                    # state and the iframe stays at about:blank. A full goto gives
+                    # a clean Word Online session. Allow up to 3 attempts.
+                    if reload_count < 3 and (now - blank_since) >= 60:
+                        reload_count += 1
+                        blank_since = None
+                        sys.stderr.write(
+                            f"[word-online] WacFrame stuck at about:blank >60s — "
+                            f"fresh navigation (attempt {reload_count}/3)\n"
+                        )
+                        try:
+                            if nav_url:
+                                page.goto(nav_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+                            else:
+                                page.reload(wait_until="domcontentloaded", timeout=60_000)
+                            page.wait_for_selector("iframe[name='WacFrame_Word_0']", timeout=30_000)
+                        except Exception as _rel_e:
+                            sys.stderr.write(f"[word-online] navigation attempt error: {_rel_e}\n")
+                        # Extend the deadline so each attempt gets a fresh window;
+                        # the navigation itself (~90s) would otherwise consume
+                        # the remaining budget and leave no time for the iframe to load.
+                        deadline = max(deadline, time.time() + (timeout_ms / 1000))
+                    elif (now - blank_since) >= 60:
+                        # All 3 fresh-navigation retries exhausted; WacFrame still
+                        # blank after another 60s. Fail immediately rather than
+                        # burning the remaining deadline window (~240s) doing nothing.
+                        sys.stderr.write(
+                            "[word-online] WacFrame still blank after all 3 navigation "
+                            "retries — failing fast\n"
+                        )
+                        _wacframe_give_up = True
+                        break
+                else:
+                    blank_since = None
                 if now - last_log >= 30:
-                    sys.stderr.write(f"[word-online] WacFrame URL still loading: {f.url[:150]}\n")
+                    sys.stderr.write(f"[word-online] WacFrame URL still loading: {frame_url[:150]}\n")
                     last_log = now
+        if _wacframe_give_up:
+            break
         time.sleep(1)
     frame_urls = [(f.name, f.url[:80]) for f in page.frames if f.url]
     sys.stderr.write(f"[word-online] frames at timeout: {frame_urls}\n")
@@ -166,10 +215,10 @@ def _dismiss_overlays(frame, page=None):
         sys.stderr.write(f"[word-online] dismissed {dismissed} overlay(s)\n")
 
 
-def _trigger_pdf_download(page) -> str:
+def _trigger_pdf_download(page, nav_url=None) -> str:
     """Navigate File menu inside the Word for the Web iframe and trigger
     Download as PDF. Returns the path to the downloaded PDF."""
-    frame = _get_word_frame(page)
+    frame = _get_word_frame(page, nav_url=nav_url)
     # Give Word for the Web ~10s to finish rendering the ribbon and any
     # first-time dialogs that pop on top of it.
     sys.stderr.write("[word-online] giving Word for the Web 10s to settle...\n")
@@ -182,14 +231,48 @@ def _trigger_pdf_download(page) -> str:
     # auto-selected on document load — visible when the Picture Format ribbon tab
     # is shown on load. A selected image/object causes the File tab click to fail
     # to open the File backstage (coordinate clicks register but backstage doesn't open).
+    # Use frame.press() (sends key directly to frame body) rather than
+    # page.keyboard.press() which may miss the iframe if focus is ambiguous.
+    # Image-heavy docs need more than 2 Escapes; use 5 + Ctrl+Home to guarantee
+    # the cursor is in text content and no image/object remains selected.
     try:
         frame.click("body", timeout=3000)
         time.sleep(0.3)
-        page.keyboard.press("Escape")
-        time.sleep(0.3)
-        page.keyboard.press("Escape")
+        for _esc_i in range(5):
+            try:
+                frame.press("body", "Escape", timeout=2000)
+            except Exception:
+                pass
+            time.sleep(0.2)
+        try:
+            frame.press("body", "Control+Home", timeout=2000)
+        except Exception:
+            pass
         time.sleep(0.5)
-        sys.stderr.write("[word-online] Escape x2 to exit any image/object selection\n")
+        sys.stderr.write("[word-online] Escape x5 + Ctrl+Home to exit any image/object selection\n")
+    except Exception:
+        pass
+    # Verify the Picture Format tab is no longer active. If "Wrap Text" / "Crop" /
+    # "Format Picture" appear in the ribbon, an image is still selected and a File
+    # click will open the wrong backstage. Do another deselection round if so.
+    try:
+        _ribbon_text = frame.evaluate(
+            "() => { var r = document.querySelector('[class*=ribbon],[class*=Ribbon],[role=menubar]');"
+            " return r ? r.innerText.slice(0,400) : document.body ? document.body.innerText.slice(0,400) : ''; }"
+        )
+        if _ribbon_text and any(kw in _ribbon_text for kw in ["Wrap Text", "Crop", "Format Picture", "Lock aspect"]):
+            sys.stderr.write("[word-online] Picture Format still active — extra Escape x5 + Ctrl+Home\n")
+            for _esc_i in range(5):
+                try:
+                    frame.press("body", "Escape", timeout=2000)
+                except Exception:
+                    pass
+                time.sleep(0.2)
+            try:
+                frame.press("body", "Control+Home", timeout=2000)
+            except Exception:
+                pass
+            time.sleep(0.5)
     except Exception:
         pass
     # The frame itself needs to finish booting — wait for the ribbon to
@@ -475,9 +558,16 @@ def _trigger_pdf_download(page) -> str:
             try:
                 frame.click("body", timeout=3000)
                 time.sleep(0.3)
-                page.keyboard.press("Escape")
-                time.sleep(0.3)
-                page.keyboard.press("Escape")
+                for _esc_i in range(5):
+                    try:
+                        frame.press("body", "Escape", timeout=2000)
+                    except Exception:
+                        pass
+                    time.sleep(0.2)
+                try:
+                    frame.press("body", "Control+Home", timeout=2000)
+                except Exception:
+                    pass
                 time.sleep(0.5)
             except Exception:
                 pass
@@ -725,8 +815,72 @@ def convert_one(docx_path: Path, pdf_path: Path) -> None:
 
             # _trigger_pdf_download handles waiting for the editor iframe
             # to load, finding File inside it, and triggering the PDF
-            # download. No outer wait needed here.
-            tmp_pdf = _trigger_pdf_download(page)
+            # download. Retry up to 2 times if Word Online reports a render
+            # error ("We couldn't convert your document") or when WacFrame is
+            # stuck at about:blank on initial load (MS-side file state issue).
+            # On each retry, delete the stale OneDrive item and re-upload a
+            # fresh copy — a failed render or MS indexing issue can leave the
+            # file in a bad state, causing WacFrame to stay at about:blank when
+            # navigating back to the same item URL. A fresh upload gives a new
+            # item_id and a clean Word Online session.
+            _wol_render_retries = 0
+            _wol_render_max = 2  # allow 2 re-uploads (3 attempts total)
+            while True:
+                try:
+                    tmp_pdf = _trigger_pdf_download(page, nav_url=url)
+                    break
+                except RuntimeError as _wol_e:
+                    if _wol_render_retries < _wol_render_max and (
+                        "reported an error" in str(_wol_e)
+                        or "didn't reach word-edit.officeapps.live.com" in str(_wol_e)
+                        or "could not find Download-as-PDF button" in str(_wol_e)
+                        or "could not find File menu in editor frame" in str(_wol_e)
+                    ):
+                        _wol_render_retries += 1
+                        _wol_e_s = str(_wol_e)
+                        _retry_reason = (
+                            "render error" if "reported an error" in _wol_e_s
+                            else "WacFrame stuck at about:blank" if "didn't reach word-edit.officeapps.live.com" in _wol_e_s
+                            else "Download-as-PDF button not found" if "could not find Download-as-PDF button" in _wol_e_s
+                            else "File menu not found in editor frame"
+                        )
+                        sys.stderr.write(
+                            f"[word-online] {_retry_reason} — deleting stale OneDrive file, "
+                            f"re-uploading fresh copy, and retrying "
+                            f"({_wol_render_retries}/{_wol_render_max}) after 2 min pause...\n"
+                        )
+                        # 2-minute pause gives the MS render queue time to clear.
+                        time.sleep(120)
+                        # Delete the stale OneDrive file. A failed render can corrupt
+                        # the file's cached rendering state; navigating back to the same
+                        # item URL then causes WacFrame to stay at about:blank.
+                        try:
+                            graph._delete_item(item_id)
+                        except Exception as _del_e:
+                            sys.stderr.write(f"[word-online] stale item cleanup: {_del_e}\n")
+                        # Upload a fresh timestamped copy so Microsoft gets a clean file.
+                        ts_name_r = f"{docx_path.stem}__{int(time.time())}__{os.getpid()}{docx_path.suffix}"
+                        tmp_docx_r = Path(_tempfile.gettempdir()) / ts_name_r
+                        _shutil.copy2(docx_path, tmp_docx_r)
+                        try:
+                            size_r = tmp_docx_r.stat().st_size
+                            if size_r < graph.LARGE_UPLOAD_THRESHOLD:
+                                item_id = graph._upload_small(tmp_docx_r, folder_id)
+                            else:
+                                item_id = graph._upload_large(tmp_docx_r, folder_id)
+                            sys.stderr.write(f"[word-online] re-uploaded as {ts_name_r}; item_id={item_id}\n")
+                        finally:
+                            try: tmp_docx_r.unlink()
+                            except Exception: pass
+                        new_web_url = _get_file_web_url(item_id)
+                        url = new_web_url + ("&" if "?" in new_web_url else "?") + "action=default"
+                        sys.stderr.write(f"[word-online] navigating to fresh file: {url}\n")
+                        try:
+                            page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+                        except Exception as _nav_e:
+                            sys.stderr.write(f"[word-online] re-navigation error: {_nav_e}\n")
+                    else:
+                        raise
             browser.close()
 
         # Move into final location with validation.

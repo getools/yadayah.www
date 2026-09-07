@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1788098404">
+    <meta name="page-version" content="1788760803">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary Admin - Yada Yah</title>
@@ -50,6 +50,36 @@
         .button-row { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
         .save-status { font-size: 0.85rem; color: #27ae60; }
         .save-error { font-size: 0.85rem; color: #c0392b; }
+
+        /* ── Words section ── */
+        .gw-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+        .gw-bar input[type=search] {
+            flex: 1; min-width: 220px; max-width: 420px; padding: 7px 10px;
+            border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit;
+        }
+        .gw-bar input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
+        .gw-count { font-size: 0.82rem; color: #888; }
+        .gw-bar .gw-spacer { margin-left: auto; }
+
+        .gw-table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); overflow: hidden; }
+        table.gw-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        table.gw-table th {
+            text-align: left; padding: 10px 12px; background: #f5f6f8; color: #555;
+            font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+            border-bottom: 1px solid #e0e0e0; white-space: nowrap;
+        }
+        table.gw-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+        table.gw-table tbody tr { cursor: pointer; }
+        table.gw-table tbody tr:hover { background: #f8fbfd; }
+        table.gw-table tr.inactive td { opacity: 0.45; }
+        table.gw-table .col-sort { width: 60px; color: #aaa; font-size: 0.8rem; }
+        table.gw-table .col-term { width: 190px; font-weight: 700; color: #1a5276; }
+        table.gw-table .col-see { width: 190px; color: #666; }
+        table.gw-table .col-active { width: 70px; text-align: center; }
+        table.gw-table .gw-def { color: #444; }
+        .gw-empty { padding: 26px 12px; text-align: center; color: #999; font-style: italic; font-size: 0.88rem; }
+        .gw-checkbox-row { display: flex; align-items: center; gap: 8px; }
+        .gw-danger { margin-left: auto; }
     </style>
 </head>
 <body>
@@ -83,10 +113,76 @@
         </div>
     </div>
 
-    <h1>Glossary - Hebrew Letters</h1>
+    <h1>Glossary</h1>
 
-    <div id="edit-panel" class="edit-panel"></div>
-    <div id="letter-list" class="letter-list"></div>
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="web" onclick="switchTab('web')">Web</button>
+        <button class="tab-btn" data-tab="words" onclick="switchTab('words')">Words</button>
+    </div>
+
+    <!-- ══ WEB TAB — Hebrew letters (yy_letter) ══ -->
+    <div id="tab-web" class="tab-content active">
+        <p style="margin:0 0 16px;color:#888;font-size:0.85rem;">Hebrew letters — the letter web on the public Glossary page.</p>
+        <div id="edit-panel" class="edit-panel"></div>
+        <div id="letter-list" class="letter-list"></div>
+    </div>
+
+    <!-- ══ WORDS TAB — standalone glossary terms (yy_glossary_word) ══ -->
+    <div id="tab-words" class="tab-content">
+        <div class="gw-bar">
+            <input type="search" id="gw-search" placeholder="Search term, definition, or see-also..." autocomplete="off">
+            <span id="gw-count" class="gw-count"></span>
+            <span class="gw-spacer"></span>
+            <button class="btn btn-primary" onclick="newWord()">New Word</button>
+        </div>
+
+        <!-- data-no-persist: record fields must not survive a refresh into the
+             next record being edited (session-state.js would otherwise bind them). -->
+        <div id="gw-panel" class="edit-panel" data-no-persist>
+            <h2 id="gw-panel-title">New Word</h2>
+
+            <div class="field-row"><label for="gw-term">Term</label>
+                <div class="field-input"><input type="text" id="gw-term" maxlength="200"></div></div>
+
+            <div class="field-row"><label for="gw-definition">Definition</label>
+                <div class="field-input"><textarea id="gw-definition" rows="6"></textarea></div></div>
+
+            <div class="field-row"><label for="gw-see-also">See Also</label>
+                <div class="field-input"><input type="text" id="gw-see-also" maxlength="500" placeholder="Comma-separated related terms"></div></div>
+
+            <div class="field-row"><label for="gw-sort">List Number</label>
+                <div class="field-input"><input type="number" id="gw-sort" class="small-input" value="0"></div></div>
+
+            <div class="field-row"><label for="gw-active">Active</label>
+                <div class="field-input"><div class="gw-checkbox-row">
+                    <input type="checkbox" id="gw-active" checked>
+                    <span style="color:#888;font-size:0.82rem;">Shown on the site</span>
+                </div></div></div>
+
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="saveWord()">Save</button>
+                <button class="btn btn-secondary" onclick="closeWordEdit()">Cancel</button>
+                <span id="gw-status" class="save-status" style="display:none">Saved!</span>
+                <span id="gw-error" class="save-error" style="display:none"></span>
+                <button class="btn btn-secondary gw-danger" id="gw-delete" style="display:none;color:#c0392b" onclick="deleteWord()">Delete</button>
+            </div>
+        </div>
+
+        <div class="gw-table-wrap">
+            <table class="gw-table">
+                <thead>
+                    <tr>
+                        <th class="col-sort">#</th>
+                        <th class="col-term">Term</th>
+                        <th>Definition</th>
+                        <th class="col-see">See Also</th>
+                        <th class="col-active">Active</th>
+                    </tr>
+                </thead>
+                <tbody id="gw-tbody"></tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
@@ -102,6 +198,7 @@ function checkAuth() {
             document.getElementById('user-display').textContent = d.user_name;
             applyPagePermissions(d.pages);
             loadLetters();
+            restoreTab();
         } else {
             document.getElementById('login-screen').classList.add('visible');
         }
@@ -124,6 +221,7 @@ function doLogin() {
             document.getElementById('user-display').textContent = d.user_name;
             applyPagePermissions(d.pages);
             loadLetters();
+            restoreTab();
         } else {
             errEl.textContent = d.error || 'Login failed';
             errEl.style.display = '';
@@ -284,6 +382,180 @@ function uploadImage() {
         setTimeout(function() { editLetter(editingKey); }, 300);
     });
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Tabs — "Web" (Hebrew letters) and "Words" (standalone glossary terms).
+   ══════════════════════════════════════════════════════════════════════ */
+
+var TAB_STORE = 'admin-glossary:tab';
+var wordsLoaded = false;
+
+function switchTab(name) {
+    if (name !== 'web' && name !== 'words') name = 'web';
+    var btns = document.querySelectorAll('.tab-bar .tab-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('active', btns[i].getAttribute('data-tab') === name);
+    }
+    var panes = document.querySelectorAll('.tab-content');
+    for (var j = 0; j < panes.length; j++) {
+        panes[j].classList.toggle('active', panes[j].id === 'tab-' + name);
+    }
+    try { localStorage.setItem(TAB_STORE, name); } catch (e) { /* private mode */ }
+    if (name === 'words' && !wordsLoaded) { wordsLoaded = true; loadWords(); }
+}
+
+function restoreTab() {
+    var saved = 'web';
+    try { saved = localStorage.getItem(TAB_STORE) || 'web'; } catch (e) {}
+    switchTab(saved);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Words — CRUD against /api/admin-glossary-word.php (yy_glossary_word).
+   ══════════════════════════════════════════════════════════════════════ */
+
+var editingWordKey = null;   // null = the panel is creating a new term
+var wordSearchTimer = null;
+
+function loadWords() {
+    var q = document.getElementById('gw-search').value.trim();
+    var url = API + '/admin-glossary-word.php' + (q ? '?q=' + encodeURIComponent(q) : '');
+    fetch(url, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        renderWords(d.words || []);
+    });
+}
+
+function renderWords(words) {
+    var tbody = document.getElementById('gw-tbody');
+    var countEl = document.getElementById('gw-count');
+    countEl.textContent = words.length ? (words.length + (words.length === 1 ? ' term' : ' terms')) : '';
+
+    if (!words.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="gw-empty">No glossary words yet — use New Word to add one.</td></tr>';
+        return;
+    }
+    var html = '';
+    words.forEach(function(w) {
+        var inactive = w.glossary_word_active_flag === false || w.glossary_word_active_flag === 'f';
+        html += '<tr class="' + (inactive ? 'inactive' : '') + '" onclick="editWord(' + w.glossary_word_key + ')">'
+            + '<td class="col-sort">' + (w.glossary_word_sort || 0) + '</td>'
+            + '<td class="col-term">' + esc(w.glossary_word_term || '') + '</td>'
+            + '<td class="gw-def">' + esc(w.glossary_word_definition || '') + '</td>'
+            + '<td class="col-see">' + esc(w.glossary_word_see_also || '') + '</td>'
+            + '<td class="col-active">' + (inactive ? '&mdash;' : '&#10003;') + '</td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function openWordPanel(title, showDelete) {
+    document.getElementById('gw-panel-title').textContent = title;
+    document.getElementById('gw-delete').style.display = showDelete ? '' : 'none';
+    document.getElementById('gw-status').style.display = 'none';
+    document.getElementById('gw-error').style.display = 'none';
+    var panel = document.getElementById('gw-panel');
+    panel.classList.add('active');
+    panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function newWord() {
+    editingWordKey = null;
+    document.getElementById('gw-term').value = '';
+    document.getElementById('gw-definition').value = '';
+    document.getElementById('gw-see-also').value = '';
+    document.getElementById('gw-sort').value = '0';
+    document.getElementById('gw-active').checked = true;
+    openWordPanel('New Word', false);
+    document.getElementById('gw-term').focus();
+}
+
+function editWord(key) {
+    fetch(API + '/admin-glossary-word.php?key=' + key, {credentials:'include'})
+        .then(function(r){return safeJson(r);}).then(function(w) {
+        if (!w || w.error) { alert((w && w.error) || 'Word not found'); return; }
+        editingWordKey = key;
+        document.getElementById('gw-term').value = w.glossary_word_term || '';
+        document.getElementById('gw-definition').value = w.glossary_word_definition || '';
+        document.getElementById('gw-see-also').value = w.glossary_word_see_also || '';
+        document.getElementById('gw-sort').value = w.glossary_word_sort || 0;
+        document.getElementById('gw-active').checked =
+            !(w.glossary_word_active_flag === false || w.glossary_word_active_flag === 'f');
+        openWordPanel('Edit: ' + (w.glossary_word_term || ''), true);
+    });
+}
+
+function closeWordEdit() {
+    editingWordKey = null;
+    var panel = document.getElementById('gw-panel');
+    panel.classList.remove('active');
+}
+
+function saveWord() {
+    var statusEl = document.getElementById('gw-status');
+    var errorEl = document.getElementById('gw-error');
+    statusEl.style.display = 'none';
+    errorEl.style.display = 'none';
+
+    var term = document.getElementById('gw-term').value.trim();
+    if (!term) {
+        errorEl.textContent = 'Term is required';
+        errorEl.style.display = '';
+        return;
+    }
+
+    var data = {
+        glossary_word_term: term,
+        glossary_word_definition: document.getElementById('gw-definition').value.trim(),
+        glossary_word_see_also: document.getElementById('gw-see-also').value.trim(),
+        glossary_word_sort: parseInt(document.getElementById('gw-sort').value, 10) || 0,
+        glossary_word_active_flag: document.getElementById('gw-active').checked
+    };
+
+    var isNew = !editingWordKey;
+    var url = API + '/admin-glossary-word.php' + (isNew ? '' : '?key=' + editingWordKey);
+
+    fetch(url, {
+        method: isNew ? 'POST' : 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) {
+            errorEl.textContent = d.error;
+            errorEl.style.display = '';
+            return;
+        }
+        if (isNew) editingWordKey = d.glossary_word_key;
+        document.getElementById('gw-panel-title').textContent = 'Edit: ' + term;
+        document.getElementById('gw-delete').style.display = '';
+        statusEl.style.display = '';
+        setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+        loadWords();
+    });
+}
+
+function deleteWord() {
+    if (!editingWordKey) return;
+    var term = document.getElementById('gw-term').value.trim();
+    if (!confirm('Delete "' + term + '" from the glossary?')) return;
+
+    fetch(API + '/admin-glossary-word.php?key=' + editingWordKey, {
+        method: 'DELETE', credentials: 'include'
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.error) {
+            var errorEl = document.getElementById('gw-error');
+            errorEl.textContent = d.error;
+            errorEl.style.display = '';
+            return;
+        }
+        closeWordEdit();
+        loadWords();
+    });
+}
+
+document.getElementById('gw-search').addEventListener('input', function() {
+    clearTimeout(wordSearchTimer);
+    wordSearchTimer = setTimeout(loadWords, 250);
+});
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();

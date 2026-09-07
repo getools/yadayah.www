@@ -411,6 +411,48 @@ process_job() {
                 mv "$job" "$JOBS_DIR/failed/"
                 return
             fi
+            # 1c. Last-resort fallback: ONLYOFFICE Document Server (local).
+            # Microsoft's SPO transform (centralus1-mediap.svc.ms) began
+            # returning HTTP 500 for every full-size book (~1.5MB+ docx)
+            # around 2026-09-01; byte-identical files that converted on
+            # 07-28 now fail, and Word Online's WacFrame never loads. This
+            # keeps the pipeline moving with no Microsoft dependency.
+            # Deliberately LAST: Word-rendered PDFs remain preferred for
+            # pagination/kerning fidelity, so this only runs once both
+            # Word-based routes are exhausted.
+            local oo_used=0
+            if [ "$wol_rc" -ne 0 ]; then
+                log "Word Online failed for $docx_name (rc=$wol_rc) - falling back to ONLYOFFICE"
+                update_status "$volume_key" "running" \
+                    "Graph + Word Online failed - falling back to ONLYOFFICE"
+                local oo_fb_rc=0
+                convert_via_onlyoffice "$docx_path" "$PDF_DIR/$pdf_name" || oo_fb_rc=$?
+                oo_fb_rc=${oo_fb_rc:-0}
+                if [ "$oo_fb_rc" -eq 0 ] && [ -s "$PDF_DIR/$pdf_name" ] \
+                   && [ "$(stat -c%s "$PDF_DIR/$pdf_name")" -ge 10000 ]; then
+                    log "ONLYOFFICE fallback succeeded for $docx_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
+                    # ONLYOFFICE emits no PDF bookmarks, unlike Word and
+                    # LibreOffice. extract_toc.py builds the flipbook TOC
+                    # from that outline and the bundle parser reads
+                    # chapters from it, so without this the book lands
+                    # with zero chapters. Rebuild it from the DOCX
+                    # headings; non-fatal, but loud, if it cannot.
+                    local toc_rc=0
+                    python3 /opt/yada-www/parsers/derive_pdf_outline.py \
+                        "$docx_path" "$PDF_DIR/$pdf_name" >> /var/log/book-pipeline.log 2>&1 || toc_rc=$?
+                    if [ "${toc_rc:-0}" -ne 0 ]; then
+                        log "Outline derivation failed for $docx_name (rc=$toc_rc) - chapters may be missing"
+                        log_monitor_event "book_pipeline" "warning" \
+                            "PDF outline could not be derived for $docx_name - book may parse with no chapters" ""
+                    fi
+                    oo_used=1
+                    wol_rc=0
+                else
+                    log "ONLYOFFICE fallback failed for $docx_name (rc=$oo_fb_rc)"
+                    rm -f "$PDF_DIR/$pdf_name"
+                fi
+            fi
+
             if [ "$wol_rc" -ne 0 ]; then
                 # Cap consecutive Graph+WOL failures so a permanently-broken DOCX
                 # does not block other queued volumes indefinitely.
@@ -435,7 +477,11 @@ process_job() {
                 fi
                 return
             fi
-            log "Word Online fallback succeeded for $docx_name"
+            if [ "$oo_used" -eq 1 ]; then
+                log "ONLYOFFICE produced the PDF for $docx_name (Graph + Word Online both failed)"
+            else
+                log "Word Online fallback succeeded for $docx_name"
+            fi
         fi
         if [ ! -s "$PDF_DIR/$pdf_name" ] || [ $(stat -c%s "$PDF_DIR/$pdf_name") -lt 10000 ]; then
             log "PDF output missing/tiny for $docx_name — failing job"

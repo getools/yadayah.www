@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1788098404">
+    <meta name="page-version" content="1788760803">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
@@ -92,7 +92,7 @@
         .cover-icon-note { flex: 1 1 auto; font-size: 0.8rem; color: #555; line-height: 1.5; }
         .cover-icon-note strong { color: #31345A; }
         .cover-slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-        .cover-slot { border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .cover-slot { position: relative; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
         .cover-slot h4 { margin: 0; font-size: 0.82rem; color: #31345A; }
         .cover-slot .cover-preview { height: 150px; background: #fafafa; border: 1px dashed #ddd; border-radius: 5px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         /* The preview may be wrapped in a link; size the anchor too or the
@@ -105,7 +105,21 @@
         .cover-slot .cover-acts button:hover:not(:disabled) { background: #eef1ff; border-color: #b9c2f0; }
         .cover-slot .cover-acts button.del { color: #b3261e; border-color: #e6bdb9; }
         .cover-slot .cover-acts button:disabled { opacity: 0.5; cursor: default; }
-        .cover-slot.busy { opacity: 0.55; pointer-events: none; }
+        .cover-slot.busy { pointer-events: none; }
+        /* Upload/processing overlay — covers the slot it belongs to so the
+           admin can see which image is in flight and how far along it is. */
+        .cover-busy { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(255,255,255,0.9); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; z-index: 2; }
+        .cover-busy .cover-busy-label { font-size: 0.74rem; font-weight: 600; color: #31345A; text-align: center; padding: 0 6px; }
+        .cover-busy .cover-bar { width: 78%; height: 6px; background: #e6e8f5; border-radius: 3px; overflow: hidden; }
+        .cover-busy .cover-bar > i { display: block; height: 100%; background: #4a53a8; border-radius: 3px; transition: width 0.12s linear; }
+        /* Server-side work (scale + size set + icon) has no measurable
+           progress, so the determinate bar becomes a moving sheen. */
+        .cover-busy .cover-bar.indet > i { width: 100% !important; background: linear-gradient(90deg, #e6e8f5 0%, #4a53a8 50%, #e6e8f5 100%); background-size: 200% 100%; animation: coverSlide 1.1s linear infinite; }
+        .cover-spin { width: 22px; height: 22px; border: 3px solid #dfe3f5; border-top-color: #4a53a8; border-radius: 50%; animation: coverSpin 0.8s linear infinite; flex: none; }
+        .cover-inline-busy { display: inline-flex; align-items: center; gap: 7px; font-size: 0.78rem; font-weight: 600; color: #31345A; white-space: nowrap; }
+        .cover-inline-busy .cover-spin { width: 14px; height: 14px; border-width: 2px; }
+        @keyframes coverSpin { to { transform: rotate(360deg); } }
+        @keyframes coverSlide { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
         .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
         .form-overlay.open { display: flex; }
@@ -809,6 +823,16 @@ var COVER_SLOTS = [
     { slot: 'back_3d',  label: 'Back · 3D'  }
 ];
 var coverPopKey = null;
+var coverPopVol = null;
+// Busy/progress state for the cover popover. It lives outside the DOM because
+// refreshCoverPopover() re-renders the whole grid while work is still in
+// flight — the indicator has to survive that re-render.
+var coverBusy = {};      // { slot: { label, pct|null } }
+var coverIconBusy = '';  // label shown in the icon strip while it rebuilds
+// regen_icon reuses the same filename, so the browser would keep showing the
+// cached icon and the rebuild would look like it did nothing. Stamped on
+// every icon-affecting action; used only by the popover preview.
+var coverIconBust = 0;
 
 // Mirror of the site's fallback so the admin shows what visitors actually see.
 function legacyCoverUrl(v) {
@@ -834,6 +858,8 @@ function openCoverPopover(volumeKey) {
     var v = allVolumes.find(function(r){ return r.volume_key == volumeKey; });
     if (!v) return;
     coverPopKey = volumeKey;
+    coverBusy = {};
+    coverIconBusy = '';
     document.getElementById('cover-pop-title').textContent = v.volume_label || ('Volume ' + volumeKey);
     renderCoverPopover(v);
     document.getElementById('cover-popover-overlay').classList.add('open');
@@ -844,10 +870,16 @@ function closeCoverPopover() {
     document.getElementById('cover-popover-overlay').classList.remove('open');
     document.getElementById('cover-pop-title').textContent = 'Cover Art';
     coverPopKey = null;
+    coverPopVol = null;
     document.body.style.overflow = '';
 }
 
-function renderCoverPopover(v) {
+// The derived icon is rebuilt server-side on every 2D-front upload, so the
+// strip carries its own busy line instead of borrowing a slot's overlay.
+function renderCoverIconStrip() {
+    var v = coverPopVol;
+    var strip = document.getElementById('cover-icon-strip');
+    if (!v || !strip) return;
     var legacy = legacyCoverUrl(v);
     var icon = v.volume_img_icon || '';
     var iconImg = icon || legacy;
@@ -862,13 +894,30 @@ function renderCoverPopover(v) {
         note = '<strong>Icon</strong> — none. Upload a 2D front cover and the icon is generated from it; '
              + 'until then this book shows a blank thumbnail in search results.';
     }
-    document.getElementById('cover-icon-strip').innerHTML =
+    var act = coverIconBusy
+        ? '<span class="cover-inline-busy"><span class="cover-spin"></span>' + esc(coverIconBusy) + '</span>'
+        : '<button type="button" class="btn btn-secondary btn-sm" ' + (v.volume_img_front_2d ? '' : 'disabled ')
+          + 'title="Regenerate the icon from the stored 2D front image" onclick="regenCoverIcon()">Rebuild icon</button>';
+    var iconSrc = iconImg
+        ? esc(iconImg) + (coverIconBust ? (iconImg.indexOf('?') < 0 ? '?t=' : '&t=') + coverIconBust : '')
+        : '';
+    strip.innerHTML =
         '<div class="cover-icon-box">'
-      + (iconImg ? '<img src="' + esc(iconImg) + '" alt="" onerror="this.remove()">' : '<span class="cover-empty">—</span>')
+      + (iconSrc ? '<img src="' + iconSrc + '" alt="" onerror="this.remove()">' : '<span class="cover-empty">—</span>')
       + '</div>'
       + '<div class="cover-icon-note">' + note + '</div>'
-      + '<button type="button" class="btn btn-secondary btn-sm" ' + (v.volume_img_front_2d ? '' : 'disabled ')
-      + 'title="Regenerate the icon from the stored 2D front image" onclick="regenCoverIcon()">Rebuild icon</button>';
+      + act;
+}
+
+function coverIconBusyState(label) {
+    coverIconBusy = label || '';
+    if (label) coverIconBust = Date.now();
+    renderCoverIconStrip();
+}
+
+function renderCoverPopover(v) {
+    coverPopVol = v;
+    renderCoverIconStrip();
 
     var html = '';
     for (var i = 0; i < COVER_SLOTS.length; i++) {
@@ -888,14 +937,48 @@ function renderCoverPopover(v) {
               + '<button type="button" class="del" ' + (cur ? '' : 'disabled ')
               +   'onclick="deleteCoverSlot(\'' + s.slot + '\')">Remove</button>'
               + '</div>'
+              + (coverBusy[s.slot] ? coverBusyHtml(coverBusy[s.slot]) : '')
               + '</div>';
     }
     document.getElementById('cover-slot-grid').innerHTML = html;
+    // Re-apply the busy class for any slot still working (a mid-upload
+    // refresh rebuilds the grid from scratch).
+    Object.keys(coverBusy).forEach(function(slot) {
+        var el = document.getElementById('cover-slot-' + slot);
+        if (el) el.classList.add('busy');
+    });
 }
 
-function coverSlotBusy(slot, busy) {
+function coverBusyHtml(st) {
+    var indet = (st.pct === null || st.pct === undefined);
+    return '<div class="cover-busy">'
+         + '<div class="cover-spin"></div>'
+         + '<div class="cover-busy-label">' + esc(st.label) + '</div>'
+         + '<div class="cover-bar' + (indet ? ' indet' : '') + '">'
+         +   '<i style="width:' + (indet ? 100 : st.pct) + '%"></i>'
+         + '</div>'
+         + '</div>';
+}
+
+// coverSlotBusy(slot, false) clears; coverSlotBusy(slot, 'Uploading…', 42)
+// shows a determinate bar, and a null/omitted pct an indeterminate one.
+function coverSlotBusy(slot, label, pct) {
+    if (!label) delete coverBusy[slot];
+    else coverBusy[slot] = {
+        label: label,
+        pct: (pct === null || pct === undefined) ? null : Math.max(0, Math.min(100, Math.round(pct)))
+    };
     var el = document.getElementById('cover-slot-' + slot);
-    if (el) el.classList.toggle('busy', !!busy);
+    if (!el) return;
+    var st = coverBusy[slot];
+    el.classList.toggle('busy', !!st);
+    var ov = el.querySelector('.cover-busy');
+    if (!st) { if (ov) ov.parentNode.removeChild(ov); return; }
+    if (!ov) { el.insertAdjacentHTML('beforeend', coverBusyHtml(st)); return; }
+    ov.querySelector('.cover-busy-label').textContent = st.label;
+    var bar = ov.querySelector('.cover-bar');
+    bar.classList.toggle('indet', st.pct === null);
+    bar.querySelector('i').style.width = (st.pct === null ? 100 : st.pct) + '%';
 }
 
 // Re-pull the books list so the row thumbnail and the popover both reflect
@@ -907,57 +990,102 @@ function refreshCoverPopover() {
     });
 }
 
+function coverSizeLabel(bytes) {
+    return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+}
+
+// XHR rather than fetch: only XHR reports byte-level upload progress. Once
+// the bytes are up, the server still has to scale the image, build the
+// icon/sm/md/lg set and (for the 2D front) rebuild the derived icon — that
+// stretch has no measurable progress, so the bar switches to indeterminate.
 function uploadCoverSlot(slot, input) {
     var file = input.files && input.files[0];
     if (!file || !coverPopKey) return;
+    input.value = '';
     var fd = new FormData();
     fd.append('volume_key', coverPopKey);
     fd.append('slot', slot);
     fd.append('image_file', file);
-    coverSlotBusy(slot, true);
-    fetch(API + '/admin-books-cover-upload.php', { method: 'POST', credentials: 'include', body: fd })
-        .then(function(r){ return safeJson(r); })
-        .then(function(d) {
-            input.value = '';
-            if (d && d.error) { alert(d.error); coverSlotBusy(slot, false); return; }
-            return refreshCoverPopover();
-        })
-        .catch(function(err) {
-            alert('Upload failed: ' + (err && err.message ? err.message : 'network'));
-            coverSlotBusy(slot, false);
-        });
+
+    var size = coverSizeLabel(file.size);
+    var derivesIcon = (slot === 'front_2d');
+    var done = function() {
+        coverSlotBusy(slot, false);
+        if (derivesIcon) coverIconBusyState('');
+    };
+    coverSlotBusy(slot, 'Uploading 0% of ' + size, 0);
+    if (derivesIcon) coverIconBusyState('Rebuilding icon…');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/admin-books-cover-upload.php', true);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = function(e) {
+        if (!e.lengthComputable) return;
+        var pct = e.loaded / e.total * 100;
+        if (pct >= 100) coverSlotBusy(slot, 'Processing image…', null);
+        else coverSlotBusy(slot, 'Uploading ' + Math.round(pct) + '% of ' + size, pct);
+    };
+    xhr.upload.onload = function() { coverSlotBusy(slot, 'Processing image…', null); };
+    xhr.onload = function() {
+        var d = null;
+        try { d = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status < 200 || xhr.status >= 300 || (d && d.error)) {
+            alert((d && d.error) || ('Upload failed — HTTP ' + xhr.status + ': '
+                  + (xhr.responseText || xhr.statusText || '').substring(0, 200)));
+            done();
+            return;
+        }
+        coverSlotBusy(slot, 'Refreshing…', null);
+        refreshCoverPopover().then(done, done);
+    };
+    xhr.onerror = function() { alert('Upload failed: network'); done(); };
+    xhr.onabort = done;
+    xhr.send(fd);
 }
 
 function deleteCoverSlot(slot) {
     if (!coverPopKey) return;
     yesNoConfirm('Remove this image?', function(yes) {
         if (!yes) return;
-        coverSlotBusy(slot, true);
+        // Dropping the 2D front nulls the derived icon too.
+        var derivesIcon = (slot === 'front_2d');
+        var done = function() {
+            coverSlotBusy(slot, false);
+            if (derivesIcon) coverIconBusyState('');
+        };
+        coverSlotBusy(slot, 'Removing…', null);
+        if (derivesIcon) coverIconBusyState('Updating icon…');
         fetch(API + '/admin-books-cover-upload.php', {
             method: 'POST', credentials: 'include',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ action: 'delete', volume_key: coverPopKey, slot: slot })
         }).then(function(r){ return safeJson(r); }).then(function(d) {
-            if (d && d.error) { alert(d.error); coverSlotBusy(slot, false); return; }
-            return refreshCoverPopover();
+            if (d && d.error) { alert(d.error); done(); return; }
+            coverSlotBusy(slot, 'Refreshing…', null);
+            return refreshCoverPopover().then(done, done);
         }).catch(function(err) {
             alert('Remove failed: ' + (err && err.message ? err.message : 'network'));
-            coverSlotBusy(slot, false);
+            done();
         });
     });
 }
 
 function regenCoverIcon() {
     if (!coverPopKey) return;
+    coverIconBusyState('Rebuilding icon…');
     fetch(API + '/admin-books-cover-upload.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ action: 'regen_icon', volume_key: coverPopKey })
     }).then(function(r){ return safeJson(r); }).then(function(d) {
-        if (d && d.error) { alert(d.error); return; }
-        return refreshCoverPopover();
+        if (d && d.error) { alert(d.error); coverIconBusyState(''); return; }
+        return refreshCoverPopover().then(
+            function(){ coverIconBusyState(''); },
+            function(){ coverIconBusyState(''); }
+        );
     }).catch(function(err) {
         alert('Icon rebuild failed: ' + (err && err.message ? err.message : 'network'));
+        coverIconBusyState('');
     });
 }
 
