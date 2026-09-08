@@ -106,7 +106,7 @@ $pageRatio = isset($FB['pageRatio']) ? (float)$FB['pageRatio'] : null;
 $JS_V  = [
     'viewer'    => 32,
     'bookmarks' => 21,
-    'tts'       => 45,
+    'tts'       => 46,
 ];
 $CSS_V = 6;
 

@@ -229,13 +229,13 @@
     // over a headphone-style stand. Strokes inherit currentColor so the one
     // admin color setting drives both the icon and the label.
     var ICON_AUDIOBOOK = '<svg viewBox="0 0 512 512" fill="none" aria-hidden="true">'
-        + '<g stroke="currentColor" stroke-width="46" stroke-linecap="round" transform="translate(0 44)">'
+        + '<g stroke="currentColor" stroke-width="46" stroke-linecap="round" transform="translate(0 26)">'
         + '<path d="M 92.4 176.5 A 174 174 0 0 1 419.6 176.5"/>'
         + '<path d="M 145.1 195.6 A 118 118 0 0 1 366.9 195.6"/>'
         + '<path d="M 199.6 214.8 A 60 60 0 0 1 312.4 214.8"/>'
         + '</g>'
-        + '<g stroke="currentColor" stroke-width="30" stroke-linecap="butt">'
-        + '<path d="M 34 292 L 256 380"/><path d="M 478 292 L 256 380"/>'
+        + '<g stroke="currentColor" stroke-width="54" stroke-linecap="butt">'
+        + '<path d="M 40 282 L 256 400"/><path d="M 472 282 L 256 400"/>'
         + '</g></svg>';
     var ICON_VOLUME_MUTE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.96 8.96 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.17v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
 
