@@ -568,9 +568,26 @@
             return;
         }
         if (!firstAudioPage || !cfg || !cfg.gotoPage) return;
+        // Arm the same driver #auto=1 uses, then jump. The viewer calls
+        // notifyPageChange() on arrival, which re-fetches the now-narrated
+        // chapter and clears this overlay; maybeAutoplay() then starts the
+        // narration off that fetch. autoplayJumped is pre-set because we are
+        // performing the jump right here — the driver must not repeat it.
+        // Unlike an #auto=1 arrival this runs inside a real click, so the
+        // browser's autoplay policy has nothing to object to.
+        autoplayPending = true;
+        autoplayJumped  = true;
         cfg.gotoPage(firstAudioPage);
-        // The viewer calls notifyPageChange() on arrival, which re-fetches
-        // the now-narrated chapter and clears this overlay.
+        // Guard, not a live path: renderListen only shows this pill while no
+        // chapter audio is loaded, so the goto above always lands outside the
+        // current chapter and notifyPageChange always refetches. Should that
+        // ever stop holding, the jump would be a plain seek with no fetch
+        // behind it — and maybeAutoplay() only runs off a fetch — so start
+        // playback directly when the chapter is already in hand.
+        if (current && current.available) {
+            autoplayPending = false;
+            startPlayback({ fromAutoplay: true });
+        }
     }
 
     function renderButton() {
