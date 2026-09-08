@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1788760803">
+    <meta name="page-version" content="1788847203">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
@@ -219,6 +219,10 @@
                 <input type="text" id="f-code" placeholder="e.g. YY-s01v01-An-Intro-to-God-Dabarym-Words">
                 <div style="font-size:0.74rem;color:#888;margin-top:3px;">Allowed: letters, digits, hyphens. Spaces and %20 are auto-converted to hyphens on save.</div>
             </div>
+            <div class="field"><label>Amazon ASIN <span style="font-weight:400;color:#888;font-size:0.78rem;">(optional — the Amazon icon on the Books page)</span></label>
+                <input type="text" id="f-asin" placeholder="e.g. B09KFCQKCY — or paste the Amazon product URL">
+                <div style="font-size:0.74rem;color:#888;margin-top:3px;">Leave blank and the Books page shows no Amazon link for this book. A pasted /dp/ URL is reduced to the ASIN on save.</div>
+            </div>
             <input type="hidden" id="f-pdf">
             <div class="field">
                 <div style="display:flex;align-items:center;gap:10px;">
@@ -305,6 +309,10 @@
                 <div class="field"><label>Sort</label><input type="number" id="sf-sort" value="0"></div>
             </div>
             <div class="field"><label>Summary</label><textarea id="sf-summary" style="min-height:80px;"></textarea></div>
+            <div class="field">
+                <label style="display:block;margin-bottom:6px;"><input type="checkbox" id="sf-books-display" checked> Books Display</label>
+                <div style="font-size:0.74rem;color:#888;">Show this series as a section on the public Books page. Its books still need their own Active flag to appear.</div>
+            </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" onclick="saveSeries()">Save</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeSeriesForm()">Cancel</button>
@@ -1215,6 +1223,7 @@ function showVolumeForm(record) {
     document.getElementById('f-sort').value = r.volume_sort || 0;
     document.getElementById('f-pages').value = r.volume_page_count || 0;
     document.getElementById('f-code').value = r.volume_code || '';
+    document.getElementById('f-asin').value = r.volume_amazon_asin || '';
     document.getElementById('f-pdf').value = r.volume_pdf || '';
     document.getElementById('f-active').checked = r.volume_active_flag !== false;
     document.getElementById('f-search-flag').checked   = r.volume_search_flag    !== false;
@@ -1386,6 +1395,7 @@ function saveVolume() {
         // volume_page_count is derived from the parser; never sent from the
         // form so an accidentally-edited value can't overwrite it.
         volume_code: code,
+        volume_amazon_asin: document.getElementById('f-asin').value.trim(),
         volume_pdf: document.getElementById('f-pdf').value.trim(),
         volume_active_flag: document.getElementById('f-active').checked,
         volume_search_flag: document.getElementById('f-search-flag').checked,
@@ -1685,6 +1695,7 @@ function editSeries(key) {
     document.getElementById('sf-number').value = s.series_number || 0;
     document.getElementById('sf-sort').value = s.series_sort || 0;
     document.getElementById('sf-summary').value = s.series_summary || '';
+    document.getElementById('sf-books-display').checked = s.series_books_display_flag !== false;
     document.getElementById('series-form-overlay').classList.add('open');
 }
 
@@ -1698,6 +1709,7 @@ function saveSeries() {
         series_number: parseInt(document.getElementById('sf-number').value) || 0,
         series_sort: parseInt(document.getElementById('sf-sort').value) || 0,
         series_summary: document.getElementById('sf-summary').value.trim(),
+        series_books_display_flag: document.getElementById('sf-books-display').checked,
     };
     if (!payload.series_label) { alert('Label is required'); return; }
 

@@ -35,6 +35,7 @@ $PLAYER_VAR_MAP = [
     'player-btn-bg-hover'   => '--fb-tts-btn-bg-hover',
     'player-btn-border'     => '--fb-tts-btn-border',
     'player-icon-color'     => '--fb-tts-icon-color',
+    'player-listen-color'   => '--fb-tts-listen-color',
     'player-track-bg'       => '--fb-tts-track-bg',
     'player-fill-bg'        => '--fb-tts-fill-bg',
     'player-thumb-bg'       => '--fb-tts-thumb-bg',
@@ -103,9 +104,9 @@ $pageRatio = isset($FB['pageRatio']) ? (float)$FB['pageRatio'] : null;
 // next pageview. Cloudflare doesn't cache PHP responses by default, so
 // users never see a stale script URL.
 $JS_V  = [
-    'viewer'    => 31,
+    'viewer'    => 32,
     'bookmarks' => 21,
-    'tts'       => 43,
+    'tts'       => 45,
 ];
 $CSS_V = 6;
 

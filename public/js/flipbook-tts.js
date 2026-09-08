@@ -32,6 +32,8 @@
     var playerEl    = null;      // outer flex row: [volume] [progress] [play]
     var volSlider   = null;      // user-adjustable audio volume (0–1)
     var volBtnEl    = null;      // speaker button — mirrors play-button disabled state
+    var listenBtn   = null;      // "Listen to Audio Book" overlay (pre-narration pages)
+    var firstAudioPage = 0;      // earliest page in the book that has narration
     var current = null;     // last fetched chapter payload (see API shape)
     var fetchSeq = 0;       // monotonic — only latest fetch's response wins
     var loadedChapterKey = null;
@@ -44,6 +46,13 @@
     var currentParagraphNumber = -1;  // paragraph being narrated right now
     var scrubActive = false;     // true while dragging the seek scrubber
     var scrubTrackEl = null;     // the track element being dragged over
+    // ── Autoplay (#auto=1) ──────────────────────────────────────────────
+    // Set from the URL hash at init. Stays true until we either start the
+    // audio or establish there is nothing to play, so the fetch that lands
+    // AFTER the jump to the first narrated page is the one that plays.
+    var autoplayPending = false;
+    var autoplayJumped  = false; // guards the one-shot goto(firstAudioPage)
+    var autoplayBlocked = false; // play() was rejected — needs a user gesture
 
     // ── DOM injection ───────────────────────────────────────────────────
     function injectStyles() {
@@ -118,6 +127,32 @@
             // so the two read as a single "audio-controls offline" state.
             '.fb-tts-vol-btn.is-disabled { opacity: 0.25; cursor: not-allowed; }',
             '.fb-tts-btn svg { width: 20px; height: 20px; }',
+            // "Listen to Audio Book" jump — a wide pill laid OVER the whole
+            // player row on front-matter pages that sit before the first
+            // narrated page. It borrows the play/volume buttons' background,
+            // hover, border and diameter settings (admin → Flipbook → Audio
+            // Player) so it reads as the same control family; only its text
+            // + icon color is its own setting.
+            '.fb-tts-listen { position: absolute; inset: 0; width: 100%;',
+            '                 height: calc(var(--fb-tts-btn-size, 43) * 1px);',
+            '                 border-radius: calc(var(--fb-tts-btn-size, 43) * 0.5px);',
+            '                 background: var(--fb-tts-btn-bg, #1f3550);',
+            '                 color: var(--fb-tts-listen-color, var(--fb-tts-icon-color, #cfe1ff));',
+            '                 border: calc(var(--fb-tts-btn-border-width, 1) * 1px) solid var(--fb-tts-btn-border, #2a4d70);',
+            '                 display: none; align-items: center; justify-content: center; gap: 10px;',
+            '                 font: 600 15px/1 system-ui, -apple-system, "Segoe UI", sans-serif;',
+            '                 letter-spacing: 0.02em; cursor: pointer; padding: 0 16px;',
+            '                 box-shadow: 0 2px 8px rgba(0,0,0,0.35);',
+            '                 transition: background 0.15s, transform 0.1s; }',
+            '.fb-tts-listen.is-shown { display: flex; }',
+            '.fb-tts-listen:hover { background: var(--fb-tts-btn-bg-hover, #28456a); }',
+            '.fb-tts-listen:active { transform: scale(0.99); }',
+            '.fb-tts-listen svg { flex: 0 0 auto; width: 26px; height: 26px; }',
+            // While the jump button is up, the dead player underneath it is
+            // hidden outright rather than left showing through at 25%.
+            '.fb-tts-player.has-listen > .fb-tts-vol-wrap,',
+            '.fb-tts-player.has-listen > .fb-tts-progress,',
+            '.fb-tts-player.has-listen > .fb-tts-btn { visibility: hidden; }',
             // Brief amber tint when waiting between chapters.
             '.fb-tts-btn.is-pausing { background: var(--fb-tts-pausing-bg, #4d3a1f); border-color: var(--fb-tts-pausing-border, #6d5a3a); color: var(--fb-tts-pausing-color, #f7d77a); }',
             // MP3 seek bar — middle flex item, takes remaining width.
@@ -190,6 +225,18 @@
     var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
     // Speaker with sound-waves — collapses to a plain speaker when volume hits 0.
     var ICON_VOLUME = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05A4.5 4.5 0 0016.5 12zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+    // Audio-book glyph for the "Listen to Audio Book" jump: broadcast arcs
+    // over a headphone-style stand. Strokes inherit currentColor so the one
+    // admin color setting drives both the icon and the label.
+    var ICON_AUDIOBOOK = '<svg viewBox="0 0 512 512" fill="none" aria-hidden="true">'
+        + '<g stroke="currentColor" stroke-width="46" stroke-linecap="round" transform="translate(0 44)">'
+        + '<path d="M 92.4 176.5 A 174 174 0 0 1 419.6 176.5"/>'
+        + '<path d="M 145.1 195.6 A 118 118 0 0 1 366.9 195.6"/>'
+        + '<path d="M 199.6 214.8 A 60 60 0 0 1 312.4 214.8"/>'
+        + '</g>'
+        + '<g stroke="currentColor" stroke-width="30" stroke-linecap="butt">'
+        + '<path d="M 34 292 L 256 380"/><path d="M 478 292 L 256 380"/>'
+        + '</g></svg>';
     var ICON_VOLUME_MUTE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.96 8.96 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.17v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
 
     function ensurePlayer() {
@@ -315,6 +362,16 @@
         btn.setAttribute('aria-label', 'Play chapter audio');
         btn.addEventListener('click', onClick);
         playerEl.appendChild(btn);
+
+        // Overlay jump button for the pages that precede the narration.
+        listenBtn = document.createElement('button');
+        listenBtn.type = 'button';
+        listenBtn.className = 'fb-tts-listen';
+        listenBtn.innerHTML = ICON_AUDIOBOOK + '<span>Listen to Audio Book</span>';
+        listenBtn.title = 'Jump to the first narrated page';
+        listenBtn.setAttribute('aria-label', 'Listen to Audio Book');
+        listenBtn.addEventListener('click', onListenClick);
+        playerEl.appendChild(listenBtn);
 
         document.body.appendChild(playerEl);
         // Track the visible page area so the widget aligns with whatever
@@ -468,10 +525,59 @@
             volBtnEl.title = 'Volume';
         }
     }
+    // ── "Listen to Audio Book" jump ────────────────────────────────────
+    // Front matter — covers, title page, contents — sits ahead of the
+    // first narrated chapter, so its player is permanently dead. Rather
+    // than leave a greyed-out widget there, lay a full-width button over
+    // it that takes the reader to the first page that does have audio.
+    // Only shown BEFORE the narration starts: a gap after it (an
+    // un-narrated chapter, back matter) keeps the plain disabled player,
+    // since jumping backwards isn't what the reader asked for.
+    //
+    // The same pill doubles as the blocked-autoplay prompt: an #auto=1 link
+    // arrives with no user gesture in THIS document, so browsers reject the
+    // play() (see maybeAutoplay). The reader then needs exactly one tap, and
+    // a full-width pill over the player is the clearest place to ask for it.
+    function renderListen() {
+        if (!listenBtn || !playerEl) return;
+        var page = (cfg && cfg.getCurrentPage) ? (cfg.getCurrentPage() || 0) : 0;
+        var prompt = autoplayBlocked && current && current.available;
+        var show = prompt || (
+                   !(current && current.available)
+                && firstAudioPage > 0
+                && page > 0
+                && page < firstAudioPage);
+        if (show) {
+            listenBtn.innerHTML = ICON_AUDIOBOOK + '<span>' +
+                (prompt ? 'Tap to Play the Audio Book' : 'Listen to Audio Book') + '</span>';
+            listenBtn.title = prompt
+                ? 'Your browser blocked autoplay — tap to start listening'
+                : 'Jump to the first narrated page';
+        }
+        listenBtn.classList.toggle('is-shown', show);
+        playerEl.classList.toggle('has-listen', show);
+    }
+
+    function onListenClick() {
+        // Blocked-autoplay prompt: this click IS the gesture the browser
+        // wanted, so play straight from here rather than navigating.
+        if (autoplayBlocked) {
+            autoplayBlocked = false;
+            renderButton();
+            resumePlayback();
+            return;
+        }
+        if (!firstAudioPage || !cfg || !cfg.gotoPage) return;
+        cfg.gotoPage(firstAudioPage);
+        // The viewer calls notifyPageChange() on arrival, which re-fetches
+        // the now-narrated chapter and clears this overlay.
+    }
+
     function renderButton() {
         // Whenever button state changes, the progress bar's visibility
         // (and geometry, if it just became visible) follows along.
         renderProgress();
+        renderListen();
         if (!btn) return;
         if (chapterPauseTimer) {
             btn.classList.remove('is-disabled');
@@ -728,6 +834,40 @@
     // the page-1 "unavailable" overwrite the page-26 "available". A
     // monotonic seq stamp on each fetch fixes that: stale responses
     // are dropped on arrival.
+    // The API only computes first_audio_page on the "no audio here"
+    // responses (it's a MIN() over the marker table, so it's skipped once
+    // the reader is inside a narrated chapter). Latch the value: a later
+    // available=true payload carrying null must not erase it.
+    function absorbFirstAudioPage(data) {
+        var p = data && parseInt(data.first_audio_page, 10);
+        if (p > 0) firstAudioPage = p;
+    }
+
+    // ── Autoplay driver (#auto=1) ──────────────────────────────────────
+    // Runs after every fetch settles. Three outcomes:
+    //   • the landed page has audio  → play it, done.
+    //   • it doesn't, but the book has narration further in (first_audio_page,
+    //     which the API only returns on the "no audio here" responses) → turn
+    //     to that page ONCE; the viewer's notifyPageChange refetches and this
+    //     function runs again, taking the first branch.
+    //   • neither → give up, leaving the ordinary player behind.
+    // The jump is one-shot so a book whose first narrated page still comes
+    // back unavailable can't ping-pong.
+    function maybeAutoplay() {
+        if (!autoplayPending) return;
+        if (current && current.available) {
+            autoplayPending = false;
+            startPlayback({ fromAutoplay: true });
+            return;
+        }
+        if (firstAudioPage > 0 && !autoplayJumped && cfg && cfg.gotoPage) {
+            autoplayJumped = true;
+            var page = cfg.getCurrentPage ? cfg.getCurrentPage() : 0;
+            if (page !== firstAudioPage) { cfg.gotoPage(firstAudioPage); return; }
+        }
+        autoplayPending = false;
+    }
+
     function fetchForPage(page1, opts) {
         opts = opts || {};
         if (!cfg.bookCode || !page1) return;
@@ -746,12 +886,15 @@
                 console.log('[tts] fetch resp seq=', seq, 'fetchSeq=', fetchSeq, 'available=', data && data.available);
                 if (seq !== fetchSeq) return;   // a newer fetch superseded this
                 current = data;
+                absorbFirstAudioPage(data);
                 renderButton();
                 if (opts.afterLoad) opts.afterLoad();
+                maybeAutoplay();
             })
             .catch(function () {
                 if (seq !== fetchSeq) return;
                 current = { available: false };
+                autoplayPending = false;
                 renderButton();
             });
     }
@@ -765,8 +908,10 @@
             .then(function (data) {
                 if (seq !== fetchSeq) return;
                 current = data;
+                absorbFirstAudioPage(data);
                 renderButton();
                 if (afterLoad) afterLoad();
+                maybeAutoplay();
             })
             .catch(function () {});
     }
@@ -838,7 +983,10 @@
         renderProgress();
     }
 
-    function startPlayback() {
+    // opts.fromAutoplay — this play() was not triggered by a click, so a
+    // rejection means the browser's autoplay policy blocked it rather than
+    // anything being wrong with the audio. Surface the one-tap prompt.
+    function startPlayback(opts) {
         ensureAudio();
         if (!current || !current.available) return;
         var page = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
@@ -846,7 +994,13 @@
         var startMs = marker ? marker.offset_ms : 0;
         seekChapterToMs(startMs);
         var p = audio.play();
-        if (p && p.catch) p.catch(function () {});
+        if (p && p.catch) {
+            p.catch(function () {
+                if (!opts || !opts.fromAutoplay) return;
+                autoplayBlocked = true;
+                renderButton();
+            });
+        }
     }
 
     function onTimeUpdate() {
@@ -924,10 +1078,26 @@
         try {
             var hash = (location.hash || '').replace(/^#/, '');
             if (!hash) return 0;
-            var p = new URLSearchParams(hash).get('page');
+            var q = new URLSearchParams(hash);
+            // `p` is the short form the viewer accepts on inbound links;
+            // `page` is what it writes back. Read both, or an #p=N&auto=1
+            // link would fetch page 1 and the autoplay jump would override
+            // the page the reader actually asked for.
+            var p = q.get('p') || q.get('page');
             var n = p ? parseInt(p, 10) : 0;
             return (n > 0) ? n : 0;
         } catch (e) { return 0; }
+    }
+
+    // `#auto=1` (also `auto=true`/`auto=yes`) asks for narration to start as
+    // soon as the book loads — the /books audio-book icon links this way.
+    function readAutoplayFromHash() {
+        try {
+            var hash = (location.hash || '').replace(/^#/, '');
+            if (!hash) return false;
+            var v = new URLSearchParams(hash).get('auto');
+            return v != null && /^(1|true|yes|on)$/i.test(v);
+        } catch (e) { return false; }
     }
 
     // ── Public: URL-driven paragraph highlight ────────────────────────
@@ -1108,7 +1278,11 @@
         var fromCfg  = cfg.getCurrentPage ? cfg.getCurrentPage() : 1;
         var p = fromHash || fromCfg;
         lastPage = p;
-        console.log('[tts] init page=', p, 'hash=', fromHash, 'cfg=', fromCfg);
+        // #auto=1 — start narrating on arrival. The viewer passes the flag
+        // because it captured the hash before its own first history rewrite;
+        // fall back to reading the hash for any other caller.
+        autoplayPending = cfg.autoplay != null ? !!cfg.autoplay : readAutoplayFromHash();
+        console.log('[tts] init page=', p, 'hash=', fromHash, 'cfg=', fromCfg, 'autoplay=', autoplayPending);
         fetchForPage(p);
         observeModeChange();
     };
@@ -1162,6 +1336,10 @@
         // stands down while the seek below settles — otherwise a stale
         // timeupdate could snap the book back to the page just left.
         userTurnAt = Date.now();
+        // The reader is driving now, so a stale "tap to play" prompt from a
+        // blocked autoplay has been answered by navigating instead — drop it
+        // and give the ordinary player back.
+        autoplayBlocked = false;
         // If the new page is outside the current chapter's range, refetch.
         if (current && current.markers && current.markers.length) {
             var minP = current.markers[0].paragraph_page;
@@ -1239,6 +1417,7 @@
         nextHeadingPage = parseInt(nextHeadingPage, 10) || 0;
         if (!headingPage) return;
         syncPlayerGeometry();
+        autoplayBlocked = false;
         // A page strictly inside the chapter body: the page just before the
         // next chapter's heading. For the final chapter (no next heading, or
         // an adjacent one) the heading page is already inside its own body.

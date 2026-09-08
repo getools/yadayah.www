@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1788760803">
+    <meta name="page-version" content="1788847204">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flipbook Admin - Yada Yah</title>
@@ -145,7 +145,7 @@ var SECTIONS = [
     },
     {
         title: 'Audio Player',
-        desc: 'Colors and sizing for the TTS audio player that appears at the bottom of every flipbook page — the round speaker & play buttons, their icons, the progress/volume bars, and the read-along text highlights. Changes apply on the next flipbook pageview.',
+        desc: 'Colors and sizing for the TTS audio player that appears at the bottom of every flipbook page — the round speaker & play buttons, their icons, the progress/volume bars, and the read-along text highlights. The wide "Listen to Audio Book" button shown on front-matter pages (before the narration starts) reuses the Buttons row below for its background, hover, border and height; only its text/icon color is set separately. Changes apply on the next flipbook pageview.',
         fields: [
             { type: 'row', label: 'Buttons', cols: [
                 { header: 'Diameter',   field: { code: 'player-btn-size',         type: 'number', default: '43', min: 20, max: 120, suffix: 'px', width: '54px' } },
@@ -155,6 +155,7 @@ var SECTIONS = [
                 { header: 'Size',        field: { code: 'player-btn-border-width', type: 'number', default: '1',  min: 0, max: 20, suffix: 'px', width: '54px' } }
             ] },
             { code: 'player-icon-color',     label: 'Icon color (speaker/play)',type: 'color', default: '#cfe1ff' },
+            { code: 'player-listen-color',   label: '"Listen to Audio Book" text & icon', type: 'color', default: '#cfe1ff' },
             { code: 'player-track-bg',       label: 'Progress & volume track',  type: 'color', default: '#c8c8c8', alpha: true },
             { code: 'player-fill-bg',        label: 'Progress indicator (fill)',type: 'color', default: '#1f3550', alpha: true },
             { code: 'player-thumb-bg',       label: 'Volume slider knob',       type: 'color', default: '#cfe1ff', alpha: true },

@@ -54,6 +54,30 @@ $pauseStmt = $db->prepare("
 $pauseStmt->execute();
 $chapterPauseMs = (int)$pauseStmt->fetchColumn();
 
+// Earliest flipbook page in this volume that has narration behind it —
+// i.e. the first page the reader can actually listen from. Front matter
+// (covers, title page, TOC) sits before it, and /js/flipbook-tts.js uses
+// this to offer a "Listen to Audio Book" jump on those pages instead of a
+// dead player. Computed from the marker table so it reflects the same
+// live/active gating as the chapter lookup below. Only called on the
+// unavailable paths (~14ms) — when audio IS available the reader is
+// already inside a narrated chapter and the hint is unused.
+function firstAudioPage(PDO $db, int $volumeKey): ?int {
+    $st = $db->prepare("
+        SELECT MIN(m.paragraph_page)
+          FROM yy_tts_audio_marker m
+          JOIN yy_tts_audio a ON a.tts_audio_key = m.tts_audio_key
+         WHERE a.volume_key = ?
+           AND a.tts_audio_path IS NOT NULL
+           AND a.tts_audio_live_dtime IS NOT NULL
+           AND a.tts_audio_active_flag = TRUE
+           AND m.paragraph_page > 0
+    ");
+    $st->execute([$volumeKey]);
+    $p = (int)($st->fetchColumn() ?: 0);
+    return $p > 0 ? $p : null;
+}
+
 // Find the chapter containing the given page. Use yy_paragraph as the
 // source of truth — every paragraph has chapter_key + paragraph_page.
 if ($explicitChapter) {
@@ -77,6 +101,7 @@ if (!$chapterKey) {
         'available'        => false,
         'volume_key'       => $volumeKey,
         'chapter_pause_ms' => $chapterPauseMs,
+        'first_audio_page' => firstAudioPage($db, $volumeKey),
         'reason'           => 'no chapter for page',
     ]);
 }
@@ -113,6 +138,7 @@ if (!$row) {
         'available'        => false,
         'volume_key'       => $volumeKey,
         'chapter_pause_ms' => $chapterPauseMs,
+        'first_audio_page' => firstAudioPage($db, $volumeKey),
         'reason'           => 'chapter row not found',
     ]);
 }
@@ -205,6 +231,7 @@ if ($audioReady) {
 
 jsonResponse([
     'available'              => $audioReady,
+    'first_audio_page'       => $audioReady ? null : firstAudioPage($db, $volumeKey),
     'volume_key'             => $volumeKey,
     'chapter_key'            => (int)$row['chapter_key'],
     'chapter_number'         => $row['chapter_number'],

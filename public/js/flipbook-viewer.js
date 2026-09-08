@@ -1142,11 +1142,19 @@
       // page turns to the audio's per-paragraph markers. Always renders
       // (disabled+dimmed when no audio is available for the current
       // chapter) so the toolbar layout stays stable.
+      // `#auto=1` asks the narration to start on arrival (the audio-book icon
+      // on /books links this way). Read it from the hash captured at the top
+      // of init — by now pageFlip's 'init' may already have rewritten
+      // location.hash, dropping the flag.
+      const hashAutoplay = /^(1|true|yes|on)$/i.test(
+        new URLSearchParams(_hashAtLoad.replace(/^#/, '')).get('auto') || ''
+      );
       try {
         if (window.FlipbookTTS) {
           FlipbookTTS.init({
             bookCode: cfg.bookCode,
             totalPages: TOTAL,
+            autoplay: hashAutoplay,
             getCurrentPage: function () { try { return currentPage(); } catch (e) { return 1; } },
             gotoPage: function (n) { try { goto(n); } catch (e) {} },
           });

@@ -522,10 +522,15 @@ if ($method === 'POST') {
         ? max(0, min(100, (int)$data['volume_ask_rating']))
         : 50;
 
+    // Same ASIN normalization as the PUT path below.
+    $newAsin = trim($data['volume_amazon_asin'] ?? '');
+    if (preg_match('~/(?:dp|gp/product|ASIN)/([A-Za-z0-9]{10})~i', $newAsin, $m)) $newAsin = $m[1];
+
     $stmt = $db->prepare("
         INSERT INTO yy_volume (series_key, volume_label, volume_number, volume_sort,
-                               volume_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
+                               volume_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating,
+                               volume_amazon_asin)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
     $stmt->execute([
         $seriesKey,
@@ -537,6 +542,7 @@ if ($method === 'POST') {
         (int)($data['volume_page_count'] ?? 0) ?: null,
         (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
         $askRating,
+        $newAsin !== '' ? strtoupper($newAsin) : null,
     ]);
     jsonResponse(['saved' => true, 'volume_key' => $stmt->fetchColumn()]);
 }
@@ -553,6 +559,12 @@ if ($method === 'PUT') {
         }
         foreach (['series_number', 'series_sort'] as $col) {
             if (array_key_exists($col, $data)) { $fields[] = "$col = ?"; $params[] = (int)$data[$col]; }
+        }
+        // Whether the series gets a section on the public Books page. Explicit
+        // 'true'/'false' strings for the same PDO_PGSQL bool reason as below.
+        if (array_key_exists('series_books_display_flag', $data)) {
+            $fields[] = "series_books_display_flag = ?";
+            $params[] = (bool)$data['series_books_display_flag'] ? 'true' : 'false';
         }
         if (empty($fields)) errorResponse('Nothing to update');
         $params[] = $seriesKey;
@@ -641,6 +653,15 @@ if ($method === 'PUT') {
     if (array_key_exists('volume_ask_rating', $data)) {
         $fields[] = "volume_ask_rating = ?";
         $params[] = max(0, min(100, (int)$data['volume_ask_rating']));
+    }
+    // Amazon ASIN. Accepts a bare id or a pasted product URL, since that is
+    // what you get from the address bar. Stored NULL when cleared, which is
+    // what makes the Books page drop the Amazon icon for that book.
+    if (array_key_exists('volume_amazon_asin', $data)) {
+        $asin = trim((string)($data['volume_amazon_asin'] ?? ''));
+        if (preg_match('~/(?:dp|gp/product|ASIN)/([A-Za-z0-9]{10})~i', $asin, $m)) $asin = $m[1];
+        $fields[] = "volume_amazon_asin = ?";
+        $params[] = $asin !== '' ? strtoupper($asin) : null;
     }
     // PDO_PGSQL coerces PHP bool false to '' which Postgres rejects as a
     // boolean. Explicit 'true'/'false' strings match what admin-basics /
