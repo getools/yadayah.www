@@ -53,7 +53,9 @@ const WORD_COLS = "w.word_key,
      NULLIF(trim(w.word_strongs), '') AS word_strongs,
      w.word_translit, w.word_hebrew, w.word_yt,
      w.word_count_yy, w.word_source_code, w.word_active_flag,
-     w.word_definition_yy, w.word_definition_kirk, w.word_definition_external";
+     w.word_definition_yy, w.word_definition_kirk, w.word_definition_external,
+     w.word_pronunciation_strongs, w.word_pronunciation_yy,
+     w.word_pronunciation_ipa, w.word_pronunciation_phonetic";
 
 function lexBody(): array {
     return json_decode(file_get_contents('php://input'), true) ?: [];
@@ -210,6 +212,8 @@ if ($method === 'GET' && !$key) {
         $where[] = '(w.word_strongs ILIKE :q OR w.word_hebrew ILIKE :q
                      OR w.word_yt ILIKE :q OR w.word_translit ILIKE :q
                      OR w.word_definition_yy ILIKE :q OR w.word_definition_kirk ILIKE :q
+                     OR w.word_pronunciation_strongs ILIKE :q OR w.word_pronunciation_yy ILIKE :q
+                     OR w.word_pronunciation_ipa ILIKE :q OR w.word_pronunciation_phonetic ILIKE :q
                      OR EXISTS (SELECT 1 FROM yy_word_translit s
                                  WHERE s.word_key = w.word_key AND s.word_translit_text ILIKE :q))';
         $params[':q'] = '%' . $q . '%';
@@ -399,8 +403,10 @@ if ($method === 'POST') {
             'INSERT INTO yy_word
                 (word_source_code, word_strongs, word_hebrew, word_translit,
                  word_definition_yy, word_definition_kirk, word_definition_external,
-                 word_count_yy, word_active_flag)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 word_count_yy, word_active_flag,
+                 word_pronunciation_strongs, word_pronunciation_yy,
+                 word_pronunciation_ipa, word_pronunciation_phonetic)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING word_key'
         );
         $stmt->execute([
@@ -413,6 +419,10 @@ if ($method === 'POST') {
             trim((string)($data['word_definition_external'] ?? '')) ?: null,
             isset($data['word_count_yy']) && $data['word_count_yy'] !== '' ? (int)$data['word_count_yy'] : null,
             (int)(array_key_exists('word_active_flag', $data) ? (bool)$data['word_active_flag'] : true),
+            trim((string)($data['word_pronunciation_strongs']  ?? '')) ?: null,
+            trim((string)($data['word_pronunciation_yy']       ?? '')) ?: null,
+            trim((string)($data['word_pronunciation_ipa']      ?? '')) ?: null,
+            trim((string)($data['word_pronunciation_phonetic'] ?? '')) ?: null,
         ]);
         $wordKey = (int)$stmt->fetchColumn();
 
@@ -453,6 +463,12 @@ if ($method === 'PUT' && $key) {
         'word_source_code'         => 'text',
         'word_count_yy'            => 'int',
         'word_active_flag'         => 'bool',
+        // Pronunciations: Strong's / YY respellings, IPA, and the engine
+        // respelling the TTS Phonetic channel uses.
+        'word_pronunciation_strongs'  => 'text',
+        'word_pronunciation_yy'       => 'text',
+        'word_pronunciation_ipa'      => 'text',
+        'word_pronunciation_phonetic' => 'text',
     ];
 
     // The editor sends both word_translit and the full translits list on every

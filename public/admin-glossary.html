@@ -151,6 +151,20 @@
         #lx-yt-plain {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
+        /* Pronunciation block — four labelled respellings in a compact grid
+           rather than four more full-width field-rows. */
+        .lx-pron { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; max-width: 560px; }
+        .lx-pron > label { font-size: 0.8rem; font-weight: 600; color: #666; text-align: right; white-space: nowrap; }
+        .lx-pron input[type=text] {
+            width: 100%; padding: 6px 9px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.88rem; box-sizing: border-box; font-family: inherit;
+        }
+        .lx-pron input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
+        /* IPA reads better in a monospace face, matching the TTS Pronunciations
+           table the helper came from. */
+        .lx-pron input#lx-pron-ipa { font-family: Consolas, Monaco, monospace; }
+        .lx-pron-ipa-wrap { display: flex; align-items: center; gap: 2px; }
+
         /* The buttons that insert a ring, showing the mark they add. */
         .lx-tr-row .lx-ring {
             flex: none; min-width: 28px; padding: 3px 4px; line-height: 1;
@@ -353,6 +367,26 @@
                     </div>
                     <div id="lx-yt-kb" class="lx-kb"></div>
                     <div class="lx-hint">Linked to the Hebrew spelling — editing either box updates the other.</div>
+                </div></div>
+
+            <div class="field-row" style="align-items:flex-start;"><label>Pronunciation</label>
+                <div class="field-input">
+                    <div class="lx-pron">
+                        <label for="lx-pron-strongs">Strong's</label>
+                        <input type="text" id="lx-pron-strongs" maxlength="200" autocomplete="off" placeholder="e.g. ber-EETH">
+
+                        <label for="lx-pron-yy">YY</label>
+                        <input type="text" id="lx-pron-yy" maxlength="200" autocomplete="off" placeholder="e.g. beryth">
+
+                        <label for="lx-pron-phonetic">Phonetic</label>
+                        <input type="text" id="lx-pron-phonetic" maxlength="200" autocomplete="off" placeholder="engine respelling, e.g. buh-REETH">
+
+                        <label for="lx-pron-ipa">IPA</label>
+                        <span class="lx-pron-ipa-wrap">
+                            <input type="text" id="lx-pron-ipa" maxlength="200" autocomplete="off" spellcheck="false" placeholder="e.g. bɛˈɹɪθ">
+                            <button type="button" class="f-ipa-helper" id="lx-ipa-helper-btn" title="Insert IPA symbols">ⓘ</button>
+                        </span>
+                    </div>
                 </div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label for="lx-def-yy">Definition</label>
@@ -1081,6 +1115,29 @@ function lxShowYtPlain() {
     document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
 }
 
+/* Pronunciation fields. One setter for both New Word (an empty object clears
+   every box) and Edit (the word row fills them). */
+var LX_PRON_FIELDS = {
+    'lx-pron-strongs':  'word_pronunciation_strongs',
+    'lx-pron-yy':       'word_pronunciation_yy',
+    'lx-pron-ipa':      'word_pronunciation_ipa',
+    'lx-pron-phonetic': 'word_pronunciation_phonetic'
+};
+
+function lxSetPronunciation(w) {
+    Object.keys(LX_PRON_FIELDS).forEach(function(id) {
+        document.getElementById(id).value = (w && w[LX_PRON_FIELDS[id]]) || '';
+    });
+}
+
+/* The IPA chip popover is shared with the TTS Pronunciations tab — see
+   /js/ipa-helper.js. It inserts at the cursor of whichever input it is
+   opened against. */
+document.getElementById('lx-ipa-helper-btn').addEventListener('click', function() {
+    if (typeof showIpaHelper !== 'function') return;   // helper script blocked
+    showIpaHelper(this, document.getElementById('lx-pron-ipa'));
+});
+
 /* ── Edit panel ────────────────────────────────────────────────────────── */
 
 function openWordPanel(title, showDelete) {
@@ -1105,6 +1162,7 @@ function newWord() {
         document.getElementById('gw-active').checked = true;
         document.getElementById('lx-translits').innerHTML = '';
         document.getElementById('lx-yt').value = '';
+        lxSetPronunciation({});
         document.getElementById('lx-kb').classList.remove('open');
         document.getElementById('lx-yt-kb').classList.remove('open');
         lxAddTranslit('', null, true);
@@ -1125,6 +1183,7 @@ function editWord(key) {
             document.getElementById('lx-count').value =
                 (w.word_count_yy === null || w.word_count_yy === undefined) ? '' : w.word_count_yy;
             document.getElementById('lx-def-yy').value = w.word_definition_yy || '';
+            lxSetPronunciation(w);
             document.getElementById('lx-source-code').value = (w.word_source_code || 'yy').trim();
             document.getElementById('gw-active').checked =
                 !(w.word_active_flag === false || w.word_active_flag === 'f');
@@ -1231,6 +1290,10 @@ function saveWord() {
         // otherwise re-derive it from the Hebrew and drop any half-rings.
         word_yt: document.getElementById('lx-yt').value.trim(),
         word_definition_yy: document.getElementById('lx-def-yy').value.trim(),
+        word_pronunciation_strongs:  document.getElementById('lx-pron-strongs').value.trim(),
+        word_pronunciation_yy:       document.getElementById('lx-pron-yy').value.trim(),
+        word_pronunciation_ipa:      document.getElementById('lx-pron-ipa').value.trim(),
+        word_pronunciation_phonetic: document.getElementById('lx-pron-phonetic').value.trim(),
         word_source_code: document.getElementById('lx-source-code').value,
         word_count_yy: countRaw === '' ? '' : (parseInt(countRaw, 10) || 0),
         word_active_flag: document.getElementById('gw-active').checked,
@@ -1301,6 +1364,7 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 
 checkAuth();
 </script>
+<script src="/js/ipa-helper.js?v=1"></script>
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/session-state.js?v=1"></script>
 <script src="/js/error-reporter.js?v=14"></script>
