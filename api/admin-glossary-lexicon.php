@@ -17,8 +17,11 @@
  *                              mirrored into yy_word.word_translit.
  *   yy_word_definition         every definition, tagged by source (word_source_key).
  *
- * ⚠ word_yt is maintained by the DB trigger trg_word_yt from word_hebrew — it is
- *   returned but never written here.  The client previews it with the same
+ * ⚠ word_yt has a DB trigger, trg_word_yt, that derives it from word_hebrew on
+ *   any statement whose SET list mentions word_hebrew.  The editor now lets YT be
+ *   typed directly (it can hold half-rings, which have no Hebrew letter), so an
+ *   explicitly supplied word_yt is re-applied after the main write — see
+ *   applyExplicitYt().  The client keeps the two boxes in step with the same
  *   yy_letter map the trigger uses (see ?action=meta).
  *
  * GET ?action=meta      — sources, definition sources, Hebrew↔YT letter map
@@ -340,6 +343,33 @@ function saveTranslits(PDO $db, int $wordKey, array $translits, ?string $fallbac
     return $preferred ?? ($fallback !== null && trim($fallback) !== '' ? trim($fallback) : null);
 }
 
+/**
+ * Re-apply a caller-supplied word_yt after the main write.
+ *
+ * trg_word_yt is BEFORE INSERT OR UPDATE **OF word_hebrew**, so any statement
+ * that mentions word_hebrew has word_yt overwritten from the Hebrew. That is the
+ * right default, but YT is now directly editable and can hold characters Hebrew
+ * has no letter for (the half-rings ʾ ʿ), so a typed value has to win.
+ *
+ * Reading the stored value back rather than predicting it means we defer to what
+ * the trigger actually did, and the corrective UPDATE — which never mentions
+ * word_hebrew, so it cannot re-fire the trigger — only runs when the two differ.
+ * Callers that send no word_yt at all keep the derive-from-Hebrew behaviour.
+ */
+function applyExplicitYt(PDO $db, int $wordKey, array $data): void {
+    if (!array_key_exists('word_yt', $data)) return;
+    $want = trim((string)$data['word_yt']);
+    $want = $want !== '' ? $want : null;
+
+    $cur = $db->prepare('SELECT word_yt FROM yy_word WHERE word_key = ?');
+    $cur->execute([$wordKey]);
+    $have = $cur->fetchColumn();
+    $have = ($have === false || $have === null || trim((string)$have) === '') ? null : trim((string)$have);
+
+    if ($have === $want) return;
+    $db->prepare('UPDATE yy_word SET word_yt = ? WHERE word_key = ?')->execute([$want, $wordKey]);
+}
+
 if ($method === 'POST') {
     setCurrentUser($db, $user['user_key']);
     $data = lexBody();
@@ -384,6 +414,7 @@ if ($method === 'POST') {
         if ($pref !== null) {
             $db->prepare('UPDATE yy_word SET word_translit = ? WHERE word_key = ?')->execute([$pref, $wordKey]);
         }
+        applyExplicitYt($db, $wordKey, $data);
         $db->commit();
     } catch (\Exception $e) {
         $db->rollBack();
@@ -449,13 +480,18 @@ if ($method === 'PUT' && $key) {
             $params[] = $pref;
         }
 
-        if (!$fields) {
+        // A word_yt on its own is a real edit even though it is not in $allowed —
+        // it is applied below, after the trigger has had its say.
+        if (!$fields && !array_key_exists('word_yt', $data)) {
             $db->rollBack();
             errorResponse('Nothing to update');
         }
 
-        $params[] = $key;
-        $db->prepare('UPDATE yy_word SET ' . implode(', ', $fields) . ' WHERE word_key = ?')->execute($params);
+        if ($fields) {
+            $params[] = $key;
+            $db->prepare('UPDATE yy_word SET ' . implode(', ', $fields) . ' WHERE word_key = ?')->execute($params);
+        }
+        applyExplicitYt($db, $key, $data);
         $db->commit();
     } catch (\Exception $e) {
         if ($db->inTransaction()) $db->rollBack();

@@ -176,16 +176,30 @@
             border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer;
         }
         .lx-kb .lx-keys button:hover { border-color: #3498db; background: #f2f8fd; }
-        .lx-kb .lx-keys button .kb-name { display: block; font-size: 0.58rem; color: #99a2ac; font-family: inherit; }
+        /* Named explicitly, not inherited: the YT keys set a glyph font on the
+           button itself, and an inherited caption renders the letter name in
+           Yada Towrah instead of words. */
+        .lx-kb .lx-keys button .kb-name {
+            display: block; font-size: 0.58rem; color: #99a2ac;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
         /* The dotted-circle carrier on a mark key is scenery — mute it so the
            mark itself reads as the glyph. */
         .lx-kb .lx-keys button.mark { background: #f4f6f8; color: #2c3e50; }
 
         /* Same RTL override as the table's YT column; the plain logical spelling
-           is shown beside it in #lx-yt-plain. */
-        .lx-yt-out {
-            font-family: 'YadaTowrah', serif; font-size: 1.7rem; color: #1a5276; min-height: 1.7rem;
-            direction: rtl; unicode-bidi: bidi-override; display: inline-block;
+           is shown beside it in #lx-yt-plain so the stored value stays readable. */
+        input.lx-yt-out {
+            font-family: 'YadaTowrah', serif; font-size: 1.55rem; color: #1a5276;
+            direction: rtl; unicode-bidi: bidi-override; text-align: right;
+            max-width: 280px; padding: 4px 10px;
+        }
+        /* YT keys carry Hebrew-shaped glyphs, so they need the same room as the
+           Hebrew keyboard rather than the narrower Latin default. */
+        .lx-kb .lx-keys button.yt { font-family: 'YadaTowrah', serif; color: #1a5276; }
+        /* Half rings are small marks — give them extra size so the key face reads. */
+        .lx-kb .lx-keys button.halfring {
+            font-family: 'YadaTowrah', serif; font-size: 1.5rem; color: #1a5276; background: #f4f6f8;
         }
         .lx-readonly { color: #777; font-size: 0.9rem; }
         .lx-defs { border-top: 1px solid #eee; margin-top: 6px; padding-top: 10px; }
@@ -295,12 +309,15 @@
                     <div id="lx-kb" class="lx-kb"></div>
                 </div></div>
 
-            <div class="field-row"><label>YT</label>
-                <div class="field-input"><div class="char-inputs">
-                    <span id="lx-yt" class="lx-yt-out"></span>
-                    <span id="lx-yt-plain" style="color:#888;font-size:0.82rem;"></span>
-                </div>
-                <div class="lx-hint">Generated from the Hebrew spelling — saved automatically, not editable.</div>
+            <div class="field-row" style="align-items:flex-start;"><label for="lx-yt">YT</label>
+                <div class="field-input">
+                    <div class="lx-heb-wrap">
+                        <input type="text" id="lx-yt" class="lx-yt-out">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleYtKeyboard()" id="lx-yt-kb-toggle">YT letters</button>
+                        <span id="lx-yt-plain" style="color:#888;font-size:0.82rem;"></span>
+                    </div>
+                    <div id="lx-yt-kb" class="lx-kb"></div>
+                    <div class="lx-hint">Linked to the Hebrew spelling — editing either box updates the other.</div>
                 </div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label for="lx-def-yy">Definition</label>
@@ -600,7 +617,18 @@ function restoreTab() {
 var editingWordKey = null;   // null = the panel is creating a new word
 var wordSearchTimer = null;
 var lxMeta = null;           // sources + Hebrew↔YT letter map, loaded once
-var lxHebToYt = {};          // 'א' → 'a'
+var lxHebToYt = {};          // 'א' → 'a'  (finals included: 'ן' → 'n')
+var lxYtToHeb = {};          // 'a' → 'א'  (base forms only — see lxYtToHebrew)
+var lxHebFinal = {};         // 'נ' → 'ן'  (letters that take a final form)
+
+/* YT-only marks. The Hebrew alphabet has no letter for either, so they live in
+   word_yt alone — which is why YT is stored as typed rather than re-derived. */
+var LX_HALF_RINGS = [
+    ['ʾ', 'right half ring'],
+    ['ʿ', 'left half ring']
+];
+var LX_HALF_RING_SET = {};
+LX_HALF_RINGS.forEach(function(r) { LX_HALF_RING_SET[r[0]] = 1; });
 var lxState = { q: '', source: '', letter: '', sort: 'translit', dir: 'asc', offset: 0, limit: 100 };
 var lxFilterTimer = null;
 var lxCountOp = 'gt';        // 'gt' = at least, 'lt' = at most
@@ -639,8 +667,16 @@ function lxLoadMeta(then) {
     fetch(API + '/admin-glossary-lexicon.php?action=meta', {credentials:'include'})
         .then(function(r){return safeJson(r);}).then(function(d) {
         lxMeta = d || {};
+        // letters arrive in letter_sort order, so the first Hebrew form seen for a
+        // YT letter is the base one and any later one is its final form.
         (lxMeta.letters || []).forEach(function(l) {
-            if (l.letter_hebrew && l.letter_yt) lxHebToYt[l.letter_hebrew] = l.letter_yt;
+            if (!l.letter_hebrew || !l.letter_yt) return;
+            lxHebToYt[l.letter_hebrew] = l.letter_yt;
+            if (lxYtToHeb[l.letter_yt] === undefined) {
+                lxYtToHeb[l.letter_yt] = l.letter_hebrew;
+            } else {
+                lxHebFinal[lxYtToHeb[l.letter_yt]] = l.letter_hebrew;
+            }
         });
         lxRenderLetters();
         lxRenderSources();
@@ -857,13 +893,46 @@ function lxBuildKeyboard() {
 
     kb.addEventListener('click', function(e) {
         var btn = e.target.closest('button[data-ch]');
-        if (btn) lxInsertChar(btn.getAttribute('data-ch'));
+        if (btn) lxInsertChar('lx-hebrew', btn.getAttribute('data-ch'));
     });
     kb.dataset.built = '1';
 }
 
-function lxInsertChar(ch) {
-    var input = document.getElementById('lx-hebrew');
+/* The YT picker: one key per YT letter (base forms only — a final form shares its
+   base's YT character), then the two half-rings. Half-rings are YT-only marks:
+   the Hebrew alphabet has no letter for them, so lxYtToHebrew skips them. */
+function lxBuildYtKeyboard() {
+    var kb = document.getElementById('lx-yt-kb');
+    if (kb.dataset.built) return;
+
+    var seen = {}, letters = '';
+    (lxMeta.letters || []).forEach(function(l) {
+        if (!l.letter_yt || seen[l.letter_yt]) return;
+        seen[l.letter_yt] = 1;
+        letters += '<button type="button" class="yt" data-ch="' + esc(l.letter_yt) + '"'
+            + ' title="' + esc((l.letter_label || '') + ' — ' + (l.letter_hebrew || '')) + '">'
+            + '<span class="kb-glyph">' + esc(l.letter_yt) + '</span>'
+            + '<span class="kb-name">' + esc(l.letter_label || '') + '</span></button>';
+    });
+
+    var rings = LX_HALF_RINGS.map(function(r) {
+        return '<button type="button" class="halfring" data-ch="' + esc(r[0]) + '" title="' + esc(r[1]) + '">'
+            + '<span class="kb-glyph">' + esc(r[0]) + '</span>'
+            + '<span class="kb-name">' + esc(r[1]) + '</span></button>';
+    }).join('');
+
+    kb.innerHTML = '<h4>YT letters</h4><div class="lx-keys">' + letters + '</div>'
+        + '<h4>Half rings</h4><div class="lx-keys">' + rings + '</div>';
+
+    kb.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-ch]');
+        if (btn) lxInsertChar('lx-yt', btn.getAttribute('data-ch'));
+    });
+    kb.dataset.built = '1';
+}
+
+function lxInsertChar(targetId, ch) {
+    var input = document.getElementById(targetId);
     var start = input.selectionStart, end = input.selectionEnd;
     if (start === null || start === undefined) { input.value += ch; }
     else {
@@ -872,12 +941,17 @@ function lxInsertChar(ch) {
         input.setSelectionRange(caret, caret);
     }
     input.focus();
-    lxUpdateYt();
+    if (targetId === 'lx-hebrew') lxSyncFromHebrew(); else lxSyncFromYt();
 }
 
 function lxToggleKeyboard() {
     lxBuildKeyboard();
     document.getElementById('lx-kb').classList.toggle('open');
+}
+
+function lxToggleYtKeyboard() {
+    lxBuildYtKeyboard();
+    document.getElementById('lx-yt-kb').classList.toggle('open');
 }
 
 /* Mirror of the trg_word_yt DB trigger: newlines dropped, each Hebrew letter
@@ -892,9 +966,49 @@ function lxHebrewToYt(hebrew) {
     return out;
 }
 
-function lxUpdateYt() {
-    var yt = lxHebrewToYt(document.getElementById('lx-hebrew').value);
-    document.getElementById('lx-yt').textContent = yt;
+/* The other direction. Hebrew→YT is many-to-one (a final form and its base share
+   one YT letter), so coming back has to choose: take the base form, then let the
+   orthographic rule restore finals — כ מ נ פ צ are written ך ם ן ף ץ at the end of
+   a word. Half-rings have no Hebrew letter and are dropped rather than passed
+   through, so typing one never puts a non-Hebrew character in the Hebrew box. */
+function lxYtToHebrew(yt) {
+    var src = (yt || '').replace(/\n/g, '');
+    var out = '';
+    for (var i = 0; i < src.length; i++) {
+        var c = src.charAt(i);
+        if (LX_HALF_RING_SET[c]) continue;
+        out += (lxYtToHeb[c] !== undefined ? lxYtToHeb[c] : c);
+    }
+    // Finalise the last Hebrew letter of each whitespace-separated run.
+    return out.replace(/\S+/g, function(word) {
+        var last = word.charAt(word.length - 1);
+        return lxHebFinal[last] ? word.slice(0, -1) + lxHebFinal[last] : word;
+    });
+}
+
+/* Keep the two boxes in step. Assigning .value fires no input event, so the
+   guard is belt-and-braces against a future dispatch turning this into a loop. */
+var lxSyncing = false;
+
+function lxSyncFromHebrew() {
+    if (lxSyncing) return;
+    lxSyncing = true;
+    document.getElementById('lx-yt').value = lxHebrewToYt(document.getElementById('lx-hebrew').value);
+    lxShowYtPlain();
+    lxSyncing = false;
+}
+
+function lxSyncFromYt() {
+    if (lxSyncing) return;
+    lxSyncing = true;
+    document.getElementById('lx-hebrew').value = lxYtToHebrew(document.getElementById('lx-yt').value);
+    lxShowYtPlain();
+    lxSyncing = false;
+}
+
+/* The YT box renders right-to-left, so echo the stored spelling alongside it. */
+function lxShowYtPlain() {
+    var yt = document.getElementById('lx-yt').value;
     document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
 }
 
@@ -921,9 +1035,11 @@ function newWord() {
         document.getElementById('lx-source-code').value = 'yy';
         document.getElementById('gw-active').checked = true;
         document.getElementById('lx-translits').innerHTML = '';
+        document.getElementById('lx-yt').value = '';
         document.getElementById('lx-kb').classList.remove('open');
+        document.getElementById('lx-yt-kb').classList.remove('open');
         lxAddTranslit('', null, true);
-        lxUpdateYt();
+        lxSyncFromHebrew();
         openWordPanel('New Word', false);
         document.querySelector('#lx-translits .lx-tr-text').focus();
     });
@@ -944,6 +1060,7 @@ function editWord(key) {
             document.getElementById('gw-active').checked =
                 !(w.word_active_flag === false || w.word_active_flag === 'f');
             document.getElementById('lx-kb').classList.remove('open');
+            document.getElementById('lx-yt-kb').classList.remove('open');
 
             var wrap = document.getElementById('lx-translits');
             wrap.innerHTML = '';
@@ -957,7 +1074,10 @@ function editWord(key) {
             if (!list.length) lxAddTranslit('', null, true);
 
             lxRenderOtherDefs(w);
-            lxUpdateYt();
+            // Show the stored YT rather than re-deriving it — a hand-typed spelling
+            // (half-rings included) must survive opening the record.
+            document.getElementById('lx-yt').value = w.word_yt || '';
+            lxShowYtPlain();
             openWordPanel('Edit: ' + (w.word_translit || w.word_hebrew || 'word'), true);
         });
     });
@@ -1015,6 +1135,7 @@ function closeWordEdit() {
     var panel = document.getElementById('gw-panel');
     panel.classList.remove('active');
     document.getElementById('lx-kb').classList.remove('open');
+    document.getElementById('lx-yt-kb').classList.remove('open');
 }
 
 function saveWord() {
@@ -1037,6 +1158,9 @@ function saveWord() {
     var data = {
         word_strongs: strongs,
         word_hebrew: hebrew,
+        // Sent explicitly so a typed spelling survives trg_word_yt, which would
+        // otherwise re-derive it from the Hebrew and drop any half-rings.
+        word_yt: document.getElementById('lx-yt').value.trim(),
         word_definition_yy: document.getElementById('lx-def-yy').value.trim(),
         word_source_code: document.getElementById('lx-source-code').value,
         word_count_yy: countRaw === '' ? '' : (parseInt(countRaw, 10) || 0),
@@ -1066,8 +1190,8 @@ function saveWord() {
             fetch(API + '/admin-glossary-lexicon.php?key=' + editingWordKey, {credentials:'include'})
                 .then(function(r){return safeJson(r);}).then(function(w) {
                 if (w && !w.error) {
-                    document.getElementById('lx-yt').textContent = w.word_yt || '';
-                    document.getElementById('lx-yt-plain').textContent = w.word_yt ? '(' + w.word_yt + ')' : '';
+                    document.getElementById('lx-yt').value = w.word_yt || '';
+                    lxShowYtPlain();
                 }
             });
         }
@@ -1099,7 +1223,8 @@ document.getElementById('gw-search').addEventListener('input', function() {
     wordSearchTimer = setTimeout(function() { lxReload(true); }, 250);
 });
 
-document.getElementById('lx-hebrew').addEventListener('input', lxUpdateYt);
+document.getElementById('lx-hebrew').addEventListener('input', lxSyncFromHebrew);
+document.getElementById('lx-yt').addEventListener('input', lxSyncFromYt);
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
