@@ -126,6 +126,12 @@
         table.gw-table td.col-strongs { color: #666; font-variant-numeric: tabular-nums; }
         table.gw-table td.col-translit { font-weight: 700; color: #1a5276; }
         table.gw-table td.col-translit .alt { display: block; font-weight: 400; font-size: 0.78rem; color: #999; margin-top: 2px; }
+        /* A half-ring inside a transliteration renders in Yada Towrah, which draws
+           ʾ and ʿ as miniature raised aleph and ayin forms — their own glyphs,
+           about a third the width of the full letters and sitting high. At 1em
+           they read as bare dots, so they get a bump; past ~1.5em they start
+           crowding the line. line-height:1 keeps rows from growing. */
+        .yt-ring { font-family: 'YadaTowrah', serif; font-size: 1.4em; line-height: 1; }
         table.gw-table td.col-count { color: #666; font-variant-numeric: tabular-nums; }
         table.gw-table td.col-hebrew { font-size: 1.15rem; direction: rtl; }
         /* Yada Towrah draws its glyphs left-to-right, so word_yt — which is stored
@@ -438,6 +444,17 @@ function togglePassword() {
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
+/* esc(), but the half-rings inside a transliteration come out in Yada Towrah —
+   in that font ʾ and ʿ carry the aleph and ayin letterforms, so a spelling like
+   Yahowshuwaʿ shows the letter it stands for instead of a bare tick.
+   Escaping happens first and neither ring is HTML-special, so wrapping after is
+   safe. Display only: an <input> cannot style individual characters. */
+function escRings(s) {
+    return esc(s).replace(LX_HALF_RING_RE, function(c) {
+        return '<span class="yt-ring">' + c + '</span>';
+    });
+}
+
 function loadLetters() {
     fetch(API + '/admin-glossary.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
         allLetters = d.letters || [];
@@ -632,6 +649,7 @@ var LX_HALF_RINGS = [
 ];
 var LX_HALF_RING_SET = {};
 LX_HALF_RINGS.forEach(function(r) { LX_HALF_RING_SET[r[0]] = 1; });
+var LX_HALF_RING_RE = /[ʾʿ]/g;
 var lxState = { q: '', source: '', letter: '', sort: 'translit', dir: 'asc', offset: 0, limit: 100 };
 var lxFilterTimer = null;
 var lxCountOp = 'gt';        // 'gt' = at least, 'lt' = at most
@@ -810,9 +828,9 @@ function renderWords(words, total) {
 
         html += '<tr class="' + (inactive ? 'inactive' : '') + '" onclick="editWord(' + w.word_key + ')">'
             + '<td class="col-strongs">' + esc(w.word_strongs || '') + '</td>'
-            + '<td class="col-translit">' + esc(pref || '(none)')
+            + '<td class="col-translit">' + escRings(pref || '(none)')
             + (src ? '<span class="src-tag src-' + esc(src) + '">' + esc(src) + '</span>' : '')
-            + (alts.length ? '<span class="alt">' + esc(alts.join(', ')) + '</span>' : '')
+            + (alts.length ? '<span class="alt">' + escRings(alts.join(', ')) + '</span>' : '')
             + '</td>'
             + '<td class="col-count">' + (w.word_count_yy === null || w.word_count_yy === undefined ? '' : w.word_count_yy) + '</td>'
             + '<td class="col-hebrew">' + esc(w.word_hebrew || '') + '</td>'
@@ -957,11 +975,21 @@ function lxToggleYtKeyboard() {
     document.getElementById('lx-yt-kb').classList.toggle('open');
 }
 
-/* Mirror of the trg_word_yt DB trigger: newlines dropped, each Hebrew letter
-   mapped through yy_letter, anything else (vowel points, spaces) passed through. */
+/* Hebrew nonspacing marks — the vowel points, dagesh, shin/sin dots, meteg and
+   rafe the keyboard's "Vowels & marks" row inserts. They are pointing on a
+   letter, not letters of their own, so they never reach YT.
+
+   Deliberately NOT the whole U+0591–U+05C7 block: maqaf (U+05BE), paseq
+   (U+05C0), sof pasuq (U+05C3) and nun hafukha (U+05C6) are printing
+   punctuation and still pass through. */
+var LX_HEB_MARKS = /[\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7]/g;
+
+/* Mirror of the trg_word_yt DB trigger: newlines and pointing dropped, each
+   Hebrew letter mapped through yy_letter, anything else (punctuation, spaces)
+   passed through. */
 function lxHebrewToYt(hebrew) {
     var out = '';
-    var src = (hebrew || '').replace(/\n/g, '');
+    var src = (hebrew || '').replace(/\n/g, '').replace(LX_HEB_MARKS, '');
     for (var i = 0; i < src.length; i++) {
         var c = src.charAt(i);
         out += (lxHebToYt[c] !== undefined ? lxHebToYt[c] : c);
@@ -1012,13 +1040,13 @@ function lxSyncFromYt() {
 /* The YT box renders right-to-left, so echo the stored spelling alongside it. */
 function lxShowYtPlain() {
     var yt = document.getElementById('lx-yt').value;
-    document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
+    document.getElementById('lx-yt-plain').innerHTML = yt ? escRings('(' + yt + ')') : '';
 }
 
 /* ── Edit panel ────────────────────────────────────────────────────────── */
 
 function openWordPanel(title, showDelete) {
-    document.getElementById('gw-panel-title').textContent = title;
+    document.getElementById('gw-panel-title').innerHTML = escRings(title);
     document.getElementById('gw-delete').style.display = showDelete ? '' : 'none';
     document.getElementById('gw-status').style.display = 'none';
     document.getElementById('gw-error').style.display = 'none';
@@ -1183,7 +1211,7 @@ function saveWord() {
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (!d || d.error) return fail((d && d.error) || 'Save failed');
         if (isNew) editingWordKey = d.word_key;
-        document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || hebrew);
+        document.getElementById('gw-panel-title').innerHTML = escRings('Edit: ' + (data.word_translit || hebrew));
         document.getElementById('gw-delete').style.display = '';
         statusEl.style.display = '';
         setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);

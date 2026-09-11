@@ -114,9 +114,17 @@ function alphabetSortExpr(PDO $db): array {
 
     $q = static fn(string $s): string => "'" . str_replace("'", "''", $s) . "'";
 
+    // Pointing is not a letter, so it must not move a word's place in the
+    // alphabet — strip the nonspacing marks before translating. Same set the
+    // page's LX_HEB_MARKS drops; built with chr() so no combining mark has to
+    // survive a trip through this file as a literal.
+    $marks = "'[' || chr(1425) || '-' || chr(1469) || chr(1471) || chr(1473)"
+           . " || chr(1474) || chr(1476) || chr(1477) || chr(1479) || ']'";
+    $hebBare = "regexp_replace(btrim(w.word_hebrew), $marks, '', 'g')";
+
     return $cached = [
         'yt'     => 'translate(lower(w.word_yt), ' . $q($ytFrom) . ', ' . $q($ytTo) . ')',
-        'hebrew' => 'translate(btrim(w.word_hebrew), ' . $q($hebFrom) . ', ' . $q($hebTo) . ')',
+        'hebrew' => 'translate(' . $hebBare . ', ' . $q($hebFrom) . ', ' . $q($hebTo) . ')',
     ];
 }
 
@@ -447,6 +455,15 @@ if ($method === 'PUT' && $key) {
         'word_active_flag'         => 'bool',
     ];
 
+    // The editor sends both word_translit and the full translits list on every
+    // save. Assigning the column from both builds "SET word_translit = ?, …,
+    // word_translit = ?", which Postgres rejects outright:
+    //   ERROR: multiple assignments to same column "word_translit"
+    // The spellings list wins, as the block below already intended, so drop the
+    // scalar here rather than letting it reach the SET clause.
+    $translitsSupplied = array_key_exists('translits', $data) && is_array($data['translits']);
+    if ($translitsSupplied) unset($allowed['word_translit']);
+
     $db->beginTransaction();
     try {
         $fields = [];
@@ -473,8 +490,8 @@ if ($method === 'PUT' && $key) {
         }
 
         // Spellings are replaced wholesale when supplied; the preferred one wins
-        // over any word_translit sent alongside it.
-        if (array_key_exists('translits', $data) && is_array($data['translits'])) {
+        // over any word_translit sent alongside it (unset from $allowed above).
+        if ($translitsSupplied) {
             $pref = saveTranslits($db, $key, $data['translits'], $current['word_translit']);
             $fields[] = 'word_translit = ?';
             $params[] = $pref;
