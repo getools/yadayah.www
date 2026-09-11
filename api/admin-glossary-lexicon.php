@@ -55,7 +55,22 @@ const WORD_COLS = "w.word_key,
      w.word_count_yy, w.word_source_code, w.word_active_flag,
      w.word_definition_yy, w.word_definition_kirk, w.word_definition_external,
      w.word_pronunciation_strongs, w.word_pronunciation_yy,
-     w.word_pronunciation_ipa, w.word_pronunciation_phonetic";
+     w.word_pronunciation_ipa, w.word_pronunciation_phonetic, w.word_gender_key,
+     (SELECT array_agg(m.word_pos_key ORDER BY m.word_pos_key)
+        FROM yy_word_pos_map m WHERE m.word_key = w.word_key) AS word_pos_keys";
+
+/**
+ * Postgres hands array_agg() back through PDO as the literal '{1,2,11}', not a
+ * PHP array, so it would reach the client as a string and break any caller that
+ * iterates it. Normalise to a plain list of ints (and [] for no rows).
+ */
+function pgIntArray($v): array {
+    if (is_array($v)) return array_map('intval', $v);
+    if ($v === null || $v === '') return [];
+    $inner = trim((string)$v, '{}');
+    if ($inner === '') return [];
+    return array_map('intval', array_filter(explode(',', $inner), 'strlen'));
+}
 
 function lexBody(): array {
     return json_decode(file_get_contents('php://input'), true) ?: [];
@@ -148,6 +163,13 @@ if ($method === 'GET' && $action === 'meta') {
         'SELECT word_pos_key, word_pos_code, word_pos_label FROM yy_word_pos ORDER BY word_pos_key'
     )->fetchAll();
 
+    // Gender is one-per-word; NULL on the word means unknown, so the picker
+    // adds its own blank option rather than the lookup carrying one.
+    $genders = $db->query(
+        'SELECT word_gender_key, word_gender_code, word_gender_label
+           FROM yy_word_gender ORDER BY word_gender_key'
+    )->fetchAll();
+
     // Per-source row counts drive the filter chips.
     $counts = $db->query(
         'SELECT COALESCE(NULLIF(trim(word_source_code), \'\'), \'(none)\') AS code, count(*) AS n
@@ -158,6 +180,7 @@ if ($method === 'GET' && $action === 'meta') {
         'sources'          => $sources,
         'letters'          => $letters,
         'pos'              => $pos,
+        'genders'          => $genders,
         'source_counts'    => $counts,
         'default_def_cols' => DEFAULT_DEF_COLS,
     ]);
@@ -192,6 +215,7 @@ if ($method === 'GET' && $key) {
     );
     $d->execute([$key]);
     $word['definitions'] = $d->fetchAll();
+    $word['word_pos_keys'] = pgIntArray($word['word_pos_keys'] ?? null);
 
     jsonResponse($word);
 }
@@ -297,8 +321,14 @@ if ($method === 'GET' && !$key) {
     );
     $stmt->execute($params);
 
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$row) {
+        $row['word_pos_keys'] = pgIntArray($row['word_pos_keys'] ?? null);
+    }
+    unset($row);
+
     jsonResponse([
-        'words'  => $stmt->fetchAll(),
+        'words'  => $rows,
         'total'  => $total,
         'limit'  => $limit,
         'offset' => $offset,
@@ -382,6 +412,45 @@ function applyExplicitYt(PDO $db, int $wordKey, array $data): void {
     $db->prepare('UPDATE yy_word SET word_yt = ? WHERE word_key = ?')->execute([$want, $wordKey]);
 }
 
+/**
+ * Replace a word's parts of speech.
+ *
+ * $keys is a list of word_pos_key. Rows that are already correct are left
+ * untouched rather than deleted and re-inserted: every write fires the rev
+ * trigger, so a blind wipe-and-rewrite would add two history rows per part of
+ * speech on every save even when nothing changed.
+ */
+function savePartsOfSpeech(PDO $db, int $wordKey, array $keys): void {
+    $want = [];
+    foreach ($keys as $k) {
+        $k = (int)$k;
+        if ($k > 0) $want[$k] = true;
+    }
+
+    $have = [];
+    $st = $db->prepare('SELECT word_pos_key FROM yy_word_pos_map WHERE word_key = ?');
+    $st->execute([$wordKey]);
+    foreach ($st->fetchAll() as $r) $have[(int)$r['word_pos_key']] = true;
+
+    $add = array_diff_key($want, $have);
+    $del = array_diff_key($have, $want);
+
+    if ($add) {
+        // Guard against a key that is not in the lookup: the FK would throw
+        // and lose the whole save.
+        $ins = $db->prepare(
+            'INSERT INTO yy_word_pos_map (word_key, word_pos_key)
+             SELECT ?, ? WHERE EXISTS (SELECT 1 FROM yy_word_pos WHERE word_pos_key = ?)'
+        );
+        foreach (array_keys($add) as $k) $ins->execute([$wordKey, $k, $k]);
+    }
+    if ($del) {
+        $ph = implode(',', array_fill(0, count($del), '?'));
+        $db->prepare("DELETE FROM yy_word_pos_map WHERE word_key = ? AND word_pos_key IN ($ph)")
+           ->execute(array_merge([$wordKey], array_keys($del)));
+    }
+}
+
 if ($method === 'POST') {
     setCurrentUser($db, $user['user_key']);
     $data = lexBody();
@@ -405,8 +474,8 @@ if ($method === 'POST') {
                  word_definition_yy, word_definition_kirk, word_definition_external,
                  word_count_yy, word_active_flag,
                  word_pronunciation_strongs, word_pronunciation_yy,
-                 word_pronunciation_ipa, word_pronunciation_phonetic)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 word_pronunciation_ipa, word_pronunciation_phonetic, word_gender_key)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING word_key'
         );
         $stmt->execute([
@@ -423,6 +492,7 @@ if ($method === 'POST') {
             trim((string)($data['word_pronunciation_yy']       ?? '')) ?: null,
             trim((string)($data['word_pronunciation_ipa']      ?? '')) ?: null,
             trim((string)($data['word_pronunciation_phonetic'] ?? '')) ?: null,
+            ((int)($data['word_gender_key'] ?? 0)) ?: null,
         ]);
         $wordKey = (int)$stmt->fetchColumn();
 
@@ -433,6 +503,9 @@ if ($method === 'POST') {
             $db->prepare('UPDATE yy_word SET word_translit = ? WHERE word_key = ?')->execute([$pref, $wordKey]);
         }
         applyExplicitYt($db, $wordKey, $data);
+        if (array_key_exists('word_pos_keys', $data) && is_array($data['word_pos_keys'])) {
+            savePartsOfSpeech($db, $wordKey, $data['word_pos_keys']);
+        }
         $db->commit();
     } catch (\Exception $e) {
         $db->rollBack();
@@ -469,6 +542,8 @@ if ($method === 'PUT' && $key) {
         'word_pronunciation_yy'       => 'text',
         'word_pronunciation_ipa'      => 'text',
         'word_pronunciation_phonetic' => 'text',
+        // Nullable FK: '' and 0 both mean "unknown", i.e. store NULL.
+        'word_gender_key'             => 'fkey',
     ];
 
     // The editor sends both word_translit and the full translits list on every
@@ -494,6 +569,8 @@ if ($method === 'PUT' && $key) {
                     errorResponse("Strong's number must be 1-4 digits.");
                 }
                 $params[] = $s !== '' ? str_pad($s, 4, '0', STR_PAD_LEFT) : null;
+            } elseif ($type === 'fkey') {
+                $params[] = ($val === '' || $val === null || (int)$val === 0) ? null : (int)$val;
             } elseif ($type === 'int') {
                 $params[] = ($val === '' || $val === null) ? null : (int)$val;
             } elseif ($type === 'bool') {
@@ -515,7 +592,8 @@ if ($method === 'PUT' && $key) {
 
         // A word_yt on its own is a real edit even though it is not in $allowed —
         // it is applied below, after the trigger has had its say.
-        if (!$fields && !array_key_exists('word_yt', $data)) {
+        if (!$fields && !array_key_exists('word_yt', $data)
+                     && !array_key_exists('word_pos_keys', $data)) {
             $db->rollBack();
             errorResponse('Nothing to update');
         }
@@ -525,6 +603,9 @@ if ($method === 'PUT' && $key) {
             $db->prepare('UPDATE yy_word SET ' . implode(', ', $fields) . ' WHERE word_key = ?')->execute($params);
         }
         applyExplicitYt($db, $key, $data);
+        if (array_key_exists('word_pos_keys', $data) && is_array($data['word_pos_keys'])) {
+            savePartsOfSpeech($db, $key, $data['word_pos_keys']);
+        }
         $db->commit();
     } catch (\Exception $e) {
         if ($db->inTransaction()) $db->rollBack();
@@ -540,6 +621,7 @@ if ($method === 'DELETE' && $key) {
     try {
         $db->prepare('DELETE FROM yy_word_definition WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_translit   WHERE word_key = ?')->execute([$key]);
+        $db->prepare('DELETE FROM yy_word_pos_map    WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_twot       WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_translation WHERE word_key = ?')->execute([$key]);
         $db->prepare('UPDATE yy_word_import SET word_key = NULL WHERE word_key = ?')->execute([$key]);

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1789106404">
+    <meta name="page-version" content="1789149429">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary Admin - Yada Yah</title>
@@ -151,6 +151,15 @@
         #lx-yt-plain {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
+        /* Parts of speech: a wrapping row of checkboxes, one per yy_word_pos. */
+        .lx-pos { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 620px; }
+        .lx-pos label {
+            display: flex; align-items: center; gap: 5px; cursor: pointer;
+            font-size: 0.85rem; color: #444; white-space: nowrap;
+        }
+        .lx-pos label:hover { color: #1a5276; }
+        .lx-pos input { cursor: pointer; }
+
         /* Pronunciation block — four labelled respellings in a compact grid
            rather than four more full-width field-rows. */
         .lx-pron { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; max-width: 560px; }
@@ -389,6 +398,18 @@
                     </div>
                 </div></div>
 
+            <div class="field-row" style="align-items:flex-start;"><label>Part of Speech</label>
+                <div class="field-input">
+                    <div id="lx-pos" class="lx-pos"></div>
+                    <div class="lx-hint">A word can be more than one &mdash; tick every part of speech that applies.</div>
+                </div></div>
+
+            <div class="field-row"><label for="lx-gender">Gender</label>
+                <div class="field-input"><div class="char-inputs">
+                    <select id="lx-gender"></select>
+                    <span style="color:#888;font-size:0.82rem;">leave blank if unknown</span>
+                </div></div></div>
+
             <div class="field-row" style="align-items:flex-start;"><label for="lx-def-yy">Definition</label>
                 <div class="field-input">
                     <textarea id="lx-def-yy" rows="5" placeholder="The Yada definition for this word."></textarea>
@@ -450,6 +471,7 @@
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
+<script src="/js/admin-login.js?v=8"></script>
 <script>
 var API = '/api';
 var allLetters = [];
@@ -749,6 +771,7 @@ function lxLoadMeta(then) {
         });
         lxRenderLetters();
         lxRenderSources();
+        lxRenderPosGender();
         if (then) then();
     });
 }
@@ -785,6 +808,40 @@ function lxRenderSources() {
     panelSel.innerHTML = (lxMeta.sources || []).map(function(s) {
         return '<option value="' + esc(s.word_source_code) + '">' + esc(s.word_source_label) + '</option>';
     }).join('');
+}
+
+/* Parts of speech and gender both come from lookups in ?action=meta, so they
+   are rendered once when meta lands rather than rebuilt per record. */
+function lxRenderPosGender() {
+    document.getElementById('lx-pos').innerHTML = (lxMeta.pos || []).map(function(p) {
+        return '<label><input type="checkbox" class="lx-pos-cb" value="' + p.word_pos_key + '"> '
+             + esc(p.word_pos_label || p.word_pos_code || ('#' + p.word_pos_key)) + '</label>';
+    }).join('');
+
+    // Blank first: a word with no gender recorded is unknown, not neuter.
+    document.getElementById('lx-gender').innerHTML =
+        '<option value="">— unknown —</option>'
+        + (lxMeta.genders || []).map(function(g) {
+            return '<option value="' + g.word_gender_key + '">' + esc(g.word_gender_label) + '</option>';
+        }).join('');
+}
+
+/* One setter for both New Word (an empty object clears everything) and Edit. */
+function lxSetPosGender(w) {
+    var keys = {};
+    ((w && w.word_pos_keys) || []).forEach(function(k) { keys[String(k)] = true; });
+    document.querySelectorAll('.lx-pos-cb').forEach(function(cb) {
+        cb.checked = !!keys[cb.value];
+    });
+    document.getElementById('lx-gender').value = (w && w.word_gender_key) ? String(w.word_gender_key) : '';
+}
+
+function lxCollectPos() {
+    var out = [];
+    document.querySelectorAll('.lx-pos-cb').forEach(function(cb) {
+        if (cb.checked) out.push(parseInt(cb.value, 10));
+    });
+    return out;
 }
 
 function lxPickLetter(yt) {
@@ -1163,6 +1220,7 @@ function newWord() {
         document.getElementById('lx-translits').innerHTML = '';
         document.getElementById('lx-yt').value = '';
         lxSetPronunciation({});
+        lxSetPosGender({});
         document.getElementById('lx-kb').classList.remove('open');
         document.getElementById('lx-yt-kb').classList.remove('open');
         lxAddTranslit('', null, true);
@@ -1184,6 +1242,7 @@ function editWord(key) {
                 (w.word_count_yy === null || w.word_count_yy === undefined) ? '' : w.word_count_yy;
             document.getElementById('lx-def-yy').value = w.word_definition_yy || '';
             lxSetPronunciation(w);
+            lxSetPosGender(w);
             document.getElementById('lx-source-code').value = (w.word_source_code || 'yy').trim();
             document.getElementById('gw-active').checked =
                 !(w.word_active_flag === false || w.word_active_flag === 'f');
@@ -1294,6 +1353,8 @@ function saveWord() {
         word_pronunciation_yy:       document.getElementById('lx-pron-yy').value.trim(),
         word_pronunciation_ipa:      document.getElementById('lx-pron-ipa').value.trim(),
         word_pronunciation_phonetic: document.getElementById('lx-pron-phonetic').value.trim(),
+        word_pos_keys: lxCollectPos(),
+        word_gender_key: document.getElementById('lx-gender').value,
         word_source_code: document.getElementById('lx-source-code').value,
         word_count_yy: countRaw === '' ? '' : (parseInt(countRaw, 10) || 0),
         word_active_flag: document.getElementById('gw-active').checked,
@@ -1365,7 +1426,6 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 checkAuth();
 </script>
 <script src="/js/ipa-helper.js?v=1"></script>
-<script src="/js/admin-login.js?v=8"></script>
 <script src="/js/session-state.js?v=1"></script>
 <script src="/js/error-reporter.js?v=14"></script>
 </body>

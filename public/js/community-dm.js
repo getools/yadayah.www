@@ -416,6 +416,8 @@ CommunityDM.loadInbox = function() {
             html += '</div>';
         }
         el.innerHTML = html;
+    }).catch(function() {
+        el.innerHTML = '<div class="empty-state">Failed to load messages. Please try again.</div>';
     });
 };
 
@@ -540,6 +542,8 @@ CommunityDM.loadThread = function(threadKey) {
             wireCompose('dm-reply-body', function() { CommunityDM.sendMessage(threadKey); });
             initDmEditor('dm-reply-body', threadKey);
         }
+    }).catch(function() {
+        el.innerHTML = '<div class="empty-state">Failed to load messages. Please try again.</div>';
     });
 };
 
