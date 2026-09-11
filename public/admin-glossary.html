@@ -188,8 +188,11 @@
         .lx-kb .lx-keys button.mark { background: #f4f6f8; color: #2c3e50; }
 
         /* Same RTL override as the table's YT column; the plain logical spelling
-           is shown beside it in #lx-yt-plain so the stored value stays readable. */
-        input.lx-yt-out {
+           is shown beside it in #lx-yt-plain so the stored value stays readable.
+           Selected by id: `.field-row input[type=text]` above sets
+           `font-family: inherit` and outranks a plain class selector, which left
+           this box showing Latin letters instead of Yada Towrah glyphs. */
+        .lx-heb-wrap input#lx-yt {
             font-family: 'YadaTowrah', serif; font-size: 1.55rem; color: #1a5276;
             direction: rtl; unicode-bidi: bidi-override; text-align: right;
             max-width: 280px; padding: 4px 10px;
@@ -312,7 +315,7 @@
             <div class="field-row" style="align-items:flex-start;"><label for="lx-yt">YT</label>
                 <div class="field-input">
                     <div class="lx-heb-wrap">
-                        <input type="text" id="lx-yt" class="lx-yt-out">
+                        <input type="text" id="lx-yt" autocomplete="off" spellcheck="false">
                         <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleYtKeyboard()" id="lx-yt-kb-toggle">YT letters</button>
                         <span id="lx-yt-plain" style="color:#888;font-size:0.82rem;"></span>
                     </div>
