@@ -1,14 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1788847204">
+    <meta name="page-version" content="1789106404">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=13">
     <link rel="stylesheet" href="css/login.css">
     <style>
-        @font-face { font-family: 'YadaTowrah'; src: url('/fonts/YadaTowrah-Regular.woff2') format('woff2'), url('/fonts/YadaTowrah-Regular.woff') format('woff'); }
+        /* The only Yada Towrah files that exist are the -Times pair; the page used
+           to ask for -Regular, which 404s, so every YT glyph silently fell back to
+           serif. Same source list the public glossary and Word admin use. */
+        @font-face {
+            font-family: 'YadaTowrah';
+            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            font-weight: normal; font-style: normal; font-display: swap;
+        }
         .letter-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .letter-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; cursor: pointer; transition: box-shadow 0.2s, border-color 0.2s; display: flex; gap: 14px; align-items: center; }
         .letter-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.1); border-color: #3498db; }
@@ -51,35 +59,123 @@
         .save-status { font-size: 0.85rem; color: #27ae60; }
         .save-error { font-size: 0.85rem; color: #c0392b; }
 
-        /* ── Words section ── */
+        /* ══ Words section — the Hebrew lexicon (yy_word + satellites) ══ */
         .gw-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
         .gw-bar input[type=search] {
-            flex: 1; min-width: 220px; max-width: 420px; padding: 7px 10px;
+            flex: 1; min-width: 200px; max-width: 340px; padding: 7px 10px;
             border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit;
         }
-        .gw-bar input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
-        .gw-count { font-size: 0.82rem; color: #888; }
+        .gw-bar input:focus, .gw-bar select:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
+        .gw-bar select { padding: 7px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; background: #fff; }
+        .gw-count { font-size: 0.82rem; color: #888; white-space: nowrap; }
         .gw-bar .gw-spacer { margin-left: auto; }
 
+        /* Letter strip — the same YT index the public glossary web uses. */
+        .lx-letters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+        .lx-letters button {
+            font-family: 'YadaTowrah', serif; font-size: 1.25rem; line-height: 1;
+            min-width: 32px; padding: 6px 4px; border: 1px solid #ddd; border-radius: 4px;
+            background: #fff; color: #1a5276; cursor: pointer;
+        }
+        .lx-letters button:hover { border-color: #3498db; background: #f2f8fd; }
+        .lx-letters button.active { background: #1a5276; border-color: #1a5276; color: #fff; }
+        .lx-letters button.lx-all { font-family: inherit; font-size: 0.8rem; color: #555; padding: 6px 10px; }
+
         .gw-table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); overflow: hidden; }
-        table.gw-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-        table.gw-table th {
-            text-align: left; padding: 10px 12px; background: #f5f6f8; color: #555;
-            font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+        table.gw-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        /* Header type matches the other admin tables (see #words-table on
+           admin-word.html): one weight, one size, no per-column overrides. The
+           .col-* rules below are scoped to td on purpose — unscoped they also hit
+           the matching th and blew the Hebrew and YT headers up to 18/22px. */
+        table.gw-table thead th {
+            text-align: left; padding: 8px 10px; background: #f8f9fa;
+            font-weight: 600; color: #555; font-size: 0.875rem;
             border-bottom: 1px solid #e0e0e0; white-space: nowrap;
         }
-        table.gw-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+        table.gw-table thead th.sortable { cursor: pointer; user-select: none; }
+        table.gw-table thead th.sortable:hover { color: #2c3e50; }
+        table.gw-table th .sort-mark { color: #3498db; font-size: 0.72rem; }
+        table.gw-table .filter-row th { background: #f0f0f0; padding: 4px 6px; border-bottom: 1px solid #e0e0e0; }
+        table.gw-table .col-filter {
+            width: 100%; padding: 3px 5px; font-size: 0.8rem; font-family: inherit;
+            border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; background: #fff;
+        }
+        table.gw-table .col-filter:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
+        table.gw-table input.col-filter.f-hebrew { direction: rtl; text-align: right; font-size: 0.95rem; }
+        table.gw-table input.col-filter.f-yt { font-family: 'YadaTowrah', serif; font-size: 1rem; color: #1a5276; }
+        .gw-count-filter { display: flex; gap: 3px; align-items: center; }
+        .gw-count-filter button {
+            flex: none; width: 20px; padding: 3px 0; font-size: 0.78rem; line-height: 1;
+            border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; color: #555;
+        }
+        table.gw-table td { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
         table.gw-table tbody tr { cursor: pointer; }
         table.gw-table tbody tr:hover { background: #f8fbfd; }
         table.gw-table tr.inactive td { opacity: 0.45; }
-        table.gw-table .col-sort { width: 60px; color: #aaa; font-size: 0.8rem; }
-        table.gw-table .col-term { width: 190px; font-weight: 700; color: #1a5276; }
-        table.gw-table .col-see { width: 190px; color: #666; }
-        table.gw-table .col-active { width: 70px; text-align: center; }
-        table.gw-table .gw-def { color: #444; }
+        table.gw-table .col-strongs { width: 78px; }
+        table.gw-table .col-translit { width: 200px; }
+        table.gw-table .col-count { width: 76px; text-align: right; }
+        table.gw-table .col-hebrew { width: 130px; text-align: right; }
+        table.gw-table .col-yt { width: 110px; }
+        table.gw-table td.col-strongs { color: #666; font-variant-numeric: tabular-nums; }
+        table.gw-table td.col-translit { font-weight: 700; color: #1a5276; }
+        table.gw-table td.col-translit .alt { display: block; font-weight: 400; font-size: 0.78rem; color: #999; margin-top: 2px; }
+        table.gw-table td.col-count { color: #666; font-variant-numeric: tabular-nums; }
+        table.gw-table td.col-hebrew { font-size: 1.15rem; direction: rtl; }
+        table.gw-table td.col-yt { font-family: 'YadaTowrah', serif; font-size: 1.35rem; color: #1a5276; }
+        table.gw-table .gw-def { color: #444; font-size: 0.84rem; }
+        table.gw-table .src-tag {
+            display: inline-block; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em;
+            padding: 1px 5px; border-radius: 3px; background: #eef1f5; color: #7a8798; margin-left: 6px; vertical-align: 1px;
+        }
+        table.gw-table .src-tag.src-books { background: #e6f4ea; color: #2e7d4f; }
+        table.gw-table .src-tag.src-yy { background: #e8f0fb; color: #2d5f9a; }
         .gw-empty { padding: 26px 12px; text-align: center; color: #999; font-style: italic; font-size: 0.88rem; }
         .gw-checkbox-row { display: flex; align-items: center; gap: 8px; }
         .gw-danger { margin-left: auto; }
+
+        .lx-pager { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 12px; font-size: 0.85rem; color: #666; }
+        .lx-pager button { padding: 5px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.85rem; }
+        .lx-pager button:disabled { opacity: 0.4; cursor: default; }
+
+        /* ── Transliteration rows in the edit panel ── */
+        .lx-translits { display: flex; flex-direction: column; gap: 6px; }
+        .lx-tr-row { display: flex; align-items: center; gap: 8px; }
+        .lx-tr-row input[type=text] { flex: 1; max-width: 260px; }
+        .lx-tr-row .lx-tr-count { font-size: 0.78rem; color: #999; min-width: 78px; }
+        .lx-tr-row .lx-x { border: none; background: none; color: #c0392b; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; }
+        .lx-tr-row label { flex: none; font-size: 0.78rem; color: #888; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        .lx-hint { font-size: 0.78rem; color: #999; margin-top: 4px; }
+
+        /* ── Hebrew keyboard ── */
+        .lx-heb-wrap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .lx-heb-wrap input#lx-hebrew { font-size: 1.35rem; direction: rtl; text-align: right; max-width: 280px; }
+        .lx-kb {
+            display: none; margin-top: 10px; padding: 12px; border: 1px solid #dde2e8;
+            border-radius: 6px; background: #fafbfc; max-width: 620px;
+        }
+        .lx-kb.open { display: block; }
+        .lx-kb h4 { margin: 0 0 6px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8a94a0; font-weight: 700; }
+        .lx-kb h4:not(:first-child) { margin-top: 12px; }
+        .lx-kb .lx-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+        .lx-kb .lx-keys button {
+            min-width: 38px; padding: 6px 6px; font-size: 1.25rem; line-height: 1.15;
+            border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer;
+        }
+        .lx-kb .lx-keys button:hover { border-color: #3498db; background: #f2f8fd; }
+        .lx-kb .lx-keys button .kb-name { display: block; font-size: 0.58rem; color: #99a2ac; font-family: inherit; }
+        /* The dotted-circle carrier on a mark key is scenery — mute it so the
+           mark itself reads as the glyph. */
+        .lx-kb .lx-keys button.mark { background: #f4f6f8; color: #2c3e50; }
+
+        .lx-yt-out { font-family: 'YadaTowrah', serif; font-size: 1.7rem; color: #1a5276; min-height: 1.7rem; }
+        .lx-readonly { color: #777; font-size: 0.9rem; }
+        .lx-defs { border-top: 1px solid #eee; margin-top: 6px; padding-top: 10px; }
+        .lx-def-row { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dotted #eee; font-size: 0.84rem; }
+        .lx-def-row .lx-def-src { flex: 0 0 82px; color: #8a94a0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
+        .lx-def-row .lx-def-txt { flex: 1; color: #444; white-space: pre-wrap; }
+        .lx-def-row .lx-use { flex: none; }
+        .lx-def-row .lx-use button { font-size: 0.74rem; padding: 3px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -127,36 +223,84 @@
         <div id="letter-list" class="letter-list"></div>
     </div>
 
-    <!-- ══ WORDS TAB — standalone glossary terms (yy_glossary_word) ══ -->
+    <!-- ══ WORDS TAB — the Hebrew lexicon (yy_word + yy_word_translit + yy_word_definition) ══ -->
     <div id="tab-words" class="tab-content">
+        <p style="margin:0 0 12px;color:#888;font-size:0.85rem;">
+            Transliterated Hebrew words. <strong>YT</strong> is generated from the Hebrew spelling;
+            <strong>#</strong> is how many times the word appears in the books.
+        </p>
+
         <div class="gw-bar">
-            <input type="search" id="gw-search" placeholder="Search term, definition, or see-also..." autocomplete="off">
+            <input type="search" id="gw-search" placeholder="Search spelling, Hebrew, Strong's, or definition..." autocomplete="off">
+            <select id="lx-source" onchange="lxReload(true)">
+                <option value="">All sources</option>
+            </select>
             <span id="gw-count" class="gw-count"></span>
             <span class="gw-spacer"></span>
             <button class="btn btn-primary" onclick="newWord()">New Word</button>
         </div>
+
+        <div id="lx-letters" class="lx-letters"></div>
 
         <!-- data-no-persist: record fields must not survive a refresh into the
              next record being edited (session-state.js would otherwise bind them). -->
         <div id="gw-panel" class="edit-panel" data-no-persist>
             <h2 id="gw-panel-title">New Word</h2>
 
-            <div class="field-row"><label for="gw-term">Term</label>
-                <div class="field-input"><input type="text" id="gw-term" maxlength="200"></div></div>
+            <div class="field-row"><label for="lx-strongs">Strong's</label>
+                <div class="field-input"><div class="char-inputs">
+                    <input type="text" id="lx-strongs" class="small-input" maxlength="4" placeholder="0000" inputmode="numeric">
+                    <span style="color:#888;font-size:0.82rem;">1–4 digits, blank if the word has no Strong's entry</span>
+                </div></div></div>
 
-            <div class="field-row"><label for="gw-definition">Definition</label>
-                <div class="field-input"><textarea id="gw-definition" rows="6"></textarea></div></div>
+            <div class="field-row" style="align-items:flex-start;"><label>Translit</label>
+                <div class="field-input">
+                    <div id="lx-translits" class="lx-translits"></div>
+                    <div style="margin-top:8px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxAddTranslit('')">+ Add spelling</button>
+                    </div>
+                    <div class="lx-hint">The selected spelling is the preferred one, saved on the word itself; the rest are kept as alternates.</div>
+                </div></div>
 
-            <div class="field-row"><label for="gw-see-also">See Also</label>
-                <div class="field-input"><input type="text" id="gw-see-also" maxlength="500" placeholder="Comma-separated related terms"></div></div>
+            <div class="field-row"><label for="lx-count">#</label>
+                <div class="field-input"><div class="char-inputs">
+                    <input type="number" id="lx-count" class="small-input" min="0" step="1">
+                    <span style="color:#888;font-size:0.82rem;">times the word appears in the books &mdash; a book recount overwrites this</span>
+                </div></div></div>
 
-            <div class="field-row"><label for="gw-sort">List Number</label>
-                <div class="field-input"><input type="number" id="gw-sort" class="small-input" value="0"></div></div>
+            <div class="field-row" style="align-items:flex-start;"><label for="lx-hebrew">Hebrew</label>
+                <div class="field-input">
+                    <div class="lx-heb-wrap">
+                        <input type="text" id="lx-hebrew" lang="he" dir="rtl">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleKeyboard()" id="lx-kb-toggle">Letters &amp; marks</button>
+                    </div>
+                    <div id="lx-kb" class="lx-kb"></div>
+                </div></div>
+
+            <div class="field-row"><label>YT</label>
+                <div class="field-input"><div class="char-inputs">
+                    <span id="lx-yt" class="lx-yt-out"></span>
+                    <span id="lx-yt-plain" style="color:#888;font-size:0.82rem;"></span>
+                </div>
+                <div class="lx-hint">Generated from the Hebrew spelling — saved automatically, not editable.</div>
+                </div></div>
+
+            <div class="field-row" style="align-items:flex-start;"><label for="lx-def-yy">Definition</label>
+                <div class="field-input">
+                    <textarea id="lx-def-yy" rows="5" placeholder="The Yada definition for this word."></textarea>
+                    <div id="lx-other-defs" class="lx-defs" style="display:none"></div>
+                </div></div>
+
+            <div class="field-row"><label for="lx-source-code">Source</label>
+                <div class="field-input"><div class="char-inputs">
+                    <select id="lx-source-code"></select>
+                    <span style="color:#888;font-size:0.82rem;">where this entry came from</span>
+                </div></div></div>
 
             <div class="field-row"><label for="gw-active">Active</label>
                 <div class="field-input"><div class="gw-checkbox-row">
                     <input type="checkbox" id="gw-active" checked>
-                    <span style="color:#888;font-size:0.82rem;">Shown on the site</span>
+                    <span style="color:#888;font-size:0.82rem;">Shown in the public glossary</span>
                 </div></div></div>
 
             <div class="button-row">
@@ -172,15 +316,31 @@
             <table class="gw-table">
                 <thead>
                     <tr>
-                        <th class="col-sort">#</th>
-                        <th class="col-term">Term</th>
+                        <th class="col-strongs sortable" onclick="lxSort('strongs')">Strong's<span class="sort-mark" data-sort="strongs"></span></th>
+                        <th class="col-translit sortable" onclick="lxSort('translit')">Translit<span class="sort-mark" data-sort="translit"></span></th>
+                        <th class="col-count sortable" onclick="lxSort('count')">#<span class="sort-mark" data-sort="count"></span></th>
+                        <th class="col-hebrew sortable" onclick="lxSort('hebrew')">Hebrew<span class="sort-mark" data-sort="hebrew"></span></th>
+                        <th class="col-yt sortable" onclick="lxSort('yt')">YT<span class="sort-mark" data-sort="yt"></span></th>
                         <th>Definition</th>
-                        <th class="col-see">See Also</th>
-                        <th class="col-active">Active</th>
+                    </tr>
+                    <!-- Column filters. Every box narrows the server-side query and
+                         composes with the search bar above; Definition filters but
+                         does not sort. -->
+                    <tr class="filter-row">
+                        <th><input type="text" id="lx-f-strongs" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
+                        <th><input type="text" id="lx-f-translit" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
+                        <th><div class="gw-count-filter">
+                            <button type="button" id="lx-f-count-op" title="Toggle at-least / at-most" onclick="lxToggleCountOp()">&ge;</button>
+                            <input type="text" id="lx-f-count" class="col-filter" placeholder="…" inputmode="numeric" autocomplete="off" oninput="lxFilterChanged()">
+                        </div></th>
+                        <th><input type="text" id="lx-f-hebrew" class="col-filter f-hebrew" placeholder="…" dir="rtl" lang="he" autocomplete="off" oninput="lxFilterChanged()"></th>
+                        <th><input type="text" id="lx-f-yt" class="col-filter f-yt" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
+                        <th><input type="text" id="lx-f-def" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
                     </tr>
                 </thead>
                 <tbody id="gw-tbody"></tbody>
             </table>
+            <div id="lx-pager" class="lx-pager"></div>
         </div>
     </div>
 </div>
@@ -411,42 +571,316 @@ function restoreTab() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   Words — CRUD against /api/admin-glossary-word.php (yy_glossary_word).
+   Words — the Hebrew lexicon, against /api/admin-glossary-lexicon.php.
+
+   yy_word holds one row per word; yy_word_translit holds every spelling of
+   it, with the preferred spelling mirrored into yy_word.word_translit.
+   word_yt is derived from word_hebrew by the trg_word_yt DB trigger — the
+   panel previews it with the same yy_letter map, but never writes it.
    ══════════════════════════════════════════════════════════════════════ */
 
-var editingWordKey = null;   // null = the panel is creating a new term
+var editingWordKey = null;   // null = the panel is creating a new word
 var wordSearchTimer = null;
+var lxMeta = null;           // sources + Hebrew↔YT letter map, loaded once
+var lxHebToYt = {};          // 'א' → 'a'
+var lxState = { q: '', source: '', letter: '', sort: 'translit', dir: 'asc', offset: 0, limit: 100 };
+var lxFilterTimer = null;
+var lxCountOp = 'gt';        // 'gt' = at least, 'lt' = at most
 
-function loadWords() {
-    var q = document.getElementById('gw-search').value.trim();
-    var url = API + '/admin-glossary-word.php' + (q ? '?q=' + encodeURIComponent(q) : '');
-    fetch(url, {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
-        renderWords(d.words || []);
+/* Column filter box → query parameter. */
+var LX_FILTERS = {
+    'lx-f-strongs':  'f_strongs',
+    'lx-f-translit': 'f_translit',
+    'lx-f-count':    'f_count',
+    'lx-f-hebrew':   'f_hebrew',
+    'lx-f-yt':       'f_yt',
+    'lx-f-def':      'f_def'
+};
+
+/* Counts read best biggest-first; every other column reads A→Z. Clicking the
+   active column flips the direction, clicking a new one starts at its default. */
+var LX_SORT_DESC_FIRST = { count: 1 };
+
+/* Vowel points and marks that are not letters. A combining mark is stored as
+   typed; the key face carries a dotted circle so it is visible on its own. */
+var LX_MARKS = [
+    ['ְ', 'sheva'],   ['ֱ', 'hataf e'], ['ֲ', 'hataf a'], ['ֳ', 'hataf o'],
+    ['ִ', 'hiriq'],   ['ֵ', 'tsere'],   ['ֶ', 'segol'],   ['ַ', 'patah'],
+    ['ָ', 'qamats'],  ['ֹ', 'holam'],   ['ֻ', 'qubuts'],  ['ּ', 'dagesh'],
+    ['ׁ', 'shin dot'],['ׂ', 'sin dot'], ['ֽ', 'meteg'],   ['ֿ', 'rafe']
+];
+var LX_PUNCT = [
+    ['־', 'maqaf'], ['׃', 'sof pasuq'], ['׳', 'geresh'], ['״', 'gershayim'],
+    ['׀', 'paseq'], [' ', 'nbsp'], [' ', 'space']
+];
+
+/* ── Meta, letter strip, source filter ─────────────────────────────────── */
+
+function lxLoadMeta(then) {
+    if (lxMeta) { if (then) then(); return; }
+    fetch(API + '/admin-glossary-lexicon.php?action=meta', {credentials:'include'})
+        .then(function(r){return safeJson(r);}).then(function(d) {
+        lxMeta = d || {};
+        (lxMeta.letters || []).forEach(function(l) {
+            if (l.letter_hebrew && l.letter_yt) lxHebToYt[l.letter_hebrew] = l.letter_yt;
+        });
+        lxRenderLetters();
+        lxRenderSources();
+        if (then) then();
     });
 }
 
-function renderWords(words) {
+function lxRenderLetters() {
+    var seen = {}, html = '<button type="button" class="lx-all' + (lxState.letter ? '' : ' active')
+        + '" onclick="lxPickLetter(\'\')">All letters</button>';
+    (lxMeta.letters || []).forEach(function(l) {
+        // Finals share a YT letter with their base form — one key each.
+        if (!l.letter_yt || seen[l.letter_yt]) return;
+        seen[l.letter_yt] = 1;
+        html += '<button type="button" title="' + esc(l.letter_label || '') + ' — ' + esc(l.letter_hebrew || '')
+            + '" class="' + (lxState.letter === l.letter_yt ? 'active' : '')
+            + '" onclick="lxPickLetter(\'' + esc(l.letter_yt) + '\')">' + esc(l.letter_yt) + '</button>';
+    });
+    document.getElementById('lx-letters').innerHTML = html;
+}
+
+function lxRenderSources() {
+    var sel = document.getElementById('lx-source');
+    var counts = {};
+    (lxMeta.source_counts || []).forEach(function(c) { counts[c.code] = c.n; });
+    var html = '<option value="">All sources</option>';
+    (lxMeta.sources || []).forEach(function(s) {
+        var n = counts[s.word_source_code];
+        html += '<option value="' + esc(s.word_source_code) + '">' + esc(s.word_source_label)
+            + (n ? ' (' + n + ')' : '') + '</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = lxState.source;
+
+    // The edit panel's own Source picker uses the labels without the counts.
+    var panelSel = document.getElementById('lx-source-code');
+    panelSel.innerHTML = (lxMeta.sources || []).map(function(s) {
+        return '<option value="' + esc(s.word_source_code) + '">' + esc(s.word_source_label) + '</option>';
+    }).join('');
+}
+
+function lxPickLetter(yt) {
+    lxState.letter = yt;
+    lxRenderLetters();
+    lxReload(true);
+}
+
+function lxSort(key) {
+    if (lxState.sort === key) {
+        lxState.dir = (lxState.dir === 'asc') ? 'desc' : 'asc';
+    } else {
+        lxState.sort = key;
+        lxState.dir = LX_SORT_DESC_FIRST[key] ? 'desc' : 'asc';
+    }
+    lxReload(true);
+}
+
+/* Typing in a column box re-queries after a short pause, so a filter never
+   fires a request per keystroke. */
+function lxFilterChanged() {
+    clearTimeout(lxFilterTimer);
+    lxFilterTimer = setTimeout(function() { lxReload(true); }, 250);
+}
+
+function lxToggleCountOp() {
+    lxCountOp = (lxCountOp === 'gt') ? 'lt' : 'gt';
+    document.getElementById('lx-f-count-op').innerHTML = (lxCountOp === 'gt') ? '&ge;' : '&le;';
+    if (document.getElementById('lx-f-count').value.trim()) lxReload(true);
+}
+
+function lxReload(resetOffset) {
+    if (resetOffset) lxState.offset = 0;
+    loadWords();
+}
+
+/* ── List ──────────────────────────────────────────────────────────────── */
+
+function loadWords() {
+    lxLoadMeta(function() {
+        lxState.q = document.getElementById('gw-search').value.trim();
+        lxState.source = document.getElementById('lx-source').value;
+        var p = 'limit=' + lxState.limit + '&offset=' + lxState.offset
+              + '&sort=' + encodeURIComponent(lxState.sort) + '&dir=' + encodeURIComponent(lxState.dir);
+        if (lxState.q) p += '&q=' + encodeURIComponent(lxState.q);
+        if (lxState.source) p += '&source=' + encodeURIComponent(lxState.source);
+        if (lxState.letter) p += '&letter=' + encodeURIComponent(lxState.letter);
+        Object.keys(LX_FILTERS).forEach(function(id) {
+            var el = document.getElementById(id);
+            var v = el ? el.value.trim() : '';
+            if (v) p += '&' + LX_FILTERS[id] + '=' + encodeURIComponent(v);
+        });
+        if (document.getElementById('lx-f-count').value.trim()) p += '&f_count_op=' + lxCountOp;
+
+        fetch(API + '/admin-glossary-lexicon.php?' + p, {credentials:'include'})
+            .then(function(r){return safeJson(r);}).then(function(d) {
+            if (!d || d.error) { alert((d && d.error) || 'Could not load words'); return; }
+            renderWords(d.words || [], d.total || 0);
+        });
+    });
+}
+
+function renderWords(words, total) {
     var tbody = document.getElementById('gw-tbody');
-    var countEl = document.getElementById('gw-count');
-    countEl.textContent = words.length ? (words.length + (words.length === 1 ? ' term' : ' terms')) : '';
+    document.getElementById('gw-count').textContent =
+        total ? (total.toLocaleString() + (total === 1 ? ' word' : ' words')) : '';
+
+    document.querySelectorAll('.gw-table .sort-mark').forEach(function(el) {
+        el.textContent = el.getAttribute('data-sort') === lxState.sort
+            ? (lxState.dir === 'desc' ? ' ▼' : ' ▲') : '';
+    });
 
     if (!words.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="gw-empty">No glossary words yet — use New Word to add one.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="gw-empty">No words match — clear the filters, or use New Word to add one.</td></tr>';
+        document.getElementById('lx-pager').innerHTML = '';
         return;
     }
+
     var html = '';
     words.forEach(function(w) {
-        var inactive = w.glossary_word_active_flag === false || w.glossary_word_active_flag === 'f';
-        html += '<tr class="' + (inactive ? 'inactive' : '') + '" onclick="editWord(' + w.glossary_word_key + ')">'
-            + '<td class="col-sort">' + (w.glossary_word_sort || 0) + '</td>'
-            + '<td class="col-term">' + esc(w.glossary_word_term || '') + '</td>'
-            + '<td class="gw-def">' + esc(w.glossary_word_definition || '') + '</td>'
-            + '<td class="col-see">' + esc(w.glossary_word_see_also || '') + '</td>'
-            + '<td class="col-active">' + (inactive ? '&mdash;' : '&#10003;') + '</td>'
+        var inactive = w.word_active_flag === false || w.word_active_flag === 'f';
+        var pref = w.word_translit || '';
+        // Alternates = every spelling except the preferred one.
+        var alts = (w.translits_display || '').split(', ').filter(function(s) {
+            return s && s.toLowerCase() !== pref.toLowerCase();
+        });
+        var def = w.word_definition_yy || w.word_definition_kirk || w.word_definition_external || '';
+        var src = (w.word_source_code || '').trim();
+
+        html += '<tr class="' + (inactive ? 'inactive' : '') + '" onclick="editWord(' + w.word_key + ')">'
+            + '<td class="col-strongs">' + esc(w.word_strongs || '') + '</td>'
+            + '<td class="col-translit">' + esc(pref || '(none)')
+            + (src ? '<span class="src-tag src-' + esc(src) + '">' + esc(src) + '</span>' : '')
+            + (alts.length ? '<span class="alt">' + esc(alts.join(', ')) + '</span>' : '')
+            + '</td>'
+            + '<td class="col-count">' + (w.word_count_yy === null || w.word_count_yy === undefined ? '' : w.word_count_yy) + '</td>'
+            + '<td class="col-hebrew">' + esc(w.word_hebrew || '') + '</td>'
+            + '<td class="col-yt">' + esc(w.word_yt || '') + '</td>'
+            + '<td class="gw-def">' + esc(def.length > 180 ? def.slice(0, 180) + '…' : def) + '</td>'
             + '</tr>';
     });
     tbody.innerHTML = html;
+
+    var from = lxState.offset + 1, to = Math.min(lxState.offset + words.length, total);
+    document.getElementById('lx-pager').innerHTML =
+        '<button type="button" onclick="lxPage(-1)"' + (lxState.offset ? '' : ' disabled') + '>&larr; Prev</button>'
+        + '<span>' + from.toLocaleString() + '–' + to.toLocaleString() + ' of ' + total.toLocaleString() + '</span>'
+        + '<button type="button" onclick="lxPage(1)"' + (to < total ? '' : ' disabled') + '>Next &rarr;</button>';
 }
+
+function lxPage(dir) {
+    lxState.offset = Math.max(0, lxState.offset + dir * lxState.limit);
+    loadWords();
+}
+
+/* ── Transliteration rows ──────────────────────────────────────────────── */
+
+function lxAddTranslit(text, count, preferred) {
+    var wrap = document.getElementById('lx-translits');
+    var row = document.createElement('div');
+    row.className = 'lx-tr-row';
+    row.innerHTML = '<input type="text" class="lx-tr-text" maxlength="250" value="' + esc(text || '') + '">'
+        + '<label><input type="radio" name="lx-pref"' + (preferred ? ' checked' : '') + '> preferred</label>'
+        + '<span class="lx-tr-count">' + (count === null || count === undefined ? '' : count + ' in books') + '</span>'
+        + '<button type="button" class="lx-x" title="Remove spelling">&times;</button>';
+    row.querySelector('.lx-x').addEventListener('click', function() {
+        var wasPref = row.querySelector('input[type=radio]').checked;
+        row.remove();
+        // Never leave the word without a preferred spelling.
+        if (wasPref) {
+            var first = wrap.querySelector('input[type=radio]');
+            if (first) first.checked = true;
+        }
+    });
+    wrap.appendChild(row);
+    if (!wrap.querySelector('input[type=radio]:checked')) {
+        row.querySelector('input[type=radio]').checked = true;
+    }
+    if (!text) row.querySelector('.lx-tr-text').focus();
+}
+
+function lxCollectTranslits() {
+    var out = [];
+    document.querySelectorAll('#lx-translits .lx-tr-row').forEach(function(row) {
+        var text = row.querySelector('.lx-tr-text').value.trim();
+        if (!text) return;
+        out.push({ word_translit_text: text, preferred: row.querySelector('input[type=radio]').checked });
+    });
+    return out;
+}
+
+/* ── Hebrew keyboard + YT preview ──────────────────────────────────────── */
+
+function lxBuildKeyboard() {
+    var kb = document.getElementById('lx-kb');
+    if (kb.dataset.built) return;
+
+    function keys(items, cls) {
+        return items.map(function(it) {
+            // A combining mark has no shape of its own — render it on a dotted
+            // circle (U+25CC) so the key face shows where the mark sits. The
+            // carrier is display only; data-ch still holds the bare character.
+            var face = (cls === 'mark') ? '◌' + it[0] : it[0];
+            return '<button type="button" class="' + cls + '" data-ch="' + esc(it[0]) + '" title="' + esc(it[1]) + '">'
+                + '<span class="kb-glyph">' + esc(face) + '</span>'
+                + '<span class="kb-name">' + esc(it[1]) + '</span></button>';
+        }).join('');
+    }
+
+    var letters = (lxMeta.letters || []).map(function(l) { return [l.letter_hebrew, l.letter_label || '']; });
+    var html = '<h4>Letters</h4><div class="lx-keys">' + keys(letters, 'letter') + '</div>'
+        + '<h4>Vowels &amp; marks</h4><div class="lx-keys">' + keys(LX_MARKS, 'mark') + '</div>'
+        + '<h4>Punctuation</h4><div class="lx-keys">' + keys(LX_PUNCT, 'punct') + '</div>';
+    kb.innerHTML = html;
+
+    kb.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-ch]');
+        if (btn) lxInsertChar(btn.getAttribute('data-ch'));
+    });
+    kb.dataset.built = '1';
+}
+
+function lxInsertChar(ch) {
+    var input = document.getElementById('lx-hebrew');
+    var start = input.selectionStart, end = input.selectionEnd;
+    if (start === null || start === undefined) { input.value += ch; }
+    else {
+        input.value = input.value.slice(0, start) + ch + input.value.slice(end);
+        var caret = start + ch.length;
+        input.setSelectionRange(caret, caret);
+    }
+    input.focus();
+    lxUpdateYt();
+}
+
+function lxToggleKeyboard() {
+    lxBuildKeyboard();
+    document.getElementById('lx-kb').classList.toggle('open');
+}
+
+/* Mirror of the trg_word_yt DB trigger: newlines dropped, each Hebrew letter
+   mapped through yy_letter, anything else (vowel points, spaces) passed through. */
+function lxHebrewToYt(hebrew) {
+    var out = '';
+    var src = (hebrew || '').replace(/\n/g, '');
+    for (var i = 0; i < src.length; i++) {
+        var c = src.charAt(i);
+        out += (lxHebToYt[c] !== undefined ? lxHebToYt[c] : c);
+    }
+    return out;
+}
+
+function lxUpdateYt() {
+    var yt = lxHebrewToYt(document.getElementById('lx-hebrew').value);
+    document.getElementById('lx-yt').textContent = yt;
+    document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
+}
+
+/* ── Edit panel ────────────────────────────────────────────────────────── */
 
 function openWordPanel(title, showDelete) {
     document.getElementById('gw-panel-title').textContent = title;
@@ -459,28 +893,102 @@ function openWordPanel(title, showDelete) {
 }
 
 function newWord() {
-    editingWordKey = null;
-    document.getElementById('gw-term').value = '';
-    document.getElementById('gw-definition').value = '';
-    document.getElementById('gw-see-also').value = '';
-    document.getElementById('gw-sort').value = '0';
-    document.getElementById('gw-active').checked = true;
-    openWordPanel('New Word', false);
-    document.getElementById('gw-term').focus();
+    lxLoadMeta(function() {
+        editingWordKey = null;
+        document.getElementById('lx-strongs').value = '';
+        document.getElementById('lx-hebrew').value = '';
+        document.getElementById('lx-count').value = '';
+        document.getElementById('lx-def-yy').value = '';
+        document.getElementById('lx-other-defs').style.display = 'none';
+        document.getElementById('lx-source-code').value = 'yy';
+        document.getElementById('gw-active').checked = true;
+        document.getElementById('lx-translits').innerHTML = '';
+        document.getElementById('lx-kb').classList.remove('open');
+        lxAddTranslit('', null, true);
+        lxUpdateYt();
+        openWordPanel('New Word', false);
+        document.querySelector('#lx-translits .lx-tr-text').focus();
+    });
 }
 
 function editWord(key) {
-    fetch(API + '/admin-glossary-word.php?key=' + key, {credentials:'include'})
-        .then(function(r){return safeJson(r);}).then(function(w) {
-        if (!w || w.error) { alert((w && w.error) || 'Word not found'); return; }
-        editingWordKey = key;
-        document.getElementById('gw-term').value = w.glossary_word_term || '';
-        document.getElementById('gw-definition').value = w.glossary_word_definition || '';
-        document.getElementById('gw-see-also').value = w.glossary_word_see_also || '';
-        document.getElementById('gw-sort').value = w.glossary_word_sort || 0;
-        document.getElementById('gw-active').checked =
-            !(w.glossary_word_active_flag === false || w.glossary_word_active_flag === 'f');
-        openWordPanel('Edit: ' + (w.glossary_word_term || ''), true);
+    lxLoadMeta(function() {
+        fetch(API + '/admin-glossary-lexicon.php?key=' + key, {credentials:'include'})
+            .then(function(r){return safeJson(r);}).then(function(w) {
+            if (!w || w.error) { alert((w && w.error) || 'Word not found'); return; }
+            editingWordKey = key;
+            document.getElementById('lx-strongs').value = w.word_strongs || '';
+            document.getElementById('lx-hebrew').value = w.word_hebrew || '';
+            document.getElementById('lx-count').value =
+                (w.word_count_yy === null || w.word_count_yy === undefined) ? '' : w.word_count_yy;
+            document.getElementById('lx-def-yy').value = w.word_definition_yy || '';
+            document.getElementById('lx-source-code').value = (w.word_source_code || 'yy').trim();
+            document.getElementById('gw-active').checked =
+                !(w.word_active_flag === false || w.word_active_flag === 'f');
+            document.getElementById('lx-kb').classList.remove('open');
+
+            var wrap = document.getElementById('lx-translits');
+            wrap.innerHTML = '';
+            var pref = (w.word_translit || '').toLowerCase();
+            var list = w.translits || [];
+            if (!list.length && w.word_translit) list = [{word_translit_text: w.word_translit}];
+            list.forEach(function(t) {
+                lxAddTranslit(t.word_translit_text, t.word_translit_count_yy,
+                    (t.word_translit_text || '').toLowerCase() === pref);
+            });
+            if (!list.length) lxAddTranslit('', null, true);
+
+            lxRenderOtherDefs(w);
+            lxUpdateYt();
+            openWordPanel('Edit: ' + (w.word_translit || w.word_hebrew || 'word'), true);
+        });
+    });
+}
+
+/* Definitions held elsewhere: the per-source defaults on yy_word plus every
+   row in yy_word_definition. Read-only here, with a one-click copy into the
+   Yada definition being edited. */
+function lxRenderOtherDefs(w) {
+    var el = document.getElementById('lx-other-defs');
+    var rows = [];
+    var seen = {};
+
+    // Same text must not be listed twice. Every per-source default on yy_word is
+    // also a yy_word_definition row, so listing both showed each Strong's entry
+    // as "kirk · Noun" AND "kirk default". The tagged row wins — it carries the
+    // part of speech — so the definition rows go in first and a default is only
+    // added when it says something the rows do not.
+    function push(src, text) {
+        if (!text) return;
+        var norm = String(text).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!norm || seen[norm]) return;
+        seen[norm] = 1;
+        rows.push({ src: src, text: text });
+    }
+
+    (w.definitions || []).forEach(function(d) {
+        push((d.word_source_code || '?') + (d.word_pos_label ? ' · ' + d.word_pos_label : ''),
+             d.word_definition_text);
+    });
+    [['kirk', w.word_definition_kirk], ['external', w.word_definition_external]].forEach(function(p) {
+        push(p[0] + ' default', p[1]);
+    });
+
+    if (!rows.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+    el.innerHTML = '<div class="lx-hint" style="margin-bottom:6px;">Other definitions on record</div>'
+        + rows.map(function(r, i) {
+            return '<div class="lx-def-row">'
+                + '<div class="lx-def-src">' + esc(r.src) + '</div>'
+                + '<div class="lx-def-txt">' + esc(r.text) + '</div>'
+                + '<div class="lx-use"><button type="button" data-idx="' + i + '">Use</button></div>'
+                + '</div>';
+        }).join('');
+    el.style.display = '';
+    el.querySelectorAll('.lx-use button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.getElementById('lx-def-yy').value = rows[parseInt(btn.getAttribute('data-idx'), 10)].text;
+        });
     });
 }
 
@@ -488,6 +996,7 @@ function closeWordEdit() {
     editingWordKey = null;
     var panel = document.getElementById('gw-panel');
     panel.classList.remove('active');
+    document.getElementById('lx-kb').classList.remove('open');
 }
 
 function saveWord() {
@@ -496,54 +1005,69 @@ function saveWord() {
     statusEl.style.display = 'none';
     errorEl.style.display = 'none';
 
-    var term = document.getElementById('gw-term').value.trim();
-    if (!term) {
-        errorEl.textContent = 'Term is required';
-        errorEl.style.display = '';
-        return;
-    }
+    function fail(msg) { errorEl.textContent = msg; errorEl.style.display = ''; }
+
+    var translits = lxCollectTranslits();
+    var hebrew = document.getElementById('lx-hebrew').value.trim();
+    if (!translits.length && !hebrew) return fail('Give the word a spelling or Hebrew text.');
+
+    var strongs = document.getElementById('lx-strongs').value.trim();
+    if (strongs && !/^\d{1,4}$/.test(strongs)) return fail("Strong's number must be 1–4 digits.");
+
+    var countRaw = document.getElementById('lx-count').value.trim();
 
     var data = {
-        glossary_word_term: term,
-        glossary_word_definition: document.getElementById('gw-definition').value.trim(),
-        glossary_word_see_also: document.getElementById('gw-see-also').value.trim(),
-        glossary_word_sort: parseInt(document.getElementById('gw-sort').value, 10) || 0,
-        glossary_word_active_flag: document.getElementById('gw-active').checked
+        word_strongs: strongs,
+        word_hebrew: hebrew,
+        word_definition_yy: document.getElementById('lx-def-yy').value.trim(),
+        word_source_code: document.getElementById('lx-source-code').value,
+        word_count_yy: countRaw === '' ? '' : (parseInt(countRaw, 10) || 0),
+        word_active_flag: document.getElementById('gw-active').checked,
+        translits: translits
     };
+    var pref = translits.filter(function(t) { return t.preferred; })[0];
+    data.word_translit = pref ? pref.word_translit_text : (translits[0] ? translits[0].word_translit_text : '');
 
     var isNew = !editingWordKey;
-    var url = API + '/admin-glossary-word.php' + (isNew ? '' : '?key=' + editingWordKey);
+    var url = API + '/admin-glossary-lexicon.php' + (isNew ? '' : '?key=' + editingWordKey);
 
     fetch(url, {
         method: isNew ? 'POST' : 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(data)
     }).then(function(r){return safeJson(r);}).then(function(d) {
-        if (d.error) {
-            errorEl.textContent = d.error;
-            errorEl.style.display = '';
-            return;
-        }
-        if (isNew) editingWordKey = d.glossary_word_key;
-        document.getElementById('gw-panel-title').textContent = 'Edit: ' + term;
+        if (!d || d.error) return fail((d && d.error) || 'Save failed');
+        if (isNew) editingWordKey = d.word_key;
+        document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || hebrew);
         document.getElementById('gw-delete').style.display = '';
         statusEl.style.display = '';
         setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
+        // Re-read so word_yt (written by the DB trigger) and counts show through.
         loadWords();
+        if (editingWordKey) {
+            fetch(API + '/admin-glossary-lexicon.php?key=' + editingWordKey, {credentials:'include'})
+                .then(function(r){return safeJson(r);}).then(function(w) {
+                if (w && !w.error) {
+                    document.getElementById('lx-yt').textContent = w.word_yt || '';
+                    document.getElementById('lx-yt-plain').textContent = w.word_yt ? '(' + w.word_yt + ')' : '';
+                }
+            });
+        }
     });
 }
 
 function deleteWord() {
     if (!editingWordKey) return;
-    var term = document.getElementById('gw-term').value.trim();
-    if (!confirm('Delete "' + term + '" from the glossary?')) return;
+    var label = document.querySelector('#lx-translits .lx-tr-text');
+    var name = (label && label.value.trim()) || document.getElementById('lx-hebrew').value.trim() || 'this word';
+    if (!confirm('Delete "' + name + '" and all of its spellings and definitions?')) return;
 
-    fetch(API + '/admin-glossary-word.php?key=' + editingWordKey, {
+    fetch(API + '/admin-glossary-lexicon.php?key=' + editingWordKey, {
         method: 'DELETE', credentials: 'include'
     }).then(function(r){return safeJson(r);}).then(function(d) {
-        if (d.error) {
+        if (!d || d.error) {
             var errorEl = document.getElementById('gw-error');
-            errorEl.textContent = d.error;
+            errorEl.textContent = (d && d.error) || 'Delete failed';
             errorEl.style.display = '';
             return;
         }
@@ -554,8 +1078,10 @@ function deleteWord() {
 
 document.getElementById('gw-search').addEventListener('input', function() {
     clearTimeout(wordSearchTimer);
-    wordSearchTimer = setTimeout(loadWords, 250);
+    wordSearchTimer = setTimeout(function() { lxReload(true); }, 250);
 });
+
+document.getElementById('lx-hebrew').addEventListener('input', lxUpdateYt);
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
