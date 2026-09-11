@@ -57,21 +57,65 @@ function lexBody(): array {
 }
 
 /**
- * Hebrew-alphabet sort keys.
+ * Hebrew-alphabet sort keys, built from the yy_letter map.
  *
  * Neither column sorts correctly on its own: word_hebrew in codepoint order puts
  * every final form BEFORE its base letter (ך U+05DA < כ U+05DB), and word_yt is
- * Latin characters standing in for Hebrew letters, so plain text order gives
+ * standard-alphabet letters standing in for Hebrew ones, so plain text order gives
  * a b c d e f g … instead of the alphabet a b g d h w z c x y k l m n f i p e q r s t.
  *
- * Both translate to the same 22-position key (a..v = א..ת) so the two columns
- * order identically and finals collapse onto their base letter.
+ * yy_letter already holds the pairing — letter_yt ↔ letter_hebrew, ordered by
+ * letter_sort — and it is the same map the trg_word_yt trigger translates through.
+ * Reading it here means the alphabet lives in ONE place: reorder the letters in
+ * the Web tab and both columns follow, with no constant to keep in step.
+ *
+ * Each standard letter takes its letter_sort position; each Hebrew letter takes the
+ * position of the standard letter it maps to, so finals (which share their base's
+ * letter_yt) collapse onto the base. Positions become 'A','B','C',… — a single
+ * ascending run, chosen so anything unmapped falls outside it and sorts last.
+ *
+ * Returns ['yt' => <sql expr>, 'hebrew' => <sql expr>], or nulls if the map is
+ * unusable, in which case the caller falls back to plain text order.
  */
-const YT_ALPHABET  = 'abgdhwzcxyklmnfipeqrst';
-const HEB_ALPHABET = 'אבגדהוזחטיכלמנסעפצקרשתךםןףץ';
-const ALPHABET_KEY = 'abcdefghijklmnopqrstuv';
-// Finals reuse their base letter's position: ך→כ ם→מ ן→נ ף→פ ץ→צ.
-const HEB_KEY      = 'abcdefghijklmnopqrstuvkmnqr';
+function alphabetSortExpr(PDO $db): array {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+
+    $rows = $db->query(
+        "SELECT letter_yt, letter_hebrew
+           FROM yy_letter
+          WHERE COALESCE(letter_yt, '') <> '' AND COALESCE(letter_hebrew, '') <> ''
+          ORDER BY letter_sort, letter_key"
+    )->fetchAll();
+
+    $pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';   // ascending, and disjoint from the data
+    $pos  = [];                              // letter_yt => key character
+    $ytFrom = $ytTo = $hebFrom = $hebTo = '';
+
+    foreach ($rows as $r) {
+        $yt  = mb_strtolower(trim($r['letter_yt']));
+        $heb = trim($r['letter_hebrew']);
+        if ($yt === '' || $heb === '') continue;
+        if (!isset($pos[$yt])) {
+            // First sighting of this standard letter fixes its alphabet position.
+            if (count($pos) >= strlen($pool)) return $cached = ['yt' => null, 'hebrew' => null];
+            $pos[$yt] = $pool[count($pos)];
+            $ytFrom  .= $yt;
+            $ytTo    .= $pos[$yt];
+        }
+        // A final form repeats its base's letter_yt and so lands on the same key.
+        $hebFrom .= $heb;
+        $hebTo   .= $pos[$yt];
+    }
+    if (!$pos) return $cached = ['yt' => null, 'hebrew' => null];
+
+    $q = static fn(string $s): string => "'" . str_replace("'", "''", $s) . "'";
+
+    return $cached = [
+        'yt'     => 'translate(lower(w.word_yt), ' . $q($ytFrom) . ', ' . $q($ytTo) . ')',
+        'hebrew' => 'translate(btrim(w.word_hebrew), ' . $q($hebFrom) . ', ' . $q($hebTo) . ')',
+    ];
+}
 
 /* ── Meta: everything the editor needs to render its pickers ─────────────── */
 if ($method === 'GET' && $action === 'meta') {
@@ -204,12 +248,13 @@ if ($method === 'GET' && !$key) {
     $sql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
     // Sort expression per column; direction is applied below.
+    $alpha = alphabetSortExpr($db);
     $sortMap = [
         'translit' => 'lower(w.word_translit)',
         'strongs'  => 'trim(w.word_strongs)',
         'count'    => 'w.word_count_yy',
-        'hebrew'   => "translate(btrim(w.word_hebrew), '" . HEB_ALPHABET . "', '" . HEB_KEY . "')",
-        'yt'       => "translate(lower(w.word_yt), '" . YT_ALPHABET . "', '" . ALPHABET_KEY . "')",
+        'hebrew'   => $alpha['hebrew'] ?? 'btrim(w.word_hebrew)',
+        'yt'       => $alpha['yt'] ?? 'lower(w.word_yt)',
         'recent'   => 'w.word_key',
     ];
     $sortKey = (string)($_GET['sort'] ?? 'translit');

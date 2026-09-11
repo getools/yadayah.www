@@ -102,7 +102,13 @@
         }
         table.gw-table .col-filter:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
         table.gw-table input.col-filter.f-hebrew { direction: rtl; text-align: right; font-size: 0.95rem; }
-        table.gw-table input.col-filter.f-yt { font-family: 'YadaTowrah', serif; font-size: 1rem; color: #1a5276; }
+        /* Same RTL override as the YT column, so what you type in the box looks
+           like what you are matching. bidi-override is display-only — the input's
+           value stays the logical string the filter compares against. */
+        table.gw-table input.col-filter.f-yt {
+            font-family: 'YadaTowrah', serif; font-size: 1rem; color: #1a5276;
+            direction: rtl; unicode-bidi: bidi-override; text-align: right;
+        }
         .gw-count-filter { display: flex; gap: 3px; align-items: center; }
         .gw-count-filter button {
             flex: none; width: 20px; padding: 3px 0; font-size: 0.78rem; line-height: 1;
@@ -122,7 +128,14 @@
         table.gw-table td.col-translit .alt { display: block; font-weight: 400; font-size: 0.78rem; color: #999; margin-top: 2px; }
         table.gw-table td.col-count { color: #666; font-variant-numeric: tabular-nums; }
         table.gw-table td.col-hebrew { font-size: 1.15rem; direction: rtl; }
-        table.gw-table td.col-yt { font-family: 'YadaTowrah', serif; font-size: 1.35rem; color: #1a5276; }
+        /* Yada Towrah draws its glyphs left-to-right, so word_yt — which is stored
+           in logical order — has to be reversed on screen to read as Hebrew does.
+           bidi-override does that visually without touching the stored value.
+           Matches td.col-yt on admin-word.html. */
+        table.gw-table td.col-yt {
+            font-family: 'YadaTowrah', serif; font-size: 1.35rem; color: #1a5276;
+            direction: rtl; unicode-bidi: bidi-override; text-align: right;
+        }
         table.gw-table .gw-def { color: #444; font-size: 0.84rem; }
         table.gw-table .src-tag {
             display: inline-block; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em;
@@ -168,7 +181,12 @@
            mark itself reads as the glyph. */
         .lx-kb .lx-keys button.mark { background: #f4f6f8; color: #2c3e50; }
 
-        .lx-yt-out { font-family: 'YadaTowrah', serif; font-size: 1.7rem; color: #1a5276; min-height: 1.7rem; }
+        /* Same RTL override as the table's YT column; the plain logical spelling
+           is shown beside it in #lx-yt-plain. */
+        .lx-yt-out {
+            font-family: 'YadaTowrah', serif; font-size: 1.7rem; color: #1a5276; min-height: 1.7rem;
+            direction: rtl; unicode-bidi: bidi-override; display: inline-block;
+        }
         .lx-readonly { color: #777; font-size: 0.9rem; }
         .lx-defs { border-top: 1px solid #eee; margin-top: 6px; padding-top: 10px; }
         .lx-def-row { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dotted #eee; font-size: 0.84rem; }
