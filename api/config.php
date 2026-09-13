@@ -103,6 +103,29 @@ function errorResponse(string $message, int $status = 400): void {
  * @param string $rel  Path under /u, e.g. 'covers' or 'covers/originals'.
  * @return string      Absolute directory path, guaranteed to exist + be writable.
  */
+/**
+ * Canonical Strong's number: a language letter plus four zero-padded digits,
+ * e.g. H0001.  Every Strong's number in yy_word is Hebrew (all have a Hebrew
+ * spelling and the range runs past where Greek numbering stops), so a bare
+ * number is assumed Hebrew and gets H; an explicit letter is kept and
+ * upper-cased, which leaves room for G later.
+ *
+ * Accepts 1, 0001, h1, H0001 — all store as H0001.  Padding is deliberate:
+ * it keeps the column sorting correctly as plain text.
+ *
+ * Returns null for blank.  Returns false when the input is not a Strong's
+ * number at all, so callers can raise their own error.
+ *
+ * @return string|null|false
+ */
+function normalizeStrongs($raw) {
+    $s = trim((string)$raw);
+    if ($s === '') return null;
+    if (!preg_match('/^([A-Za-z]?)0*([0-9]{1,4})$/', $s, $m)) return false;
+    $letter = $m[1] !== '' ? strtoupper($m[1]) : 'H';
+    return $letter . str_pad($m[2], 4, '0', STR_PAD_LEFT);
+}
+
 function uploadDir(string $rel): string {
     $rel = trim(str_replace('\\', '/', $rel), '/');
     if ($rel === '' || strpos($rel, '..') !== false) {

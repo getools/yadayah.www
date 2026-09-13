@@ -461,9 +461,9 @@ if ($method === 'POST') {
         errorResponse('Give the word a transliteration or Hebrew spelling.');
     }
 
-    $strongs = trim((string)($data['word_strongs'] ?? ''));
-    if ($strongs !== '' && !preg_match('/^\d{1,4}$/', $strongs)) {
-        errorResponse("Strong's number must be 1-4 digits.");
+    $strongs = normalizeStrongs($data['word_strongs'] ?? '');
+    if ($strongs === false) {
+        errorResponse("Strong's must be 1-4 digits, optionally with a language letter (e.g. 430, 0430 or H0430).");
     }
 
     $db->beginTransaction();
@@ -480,7 +480,7 @@ if ($method === 'POST') {
         );
         $stmt->execute([
             trim((string)($data['word_source_code'] ?? 'yy')) ?: 'yy',
-            $strongs !== '' ? str_pad($strongs, 4, '0', STR_PAD_LEFT) : null,
+            $strongs,
             $hebrew !== '' ? $hebrew : null,
             $translit !== '' ? $translit : null,
             trim((string)($data['word_definition_yy'] ?? '')) ?: null,
@@ -563,12 +563,12 @@ if ($method === 'PUT' && $key) {
             if (!array_key_exists($col, $data)) continue;
             $val = $data[$col];
             if ($type === 'strongs') {
-                $s = trim((string)$val);
-                if ($s !== '' && !preg_match('/^\d{1,4}$/', $s)) {
+                $s = normalizeStrongs($val);
+                if ($s === false) {
                     $db->rollBack();
-                    errorResponse("Strong's number must be 1-4 digits.");
+                    errorResponse("Strong's must be 1-4 digits, optionally with a language letter (e.g. 430, 0430 or H0430).");
                 }
-                $params[] = $s !== '' ? str_pad($s, 4, '0', STR_PAD_LEFT) : null;
+                $params[] = $s;
             } elseif ($type === 'fkey') {
                 $params[] = ($val === '' || $val === null || (int)$val === 0) ? null : (int)$val;
             } elseif ($type === 'int') {

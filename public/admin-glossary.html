@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1789149429">
+    <meta name="page-version" content="1789221603">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary Admin - Yada Yah</title>
@@ -151,6 +151,11 @@
         #lx-yt-plain {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
+        /* Strong's is stored as one string (H0001) but edited as two fields:
+           the language letter and the zero-padded number. */
+        .lx-strongs-lang { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
+        .lx-strongs-num { width: 78px !important; text-align: center; font-variant-numeric: tabular-nums; }
+
         /* Parts of speech: a wrapping row of checkboxes, one per yy_word_pos. */
         .lx-pos { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 620px; }
         .lx-pos label {
@@ -337,10 +342,15 @@
         <div id="gw-panel" class="edit-panel" data-no-persist>
             <h2 id="gw-panel-title">New Word</h2>
 
-            <div class="field-row"><label for="lx-strongs">Strong's</label>
+            <div class="field-row"><label for="lx-strongs-num">Strong's</label>
                 <div class="field-input"><div class="char-inputs">
-                    <input type="text" id="lx-strongs" class="small-input" maxlength="4" placeholder="0000" inputmode="numeric">
-                    <span style="color:#888;font-size:0.82rem;">1–4 digits, blank if the word has no Strong's entry</span>
+                    <select id="lx-strongs-lang" class="lx-strongs-lang">
+                        <option value="H">H</option>
+                        <option value="G">G</option>
+                    </select>
+                    <input type="text" id="lx-strongs-num" class="lx-strongs-num" maxlength="4"
+                           placeholder="0000" inputmode="numeric" autocomplete="off">
+                    <span style="color:#888;font-size:0.82rem;">H for Hebrew, G for Greek &mdash; 4 digits, zero-padded. Blank if the word has no Strong's entry.</span>
                 </div></div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label>Translit</label>
@@ -1172,6 +1182,34 @@ function lxShowYtPlain() {
     document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
 }
 
+/* Strong's: one stored string, two edit fields. Splitting is forgiving so a
+   legacy bare number or a lower-case letter still loads into the right boxes;
+   joining always hands the API letter + digits, which it canonicalises. */
+function lxSetStrongs(stored) {
+    var m = /^([A-Za-z])?0*([0-9]{1,4})$/.exec(String(stored || '').trim());
+    document.getElementById('lx-strongs-lang').value = (m && m[1]) ? m[1].toUpperCase() : 'H';
+    document.getElementById('lx-strongs-num').value = m ? lxPad4(m[2]) : '';
+}
+
+function lxGetStrongs() {
+    var n = document.getElementById('lx-strongs-num').value.trim();
+    if (!n) return '';
+    return document.getElementById('lx-strongs-lang').value + n;
+}
+
+function lxPad4(n) {
+    n = String(n);
+    while (n.length < 4) n = '0' + n;
+    return n;
+}
+
+/* Show the padded form as soon as the field is left, so what is on screen is
+   what gets stored. */
+document.getElementById('lx-strongs-num').addEventListener('blur', function() {
+    var v = this.value.trim();
+    if (/^[0-9]{1,4}$/.test(v)) this.value = lxPad4(v);
+});
+
 /* Pronunciation fields. One setter for both New Word (an empty object clears
    every box) and Edit (the word row fills them). */
 var LX_PRON_FIELDS = {
@@ -1210,7 +1248,7 @@ function openWordPanel(title, showDelete) {
 function newWord() {
     lxLoadMeta(function() {
         editingWordKey = null;
-        document.getElementById('lx-strongs').value = '';
+        lxSetStrongs('');
         document.getElementById('lx-hebrew').value = '';
         document.getElementById('lx-count').value = '';
         document.getElementById('lx-def-yy').value = '';
@@ -1236,7 +1274,7 @@ function editWord(key) {
             .then(function(r){return safeJson(r);}).then(function(w) {
             if (!w || w.error) { alert((w && w.error) || 'Word not found'); return; }
             editingWordKey = key;
-            document.getElementById('lx-strongs').value = w.word_strongs || '';
+            lxSetStrongs(w.word_strongs);
             document.getElementById('lx-hebrew').value = w.word_hebrew || '';
             document.getElementById('lx-count').value =
                 (w.word_count_yy === null || w.word_count_yy === undefined) ? '' : w.word_count_yy;
@@ -1337,8 +1375,9 @@ function saveWord() {
     var hebrew = document.getElementById('lx-hebrew').value.trim();
     if (!translits.length && !hebrew) return fail('Give the word a spelling or Hebrew text.');
 
-    var strongs = document.getElementById('lx-strongs').value.trim();
-    if (strongs && !/^\d{1,4}$/.test(strongs)) return fail("Strong's number must be 1–4 digits.");
+    var strongsNum = document.getElementById('lx-strongs-num').value.trim();
+    if (strongsNum && !/^[0-9]{1,4}$/.test(strongsNum)) return fail("Strong's number must be 1–4 digits.");
+    var strongs = lxGetStrongs();
 
     var countRaw = document.getElementById('lx-count').value.trim();
 

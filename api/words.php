@@ -140,7 +140,7 @@ function handlePost(PDO $db, array $user): void {
             VALUES (?, ?, ?)
         ");
         $stmt->execute([
-            str_pad(trim($data['word_strongs']), 4, '0', STR_PAD_LEFT),
+            normalizeStrongs($data['word_strongs']),
             trim($data['word_hebrew']),
             !empty($data['word_active_flag']) ? 't' : 'f',
         ]);
@@ -189,7 +189,7 @@ function handlePut(PDO $db, array $user): void {
             WHERE word_key = ?
         ");
         $stmt->execute([
-            str_pad(trim($data['word_strongs']), 4, '0', STR_PAD_LEFT),
+            normalizeStrongs($data['word_strongs']),
             trim($data['word_hebrew']),
             !empty($data['word_active_flag']) ? 't' : 'f',
             $wordId,
@@ -267,8 +267,15 @@ function handlePatch(PDO $db, array $user): void {
         foreach ($data['fields'] as $col => $val) {
             if (!in_array($col, $allowed)) continue;
             if ($col === 'word_strongs') {
+                // The Word admin inline-edits through this path, so it has to
+                // canonicalise exactly like POST/PUT or a bare number typed here
+                // would land unprefixed.
+                $norm = normalizeStrongs($val);
+                if ($norm === false) {
+                    errorResponse("Strong's must be 1-4 digits, optionally with a language letter (e.g. 430, 0430 or H0430).");
+                }
                 $sets[] = "$col = ?";
-                $params[] = str_pad(trim($val), 4, '0', STR_PAD_LEFT);
+                $params[] = $norm;
             } elseif ($col === 'word_active_flag') {
                 $sets[] = "$col = ?";
                 $params[] = $val ? 't' : 'f';
@@ -344,8 +351,10 @@ function returnWord(PDO $db, int $wordId, int $status = 200): void {
 
 function validateWord(array $data): array {
     $errors = [];
-    if (empty($data['word_strongs']) || !preg_match('/^\d{1,4}$/', trim($data['word_strongs']))) {
-        $errors[] = "Strong's number is required (1-4 digits).";
+    // normalizeStrongs() accepts a bare number or a prefixed one; false means
+    // it was neither.
+    if (empty($data['word_strongs']) || normalizeStrongs($data['word_strongs']) === false) {
+        $errors[] = "Strong's number is required (1-4 digits, optionally with a language letter such as H0430).";
     }
     if (empty($data['word_hebrew']) || trim($data['word_hebrew']) === '') {
         $errors[] = "Hebrew text is required.";
