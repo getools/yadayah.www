@@ -463,7 +463,7 @@ if ($method === 'POST') {
 
     $strongs = normalizeStrongs($data['word_strongs'] ?? '');
     if ($strongs === false) {
-        errorResponse("Strong's must be 1-4 digits, optionally with a language letter (e.g. 430, 0430 or H0430).");
+        errorResponse("Strong's must be 1-4 digits, optionally with a G/H language letter and a trailing letter (e.g. 430, H0430, H0430a).");
     }
 
     $db->beginTransaction();
@@ -566,7 +566,7 @@ if ($method === 'PUT' && $key) {
                 $s = normalizeStrongs($val);
                 if ($s === false) {
                     $db->rollBack();
-                    errorResponse("Strong's must be 1-4 digits, optionally with a language letter (e.g. 430, 0430 or H0430).");
+                    errorResponse("Strong's must be 1-4 digits, optionally with a G/H language letter and a trailing letter (e.g. 430, H0430, H0430a).");
                 }
                 $params[] = $s;
             } elseif ($type === 'fkey') {

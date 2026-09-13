@@ -272,7 +272,7 @@ function handlePatch(PDO $db, array $user): void {
                 // would land unprefixed.
                 $norm = normalizeStrongs($val);
                 if ($norm === false) {
-                    errorResponse("Strong's must be 1-4 digits, optionally with a language letter (e.g. 430, 0430 or H0430).");
+                    errorResponse("Strong's must be 1-4 digits, optionally with a G/H language letter and a trailing letter (e.g. 430, H0430, H0430a).");
                 }
                 $sets[] = "$col = ?";
                 $params[] = $norm;
@@ -354,7 +354,7 @@ function validateWord(array $data): array {
     // normalizeStrongs() accepts a bare number or a prefixed one; false means
     // it was neither.
     if (empty($data['word_strongs']) || normalizeStrongs($data['word_strongs']) === false) {
-        $errors[] = "Strong's number is required (1-4 digits, optionally with a language letter such as H0430).";
+        $errors[] = "Strong's number is required (1-4 digits, optionally with a G/H language letter and a trailing letter, e.g. H0430a).";
     }
     if (empty($data['word_hebrew']) || trim($data['word_hebrew']) === '') {
         $errors[] = "Hebrew text is required.";

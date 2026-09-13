@@ -104,14 +104,19 @@ function errorResponse(string $message, int $status = 400): void {
  * @return string      Absolute directory path, guaranteed to exist + be writable.
  */
 /**
- * Canonical Strong's number: a language letter plus four zero-padded digits,
- * e.g. H0001.  Every Strong's number in yy_word is Hebrew (all have a Hebrew
- * spelling and the range runs past where Greek numbering stops), so a bare
- * number is assumed Hebrew and gets H; an explicit letter is kept and
- * upper-cased, which leaves room for G later.
+ * Canonical Strong's number: a language letter, four zero-padded digits, and an
+ * optional lower-case disambiguation letter — H0001, H0430a, H0430b.
  *
- * Accepts 1, 0001, h1, H0001 — all store as H0001.  Padding is deliberate:
- * it keeps the column sorting correctly as plain text.
+ * Every Strong's number in yy_word is Hebrew (all have a Hebrew spelling and
+ * the range runs past where Greek numbering stops), so a bare number is assumed
+ * Hebrew and gets H; an explicit leading letter is kept and upper-cased, which
+ * leaves room for G later.  The trailing letter distinguishes homographs that
+ * share one number and is lower-cased.
+ *
+ * Accepts 1, 0001, h1, H0001, 430a, H0430A — storing H0001 / H0430a.  A
+ * leading letter other than G/H is rejected.  Padding
+ * is deliberate: it keeps the column sorting correctly as plain text, and a
+ * suffixed value sorts immediately after its bare form.
  *
  * Returns null for blank.  Returns false when the input is not a Strong's
  * number at all, so callers can raise their own error.
@@ -121,9 +126,13 @@ function errorResponse(string $message, int $status = 400): void {
 function normalizeStrongs($raw) {
     $s = trim((string)$raw);
     if ($s === '') return null;
-    if (!preg_match('/^([A-Za-z]?)0*([0-9]{1,4})$/', $s, $m)) return false;
+    // Leading letter is the language and Strong's only numbers Hebrew and Greek,
+    // so anything else is a typo rather than a new language — reject it instead
+    // of inventing e.g. "A0430". Trailing letter is the homograph suffix.
+    if (!preg_match('/^([GHgh]?)0*([0-9]{1,4})([A-Za-z]?)$/', $s, $m)) return false;
     $letter = $m[1] !== '' ? strtoupper($m[1]) : 'H';
-    return $letter . str_pad($m[2], 4, '0', STR_PAD_LEFT);
+    $suffix = isset($m[3]) ? strtolower($m[3]) : '';
+    return $letter . str_pad($m[2], 4, '0', STR_PAD_LEFT) . $suffix;
 }
 
 function uploadDir(string $rel): string {

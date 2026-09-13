@@ -155,6 +155,7 @@
            the language letter and the zero-padded number. */
         .lx-strongs-lang { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
         .lx-strongs-num { width: 78px !important; text-align: center; font-variant-numeric: tabular-nums; }
+        .lx-strongs-suffix { width: 34px !important; text-align: center; }
 
         /* Parts of speech: a wrapping row of checkboxes, one per yy_word_pos. */
         .lx-pos { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 620px; }
@@ -350,7 +351,9 @@
                     </select>
                     <input type="text" id="lx-strongs-num" class="lx-strongs-num" maxlength="4"
                            placeholder="0000" inputmode="numeric" autocomplete="off">
-                    <span style="color:#888;font-size:0.82rem;">H for Hebrew, G for Greek &mdash; 4 digits, zero-padded. Blank if the word has no Strong's entry.</span>
+                    <input type="text" id="lx-strongs-suffix" class="lx-strongs-suffix" maxlength="1"
+                           placeholder="a" autocomplete="off" title="Optional letter distinguishing words that share one Strong's number">
+                    <span style="color:#888;font-size:0.82rem;">H for Hebrew, G for Greek &mdash; 4 digits, zero-padded. Trailing letter only when two words share a number (a, b, c). Blank if none.</span>
                 </div></div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label>Translit</label>
@@ -1186,15 +1189,18 @@ function lxShowYtPlain() {
    legacy bare number or a lower-case letter still loads into the right boxes;
    joining always hands the API letter + digits, which it canonicalises. */
 function lxSetStrongs(stored) {
-    var m = /^([A-Za-z])?0*([0-9]{1,4})$/.exec(String(stored || '').trim());
+    var m = /^([A-Za-z])?0*([0-9]{1,4})([A-Za-z])?$/.exec(String(stored || '').trim());
     document.getElementById('lx-strongs-lang').value = (m && m[1]) ? m[1].toUpperCase() : 'H';
     document.getElementById('lx-strongs-num').value = m ? lxPad4(m[2]) : '';
+    document.getElementById('lx-strongs-suffix').value = (m && m[3]) ? m[3].toLowerCase() : '';
 }
 
 function lxGetStrongs() {
     var n = document.getElementById('lx-strongs-num').value.trim();
     if (!n) return '';
-    return document.getElementById('lx-strongs-lang').value + n;
+    // The suffix is meaningless without a number, so it rides along only here.
+    return document.getElementById('lx-strongs-lang').value + n
+         + document.getElementById('lx-strongs-suffix').value.trim().toLowerCase();
 }
 
 function lxPad4(n) {
@@ -1377,6 +1383,9 @@ function saveWord() {
 
     var strongsNum = document.getElementById('lx-strongs-num').value.trim();
     if (strongsNum && !/^[0-9]{1,4}$/.test(strongsNum)) return fail("Strong's number must be 1–4 digits.");
+    var strongsSuffix = document.getElementById('lx-strongs-suffix').value.trim();
+    if (strongsSuffix && !/^[A-Za-z]$/.test(strongsSuffix)) return fail("Strong's suffix must be a single letter.");
+    if (strongsSuffix && !strongsNum) return fail("Strong's suffix needs a number to go with it.");
     var strongs = lxGetStrongs();
 
     var countRaw = document.getElementById('lx-count').value.trim();
