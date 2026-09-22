@@ -6,6 +6,16 @@
  *   php _word_harvest.php --apply             write
  *   php _word_harvest.php --min=3 --ratio=0.3 tune the candidate filter
  *   php _word_harvest.php --recount-only      only refresh counts, add nothing
+ *   php _word_harvest.php --index --apply     ALSO rebuild yy_word_occurrence
+ *
+ * The occurrence index
+ *   --index records, per paragraph, how many times each word's spellings occur
+ *   there, into yy_word_occurrence.  It is what the Glossary Words tab drills
+ *   into when you click a word's count (series → volume → chapter → page →
+ *   paragraph).  It comes out of the SAME token pass as word_count_yy, so the
+ *   drill-down totals and the count column agree by construction.
+ *   ⚠ Words INSERTED by a harvest run are not in the index until you re-run
+ *     with --index; the run says so when it happens.
  *
  * How a word is recognised
  *   The books italicise transliterated Hebrew and set the Hebrew itself in the
@@ -31,6 +41,7 @@ require_once __DIR__ . '/config.php';
 $args    = $_SERVER['argv'];
 $APPLY   = in_array('--apply', $args, true);
 $RECOUNT = in_array('--recount-only', $args, true);
+$INDEX   = in_array('--index', $args, true);
 $MIN_ITALIC = 3;
 $MIN_RATIO  = 0.30;
 foreach ($args as $a) {
@@ -73,17 +84,59 @@ function isContraction(string $lc): bool {
     return (bool)preg_match('/[a-z][' . APOS . '][a-z]/u', $lc);
 }
 
+/* ═══ Pass 0 — load the lexicon ══════════════════════════════════════════
+   Loaded BEFORE the scan so the scan can attribute each token to the words
+   that spell it (the occurrence index needs that; the recount does not). */
+
+$words = $db->query(
+    "SELECT word_key, word_translit, word_count_yy, word_source_code FROM yy_word"
+)->fetchAll();
+
+$spellings = [];   // word_key => [translit_key|'w' => text]
+$known     = [];   // normalised spelling => word_key  (for de-duping candidates)
+
+foreach ($words as $w) {
+    $spellings[$w['word_key']] = [];
+    if (trim((string)$w['word_translit']) !== '') {
+        $spellings[$w['word_key']]['w'] = trim($w['word_translit']);
+    }
+}
+foreach ($db->query('SELECT word_translit_key, word_key, word_translit_text FROM yy_word_translit')->fetchAll() as $t) {
+    if (!isset($spellings[$t['word_key']])) $spellings[$t['word_key']] = [];
+    $spellings[$t['word_key']][(int)$t['word_translit_key']] = $t['word_translit_text'];
+}
+foreach ($spellings as $wk => $list) {
+    foreach ($list as $text) {
+        $k = normKey($text);
+        if ($k !== '') $known[$k] = $wk;
+    }
+}
+
+// Exact lowercased spelling => every word_key that uses it. A list, not a
+// scalar: 52 spellings are shared by more than one word (homographs such as
+// 'owr and ra'ah), and each of those words counts the occurrence.
+$spellToWords = [];
+foreach ($spellings as $wk => $list) {
+    foreach ($list as $text) {
+        $lc = mb_strtolower(trim($text));
+        if ($lc === '') continue;
+        if (!isset($spellToWords[$lc])) $spellToWords[$lc] = [];
+        if (!in_array((int)$wk, $spellToWords[$lc], true)) $spellToWords[$lc][] = (int)$wk;
+    }
+}
+
 /* ═══ Pass 1 — tally every token in the books, and separately in italics ═══ */
 
-say('Scanning yy_paragraph …');
+say('Scanning yy_paragraph …' . ($INDEX ? ' (building occurrence index)' : ''));
 
 $corpus  = [];   // lowercased token => times it appears anywhere in the books
 $italic  = [];   // lowercased token => times it appears inside an italic run
 $surface = [];   // lowercased token => [surface form => count], to pick casing
+$occRows = [];   // [word_key, paragraph_key, count] for yy_word_occurrence
 $paras   = 0;
 
 $stmt = $db->query(
-    'SELECT paragraph_text_plain, paragraph_text_html
+    'SELECT paragraph_text_plain, paragraph_text_html, paragraph_key
        FROM yy_paragraph
       WHERE paragraph_active_flag IS NOT FALSE'
 );
@@ -92,6 +145,7 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
     $paras++;
     $plain = (string)$row[0];
     $html  = (string)$row[1];
+    $paraHits = [];   // word_key => occurrences in THIS paragraph
 
     if ($plain !== '' && preg_match_all(TOKEN_RE, $plain, $m)) {
         foreach ($m[0] as $tok) {
@@ -101,7 +155,19 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
             $corpus[$lc] = ($corpus[$lc] ?? 0) + 1;
             if (!isset($surface[$lc])) $surface[$lc] = [];
             $surface[$lc][$tok] = ($surface[$lc][$tok] ?? 0) + 1;
+
+            if ($INDEX && isset($spellToWords[$lc])) {
+                foreach ($spellToWords[$lc] as $wk) {
+                    $paraHits[$wk] = ($paraHits[$wk] ?? 0) + 1;
+                }
+            }
         }
+    }
+
+    // One row per (word, paragraph): a word spelled two ways in the same
+    // paragraph sums into a single row, matching how word_count_yy adds up.
+    foreach ($paraHits as $wk => $c) {
+        $occRows[] = [$wk, (int)$row[2], $c];
     }
 
     if ($html !== '' && strpos($html, '<i') !== false) {
@@ -138,30 +204,7 @@ say(sprintf('  %s paragraphs, %s distinct tokens, %s seen in italics',
 say('');
 say('Recounting existing words …');
 
-$words = $db->query(
-    "SELECT word_key, word_translit, word_count_yy, word_source_code FROM yy_word"
-)->fetchAll();
-
-$spellings = [];   // word_key => [translit_key|null => text]
-$known     = [];   // normalised spelling => word_key  (for de-duping candidates)
-
-foreach ($words as $w) {
-    $spellings[$w['word_key']] = [];
-    if (trim((string)$w['word_translit']) !== '') {
-        $spellings[$w['word_key']]['w'] = trim($w['word_translit']);
-    }
-}
-foreach ($db->query('SELECT word_translit_key, word_key, word_translit_text FROM yy_word_translit')->fetchAll() as $t) {
-    if (!isset($spellings[$t['word_key']])) $spellings[$t['word_key']] = [];
-    $spellings[$t['word_key']][(int)$t['word_translit_key']] = $t['word_translit_text'];
-}
-foreach ($spellings as $wk => $list) {
-    foreach ($list as $text) {
-        $k = normKey($text);
-        if ($k !== '') $known[$k] = $wk;
-    }
-}
-
+// $words / $spellings / $known were loaded in Pass 0, before the scan.
 $updWord     = $db->prepare('UPDATE yy_word SET word_count_yy = ? WHERE word_key = ?');
 $updTranslit = $db->prepare('UPDATE yy_word_translit SET word_translit_count_yy = ? WHERE word_translit_key = ?');
 
@@ -193,6 +236,51 @@ foreach ($words as $w) {
 arsort($wordTotals);
 say(sprintf('  %s words rechecked, %s counts changed, %s spelling counts written',
     number_format(count($words)), number_format($wordChanged), number_format($translitChanged)));
+
+/* ═══ Pass 2b — rebuild the occurrence index ════════════════════════════ */
+
+if ($INDEX) {
+    say('');
+    say('Occurrence index …');
+    $occTotal = 0;
+    foreach ($occRows as $r) $occTotal += $r[2];
+    say(sprintf('  %s (word, paragraph) rows covering %s occurrences',
+        number_format(count($occRows)), number_format($occTotal)));
+
+    // The index must agree with the counts it was computed from.
+    $sumCounts = 0;
+    foreach ($wordTotals as $t) $sumCounts += $t;
+    if ($occTotal !== $sumCounts) {
+        say(sprintf('  ⚠ index total %s != recounted total %s — NOT writing',
+            number_format($occTotal), number_format($sumCounts)));
+        $INDEX = false;
+    }
+
+    if ($INDEX && $APPLY) {
+        $db->beginTransaction();
+        try {
+            // Full rebuild: a word whose spellings changed must not keep rows
+            // from its old ones. Transactional, so a failure leaves the old
+            // index in place rather than an empty one.
+            $db->exec('TRUNCATE yy_word_occurrence');
+            $chunk = 500;
+            for ($i = 0; $i < count($occRows); $i += $chunk) {
+                $slice = array_slice($occRows, $i, $chunk);
+                $vals  = implode(',', array_fill(0, count($slice), '(?,?,?)'));
+                $flat  = [];
+                foreach ($slice as $r) { $flat[] = $r[0]; $flat[] = $r[1]; $flat[] = $r[2]; }
+                $db->prepare('INSERT INTO yy_word_occurrence (word_key, paragraph_key, occurrence_count) VALUES ' . $vals)
+                   ->execute($flat);
+            }
+            $db->commit();
+            say('  written');
+        } catch (\Exception $e) {
+            $db->rollBack();
+            say('  FAILED, rolled back: ' . $e->getMessage());
+            exit(1);
+        }
+    }
+}
 
 /* ═══ Pass 3 — candidates the lexicon does not have yet ═════════════════ */
 
@@ -285,6 +373,9 @@ if ($APPLY && !$RECOUNT && $newRows) {
         }
         $db->commit();
         say('  inserted ' . number_format($n) . ' words with word_source_code = books');
+        // The scan attributed tokens using the spelling map loaded BEFORE these
+        // words existed, so they have no occurrence rows yet.
+        say('  ⚠ re-run with --index --apply to index the new words');
     } catch (\Exception $e) {
         $db->rollBack();
         say('  FAILED, rolled back: ' . $e->getMessage());

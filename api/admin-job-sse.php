@@ -21,7 +21,7 @@ require_once __DIR__ . '/config.php';
 $user = requireAuth();                       // 401s (as JSON) if not an admin session
 
 // Whitelist — never LISTEN on an arbitrary client-supplied channel.
-$CHANNELS = ['ai_i2v_job', 'ai_t2i_job', 'feed_transcript_job'];
+$CHANNELS = ['ai_i2v_job', 'ai_t2i_job', 'ai_t2a_job', 'feed_transcript_job'];
 $channel  = (string)($_GET['channel'] ?? '');
 if (!in_array($channel, $CHANNELS, true)) {
     errorResponse('unknown channel', 400);

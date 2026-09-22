@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1789221604">
+    <meta name="page-version" content="1790056805">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Modifier Words - Yada Yah</title>
@@ -318,9 +318,21 @@ function render(data) {
 
     var html = '';
     displayData.forEach(function(r) {
+        // Open the book with the word as the flipbook's own search term, so the
+        // viewer finds and marks every occurrence itself.
+        //
+        // ⚠ Deliberately NO page anchor. This table's `page` is a docx page
+        // counter that starts at 0, not the flipbook page — and the front
+        // matter it is offset by differs per volume, so no single constant
+        // converts it (a 300-row sample scattered from -5 to +8, with +6 and
+        // +0 both common). The old '/<volume_flip_code>/#p=' + (page + 6) was
+        // wrong twice over: that id no longer resolves at all, and the offset
+        // was a guess. The q= search lands on the right page via the viewer's
+        // own calibrated index instead of a page number we cannot derive.
         var flipUrl = '';
-        if (r.volume_flip_code && r.page != null) {
-            flipUrl = '/' + encodeURIComponent(r.volume_flip_code) + '/#p=' + (r.page + 6);
+        if (r.book_slug && r.translit) {
+            flipUrl = '/' + encodeURIComponent(r.book_slug)
+                + '/#q=' + encodeURIComponent(r.translit);
         }
 
         var wordCell = formatTranslit(r.translit);

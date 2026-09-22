@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1789221603">
+    <meta name="page-version" content="1790056803">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary Admin - Yada Yah</title>
@@ -86,15 +86,6 @@
         .gw-bar .gw-spacer { margin-left: auto; }
 
         /* Letter strip — the same YT index the public glossary web uses. */
-        .lx-letters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
-        .lx-letters button {
-            font-family: 'YadaTowrah', serif; font-size: 1.25rem; line-height: 1;
-            min-width: 32px; padding: 6px 4px; border: 1px solid #ddd; border-radius: 4px;
-            background: #fff; color: #1a5276; cursor: pointer;
-        }
-        .lx-letters button:hover { border-color: #3498db; background: #f2f8fd; }
-        .lx-letters button.active { background: #1a5276; border-color: #1a5276; color: #fff; }
-        .lx-letters button.lx-all { font-family: inherit; font-size: 0.8rem; color: #555; padding: 6px 10px; }
 
         .gw-table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); overflow: hidden; }
         table.gw-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
@@ -133,12 +124,33 @@
         table.gw-table tbody tr { cursor: pointer; }
         table.gw-table tbody tr:hover { background: #f8fbfd; }
         table.gw-table tr.inactive td { opacity: 0.45; }
+        /* YY: whether this word has been forked to an editable YY copy. */
+        table.gw-table .col-yycopy { width: 40px; text-align: center; }
+        table.gw-table td.col-yycopy .lx-yy-link {
+            border: none; background: none; padding: 2px 6px; cursor: pointer;
+            color: #2980b9; font-weight: 700; text-decoration: underline;
+        }
+        table.gw-table td.col-yycopy .lx-yy-link:hover { color: #1a5276; }
+        table.gw-table td.col-yycopy .lx-yy-none { color: #ccc; }
         table.gw-table .col-strongs { width: 78px; }
+        /* Language: one-letter code, full name on hover. The column stays as
+           narrow as the single letter needs — the filter select's OPEN list is
+           widened by padding its options, not by widening the closed control. */
+        table.gw-table .col-lang { width: 48.5px; text-align: center; }
+        table.gw-table td.col-lang .lx-lang-code { color: #666; font-weight: 600; cursor: help; }
+        table.gw-table td.col-lang .lx-lang-none { color: #ccc; }
+        table.gw-table .filter-row .col-filter#lx-f-language {
+            width: 100%; min-width: 0; padding-left: 2px; padding-right: 0;
+        }
+        /* The open list is widened by trailing non-breaking spaces in each label
+           (see lxRenderPosGender) rather than by option padding, which Firefox
+           and Safari ignore. Two mechanisms would fight over the final width. */
         table.gw-table .col-translit { width: 200px; }
         table.gw-table .col-count { width: 76px; text-align: right; }
         table.gw-table .col-hebrew { width: 130px; text-align: right; }
         table.gw-table .col-yt { width: 110px; }
         table.gw-table td.col-strongs { color: #666; font-variant-numeric: tabular-nums; }
+        table.gw-table td.col-strongs .lx-none-mark { color: #ccc; }
         table.gw-table td.col-translit { font-weight: 700; color: #1a5276; }
         table.gw-table td.col-translit .alt { display: block; font-weight: 400; font-size: 0.78rem; color: #999; margin-top: 2px; }
         /* Everywhere a transliteration is shown or typed: letters from the UI
@@ -157,6 +169,14 @@
         .lx-strongs-num { width: 78px !important; text-align: center; font-variant-numeric: tabular-nums; }
         .lx-strongs-suffix { width: 34px !important; text-align: center; }
 
+        /* # is harvested from yy_word_occurrence, never typed — shown as a
+           derived value rather than an input so it cannot be edited here. */
+        .lx-count-derived {
+            display: inline-block; min-width: 78px; padding: 6px 4px; text-align: center;
+            font-variant-numeric: tabular-nums; font-size: 0.9rem; color: #444;
+            background: #f4f6f8; border: 1px solid #e1e5ea; border-radius: 4px;
+        }
+
         /* Parts of speech: a wrapping row of checkboxes, one per yy_word_pos. */
         .lx-pos { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 620px; }
         .lx-pos label {
@@ -165,6 +185,23 @@
         }
         .lx-pos label:hover { color: #1a5276; }
         .lx-pos input { cursor: pointer; }
+
+        /* Sources filter: one checkbox per source that actually has words, so
+           several can be combined. Sits in .gw-bar beside the search box. */
+        .gw-srcfilter {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+            padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff;
+        }
+        .gw-srcfilter .gw-srcfilter-label {
+            font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .gw-srcfilter label {
+            display: flex; align-items: center; gap: 5px; cursor: pointer;
+            font-size: 0.85rem; color: #444; white-space: nowrap;
+        }
+        .gw-srcfilter label:hover { color: #1a5276; }
+        .gw-srcfilter input { cursor: pointer; }
+        .gw-srcfilter .gw-srcfilter-n { color: #999; font-size: 0.78rem; }
 
         /* Pronunciation block — four labelled respellings in a compact grid
            rather than four more full-width field-rows. */
@@ -188,6 +225,73 @@
         }
         .lx-tr-row .lx-ring:hover { border-color: #3498db; background: #f2f8fd; }
         table.gw-table td.col-count { color: #666; font-variant-numeric: tabular-nums; }
+
+        /* ── Occurrences drill-down (click a word's count) ── */
+        .lx-count-btn {
+            border: none; background: none; padding: 0; cursor: pointer;
+            font: inherit; font-variant-numeric: tabular-nums;
+            color: #1a5276; text-decoration: underline; text-decoration-style: dotted;
+            text-underline-offset: 2px;
+        }
+        .lx-count-btn:hover { color: #2980b9; text-decoration-style: solid; }
+        .lx-count-btn.open { font-weight: 700; }
+
+        tr.lx-occ-row > td { background: #f7f9fb; padding: 0; }
+        tr.lx-occ-row:hover > td { background: #f7f9fb; }
+        .lx-occ {
+            padding: 12px 16px 14px; border-left: 3px solid #1a5276;
+            font-size: 0.85rem; max-height: 560px; overflow-y: auto;
+        }
+        .lx-occ-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; color: #555; }
+        .lx-occ-head strong { color: #1a5276; font-size: 0.95rem; }
+        .lx-occ-head .lx-occ-close { margin-left: auto; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-size: 0.78rem; padding: 3px 9px; }
+        .lx-occ-loading, .lx-occ-empty { color: #999; font-style: italic; padding: 4px 0; }
+
+        .lx-node { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+        .lx-node:hover { background: #eef4fa; }
+        .lx-twist {
+            flex: none; width: 18px; border: none; background: none; cursor: pointer;
+            color: #5a6775; font-size: 0.85rem; padding: 0; line-height: 1.3;
+        }
+        .lx-twist:hover { color: #1a5276; }
+        .lx-twist.leaf { cursor: default; color: #ccd3da; }
+        /* The title is the expand target too — the arrow alone is a small hit
+           area. A <button> so it is keyboard-reachable; reset to look like text. */
+        .lx-node-label {
+            border: none; background: none; padding: 0; margin: 0; cursor: pointer;
+            font: inherit; text-align: left; color: #333;
+        }
+        .lx-node-label:hover { text-decoration: underline; color: #1a5276; }
+        .lx-node.lvl-series > .lx-node-label { font-weight: 700; color: #1a5276; }
+        .lx-node.lvl-volume > .lx-node-label { font-weight: 600; }
+
+        /* Page rows: the title expands, this opens the flipbook. */
+        .lx-open { flex: none; color: #2980b9; text-decoration: none; font-size: 0.82rem; padding: 0 4px; }
+        .lx-open:hover { color: #1a5276; }
+        .lx-open.is-off { color: #ccd3da; cursor: default; }
+        .lx-node-total {
+            flex: none; margin-left: auto; font-variant-numeric: tabular-nums;
+            color: #2e7d4f; font-weight: 700; padding-left: 10px;
+        }
+        .lx-node-meta { flex: none; color: #9aa4ae; font-size: 0.76rem; }
+        .lx-children { margin-left: 9px; padding-left: 12px; border-left: 1px dotted #ccd6e0; }
+
+        /* Paragraph leaves carry the sentence, so they wrap instead of one line. */
+        .lx-para {
+            display: flex; gap: 8px; padding: 5px 6px 6px; border-bottom: 1px dotted #e6ecf2;
+            color: inherit; text-decoration: none;
+        }
+        .lx-para .lx-para-id { flex: none; width: 74px; color: #7a8798; font-size: 0.76rem; padding-top: 1px; }
+        .lx-para .lx-para-text { flex: 1; color: #444; line-height: 1.45; }
+        .lx-para .lx-para-total { flex: none; color: #2e7d4f; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .lx-para mark { background: #fff3b8; color: inherit; padding: 0 1px; border-radius: 2px; }
+
+        /* A paragraph with a flipbook opens it in a new tab — the whole row,
+           since a leaf has nothing to expand. Pages use the ↗ button instead,
+           because their title is the expander. */
+        a.lx-para.is-link { cursor: pointer; border-radius: 4px; }
+        a.lx-para.is-link:hover { background: #eaf3fb; }
+        a.lx-para.is-link:hover .lx-para-text { color: #1a5276; }
         table.gw-table td.col-hebrew { font-size: 1.15rem; direction: rtl; }
         /* Yada Towrah draws its glyphs left-to-right, so word_yt — which is stored
            in logical order — has to be reversed on screen to read as Hebrew does.
@@ -211,8 +315,52 @@
         .lx-pager { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 12px; font-size: 0.85rem; color: #666; }
         .lx-pager button { padding: 5px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.85rem; }
         .lx-pager button:disabled { opacity: 0.4; cursor: default; }
+        .lx-pager .lx-jump { display: flex; align-items: center; gap: 5px; }
+        .lx-pager .lx-jump input {
+            width: 62px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.85rem; font-family: inherit; text-align: center;
+        }
+        .lx-pager .lx-jump input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 2px rgba(52,152,219,0.15); }
+        .lx-pager .lx-range { color: #9aa4ae; }
 
         /* ── Transliteration rows in the edit panel ── */
+        /* Copy-on-write notice for words that came from an outside source. */
+        .lx-fork-note {
+            margin: 0 0 12px; padding: 8px 10px; border-radius: 4px;
+            border: 1px solid #f0d9a0; background: #fdf6e3; color: #7a5b1e;
+            font-size: 0.84rem; line-height: 1.45;
+        }
+        .lx-fork-note.has-copy { border-color: #bcd9ef; background: #f2f8fd; color: #1a5276; }
+        .lx-fork-note button {
+            margin-left: 8px; font-size: 0.78rem; padding: 3px 9px; cursor: pointer;
+            border: 1px solid #ccc; border-radius: 3px; background: #fff;
+        }
+
+        /* Definitions repeater: one card per yy_word_definition row. The default
+           is highlighted and a retired (inactive) one is dimmed but still shown. */
+        .lx-defs-edit { display: flex; flex-direction: column; gap: 10px; }
+        .lx-def-edit-row {
+            border: 1px solid #e1e5ea; border-radius: 4px; padding: 8px; background: #fbfcfd;
+        }
+        .lx-def-edit-row.is-default { border-color: #3498db; background: #f2f8fd; }
+        .lx-def-edit-row textarea { width: 100%; box-sizing: border-box; }
+        .lx-def-edit-row.is-inactive textarea { color: #999; font-style: italic; }
+        .lx-def-meta {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px;
+        }
+        .lx-def-meta label {
+            flex: none; font-size: 0.78rem; color: #888;
+            display: flex; align-items: center; gap: 4px; cursor: pointer;
+        }
+        .lx-def-meta select {
+            font-size: 0.8rem; padding: 4px 6px; border: 1px solid #ccc;
+            border-radius: 4px; font-family: inherit; background: #fff;
+        }
+        .lx-def-meta .lx-x {
+            margin-left: auto; border: none; background: none; color: #c0392b;
+            cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px;
+        }
+
         .lx-translits { display: flex; flex-direction: column; gap: 6px; }
         .lx-tr-row { display: flex; align-items: center; gap: 8px; }
         .lx-tr-row input[type=text] { flex: 1; max-width: 260px; }
@@ -266,12 +414,6 @@
             font-family: 'YadaTowrah', serif; font-size: 1.5rem; color: #1a5276; background: #f4f6f8;
         }
         .lx-readonly { color: #777; font-size: 0.9rem; }
-        .lx-defs { border-top: 1px solid #eee; margin-top: 6px; padding-top: 10px; }
-        .lx-def-row { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dotted #eee; font-size: 0.84rem; }
-        .lx-def-row .lx-def-src { flex: 0 0 82px; color: #8a94a0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
-        .lx-def-row .lx-def-txt { flex: 1; color: #444; white-space: pre-wrap; }
-        .lx-def-row .lx-use { flex: none; }
-        .lx-def-row .lx-use button { font-size: 0.74rem; padding: 3px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -328,32 +470,54 @@
 
         <div class="gw-bar">
             <input type="search" id="gw-search" placeholder="Search spelling, Hebrew, Strong's, or definition..." autocomplete="off">
-            <select id="lx-source" onchange="lxReload(true)">
-                <option value="">All sources</option>
+            <!-- data-no-persist: these checkboxes are rendered after meta lands,
+                 so session-state.js would bind them via its MutationObserver only
+                 AFTER the first query has already read them. lxRenderSources()
+                 restores the saved selection itself instead — see LX_SRC_STORE. -->
+            <div id="lx-source" class="gw-srcfilter" data-no-persist>
+                <span class="gw-srcfilter-label">Sources</span>
+            </div>
+            <select id="lx-copied" onchange="lxReload(true)" title="Filter on the YY-copy link">
+                <option value="">Copied: any</option>
+                <option value="yes">Has a YY copy</option>
+                <option value="no">No YY copy</option>
+            </select>
+            <!-- Lives here, not in #lx-pager: the pager is innerHTML-rebuilt on
+                 every load, which would wipe the choice and its saved state. -->
+            <select id="lx-limit" onchange="lxSetLimit()" title="Rows per page">
+                <option value="25">25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100" selected>100 / page</option>
+                <option value="250">250 / page</option>
+                <option value="500">500 / page</option>
             </select>
             <span id="gw-count" class="gw-count"></span>
             <span class="gw-spacer"></span>
             <button class="btn btn-primary" onclick="newWord()">New Word</button>
         </div>
 
-        <div id="lx-letters" class="lx-letters"></div>
-
         <!-- data-no-persist: record fields must not survive a refresh into the
              next record being edited (session-state.js would otherwise bind them). -->
         <div id="gw-panel" class="edit-panel" data-no-persist>
             <h2 id="gw-panel-title">New Word</h2>
 
+            <!-- Shown only for a word whose source is not YY: those are never
+                 edited in place, saving forks them to a YY copy. -->
+            <div id="lx-fork-note" class="lx-fork-note" style="display:none"></div>
+
             <div class="field-row"><label for="lx-strongs-num">Strong's</label>
                 <div class="field-input"><div class="char-inputs">
-                    <select id="lx-strongs-lang" class="lx-strongs-lang">
+                    <select id="lx-strongs-lang" class="lx-strongs-lang" onchange="lxStrongsLangChanged()">
+                        <option value="unknown"></option>
+                        <option value="none">&ndash;&ndash;</option>
                         <option value="H">H</option>
                         <option value="G">G</option>
                     </select>
                     <input type="text" id="lx-strongs-num" class="lx-strongs-num" maxlength="4"
                            placeholder="0000" inputmode="numeric" autocomplete="off">
                     <input type="text" id="lx-strongs-suffix" class="lx-strongs-suffix" maxlength="1"
-                           placeholder="a" autocomplete="off" title="Optional letter distinguishing words that share one Strong's number">
-                    <span style="color:#888;font-size:0.82rem;">H for Hebrew, G for Greek &mdash; 4 digits, zero-padded. Trailing letter only when two words share a number (a, b, c). Blank if none.</span>
+                           autocomplete="off" title="Optional letter distinguishing words that share one Strong's number">
+                    <span style="color:#888;font-size:0.82rem;">Leave <strong>blank</strong> when it is not yet known; pick <strong>&ndash;&ndash;</strong> once you have established the word has no Strong's entry. Otherwise H for Hebrew, G for Greek &mdash; 4 digits, zero-padded. Trailing letter only when two words share a number (a, b, c).</span>
                 </div></div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label>Translit</label>
@@ -365,10 +529,10 @@
                     <div class="lx-hint">The selected spelling is the preferred one, saved on the word itself; the rest are kept as alternates.</div>
                 </div></div>
 
-            <div class="field-row"><label for="lx-count">#</label>
+            <div class="field-row"><label>#</label>
                 <div class="field-input"><div class="char-inputs">
-                    <input type="number" id="lx-count" class="small-input" min="0" step="1">
-                    <span style="color:#888;font-size:0.82rem;">times the word appears in the books &mdash; a book recount overwrites this</span>
+                    <span id="lx-count" class="lx-count-derived">&mdash;</span>
+                    <span style="color:#888;font-size:0.82rem;">times the word appears in the books &mdash; derived from the book index, not editable</span>
                 </div></div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label for="lx-hebrew">Hebrew</label>
@@ -417,16 +581,25 @@
                     <div class="lx-hint">A word can be more than one &mdash; tick every part of speech that applies.</div>
                 </div></div>
 
+            <div class="field-row"><label for="lx-language">Language</label>
+                <div class="field-input"><div class="char-inputs">
+                    <select id="lx-language"></select>
+                    <span style="color:#888;font-size:0.82rem;">leave blank if not yet classified</span>
+                </div></div></div>
+
             <div class="field-row"><label for="lx-gender">Gender</label>
                 <div class="field-input"><div class="char-inputs">
                     <select id="lx-gender"></select>
                     <span style="color:#888;font-size:0.82rem;">leave blank if unknown</span>
                 </div></div></div>
 
-            <div class="field-row" style="align-items:flex-start;"><label for="lx-def-yy">Definition</label>
+            <div class="field-row" style="align-items:flex-start;"><label>Definitions</label>
                 <div class="field-input">
-                    <textarea id="lx-def-yy" rows="5" placeholder="The Yada definition for this word."></textarea>
-                    <div id="lx-other-defs" class="lx-defs" style="display:none"></div>
+                    <div id="lx-defs" class="lx-defs-edit"></div>
+                    <div style="margin-top:8px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxAddDefinition()">+ Add definition</button>
+                    </div>
+                    <div class="lx-hint">One definition is the word's default. Untick Active to retire one without deleting it.</div>
                 </div></div>
 
             <div class="field-row"><label for="lx-source-code">Source</label>
@@ -454,7 +627,9 @@
             <table class="gw-table">
                 <thead>
                     <tr>
+                        <th class="col-yycopy" title="Has an editable YY copy">YY</th>
                         <th class="col-strongs sortable" onclick="lxSort('strongs')">Strong's<span class="sort-mark" data-sort="strongs"></span></th>
+                        <th class="col-lang sortable" onclick="lxSort('language')" title="Language of the word">Lng<span class="sort-mark" data-sort="language"></span></th>
                         <th class="col-translit sortable" onclick="lxSort('translit')">Translit<span class="sort-mark" data-sort="translit"></span></th>
                         <th class="col-count sortable" onclick="lxSort('count')">#<span class="sort-mark" data-sort="count"></span></th>
                         <th class="col-hebrew sortable" onclick="lxSort('hebrew')">Hebrew<span class="sort-mark" data-sort="hebrew"></span></th>
@@ -465,7 +640,14 @@
                          composes with the search bar above; Definition filters but
                          does not sort. -->
                     <tr class="filter-row">
+                        <!-- No filter box: the YY column is filtered from the
+                             "Copied" control in the toolbar, which has room for
+                             readable labels. -->
+                        <th></th>
                         <th><input type="text" id="lx-f-strongs" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
+                        <!-- A select, not a text box: language is a fixed lookup,
+                             so the options are filled from ?action=meta. -->
+                        <th><select id="lx-f-language" class="col-filter" onchange="lxReload(true)"></select></th>
                         <th><input type="text" id="lx-f-translit" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
                         <th><div class="gw-count-filter">
                             <button type="button" id="lx-f-count-op" title="Toggle at-least / at-most" onclick="lxToggleCountOp()">&ge;</button>
@@ -687,6 +869,7 @@ function uploadImage() {
    ══════════════════════════════════════════════════════════════════════ */
 
 var TAB_STORE = 'admin-glossary:tab';
+var LX_SRC_STORE = 'admin-glossary:sources';   // checked Sources filter codes
 var wordsLoaded = false;
 
 function switchTab(name) {
@@ -733,7 +916,8 @@ var LX_HALF_RINGS = [
 ];
 var LX_HALF_RING_SET = {};
 LX_HALF_RINGS.forEach(function(r) { LX_HALF_RING_SET[r[0]] = 1; });
-var lxState = { q: '', source: '', letter: '', sort: 'translit', dir: 'asc', offset: 0, limit: 100 };
+var lxState = { q: '', source: '', sort: 'translit', dir: 'asc', offset: 0, limit: 100 };
+var lxLastTotal = 0;   // rows the current filter matches — bounds the page jump
 var lxFilterTimer = null;
 var lxCountOp = 'gt';        // 'gt' = at least, 'lt' = at most
 
@@ -782,41 +966,115 @@ function lxLoadMeta(then) {
                 lxHebFinal[lxYtToHeb[l.letter_yt]] = l.letter_hebrew;
             }
         });
-        lxRenderLetters();
         lxRenderSources();
         lxRenderPosGender();
         if (then) then();
     });
 }
 
-function lxRenderLetters() {
-    var seen = {}, html = '<button type="button" class="lx-all' + (lxState.letter ? '' : ' active')
-        + '" onclick="lxPickLetter(\'\')">All letters</button>';
-    (lxMeta.letters || []).forEach(function(l) {
-        // Finals share a YT letter with their base form — one key each.
-        if (!l.letter_yt || seen[l.letter_yt]) return;
-        seen[l.letter_yt] = 1;
-        html += '<button type="button" title="' + esc(l.letter_label || '') + ' — ' + esc(l.letter_hebrew || '')
-            + '" class="' + (lxState.letter === l.letter_yt ? 'active' : '')
-            + '" onclick="lxPickLetter(\'' + esc(l.letter_yt) + '\')">' + esc(l.letter_yt) + '</button>';
+/* ── Language filter: one letter closed, "H — Hebrew" open ──────────────
+   A native <select> has a single text per <option>, shown both in the closed
+   control and in the dropped-open list. To get a different label in each, the
+   options are rewritten to their long form just before the list opens and back
+   to the bare code once it closes.
+
+   ⚠ The option VALUES are never touched, so filtering cannot break: if a swap
+   is ever missed the worst case is cosmetic — the closed box showing the long
+   text clipped, which is what it looked like before this existed. */
+function lxLangOptionText(sel, long) {
+    (lxMeta.languages || []).forEach(function(l) {
+        var o = sel.querySelector('option[value="' + l.word_language_code + '"]');
+        if (!o) return;
+        o.textContent = long
+            ? l.word_language_code + ' — ' + l.word_language_label
+            : l.word_language_code;
     });
-    document.getElementById('lx-letters').innerHTML = html;
+}
+
+function lxBindLangFilter(sel) {
+    if (sel.dataset.langBound) return;   // options are rebuilt; listeners are not
+    sel.dataset.langBound = '1';
+
+    // mousedown fires before the popup is painted; keydown covers Alt+Down and
+    // type-ahead, which never produce a mousedown.
+    ['mousedown', 'keydown', 'focus'].forEach(function(ev) {
+        sel.addEventListener(ev, function() { lxLangOptionText(sel, true); });
+    });
+    // The list is gone by the time either of these fires, so the closed control
+    // goes back to a single letter.
+    ['change', 'blur'].forEach(function(ev) {
+        sel.addEventListener(ev, function() { lxLangOptionText(sel, false); });
+    });
+}
+
+/* Full name for a language code, for the list column's hover text. Falls back
+   to the code itself if meta has not landed yet. */
+function lxLanguageLabel(code) {
+    var out = code;
+    (lxMeta && lxMeta.languages || []).forEach(function(l) {
+        if (l.word_language_code === code) out = l.word_language_label;
+    });
+    return out;
+}
+
+/* Nothing checked = every source, which is what "All sources" used to mean. */
+function lxSelectedSources() {
+    return Array.prototype.map.call(
+        document.querySelectorAll('.lx-source-cb:checked'),
+        function(cb) { return cb.value; }
+    );
+}
+
+/* Checked codes, persisted here rather than by session-state.js — see the
+   data-no-persist note on #lx-source. Codes no longer offered are dropped on
+   read, so a source that loses its last word cannot wedge the filter. */
+function lxSaveSources(codes) {
+    // Ticking every source filters nothing, so it is the same state as ticking
+    // none. Store it as none, or a session that ticked them all comes back
+    // looking permanently all-ticked instead of clean.
+    if (codes.length >= (lxMeta.sources || []).length) codes = [];
+    try { localStorage.setItem(LX_SRC_STORE, codes.join(',')); } catch (e) { /* private mode */ }
+}
+function lxLoadSavedSources() {
+    var raw = '';
+    try { raw = localStorage.getItem(LX_SRC_STORE) || ''; } catch (e) {}
+    return raw ? raw.split(',').filter(function(c) { return c !== ''; }) : [];
+}
+
+function lxSourcesChanged() {
+    lxSaveSources(lxSelectedSources());
+    lxReload(true);
 }
 
 function lxRenderSources() {
-    var sel = document.getElementById('lx-source');
+    var box = document.getElementById('lx-source');
     var counts = {};
     (lxMeta.source_counts || []).forEach(function(c) { counts[c.code] = c.n; });
-    var html = '<option value="">All sources</option>';
-    (lxMeta.sources || []).forEach(function(s) {
-        var n = counts[s.word_source_code];
-        html += '<option value="' + esc(s.word_source_code) + '">' + esc(s.word_source_label)
-            + (n ? ' (' + n + ')' : '') + '</option>';
-    });
-    sel.innerHTML = html;
-    sel.value = lxState.source;
 
-    // The edit panel's own Source picker uses the labels without the counts.
+    // Every source on file gets a checkbox — the empty ones were deleted from
+    // yy_word_source, and 'yy' must stay listed even at zero because it is the
+    // default for words added by hand in this panel.
+    // Same normalisation on the way in, so a browser that already stored an
+    // all-ticked selection renders clean on this load rather than the next one.
+    var savedList = lxLoadSavedSources();
+    if (savedList.length >= (lxMeta.sources || []).length) savedList = [];
+    var saved = {};
+    savedList.forEach(function(c) { saved[c] = 1; });
+
+    box.innerHTML = '<span class="gw-srcfilter-label">Sources</span>' + (lxMeta.sources || []).map(function(s) {
+        var code = s.word_source_code;
+        return '<label><input type="checkbox" class="lx-source-cb" value="' + esc(code) + '"'
+            + (saved[code] ? ' checked' : '') + ' onchange="lxSourcesChanged()"> '
+            + esc(s.word_source_label)
+            + ' <span class="gw-srcfilter-n">' + (counts[code] || 0) + '</span></label>';
+    }).join('');
+
+    // Drop any saved code that is no longer offered, so the stored value and
+    // what the user can see stay in step.
+    lxSaveSources(lxSelectedSources());
+
+    // The edit panel's own Source picker lists EVERY source, including ones with
+    // no words yet — 'yy' is the default for a new word and starts out empty.
     var panelSel = document.getElementById('lx-source-code');
     panelSel.innerHTML = (lxMeta.sources || []).map(function(s) {
         return '<option value="' + esc(s.word_source_code) + '">' + esc(s.word_source_label) + '</option>';
@@ -830,6 +1088,27 @@ function lxRenderPosGender() {
         return '<label><input type="checkbox" class="lx-pos-cb" value="' + p.word_pos_key + '"> '
              + esc(p.word_pos_label || p.word_pos_code || ('#' + p.word_pos_key)) + '</label>';
     }).join('');
+
+    /* The list's Language filter. Blank = no filter; the lookup supplies the rest.
+       Options are built in their SHORT form; lxBindLangFilter swaps them to the
+       long form while the list is open. */
+    var langFilter = document.getElementById('lx-f-language');
+    langFilter.innerHTML =
+        '<option value=""></option>'
+        + (lxMeta.languages || []).map(function(l) {
+            return '<option value="' + esc(l.word_language_code) + '">'
+                 + esc(l.word_language_code) + '</option>';
+        }).join('');
+    lxBindLangFilter(langFilter);
+
+    // Keyed by the char(1) code, not a surrogate key — word_language stores the
+    // code itself and FKs to yy_word_language.word_language_code.
+    document.getElementById('lx-language').innerHTML =
+        '<option value="">— not classified —</option>'
+        + (lxMeta.languages || []).map(function(l) {
+            return '<option value="' + esc(l.word_language_code) + '">'
+                 + esc(l.word_language_label) + '</option>';
+        }).join('');
 
     // Blank first: a word with no gender recorded is unknown, not neuter.
     document.getElementById('lx-gender').innerHTML =
@@ -847,6 +1126,8 @@ function lxSetPosGender(w) {
         cb.checked = !!keys[cb.value];
     });
     document.getElementById('lx-gender').value = (w && w.word_gender_key) ? String(w.word_gender_key) : '';
+    document.getElementById('lx-language').value =
+        (w && w.word_language) ? String(w.word_language).trim() : '';
 }
 
 function lxCollectPos() {
@@ -855,12 +1136,6 @@ function lxCollectPos() {
         if (cb.checked) out.push(parseInt(cb.value, 10));
     });
     return out;
-}
-
-function lxPickLetter(yt) {
-    lxState.letter = yt;
-    lxRenderLetters();
-    lxReload(true);
 }
 
 function lxSort(key) {
@@ -896,12 +1171,19 @@ function lxReload(resetOffset) {
 function loadWords() {
     lxLoadMeta(function() {
         lxState.q = document.getElementById('gw-search').value.trim();
-        lxState.source = document.getElementById('lx-source').value;
+        lxState.source = lxSelectedSources().join(',');
+        // Read the selector rather than trusting lxState: session-state.js
+        // restores a saved per-page choice after this script sets its default.
+        var limSel = document.getElementById('lx-limit');
+        if (limSel) lxState.limit = parseInt(limSel.value, 10) || lxState.limit;
         var p = 'limit=' + lxState.limit + '&offset=' + lxState.offset
               + '&sort=' + encodeURIComponent(lxState.sort) + '&dir=' + encodeURIComponent(lxState.dir);
         if (lxState.q) p += '&q=' + encodeURIComponent(lxState.q);
         if (lxState.source) p += '&source=' + encodeURIComponent(lxState.source);
-        if (lxState.letter) p += '&letter=' + encodeURIComponent(lxState.letter);
+        var copiedSel = document.getElementById('lx-copied');
+        if (copiedSel && copiedSel.value) p += '&copied=' + encodeURIComponent(copiedSel.value);
+        var langSel = document.getElementById('lx-f-language');
+        if (langSel && langSel.value) p += '&language=' + encodeURIComponent(langSel.value);
         Object.keys(LX_FILTERS).forEach(function(id) {
             var el = document.getElementById(id);
             var v = el ? el.value.trim() : '';
@@ -919,6 +1201,7 @@ function loadWords() {
 
 function renderWords(words, total) {
     var tbody = document.getElementById('gw-tbody');
+    lxLastTotal = total || 0;
     document.getElementById('gw-count').textContent =
         total ? (total.toLocaleString() + (total === 1 ? ' word' : ' words')) : '';
 
@@ -928,7 +1211,7 @@ function renderWords(words, total) {
     });
 
     if (!words.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="gw-empty">No words match — clear the filters, or use New Word to add one.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="gw-empty">No words match — clear the filters, or use New Word to add one.</td></tr>';
         document.getElementById('lx-pager').innerHTML = '';
         return;
     }
@@ -941,16 +1224,55 @@ function renderWords(words, total) {
         var alts = (w.translits_display || '').split(', ').filter(function(s) {
             return s && s.toLowerCase() !== pref.toLowerCase();
         });
-        var def = w.word_definition_yy || w.word_definition_kirk || w.word_definition_external || '';
+        var def = w.word_definition_yy || w.word_definition_perry
+                  || w.word_definition_kirk || w.word_definition_external || '';
         var src = (w.word_source_code || '').trim();
 
-        html += '<tr class="' + (inactive ? 'inactive' : '') + '" onclick="editWord(' + w.word_key + ')">'
-            + '<td class="col-strongs">' + esc(w.word_strongs || '') + '</td>'
+        // Remembered so the occurrences panel can mark the word in a snippet;
+        // the index counts every spelling, so highlighting must too.
+        lxOccSpellings[w.word_key] = (pref ? [pref] : []).concat(alts);
+
+        // A non-zero count opens the occurrences drill-down; zero stays plain
+        // text, since there would be nothing to show.
+        var cnt = w.word_count_yy;
+        var cntCell = (cnt === null || cnt === undefined) ? ''
+            : (cnt > 0
+                ? '<button type="button" class="lx-count-btn" id="lx-cnt-' + w.word_key + '"'
+                  + ' title="Show where this word appears"'
+                  + ' onclick="lxToggleOccurrences(' + w.word_key + ', event)">' + cnt + '</button>'
+                : '0');
+
+        /* Language: the one-letter code, with the full name on hover so the
+           column stays narrow. '-' means not classified yet. */
+        // Always a single character, whatever the column happens to hold.
+        var langCode = (w.word_language || '').trim().charAt(0);
+        var langCell = langCode
+            ? '<span class="lx-lang-code" title="' + esc(lxLanguageLabel(langCode)) + '">'
+              + esc(langCode) + '</span>'
+            : '<span class="lx-lang-none">-</span>';
+
+        /* YY column: 'Y' opens the editable copy this word was forked to, '-'
+           means it has none yet. stopPropagation so it does not also fire the
+           row's own onclick and open the ORIGINAL. */
+        var yyCell = w.word_yy_copy_key
+            ? '<button type="button" class="lx-yy-link" title="Open the YY copy of this word"'
+              + ' onclick="event.stopPropagation(); editWord(' + w.word_yy_copy_key + ')">Y</button>'
+            : '<span class="lx-yy-none">-</span>';
+
+        html += '<tr class="' + (inactive ? 'inactive' : '') + '" id="lx-row-' + w.word_key + '"'
+            + ' onclick="editWord(' + w.word_key + ')">'
+            + '<td class="col-yycopy">' + yyCell + '</td>'
+            /* '' means established-no-Strong's and shows a dash; null means nobody
+               has determined it yet and stays blank. */
+            + '<td class="col-strongs">'
+            + (w.word_strongs === '' ? '<span class="lx-none-mark">&ndash;&ndash;</span>'
+                                     : esc(w.word_strongs || '')) + '</td>'
+            + '<td class="col-lang">' + langCell + '</td>'
             + '<td class="col-translit">' + esc(pref || '(none)')
             + (src ? '<span class="src-tag src-' + esc(src) + '">' + esc(src) + '</span>' : '')
             + (alts.length ? '<span class="alt">' + esc(alts.join(', ')) + '</span>' : '')
             + '</td>'
-            + '<td class="col-count">' + (w.word_count_yy === null || w.word_count_yy === undefined ? '' : w.word_count_yy) + '</td>'
+            + '<td class="col-count">' + cntCell + '</td>'
             + '<td class="col-hebrew">' + esc(w.word_hebrew || '') + '</td>'
             + '<td class="col-yt">' + esc(w.word_yt || '') + '</td>'
             + '<td class="gw-def">' + esc(def.length > 180 ? def.slice(0, 180) + '…' : def) + '</td>'
@@ -959,16 +1281,308 @@ function renderWords(words, total) {
     tbody.innerHTML = html;
 
     var from = lxState.offset + 1, to = Math.min(lxState.offset + words.length, total);
+    var pages = Math.max(1, Math.ceil(total / lxState.limit));
+    var cur   = Math.floor(lxState.offset / lxState.limit) + 1;
+
     document.getElementById('lx-pager').innerHTML =
         '<button type="button" onclick="lxPage(-1)"' + (lxState.offset ? '' : ' disabled') + '>&larr; Prev</button>'
-        + '<span>' + from.toLocaleString() + '–' + to.toLocaleString() + ' of ' + total.toLocaleString() + '</span>'
-        + '<button type="button" onclick="lxPage(1)"' + (to < total ? '' : ' disabled') + '>Next &rarr;</button>';
+        + '<span class="lx-jump">Page '
+        + '<input type="number" id="lx-page-num" min="1" max="' + pages + '" value="' + cur + '"'
+        + ' title="Type a page number and press Enter"'
+        + ' onchange="lxGotoPage(this.value)"'
+        + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();lxGotoPage(this.value);}">'
+        + ' of ' + pages.toLocaleString() + '</span>'
+        + '<button type="button" onclick="lxPage(1)"' + (to < total ? '' : ' disabled') + '>Next &rarr;</button>'
+        + '<span class="lx-range">' + from.toLocaleString() + '&ndash;' + to.toLocaleString()
+        + ' of ' + total.toLocaleString() + '</span>';
 }
 
 function lxPage(dir) {
     lxState.offset = Math.max(0, lxState.offset + dir * lxState.limit);
     loadWords();
 }
+
+/** Jump to a 1-based page number, clamped to what the result set actually has. */
+function lxGotoPage(value) {
+    var n = parseInt(value, 10);
+    if (!n || n < 1) n = 1;
+    var pages = Math.max(1, Math.ceil(lxLastTotal / lxState.limit));
+    if (n > pages) n = pages;
+    lxState.offset = (n - 1) * lxState.limit;
+    loadWords();
+}
+
+/**
+ * Change the rows-per-page. Keeps the record you were looking at on screen by
+ * anchoring the new page on the current first row, rather than jumping back to
+ * page 1 — otherwise widening the page size loses your place in 5,000 words.
+ */
+function lxSetLimit() {
+    var sel = document.getElementById('lx-limit');
+    var n = parseInt(sel ? sel.value : '', 10) || 100;
+    lxState.limit = n;                                   // API clamps at 500
+    lxState.offset = Math.floor(lxState.offset / n) * n;
+    loadWords();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Occurrences — click a word's count to see where it appears:
+   series → volume → chapter → page → paragraph.
+
+   Reads /api/admin-glossary-lexicon.php?action=occurrences, one level per
+   request, so a 25,000-hit word opens as fast as a 3-hit one. Every level's
+   children sum to its own total, and the top level sums to the count in the
+   table (both come out of yy_word_occurrence).
+   ══════════════════════════════════════════════════════════════════════ */
+
+var lxOccCtx = {};        // node id => {level, params, flip, word}
+var lxOccSeq = 0;         // node id counter
+var lxOccWord = null;     // word_key whose panel is open, or null
+var lxOccSpellings = {};  // word_key => every spelling, for highlighting snippets
+
+/**
+ * The child level for a node, and the params that address it.
+ * ⚠ The word key is carried in params.key at EVERY level — read it from the
+ * parent's params, never from a separate field, or the deeper levels request
+ * a URL with no key and the endpoint 400s.
+ */
+function lxOccChildQuery(ctx, row) {
+    var p = { key: ctx.params.key };
+    if (ctx.level === 'series')  { p.series = row.key;  return { level: 'volume',  params: p, slug: null }; }
+    if (ctx.level === 'volume')  { p.volume = row.key;  return { level: 'chapter', params: p, slug: row.book_slug || null }; }
+    if (ctx.level === 'chapter') {
+        p.volume = ctx.params.volume; p.chapter = row.key;
+        return { level: 'page', params: p, slug: ctx.slug };
+    }
+    if (ctx.level === 'page') {
+        p.volume = ctx.params.volume; p.chapter = ctx.params.chapter; p.page = row.page;
+        return { level: 'paragraph', params: p, slug: ctx.slug };
+    }
+    return null;
+}
+
+function lxOccUrl(params) {
+    var qs = [];
+    for (var k in params) {
+        if (Object.prototype.hasOwnProperty.call(params, k) && params[k] !== null && params[k] !== undefined) {
+            qs.push(k + '=' + encodeURIComponent(params[k]));
+        }
+    }
+    return API + '/admin-glossary-lexicon.php?action=occurrences&' + qs.join('&');
+}
+
+/**
+ * Deep link into the self-hosted flipbook, or '' when the volume has no bundle
+ * on disk (the API only sends book_slug for volumes that do).
+ *
+ *   #p=<page>   the viewer's page. paragraph_page IS the flipbook page — no
+ *               offset. Verified against the books' own text layer: of 218
+ *               sampled occurrences found on disk, 218 matched at offset 0.
+ *   #h=<para>   paragraph_number, which makes the viewer highlight that exact
+ *               paragraph once the page's text layer is drawn.
+ *   #q=<word>   the viewer's own search term — it wraps every match in
+ *               <mark class="search-hit"> in the text layer and re-applies it
+ *               to each newly rendered page, so the word itself is marked.
+ *
+ * ⚠ Do NOT reintroduce the "+6" from modifier-words.html. That offset belongs
+ *   to the retired external FlipHTML5 bundles, and those links used
+ *   volume_flip_code, which no longer resolves at all.
+ */
+function lxFlipUrl(slug, page, paragraphNumber, query) {
+    if (!slug || page === null || page === undefined) return '';
+    var url = '/' + encodeURIComponent(slug) + '/#p=' + page;
+    if (paragraphNumber !== null && paragraphNumber !== undefined && paragraphNumber !== '') {
+        url += '&h=' + paragraphNumber;
+    }
+    if (query) url += '&q=' + encodeURIComponent(query);
+    return url;
+}
+
+/** The spelling to hand the flipbook as its search term. */
+function lxPreferredSpelling() {
+    var list = lxOccSpellings[lxOccWord];
+    return (list && list.length) ? list[0] : '';
+}
+
+function lxToggleOccurrences(wordKey, ev) {
+    // The whole <tr> opens the editor — the count must not.
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+
+    var open = document.getElementById('lx-occ-' + wordKey);
+    // One panel at a time: a second open row pushes the table around and the
+    // counts stop lining up with what you were reading.
+    document.querySelectorAll('tr.lx-occ-row').forEach(function (r) { r.remove(); });
+    document.querySelectorAll('.lx-count-btn.open').forEach(function (b) { b.classList.remove('open'); });
+    lxOccCtx = {};
+    if (open) { lxOccWord = null; return; }
+
+    var row = document.getElementById('lx-row-' + wordKey);
+    if (!row) return;
+    lxOccWord = wordKey;
+
+    var btn = document.getElementById('lx-cnt-' + wordKey);
+    if (btn) btn.classList.add('open');
+
+    var tr = document.createElement('tr');
+    tr.className = 'lx-occ-row';
+    tr.id = 'lx-occ-' + wordKey;
+    tr.innerHTML = '<td colspan="' + row.children.length + '"><div class="lx-occ">'
+        + '<div class="lx-occ-head"><strong>Occurrences</strong>'
+        + '<span id="lx-occ-sum-' + wordKey + '"></span>'
+        + '<button type="button" class="lx-occ-close" onclick="lxToggleOccurrences(' + wordKey + ', event)">Close</button>'
+        + '</div><div id="lx-occ-body-' + wordKey + '"><div class="lx-occ-loading">Loading…</div></div>'
+        + '</div></td>';
+    row.parentNode.insertBefore(tr, row.nextSibling);
+
+    var rootCtx = { level: 'series', params: { key: wordKey }, flip: null, word: wordKey };
+    fetch(lxOccUrl(rootCtx.params), { credentials: 'include' })
+        .then(function (r) { return safeJson(r); })
+        .then(function (d) {
+            var body = document.getElementById('lx-occ-body-' + wordKey);
+            if (!body) return;   // panel closed while the request was in flight
+            if (!d || d.error) {
+                body.innerHTML = '<div class="lx-occ-empty">' + esc((d && d.error) || 'Could not load occurrences') + '</div>';
+                return;
+            }
+            var sum = document.getElementById('lx-occ-sum-' + wordKey);
+            if (sum) {
+                sum.textContent = (d.total || 0).toLocaleString() + ' in '
+                    + d.rows.length + (d.rows.length === 1 ? ' series' : ' series');
+            }
+            body.innerHTML = lxOccRender(rootCtx, d.rows);
+        });
+}
+
+/**
+ * Render the rows at one level. `ctx.level` names the level the ROWS are at,
+ * so ctx is also the parent context each row expands from. Paragraphs are the
+ * leaves and carry their sentence, so they get their own shape.
+ */
+function lxOccRender(ctx, rows) {
+    if (!rows || !rows.length) return '<div class="lx-occ-empty">Nothing here.</div>';
+
+    if (ctx.level === 'paragraph') {
+        // A paragraph opens its own page AND asks the viewer to highlight the
+        // paragraph (h=). An <a> rather than an onclick so ctrl/middle-click,
+        // "open in new window" and the status-bar preview all behave.
+        return rows.map(function (r) {
+            // Search the flipbook for the spelling actually present in THIS
+            // paragraph, falling back to the preferred one.
+            // Full spelling, half-rings and all: flipbook-viewer.js matches a
+            // query across the whole line since v33, so a ringed word — which
+            // the PDF text layer splits into three spans — highlights properly.
+            var q = r.match || lxPreferredSpelling();
+            var url = lxFlipUrl(ctx.slug, ctx.params.page, r.number, q);
+            var body = '<span class="lx-para-id">&para;&nbsp;' + (r.number === null ? '?' : r.number) + '</span>'
+                + '<span class="lx-para-text">' + lxOccHighlight(r.snippet) + '</span>'
+                + '<span class="lx-para-total">' + r.total + '</span>';
+            return url
+                ? '<a class="lx-para is-link" href="' + url + '" target="_blank" rel="noopener"'
+                  + ' title="Open page ' + ctx.params.page + ' in the flipbook, highlight this paragraph'
+                  + (q ? ' and mark ' + esc(q) : '') + '">'
+                  + body + '</a>'
+                : '<div class="lx-para" title="This volume has no flipbook on the site">' + body + '</div>';
+        }).join('');
+    }
+    return rows.map(function (r) { return lxOccNode(ctx, r); }).join('');
+}
+
+/** One expandable node. */
+function lxOccNode(parentCtx, row) {
+    var child = lxOccChildQuery(parentCtx, row);
+    var id = 'lxn' + (++lxOccSeq);
+    lxOccCtx[id] = child;
+
+    var label, meta = '', level = child ? child.level : 'leaf';
+    if (parentCtx.level === 'series') {
+        label = row.label;
+        meta = row.volumes + (row.volumes === 1 ? ' volume' : ' volumes');
+        level = 'series';
+    } else if (parentCtx.level === 'volume') {
+        label = row.label;
+        meta = row.chapters + (row.chapters === 1 ? ' chapter' : ' chapters');
+        level = 'volume';
+    } else if (parentCtx.level === 'chapter') {
+        label = row.label;
+        meta = row.pages + (row.pages === 1 ? ' page' : ' pages');
+        level = 'chapter';
+    } else {   // page row
+        label = 'Page ' + row.page;
+        meta = row.paragraphs + (row.paragraphs === 1 ? ' paragraph' : ' paragraphs');
+        level = 'page';
+    }
+
+    // The title expands, like the twist beside it — the arrow alone is a small
+    // target. A page therefore can't use its title for the flipbook, so that
+    // moves to its own ↗ button and both actions stay reachable.
+    var openHtml = '';
+    if (level === 'page') {
+        var q = lxPreferredSpelling();
+        var pageUrl = lxFlipUrl(parentCtx.slug, row.page, null, q);
+        openHtml = pageUrl
+            ? '<a class="lx-open" href="' + pageUrl + '" target="_blank" rel="noopener"'
+              + ' title="Open page ' + row.page + ' in the flipbook'
+              + (q ? ' and mark ' + esc(q) : '') + '">&#8599;</a>'
+            : '<span class="lx-open is-off" title="This volume has no flipbook on the site">&#8599;</span>';
+    }
+
+    return '<div class="lx-node lvl-' + level + '">'
+        + '<button type="button" class="lx-twist" data-node="' + id + '"'
+        + ' onclick="lxOccExpand(\'' + id + '\', event)">&#9656;</button>'
+        + '<button type="button" class="lx-node-label" data-node="' + id + '"'
+        + ' onclick="lxOccExpand(\'' + id + '\', event)">' + esc(label) + '</button>'
+        + '<span class="lx-node-meta">' + meta + '</span>'
+        + openHtml
+        + '<span class="lx-node-total">' + row.total.toLocaleString() + '</span>'
+        + '</div><div class="lx-children" id="' + id + '-kids" hidden></div>';
+}
+
+function lxOccExpand(nodeId, ev) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    var ctx = lxOccCtx[nodeId];
+    var kids = document.getElementById(nodeId + '-kids');
+    var twist = document.querySelector('.lx-twist[data-node="' + nodeId + '"]');
+    if (!ctx || !kids) return;
+
+    if (!kids.hidden) {                       // collapse
+        kids.hidden = true;
+        if (twist) twist.innerHTML = '&#9656;';
+        return;
+    }
+    if (twist) twist.innerHTML = '&#9662;';
+    kids.hidden = false;
+    if (kids.dataset.loaded) return;          // already fetched once
+
+    kids.innerHTML = '<div class="lx-occ-loading">Loading…</div>';
+    fetch(lxOccUrl(ctx.params), { credentials: 'include' })
+        .then(function (r) { return safeJson(r); })
+        .then(function (d) {
+            if (!document.getElementById(nodeId + '-kids')) return;
+            if (!d || d.error) {
+                kids.innerHTML = '<div class="lx-occ-empty">' + esc((d && d.error) || 'Could not load') + '</div>';
+                return;
+            }
+            kids.innerHTML = lxOccRender(ctx, d.rows);
+            kids.dataset.loaded = '1';
+        });
+}
+
+/** Mark the word being drilled into, inside a paragraph snippet. */
+function lxOccHighlight(text) {
+    var out = esc(text || '');
+    if (!lxOccWord) return out;
+    var spellings = lxOccSpellings[lxOccWord];
+    if (!spellings || !spellings.length) return out;
+    // Longest first so "beryth" wins over a shorter spelling nested in it.
+    spellings.slice().sort(function (a, b) { return b.length - a.length; }).forEach(function (sp) {
+        if (!sp) return;
+        var re = new RegExp('(^|[^\\p{L}])(' + lxReEscape(esc(sp)) + ')(?=[^\\p{L}]|$)', 'giu');
+        out = out.replace(re, '$1<mark>$2</mark>');
+    });
+    return out;
+}
+
+function lxReEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 /* ── Transliteration rows ──────────────────────────────────────────────── */
 
@@ -1189,15 +1803,41 @@ function lxShowYtPlain() {
    legacy bare number or a lower-case letter still loads into the right boxes;
    joining always hands the API letter + digits, which it canonicalises. */
 function lxSetStrongs(stored) {
-    var m = /^([A-Za-z])?0*([0-9]{1,4})([A-Za-z])?$/.exec(String(stored || '').trim());
-    document.getElementById('lx-strongs-lang').value = (m && m[1]) ? m[1].toUpperCase() : 'H';
+    var m = /^([A-Za-z])?0*([0-9]{1,4})([A-Za-z])?$/.exec(String(stored == null ? '' : stored).trim());
+    /* Three states, and NULL is NOT the same as ''.
+         null  → blank   nobody has determined it yet  (the 4,101 books words)
+         ''    → '--'    established: this word has no Strong's entry
+         value → H / G
+       Never default to 'H' for an unknown — that claims a number nobody assigned. */
+    document.getElementById('lx-strongs-lang').value =
+        m ? ((m[1] || 'H').toUpperCase()) : (stored == null ? 'unknown' : 'none');
     document.getElementById('lx-strongs-num').value = m ? lxPad4(m[2]) : '';
     document.getElementById('lx-strongs-suffix').value = (m && m[3]) ? m[3].toLowerCase() : '';
+    lxStrongsLangChanged();
+}
+
+/* Neither blank (unknown) nor '--' (has none) can carry a number, so in both
+   cases the boxes are cleared and locked until H or G is picked. */
+function lxStrongsLangChanged() {
+    var v      = document.getElementById('lx-strongs-lang').value;
+    var none   = (v === 'unknown' || v === 'none');
+    var num    = document.getElementById('lx-strongs-num');
+    var suffix = document.getElementById('lx-strongs-suffix');
+    if (none) { num.value = ''; suffix.value = ''; }
+    num.disabled = suffix.disabled = none;
+    // Only the number's tooltip is ours to set — the suffix carries its own
+    // explanation from the markup and must keep it.
+    num.title = none ? "Pick H or G first — '--' means this word has no Strong's number." : '';
 }
 
 function lxGetStrongs() {
+    /* Returns null for unknown and '' for "has none" — the API stores those as
+       NULL and '' respectively, which is the whole point of the distinction. */
+    var lang = document.getElementById('lx-strongs-lang').value;
+    if (lang === 'unknown') return null;
+    if (lang === 'none')    return '';
     var n = document.getElementById('lx-strongs-num').value.trim();
-    if (!n) return '';
+    if (!n) return null;
     // The suffix is meaningless without a number, so it rides along only here.
     return document.getElementById('lx-strongs-lang').value + n
          + document.getElementById('lx-strongs-suffix').value.trim().toLowerCase();
@@ -1256,9 +1896,11 @@ function newWord() {
         editingWordKey = null;
         lxSetStrongs('');
         document.getElementById('lx-hebrew').value = '';
-        document.getElementById('lx-count').value = '';
-        document.getElementById('lx-def-yy').value = '';
-        document.getElementById('lx-other-defs').style.display = 'none';
+        document.getElementById('lx-count').textContent = '—';
+        // One empty definition ready to type into, on the word's own source.
+        lxRenderDefinitions([]);
+        lxAddDefinition();
+        document.getElementById('lx-fork-note').style.display = 'none';
         document.getElementById('lx-source-code').value = 'yy';
         document.getElementById('gw-active').checked = true;
         document.getElementById('lx-translits').innerHTML = '';
@@ -1282,9 +1924,8 @@ function editWord(key) {
             editingWordKey = key;
             lxSetStrongs(w.word_strongs);
             document.getElementById('lx-hebrew').value = w.word_hebrew || '';
-            document.getElementById('lx-count').value =
-                (w.word_count_yy === null || w.word_count_yy === undefined) ? '' : w.word_count_yy;
-            document.getElementById('lx-def-yy').value = w.word_definition_yy || '';
+            document.getElementById('lx-count').textContent =
+                (w.word_count_yy === null || w.word_count_yy === undefined) ? '—' : w.word_count_yy;
             lxSetPronunciation(w);
             lxSetPosGender(w);
             document.getElementById('lx-source-code').value = (w.word_source_code || 'yy').trim();
@@ -1304,7 +1945,11 @@ function editWord(key) {
             });
             if (!list.length) lxAddTranslit('', null, true);
 
-            lxRenderOtherDefs(w);
+            // Runs after lx-source-code is set: a row added later defaults to
+            // whichever source the word itself carries.
+            lxRenderDefinitions(w.definitions);
+            if (!(w.definitions || []).length) lxAddDefinition();
+            lxRenderForkNote(w);
             // Show the stored YT rather than re-deriving it — a hand-typed spelling
             // (half-rings included) must survive opening the record.
             document.getElementById('lx-yt').value = w.word_yt || '';
@@ -1314,51 +1959,140 @@ function editWord(key) {
     });
 }
 
-/* Definitions held elsewhere: the per-source defaults on yy_word plus every
-   row in yy_word_definition. Read-only here, with a one-click copy into the
-   Yada definition being edited. */
-function lxRenderOtherDefs(w) {
-    var el = document.getElementById('lx-other-defs');
-    var rows = [];
-    var seen = {};
+/* Words from an outside source (Kirk/Strong's, Books, Perry) are never edited in
+   place — the first save copies the record to a new YY-sourced word and links
+   the original to it. Say so up front rather than surprising the user after. */
+function lxRenderForkNote(w) {
+    var el = document.getElementById('lx-fork-note');
+    var code = (w.word_source_code || '').trim();
+    if (!code || code === 'yy') { el.style.display = 'none'; el.innerHTML = ''; return; }
 
-    // Same text must not be listed twice. Every per-source default on yy_word is
-    // also a yy_word_definition row, so listing both showed each Strong's entry
-    // as "kirk · Noun" AND "kirk default". The tagged row wins — it carries the
-    // part of speech — so the definition rows go in first and a default is only
-    // added when it says something the rows do not.
-    function push(src, text) {
-        if (!text) return;
-        var norm = String(text).replace(/\s+/g, ' ').trim().toLowerCase();
-        if (!norm || seen[norm]) return;
-        seen[norm] = 1;
-        rows.push({ src: src, text: text });
+    var label = code;
+    (lxMeta.sources || []).forEach(function(s) {
+        if (s.word_source_code === code) label = s.word_source_label;
+    });
+
+    if (w.word_yy_copy_key) {
+        el.className = 'lx-fork-note has-copy';
+        el.innerHTML = 'This <strong>' + esc(label) + '</strong> word has already been copied for editing. '
+            + 'Saving here updates that copy, not the original.'
+            + '<button type="button" id="lx-open-copy">Open the copy</button>';
+        el.querySelector('#lx-open-copy').addEventListener('click', function() {
+            editWord(w.word_yy_copy_key);
+        });
+    } else {
+        el.className = 'lx-fork-note';
+        el.innerHTML = 'This word comes from <strong>' + esc(label) + '</strong> and is not edited directly. '
+            + 'Saving creates an editable <strong>YY</strong> copy and links this record to it.';
     }
-
-    (w.definitions || []).forEach(function(d) {
-        push((d.word_source_code || '?') + (d.word_pos_label ? ' · ' + d.word_pos_label : ''),
-             d.word_definition_text);
-    });
-    [['kirk', w.word_definition_kirk], ['external', w.word_definition_external]].forEach(function(p) {
-        push(p[0] + ' default', p[1]);
-    });
-
-    if (!rows.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-
-    el.innerHTML = '<div class="lx-hint" style="margin-bottom:6px;">Other definitions on record</div>'
-        + rows.map(function(r, i) {
-            return '<div class="lx-def-row">'
-                + '<div class="lx-def-src">' + esc(r.src) + '</div>'
-                + '<div class="lx-def-txt">' + esc(r.text) + '</div>'
-                + '<div class="lx-use"><button type="button" data-idx="' + i + '">Use</button></div>'
-                + '</div>';
-        }).join('');
     el.style.display = '';
-    el.querySelectorAll('.lx-use button').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            document.getElementById('lx-def-yy').value = rows[parseInt(btn.getAttribute('data-idx'), 10)].text;
+}
+
+/* ── Definitions repeater ───────────────────────────────────────────────
+   Every yy_word_definition row for the word, editable. Exactly one is the
+   default (a radio, like the preferred spelling); each has its own active
+   flag. The default's text is mirrored onto yy_word by the API, so the
+   public glossary keeps reading the column it always has. */
+
+function lxRenderDefinitions(defs) {
+    document.getElementById('lx-defs').innerHTML = '';
+    (defs || []).forEach(function(d) { lxAddDefinition(d); });
+    lxEnsureDefaultDef();
+}
+
+function lxDefSourceOptions(selectedKey) {
+    return (lxMeta.sources || []).map(function(s) {
+        return '<option value="' + s.word_source_key + '"'
+            + (String(s.word_source_key) === String(selectedKey) ? ' selected' : '') + '>'
+            + esc(s.word_source_label) + '</option>';
+    }).join('');
+}
+
+function lxDefPosOptions(selectedKey) {
+    return '<option value="">part of speech</option>' + (lxMeta.pos || []).map(function(p) {
+        return '<option value="' + p.word_pos_key + '"'
+            + (String(p.word_pos_key) === String(selectedKey) ? ' selected' : '') + '>'
+            + esc(p.word_pos_label || p.word_pos_code || ('#' + p.word_pos_key)) + '</option>';
+    }).join('');
+}
+
+/* A word that has any definition always has exactly one default, matching the
+   partial unique index behind the column. */
+function lxEnsureDefaultDef() {
+    var wrap = document.getElementById('lx-defs');
+    if (!wrap.querySelector('.lx-def-def:checked')) {
+        var first = wrap.querySelector('.lx-def-def');
+        if (first) first.checked = true;
+    }
+    wrap.querySelectorAll('.lx-def-edit-row').forEach(function(row) {
+        row.classList.toggle('is-default', row.querySelector('.lx-def-def').checked);
+        row.classList.toggle('is-inactive', !row.querySelector('.lx-def-active').checked);
+    });
+}
+
+function lxAddDefinition(d) {
+    d = d || {};
+    var wrap = document.getElementById('lx-defs');
+    var row = document.createElement('div');
+    row.className = 'lx-def-edit-row';
+    // Blank for a new row: the API inserts when there is no key.
+    row.setAttribute('data-key', d.word_definition_key || '');
+
+    // A brand new row defaults to the source the word itself carries, which is
+    // 'yy' for anything added by hand here.
+    var srcKey = d.word_source_key;
+    if (!srcKey) {
+        var code = (document.getElementById('lx-source-code') || {}).value || 'yy';
+        (lxMeta.sources || []).forEach(function(s) {
+            if (s.word_source_code === code) srcKey = s.word_source_key;
+        });
+    }
+    var active = (d.word_definition_active_flag === undefined) ? true : !!d.word_definition_active_flag;
+
+    row.innerHTML =
+          '<textarea class="lx-def-text" rows="3" placeholder="Definition text">'
+        + esc(d.word_definition_text || '') + '</textarea>'
+        + '<div class="lx-def-meta">'
+        + '<label><input type="radio" name="lx-def-default" class="lx-def-def"'
+        + (d.word_definition_default_flag ? ' checked' : '') + '> default</label>'
+        + '<label><input type="checkbox" class="lx-def-active"' + (active ? ' checked' : '') + '> active</label>'
+        + '<select class="lx-def-src">' + lxDefSourceOptions(srcKey) + '</select>'
+        + '<select class="lx-def-pos">' + lxDefPosOptions(d.word_pos_key) + '</select>'
+        + '<button type="button" class="lx-x" title="Delete definition">&times;</button>'
+        + '</div>';
+
+    row.querySelector('.lx-def-def').addEventListener('change', lxEnsureDefaultDef);
+    row.querySelector('.lx-def-active').addEventListener('change', lxEnsureDefaultDef);
+
+    row.querySelector('.lx-x').addEventListener('click', function() {
+        var text = row.querySelector('.lx-def-text').value.trim();
+        // Only an existing, non-empty row is worth confirming — a blank one the
+        // user just added is not a loss.
+        if (text && !confirm('Delete this definition?\n\n' + text)) return;
+        row.remove();
+        lxEnsureDefaultDef();
+    });
+
+    wrap.appendChild(row);
+    lxEnsureDefaultDef();
+    if (!d.word_definition_text) row.querySelector('.lx-def-text').focus();
+}
+
+function lxCollectDefinitions() {
+    var out = [];
+    document.querySelectorAll('#lx-defs .lx-def-edit-row').forEach(function(row) {
+        var text = row.querySelector('.lx-def-text').value.trim();
+        if (!text) return;                       // blank row is not a definition
+        out.push({
+            word_definition_key:  parseInt(row.getAttribute('data-key'), 10) || 0,
+            word_definition_text: text,
+            word_source_key:      parseInt(row.querySelector('.lx-def-src').value, 10) || 0,
+            word_pos_key:         parseInt(row.querySelector('.lx-def-pos').value, 10) || 0,
+            word_definition_active_flag: row.querySelector('.lx-def-active').checked,
+            'default':            row.querySelector('.lx-def-def').checked
         });
     });
+    return out;
 }
 
 function closeWordEdit() {
@@ -1388,23 +2122,25 @@ function saveWord() {
     if (strongsSuffix && !strongsNum) return fail("Strong's suffix needs a number to go with it.");
     var strongs = lxGetStrongs();
 
-    var countRaw = document.getElementById('lx-count').value.trim();
-
+    // word_count_yy is intentionally NOT sent: it is harvested from
+    // yy_word_occurrence by _word_harvest.php, so the panel only displays it.
     var data = {
         word_strongs: strongs,
         word_hebrew: hebrew,
         // Sent explicitly so a typed spelling survives trg_word_yt, which would
         // otherwise re-derive it from the Hebrew and drop any half-rings.
         word_yt: document.getElementById('lx-yt').value.trim(),
-        word_definition_yy: document.getElementById('lx-def-yy').value.trim(),
+        // The definitions list is authoritative; the API mirrors whichever one
+        // is default into that source's word_definition_* column.
+        definitions: lxCollectDefinitions(),
         word_pronunciation_strongs:  document.getElementById('lx-pron-strongs').value.trim(),
         word_pronunciation_yy:       document.getElementById('lx-pron-yy').value.trim(),
         word_pronunciation_ipa:      document.getElementById('lx-pron-ipa').value.trim(),
         word_pronunciation_phonetic: document.getElementById('lx-pron-phonetic').value.trim(),
         word_pos_keys: lxCollectPos(),
         word_gender_key: document.getElementById('lx-gender').value,
+        word_language: document.getElementById('lx-language').value,
         word_source_code: document.getElementById('lx-source-code').value,
-        word_count_yy: countRaw === '' ? '' : (parseInt(countRaw, 10) || 0),
         word_active_flag: document.getElementById('gw-active').checked,
         translits: translits
     };
@@ -1420,7 +2156,18 @@ function saveWord() {
         body: JSON.stringify(data)
     }).then(function(r){return safeJson(r);}).then(function(d) {
         if (!d || d.error) return fail((d && d.error) || 'Save failed');
-        if (isNew) editingWordKey = d.word_key;
+        if (d.word_key) editingWordKey = d.word_key;
+
+        /* An outside-source word forks on save, so the row that was written is
+           not the one the panel was opened on. Reopen on the copy rather than
+           leaving the original's key on screen. */
+        if (d.forked_from) {
+            loadWords();
+            editWord(d.word_key);
+            alert('This word came from another source, so an editable YY copy was created.\n'
+                + 'You are now editing that copy; the original is unchanged and now links to it.');
+            return;
+        }
         document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || hebrew);
         document.getElementById('gw-delete').style.display = '';
         statusEl.style.display = '';

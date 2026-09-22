@@ -463,9 +463,20 @@ When answering questions:
 - You calculated the dates for every Mow'ed Miqra' (Called-Out Assembly / Festival) — Pesach, Matsah, Bikuwrym, Shabuw'ah, Taruw'ah, Kipurym, and Sukah — and published them in "Shanah / Years — Yada Yahowah, Volume 1, Chapter 1." When asked about festival dates, answer from your own calculations.
 - Use the provided excerpts to inform your answers but speak from them naturally — as from memory, not as if reading. You can mention a specific volume or chapter when directing someone to read more, but don't preface answers with "In my book..." or "According to my transcript..."
 - Your most recent thinking (2025–2026 video transcripts) takes priority when your views have evolved. But your books provide deeper, more thorough treatment — use them for foundational depth.
-- If the provided context doesn't cover the question, say something like "That's not something I've dug into" or "I haven't explored that particular topic" — naturally, as yourself.
 - Keep responses focused and substantive — typically 2-6 paragraphs. Be thorough but don't ramble.
 - When translating or discussing Hebrew terms, provide the transliteration, meaning, and significance.
+
+GROUNDING — THIS RULE OVERRIDES EVERY OTHER INSTRUCTION ABOVE:
+- Everything you say must come from the excerpts provided in this conversation. They are your only permitted source.
+- If the provided excerpts do not contain enough to answer the question, SAY SO and stop. Do not supplement from outside knowledge, do not reason your way to an answer from general information, and do not reconstruct what you think your position probably is. An incomplete answer is correct; an invented one is not.
+- Say it naturally, as yourself — "That's not something I've dug into," "I haven't explored that particular topic," "I don't have anything worked out on that" — then stop. Do not follow it with a general-knowledge answer, a hedge, or a "but here's what I'd say" continuation.
+- This applies to every kind of detail: dates, numbers, names, quotations, chapter and volume references, Hebrew forms, historical and scientific claims. If a specific is not in the excerpts, do not produce it. Never guess a citation or a verse reference.
+- If the excerpts only partially cover the question, answer the part they cover and say plainly that you haven't addressed the rest.
+- Never fill a gap with mainstream, academic, religious, or encyclopedic knowledge, and never present such material as your own view.
+
+CONSISTENCY:
+- Answer the same question the same way every time. Stay close to the wording and reasoning in the excerpts rather than paraphrasing loosely or reaching for novel phrasing.
+- Be literal and precise. Do not speculate, extrapolate, or embellish beyond what the excerpts state.
 SYSPROMPT;
 
 if ($contextBlock) {
@@ -564,6 +575,13 @@ try {
     // RAG is optional — don't break the main flow
 }
 
+// Restate the grounding rule last, after every context block has been appended, so it
+// is the final instruction the model reads and can't be diluted by the custom prompt
+// or the learned/similar-Q&A blocks above.
+$systemPrompt .= "\n\n--- FINAL REMINDER ---\n\n"
+    . "The excerpts above are your only source. If they do not contain enough to answer the question, say so plainly as yourself and stop — do not supplement from outside knowledge, do not guess a date, number, citation, or verse reference, and do not continue with a general-knowledge answer after saying you haven't covered it.\n\n"
+    . "You are Yada. Write in the first person throughout. Some excerpts refer to you by name or in the third person — never copy that framing. Say \"I\" and \"my,\" never \"Yada has\" or \"Yada says.\"";
+
 // --- Build messages array ---
 $messages = [];
 foreach ($history as $h) {
@@ -574,12 +592,20 @@ foreach ($history as $h) {
 $messages[] = ['role' => 'user', 'content' => $question];
 
 // --- Determine AI model/provider ---
+// 'sampling' => true  means the model still accepts temperature/top_p.
+// Current-generation Claude (Opus 5, Sonnet 5) removed sampling controls — sending
+// 'temperature' to them returns a 400. There we use output_config.effort instead and
+// rely on the determinism rules in the system prompt for low-temperature behaviour.
 $MODEL_MAP = [
-    'gemini-flash'  => ['name' => 'gemini-2.0-flash', 'env' => 'GOOGLE_API_KEY',    'label' => 'Gemini 2.0 Flash'],
-    'gpt-4o-mini'   => ['name' => 'gpt-4o-mini',      'env' => 'OPENAI_API_KEY',    'label' => 'GPT-4o mini'],
-    'claude-haiku'  => ['name' => 'claude-haiku-4-5-20251001', 'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Haiku 4.5'],
-    'claude-sonnet' => ['name' => 'claude-sonnet-4-6',         'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Sonnet 4.6'],
+    'gemini-flash'  => ['name' => 'gemini-2.0-flash', 'env' => 'GOOGLE_API_KEY',    'label' => 'Gemini 2.0 Flash',   'sampling' => true],
+    'gpt-4o-mini'   => ['name' => 'gpt-4o-mini',      'env' => 'OPENAI_API_KEY',    'label' => 'GPT-4o mini',        'sampling' => true],
+    'claude-haiku'  => ['name' => 'claude-haiku-4-5', 'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Haiku 4.5',   'sampling' => true],
+    'claude-sonnet' => ['name' => 'claude-sonnet-5',  'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Sonnet 5',    'sampling' => false],
+    'claude-opus'   => ['name' => 'claude-opus-5',    'env' => 'ANTHROPIC_API_KEY', 'label' => 'Claude Opus 5',      'sampling' => false],
 ];
+
+// Low-temperature target for every provider that still honours sampling controls.
+const ASK_TEMPERATURE = 0.1;
 
 $modelSetting = getAskModel($pdo);
 if ($modelSetting === '') {
@@ -587,6 +613,7 @@ if ($modelSetting === '') {
 }
 $modelInfo = $MODEL_MAP[$modelSetting];
 $modelName = $modelInfo['name'];
+$modelSampling = !empty($modelInfo['sampling']);
 $apiKey = readEnvKey($modelInfo['env']);
 
 if (!$apiKey) {
@@ -609,6 +636,26 @@ $inputTokens = 0;
 $outputTokens = 0;
 $streamError = '';
 
+// Builds an Anthropic /v1/messages body. Shared by the primary request and the
+// overloaded-fallback retry below so the two can't drift apart.
+$claudeBody = function(string $name, bool $sampling) use ($systemPrompt, $messages) {
+    $payload = [
+        'model' => $name,
+        'max_tokens' => 2048,
+        'stream' => true,
+        'system' => $systemPrompt,
+        'messages' => $messages,
+    ];
+    if ($sampling) {
+        $payload['temperature'] = ASK_TEMPERATURE;
+    } else {
+        // Opus 5 / Sonnet 5 removed temperature (400 if sent). Low effort is the
+        // current-API equivalent: minimal exploration, terse and consistent answers.
+        $payload['output_config'] = ['effort' => 'low'];
+    }
+    return json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
+};
+
 // --- Build provider-specific request ---
 switch ($modelSetting) {
     case 'gemini-flash':
@@ -627,7 +674,7 @@ switch ($modelSetting) {
         $body = json_encode([
             'system_instruction' => ['parts' => [['text' => $systemPrompt]]],
             'contents' => $geminiContents,
-            'generationConfig' => ['maxOutputTokens' => 2048],
+            'generationConfig' => ['maxOutputTokens' => 2048, 'temperature' => ASK_TEMPERATURE],
         ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
 
         $parseEvent = function($event) use (&$fullResponse, &$inputTokens, &$outputTokens, &$streamError) {
@@ -672,6 +719,7 @@ switch ($modelSetting) {
         $body = json_encode([
             'model' => $modelName,
             'max_tokens' => 2048,
+            'temperature' => ASK_TEMPERATURE,
             'stream' => true,
             'stream_options' => ['include_usage' => true],
             'messages' => $oaiMessages,
@@ -701,20 +749,14 @@ switch ($modelSetting) {
         $sendDoneAfter = false; // OpenAI sends [DONE] natively
         break;
 
-    default: // claude-haiku, claude-sonnet
+    default: // claude-haiku, claude-sonnet, claude-opus
         $url = 'https://api.anthropic.com/v1/messages';
         $headers = [
             'Content-Type: application/json',
             'x-api-key: ' . $apiKey,
             'anthropic-version: 2023-06-01',
         ];
-        $body = json_encode([
-            'model' => $modelName,
-            'max_tokens' => 2048,
-            'stream' => true,
-            'system' => $systemPrompt,
-            'messages' => $messages,
-        ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
+        $body = $claudeBody($modelName, $modelSampling);
 
         $parseEvent = function($event) use (&$fullResponse, &$inputTokens, &$outputTokens, &$streamError) {
             $type = $event['type'] ?? '';
@@ -795,8 +837,13 @@ if (!empty($sendDoneAfter) && $fullResponse && !$streamError) {
 $didFallback = false;
 $isOverloaded = ($httpCode === 529 || stripos($streamError, 'overload') !== false);
 if ($isOverloaded && $fullResponse === '') {
-    // Determine fallback model (swap between sonnet and haiku)
-    $fallbackKey = ($modelSetting === 'claude-sonnet') ? 'claude-haiku' : 'claude-sonnet';
+    // Determine fallback model — step down one Claude tier, cheapest wraps back up
+    $FALLBACK_CHAIN = [
+        'claude-opus'   => 'claude-sonnet',
+        'claude-sonnet' => 'claude-haiku',
+        'claude-haiku'  => 'claude-sonnet',
+    ];
+    $fallbackKey = $FALLBACK_CHAIN[$modelSetting] ?? 'claude-sonnet';
     $fallbackInfo = $MODEL_MAP[$fallbackKey] ?? null;
     $fallbackApiKey = $fallbackInfo ? readEnvKey($fallbackInfo['env']) : '';
 
@@ -810,13 +857,7 @@ if ($isOverloaded && $fullResponse === '') {
         $modelName = $fallbackInfo['name'];
         $didFallback = true;
 
-        $body = json_encode([
-            'model' => $modelName,
-            'max_tokens' => 2048,
-            'stream' => true,
-            'system' => $systemPrompt,
-            'messages' => $messages,
-        ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
+        $body = $claudeBody($modelName, !empty($fallbackInfo['sampling']));
 
         $headers = [
             'Content-Type: application/json',
@@ -989,7 +1030,7 @@ function getAskModel(PDO $pdo): string {
         $stmt = $pdo->query("SELECT setting_value FROM yy_setting WHERE setting_code = 'ask_model' AND setting_scope_code = 'app'");
         $val = $stmt->fetchColumn();
         if ($val === '' || $val === null) return ''; // Offline
-        if (in_array($val, ['gemini-flash', 'gpt-4o-mini', 'claude-haiku', 'claude-sonnet'])) {
+        if (in_array($val, ['gemini-flash', 'gpt-4o-mini', 'claude-haiku', 'claude-sonnet', 'claude-opus'])) {
             return $val;
         }
     } catch (Exception $e) {}

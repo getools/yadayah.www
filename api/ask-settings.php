@@ -3,7 +3,7 @@ require_once __DIR__ . '/config.php';
 requireAuth();
 
 $db = getDb();
-$VALID = ['', 'gemini-flash', 'gpt-4o-mini', 'claude-haiku', 'claude-sonnet'];
+$VALID = ['', 'gemini-flash', 'gpt-4o-mini', 'claude-haiku', 'claude-sonnet', 'claude-opus'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'ask_model'");

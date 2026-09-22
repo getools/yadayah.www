@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1789221603">
+    <meta name="page-version" content="1790056803">
     <meta charset="UTF-8">
     <title>AI — Yada Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -66,9 +66,42 @@
         .pfield-off input, .pfield-off select, .pfield-off textarea { background:#f3f3f3; cursor:not-allowed; }
         .pfield-off .na-tag { display:inline; }
         .na-tag { display:none; color:#999; font-weight:normal; font-size:0.72em; margin-left:4px; }
+        /* Always-visible sibling of .na-tag, for text that varies per service. */
+        .opt-tag { color:#999; font-weight:normal; font-size:0.72em; margin-left:4px; }
+        /* ── Field help ───────────────────────────────────────────────────
+           Every input carries two levels of explanation, both driven from the
+           HELP map in JS (markup only tags a field with data-help="<key>"):
+             1. a one-line hint rendered under the label, toggleable site-wide
+                via the "Field help" switch in the tab bar (remembered per
+                browser in localStorage);
+             2. a "?" button on the label that opens the long-form popover —
+                what the parameter does, how to drive it, typical values.
+           Grid cells stretch so that the inputs still bottom-align in a row
+           even when the hints above them wrap to different heights. */
+        .helpq { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-left:5px; padding:0; border:1px solid #c3c3cc; border-radius:50%; background:#fff; color:#7a7a88; font-size:9px; font-weight:700; line-height:1; cursor:help; vertical-align:middle; }
+        .helpq:hover, .helpq.open { background: var(--accent); border-color: var(--accent); color:#fff; }
+        .fhint { display:block; font-weight:400; font-size:0.72rem; line-height:1.35; color:#8a8a96; margin:0 0 4px; }
+        .params-grid .fhint { margin:0 0 5px; }
+        body.help-off .fhint { display:none; }
+        .params-grid { align-items: stretch; }
+        .params-grid > div > input, .params-grid > div > select { margin-top: auto; }
+        .help-toggle { margin-left:auto; align-self:center; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:4px 10px; font-size:0.76rem; font-weight:600; margin-bottom:4px; }
+        .help-toggle:hover { background:#f0f0f3; color:var(--fg); }
+        .help-pop { position:absolute; z-index:7000; width:360px; max-width:calc(100vw - 24px); background:#fff; border:1px solid #d8d8e0; border-radius:7px; box-shadow:0 8px 26px #0000002e; padding:12px 14px; font-size:0.8rem; line-height:1.5; color:#3c3c46; }
+        .help-pop[hidden] { display:none; }
+        .help-pop h4 { margin:0 0 6px; font-size:0.84rem; color: var(--accent); }
+        .help-pop p  { margin:0 0 7px; }
+        .help-pop ul { margin:0 0 7px; padding-left:17px; }
+        .help-pop li { margin-bottom:3px; }
+        .help-pop b  { color:#22222c; }
+        .help-pop code { background:#f2f2f6; border-radius:3px; padding:0 4px; font-size:0.94em; }
+        .help-pop .hp-close { position:absolute; top:5px; right:6px; background:transparent; color:#999; border:none; font-size:1.05rem; line-height:1; padding:2px 5px; cursor:pointer; }
+        .help-pop .hp-close:hover { color:#333; background:transparent; }
         .gate-off { opacity: 0.45; pointer-events: none; }
         .gate-note { font-size:0.76rem; color: var(--warn); margin:4px 0 0; display:none; }
         .gate-note.show { display:block; }
+        /* Explains what the form will do, rather than warning about a limit. */
+        .gate-note.info { color:#777; }
         .jobs-table { width:100%; border-collapse: collapse; font-size: 0.88rem; }
         .jobs-table th { text-align:left; font-weight:600; color:#555; padding:8px 8px; border-bottom: 1px solid var(--line); font-size:0.8rem; text-transform: uppercase; letter-spacing: 0.4px; }
         .jobs-table td { padding:8px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
@@ -130,47 +163,49 @@
     <div class="tabs">
         <button class="tab active" data-tab="video">Video</button>
         <button class="tab" data-tab="image">Image</button>
+        <button class="help-toggle" id="help-toggle" type="button">Field help: on</button>
     </div>
 
     <div class="tab-panel" data-panel="video">
         <section>
-            <h2>Image to Video</h2>
+            <h2>Text / Image to Video</h2>
 
-            <label>Service</label>
+            <label data-help="service">Service</label>
             <div id="video-providers" class="provider-grid"><div class="empty">Loading services…</div></div>
 
-            <label style="margin-top:14px">Input images</label>
+            <label style="margin-top:14px" data-help="v.images">Input images <span class="opt-tag" data-slot="img-optional">— optional</span></label>
             <div class="input-actions">
                 <button class="ghost" data-act="pick" data-tab-target="video">Use previous output…</button>
             </div>
-            <div class="desc" style="margin:0 0 6px">First image is the <em>start frame</em>; if a service supports first/last-frame mode and you add two, the second becomes the <em>end frame</em>.</div>
+            <div class="desc" style="margin:0 0 6px">Leave this empty to generate from the prompt alone. Otherwise the first image is the <em>start frame</em>; if a service supports first/last-frame mode and you add two, the second becomes the <em>end frame</em>.</div>
             <div id="video-uploader" class="uploader" tabindex="0">
                 <div>Click or drop image files here (PNG / JPG / WebP)</div>
                 <input type="file" multiple accept="image/png,image/jpeg,image/webp">
             </div>
+            <p class="gate-note info" data-gate-note="t2v"></p>
             <div id="video-thumbs" class="thumbs"></div>
 
-            <label style="margin-top:14px">Prompt</label>
+            <label style="margin-top:14px" data-help="v.prompt">Prompt</label>
             <textarea data-field="prompt" placeholder="A slow cinematic camera move, golden hour, dust motes…"></textarea>
 
             <div data-gate="negative">
-                <label style="margin-top:10px">Negative prompt (optional) <span class="na-tag">— not used by this service</span></label>
+                <label style="margin-top:10px" data-help="negative">Negative prompt (optional) <span class="na-tag">— not used by this service</span></label>
                 <textarea data-field="negative" placeholder="low quality, watermark, text…"></textarea>
             </div>
 
             <label style="margin-top:14px">Video parameters</label>
             <div class="desc" style="margin:-2px 0 8px">Fields disabled below are not accepted by the selected service. <span data-hint="duration" class="small" style="display:block;margin-top:2px;"></span></div>
             <div class="params-grid">
-                <div><label>Duration (sec)</label><input type="number" data-p="duration_sec" min="1" max="30" step="0.5" value="4"></div>
-                <div><label>Width (px)</label><input type="number" data-p="width" min="256" max="2048" step="16" value="720"></div>
-                <div><label>Height (px)</label><input type="number" data-p="height" min="256" max="2048" step="16" value="480"></div>
-                <div><label>FPS</label><input type="number" data-p="fps" min="8" max="60" step="1" value="16"></div>
-                <div><label>Seed</label><input type="number" data-p="seed" placeholder="random"></div>
-                <div><label>Inference steps <span style="color:#888;font-weight:normal;font-size:.85em" title="CogVideoX-5B-I2V's reference value. Anything below ~40 produces smeared / noisy output — the diffusion didn't run enough denoising rounds to converge.">(≥ 40 recommended; ref = 50)</span></label><input type="number" data-p="num_inference_steps" min="1" max="200" step="1" value="50"></div>
-                <div><label>Guidance scale</label><input type="number" data-p="guidance_scale" min="0" max="20" step="0.5" value="6"></div>
+                <div data-help="v.duration"><label>Duration (sec)</label><input type="number" data-p="duration_sec" min="1" max="30" step="0.5" value="4"></div>
+                <div data-help="v.width"><label>Width (px)</label><input type="number" data-p="width" min="256" max="2048" step="16" value="720"></div>
+                <div data-help="v.height"><label>Height (px)</label><input type="number" data-p="height" min="256" max="2048" step="16" value="480"></div>
+                <div data-help="v.fps"><label>FPS</label><input type="number" data-p="fps" min="8" max="60" step="1" value="16"></div>
+                <div data-help="seed"><label>Seed</label><input type="number" data-p="seed" placeholder="random"></div>
+                <div data-help="v.steps"><label>Inference steps <span style="color:#888;font-weight:normal;font-size:.85em" title="CogVideoX-5B-I2V's reference value. Anything below ~40 produces smeared / noisy output — the diffusion didn't run enough denoising rounds to converge.">(≥ 40 recommended; ref = 50)</span></label><input type="number" data-p="num_inference_steps" min="1" max="200" step="1" value="50"></div>
+                <div data-help="v.guidance"><label>Guidance scale</label><input type="number" data-p="guidance_scale" min="0" max="20" step="0.5" value="6"></div>
             </div>
             <div style="margin-top:12px">
-                <label style="display:block; margin-bottom:4px;">Advanced parameters (raw JSON; merged over the structured fields)</label>
+                <label style="display:block; margin-bottom:4px;" data-help="adv">Advanced parameters (raw JSON; merged over the structured fields)</label>
                 <textarea data-field="adv-params" placeholder='{"scheduler": "ddim"}' style="font-family: ui-monospace, Menlo, monospace; min-height: 64px;"></textarea>
             </div>
 
@@ -195,11 +230,11 @@
         <section>
             <h2>Text to Image</h2>
 
-            <label>Service</label>
+            <label data-help="service">Service</label>
             <div id="image-providers" class="provider-grid"><div class="empty">Loading services…</div></div>
 
             <div data-gate="initimage">
-                <label style="margin-top:14px">Starter image (optional — img2img / inpainting) <span class="na-tag">— this service is text-to-image only</span></label>
+                <label style="margin-top:14px" data-help="i.initimage">Starter image (optional — img2img / inpainting) <span class="na-tag">— this service is text-to-image only</span></label>
                 <div class="input-actions">
                     <button class="ghost" data-act="pick" data-tab-target="image">Use previous output…</button>
                 </div>
@@ -212,18 +247,18 @@
             <p class="gate-note" data-gate-note="initimage">The selected service is text-to-image only — starter image and inpainting are disabled.</p>
             <div id="image-thumbs" class="thumbs"></div>
 
-            <label style="margin-top:14px">Prompt</label>
+            <label style="margin-top:14px" data-help="i.prompt">Prompt</label>
             <textarea data-field="prompt" placeholder="A tabby cat reading a leather-bound book by candlelight, photorealistic"></textarea>
 
             <div data-gate="negative">
-                <label style="margin-top:10px">Negative prompt (optional) <span class="na-tag">— not used by this service</span></label>
+                <label style="margin-top:10px" data-help="negative">Negative prompt (optional) <span class="na-tag">— not used by this service</span></label>
                 <textarea data-field="negative" placeholder="low quality, blurry, watermark, text…"></textarea>
             </div>
 
             <label style="margin-top:14px">Image parameters</label>
             <div class="desc" style="margin:-2px 0 8px">Fields disabled below are not accepted by the selected service. <span data-hint="dim" class="small" style="display:block;margin-top:2px;"></span></div>
             <div class="params-grid">
-                <div>
+                <div data-help="i.aspect">
                     <label>Aspect</label>
                     <select data-p="aspect">
                         <option value="1:1">Square 1:1</option>
@@ -234,10 +269,10 @@
                         <option value="custom">Custom (use W/H)</option>
                     </select>
                 </div>
-                <div><label>Width (px)</label><input type="number" data-p="width" min="256" max="2048" step="16" value="1024"></div>
-                <div><label>Height (px)</label><input type="number" data-p="height" min="256" max="2048" step="16" value="1024"></div>
-                <div><label>Images (1-4)</label><input type="number" data-p="n_images" min="1" max="4" step="1" value="1"></div>
-                <div>
+                <div data-help="i.width"><label>Width (px)</label><input type="number" data-p="width" min="256" max="2048" step="16" value="1024"></div>
+                <div data-help="i.height"><label>Height (px)</label><input type="number" data-p="height" min="256" max="2048" step="16" value="1024"></div>
+                <div data-help="i.n_images"><label>Images (1-4)</label><input type="number" data-p="n_images" min="1" max="4" step="1" value="1"></div>
+                <div data-help="i.style">
                     <label>Style</label>
                     <select data-p="style">
                         <option value="">None</option>
@@ -250,7 +285,7 @@
                         <option value="line-art">Line Art</option>
                     </select>
                 </div>
-                <div>
+                <div data-help="i.format">
                     <label>Format</label>
                     <select data-p="format">
                         <option value="png">PNG</option>
@@ -258,14 +293,14 @@
                         <option value="webp">WebP</option>
                     </select>
                 </div>
-                <div><label>Seed</label><input type="number" data-p="seed" placeholder="random"></div>
-                <div><label>Inference steps</label><input type="number" data-p="num_inference_steps" min="1" max="100" step="1" value="28"></div>
-                <div><label>Guidance scale</label><input type="number" data-p="guidance_scale" min="0" max="20" step="0.5" value="3.5"></div>
-                <div><label>Init strength <span class="na-tag">n/a</span></label><input type="number" data-p="init_strength" min="0" max="1" step="0.05" value="0.7"></div>
+                <div data-help="seed"><label>Seed</label><input type="number" data-p="seed" placeholder="random"></div>
+                <div data-help="i.steps"><label>Inference steps</label><input type="number" data-p="num_inference_steps" min="1" max="100" step="1" value="28"></div>
+                <div data-help="i.guidance"><label>Guidance scale</label><input type="number" data-p="guidance_scale" min="0" max="20" step="0.5" value="3.5"></div>
+                <div data-help="i.init_strength"><label>Init strength <span class="na-tag">n/a</span></label><input type="number" data-p="init_strength" min="0" max="1" step="0.05" value="0.7"></div>
             </div>
 
             <div style="margin-top:12px">
-                <label style="display:block; margin-bottom:4px;">Advanced parameters (raw JSON; merged over the structured fields)</label>
+                <label style="display:block; margin-bottom:4px;" data-help="adv">Advanced parameters (raw JSON; merged over the structured fields)</label>
                 <textarea data-field="adv-params" placeholder='{"scheduler": "euler"}' style="font-family: ui-monospace, Menlo, monospace; min-height: 64px;"></textarea>
             </div>
 
@@ -380,24 +415,33 @@ function badgeForStatus(st) {
 // so per-service field gating still works during a GPU-box outage. Shape
 // matches the engine: fields{key:{def,min,max,step}|true}, neg/initImage/inpaint.
 const FALLBACK_PARAM_SCHEMA = {
-    // ---------- video (image-to-video) ----------
-    'cogvideox-5b-i2v': { neg:false, fields:{
+    // ---------- video ----------
+    // t2v = the engine can generate from the prompt alone (no input image).
+    // Only LTX-Video's single checkpoint drives both diffusers pipelines; the
+    // rest are image-to-video-only weights and need a start frame.
+    'cogvideox-5b-i2v': { neg:false, t2v:false, fields:{
         duration_sec:{def:4,min:1,max:6,step:0.5},
         width:{def:720,min:256,max:1280,step:16}, height:{def:480,min:256,max:1280,step:16},
         num_inference_steps:{def:50,min:20,max:100,step:1},
         guidance_scale:{def:6,min:0,max:20,step:0.5}, seed:true } },
-    'ltx-video': { neg:true, fields:{
-        duration_sec:{def:5,min:1,max:8,step:0.5},
-        width:{def:704,min:256,max:1280,step:32}, height:{def:480,min:256,max:1280,step:32},
-        fps:{def:24,min:8,max:30,step:1},
+    'ltx-2': { neg:true, t2v:true, fields:{
+        duration_sec:{def:5,min:1,max:10,step:0.5},
+        width:{def:1280,min:512,max:1920,step:32}, height:{def:704,min:512,max:1088,step:32},
+        fps:{def:24,min:8,max:50,step:1},
         num_inference_steps:{def:40,min:10,max:100,step:1},
+        guidance_scale:{def:4,min:0,max:15,step:0.5}, seed:true } },
+    'ltx-video': { neg:true, t2v:true, fields:{
+        duration_sec:{def:5,min:1,max:8,step:0.5},
+        width:{def:1216,min:256,max:1280,step:32}, height:{def:704,min:256,max:1280,step:32},
+        fps:{def:24,min:8,max:30,step:1},
+        num_inference_steps:{def:50,min:10,max:100,step:1},
         guidance_scale:{def:3,min:0,max:15,step:0.5}, seed:true } },
-    'wan2.2-i2v': { neg:true, fields:{
+    'wan2.2-i2v': { neg:true, t2v:false, fields:{
         duration_sec:{def:4,min:1,max:5,step:0.5},
         width:{def:832,min:256,max:1280,step:16}, height:{def:480,min:256,max:1280,step:16},
         num_inference_steps:{def:40,min:10,max:100,step:1},
         guidance_scale:{def:3.5,min:0,max:15,step:0.5}, seed:true } },
-    'hunyuan-i2v': { neg:true, fields:{
+    'hunyuan-i2v': { neg:true, t2v:false, fields:{
         duration_sec:{def:5,min:1,max:8,step:0.5},
         width:{def:720,min:256,max:1280,step:16}, height:{def:480,min:256,max:1280,step:16},
         num_inference_steps:{def:30,min:10,max:100,step:1},
@@ -430,6 +474,345 @@ const FALLBACK_PARAM_SCHEMA = {
         n_images:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
 };
 
+// ── Field help ────────────────────────────────────────────────────────────
+// One entry per data-help key in the markup:
+//   h = the one-line hint printed under the label (toggleable),
+//   t = popover heading, d = the long-form explanation (HTML).
+// Everything here is written against what the engines actually do (see each
+// engine's param_schema()); when a service does not accept a field the form
+// dims it, so the help text explains the knob and names the engines that
+// differ rather than pretending every model behaves the same.
+const HELP = {
+    'service': {
+        t: 'Service (which model runs the job)',
+        h: 'Picks the model — and with it, which fields below are even available.',
+        d: `<p>Each card is one model loaded on the GPU box. The choice is not cosmetic: <b>it drives every other field on this form</b>. Selecting a service makes the page re-read that engine's own parameter schema, disable anything the model does not accept, and snap the remaining fields to that model's native defaults, minimums and maximums.</p>
+            <ul>
+              <li><b>Dimmed card</b> — the engine is offline or not loaded. Nothing can be queued against it.</li>
+              <li><b>Capability chips</b> (img2img, inpaint, text-to-video) come from the engine itself, not from a database flag, so they describe what the model can really do right now.</li>
+              <li><b>Switching services resets the parameter block</b> to the new model's defaults, so choose the service first and tune afterwards.</li>
+            </ul>
+            <p><b>How to choose:</b> start from the model whose native resolution and clip length are closest to what you want. Driving a model far past the size it was trained at burns VRAM and usually looks worse than generating at native size and upscaling afterwards.</p>`
+    },
+    'v.images': {
+        t: 'Input images (start / end frame)',
+        h: 'Optional. The first image is the start frame; a second becomes the end frame.',
+        d: `<p><b>Always optional.</b> Leave it empty and you still get a video from the prompt alone — what differs is how the service gets there:</p>
+            <ul>
+              <li><b>Services marked "text-to-video"</b> (the LTX models) generate the clip directly from your prompt.</li>
+              <li><b>Services marked "text-to-video via start frame"</b> (CogVideoX, Wan2.2, Hunyuan) animate a frame rather than inventing one, so with no image the image service renders a start frame from the same prompt first and the video model animates that. It works, but it is two generations instead of one — slower, and the still is chosen for you.</li>
+            </ul>
+            <p>When you do supply images, the <b>first</b> is the <b>start frame</b> the clip animates away from. If the service supports first/last-frame mode and you add a <b>second</b>, it becomes the <b>end frame</b> and the model interpolates between the two.</p>
+            <p><b>Why supply one anyway:</b> it is the only way to control exactly what the clip starts from — composition, character, palette — instead of accepting whatever the automatic start frame produces. Your image is resampled to the Width/Height below, so one that already matches the target aspect avoids a crop.</p>
+            <p><b>Useful pattern:</b> "Use previous output…" pulls in an earlier render, which lets you chain clips — take the last frame of one as the start frame of the next and build a sequence longer than any single generation allows.</p>`
+    },
+    'v.prompt': {
+        t: 'Prompt',
+        h: 'Describe the scene and, above all, the motion you want.',
+        d: `<p>The prompt conditions every denoising step. For video the single biggest mistake is describing a <b>photograph</b> instead of a <b>shot</b>: a purely static description gives you a nearly static clip.</p>
+            <ul>
+              <li><b>Name the motion.</b> "slow dolly in", "camera pans left", "steam rising", "leaves drifting past" — subject motion and camera motion are separate ideas, so say both when you want both.</li>
+              <li><b>Front-load the subject.</b> Early tokens carry the most weight; open with what the shot is of, then setting, then light, then lens/style.</li>
+              <li><b>Concrete nouns beat adjective stacks.</b> "brass oil lamp on a worn oak table" outperforms "beautiful, stunning, highly detailed".</li>
+              <li><b>Do not use negations.</b> "no people" tends to summon people — put those terms in the negative prompt instead.</li>
+            </ul>
+            <p>Very long prompts give diminishing returns; two or three dense clauses usually beat a paragraph.</p>`
+    },
+    'i.prompt': {
+        t: 'Prompt',
+        h: 'Subject first, then setting, light and style. Be concrete.',
+        d: `<p>The prompt conditions every denoising step. Structure matters more than length: <b>subject → setting → lighting → lens/medium → style</b>, with the most important idea first, because early tokens carry the most weight.</p>
+            <ul>
+              <li><b>Concrete nouns beat adjective stacks.</b> "brass oil lamp, cracked leather binding, candlelight" does more than "beautiful, stunning, ultra detailed, 8k".</li>
+              <li><b>Do not use negations.</b> "no text" often produces text — put those terms in the negative prompt.</li>
+              <li><b>Prompt length limits differ by model.</b> SDXL uses CLIP and effectively truncates around 77 tokens, so put everything that matters early. Flux, SD 3.5 and Qwen-Image use T5-class encoders and genuinely read long, sentence-like prompts.</li>
+            </ul>
+            <p><b>Workflow:</b> settle the prompt first at a low step count, lock the seed once a composition works, and only then tune guidance and steps — changing the prompt invalidates everything you tuned around it.</p>`
+    },
+    'negative': {
+        t: 'Negative prompt',
+        h: 'Terms to steer away from. Only works on models that use CFG.',
+        d: `<p>The negative prompt is a second conditioning pass the model is pushed <i>away</i> from. It is not a filter or a blocklist — it is a direction in the same space as your prompt.</p>
+            <ul>
+              <li><b>It only bites when Guidance scale is above 1.</b> Guidance is literally the strength of the push between the positive and negative conditioning; at 0 the negative prompt does nothing at all.</li>
+              <li><b>Flux models ignore it entirely</b> and the field is disabled for them. SDXL, SD 3.5, Qwen-Image, Wan2.2, Hunyuan and LTX all use it.</li>
+              <li><b>Do not overstuff it.</b> Every term dilutes the others. A short, targeted list outperforms a wall of boilerplate.</li>
+            </ul>
+            <p><b>Reasonable starting point:</b> <code>blurry, low quality, watermark, text, jpeg artifacts</code> — then add only the specific failure you are actually seeing (for example <code>extra fingers</code> after you get a bad hand). Leaving it empty is a perfectly good default.</p>`
+    },
+    'v.duration': {
+        t: 'Duration (seconds)',
+        h: 'Clip length. Engines convert it to frames on their own fixed grid.',
+        d: `<p>Duration is a request, not a guarantee. Each engine converts seconds into a frame count at its native frame rate and then snaps that to a count its architecture allows, so the clip you get back can be slightly shorter or longer than you typed.</p>
+            <ul>
+              <li><b>CogVideoX is fixed at 49 frames</b> (about 6 s at its native 8 fps) regardless of what you ask for — the field barely moves the result there.</li>
+              <li><b>Cost scales with frames.</b> Both generation time and VRAM rise roughly linearly with duration; doubling the clip roughly doubles the wait.</li>
+              <li><b>Quality falls off with length.</b> The longer the clip, the more the subject drifts, morphs or loses identity toward the end.</li>
+            </ul>
+            <p><b>Guidance:</b> generate short and chain. Two clean 4-second clips, with the last frame of the first used as the start frame of the second, beat one degraded 8-second take. The hint under "Video parameters" shows the selected service's real maximum.</p>`
+    },
+    'v.width':  {
+        t: 'Width (pixels)',
+        h: 'Output width. Stay near the model’s native size; must be a multiple of the step.',
+        d: `<p>Width and height set the render resolution. They must be multiples of the engine's step (16 or 32 px) — the form clamps and rounds for you — and they are the second biggest cost driver after frame count, since work scales with width × height.</p>
+            <ul>
+              <li><b>Native sizes matter.</b> These models were trained at specific resolutions (CogVideoX 720×480, Wan2.2 832×480, LTX-Video 1216×704, LTX-2 1280×704). Far from that size you get duplicated limbs, repeated elements and soft detail.</li>
+              <li><b>Aspect ratio is the fragile part</b>, more than raw pixel count. An unusual ratio degrades a video model faster than a modest size increase does.</li>
+            </ul>
+            <p><b>Guidance:</b> render at or near native and upscale afterwards. That is nearly always faster and cleaner than asking the model for a big frame directly.</p>`
+    },
+    'v.height': {
+        t: 'Height (pixels)',
+        h: 'Output height. Pair it with Width to stay on the model’s native aspect.',
+        d: `<p>Height works exactly like Width: a multiple of the engine's step, clamped to the selected service's maximum, and costly in combination with it since work scales with width × height.</p>
+            <p><b>The ratio is what matters most.</b> These video models are trained on landscape frames around 3:2 or 16:9. Asking for a portrait clip from a landscape-trained checkpoint is the most common cause of duplicated subjects and warped anatomy — far more so than a slightly larger frame.</p>
+            <p><b>Guidance:</b> change Width and Height together to keep the native ratio, then upscale the finished clip if you need more resolution.</p>`
+    },
+    'v.fps': {
+        t: 'FPS (frames per second)',
+        h: 'Playback rate. Only the LTX models expose it; other engines are fixed.',
+        d: `<p>Frames per second sets how many frames the model renders for each second of clip, so <b>fps × duration = total frames</b> — the number that actually determines cost and generation time.</p>
+            <ul>
+              <li><b>Most engines have a baked-in native fps</b> and disable this field. CogVideoX renders at 8 fps; Wan2.2 and Hunyuan are fixed too. <b>The LTX models are the only ones here that let you set it</b>, defaulting to 24.</li>
+              <li><b>Raising fps without raising steps</b> buys smoother playback at the price of softer per-frame detail, because the same denoising budget is spread over more frames.</li>
+            </ul>
+            <p><b>Guidance:</b> 24 fps reads as cinematic and is a good default where the field is available. If a low-fps clip feels choppy, interpolating afterwards is usually cheaper and cleaner than generating more frames.</p>`
+    },
+    'seed': {
+        t: 'Seed',
+        h: 'Blank = random each run. Set a number to reproduce an output exactly.',
+        d: `<p>The seed chooses the initial random noise the model denoises. It is the difference between exploring and iterating: <b>same seed + same prompt + same parameters + same model = the same output, every time</b>.</p>
+            <ul>
+              <li><b>Leave it blank while exploring</b> so each run gives you a fresh composition.</li>
+              <li><b>Lock it once you like something</b>, then change exactly one other parameter at a time. That is the only way to actually see what a parameter does.</li>
+              <li><b>A seed is not a portable style.</b> Change the resolution, the step count, the guidance or the model and the same seed produces a completely different image — the noise is shaped by all of them.</li>
+            </ul>
+            <p>The seed used for every finished job is recorded in its row below, so a result you liked can always be reproduced or nudged later.</p>`
+    },
+    'v.steps': {
+        t: 'Inference steps',
+        h: 'Denoising passes per frame — the main time knob. Too few = smeared output.',
+        d: `<p>Steps are how many denoising passes the model runs. Generation time is close to <b>linear</b> in this number, which makes it the single most expensive field on the form for video, where every step runs over every frame.</p>
+            <ul>
+              <li><b>Too few and the diffusion has not converged</b> — you get smeared, noisy, ghosted frames. CogVideoX needs roughly <b>40 or more</b> (its reference value is 50); below that the output visibly falls apart.</li>
+              <li><b>Quality saturates.</b> Past a model's sweet spot, extra steps mostly buy you waiting time, not detail.</li>
+              <li><b>Steps change the result even on a fixed seed</b>, so tune them after the prompt and guidance are settled, not before.</li>
+            </ul>
+            <p><b>Guidance:</b> explore at the low end of the allowed range to find a composition, then re-run the seed you like at the model's reference value for the final take.</p>`
+    },
+    'i.steps': {
+        t: 'Inference steps',
+        h: 'Denoising passes. More = cleaner and slower, but each model has a sweet spot.',
+        d: `<p>Steps are how many denoising passes the model runs, and generation time is close to <b>linear</b> in this number. Quality, however, saturates — past a model's sweet spot you are buying time rather than detail.</p>
+            <ul>
+              <li><b>Distilled models want very few.</b> Flux-1-schnell is trained to finish in <b>1–4 steps</b> and gets <i>worse</i>, not better, if you push it higher.</li>
+              <li><b>Full models want more.</b> Flux-1-dev and SD 3.5 sit around 28, SDXL around 35, Qwen-Image around 50. The form fills in each model's own reference value when you select it.</li>
+              <li><b>Steps change the image even on a fixed seed</b>, so settle the prompt and guidance first and treat steps as the last polish.</li>
+            </ul>
+            <p><b>Guidance:</b> explore at the low end of the range, lock the seed of the one you like, then re-render at the reference value.</p>`
+    },
+    'v.guidance': {
+        t: 'Guidance scale (CFG)',
+        h: 'How hard the model is pushed to obey the prompt. High values freeze motion.',
+        d: `<p>Classifier-free guidance is the strength of the push away from the negative conditioning and toward your prompt. Low values give the model freedom; high values force literal compliance and start damaging the picture.</p>
+            <ul>
+              <li><b>Low (1–3):</b> loose, natural, more varied — and generally better <i>motion</i>.</li>
+              <li><b>Mid (3–7):</b> the usual working range; most video engines default here.</li>
+              <li><b>High (over about 10):</b> oversaturated, hard-contrast, artefact-prone, and rigid.</li>
+            </ul>
+            <p><b>The video-specific trap:</b> high guidance tends to <b>freeze the clip</b>. Forcing every frame to match the prompt as closely as possible suppresses exactly the frame-to-frame variation that reads as movement. If your clips come out nearly static, lower this before you touch anything else — and go lower than you would for a still image.</p>
+            <p>Note that the negative prompt only has an effect while guidance is above 1.</p>`
+    },
+    'i.guidance': {
+        t: 'Guidance scale (CFG)',
+        h: 'Prompt obedience. Low = natural and varied, high = literal and often burnt.',
+        d: `<p>Classifier-free guidance is the strength of the push away from the negative conditioning and toward your prompt. It is the main quality dial once the prompt is settled.</p>
+            <ul>
+              <li><b>Low (1–3):</b> softer, more natural, more diverse; good for photographic looks. Flux-1-dev and SD 3.5 default around 3.5.</li>
+              <li><b>Mid (4–8):</b> the standard range for SDXL and Qwen-Image; tighter prompt adherence.</li>
+              <li><b>High (over about 10):</b> oversaturated, crunchy contrast, visible artefacts, and less variety. Rarely the right answer — a clearer prompt usually beats more guidance.</li>
+            </ul>
+            <p><b>Flux-1-schnell is guidance-distilled</b> and ignores this: the field is disabled and forced to 0 for it, which is also why it accepts no negative prompt. On every other model the negative prompt only takes effect while guidance is above 1.</p>`
+    },
+    'adv': {
+        t: 'Advanced parameters (raw JSON)',
+        h: 'Merged over the fields above — an escape hatch for engine-only knobs.',
+        d: `<p>An object of raw key/value pairs handed straight to the engine. It is merged <b>last</b>, so a key here <b>overrides</b> the structured field of the same name — putting <code>{"width": 1536}</code> here beats whatever the Width box says.</p>
+            <ul>
+              <li><b>Use it for knobs the form does not expose</b>, for example <code>{"scheduler": "ddim"}</code>.</li>
+              <li><b>Unknown keys are ignored</b> by the engine rather than rejected, so a typo fails silently — check the finished job's recorded parameters if an override seems to have done nothing.</li>
+              <li><b>Malformed JSON blocks submission.</b> It must be a single object with double-quoted keys.</li>
+            </ul>
+            <p>Leave it empty unless you are deliberately reaching past the form. Because it bypasses the per-service gating above, it is also the one place you can send a parameter the selected model does not actually accept.</p>`
+    },
+    'i.initimage': {
+        t: 'Starter image (img2img / inpainting)',
+        h: 'Optional. Add an image to restyle it; paint a mask to rewrite one region.',
+        d: `<p>Leave this empty for ordinary text-to-image. Adding an image switches the job into one of two modes:</p>
+            <ul>
+              <li><b>img2img</b> — the whole image is re-generated using your starter as the departure point. How far it travels is set by <b>Init strength</b>.</li>
+              <li><b>Inpainting</b> — paint a mask over a region and only that region is regenerated; everything unpainted is preserved.</li>
+            </ul>
+            <p><b>Only Flux-1-dev supports this.</b> SDXL, SD 3.5, Qwen-Image and Flux-1-schnell are text-to-image only here, and the section is disabled with a note when one of them is selected.</p>
+            <p><b>Guidance:</b> the starter image sets composition, pose and colour layout — it is the fastest way to get a specific arrangement that would take many prompt attempts to hit by chance. "Use previous output…" lets you feed an earlier render straight back in and refine it.</p>`
+    },
+    'i.aspect': {
+        t: 'Aspect',
+        h: 'Shortcut that fills Width and Height. Choose Custom to type your own.',
+        d: `<p>A convenience control, not a model parameter. Picking a ratio computes Width and Height from a 1024 px long edge, rounded to the nearest multiple of 16, and writes them into those boxes. <b>What actually gets sent is width and height</b>, so anything you type there afterwards wins.</p>
+            <p>Select <b>Custom</b> to stop it overwriting your manual values.</p>
+            <p><b>Guidance:</b> stay near the ratio the model was trained on — square for SDXL, Flux and SD 3.5 — since exotic ratios are the usual cause of duplicated subjects and stretched anatomy. For a strongly non-square result, generating square and cropping is often cleaner than generating wide.</p>`
+    },
+    'i.width': {
+        t: 'Width (pixels)',
+        h: 'Output width, snapped to 16 px. Cost scales with width × height.',
+        d: `<p>Width must be a multiple of 16 and is clamped to the selected service's maximum (shown under "Image parameters"). Together with Height it is the main cost driver, since both time and VRAM scale with total pixels.</p>
+            <ul>
+              <li><b>Native training sizes:</b> SDXL, Flux and SD 3.5 around 1024×1024; Qwen-Image around 1328×1328. The form fills in each model's own default.</li>
+              <li><b>Far from native you get repetition</b> — two heads, doubled horizons, mirrored limbs — because the model is composing outside the framing it learned.</li>
+            </ul>
+            <p><b>Guidance:</b> generate at native resolution and upscale afterwards. It is faster, cheaper and reliably better than asking the model for a large canvas directly.</p>`
+    },
+    'i.height': {
+        t: 'Height (pixels)',
+        h: 'Output height, snapped to 16 px. Keep the ratio near the model’s native.',
+        d: `<p>Height follows the same rules as Width: a multiple of 16, clamped to the service maximum, and costly in combination with it.</p>
+            <p><b>The aspect ratio matters more than the pixel count.</b> A modest size increase at the native ratio is usually safe; a strongly non-native ratio is the most common source of duplicated subjects and warped anatomy.</p>
+            <p><b>Guidance:</b> use the Aspect control to set both at once, or change Width and Height together by hand to preserve the ratio. For tall or wide results, consider generating near-square and cropping.</p>`
+    },
+    'i.n_images': {
+        t: 'Images (1–4)',
+        h: 'How many variations this one job renders, from consecutive seeds.',
+        d: `<p>Renders several images in a single queued job, each from a consecutive seed, so you get genuine variations of the same prompt rather than copies.</p>
+            <ul>
+              <li><b>Each extra image costs roughly one more full generation</b> in time, and raises peak VRAM since they are batched on the GPU. Four images at a high step count is a long job.</li>
+              <li>All of them appear together on the finished job row, and each keeps its own seed.</li>
+            </ul>
+            <p><b>Efficient workflow:</b> render 4 at a low step count to explore composition, note the seed of the one that works, then run a single image at that seed and the model's full step count for the final.</p>`
+    },
+    'i.style': {
+        t: 'Style',
+        h: 'A prompt shortcut, not a model setting — it appends style wording for you.',
+        d: `<p>A convenience that adds style wording to your prompt before it is sent. It is <b>not</b> a separate model input, a LoRA, or a checkpoint switch — the identical result is available by typing the same words yourself.</p>
+            <p><b>Guidance:</b> leave it on <b>None</b> whenever your prompt already describes a look. Two style descriptions pulling in different directions ("oil painting" from the dropdown against "photorealistic" in your prompt) is a common reason output lands in a muddy middle. Use it as a quick A/B when you have no style in mind yet, then fold the wording you like into the prompt itself so it is visible and editable.</p>`
+    },
+    'i.format': {
+        t: 'Format',
+        h: 'File type for the saved result. Does not change what the model generates.',
+        d: `<p>Purely the output encoding — the pixels the model produces are identical either way.</p>
+            <ul>
+              <li><b>PNG</b> — lossless, supports transparency, larger files. Use it for anything that will be edited, upscaled or composited later.</li>
+              <li><b>JPG</b> — lossy and small, no transparency. Fine for previews and quick sharing; avoid it as a source for further generation, since its artefacts get amplified by img2img.</li>
+              <li><b>WebP</b> — a good middle ground for the web: much smaller than PNG at near-comparable quality, with transparency.</li>
+            </ul>
+            <p><b>Guidance:</b> default to PNG while you are still iterating and convert at the end. Re-encoding down is free; recovering detail JPG has thrown away is not.</p>`
+    },
+    'i.init_strength': {
+        t: 'Init strength (img2img)',
+        h: 'How far to travel from the starter image. 0 keeps it, 1 ignores it.',
+        d: `<p>Only meaningful when a starter image is loaded. It sets how much noise is added before denoising — in effect, how much of the original is destroyed and rebuilt.</p>
+            <ul>
+              <li><b>0.2–0.4</b> — a touch-up. Composition, pose and colours survive; you get a restyle or a cleanup.</li>
+              <li><b>0.5–0.7</b> — the usual working range. Same subject and layout, genuinely reinterpreted.</li>
+              <li><b>0.8–1.0</b> — the starter is little more than a hint; at 1.0 you have effectively thrown it away and are doing text-to-image.</li>
+            </ul>
+            <p>When <b>inpainting</b>, this governs how aggressively the painted region is rewritten — lower values blend with what is already there, higher values replace it outright.</p>
+            <p><b>Guidance:</b> if the result ignores your starter image, this is too high. If the prompt seems to have no effect, it is too low. Start at 0.6 and move in steps of 0.1 with the seed locked. Only Flux-1-dev exposes this field.</p>`
+    },
+};
+
+// Injects the one-line hint and the "?" trigger for every [data-help] field,
+// and drives the single shared popover. Markup carries only the key, so the
+// copy above is the one place any of this is edited.
+const FieldHelp = {
+    pop: null, openBtn: null,
+
+    init() {
+        this.pop = document.createElement('div');
+        this.pop.className = 'help-pop';
+        this.pop.hidden = true;
+        this.pop.innerHTML = '<button class="hp-close" type="button" aria-label="Close">&times;</button><div class="hp-body"></div>';
+        document.body.appendChild(this.pop);
+        this.pop.querySelector('.hp-close').addEventListener('click', () => this.close());
+
+        document.querySelectorAll('[data-help]').forEach(node => {
+            const key  = node.getAttribute('data-help');
+            const info = HELP[key];
+            if (!info) return;
+            const label = node.tagName === 'LABEL' ? node : node.querySelector('label');
+            if (!label) return;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'helpq';
+            btn.textContent = '?';
+            btn.setAttribute('aria-label', 'What is ' + (info.t || key) + '?');
+            btn.dataset.helpKey = key;
+            label.appendChild(btn);
+            btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); this.toggle(btn, info); });
+
+            if (info.h) {
+                const hint = document.createElement('span');
+                hint.className = 'fhint';
+                hint.textContent = info.h;
+                label.insertAdjacentElement('afterend', hint);
+            }
+        });
+
+        // Site-wide inline-hint switch, remembered per browser. The "?" popovers
+        // stay available either way, so turning hints off only reclaims height.
+        const tog = $('help-toggle');
+        let on = true;
+        try { on = localStorage.getItem('yadaAiFieldHelp') !== 'off'; } catch (e) {}
+        const paint = () => {
+            document.body.classList.toggle('help-off', !on);
+            if (tog) tog.textContent = 'Field help: ' + (on ? 'on' : 'off');
+        };
+        paint();
+        if (tog) tog.addEventListener('click', () => {
+            on = !on;
+            try { localStorage.setItem('yadaAiFieldHelp', on ? 'on' : 'off'); } catch (e) {}
+            paint();
+        });
+
+        document.addEventListener('click', e => {
+            if (!this.pop.hidden && !this.pop.contains(e.target) && !e.target.closest('.helpq')) this.close();
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
+        window.addEventListener('resize', () => this.close());
+    },
+
+    toggle(btn, info) {
+        if (this.openBtn === btn && !this.pop.hidden) { this.close(); return; }
+        this.close();
+        this.pop.querySelector('.hp-body').innerHTML =
+            (info.t ? '<h4>' + esc(info.t) + '</h4>' : '') + (info.d || '<p>' + esc(info.h || '') + '</p>');
+        this.pop.hidden = false;
+        this.openBtn = btn;
+        btn.classList.add('open');
+
+        // Anchor under the "?" , then pull back inside the viewport horizontally
+        // and flip above the label if there is no room below.
+        const r = btn.getBoundingClientRect();
+        const w = this.pop.offsetWidth, h = this.pop.offsetHeight;
+        let left = r.left + window.scrollX - 12;
+        const maxLeft = window.scrollX + document.documentElement.clientWidth - w - 12;
+        left = Math.max(window.scrollX + 12, Math.min(left, maxLeft));
+        let top = r.bottom + window.scrollY + 7;
+        if (r.bottom + h + 14 > document.documentElement.clientHeight && r.top - h - 7 > 0) {
+            top = r.top + window.scrollY - h - 7;
+        }
+        this.pop.style.left = left + 'px';
+        this.pop.style.top  = top + 'px';
+    },
+
+    close() {
+        if (this.pop) this.pop.hidden = true;
+        if (this.openBtn) this.openBtn.classList.remove('open');
+        this.openBtn = null;
+    },
+};
+
 class TabController {
     constructor(name) {
         this.name = name;
@@ -437,7 +820,7 @@ class TabController {
         this.keyField = name === 'video' ? 'i2v_job_key' : 't2i_job_key';
         this.panel = document.querySelector('.tab-panel[data-panel="' + name + '"]');
         this.state = {
-            providers: [], selectedProviderKey: null,
+            providers: [], selectedProviderKey: null, startFrameService: null,
             files: [], jobs: new Map(), expanded: new Set(),
         };
         this.elProviders   = this.panel.querySelector('[id$="-providers"]');
@@ -498,6 +881,9 @@ class TabController {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
             this.state.providers = d.providers || [];
+            // Video: which image service renders an auto start frame for the
+            // image-to-video-only engines (null when none is active).
+            this.state.startFrameService = d.start_frame_service || null;
             this.renderProviders();
         } catch (e) {
             this.elProviders.innerHTML = '<div class="empty">Failed to load services: ' + esc(e.message) + '</div>';
@@ -516,6 +902,9 @@ class TabController {
             const lines = [];
             const sch = p.param_schema || FALLBACK_PARAM_SCHEMA[p.model_id];
             if (this.name === 'video') {
+                // Engine schema is authoritative for t2v; DB flag is the fallback.
+                const t2v = sch && sch.t2v !== undefined ? !!sch.t2v : !!p.supports_text_to_video;
+                lines.push(t2v ? 'text-to-video' : 'text-to-video via start frame');
                 if (p.supports_single_image)     lines.push('single image');
                 if (p.supports_first_last_frame) lines.push('first/last frame');
                 if (p.max_duration_sec)          lines.push('up to ' + p.max_duration_sec + 's');
@@ -581,6 +970,15 @@ class TabController {
     // list_providers), falling back to the built-in map only if the engine was
     // offline when the page loaded.
     currentSchema()   { const p = this.currentProvider(); if (!p) return null; return p.param_schema || FALLBACK_PARAM_SCHEMA[p.model_id] || null; }
+    // Video: can the selected service generate from the prompt alone (no input
+    // image)? The engine's schema is authoritative; list_providers mirrors it
+    // as supports_text_to_video for when the engine was offline at page load.
+    allowsTextOnly() {
+        const p = this.currentProvider();
+        if (!p) return false;
+        const sch = this.currentSchema();
+        return sch && sch.t2v !== undefined ? !!sch.t2v : !!p.supports_text_to_video;
+    }
 
     // The full set of gate-able param fields for this tab. aspect/style are
     // pure UI helpers and stay enabled regardless of engine.
@@ -603,7 +1001,10 @@ class TabController {
             const lab = box.querySelector('label');
             if (lab && !lab.querySelector('.na-tag')) {
                 const t = document.createElement('span'); t.className = 'na-tag'; t.textContent = 'n/a';
-                lab.appendChild(document.createTextNode(' ')); lab.appendChild(t);
+                // Sits before the "?" trigger so the help button stays last on
+                // the label regardless of which service is selected.
+                const q = lab.querySelector('.helpq');
+                lab.insertBefore(document.createTextNode(' '), q); lab.insertBefore(t, q);
             }
             const spec = schema ? schema.fields[key] : true;
             if (spec) {
@@ -634,6 +1035,25 @@ class TabController {
         const allowNeg = !schema || !!schema.neg;
         if (negWrap) negWrap.classList.toggle('pfield-off', !allowNeg);
         if (this.elNegative) this.elNegative.disabled = !allowNeg;
+        // Video: say whether this service can run prompt-only. The uploader
+        // stays enabled either way — an image is an input, never a requirement
+        // the form imposes; only the model's own limits can require one.
+        if (this.name === 'video') {
+            const p       = this.currentProvider();
+            const textOK  = this.allowsTextOnly();
+            const sf      = this.state.startFrameService;
+            const tag     = this.panel.querySelector('[data-slot="img-optional"]');
+            const note    = this.panel.querySelector('[data-gate-note="t2v"]');
+            if (tag) tag.textContent = '— optional (leave empty to generate from the prompt alone)';
+            if (note) {
+                note.textContent = (p && !textOK)
+                    ? p.label + ' animates a start frame rather than generating one, so with no image ' +
+                      (sf ? sf.label : 'the image service') + ' renders one from your prompt first, then ' +
+                      p.label + ' animates it. That adds a step — a service marked “text-to-video” goes straight to video.'
+                    : '';
+                note.classList.toggle('show', !!(p && !textOK));
+            }
+        }
         // Image-only: starter image (img2img) + inpaint mask
         if (this.name === 'image') {
             const initWrap = this.panel.querySelector('[data-gate="initimage"]');
@@ -765,7 +1185,9 @@ class TabController {
         if (!this.state.selectedProviderKey) { toast('Pick a service first', 'err'); return; }
         const prompt = this.elPrompt.value.trim();
         if (!prompt) { toast('Prompt is required', 'err'); return; }
-        if (this.name === 'video' && !this.state.files.length) { toast('Video needs at least one image', 'err'); return; }
+        // Input images are never required: with none, the job either runs
+        // text-to-video natively or gets a start frame rendered from the same
+        // prompt first (the build worker decides, per service).
         let paramsObj;
         try { paramsObj = this.buildParams(); }
         catch (e) { toast(e.message, 'err'); return; }
@@ -963,6 +1385,8 @@ class TabController {
             }
         }
         const actions = '<div class="row-actions" style="margin-top:10px">' +
+            '<button class="ghost" data-act="reuse">Copy settings to form</button>' +
+            '<button class="ghost" data-act="refresh">Refresh</button>' +
             ((status === 'pending' || status === 'running') ? '<button class="ghost" data-act="cancel">Cancel</button>' : '') +
             '<button class="danger" data-act="delete">Delete job</button></div>';
         blocks.push(actions);
@@ -971,12 +1395,89 @@ class TabController {
             e.stopPropagation();
             const act = b.dataset.act;
             const k = Number(ref.row.dataset.key);
-            if (act === 'cancel') return this.jobAction('cancel', k);
+            if (act === 'reuse')   return this.reuseJob(j);
+            if (act === 'refresh') return this.refreshJob(k, b);
+            if (act === 'cancel')  return this.jobAction('cancel', k);
             if (act === 'delete') {
                 if (!confirm('Delete job #' + k + ' and its files?')) return;
                 return this.jobAction('delete', k);
             }
         }));
+    }
+    // Pull this one job's status now rather than waiting for the next list
+    // poll — useful while an engine sits on a long plateau and you want to
+    // know whether it has moved at all. updateRow() re-renders the open
+    // detail, so progress, message and the action set all refresh together.
+    async refreshJob(key, btn) {
+        const ref = this.state.jobs.get(key);
+        if (!ref) return;
+        if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+        try {
+            const r = await fetch(this.api + '?action=status&' + this.keyField + '=' + key);
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            this.updateRow(ref, j);
+            if (!this.state.expanded.has(key)) this.refreshDetail(ref, j);
+            toast('Job ' + key + ' refreshed');
+        } catch (e) {
+            toast('Refresh failed: ' + e.message, 'err');
+            if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+        }
+    }
+    // Refill the form from an earlier job so it can be re-queued with one thing
+    // changed — the normal way to iterate, since a recorded seed plus recorded
+    // parameters is exactly what reproduces (or deliberately varies) a result.
+    // Input images are not restored: they belong to the job, not the form. Use
+    // "Use previous output…" to pull an earlier render back in as an input.
+    reuseJob(j) {
+        const prov = this.state.providers.find(x => String(x.provider_key) === String(j.provider_key));
+        if (prov) {
+            this.state.selectedProviderKey = prov.provider_key;
+            this.renderProviders();
+            this.updateHints();
+            this.applyProviderSchema(true);   // that engine's defaults first…
+        }
+
+        const promptCol = this.name === 'video' ? 'i2v_job_prompt'          : 't2i_job_prompt';
+        const negCol    = this.name === 'video' ? 'i2v_job_negative_prompt' : 't2i_job_negative_prompt';
+        const parCol    = this.name === 'video' ? 'i2v_job_params'          : 't2i_job_params';
+
+        this.elPrompt.value   = j[promptCol] || '';
+        this.elNegative.value = j[negCol] || '';
+
+        let params = j[parCol];
+        if (typeof params === 'string') { try { params = JSON.parse(params); } catch (e) { params = null; } }
+        if (!params || typeof params !== 'object' || Array.isArray(params)) params = {};
+
+        // …then the job's own values on top. Anything without a matching control
+        // (an engine-only knob sent through Advanced JSON originally) goes back
+        // into the Advanced box, so the copy is faithful rather than lossy.
+        const leftover = {}, blocked = [];
+        for (const [k, v] of Object.entries(params)) {
+            const el = this.paramInput(k);
+            if (!el) { leftover[k] = v; continue; }
+            if (el.tagName === 'SELECT') {
+                if ([...el.options].some(o => o.value === String(v))) el.value = String(v);
+                else { leftover[k] = v; continue; }
+            } else {
+                el.value = v;
+            }
+            if (el.disabled) blocked.push(k);
+        }
+        // Width/height came from the job, so stop the Aspect helper overwriting
+        // them the next time it runs.
+        const asp = this.paramInput('aspect');
+        if (asp && (params.width || params.height)) asp.value = 'custom';
+
+        this.elAdvParams.value = Object.keys(leftover).length ? JSON.stringify(leftover, null, 2) : '';
+        this.updateHints();
+
+        let msg = 'Job ' + j[this.keyField] + ' settings copied into the form';
+        if (!prov)          msg += ' — its service is unavailable, so the current one is kept';
+        else if (blocked.length) msg += ' — ' + blocked.join(', ') + ' not accepted by this service';
+        toast(msg + '.');
+        const form = this.panel.querySelector('section');
+        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     async jobAction(action, key) {
         try {
@@ -1143,6 +1644,7 @@ function activateTab(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
 }
 document.addEventListener('DOMContentLoaded', () => {
+    FieldHelp.init();
     TABS.video = new TabController('video');
     TABS.image = new TabController('image');
     TABS.video.init();

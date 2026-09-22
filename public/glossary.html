@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1789221604">
+    <meta name="page-version" content="1790056805">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary</title>
@@ -577,9 +577,18 @@
             var html = '';
             for (var i = 0; i < words.length; i++) {
                 var w = words[i];
+                // NOTE: this file is DEAD CODE -- /glossary is served from
+                // yy_section.section_config->>'html' (section_key 25). Kept in sync
+                // only so a grep here does not mislead; edit the DB section instead.
+                // word_strongs already carries its own language letter since the
+                // strongs_prefix migration (H0001 / G0025), so do NOT add one --
+                // that is what produced 'HH0001' and a dead /lexicon/hH0001 link.
+                // Legacy bare digits, if any resurface, still get a single H.
                 var strongs = w.word_strongs ? w.word_strongs.trim() : '';
+                if (strongs && !/^[HG]/i.test(strongs)) strongs = 'H' + strongs;
+                strongs = strongs.replace(/^[hg]/, function(c) { return c.toUpperCase(); });
                 var strongsLink = strongs
-                    ? '<a href="https://www.blueletterbible.org/lexicon/h' + escHtml(strongs) + '" target="_blank" rel="noopener">H' + escHtml(strongs) + '</a>'
+                    ? '<a href="https://www.blueletterbible.org/lexicon/' + encodeURIComponent(strongs.toLowerCase()) + '" target="_blank" rel="noopener">' + escHtml(strongs) + '</a>'
                     : '';
                 html += '<tr>';
                 html += '<td class="col-translit">' + escHtml(w.word_spellings) + '</td>';

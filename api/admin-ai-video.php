@@ -11,10 +11,12 @@
  *   GET   ?action=status&i2v_job_key=N
  *     → one job row
  *
- *   POST  multipart: provider_key, prompt, negative_prompt?, params(json), images[]
+ *   POST  multipart: provider_key, prompt, negative_prompt?, params(json), images[]?
  *     → {i2v_job_key, queued}
  *     Saves uploaded images under public/u/i2v-uploads/<job_key>/ and spawns the
  *     CLI build-worker. Concurrency cap = 1 (GPU is single-job; mirrors TTS).
+ *     images[] is OPTIONAL — with none the engine runs text-to-video from the
+ *     prompt alone (services that advertise t2v; the engine rejects the rest).
  *
  *   POST  application/json {action:'cancel'|'delete', i2v_job_key:N}
  *     cancel — mark pending/running as cancelled (worker re-checks each poll).
@@ -73,10 +75,40 @@ if ($method === 'GET' && $action === 'list_providers') {
     }
     unset($r);
     // Attach each engine's self-described input schema (from /models, cached).
+    // Its 't2v' key says whether the service can run from the prompt alone —
+    // that is what makes the input images optional in the UI. Fall back to the
+    // DB flag when the engine was unreachable and we have no schema.
     $schemas = ai_fetch_param_schemas('i2v', $rows);
-    foreach ($rows as &$r) { $r['param_schema'] = $schemas[$r['model_id']] ?? null; }
+    foreach ($rows as &$r) {
+        $sch = $schemas[$r['model_id']] ?? null;
+        $r['param_schema'] = $sch;
+        $r['supports_text_to_video'] = $sch !== null
+            ? !empty($sch['t2v'])
+            : !empty($r['settings']['supports_text_to_video']);
+    }
     unset($r);
-    jsonResponse(['providers' => $rows]);
+    // The image service that renders an auto start frame when a prompt-only
+    // job picks an image-to-video-only engine (the build worker's own choice —
+    // keep the ORDER BY in step with pickStartFrameProvider()).
+    $sf = $db->query("
+      SELECT p.provider_label, p.provider_model_id
+        FROM yy_provider p
+        JOIN yy_functionality_provider fp ON fp.provider_key = p.provider_key
+        JOIN yy_functionality f ON f.functionality_key = fp.functionality_key
+       WHERE f.functionality_code = 't2i'
+         AND p.provider_active_flag
+         AND fp.functionality_provider_active_flag
+       ORDER BY (p.provider_model_id = 'flux-1-schnell') DESC,
+                fp.functionality_provider_sort
+       LIMIT 1
+    ")->fetch(PDO::FETCH_ASSOC);
+    jsonResponse([
+        'providers'           => $rows,
+        'start_frame_service' => $sf ? [
+            'label'    => $sf['provider_label'],
+            'model_id' => $sf['provider_model_id'],
+        ] : null,
+    ]);
 }
 
 // ── GET list_jobs ──────────────────────────────────────────────────────
@@ -193,21 +225,24 @@ if ($method === 'POST' && $isMultipart) {
     $contUploadsBase = dirname(__DIR__) . '/u/i2v-uploads/';
     $uploadsBase     = is_dir(dirname(__DIR__)) ? $contUploadsBase : $hostUploadsBase;
     $jobDir          = $uploadsBase . $jobKey;
-    if (!is_dir($jobDir) && !@mkdir($jobDir, 0775, true) && !is_dir($jobDir)) {
+
+    // Input images are OPTIONAL: with none, the engine runs text-to-video from
+    // the prompt alone (only services advertising t2v accept that — the engine
+    // rejects a prompt-only job for an image-to-video-only checkpoint).
+    $files = $_FILES['images'] ?? null;
+    $names = $tmps = $sizes = $errs = [];
+    if ($files && !empty($files['tmp_name'])) {
+        $names = is_array($files['name'])     ? $files['name']     : [$files['name']];
+        $tmps  = is_array($files['tmp_name']) ? $files['tmp_name'] : [$files['tmp_name']];
+        $sizes = is_array($files['size'])     ? $files['size']     : [$files['size']];
+        $errs  = is_array($files['error'])    ? $files['error']    : [$files['error']];
+    }
+    $n     = count($tmps);
+
+    if ($n > 0 && !is_dir($jobDir) && !@mkdir($jobDir, 0775, true) && !is_dir($jobDir)) {
         $db->prepare("UPDATE yy_i2v_job SET i2v_job_status='failed', i2v_job_error='cannot create uploads dir' WHERE i2v_job_key=?")->execute([$jobKey]);
         errorResponse('cannot create uploads dir');
     }
-
-    $files = $_FILES['images'] ?? null;
-    if (!$files || empty($files['tmp_name'])) {
-        $db->prepare("UPDATE yy_i2v_job SET i2v_job_status='failed', i2v_job_error='no images uploaded' WHERE i2v_job_key=?")->execute([$jobKey]);
-        errorResponse('no images uploaded');
-    }
-    $names = is_array($files['name'])     ? $files['name']     : [$files['name']];
-    $tmps  = is_array($files['tmp_name']) ? $files['tmp_name'] : [$files['tmp_name']];
-    $sizes = is_array($files['size'])     ? $files['size']     : [$files['size']];
-    $errs  = is_array($files['error'])    ? $files['error']    : [$files['error']];
-    $n     = count($tmps);
 
     $imageRows = [];
     foreach ($tmps as $i => $tmp) {
@@ -231,7 +266,9 @@ if ($method === 'POST' && $isMultipart) {
             'size_bytes' => (int)$sizes[$i],
         ];
     }
-    if (!$imageRows) {
+    if (!$imageRows && $n > 0) {
+        // Files were sent but none survived — that IS an error, unlike the
+        // deliberate no-image (text-to-video) case.
         $db->prepare("UPDATE yy_i2v_job SET i2v_job_status='failed', i2v_job_error='all uploads failed' WHERE i2v_job_key=?")->execute([$jobKey]);
         errorResponse('all uploads failed');
     }

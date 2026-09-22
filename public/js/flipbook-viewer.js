@@ -1039,61 +1039,110 @@
         el.appendChild(inner);
       }
 
-      // Re-render a span's content with each occurrence of `query` (case-
-      // insensitive) wrapped in <mark class="search-hit">, preserving any
-      // italic/bold formatting from `flags`.
-      function buildHighlightedSpanContent(el, text, flags, query) {
+      // Re-render a span's content with the given local character ranges
+      // wrapped in <mark class="search-hit">, preserving any italic/bold
+      // formatting from `flags`.
+      //
+      // Takes ranges rather than a query string because one match can straddle
+      // several spans — see applySearchHighlight. `ranges` is a sorted list of
+      // non-overlapping [start, end) offsets into `text`.
+      function buildMarkedSpanContent(el, text, flags, ranges) {
         el.textContent = '';
-        const q = query.toLowerCase();
-        const tl = text.toLowerCase();
         const frag = document.createDocumentFragment();
         let pos = 0;
-        while (pos < text.length) {
-          const idx = tl.indexOf(q, pos);
-          if (idx < 0) { frag.appendChild(document.createTextNode(text.slice(pos))); break; }
-          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+        for (let r = 0; r < ranges.length; r++) {
+          const start = ranges[r][0], end = ranges[r][1];
+          if (start > pos) frag.appendChild(document.createTextNode(text.slice(pos, start)));
           const mark = document.createElement('mark');
           mark.className = 'search-hit';
-          mark.textContent = text.slice(idx, idx + query.length);
+          mark.textContent = text.slice(start, end);
           frag.appendChild(mark);
-          pos = idx + query.length;
+          pos = end;
         }
+        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
         let inner = frag;
         if (flags & 1) { const i = document.createElement('i'); i.appendChild(inner); inner = i; }
         if (flags & 2) { const b = document.createElement('b'); b.appendChild(inner); inner = b; }
         el.appendChild(inner);
       }
 
-      // Highlight in-book occurrences of the current search query. For each
-      // text-layer span, if its stored text contains the query we rebuild the
-      // span content with <mark class="search-hit"> wrapping just the matching
-      // substring(s); otherwise we restore the plain styled content. Reading
-      // text from data-text (rather than textContent) keeps this O(n) and
-      // robust to repeated highlight passes that change DOM structure.
+      // Highlight in-book occurrences of the current search query.
+      //
+      // A match is searched for across the WHOLE LINE, not one span at a time.
+      // The books draw the half-rings ʾ and ʿ in Yada Towrah, so the PDF text
+      // layer emits each ring as its own span: "Bareʿsyth" arrives as
+      // ["Bare"]["ʿ"]["syth"]. Testing spans individually — which is what this
+      // did originally — could never match such a word, so searching any of the
+      // ~871 ringed transliterations highlighted nothing on the page even
+      // though the results pane reported the hit (search.json is built
+      // separately from the PDF by parsers/extract_text.py, so it has the word
+      // whole).
+      //
+      // So: concatenate a line's spans, find matches in the joined text, then
+      // map each match back to per-span character ranges and mark those.
+      //
+      // ⚠ Join only WITHIN a line. Spans carry their vertical position in
+      //   style.top, and a change of top means a new line; without a separator
+      //   there, the last word of one line would fuse with the first of the
+      //   next ("…stop" + "watch…") and invent matches that are not on the page.
+      //   Reading top (rather than a data-* attribute) keeps this change out of
+      //   the two span builders, which both set it from the same y.
       let _currentSearchQuery = '';
-      // For each text-layer span on every visible page, wrap the matching
-      // substring in <mark class="search-hit"> when the query is present, or
-      // restore the plain styled content when it clears. Spans store their
-      // source text in data-text, so this can be re-run idempotently as new
-      // pages render or the user types another character.
       function applySearchHighlight() {
         const q = (searchInput.value || '').trim();
         _currentSearchQuery = q;
         const qLower = q.toLowerCase();
         const layers = document.querySelectorAll('.text-layer');
         layers.forEach(layer => {
-          const spans = layer.children;
-          for (let i = 0; i < spans.length; i++) {
-            const s = spans[i];
+          // Collect text-bearing spans in reading order with their offset into
+          // the joined text. Children without data-text (the url-highlight
+          // bands the paragraph highlighter overlays) contribute nothing and
+          // must not shift the offsets.
+          const items = [];
+          let joined = '';
+          let prevTop = null;
+          const kids = layer.children;
+          for (let i = 0; i < kids.length; i++) {
+            const s = kids[i];
             const text = s.dataset.text;
             if (text == null) continue;
-            const flags = parseInt(s.dataset.flags || '0', 10);
-            const hit = q && text.toLowerCase().includes(qLower);
-            const hasMark = !!s.querySelector('mark.search-hit');
-            if (hit) {
-              buildHighlightedSpanContent(s, text, flags, q);
-            } else if (hasMark) {
-              buildStyledSpanContent(s, text, flags);
+            const top = s.style.top;
+            if (prevTop !== null && top !== prevTop) joined += '\n';   // line break
+            prevTop = top;
+            items.push({ el: s, text: text, start: joined.length });
+            joined += text;
+          }
+          if (!items.length) return;
+
+          // ranges[i] collects the [start, end) offsets to mark in items[i].
+          const ranges = items.map(function () { return []; });
+          if (q) {
+            const hay = joined.toLowerCase();
+            let from = 0, at, first = 0;
+            while ((at = hay.indexOf(qLower, from)) !== -1) {
+              const end = at + q.length;
+              // Matches arrive in increasing order, so `first` only moves
+              // forward — this stays linear rather than rescanning every span.
+              while (first < items.length &&
+                     items[first].start + items[first].text.length <= at) first++;
+              for (let j = first; j < items.length; j++) {
+                const it = items[j];
+                if (it.start >= end) break;
+                const a = Math.max(at, it.start) - it.start;
+                const b = Math.min(end, it.start + it.text.length) - it.start;
+                if (b > a) ranges[j].push([a, b]);
+              }
+              from = end;
+            }
+          }
+
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const flags = parseInt(it.el.dataset.flags || '0', 10);
+            if (ranges[i].length) {
+              buildMarkedSpanContent(it.el, it.text, flags, ranges[i]);
+            } else if (it.el.querySelector('mark.search-hit')) {
+              buildStyledSpanContent(it.el, it.text, flags);
             }
           }
         });

@@ -6,6 +6,12 @@
  * provider's /generate, polls for progress, downloads the finished MP4 to
  * /public/u/i2v-videos/i2v_<job_key>.mp4 .
  *
+ * An input image is never required. With none uploaded: a service that
+ * advertises supports_t2v runs text-to-video directly; any other (image-to-
+ * video-only weights) first gets a start frame rendered from the same prompt
+ * on the image engine — see generateStartFrame(). Override which image
+ * service does that with params.start_frame_provider (a t2i model id).
+ *
  * Mirrors admin-tts-build-worker's shape: queue-promotion shutdown hook,
  * cancellation re-checks, dual host/container paths, ffprobe duration.
  *
@@ -72,6 +78,173 @@ function bailJob(PDO $db, int $k, string $err): void {
     exit(1);
 }
 
+/**
+ * Does this video engine generate from the prompt alone? Asked of the engine
+ * itself (/models), which is the only authority — the DB's provider_settings
+ * can drift. Returns null when the engine can't be reached or doesn't know the
+ * code, in which case the caller leaves the job alone and lets the submit fail
+ * with the real transport error.
+ */
+function engineSupportsT2v(string $endpoint, string $code): ?bool {
+    $ch = curl_init($endpoint . '/models');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+    $resp = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($resp === false || $http >= 400) return null;
+    $arr = json_decode((string)$resp, true);
+    if (!is_array($arr)) return null;
+    foreach ($arr as $m) {
+        if (($m['code'] ?? '') === $code) return !empty($m['supports_t2v']);
+    }
+    return null;
+}
+
+/** The text-to-image service used to render an auto start frame. Prefers the
+ *  job's own params.start_frame_provider, then Flux Schnell (4 steps — seconds,
+ *  not minutes), then the first active t2i provider by sort order. */
+function pickStartFrameProvider(PDO $db, ?string $want): ?array {
+    $stmt = $db->prepare("
+      SELECT p.provider_label, p.provider_model_id, p.provider_endpoint, p.provider_settings
+        FROM yy_provider p
+        JOIN yy_functionality_provider fp ON fp.provider_key = p.provider_key
+        JOIN yy_functionality f ON f.functionality_key = fp.functionality_key
+       WHERE f.functionality_code = 't2i'
+         AND p.provider_active_flag
+         AND fp.functionality_provider_active_flag
+       ORDER BY (p.provider_model_id = ?) DESC,
+                (p.provider_model_id = 'flux-1-schnell') DESC,
+                fp.functionality_provider_sort
+       LIMIT 1
+    ");
+    $stmt->execute([(string)($want ?? '')]);
+    $r = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $r ?: null;
+}
+
+/**
+ * Render a start frame from the video job's own prompt and drop it into the
+ * job's uploads dir, so an image-to-video-only checkpoint can still be driven
+ * from a prompt alone. Returns the absolute path; bails the job on failure.
+ */
+function generateStartFrame(PDO $db, int $jobKey, array $job, array $vparams, string $jobDir, string $relBase): string {
+    $want = $vparams['start_frame_provider'] ?? null;
+    $t2i  = pickStartFrameProvider($db, is_string($want) ? $want : null);
+    if (!$t2i) bailJob($db, $jobKey, "no image service available to render a start frame");
+
+    $t2iSettings = is_string($t2i['provider_settings'])
+        ? (json_decode($t2i['provider_settings'], true) ?: [])
+        : ($t2i['provider_settings'] ?: []);
+    $t2iEndpoint = rtrim((string)($t2i['provider_endpoint'] ?? ''), '/');
+    $t2iCode     = (string)($t2iSettings['engine'] ?? $t2i['provider_model_id']);
+    $t2iLabel    = (string)($t2i['provider_label'] ?: $t2i['provider_model_id']);
+    if ($t2iEndpoint === '') bailJob($db, $jobKey, "image service '$t2iLabel' has no endpoint");
+
+    // Match the video's frame size so the i2v engine doesn't have to rescale.
+    $maxDim = (int)($t2iSettings['max_dim'] ?? 1024);
+    $round16 = function ($v, $def) use ($maxDim) {
+        $v = (int)($v ?: $def);
+        $v = max(256, min($maxDim, $v));
+        return intdiv($v, 16) * 16;
+    };
+    $iparams = [
+        'width'    => $round16($vparams['width']  ?? null, 704),
+        'height'   => $round16($vparams['height'] ?? null, 480),
+        'n_images' => 1,
+        'format'   => 'png',
+    ];
+    // Same seed as the video when one was pinned, so the pair is reproducible.
+    if (isset($vparams['seed']) && $vparams['seed'] !== '' && $vparams['seed'] !== null) {
+        $iparams['seed'] = (int)$vparams['seed'];
+    }
+
+    updateJob($db, $jobKey, [
+        'i2v_job_progress' => 1,
+        'i2v_job_message'  => 'Rendering start frame with ' . $t2iLabel,
+    ]);
+
+    $post = [
+        'provider' => $t2iCode,
+        'prompt'   => (string)$job['i2v_job_prompt'],
+        'params'   => json_encode($iparams, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ];
+    if (!empty($job['i2v_job_negative_prompt'])) {
+        $post['negative_prompt'] = (string)$job['i2v_job_negative_prompt'];
+    }
+    $ch = curl_init($t2iEndpoint . '/generate');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $post,
+        CURLOPT_TIMEOUT        => 120,
+    ]);
+    $resp = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $cerr = curl_error($ch);
+    curl_close($ch);
+    if ($resp === false || $http >= 400) {
+        bailJob($db, $jobKey, "start frame submit HTTP $http: " . ($cerr ?: substr((string)$resp, 0, 200)));
+    }
+    $dec = json_decode((string)$resp, true);
+    $remoteId = is_array($dec) ? ($dec['job_id'] ?? null) : null;
+    if (!$remoteId) bailJob($db, $jobKey, "image engine did not return job_id for the start frame");
+
+    // Poll. A single Flux Schnell frame is seconds; the ceiling is generous
+    // only because the image engine may have to load weights first.
+    $deadline = time() + 1800;
+    $done = null;
+    while (time() < $deadline) {
+        $cstmt = $db->prepare("SELECT count(*) FROM yy_i2v_job WHERE i2v_job_key=? AND i2v_job_status='cancelled'");
+        $cstmt->execute([$jobKey]);
+        if ((int)$cstmt->fetchColumn() > 0) { fwrite(STDERR, "cancelled by admin\n"); exit(0); }
+
+        $ch = curl_init($t2iEndpoint . '/jobs/' . rawurlencode($remoteId));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20]);
+        $r = curl_exec($ch);
+        $c = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($r === false || $c >= 400) { fwrite(STDERR, "start frame poll HTTP $c; retrying\n"); sleep(3); continue; }
+        $j = json_decode((string)$r, true) ?: [];
+        $st = (string)($j['status'] ?? '');
+        if ($st === 'failed')   bailJob($db, $jobKey, "start frame failed: " . (string)($j['error'] ?? 'image engine reported failed'));
+        if ($st === 'complete') { $done = $j; break; }
+        updateJob($db, $jobKey, [
+            'i2v_job_progress' => 1,
+            'i2v_job_message'  => 'Start frame — ' . (string)($j['message'] ?? 'generating'),
+        ]);
+        sleep(3);
+    }
+    if (!$done) bailJob($db, $jobKey, "start frame timed out");
+
+    if (!is_dir($jobDir) && !@mkdir($jobDir, 0775, true) && !is_dir($jobDir)) {
+        bailJob($db, $jobKey, "cannot create uploads dir for the start frame");
+    }
+    $abs = $jobDir . '/frame_00.png';
+    $fh  = fopen($abs . '.staging', 'wb');
+    if (!$fh) bailJob($db, $jobKey, "cannot open start frame for writing");
+    $ch = curl_init($t2iEndpoint . '/jobs/' . rawurlencode($remoteId) . '/file?index=0');
+    curl_setopt_array($ch, [CURLOPT_FILE => $fh, CURLOPT_TIMEOUT => 300]);
+    $ok = curl_exec($ch);
+    $c  = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    fclose($fh);
+    if (!$ok || $c >= 400) { @unlink($abs . '.staging'); bailJob($db, $jobKey, "start frame download HTTP $c"); }
+    if (!@rename($abs . '.staging', $abs)) bailJob($db, $jobKey, "cannot rename the staged start frame");
+
+    // Record it like an upload, flagged as generated so the admin can tell the
+    // frame apart from one they supplied (and so delete still cleans it up).
+    $rows = [[
+        'path'       => $relBase . '/frame_00.png',
+        'role'       => 'first',
+        'size_bytes' => (int)(filesize($abs) ?: 0),
+        'generated'  => true,
+        'source'     => 'auto:' . $t2i['provider_model_id'],
+    ]];
+    $db->prepare("UPDATE yy_i2v_job SET i2v_job_input_images = ?::jsonb WHERE i2v_job_key = ?")
+       ->execute([json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $jobKey]);
+    updateJob($db, $jobKey, ['i2v_job_message' => 'Start frame ready (' . $t2iLabel . ')']);
+    return $abs;
+}
+
 // Load the job.
 $row = $db->prepare("SELECT * FROM yy_i2v_job WHERE i2v_job_key=?");
 $row->execute([$jobKey]);
@@ -95,9 +268,10 @@ updateJob($db, $jobKey, [
     'i2v_job_progress'=> 1,
 ]);
 
-// Resolve input image files (dual host/container path).
+// Resolve input image files (dual host/container path). An empty list is a
+// legitimate text-to-video job — the engine decides whether its checkpoint can
+// run prompt-only, and returns 422 with a clear message when it cannot.
 $inputImages = is_string($job['i2v_job_input_images']) ? (json_decode($job['i2v_job_input_images'], true) ?: []) : ($job['i2v_job_input_images'] ?: []);
-if (!$inputImages) bailJob($db, $jobKey, "no input images recorded");
 
 $hostBase = '/opt/yada-www/public';
 $contBase = dirname(__DIR__);
@@ -110,7 +284,27 @@ foreach ($inputImages as $img) {
     if (!is_file($abs)) bailJob($db, $jobKey, "input image missing: $rel");
     $resolved[] = $abs;
 }
-if (!$resolved) bailJob($db, $jobKey, "no readable input files");
+if ($inputImages && !$resolved) bailJob($db, $jobKey, "no readable input files");
+
+// ── Auto start frame ──────────────────────────────────────────────────
+// Nothing was uploaded and this checkpoint can't run prompt-only: render a
+// first frame from the same prompt on the image engine and animate that. This
+// is what makes "an image is never required" true for the I2V-only services
+// too — LTX skips it and does native text-to-video.  yadayah:autoframe-v1
+if (!$resolved) {
+    $t2vOk = engineSupportsT2v($endpoint, (string)$engineCode);
+    if ($t2vOk === false) {
+        $vparams = is_string($job['i2v_job_params'])
+            ? (json_decode($job['i2v_job_params'], true) ?: [])
+            : ($job['i2v_job_params'] ?: []);
+        $uploadsBase = (is_dir($contBase) ? $contBase : $hostBase) . '/u/i2v-uploads/';
+        $resolved[] = generateStartFrame($db, $jobKey, $job, $vparams,
+                                         $uploadsBase . $jobKey,
+                                         '/u/i2v-uploads/' . $jobKey);
+    }
+}
+
+updateJob($db, $jobKey, ['i2v_job_message' => 'Submitting to engine', 'i2v_job_progress' => 1]);
 
 // Submit to engine /generate as multipart.
 $ch = curl_init($endpoint . '/generate');
