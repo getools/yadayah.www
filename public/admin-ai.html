@@ -135,6 +135,20 @@
         .picker-cell .pinfo .ptag { background: var(--accent); color:#fff; padding:1px 5px; border-radius:3px; font-weight:600; margin-right:4px; }
         .picker-section { margin-bottom: 18px; }
         .picker-section h4 { font-size:0.82rem; color:#777; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        /* Library cells sit above the recent-output sections and are visually
+           distinct: these are the kept references, not whatever ran last. */
+        .picker-cell.lib { border-color: var(--accent); position: relative; }
+        .picker-cell.lib .plabel { font-weight:600; color:#333; display:block; }
+        .picker-cell .pdel { position:absolute; top:4px; right:4px; border:none; border-radius:3px;
+                             background:#000a; color:#fff; width:20px; height:20px; line-height:18px;
+                             font-size:0.8rem; cursor:pointer; padding:0; display:none; }
+        .picker-cell.lib:hover .pdel { display:block; }
+        .picker-cell .pdel:hover { background:#c0392b; }
+        .lib-empty { color:#888; font-size:0.8rem; padding:6px 0 10px; }
+        .save-lib-field { margin-bottom:10px; }
+        .save-lib-field label { display:block; font-size:0.8rem; color:#555; margin-bottom:3px; }
+        .save-lib-field input, .save-lib-field select, .save-lib-field textarea {
+            width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:4px; font:inherit; }
         .mask-painter { position:relative; background:#222; display:inline-block; max-width:100%; }
         .mask-painter canvas { display:block; max-width:100%; }
         .mask-painter .canvas-base { position:absolute; inset:0; }
@@ -142,6 +156,8 @@
         .mask-toolbar label { margin:0; font-size:0.75rem; font-weight:500; }
         .mask-toolbar input[type=range] { width:120px; }
         .image-results { display:flex; flex-wrap:wrap; gap:6px; }
+        .out-cell { display:flex; flex-direction:column; align-items:center; gap:4px; }
+        button.tiny { font-size:0.7rem; padding:2px 8px; }
         .image-results img { max-width:200px; max-height:200px; border:1px solid var(--line); border-radius:4px; }
         /* Audio has no thumbnail to show, so a reference clip is represented by
            a name + inline player card rather than the .thumb image tile. */
@@ -483,6 +499,40 @@
             <button class="close-x" data-act="picker-close">×</button>
         </div>
         <div class="modal-body" id="picker-body"><div class="empty">Loading…</div></div>
+    </div>
+</div>
+
+<!-- Keeps a finished output as a durable reference. Job files are deleted with
+     their job; library files live under /u/ai-library/ and are not. -->
+<div id="savelib-modal" class="modal-overlay hidden">
+    <div class="modal" style="max-width:460px">
+        <div class="modal-header">
+            <h3>Save to library</h3>
+            <button class="close-x" data-act="savelib-close">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="save-lib-field">
+                <label for="savelib-label">Label</label>
+                <input id="savelib-label" type="text" placeholder="e.g. Miriam — front portrait">
+            </div>
+            <div class="save-lib-field">
+                <label for="savelib-char">Character <span class="opt-tag">— optional</span></label>
+                <select id="savelib-char"></select>
+            </div>
+            <div class="save-lib-field hidden" id="savelib-newchar-wrap">
+                <label for="savelib-newchar">New character name</label>
+                <input id="savelib-newchar" type="text" placeholder="e.g. Miriam">
+            </div>
+            <div class="save-lib-field">
+                <label for="savelib-notes">Notes <span class="opt-tag">— optional</span></label>
+                <textarea id="savelib-notes" rows="2" placeholder="What this reference is for"></textarea>
+            </div>
+            <div class="row-actions">
+                <button class="primary" data-act="savelib-go">Save</button>
+                <button class="ghost" data-act="savelib-close">Cancel</button>
+                <span id="savelib-status" class="small"></span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1670,6 +1720,17 @@ class TabController {
         this.state.files.push({ file, role: 'init', source: 'prev', ref });
         this.renderThumbs();
     }
+    // Library picks carry source:'library' rather than 'prev' on purpose: the
+    // submit path attaches prev_ref only for 'prev' entries, and a library
+    // asset has no job row for the server to resolve one against. Real bytes
+    // are always present, so these are never serverResolved.
+    addLibrary(asset, blob, filename) {
+        const role = this.name === 'audio' ? 'reference' : 'init';
+        const type = this.name === 'audio' ? (blob.type || 'audio/wav') : (blob.type || 'image/png');
+        const file = new File([blob], filename, { type });
+        this.state.files.push({ file, role, source: 'library', libraryAsset: asset });
+        this.renderThumbs();
+    }
     addMask(blob) {
         this.state.files = this.state.files.filter(x => x.role !== 'mask');
         const file = new File([blob], 'mask.png', { type: 'image/png' });
@@ -1708,10 +1769,18 @@ class TabController {
         const initOnly = this.state.files.filter(x => x.role === 'init');
         this.state.files.forEach((entry, idx) => {
             const wrap = document.createElement('div'); wrap.className = 'thumb';
-            const img = document.createElement('img');
-            img.src = URL.createObjectURL(entry.file);
-            img.onload = () => URL.revokeObjectURL(img.src);
-            wrap.appendChild(img);
+            if (entry.serverResolved) {
+                // Carried by reference — there are no bytes here to preview, so
+                // show the source clip itself and let the server take the frame.
+                const vid = document.createElement('video');
+                vid.src = entry.previewPath; vid.muted = true; vid.preload = 'metadata';
+                wrap.appendChild(vid);
+            } else {
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(entry.file);
+                img.onload = () => URL.revokeObjectURL(img.src);
+                wrap.appendChild(img);
+            }
             const roleTag = document.createElement('div'); roleTag.className = 'role';
             if (entry.role === 'mask') roleTag.textContent = 'mask';
             else {
@@ -1724,7 +1793,7 @@ class TabController {
             const actions = document.createElement('div'); actions.className = 'actions';
             const sch = this.currentSchema();
             const inpaintOk = this.name === 'image' && (!sch || sch.inpaint);
-            if (entry.role === 'init' && inpaintOk) {
+            if (entry.role === 'init' && inpaintOk && !entry.serverResolved) {
                 const maskBtn = document.createElement('button'); maskBtn.title = 'Mark region'; maskBtn.textContent = '✎';
                 maskBtn.addEventListener('click', e => { e.stopPropagation(); MaskPainter.open(this, entry); });
                 actions.appendChild(maskBtn);
@@ -1735,7 +1804,9 @@ class TabController {
             wrap.appendChild(actions);
             if (entry.source !== 'upload') {
                 const tag = document.createElement('div'); tag.className = 'source-tag';
-                tag.textContent = entry.source === 'prev' ? 'from previous' : entry.source;
+                tag.textContent = entry.source === 'prev'
+                ? (entry.serverResolved ? 'first frame of #' + entry.ref.key : 'from previous')
+                : entry.source;
                 wrap.appendChild(tag);
             }
             el.appendChild(wrap);
@@ -1833,6 +1904,9 @@ class TabController {
             const allowInit   = this.name === 'video' || !schema || schema.initImage;
             const allowInpaint = this.name === 'video' || !schema || schema.inpaint;
             for (const entry of this.state.files) {
+                // serverResolved entries have no bytes — the server resolves
+                // them from prev_ref below.
+                if (entry.serverResolved) continue;
                 if (entry.role === 'init' && allowInit) fd.append(initField, entry.file, entry.file.name);
                 else if (entry.role === 'mask' && allowInpaint) fd.append('mask', entry.file, 'mask.png');
             }
@@ -2003,7 +2077,9 @@ class TabController {
         if (this.name === 'video') {
             if (j.i2v_job_output_path) {
                 blocks.push('<div style="margin-top:8px">Output:</div><video src="' + esc(j.i2v_job_output_path) + '" controls preload="metadata"></video>' +
-                            '<div class="small"><a href="' + esc(j.i2v_job_output_path) + '" download>Download</a></div>');
+                            '<div class="small"><a href="' + esc(j.i2v_job_output_path) + '" download>Download</a></div>' +
+                            '<div class="row-actions" style="margin-top:6px">' +
+                            '<button class="ghost tiny" data-act="savelib" data-index="0">Save to library</button></div>');
             }
         } else if (this.name === 'audio') {
             let outs = [];
@@ -2019,7 +2095,9 @@ class TabController {
                         '<div class="take"><div class="small">Take ' + (i + 1) +
                         (o.size_bytes ? ' &middot; ' + Math.round(o.size_bytes / 1024) + ' kB' : '') +
                         ' &middot; <a href="' + esc(o.path) + '" download>Download</a></div>' +
-                        '<audio src="' + esc(o.path) + '" controls preload="metadata"></audio></div>'
+                        '<audio src="' + esc(o.path) + '" controls preload="metadata"></audio>' +
+                        '<button class="ghost tiny" data-act="remix-out" data-index="' + i + '">Remix this take</button>' +
+                        '<button class="ghost tiny" data-act="savelib" data-index="' + i + '">Save to library</button></div>'
                     ).join('') + '</div>');
             }
         } else {
@@ -2027,15 +2105,33 @@ class TabController {
             let outs = [];
             try { outs = typeof outsRaw === 'string' ? JSON.parse(outsRaw) : (outsRaw || []); } catch (e) {}
             if (outs.length) {
+                // One remix button per image: with a batch of four, which one
+                // you want to push further is the whole question.
                 blocks.push('<div style="margin-top:8px">Outputs:</div><div class="image-results">' +
-                    outs.map(o => '<a href="' + esc(o.path) + '" target="_blank"><img src="' + esc(o.path) + '"></a>').join('') +
-                    '</div>');
+                    outs.map((o, i) =>
+                        '<div class="out-cell"><a href="' + esc(o.path) + '" target="_blank"><img src="' + esc(o.path) + '"></a>' +
+                        '<button class="ghost tiny" data-act="remix-out" data-index="' + i + '">Remix this' +
+                        (outs.length > 1 ? ' (' + (i + 1) + ')' : '') + '</button>' +
+                        '<button class="ghost tiny" data-act="savelib" data-index="' + i + '">Save to library</button></div>'
+                    ).join('') + '</div>');
             }
         }
+        const active   = status === 'pending' || status === 'running';
+        const hasOutput = !!this.jobOutputRef(j, 0);
+        const inputWord = this.name === 'audio' ? 'reference' : (this.name === 'video' ? 'start frame' : 'image');
         const actions = '<div class="row-actions" style="margin-top:10px">' +
+            // Remix: settings back in the form, seed cleared, prompt ready to
+            // edit. The second form also brings the result itself back as an
+            // input so the next take builds on this one.
+            (hasOutput ? '<button data-act="remix">Remix…</button>' : '') +
+            (hasOutput ? '<button class="ghost" data-act="remix-out">Remix from output</button>' : '') +
+            // Retry re-queues the job as it was; Reroll does the same with the
+            // seed dropped, which is the “give me another” button.
+            (!active && !hasOutput ? '<button class="ghost" data-act="retry">Retry</button>' : '') +
+            (!active && hasOutput  ? '<button class="ghost" data-act="reroll">Reroll</button>' : '') +
             '<button class="ghost" data-act="reuse">Copy settings to form</button>' +
             '<button class="ghost" data-act="refresh">Refresh</button>' +
-            ((status === 'pending' || status === 'running') ? '<button class="ghost" data-act="cancel">Cancel</button>' : '') +
+            (active ? '<button class="ghost" data-act="cancel">Cancel</button>' : '') +
             '<button class="danger" data-act="delete">Delete job</button></div>';
         blocks.push(actions);
         d.innerHTML = blocks.join('');
@@ -2044,6 +2140,22 @@ class TabController {
             const act = b.dataset.act;
             const k = Number(ref.row.dataset.key);
             if (act === 'reuse')   return this.reuseJob(j);
+            if (act === 'savelib') {
+                const srcKind = this.name === 'video' ? 'i2v' : this.name === 'audio' ? 't2a' : 't2i';
+                const p = String(j[this.colPrefix + '_prompt'] || '');
+                return SaveLib.open({
+                    source_kind: srcKind,
+                    job_key:     k,
+                    index:       Number(b.dataset.index || 0),
+                    // A prompt opening is a better starting label than nothing,
+                    // but it is meant to be typed over.
+                    suggested:   p.slice(0, 60),
+                });
+            }
+            if (act === 'remix')     return this.remixJob(j);
+            if (act === 'remix-out') return this.remixJob(j, { fromOutput: true, index: Number(b.dataset.index || 0) });
+            if (act === 'retry')   return this.jobAction('retry', k);
+            if (act === 'reroll')  return this.jobAction('retry', k, { reroll: true });
             if (act === 'refresh') return this.refreshJob(k, b);
             if (act === 'cancel')  return this.jobAction('cancel', k);
             if (act === 'delete') {
@@ -2077,7 +2189,7 @@ class TabController {
     // parameters is exactly what reproduces (or deliberately varies) a result.
     // Input images are not restored: they belong to the job, not the form. Use
     // "Use previous output…" to pull an earlier render back in as an input.
-    reuseJob(j) {
+    reuseJob(j, opts = {}) {
         const prov = this.state.providers.find(x => String(x.provider_key) === String(j.provider_key));
         if (prov) {
             this.state.selectedProviderKey = prov.provider_key;
@@ -2086,16 +2198,17 @@ class TabController {
             this.applyProviderSchema(true);   // that engine's defaults first…
         }
 
-        const promptCol = this.name === 'video' ? 'i2v_job_prompt'          : 't2i_job_prompt';
-        const negCol    = this.name === 'video' ? 'i2v_job_negative_prompt' : 't2i_job_negative_prompt';
-        const parCol    = this.name === 'video' ? 'i2v_job_params'          : 't2i_job_params';
+        // Column names follow the tab's own prefix — i2v_job / t2i_job / t2a_job.
+        this.elPrompt.value   = j[this.colPrefix + '_prompt'] || '';
+        this.elNegative.value = j[this.colPrefix + '_negative_prompt'] || '';
+        if (this.elLyrics) this.elLyrics.value = j[this.colPrefix + '_lyrics'] || '';
 
-        this.elPrompt.value   = j[promptCol] || '';
-        this.elNegative.value = j[negCol] || '';
-
-        let params = j[parCol];
+        let params = j[this.colPrefix + '_params'];
         if (typeof params === 'string') { try { params = JSON.parse(params); } catch (e) { params = null; } }
         if (!params || typeof params !== 'object' || Array.isArray(params)) params = {};
+        // A remix wants a different roll of the dice; an exact copy wants the
+        // seed that produced the original.
+        if (opts.reroll) { params = Object.assign({}, params); delete params.seed; }
 
         // …then the job's own values on top. Anything without a matching control
         // (an engine-only knob sent through Advanced JSON originally) goes back
@@ -2120,26 +2233,223 @@ class TabController {
         this.elAdvParams.value = Object.keys(leftover).length ? JSON.stringify(leftover, null, 2) : '';
         this.updateHints();
 
-        let msg = 'Job ' + j[this.keyField] + ' settings copied into the form';
+        let msg = 'Job ' + j[this.keyField] + (opts.label || ' settings copied into the form');
         if (!prov)          msg += ' — its service is unavailable, so the current one is kept';
         else if (blocked.length) msg += ' — ' + blocked.join(', ') + ' not accepted by this service';
+        if (opts.reroll)    msg += ' — seed cleared for a fresh roll';
         toast(msg + '.');
         const form = this.panel.querySelector('section');
         if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (opts.focusPrompt && this.elPrompt) this.elPrompt.focus();
+        return { prov: prov, blocked: blocked };
     }
-    async jobAction(action, key) {
+    // ── Remix ────────────────────────────────────────────────────────────
+    // The tuning loop: take a result you almost like, change a few words, and
+    // run it again. Settings come back exactly as they were except the seed,
+    // which is cleared so the new take actually differs. `fromOutput` also
+    // carries the result itself back in as an input — img2img on the Image
+    // tab, the start frame on Video, the style reference on Audio — which is
+    // how you nudge a specific picture rather than re-rolling the prompt.
+    async remixJob(j, opts = {}) {
+        const label = opts.fromOutput
+            ? ' loaded for remix, with its output as the input'
+            : ' loaded for remix — edit the prompt and generate';
+        this.reuseJob(j, { reroll: true, label: label, focusPrompt: !opts.fromOutput });
+        if (!opts.fromOutput) return;
+
+        const out = this.jobOutputRef(j, opts.index || 0);
+        if (!out) { toast('That job has no output to remix from.', 'err'); return; }
+
+        // The selected service has to accept an input at all — a text-to-image
+        // engine with no img2img path would silently drop it.
+        const sch = this.currentSchema();
+        const gate = this.name === 'image' ? 'initImage' : (this.name === 'audio' ? 'refAudio' : null);
+        if (gate && sch && !sch[gate]) {
+            // Dead end otherwise: name a service that WOULD take it, so the
+            // next click is obvious rather than a hunt through the cards.
+            const alt = this.state.providers.find(p => {
+                const s = p.param_schema || FALLBACK_PARAM_SCHEMA[p.model_id];
+                return p.online && p.provider_active && p.map_active && s && s[gate];
+            });
+            const prov = this.currentProvider();
+            const what = this.name === 'image' ? 'takes no starter image' : 'takes no reference clip';
+            toast('Settings loaded, but ' + (prov ? prov.label : 'that service') + ' ' + what +
+                  ', so its output was not attached' +
+                  (alt ? ' — switch to ' + alt.label + ' and use “Use previous output…” to carry it over.' : '.'), 'err');
+            return;
+        }
         try {
-            const body = JSON.stringify({ action, [this.keyField]: key });
+            await this.attachOutput(out, { replace: true });
+            if (this.elPrompt) this.elPrompt.focus();
+        } catch (e) {
+            toast('Could not attach the output: ' + e.message, 'err');
+        }
+    }
+
+    // Locate one output of a job as {kind, key, index, path}: the shape the
+    // server's prev_ref resolver and the picker both already speak.
+    jobOutputRef(j, index) {
+        const key = Number(j[this.keyField]);
+        if (this.name === 'video') {
+            const path = j.i2v_job_output_path;
+            return path ? { kind: 'video', key: key, index: 0, path: path } : null;
+        }
+        const col = this.name === 'audio' ? 't2a_job_outputs' : 't2i_job_outputs';
+        let outs = j[col];
+        if (typeof outs === 'string') { try { outs = JSON.parse(outs); } catch (e) { outs = []; } }
+        if (!Array.isArray(outs) || !outs.length) return null;
+        const i = Math.max(0, Math.min(outs.length - 1, index || 0));
+        const o = outs[i];
+        const path = o && (typeof o === 'string' ? o : o.path);
+        if (!path) return null;
+        return { kind: this.name === 'audio' ? 'audio' : 'image', key: key, index: i, path: path };
+    }
+
+    // Attach a previous output as this form's input. A video is carried by
+    // REFERENCE only: the server pulls its first frame with ffmpeg, so the
+    // browser never has to decode the MP4 (and never uploads it back).
+    async attachOutput(ref, opts = {}) {
+        if (ref.kind === 'video') {
+            // Only one video reference makes sense — the server resolves a
+            // single prev_ref — so it always replaces any earlier one.
+            this.state.files = this.state.files.filter(x => !(x.role === 'init' && (opts.replace || x.serverResolved)));
+            this.state.files.unshift({
+                file: null, role: 'init', source: 'prev', ref: ref,
+                serverResolved: true, previewPath: ref.path,
+            });
+            this.renderThumbs();
+            return;
+        }
+        const r = await fetch(ref.path);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const blob = await r.blob();
+        const ext = (ref.path.split('.').pop() || '').toLowerCase();
+        const filename = ref.kind === 'audio'
+            ? 'audio_' + ref.key + '_' + ref.index + '.' + (ext || 'wav')
+            : 'image_' + ref.key + '_' + ref.index + '.' + (ext || 'png');
+        const role = ref.kind === 'audio' ? 'reference' : 'init';
+        if (opts.replace) this.state.files = this.state.files.filter(x => x.role !== role);
+        this.addPrev({ kind: ref.kind, key: ref.key, index: ref.index }, blob, filename);
+    }
+
+    async jobAction(action, key, extra = {}) {
+        try {
+            const body = JSON.stringify(Object.assign({ action, [this.keyField]: key }, extra));
             const r = await fetch(this.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-            toast(action + ' ok');
+            if (action === 'retry') {
+                const nk = d[this.keyField];
+                toast((extra.reroll ? 'Reroll' : 'Retry') + ' of job ' + key + ' queued as job ' + nk +
+                      (d.queued ? ' — waiting for a free slot.' : '.'));
+            } else {
+                toast(action + ' ok');
+            }
             this.refreshJobs();
         } catch (e) {
-            toast(action + ' failed: ' + e.message, 'err');
+            toast((action === 'retry' ? (extra.reroll ? 'Reroll' : 'Retry') : action) + ' failed: ' + e.message, 'err');
         }
     }
 }
+
+// ── Character / asset library ─────────────────────────────────────────
+// Every engine's only lever for a consistent character is feeding the same
+// reference back in, and job files are deleted with their job. The library
+// owns durable copies under /u/ai-library/ so a reference can outlive the
+// render that produced it.
+const Library = {
+    api: '/api/admin-ai-library.php',
+    characters: [],
+    async assets(kinds) {
+        const lists = await Promise.all(kinds.map(async k => {
+            const r = await fetch(this.api + '?action=list&kind=' + encodeURIComponent(k));
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return (await r.json()).assets || [];
+        }));
+        return lists.flat();
+    },
+    async loadCharacters() {
+        const r = await fetch(this.api + '?action=list_characters');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        this.characters = (await r.json()).characters || [];
+        return this.characters;
+    },
+    async post(body) {
+        const r = await fetch(this.api, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        return d;
+    },
+    del(key) { return this.post({ action: 'delete', ai_asset_key: key }); },
+};
+
+// Save dialog for one finished output. Kept deliberately small: a label so the
+// asset is findable, an optional character to group it under, and notes.
+const SaveLib = {
+    ctx: null,
+    async open(ctx) {
+        this.ctx = ctx;                       // {source_kind, job_key, index, suggested}
+        $('savelib-label').value  = ctx.suggested || '';
+        $('savelib-notes').value  = '';
+        $('savelib-newchar').value = '';
+        $('savelib-newchar-wrap').classList.add('hidden');
+        $('savelib-status').textContent = '';
+        const sel = $('savelib-char');
+        sel.innerHTML = '<option value="">— none —</option><option value="__new">+ New character…</option>';
+        $('savelib-modal').classList.remove('hidden');
+        try {
+            const chars = await Library.loadCharacters();
+            sel.innerHTML = '<option value="">— none —</option>' +
+                chars.map(c => '<option value="' + c.ai_character_key + '">' +
+                    esc(c.ai_character_name) + ' (' + c.asset_count + ')</option>').join('') +
+                '<option value="__new">+ New character…</option>';
+        } catch (e) {
+            $('savelib-status').textContent = 'Characters unavailable: ' + e.message;
+        }
+    },
+    close() { $('savelib-modal').classList.add('hidden'); this.ctx = null; },
+    async go() {
+        if (!this.ctx) return;
+        const label = $('savelib-label').value.trim();
+        if (!label) { $('savelib-status').textContent = 'A label is required.'; return; }
+        const btn = document.querySelector('[data-act="savelib-go"]');
+        btn.disabled = true;
+        $('savelib-status').textContent = 'Saving…';
+        try {
+            let charKey = $('savelib-char').value;
+            // "+ New character…" creates the character first so the asset can
+            // be filed under it in the same action.
+            if (charKey === '__new') {
+                const name = $('savelib-newchar').value.trim();
+                if (!name) throw new Error('New character needs a name');
+                const c = await Library.post({ action: 'save_character', name });
+                charKey = c.ai_character_key;
+            }
+            const d = await Library.post({
+                action:        'save_from_job',
+                source_kind:   this.ctx.source_kind,
+                job_key:       this.ctx.job_key,
+                index:         this.ctx.index,
+                label:         label,
+                character_key: charKey || '',
+            });
+            const notes = $('savelib-notes').value.trim();
+            if (notes) {
+                await Library.post({ action: 'update', ai_asset_key: d.ai_asset_key, notes });
+            }
+            toast('Saved to library as "' + label + '".');
+            this.close();
+        } catch (e) {
+            $('savelib-status').textContent = 'Failed: ' + e.message;
+        } finally {
+            btn.disabled = false;
+        }
+    },
+};
 
 const Picker = {
     targetTab: null,
@@ -2154,18 +2464,49 @@ const Picker = {
             const url = tab.name === 'audio'
                 ? '/api/admin-ai-audio.php?action=list_recent_outputs&limit=24'
                 : '/api/admin-ai-image.php?action=list_recent_outputs&limit=24';
-            const r = await fetch(url);
+            // The library is the point of the picker, but it must not be able
+            // to break it — a library failure still leaves recent outputs.
+            const kinds = tab.name === 'audio' ? ['audio'] : ['image', 'video'];
+            const [r, lib] = await Promise.all([
+                fetch(url),
+                Library.assets(kinds).catch(() => null),
+            ]);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
-            this.render(d);
+            this.render(d, lib);
         } catch (e) {
             body.innerHTML = '<div class="empty">Failed: ' + esc(e.message) + '</div>';
         }
     },
     close() { $('picker-modal').classList.add('hidden'); this.targetTab = null; },
-    render(d) {
+    render(d, lib) {
         const body = $('picker-body');
         const blocks = [];
+
+        // Library first: these are the references someone deliberately kept,
+        // so they should be reachable without scrolling past today's renders.
+        if (lib === null) {
+            blocks.push('<div class="picker-section"><h4>Library</h4>' +
+                '<div class="lib-empty">Library unavailable right now.</div></div>');
+        } else if (lib.length) {
+            const byChar = new Map();
+            lib.forEach(a => {
+                const name = a.ai_character_name || '';
+                if (!byChar.has(name)) byChar.set(name, []);
+                byChar.get(name).push(a);
+            });
+            // Named characters first, ungrouped assets last.
+            const names = [...byChar.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
+            names.forEach(name => {
+                blocks.push('<div class="picker-section"><h4>' +
+                    (name ? 'Library — ' + esc(name) : 'Library — ungrouped') + '</h4><div class="picker-grid">' +
+                    byChar.get(name).map(a => this.libCell(a)).join('') + '</div></div>');
+            });
+        } else {
+            blocks.push('<div class="picker-section"><h4>Library</h4>' +
+                '<div class="lib-empty">Nothing saved yet. Open a finished job below and use ' +
+                '“Save to library” to keep a reference here.</div></div>');
+        }
         if ((d.audios || []).length) {
             blocks.push('<div class="picker-section"><h4>Recent takes</h4><div class="picker-grid">' +
                 d.audios.map(it => this.cell(it, 'audio')).join('') + '</div></div>');
@@ -2178,7 +2519,6 @@ const Picker = {
             blocks.push('<div class="picker-section"><h4>Recent videos (first frame is used)</h4><div class="picker-grid">' +
                 d.videos.map(it => this.cell(it, 'video')).join('') + '</div></div>');
         }
-        if (!blocks.length) blocks.push('<div class="empty">No previous outputs yet.</div>');
         body.innerHTML = blocks.join('');
         body.querySelectorAll('.picker-cell[data-key]').forEach(el => {
             el.addEventListener('click', (e) => {
@@ -2193,6 +2533,55 @@ const Picker = {
                 });
             });
         });
+        body.querySelectorAll('.picker-cell[data-lib-key]').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target.closest && e.target.closest('audio')) return;
+                if (e.target.dataset && e.target.dataset.act === 'lib-del') return;
+                this.pick({
+                    kind:   el.dataset.kind,
+                    libKey: Number(el.dataset.libKey),
+                    label:  el.dataset.label,
+                    path:   el.dataset.path,
+                });
+            });
+        });
+        body.querySelectorAll('[data-act="lib-del"]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const key = Number(btn.dataset.libKey);
+                if (!confirm('Remove "' + btn.dataset.label + '" from the library? The file is deleted.')) return;
+                try {
+                    await Library.del(key);
+                    toast('Removed from library.');
+                    this.open(this.targetTab);      // re-render with it gone
+                } catch (err) {
+                    toast('Remove failed: ' + err.message, 'err');
+                }
+            });
+        });
+    },
+    // A library cell leads with its label — that is what makes it findable
+    // months later, unlike a recent-output cell which leads with its job id.
+    libCell(a) {
+        const path = esc(a.ai_asset_path);
+        const kind = a.ai_asset_kind;
+        const label = esc(a.ai_asset_label || '(untitled)');
+        const thumb = kind === 'video'
+            ? '<video class="pthumb" src="' + path + '" preload="metadata" muted></video>'
+            : kind === 'audio'
+            ? '<div class="pthumb" style="display:flex;align-items:center;justify-content:center;height:auto;padding:10px;background:#f4f5fb"><audio src="' + path + '" controls preload="none" style="width:100%"></audio></div>'
+            : '<img class="pthumb" src="' + path + '" alt="">';
+        return '<div class="picker-cell lib" data-kind="' + kind + '" data-lib-key="' + a.ai_asset_key +
+            '" data-label="' + label + '" data-path="' + path + '">' +
+            thumb +
+            '<button class="pdel" data-act="lib-del" data-lib-key="' + a.ai_asset_key +
+            '" data-label="' + label + '" title="Remove from library">&times;</button>' +
+            '<div class="pinfo"><span class="plabel">' + label + '</span>' +
+            '<span class="ptag">' + kind + '</span>' +
+            esc(a.ai_asset_model_id || '') +
+            (a.ai_asset_seed !== null && a.ai_asset_seed !== undefined
+                ? ' &middot; seed ' + esc(String(a.ai_asset_seed)) : '') +
+            '</div></div>';
     },
     cell(it, kind) {
         const path = esc(it.path);
@@ -2210,17 +2599,58 @@ const Picker = {
             esc((it.prompt || '').slice(0, 70)) + '</div></div>';
     },
     async pick(ref) {
+        // Library assets take the other path: attachOutput's video branch
+        // defers to the server's prev_ref resolver, and a library asset has no
+        // job row for that to resolve against.
+        if (ref.libKey) return this.pickLibrary(ref);
         try {
-            const r = await fetch(ref.path);
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const blob = await r.blob();
-            const ext = (ref.path.split('.').pop() || '').toLowerCase();
-            const filename = ref.kind === 'audio'
-                ? ref.kind + '_' + ref.key + '_' + ref.index + '.' + (ext || 'wav')
-                : ref.kind + '_' + ref.key + (ref.kind === 'image' ? ('_' + ref.index + '.' + (ext || 'png')) : '.first.png');
-            const tab = this.targetTab;
-            tab.addPrev({ kind: ref.kind, key: ref.key, index: ref.index }, blob, filename);
+            // attachOutput knows the difference between something the browser
+            // can hand over as bytes (image, audio) and a video, which the
+            // server turns into a first frame from the reference alone.
+            await this.targetTab.attachOutput(ref);
             toast('Added ' + ref.kind + ' #' + ref.key + ' as input.');
+            this.close();
+        } catch (e) {
+            toast('Pick failed: ' + e.message, 'err');
+        }
+    },
+    // A library video used as a start frame has to become a real image here,
+    // client-side, for the same reason.
+    firstFrameBlob(path) {
+        return new Promise((resolve, reject) => {
+            const v = document.createElement('video');
+            v.muted = true; v.crossOrigin = 'anonymous'; v.preload = 'auto';
+            const fail = () => reject(new Error('could not read first frame'));
+            v.onerror = fail;
+            v.onloadeddata = () => {
+                try {
+                    const c = document.createElement('canvas');
+                    c.width = v.videoWidth; c.height = v.videoHeight;
+                    c.getContext('2d').drawImage(v, 0, 0);
+                    c.toBlob(b => b ? resolve(b) : fail(), 'image/png');
+                } catch (e) { reject(e); }
+            };
+            v.src = path;
+            v.currentTime = 0;
+        });
+    },
+    async pickLibrary(ref) {
+        try {
+            const tab = this.targetTab;
+            let blob, filename;
+            const ext = (ref.path.split('.').pop() || '').toLowerCase();
+            if (ref.kind === 'video' && tab.name !== 'audio') {
+                blob = await this.firstFrameBlob(ref.path);
+                filename = 'library_' + ref.libKey + '.png';
+            } else {
+                const r = await fetch(ref.path);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                blob = await r.blob();
+                filename = 'library_' + ref.libKey + '.' +
+                    (ext || (ref.kind === 'audio' ? 'wav' : 'png'));
+            }
+            tab.addLibrary({ ai_asset_key: ref.libKey, label: ref.label }, blob, filename);
+            toast('Added “' + ref.label + '” as input.');
             this.close();
         } catch (e) {
             toast('Pick failed: ' + e.message, 'err');
@@ -2321,6 +2751,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
     document.querySelectorAll('[data-act="picker-close"], #picker-modal').forEach(el => {
         el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'picker-close') Picker.close(); });
+    });
+    document.querySelectorAll('[data-act="savelib-close"], #savelib-modal').forEach(el => {
+        el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'savelib-close') SaveLib.close(); });
+    });
+    document.querySelector('[data-act="savelib-go"]').addEventListener('click', () => SaveLib.go());
+    $('savelib-char').addEventListener('change', e => {
+        $('savelib-newchar-wrap').classList.toggle('hidden', e.target.value !== '__new');
+        if (e.target.value === '__new') $('savelib-newchar').focus();
     });
     document.querySelectorAll('[data-act="mask-close"], #mask-modal').forEach(el => {
         el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'mask-close') MaskPainter.close(); });

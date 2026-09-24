@@ -345,4 +345,85 @@ if ($method === 'POST' && $isMultipart) {
     jsonResponse(['t2i_job_key' => $jobKey, 'queued' => $queued]);
 }
 
+// ── POST retry ─────────────────────────────────────────────────────────
+// Re-queue a finished job with its own settings. `reroll` drops the pinned
+// seed so the same prompt produces a different take; without it the job is
+// reproduced exactly. The source row is left untouched — a retry is a NEW
+// job, so the history of what failed (and why) survives.
+if ($method === 'POST' && !$isMultipart && $action === 'retry') {
+    $jobKey = (int)($data['t2i_job_key'] ?? 0);
+    $reroll = !empty($data['reroll']);
+    if (!$jobKey) errorResponse('t2i_job_key required');
+
+    $sStmt = $db->prepare("SELECT * FROM yy_t2i_job WHERE t2i_job_key=?");
+    $sStmt->execute([$jobKey]);
+    $src = $sStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$src) errorResponse('not found', 404);
+    $srcStatus = (string)$src['t2i_job_status'];
+    if ($srcStatus === 'pending' || $srcStatus === 'running') {
+        errorResponse("job #$jobKey is still $srcStatus — cancel it first", 409);
+    }
+
+    $params = is_string($src['t2i_job_params']) ? (json_decode($src['t2i_job_params'], true) ?: []) : ($src['t2i_job_params'] ?: []);
+    if (!is_array($params)) $params = [];
+    if ($reroll) unset($params['seed']);
+
+    $ins = $db->prepare("
+      INSERT INTO yy_t2i_job
+        (provider_key, t2i_job_model_id, t2i_job_prompt, t2i_job_negative_prompt, t2i_job_params, t2i_job_status, t2i_job_message)
+      VALUES (?, ?, ?, ?, ?::jsonb, 'pending', ?)
+      RETURNING t2i_job_key
+    ");
+    $ins->execute([
+        (int)$src['provider_key'],
+        $src['t2i_job_model_id'],
+        $src['t2i_job_prompt'],
+        $src['t2i_job_negative_prompt'],
+        json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ($reroll ? 'Reroll' : 'Retry') . ' of job #' . $jobKey,
+    ]);
+    $newKey = (int)$ins->fetchColumn();
+
+    // Copy the operator's own inputs into the new job's directory, so deleting
+    // either job leaves the other intact.
+    $srcInputs = is_string($src['t2i_job_input_images']) ? (json_decode($src['t2i_job_input_images'], true) ?: []) : ($src['t2i_job_input_images'] ?: []);
+    $fsBase  = is_dir(dirname(__DIR__)) ? dirname(__DIR__) : '/opt/yada-www/public';
+    $newDir  = $fsBase . '/u/t2i-uploads/' . $newKey;
+    $newInputs = [];
+    foreach ($srcInputs as $in) {
+        if (!empty($in['generated'])) continue;
+        $rel = (string)($in['path'] ?? '');
+        if ($rel === '') continue;
+        $absSrc = $fsBase . $rel;
+        if (!is_file($absSrc)) continue;
+        if (!is_dir($newDir) && !@mkdir($newDir, 0775, true) && !is_dir($newDir)) break;
+        $base = basename($absSrc);
+        if (!@copy($absSrc, $newDir . '/' . $base)) continue;
+        $in['path'] = '/u/t2i-uploads/' . $newKey . '/' . $base;
+        $newInputs[] = $in;
+    }
+    $db->prepare("UPDATE yy_t2i_job SET t2i_job_input_images = ?::jsonb WHERE t2i_job_key = ?")
+       ->execute([json_encode($newInputs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $newKey]);
+
+    $maxConcurrent = 1;
+    $running = (int)$db->query("SELECT COUNT(*) FROM yy_t2i_job WHERE t2i_job_status='running'")->fetchColumn();
+    $queued  = false;
+    $workerScript = __DIR__ . '/admin-ai-image-build-worker.php';
+    if ($running < $maxConcurrent && file_exists($workerScript)) {
+        $logFile = sys_get_temp_dir() . '/ai_image_build_' . $newKey . '.log';
+        $pid = spawnCappedWorker($workerScript, [(string)$newKey], $logFile, [
+            'cpu_secs' => 7200, 'mem_mb' => 1500, 'nice' => 10,
+        ]);
+        if ($pid > 0) {
+            $db->prepare("UPDATE yy_t2i_job SET t2i_job_worker_pid=?, t2i_job_started_dtime=NOW() WHERE t2i_job_key=?")
+               ->execute([$pid, $newKey]);
+        }
+    } else {
+        $queued = true;
+        $db->prepare("UPDATE yy_t2i_job SET t2i_job_message=? WHERE t2i_job_key=?")
+           ->execute(["Queued — waiting for an open slot (limit: $maxConcurrent)", $newKey]);
+    }
+    jsonResponse(['t2i_job_key' => $newKey, 'from_job_key' => $jobKey, 'queued' => $queued, 'reroll' => $reroll]);
+}
+
 errorResponse('unknown action', 400);

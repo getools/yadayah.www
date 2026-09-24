@@ -16,6 +16,10 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/spawn-helpers.php';
 
+// How many times a job may be requeued purely because the GPU was busy.
+// Each attempt waits out the engine's full lease window (~30 min).
+const T2A_MAX_GPU_ATTEMPTS = 3;
+
 $jobKey = (int)($argv[1] ?? 0);
 if (!$jobKey) { fwrite(STDERR, "t2a_job_key required\n"); exit(2); }
 
@@ -163,7 +167,30 @@ while (time() < $deadline) {
     $j = json_decode((string)$resp, true) ?: [];
     $st = (string)($j['status'] ?? '');
     if ($st === 'failed') {
-        bailJob($db, $jobKey, (string)($j['error'] ?? 'engine reported failed'));
+        $engineErr = (string)($j['error'] ?? 'engine reported failed');
+        // GPU contention is transient — the engine waited out its whole lease
+        // window behind someone else's render. Put the job back in the queue
+        // instead of making an operator notice and resubmit it. Bounded, so a
+        // genuinely wedged GPU still comes to rest in 'failed'.
+        if (strpos($engineErr, 'GPU_BUSY') !== false) {
+            $attempts = (int)$job['t2a_job_attempts'] + 1;
+            if ($attempts < T2A_MAX_GPU_ATTEMPTS) {
+                updateJob($db, $jobKey, [
+                    't2a_job_attempts'   => $attempts,
+                    't2a_job_status'     => 'pending',
+                    't2a_job_worker_pid' => null,
+                    't2a_job_progress'   => 0,
+                    't2a_job_message'    => sprintf(
+                        'Waiting for a free GPU — requeued (attempt %d of %d)',
+                        $attempts, T2A_MAX_GPU_ATTEMPTS),
+                ]);
+                fwrite(STDERR, "GPU busy; requeued as attempt $attempts\n");
+                exit(0);   // shutdown handler promotes the next pending job
+            }
+            bailJob($db, $jobKey, "GPU stayed busy across "
+                . T2A_MAX_GPU_ATTEMPTS . " attempts: $engineErr");
+        }
+        bailJob($db, $jobKey, $engineErr);
     }
     if ($st === 'complete') { $finalStatus = $j; break; }
     if ($st === 'running' || $st === 'pending') {

@@ -11,14 +11,15 @@
  *   GET   ?action=status&i2v_job_key=N
  *     → one job row
  *
- *   POST  multipart: provider_key, prompt, negative_prompt?, params(json), images[]?
+ *   POST  multipart: provider_key, prompt, negative_prompt?, params(json), images[]?,
+ *                     prev_ref? JSON {kind:'image'|'video', key:N, index?:N}
  *     → {i2v_job_key, queued}
  *     Saves uploaded images under public/u/i2v-uploads/<job_key>/ and spawns the
  *     CLI build-worker. Concurrency cap = 1 (GPU is single-job; mirrors TTS).
  *     images[] is OPTIONAL — with none the engine runs text-to-video from the
  *     prompt alone (services that advertise t2v; the engine rejects the rest).
  *
- *   POST  application/json {action:'cancel'|'delete', i2v_job_key:N}
+ *   POST  application/json {action:'cancel'|'delete'|'retry', i2v_job_key:N, reroll?:bool}
  *     cancel — mark pending/running as cancelled (worker re-checks each poll).
  *     delete — remove the row + uploads dir + output file.
  */
@@ -188,6 +189,7 @@ if ($method === 'POST' && $isMultipart) {
     $prompt         = trim((string)($_POST['prompt'] ?? ''));
     $negativePrompt = trim((string)($_POST['negative_prompt'] ?? ''));
     $paramsRaw      = (string)($_POST['params'] ?? '{}');
+    $prevRefRaw     = trim((string)($_POST['prev_ref'] ?? ''));
     if (!$providerKey || $prompt === '') errorResponse('provider_key and prompt required');
     $params = json_decode($paramsRaw, true);
     if (!is_array($params)) $params = [];
@@ -239,12 +241,70 @@ if ($method === 'POST' && $isMultipart) {
     }
     $n     = count($tmps);
 
-    if ($n > 0 && !is_dir($jobDir) && !@mkdir($jobDir, 0775, true) && !is_dir($jobDir)) {
-        $db->prepare("UPDATE yy_i2v_job SET i2v_job_status='failed', i2v_job_error='cannot create uploads dir' WHERE i2v_job_key=?")->execute([$jobKey]);
-        errorResponse('cannot create uploads dir');
-    }
+    $ensureDir = function () use ($jobDir, $db, $jobKey) {
+        if (!is_dir($jobDir) && !@mkdir($jobDir, 0775, true) && !is_dir($jobDir)) {
+            $db->prepare("UPDATE yy_i2v_job SET i2v_job_status='failed', i2v_job_error='cannot create uploads dir' WHERE i2v_job_key=?")->execute([$jobKey]);
+            errorResponse('cannot create uploads dir');
+        }
+    };
+    if ($n > 0) $ensureDir();
 
     $imageRows = [];
+
+    // Resolve prev_ref — a previously generated image, or a previous video
+    // whose FIRST FRAME becomes this job's start frame. The client sends the
+    // reference rather than re-uploading bytes, so a video can be carried
+    // forward without the browser having to decode it.  yadayah:vidprevref-v1
+    if ($prevRefRaw !== '') {
+        $ref = json_decode($prevRefRaw, true);
+        if (is_array($ref) && !empty($ref['kind']) && !empty($ref['key'])) {
+            $refPath = null;
+            if ($ref['kind'] === 'image') {
+                $st = $db->prepare("SELECT t2i_job_outputs FROM yy_t2i_job WHERE t2i_job_key=?");
+                $st->execute([(int)$ref['key']]);
+                $outsRaw = $st->fetchColumn();
+                $outs = is_string($outsRaw) ? (json_decode($outsRaw, true) ?: []) : ($outsRaw ?: []);
+                $sel  = $outs[(int)($ref['index'] ?? 0)] ?? null;
+                if ($sel) $refPath = is_array($sel) ? ($sel['path'] ?? null) : (string)$sel;
+            } elseif ($ref['kind'] === 'video') {
+                $st = $db->prepare("SELECT i2v_job_output_path FROM yy_i2v_job WHERE i2v_job_key=?");
+                $st->execute([(int)$ref['key']]);
+                $refPath = $st->fetchColumn();
+            }
+            if ($refPath) {
+                $absSrc = is_file(dirname(__DIR__) . $refPath)
+                    ? dirname(__DIR__) . $refPath
+                    : '/opt/yada-www/public' . $refPath;
+                if (is_file($absSrc)) {
+                    $ext = strtolower(pathinfo($absSrc, PATHINFO_EXTENSION));
+                    if (in_array($ext, ['png','jpg','jpeg','webp'], true)) {
+                        $ensureDir();
+                        $dest = $jobDir . '/frame_00.' . $ext;
+                        if (@copy($absSrc, $dest)) {
+                            $imageRows[] = [
+                                'path' => '/u/i2v-uploads/' . $jobKey . '/' . basename($dest),
+                                'role' => 'first', 'source' => 'prev_ref', 'ref' => $ref,
+                                'size_bytes' => (int)(filesize($dest) ?: 0),
+                            ];
+                        }
+                    } elseif ($ext === 'mp4') {
+                        $ensureDir();
+                        $dest = $jobDir . '/frame_00.png';
+                        @exec('ffmpeg -y -i ' . escapeshellarg($absSrc) . ' -frames:v 1 ' . escapeshellarg($dest) . ' 2>/dev/null');
+                        if (is_file($dest)) {
+                            $imageRows[] = [
+                                'path' => '/u/i2v-uploads/' . $jobKey . '/frame_00.png',
+                                'role' => 'first', 'source' => 'prev_ref_video', 'ref' => $ref,
+                                'size_bytes' => (int)(filesize($dest) ?: 0),
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    $offset = count($imageRows);   // a resolved prev_ref already took frame_00
     foreach ($tmps as $i => $tmp) {
         if ($errs[$i] !== UPLOAD_ERR_OK) continue;
         $orig = (string)($names[$i] ?? "image_$i");
@@ -254,18 +314,23 @@ if ($method === 'POST' && $isMultipart) {
                ->execute(["unsupported image extension '$ext'", $jobKey]);
             errorResponse("unsupported image extension '$ext'");
         }
-        $dest = sprintf('%s/frame_%02d.%s', $jobDir, $i, $ext);
+        $dest = sprintf('%s/frame_%02d.%s', $jobDir, $i + $offset, $ext);
         if (!@move_uploaded_file($tmp, $dest)) {
             $db->prepare("UPDATE yy_i2v_job SET i2v_job_status='failed', i2v_job_error='upload save failed' WHERE i2v_job_key=?")->execute([$jobKey]);
             errorResponse('upload save failed');
         }
         $imageRows[] = [
             'path' => '/u/i2v-uploads/' . $jobKey . '/' . basename($dest),
-            'role' => ($i === 0)               ? 'first'
-                    : (($i === $n - 1 && $n > 1) ? 'last' : 'frame'),
+            'role' => 'frame',            // real roles assigned below
             'size_bytes' => (int)$sizes[$i],
         ];
     }
+    // First is the start frame, last is the end frame (first/last-frame mode).
+    $total = count($imageRows);
+    foreach ($imageRows as $k => &$rowRef) {
+        $rowRef['role'] = $k === 0 ? 'first' : (($k === $total - 1 && $total > 1) ? 'last' : 'frame');
+    }
+    unset($rowRef);
     if (!$imageRows && $n > 0) {
         // Files were sent but none survived — that IS an error, unlike the
         // deliberate no-image (text-to-video) case.
@@ -295,6 +360,91 @@ if ($method === 'POST' && $isMultipart) {
            ->execute(["Queued — waiting for an open slot (limit: $maxConcurrent)", $jobKey]);
     }
     jsonResponse(['i2v_job_key' => $jobKey, 'queued' => $queued]);
+}
+
+// ── POST retry ─────────────────────────────────────────────────────────
+// Re-queue a finished job with its own settings. `reroll` drops the pinned
+// seed so the same prompt produces a different take; without it the job is
+// reproduced exactly. The source row is left untouched — a retry is a NEW
+// job, so the history of what failed (and what it failed with) survives.
+if ($method === 'POST' && !$isMultipart && $action === 'retry') {
+    $jobKey = (int)($data['i2v_job_key'] ?? 0);
+    $reroll = !empty($data['reroll']);
+    if (!$jobKey) errorResponse('i2v_job_key required');
+
+    $sStmt = $db->prepare("SELECT * FROM yy_i2v_job WHERE i2v_job_key=?");
+    $sStmt->execute([$jobKey]);
+    $src = $sStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$src) errorResponse('not found', 404);
+    $srcStatus = (string)$src['i2v_job_status'];
+    if ($srcStatus === 'pending' || $srcStatus === 'running') {
+        errorResponse("job #$jobKey is still $srcStatus — cancel it first", 409);
+    }
+
+    $params = is_string($src['i2v_job_params']) ? (json_decode($src['i2v_job_params'], true) ?: []) : ($src['i2v_job_params'] ?: []);
+    if (!is_array($params)) $params = [];
+    if ($reroll) unset($params['seed']);
+
+    $ins = $db->prepare("
+      INSERT INTO yy_i2v_job
+        (provider_key, i2v_job_model_id, i2v_job_prompt, i2v_job_negative_prompt, i2v_job_params, i2v_job_status, i2v_job_message)
+      VALUES (?, ?, ?, ?, ?::jsonb, 'pending', ?)
+      RETURNING i2v_job_key
+    ");
+    $ins->execute([
+        (int)$src['provider_key'],
+        $src['i2v_job_model_id'],
+        $src['i2v_job_prompt'],
+        $src['i2v_job_negative_prompt'],
+        json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ($reroll ? 'Reroll' : 'Retry') . ' of job #' . $jobKey,
+    ]);
+    $newKey = (int)$ins->fetchColumn();
+
+    // Copy the inputs the operator supplied. An auto-generated start frame is
+    // deliberately NOT copied: it is a product of the prompt, so the retry
+    // re-renders it (and a failure in that stage gets a genuine second try).
+    $srcImages = is_string($src['i2v_job_input_images']) ? (json_decode($src['i2v_job_input_images'], true) ?: []) : ($src['i2v_job_input_images'] ?: []);
+    $hostUploadsBase = '/opt/yada-www/public/u/i2v-uploads/';
+    $contUploadsBase = dirname(__DIR__) . '/u/i2v-uploads/';
+    $uploadsBase     = is_dir(dirname(__DIR__)) ? $contUploadsBase : $hostUploadsBase;
+    $fsBase          = is_dir(dirname(__DIR__)) ? dirname(__DIR__) : '/opt/yada-www/public';
+    $newDir          = $uploadsBase . $newKey;
+    $newImages = [];
+    foreach ($srcImages as $img) {
+        if (!empty($img['generated'])) continue;
+        $rel = (string)($img['path'] ?? '');
+        if ($rel === '') continue;
+        $absSrc = $fsBase . $rel;
+        if (!is_file($absSrc)) continue;
+        if (!is_dir($newDir) && !@mkdir($newDir, 0775, true) && !is_dir($newDir)) break;
+        $base = basename($absSrc);
+        if (!@copy($absSrc, $newDir . '/' . $base)) continue;
+        $img['path'] = '/u/i2v-uploads/' . $newKey . '/' . $base;
+        $newImages[] = $img;
+    }
+    $db->prepare("UPDATE yy_i2v_job SET i2v_job_input_images = ?::jsonb WHERE i2v_job_key = ?")
+       ->execute([json_encode($newImages, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $newKey]);
+
+    $maxConcurrent = 1;
+    $running = (int)$db->query("SELECT COUNT(*) FROM yy_i2v_job WHERE i2v_job_status='running'")->fetchColumn();
+    $queued  = false;
+    $workerScript = __DIR__ . '/admin-ai-video-build-worker.php';
+    if ($running < $maxConcurrent && file_exists($workerScript)) {
+        $logFile = sys_get_temp_dir() . '/ai_video_build_' . $newKey . '.log';
+        $pid = spawnCappedWorker($workerScript, [(string)$newKey], $logFile, [
+            'cpu_secs' => 7200, 'mem_mb' => 1500, 'nice' => 10,
+        ]);
+        if ($pid > 0) {
+            $db->prepare("UPDATE yy_i2v_job SET i2v_job_worker_pid=?, i2v_job_started_dtime=NOW() WHERE i2v_job_key=?")
+               ->execute([$pid, $newKey]);
+        }
+    } else {
+        $queued = true;
+        $db->prepare("UPDATE yy_i2v_job SET i2v_job_message=? WHERE i2v_job_key=?")
+           ->execute(["Queued — waiting for an open slot (limit: $maxConcurrent)", $newKey]);
+    }
+    jsonResponse(['i2v_job_key' => $newKey, 'from_job_key' => $jobKey, 'queued' => $queued, 'reroll' => $reroll]);
 }
 
 errorResponse('unknown action', 400);
