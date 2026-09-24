@@ -4,8 +4,13 @@
  * No auth — everything here is already public on /books.
  *
  *   GET → { series:  [ { series_key, series_label, series_sort } ],
- *           volumes: [ { series_key, volume_key, sort, alt, read_url,
+ *           volumes: [ { series_key, volume_key, sort, alt, read_url, cover_url,
  *                        img, asin, pdf_url, docx_url, audio_url, cls } ] }
+ *
+ * read_url, pdf_url, docx_url and audio_url are each null when that edition
+ * has not been produced yet, so the card simply omits the icon instead of
+ * offering a link that 404s. cover_url is where the cover art itself points:
+ * the flipbook, else the PDF, else the Word file, else null.
  *
  * Two flags decide what the Books page shows, and both are editable in admin:
  *   yy_series.series_books_display_flag — whether the series gets a section
@@ -36,6 +41,25 @@ const BOOKS_OVERRIDES = [
 /** '/var/www/html' — where the public tree is mounted, for is_file() checks. */
 function booksDocRoot(): string {
     return rtrim($_SERVER['DOCUMENT_ROOT'] ?: dirname(__DIR__) . '/public', '/');
+}
+
+/**
+ * Flipbook, PDF and Word file are each produced by a different stage of the
+ * book pipeline, so a volume can have any subset of them — a book whose
+ * flipbook has not been built yet, or one renamed after it was built, leaving
+ * the old directory behind under the old code. Return the web path only when
+ * the file is really there; null tells the card to drop that icon.
+ *
+ * The flipbook is a whole directory published by an atomic mv of its staging
+ * copy (migrate_flipbook.sh), and index.php is what actually serves it, so
+ * that file existing means a finished build and nothing half-written.
+ */
+function booksFileUrl(string $web): ?string {
+    return is_file(booksDocRoot() . $web) ? $web : null;
+}
+
+function booksHasFlipbook(string $code): bool {
+    return booksFileUrl('/' . $code . '/index.php') !== null;
 }
 
 /**
@@ -109,22 +133,36 @@ foreach ($rows as $r) {
     $img = $ov['img'] ?? booksCoverUrl($token, $r['volume_img_front_3d'], $r['volume_img_front_2d']);
     if ($img === null) continue;                            // no cover → no card, rather than a broken image
 
+    // Which editions this book actually has. The override's read_url is an
+    // off-site edition that is always there, but the audio icon still needs a
+    // LOCAL flipbook, so the two are tracked separately.
+    $hasFlipbook = booksHasFlipbook($code);
+    $readUrl     = $ov['read_url'] ?? ($hasFlipbook ? '/' . $code . '/' : null);
+    $pdfUrl      = booksFileUrl('/pdf/' . $code . '.pdf')            ? 'https://yadayah.com/pdf/' . $code . '.pdf' : null;
+    $docxUrl     = booksFileUrl('/u/books-word/' . $code . '.docx');
+
     $volumes[] = [
         'series_key' => (int)$r['series_key'],
         'volume_key' => (int)$r['volume_key'],
         'sort'       => (int)$r['volume_sort'],
         'alt'        => booksAltText((string)$r['volume_label']),
-        'read_url'   => $ov['read_url'] ?? '/' . $code . '/',
+        'read_url'   => $readUrl,
+        // Where the cover art links. The flipbook is the book as it is meant
+        // to be read, so it wins; without one the PDF is the next-best whole
+        // book, then the Word file. A volume with none of the three gets a
+        // cover with no link at all rather than one that goes nowhere.
+        'cover_url'  => $readUrl ?? $pdfUrl ?? $docxUrl,
         'img'        => $img,
         'asin'       => trim((string)($r['volume_amazon_asin'] ?? '')),
-        'pdf_url'    => 'https://yadayah.com/pdf/' . $code . '.pdf',
-        'docx_url'   => '/u/books-word/' . $code . '.docx',
+        'pdf_url'    => $pdfUrl,
+        'docx_url'   => $docxUrl,
         // Audio book: the flipbook opened with #auto=1, which turns to the
         // first narrated page and starts playing (/js/flipbook-tts.js).
         // Always the LOCAL flipbook even where read_url is overridden to an
         // off-site edition — the narration only exists here. Null when the
-        // volume has no live audio, so the card just omits the icon.
-        'audio_url'  => isset($audioVolumes[(int)$r['volume_key']])
+        // volume has no live audio or no flipbook to play it in, so the card
+        // just omits the icon.
+        'audio_url'  => ($hasFlipbook && isset($audioVolumes[(int)$r['volume_key']]))
                             ? '/' . $code . '/#auto=1'
                             : null,
         'cls'        => $ov['cls'] ?? '',

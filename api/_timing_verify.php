@@ -24,7 +24,8 @@ require_once __DIR__ . '/gpu-client.php';
 $items = []; $model = ''; $clips = 0; $clipSecs = 6.0; $lead = 1.0; $csv = '';
 $engine = '/stt-whisperx/transcribe'; $seed = 1234;
 foreach (array_slice($argv, 1) as $a) {
-    if (strncmp($a, '--list=', 7) === 0) { foreach (preg_split('/\s+/', (string)@file_get_contents(substr($a, 7))) as $t) if ($t !== '') $items[] = (int)$t; }
+    if ($a === '--stdin') { foreach (preg_split('/\s+/', (string)stream_get_contents(STDIN)) as $t) if ($t !== '') $items[] = (int)$t; }
+    elseif (strncmp($a, '--list=', 7) === 0) { foreach (preg_split('/\s+/', (string)@file_get_contents(substr($a, 7))) as $t) if ($t !== '') $items[] = (int)$t; }
     elseif (strncmp($a, '--model=', 8) === 0) $model = substr($a, 8);
     elseif (strncmp($a, '--clips=', 8) === 0) $clips = (int)substr($a, 8);
     elseif (strncmp($a, '--clip-secs=', 12) === 0) $clipSecs = (float)substr($a, 12);
