@@ -308,9 +308,23 @@ try {
         ORDER BY n_dead_tup DESC LIMIT 5
     ")->fetchAll();
     foreach ($deadRows as $t) {
+        $vacuumed = false;
+        $vacuumErr = null;
+        try {
+            // VACUUM cannot run inside a transaction; PDO autocommit mode handles this fine.
+            // relname comes from pg_stat_user_tables (system catalog) — safe to quote directly.
+            $db->exec("VACUUM ANALYZE \"" . str_replace('"', '""', $t['relname']) . "\"");
+            $vacuumed = true;
+        } catch (Throwable $ve) {
+            $vacuumErr = $ve->getMessage();
+        }
         $dbIssues[] = [
-            'message' => "Table {$t['relname']} has {$t['n_dead_tup']} dead rows — consider VACUUM",
+            'message'  => "Table {$t['relname']} has {$t['n_dead_tup']} dead rows — consider VACUUM",
             'severity' => 'warning',
+            'action'   => $vacuumed
+                ? "Auto-ran VACUUM ANALYZE {$t['relname']}"
+                : "VACUUM ANALYZE failed: $vacuumErr",
+            'resolved' => $vacuumed,
         ];
     }
 } catch (Throwable $e) {}
