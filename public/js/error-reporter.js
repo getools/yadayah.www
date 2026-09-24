@@ -71,7 +71,12 @@
     // navigated away. Originates entirely inside extension content scripts,
     // never in yadayah.com code.
     /Invalid call to runtime\.sendMessage\(\)/i,
-    /Tab not found/i
+    /Tab not found/i,
+    // Amazon Silk browser (old Fire tablets) and Chrome New Tab Page extensions
+    // reference the browser-built-in `mostVisited` API, which is only available
+    // on chrome://newtab or extension pages. When injected into a regular page
+    // it throws ReferenceError at <anonymous>:1:1. Not in yadayah.com code.
+    /mostVisited is not defined/i
   ];
 
   // Files whose errors we should not report (third-party bundles)

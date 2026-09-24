@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790056803">
+    <meta name="page-version" content="1790229601">
     <meta charset="UTF-8">
     <title>AI — Yada Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -143,6 +143,16 @@
         .mask-toolbar input[type=range] { width:120px; }
         .image-results { display:flex; flex-wrap:wrap; gap:6px; }
         .image-results img { max-width:200px; max-height:200px; border:1px solid var(--line); border-radius:4px; }
+        /* Audio has no thumbnail to show, so a reference clip is represented by
+           a name + inline player card rather than the .thumb image tile. */
+        .audio-chip { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fcfcfc; width:250px; }
+        .audio-chip .aname { font-size:0.76rem; color:#444; font-weight:600; display:flex; justify-content:space-between; gap:6px; align-items:center; }
+        .audio-chip .aname button { background:#0008; color:#fff; border:none; width:18px; height:18px; border-radius:50%; cursor:pointer; padding:0; font-size:0.7rem; line-height:1; flex:0 0 auto; }
+        .audio-chip audio { width:100%; margin-top:6px; }
+        .audio-chip .source-tag { position:static; background:none; color:var(--muted); font-size:0.68rem; padding:2px 0 0; text-align:left; }
+        .audio-results { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+        .audio-results .take { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; max-width:520px; }
+        .audio-results .take audio { width:100%; }
     </style>
 </head>
 <body>
@@ -163,6 +173,7 @@
     <div class="tabs">
         <button class="tab active" data-tab="video">Video</button>
         <button class="tab" data-tab="image">Image</button>
+        <button class="tab" data-tab="audio">Audio</button>
         <button class="help-toggle" id="help-toggle" type="button">Field help: on</button>
     </div>
 
@@ -312,6 +323,148 @@
 
         <section>
             <h2>Recent image jobs</h2>
+            <table class="jobs-table">
+                <thead>
+                    <tr><th style="width:50px">#</th><th style="width:120px">Service</th><th>Prompt</th><th style="width:110px">Status</th><th style="width:160px">Progress</th><th style="width:110px">Started</th></tr>
+                </thead>
+                <tbody data-slot="jobs"><tr><td colspan="6"><div class="empty">No jobs yet.</div></td></tr></tbody>
+            </table>
+        </section>
+    </div>
+    <div class="tab-panel hidden" data-panel="audio">
+        <section>
+            <h2>Text to Audio</h2>
+
+            <label data-help="service">Service</label>
+            <div id="audio-providers" class="provider-grid"><div class="empty">Loading services…</div></div>
+
+            <div data-gate="refaudio" data-help="a.refaudio">
+                <label style="margin-top:14px">Reference clip <span class="opt-tag">— optional</span> <span class="na-tag">— this service takes no reference audio</span></label>
+                <div class="input-actions">
+                    <button class="ghost" data-act="pick" data-tab-target="audio">Use previous take…</button>
+                </div>
+                <div id="audio-uploader" class="uploader" tabindex="0">
+                    <div>Click or drop an audio file (optional)</div>
+                    <input type="file" multiple accept="audio/wav,audio/mpeg,audio/flac,audio/ogg,audio/mp4,.wav,.mp3,.flac,.ogg,.m4a,.opus">
+                </div>
+            </div>
+            <p class="gate-note" data-gate-note="refaudio">The selected service generates from text only — reference audio is disabled.</p>
+            <div id="audio-thumbs" class="thumbs"></div>
+
+            <div data-help="a.prompt">
+                <label style="margin-top:14px">Music description (prompt)</label>
+                <textarea data-field="prompt" placeholder="Genre: acoustic pop. BPM: 96. Key: C major. Warm and intimate, building gently into the chorus. Vocals: soft female lead, close and breathy. Arrangement: fingerpicked guitar and soft piano; brushed drums enter in the chorus."></textarea>
+            </div>
+
+            <div data-gate="lyrics" data-help="a.lyrics">
+                <label style="margin-top:10px">Lyrics <span class="na-tag">— this service is instrumental only</span></label>
+                <textarea data-field="lyrics" placeholder="[Verse]&#10;Morning light filtering through the pine&#10;[Chorus]&#10;Softly the world begins to breathe" style="min-height:120px"></textarea>
+            </div>
+            <p class="gate-note" data-gate-note="lyrics">The selected service generates instrumental audio only — lyrics are disabled.</p>
+
+            <div data-gate="negative" data-help="a.negative">
+                <label style="margin-top:10px">Negative prompt <span class="opt-tag">— optional</span> <span class="na-tag">— not used by this service</span></label>
+                <textarea data-field="negative" placeholder="distorted, clipping, low fidelity, out of tune…"></textarea>
+            </div>
+
+            <label style="margin-top:14px">Audio parameters</label>
+            <div class="desc" style="margin:-2px 0 8px">Fields disabled below are not accepted by the selected service. <span data-hint="duration" class="small" style="display:block;margin-top:2px;"></span></div>
+            <div class="params-grid">
+                <div data-help="a.audio_duration"><label>Duration (s)</label><input type="number" data-p="audio_duration" min="1" max="300" step="1" value="60"></div>
+                <div data-help="a.audio_start_s"><label>Start offset (s)</label><input type="number" data-p="audio_start_s" min="0" max="300" step="1" value="0"></div>
+                <div data-help="a.n_audios"><label>Takes (1-4)</label><input type="number" data-p="n_audios" min="1" max="4" step="1" value="1"></div>
+                <div data-help="a.format">
+                    <label>Format</label>
+                    <select data-p="format">
+                        <option value="wav">WAV</option>
+                        <option value="mp3">MP3</option>
+                        <option value="flac">FLAC</option>
+                        <option value="ogg">OGG</option>
+                    </select>
+                </div>
+                <div data-help="a.seed"><label>Seed</label><input type="number" data-p="seed" placeholder="random"></div>
+                <div data-help="a.steps"><label>Inference steps</label><input type="number" data-p="num_inference_steps" min="1" max="250" step="1" value="60"></div>
+                <div data-help="a.guidance"><label>Guidance scale</label><input type="number" data-p="guidance_scale" min="0" max="30" step="0.5" value="15"></div>
+                <div data-help="a.min_guidance"><label>Min guidance</label><input type="number" data-p="min_guidance_scale" min="0" max="20" step="0.5" value="3"></div>
+                <div data-help="a.guidance_text"><label>Guidance (text)</label><input type="number" data-p="guidance_scale_text" min="0" max="20" step="0.5" value="0"></div>
+                <div data-help="a.guidance_lyric"><label>Guidance (lyric)</label><input type="number" data-p="guidance_scale_lyric" min="0" max="20" step="0.5" value="0"></div>
+                <div data-help="a.guidance_interval"><label>Guidance interval</label><input type="number" data-p="guidance_interval" min="0" max="1" step="0.05" value="0.5"></div>
+                <div data-help="a.guidance_decay"><label>Interval decay</label><input type="number" data-p="guidance_interval_decay" min="0" max="1" step="0.05" value="0"></div>
+                <div data-help="a.omega"><label>Omega scale</label><input type="number" data-p="omega_scale" min="0" max="30" step="0.5" value="10"></div>
+                <div data-help="a.scheduler">
+                    <label>Scheduler</label>
+                    <select data-p="scheduler_type">
+                        <option value="euler">euler</option>
+                        <option value="heun">heun</option>
+                        <option value="pingpong">pingpong</option>
+                    </select>
+                </div>
+                <div data-help="a.cfg_type">
+                    <label>CFG type</label>
+                    <select data-p="cfg_type">
+                        <option value="apg">apg</option>
+                        <option value="cfg">cfg</option>
+                        <option value="cfg_star">cfg_star</option>
+                    </select>
+                </div>
+                <div data-help="a.temperature"><label>Temperature</label><input type="number" data-p="temperature" min="0.1" max="2" step="0.05" value="1"></div>
+                <div data-help="a.top_k"><label>Top-k</label><input type="number" data-p="top_k" min="0" max="1000" step="10" value="250"></div>
+                <div data-help="a.top_p"><label>Top-p</label><input type="number" data-p="top_p" min="0" max="1" step="0.05" value="0"></div>
+                <div data-help="a.do_sample">
+                    <label>Sampling</label>
+                    <select data-p="do_sample"><option value="1">On</option><option value="0">Off</option></select>
+                </div>
+                <div data-help="a.chunked">
+                    <label>Chunked decode</label>
+                    <select data-p="chunked"><option value="1">On</option><option value="0">Off</option></select>
+                </div>
+                <div data-help="a.erg_tag">
+                    <label>ERG tag</label>
+                    <select data-p="use_erg_tag"><option value="1">On</option><option value="0">Off</option></select>
+                </div>
+                <div data-help="a.erg_lyric">
+                    <label>ERG lyric</label>
+                    <select data-p="use_erg_lyric"><option value="1">On</option><option value="0">Off</option></select>
+                </div>
+                <div data-help="a.erg_diffusion">
+                    <label>ERG diffusion</label>
+                    <select data-p="use_erg_diffusion"><option value="1">On</option><option value="0">Off</option></select>
+                </div>
+                <div data-help="a.task">
+                    <label>Task</label>
+                    <select data-p="task">
+                        <option value="text2music">text2music</option>
+                        <option value="retake">retake</option>
+                        <option value="repaint">repaint</option>
+                        <option value="edit">edit</option>
+                        <option value="extend">extend</option>
+                    </select>
+                </div>
+                <div data-help="a.audio2audio">
+                    <label>Audio-to-audio</label>
+                    <select data-p="audio2audio_enable"><option value="0">Off</option><option value="1">On</option></select>
+                </div>
+                <div data-help="a.ref_strength"><label>Reference strength</label><input type="number" data-p="ref_audio_strength" min="0" max="1" step="0.05" value="0.5"></div>
+                <div data-help="a.retake_variance"><label>Retake variance</label><input type="number" data-p="retake_variance" min="0" max="1" step="0.05" value="0.5"></div>
+                <div data-help="a.repaint_start"><label>Repaint start (s)</label><input type="number" data-p="repaint_start" min="0" max="300" step="1" value="0"></div>
+                <div data-help="a.repaint_end"><label>Repaint end (s)</label><input type="number" data-p="repaint_end" min="0" max="300" step="1" value="0"></div>
+                <div data-help="a.edit_n_min"><label>Edit n-min</label><input type="number" data-p="edit_n_min" min="0" max="1" step="0.05" value="0"></div>
+                <div data-help="a.edit_n_max"><label>Edit n-max</label><input type="number" data-p="edit_n_max" min="0" max="1" step="0.05" value="1"></div>
+            </div>
+
+            <div style="margin-top:12px" data-help="a.adv">
+                <label style="display:block; margin-bottom:4px;">Advanced parameters (raw JSON; merged over the structured fields)</label>
+                <textarea data-field="adv-params" placeholder='{"lora_name_or_path": "none"}' style="font-family: ui-monospace, Menlo, monospace; min-height: 64px;"></textarea>
+            </div>
+
+            <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
+                <button data-act="submit">Generate audio</button>
+                <span data-slot="submit-status" class="small"></span>
+            </div>
+        </section>
+
+        <section>
+            <h2>Recent audio jobs</h2>
             <table class="jobs-table">
                 <thead>
                     <tr><th style="width:50px">#</th><th style="width:120px">Service</th><th>Prompt</th><th style="width:110px">Status</th><th style="width:160px">Progress</th><th style="width:110px">Started</th></tr>
@@ -472,6 +625,52 @@ const FALLBACK_PARAM_SCHEMA = {
         num_inference_steps:{def:50,min:10,max:80,step:1},
         guidance_scale:{def:4,min:0,max:20,step:0.5},
         n_images:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
+    // ---------- audio (text-to-audio / music) ----------
+    // Field specs here carry a `type` for the non-numeric knobs:
+    //   {type:'bool'}  -> On/Off select      {type:'enum',options:[…]} -> dropdown
+    'minimax-music-3': { neg:false, lyrics:true, refAudio:false, fields:{
+        audio_duration:{def:60,min:10,max:300,step:5},
+        n_audios:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
+    'ace-step-v1-3.5b': { neg:false, lyrics:true, refAudio:true, fields:{
+        audio_duration:{def:60,min:10,max:240,step:5},
+        num_inference_steps:{def:60,min:10,max:200,step:1},
+        guidance_scale:{def:15,min:0,max:30,step:0.5},
+        scheduler_type:{type:'enum',def:'euler',options:['euler','heun','pingpong']},
+        cfg_type:{type:'enum',def:'apg',options:['apg','cfg','cfg_star']},
+        omega_scale:{def:10,min:0,max:30,step:0.5},
+        guidance_interval:{def:0.5,min:0,max:1,step:0.05},
+        guidance_interval_decay:{def:0,min:0,max:1,step:0.05},
+        min_guidance_scale:{def:3,min:0,max:20,step:0.5},
+        guidance_scale_text:{def:0,min:0,max:20,step:0.5},
+        guidance_scale_lyric:{def:0,min:0,max:20,step:0.5},
+        use_erg_tag:{type:'bool',def:true}, use_erg_lyric:{type:'bool',def:true},
+        use_erg_diffusion:{type:'bool',def:true},
+        task:{type:'enum',def:'text2music',options:['text2music','retake','repaint','edit','extend']},
+        repaint_start:{def:0,min:0,max:240,step:1}, repaint_end:{def:0,min:0,max:240,step:1},
+        retake_variance:{def:0.5,min:0,max:1,step:0.05},
+        edit_n_min:{def:0,min:0,max:1,step:0.05}, edit_n_max:{def:1,min:0,max:1,step:0.05},
+        audio2audio_enable:{type:'bool',def:false},
+        ref_audio_strength:{def:0.5,min:0,max:1,step:0.05},
+        n_audios:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
+    'diffrhythm-1.2': { neg:false, lyrics:true, refAudio:true, fields:{
+        audio_duration:{def:95,min:95,max:285,step:1},
+        num_inference_steps:{def:32,min:4,max:100,step:1},
+        guidance_scale:{def:4,min:0,max:15,step:0.5},
+        chunked:{type:'bool',def:true},
+        n_audios:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
+    'musicgen-large': { neg:false, lyrics:false, refAudio:false, fields:{
+        audio_duration:{def:30,min:1,max:120,step:1},
+        guidance_scale:{def:3,min:1,max:10,step:0.5},
+        temperature:{def:1,min:0.1,max:2,step:0.05},
+        top_k:{def:250,min:0,max:1000,step:10}, top_p:{def:0,min:0,max:1,step:0.05},
+        do_sample:{type:'bool',def:true},
+        n_audios:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
+    'stable-audio-open-1.0': { neg:true, lyrics:false, refAudio:true, fields:{
+        audio_duration:{def:30,min:1,max:47,step:1},
+        audio_start_s:{def:0,min:0,max:46,step:1},
+        num_inference_steps:{def:100,min:10,max:250,step:5},
+        guidance_scale:{def:7,min:0,max:20,step:0.5},
+        n_audios:{def:1,min:1,max:4,step:1}, format:true, seed:true } },
 };
 
 // ── Field help ────────────────────────────────────────────────────────────
@@ -483,6 +682,306 @@ const FALLBACK_PARAM_SCHEMA = {
 // dims it, so the help text explains the knob and names the engines that
 // differ rather than pretending every model behaves the same.
 const HELP = {
+    // ── Audio tab ────────────────────────────────────────────────────────
+    'a.prompt': {
+        t: 'Music description (prompt)',
+        h: 'Describe the music, not the story: genre, tempo, key, instruments, voice.',
+        d: `<p>This field describes <b>the recording</b> — it is never sung. The words that get sung go in Lyrics.</p>
+            <p>The song models were trained on structured captions, so they respond far better to named musical facts than to mood adjectives. A useful shape is three clauses:</p>
+            <ul>
+              <li><b>Global:</b> genre and subgenre, BPM, key, and the emotional arc. "Genre: acoustic pop. BPM: 96. Key: C major. Warm, building into the chorus."</li>
+              <li><b>Vocals:</b> gender, timbre, delivery, harmonies. "Soft female lead, close and breathy, light stacked harmonies in the chorus."</li>
+              <li><b>Arrangement:</b> which instruments carry which section. "Fingerpicked guitar and piano; brushed drums and upright bass enter at the chorus."</li>
+            </ul>
+            <p><b>Say the tempo and key as numbers.</b> "BPM: 96" lands; "medium tempo" mostly does not. Naming instruments is the single most reliable lever you have over the arrangement.</p>
+            <p>For the instrumental services (MusicGen, Stable Audio Open) this is the <i>only</i> conditioning, so put everything here — including the mood and production style you would otherwise spread across other fields.</p>`
+    },
+    'a.lyrics': {
+        t: 'Lyrics',
+        h: 'The words to be sung. Section tags like [Verse] / [Chorus] shape the structure.',
+        d: `<p>Only the song models read this — MusicGen and Stable Audio Open are instrumental and the field is disabled for them.</p>
+            <p><b>Section tags do real work.</b> Put them on their own lines and the model uses them to build the arrangement: <code>[Intro]</code>, <code>[Verse]</code>, <code>[Pre-Chorus]</code>, <code>[Chorus]</code>, <code>[Bridge]</code>, <code>[Instrumental]</code>, <code>[Solo]</code>, <code>[Outro]</code>. A tagged lyric gives a far more structured song than the same words as one block.</p>
+            <ul>
+              <li><b>An empty Lyrics box is valid</b> — you get an instrumental in the described style.</li>
+              <li><b>Use <code>[Instrumental]</code></b> to ask for a stretch with no vocal rather than leaving a silent gap.</li>
+              <li><b>Length should match Duration.</b> Four verses in a 30-second render will be rushed or truncated; the model does not compress gracefully.</li>
+            </ul>
+            <p><b>DiffRhythm is the exception:</b> it wants LRC-timestamped lines (<code>[00:12.50]words</code>). Paste plain lines and evenly-spaced timestamps are added for you — fine for a draft, but writing real timings is how you control where each line lands.</p>
+            <p>Section tags and descriptions steer generation; they are not strict guarantees. Tempo, key and structure may drift from what you asked for.</p>`
+    },
+    'a.negative': {
+        t: 'Negative prompt',
+        h: 'Only Stable Audio Open uses this. What to steer away from.',
+        d: `<p>Of the five audio services <b>only Stable Audio Open</b> takes a negative prompt; the field is disabled for the rest because those models would ignore it.</p>
+            <p>Use it for qualities you keep getting and do not want — <code>distorted, clipping, low fidelity, out of tune, hiss</code> — rather than for content. It is a direction to move away from, not a filter.</p>
+            <p>Keep it short. A long negative prompt pulls the result toward bland safety as strongly as it pushes away from the faults you listed.</p>`
+    },
+    'a.refaudio': {
+        t: 'Reference clip',
+        h: 'Optional. A clip to copy the style from, or the source to repaint / extend.',
+        d: `<p>Always optional — every service here works from text alone. What an uploaded clip does depends on the service:</p>
+            <ul>
+              <li><b>DiffRhythm</b> — takes the <b>style</b> from the clip instead of from your prompt. Useful when you can point at a sound more easily than describe it.</li>
+              <li><b>ACE-Step</b> — the clip is the source for <b>Audio-to-audio</b> (set that to On and use Reference strength), and the source track for the <code>repaint</code>, <code>edit</code> and <code>extend</code> tasks.</li>
+              <li><b>Stable Audio Open</b> — used as an initial waveform to continue or vary.</li>
+              <li><b>MiniMax Music 3 / MusicGen</b> — not supported; the field is disabled.</li>
+            </ul>
+            <p>"Use previous take…" pulls in an earlier render, which is how you iterate: generate, pick the take you like, feed it back as the reference and vary it.</p>`
+    },
+    'a.audio_duration': {
+        t: 'Duration (seconds)',
+        h: 'Target length. Each service has its own hard ceiling.',
+        d: `<p>How long the generated audio should be. The ceilings differ sharply and are enforced by the engine:</p>
+            <ul>
+              <li><b>MiniMax Music 3</b> — up to 300 s (5 minutes), the only one that does a genuinely full-length song.</li>
+              <li><b>ACE-Step</b> — up to 240 s.</li>
+              <li><b>DiffRhythm</b> — 95 s exactly, or any value from 96 to 285 s. The two ranges load <i>different checkpoints</i>, so the first render at a new length re-downloads weights.</li>
+              <li><b>MusicGen</b> — up to 120 s, set internally as tokens at 50 per second.</li>
+              <li><b>Stable Audio Open</b> — 47 s maximum. It is built for stems and effects, not songs.</li>
+            </ul>
+            <p><b>Cost is roughly linear in duration</b>, so draft at 20–30 s while you tune the prompt and only then render the full length. Match your lyric length to this value.</p>`
+    },
+    'a.audio_start_s': {
+        t: 'Start offset (seconds)',
+        h: 'Stable Audio Open only. Where the generated window begins.',
+        d: `<p>Stable Audio Open generates a window within a timeline rather than always starting at zero. This sets where that window opens; Duration sets where it closes.</p>
+            <p>Leave it at 0 unless you are deliberately generating a later slice — for example rendering a sound that should begin already in progress rather than from its attack. Must be less than Duration.</p>`
+    },
+    'a.n_audios': {
+        t: 'Takes',
+        h: 'How many variations to render in one job, 1 to 4.',
+        d: `<p>Music generation is high-variance: the same prompt and different seeds give genuinely different songs, and picking from several is usually a better use of GPU time than re-tuning the prompt after a single disappointing take.</p>
+            <p>Every take appears in the expanded job row with its own player and download link.</p>
+            <p><b>Cost scales with this number.</b> Four 5-minute MiniMax takes is a long job on a single GPU that the whole queue waits behind — raise it for short drafts, keep it at 1 for full-length final renders.</p>
+            <p>With a seed set, take <i>n</i> uses seed + <i>n</i>, so the batch stays reproducible.</p>`
+    },
+    'a.format': {
+        t: 'Delivery format',
+        h: 'WAV is the engine output; the rest are transcoded after generation.',
+        d: `<p>Every engine renders WAV. Anything else is an ffmpeg transcode applied afterwards, so the choice costs nothing in quality at generation time — only in what gets stored and served.</p>
+            <ul>
+              <li><b>WAV</b> — lossless, what the model actually produced. Correct choice if the audio will be edited or mastered further. Large: roughly 10 MB per minute of stereo.</li>
+              <li><b>FLAC</b> — lossless too, about half the size. Prefer it over WAV for archiving.</li>
+              <li><b>MP3</b> — lossy (V2, ~190 kbps), universally playable. Fine for review and for the web.</li>
+              <li><b>OGG</b> — lossy Vorbis, smaller than MP3 at similar quality, less universally supported.</li>
+            </ul>
+            <p>Sample rates are fixed per model (MiniMax and MusicGen 32 kHz, DiffRhythm and Stable Audio 44.1 kHz, ACE-Step 48 kHz) and are not resampled.</p>`
+    },
+    'a.seed': {
+        t: 'Seed',
+        h: 'Leave empty for a new result each run; set it to reproduce one exactly.',
+        d: `<p>Fixes the random starting noise. Same seed + same prompt + same parameters + same service = the same audio again.</p>
+            <p><b>The way to use it:</b> generate with the seed empty until something is close, note the seed the job recorded, then pin that seed and change <i>one</i> parameter at a time. Without a fixed seed you cannot tell whether a change came from your edit or from fresh noise.</p>
+            <p>A seed is only meaningful within one service — the same number means nothing in common across two models.</p>`
+    },
+    'a.steps': {
+        t: 'Inference steps',
+        h: 'How many refinement passes. More is slower with diminishing returns.',
+        d: `<p>The number of iterations the model takes refining the audio. Time scales almost linearly with it.</p>
+            <ul>
+              <li><b>ACE-Step</b> — default 60. Around 27 is a genuinely usable fast draft; past ~100 the gain is hard to hear.</li>
+              <li><b>DiffRhythm</b> — default 32, and it is fast enough that raising it is cheap.</li>
+              <li><b>Stable Audio Open</b> — default 100; effects and short stems often hold up fine at 50.</li>
+            </ul>
+            <p>Not used by MiniMax Music 3 or MusicGen, which are autoregressive rather than step-based, so the field is disabled for them.</p>
+            <p><b>Draft low, finish high.</b> Tune the prompt at low steps with a fixed seed, then raise steps for the final render.</p>`
+    },
+    'a.guidance': {
+        t: 'Guidance scale (CFG)',
+        h: 'How hard the model is pushed toward your prompt. Too high sounds harsh.',
+        d: `<p>Classifier-free guidance — how strongly generation is pulled toward your description and away from an unconditioned one.</p>
+            <ul>
+              <li><b>Too low</b> — the result drifts off-brief: wrong genre, ignored instruments.</li>
+              <li><b>Too high</b> — brittle, over-compressed, distorted audio, and often a mangled vocal. Music degrades under high CFG much more audibly than images do.</li>
+            </ul>
+            <p>Native defaults differ a lot because the scales are not comparable: <b>ACE-Step 15</b> (range 0–30), <b>DiffRhythm 4</b>, <b>Stable Audio Open 7</b>, <b>MusicGen 3</b>. Start from the default and move in small steps.</p>
+            <p>If the vocal sounds strained, lower this before changing anything else.</p>`
+    },
+    'a.min_guidance': {
+        t: 'Minimum guidance scale',
+        h: 'ACE-Step. The floor guidance decays toward when interval decay is on.',
+        d: `<p>Used together with <b>Interval decay</b>: guidance starts at Guidance scale and falls toward this floor across the guided portion of the run.</p>
+            <p>The idea is to commit to the brief early, when the broad musical structure is decided, then ease off so the later, detail-carrying steps are not forced — which is where high guidance does its audible damage.</p>
+            <p>Only matters when Interval decay is above 0. Keep it well below Guidance scale; the default pairing is 15 down to 3.</p>`
+    },
+    'a.guidance_text': {
+        t: 'Guidance scale (text)',
+        h: 'ACE-Step. Separate guidance strength for the style description.',
+        d: `<p>ACE-Step can guide the text description and the lyrics with <i>different</i> strengths instead of one combined value. Leaving this at <b>0 keeps the combined behaviour</b> — which is the right default.</p>
+            <p>Raise it above 0, together with Guidance (lyric), when the two conditionings are fighting: the genre is right but the words are mangled, or the words are clear over the wrong arrangement. Then push the one being ignored and lower the other.</p>
+            <p>This is a fine-tuning tool. Get Guidance scale right first.</p>`
+    },
+    'a.guidance_lyric': {
+        t: 'Guidance scale (lyric)',
+        h: 'ACE-Step. Separate guidance strength for the lyrics.',
+        d: `<p>The lyric half of the split guidance described under Guidance (text). <b>0 means "use the combined value"</b>.</p>
+            <p>Raise it when the singing is unintelligible or the model is clearly improvising words over your lyrics. Be sparing: pushing lyric guidance hard buys diction at the cost of a stiff, over-articulated vocal that sits badly in the mix.</p>`
+    },
+    'a.guidance_interval': {
+        t: 'Guidance interval',
+        h: 'ACE-Step. What fraction of the run has guidance applied at all.',
+        d: `<p>Guidance is not applied across the whole run — only across a window in the middle, and this sets how wide that window is (0 to 1 of the total steps). The default 0.5 guides the middle half.</p>
+            <p>The first steps decide broad structure and the last steps polish texture; both tend to sound better left unguided. Widening the window tightens adherence to the prompt but brings back the harshness that high guidance causes.</p>
+            <p>Leave at the default unless you are specifically chasing an off-brief result.</p>`
+    },
+    'a.guidance_decay': {
+        t: 'Guidance interval decay',
+        h: 'ACE-Step. How fast guidance falls from full strength toward the minimum.',
+        d: `<p>0 (the default) holds guidance constant across the guided window. Above 0, it ramps down from <b>Guidance scale</b> toward <b>Min guidance</b> as the window progresses.</p>
+            <p>Worth trying when a render follows the brief but sounds hard or clipped: decay keeps the early commitment to your description while relaxing the later steps that carry the audible detail.</p>`
+    },
+    'a.omega': {
+        t: 'Omega scale',
+        h: 'ACE-Step. Granularity / texture control. Default 10.',
+        d: `<p>An ACE-Step-specific scaling on the sampling process, affecting the fine-grained texture of the result rather than its structure.</p>
+            <p>The default of 10 is what the model was tuned around. Moving it is exploratory — there is no reliable "higher is cleaner" rule — so change it only with a fixed seed, so you can actually hear what it did.</p>`
+    },
+    'a.scheduler': {
+        t: 'Scheduler',
+        h: 'ACE-Step. Which sampler advances the diffusion.',
+        d: `<p>The numerical method used to step the diffusion process. It changes the character of the result as well as the speed.</p>
+            <ul>
+              <li><b>euler</b> — the default. Fast, predictable, a good match for the default step count.</li>
+              <li><b>heun</b> — a second-order method: roughly twice the work per step, sometimes smoother. Drop your step count if you switch to it.</li>
+              <li><b>pingpong</b> — alternates direction; can add liveliness, less predictable.</li>
+            </ul>
+            <p>Changing scheduler changes the result even with an identical seed, so re-audition after switching.</p>`
+    },
+    'a.cfg_type': {
+        t: 'CFG type',
+        h: 'ACE-Step. Which guidance formulation is used.',
+        d: `<p>How classifier-free guidance is actually computed:</p>
+            <ul>
+              <li><b>apg</b> — adaptive projected guidance, the default. Built specifically to avoid the over-saturation and harshness that plain CFG causes at high scales.</li>
+              <li><b>cfg</b> — the classic formulation. More prone to distortion at high Guidance scale.</li>
+              <li><b>cfg_star</b> — a rescaled variant, between the two.</li>
+            </ul>
+            <p>Stay on <b>apg</b> unless you are comparing deliberately. If you switch to <code>cfg</code>, lower Guidance scale as well — the same number is more aggressive there.</p>`
+    },
+    'a.temperature': {
+        t: 'Temperature',
+        h: 'MusicGen. Randomness of token sampling. Higher is more adventurous.',
+        d: `<p>Applies to MusicGen, which generates audio tokens autoregressively like a language model.</p>
+            <ul>
+              <li><b>Below 1</b> — more conservative and repetitive; safer, can be dull.</li>
+              <li><b>1.0</b> — the default and a sound starting point.</li>
+              <li><b>Above 1</b> — more surprising, and past roughly 1.3 increasingly likely to wander off-key or lose the groove.</li>
+            </ul>
+            <p>Only has an effect when <b>Sampling</b> is On.</p>`
+    },
+    'a.top_k': {
+        t: 'Top-k',
+        h: 'MusicGen. Sample from the k most likely tokens. Default 250.',
+        d: `<p>Restricts each step's choice to the k highest-probability audio tokens, cutting off the unlikely tail that produces artefacts.</p>
+            <p>The default of 250 is what MusicGen was tuned with. Lower values (50–100) give tighter, more conventional music; higher values loosen it. Set to <b>0</b> to disable the cutoff entirely.</p>
+            <p>Only active when Sampling is On. If you use Top-p instead, set this to 0 so the two do not compound.</p>`
+    },
+    'a.top_p': {
+        t: 'Top-p (nucleus sampling)',
+        h: 'MusicGen. Sample from the smallest set covering p of the probability. 0 = off.',
+        d: `<p>An alternative to Top-k: instead of a fixed count, it keeps the smallest set of tokens whose probabilities sum to p. That adapts the cutoff to how confident the model is at each step.</p>
+            <p><b>0 (the default) disables it</b> and leaves Top-k in charge. If you switch to Top-p, 0.9–0.95 is the usual range, and set Top-k to 0.</p>
+            <p>Only active when Sampling is On.</p>`
+    },
+    'a.do_sample': {
+        t: 'Sampling',
+        h: 'MusicGen. Off makes generation deterministic and usually repetitive.',
+        d: `<p>On (the default) samples each token stochastically using Temperature, Top-k and Top-p. Off takes the single most likely token every time.</p>
+            <p><b>Leave it On.</b> Greedy decoding in music almost always collapses into a short repeating loop — it is available for debugging determinism, not for producing listenable output.</p>
+            <p>Turning it Off makes Temperature, Top-k and Top-p irrelevant.</p>`
+    },
+    'a.chunked': {
+        t: 'Chunked decode',
+        h: 'DiffRhythm. Decode in overlapping chunks to cut peak memory.',
+        d: `<p>The final VAE decode of a long song is memory-hungry. On (the default) decodes in overlapping chunks and stitches them, keeping peak VRAM far lower.</p>
+            <p>Leave it On, especially for the 285-second range. Off decodes in one pass — marginally cleaner in principle, but the risk of an out-of-memory failure mid-job is not worth it on a shared GPU.</p>`
+    },
+    'a.erg_tag': {
+        t: 'ERG tag',
+        h: 'ACE-Step. Enhanced representation guidance for the style tags.',
+        d: `<p>ACE-Step's enhanced representation guidance applied to the style/tag conditioning. On by default and generally worth leaving on — it improves how faithfully the genre and instrumentation in your description are followed.</p>
+            <p>Turn it off only if the output feels over-constrained to genre clichés and you want a looser reading of the prompt.</p>`
+    },
+    'a.erg_lyric': {
+        t: 'ERG lyric',
+        h: 'ACE-Step. Enhanced representation guidance for the lyrics.',
+        d: `<p>The same mechanism applied to the lyric conditioning: it generally improves diction and how well the sung words track what you wrote.</p>
+            <p>On by default. Worth toggling off if the vocal sounds over-enunciated or unnaturally precise against the backing.</p>`
+    },
+    'a.erg_diffusion': {
+        t: 'ERG diffusion',
+        h: 'ACE-Step. Enhanced representation guidance inside the diffusion steps.',
+        d: `<p>Applies enhanced representation guidance within the diffusion process itself rather than to one conditioning input, generally improving overall coherence.</p>
+            <p>On by default. The three ERG switches are independent — if you are diagnosing an artefact, turn one off at a time with a fixed seed rather than all three at once.</p>`
+    },
+    'a.task': {
+        t: 'Task',
+        h: 'ACE-Step. What kind of job this is: fresh song, retake, repaint, edit or extend.',
+        d: `<p>ACE-Step is not only a text-to-music model; this selects the operation. Everything except <code>text2music</code> needs a <b>Reference clip</b> supplied above.</p>
+            <ul>
+              <li><b>text2music</b> — the default. A new song from the description and lyrics.</li>
+              <li><b>retake</b> — a variation on the same material, how far controlled by <b>Retake variance</b>.</li>
+              <li><b>repaint</b> — regenerate only the span between <b>Repaint start</b> and <b>Repaint end</b>, leaving the rest. The way to fix one bad bar without losing the take.</li>
+              <li><b>edit</b> — regenerate against changed lyrics or description, with <b>Edit n-min</b> / <b>n-max</b> setting how much is preserved.</li>
+              <li><b>extend</b> — continue the reference clip beyond its end.</li>
+            </ul>
+            <p>Selecting a task without a reference clip falls back to generating fresh rather than failing.</p>`
+    },
+    'a.audio2audio': {
+        t: 'Audio-to-audio',
+        h: 'ACE-Step. Use the reference clip as the musical starting point.',
+        d: `<p>On makes the <b>Reference clip</b> the basis of the generation instead of pure noise — the output keeps a recognisable amount of the original and moves it toward your prompt. How much is kept is set by <b>Reference strength</b>.</p>
+            <p>Needs a reference clip; with none uploaded the setting is ignored. This is style transfer on an existing piece, distinct from the <code>repaint</code> and <code>extend</code> tasks, which operate on specific regions.</p>`
+    },
+    'a.ref_strength': {
+        t: 'Reference strength',
+        h: 'How much of the reference clip survives. Higher keeps more of the original.',
+        d: `<p>Balances the reference clip against your prompt when Audio-to-audio is On.</p>
+            <ul>
+              <li><b>Low (0.1–0.3)</b> — barely a nudge; the result is essentially a fresh generation.</li>
+              <li><b>0.5</b> — the default; a real blend of both.</li>
+              <li><b>High (0.7–1.0)</b> — closely follows the original, with the prompt only recolouring it.</li>
+            </ul>
+            <p>If the output ignores your prompt, lower this. If it has lost the source entirely, raise it.</p>`
+    },
+    'a.retake_variance': {
+        t: 'Retake variance',
+        h: 'ACE-Step retake task. How far a variation may stray from the original.',
+        d: `<p>Only meaningful with <b>Task</b> set to <code>retake</code>. Controls how different the new version is allowed to be.</p>
+            <p>Low values give a near-identical performance with small differences — useful when a take is right but one phrase is not. High values give a genuinely different interpretation of the same brief. The default of 0.5 sits in between.</p>`
+    },
+    'a.repaint_start': {
+        t: 'Repaint start (seconds)',
+        h: 'ACE-Step repaint task. Where the regenerated span begins.',
+        d: `<p>With <b>Task</b> set to <code>repaint</code>, this is where the regenerated region starts, in seconds into the reference clip. Audio before it is preserved.</p>
+            <p>Repainting is the tool for a single bad bar, a fluffed line, or an awkward transition — everything you liked about the take survives. Give the span a little air on both sides so the model can blend at the seams.</p>`
+    },
+    'a.repaint_end': {
+        t: 'Repaint end (seconds)',
+        h: 'ACE-Step repaint task. Where the regenerated span ends.',
+        d: `<p>The end of the repainted region, in seconds. Audio after it is preserved.</p>
+            <p>Must be greater than <b>Repaint start</b>. Leaving both at 0 means no region is marked and the job behaves as a normal generation.</p>`
+    },
+    'a.edit_n_min': {
+        t: 'Edit n-min',
+        h: 'ACE-Step edit task. Lower bound on how much of the original is kept.',
+        d: `<p>With <b>Task</b> set to <code>edit</code>, n-min and n-max bound the window of the diffusion trajectory that gets re-run against your changed lyrics or description.</p>
+            <p>Raising n-min preserves more of the original performance, so the edit is subtler. The defaults (0 to 1) allow the widest possible change.</p>`
+    },
+    'a.edit_n_max': {
+        t: 'Edit n-max',
+        h: 'ACE-Step edit task. Upper bound on how much may be regenerated.',
+        d: `<p>The upper end of the edit window described under <b>Edit n-min</b>. Lowering it holds back the later, detail-carrying steps and keeps the texture of the original while the structure changes.</p>
+            <p>Narrow the n-min / n-max window for a light touch-up; widen it toward 0–1 for a substantial rewrite.</p>`
+    },
+    'a.adv': {
+        t: 'Advanced parameters (raw JSON)',
+        h: 'Merged over everything above. For engine knobs with no field here.',
+        d: `<p>A JSON object merged over the structured fields immediately before the job is sent, so anything here <b>overrides</b> the controls above.</p>
+            <p>It exists for parameters the form does not expose — for example ACE-Step's <code>lora_name_or_path</code> and <code>lora_weight</code>, or <code>oss_steps</code>.</p>
+            <p><b>No validation happens here.</b> Keys the engine does not recognise are ignored silently; a value of the wrong type will fail the job. Bad JSON is caught before submitting and reported as an error.</p>
+            <p>Leave it empty unless you specifically need a knob that has no field.</p>`
+    },
     'service': {
         t: 'Service (which model runs the job)',
         h: 'Picks the model — and with it, which fields below are even available.',
@@ -816,8 +1315,11 @@ const FieldHelp = {
 class TabController {
     constructor(name) {
         this.name = name;
-        this.api = name === 'video' ? '/api/admin-ai-video.php' : '/api/admin-ai-image.php';
-        this.keyField = name === 'video' ? 'i2v_job_key' : 't2i_job_key';
+        this.api = { video: '/api/admin-ai-video.php',
+                     image: '/api/admin-ai-image.php',
+                     audio: '/api/admin-ai-audio.php' }[name];
+        this.keyField = { video: 'i2v_job_key', image: 't2i_job_key', audio: 't2a_job_key' }[name];
+        this.colPrefix = { video: 'i2v_job', image: 't2i_job', audio: 't2a_job' }[name];
         this.panel = document.querySelector('.tab-panel[data-panel="' + name + '"]');
         this.state = {
             providers: [], selectedProviderKey: null, startFrameService: null,
@@ -829,6 +1331,7 @@ class TabController {
         this.elThumbs      = this.panel.querySelector('[id$="-thumbs"]');
         this.elPrompt      = this.panel.querySelector('[data-field="prompt"]');
         this.elNegative    = this.panel.querySelector('[data-field="negative"]');
+        this.elLyrics      = this.panel.querySelector('[data-field="lyrics"]');
         this.elAdvParams   = this.panel.querySelector('[data-field="adv-params"]');
         this.elSubmit      = this.panel.querySelector('[data-act="submit"]');
         this.elSubmitStat  = this.panel.querySelector('[data-slot="submit-status"]');
@@ -859,7 +1362,7 @@ class TabController {
     // each push just triggers a refreshJobs() (which diffs rows surgically).
     // A slow 15s fallback poll runs ONLY while the SSE is unavailable/broken.
     startJobStream() {
-        const channel = this.name === 'video' ? 'ai_i2v_job' : 'ai_t2i_job';
+        const channel = 'ai_' + this.colPrefix;
         if (!window.EventSource) { this._startJobFallback(); return; }
         const open = () => {
             try { this._jobEs = new EventSource('/api/admin-job-sse.php?channel=' + channel); }
@@ -908,6 +1411,13 @@ class TabController {
                 if (p.supports_single_image)     lines.push('single image');
                 if (p.supports_first_last_frame) lines.push('first/last frame');
                 if (p.max_duration_sec)          lines.push('up to ' + p.max_duration_sec + 's');
+            } else if (this.name === 'audio') {
+                // Same rule as the image cards: the engine schema wins over the
+                // DB flags, because the schema is what actually gates the fields.
+                lines.push((sch ? sch.lyrics : p.supports_lyrics) ? 'sings lyrics' : 'instrumental');
+                if (sch ? sch.refAudio : p.supports_ref_audio) lines.push('reference audio');
+                if (p.max_duration_sec)          lines.push('up to ' + Math.round(p.max_duration_sec) + 's');
+                if (p.sample_rate)               lines.push((p.sample_rate / 1000) + ' kHz');
             } else {
                 // Capabilities from the engine schema (authoritative) so the card
                 // agrees with the field gating; fall back to DB flags if unknown.
@@ -939,7 +1449,7 @@ class TabController {
             const p = this.state.providers.find(x => x.provider_key === this.state.selectedProviderKey);
             if (p && p.max_duration_sec != null) {
                 this.elHintDur.textContent = 'Max duration for ' + p.label + ': ' + p.max_duration_sec + 's';
-                const dur = this.paramInput('duration_sec');
+                const dur = this.paramInput(this.name === 'audio' ? 'audio_duration' : 'duration_sec');
                 if (dur && parseFloat(dur.value) > p.max_duration_sec) dur.value = p.max_duration_sec;
                 if (dur) dur.max = p.max_duration_sec;
             } else if (this.elHintDur) { this.elHintDur.textContent = ''; }
@@ -983,9 +1493,22 @@ class TabController {
     // The full set of gate-able param fields for this tab. aspect/style are
     // pure UI helpers and stay enabled regardless of engine.
     gateFields() {
-        return this.name === 'video'
-            ? ['duration_sec','width','height','fps','num_inference_steps','guidance_scale','seed']
-            : ['width','height','n_images','format','num_inference_steps','guidance_scale','init_strength','seed'];
+        if (this.name === 'video') {
+            return ['duration_sec','width','height','fps','num_inference_steps','guidance_scale','seed'];
+        }
+        if (this.name === 'audio') {
+            // The union of every audio engine's knobs; each service lights up
+            // only the ones its param_schema declares.
+            return ['audio_duration','audio_start_s','n_audios','format','seed',
+                    'num_inference_steps','guidance_scale','min_guidance_scale',
+                    'guidance_scale_text','guidance_scale_lyric','guidance_interval',
+                    'guidance_interval_decay','omega_scale','scheduler_type','cfg_type',
+                    'temperature','top_k','top_p','do_sample','chunked',
+                    'use_erg_tag','use_erg_lyric','use_erg_diffusion','task',
+                    'audio2audio_enable','ref_audio_strength','retake_variance',
+                    'repaint_start','repaint_end','edit_n_min','edit_n_max'];
+        }
+        return ['width','height','n_images','format','num_inference_steps','guidance_scale','init_strength','seed'];
     }
 
     // Enable/disable each field per the selected engine's schema, applying its
@@ -1011,17 +1534,39 @@ class TabController {
                 box.classList.remove('pfield-off');
                 el.disabled = false;
                 if (typeof spec === 'object') {
-                    if (spec.min  != null) el.min  = spec.min;
-                    if (spec.max  != null) el.max  = spec.max;
-                    if (spec.step != null) el.step = spec.step;
-                    if (resetDefaults && spec.def != null) {
-                        el.value = spec.def;
-                    } else if (el.value !== '') {
-                        let v = parseFloat(el.value);
-                        if (isFinite(v)) {
-                            if (spec.max != null) v = Math.min(v, spec.max);
-                            if (spec.min != null) v = Math.max(v, spec.min);
-                            el.value = v;
+                    if (spec.type === 'bool') {
+                        // Rendered as an On/Off <select>; '1' is on.
+                        if (resetDefaults && spec.def != null) el.value = spec.def ? '1' : '0';
+                    } else if (spec.type === 'enum') {
+                        // Rebuild the option list so the dropdown never offers a
+                        // value this engine would reject.
+                        if (Array.isArray(spec.options)) {
+                            const keep = el.value;
+                            el.innerHTML = '';
+                            for (const opt of spec.options) {
+                                const o = document.createElement('option');
+                                o.value = opt; o.textContent = opt;
+                                el.appendChild(o);
+                            }
+                            el.value = (resetDefaults || !spec.options.includes(keep))
+                                ? (spec.def != null ? spec.def : spec.options[0])
+                                : keep;
+                        } else if (resetDefaults && spec.def != null) {
+                            el.value = spec.def;
+                        }
+                    } else {
+                        if (spec.min  != null) el.min  = spec.min;
+                        if (spec.max  != null) el.max  = spec.max;
+                        if (spec.step != null) el.step = spec.step;
+                        if (resetDefaults && spec.def != null) {
+                            el.value = spec.def;
+                        } else if (el.value !== '') {
+                            let v = parseFloat(el.value);
+                            if (isFinite(v)) {
+                                if (spec.max != null) v = Math.min(v, spec.max);
+                                if (spec.min != null) v = Math.max(v, spec.min);
+                                el.value = v;
+                            }
                         }
                     }
                 }
@@ -1054,6 +1599,24 @@ class TabController {
                 note.classList.toggle('show', !!(p && !textOK));
             }
         }
+        // Audio-only: lyrics box + reference-clip uploader
+        if (this.name === 'audio') {
+            const lyrWrap  = this.panel.querySelector('[data-gate="lyrics"]');
+            const lyrNote  = this.panel.querySelector('[data-gate-note="lyrics"]');
+            const allowLyr = !schema || !!schema.lyrics;
+            if (lyrWrap) lyrWrap.classList.toggle('pfield-off', !allowLyr);
+            if (this.elLyrics) this.elLyrics.disabled = !allowLyr;
+            if (lyrNote) lyrNote.classList.toggle('show', !allowLyr);
+
+            const refWrap  = this.panel.querySelector('[data-gate="refaudio"]');
+            const refNote  = this.panel.querySelector('[data-gate-note="refaudio"]');
+            const allowRef = !schema || !!schema.refAudio;
+            if (refWrap) refWrap.classList.toggle('gate-off', !allowRef);
+            if (this.elFileInput) this.elFileInput.disabled = !allowRef;
+            if (refNote) refNote.classList.toggle('show', !allowRef);
+            if (!allowRef && this.state.files.length) this.state.files = [];
+            this.renderThumbs();
+        }
         // Image-only: starter image (img2img) + inpaint mask
         if (this.name === 'image') {
             const initWrap = this.panel.querySelector('[data-gate="initimage"]');
@@ -1082,12 +1645,27 @@ class TabController {
     }
     addFiles(fileList) {
         for (const f of fileList) {
+            if (this.name === 'audio') {
+                // Browsers are inconsistent about audio MIME types (empty for
+                // .flac/.opus on some platforms), so accept on extension too.
+                if (!/^audio\//i.test(f.type) && !/\.(wav|mp3|flac|ogg|m4a|opus)$/i.test(f.name)) {
+                    toast('Skipped non-audio: ' + f.name, 'err'); continue;
+                }
+                this.state.files.push({ file: f, role: 'reference', source: 'upload' });
+                continue;
+            }
             if (!/^image\/(png|jpe?g|webp)$/i.test(f.type)) { toast('Skipped non-image: ' + f.name, 'err'); continue; }
             this.state.files.push({ file: f, role: 'init', source: 'upload' });
         }
         this.renderThumbs();
     }
     addPrev(ref, blob, filename) {
+        if (this.name === 'audio') {
+            const file = new File([blob], filename, { type: blob.type || 'audio/wav' });
+            this.state.files.push({ file, role: 'reference', source: 'prev', ref });
+            this.renderThumbs();
+            return;
+        }
         const file = new File([blob], filename, { type: blob.type || 'image/png' });
         this.state.files.push({ file, role: 'init', source: 'prev', ref });
         this.renderThumbs();
@@ -1100,6 +1678,33 @@ class TabController {
     }
     renderThumbs() {
         const el = this.elThumbs; el.innerHTML = '';
+        // Audio has nothing to thumbnail — show the filename with an inline
+        // player so the operator can confirm they attached the right clip.
+        if (this.name === 'audio') {
+            this.state.files.forEach((entry, idx) => {
+                const wrap = document.createElement('div'); wrap.className = 'audio-chip';
+                const name = document.createElement('div'); name.className = 'aname';
+                const label = document.createElement('span');
+                label.textContent = entry.file.name.length > 26
+                    ? entry.file.name.slice(0, 25) + '\u2026' : entry.file.name;
+                label.title = entry.file.name;
+                const rm = document.createElement('button'); rm.title = 'Remove'; rm.textContent = '\u00d7';
+                rm.addEventListener('click', e => { e.stopPropagation(); this.state.files.splice(idx, 1); this.renderThumbs(); });
+                name.appendChild(label); name.appendChild(rm);
+                wrap.appendChild(name);
+                const au = document.createElement('audio');
+                au.controls = true; au.preload = 'metadata';
+                au.src = URL.createObjectURL(entry.file);
+                wrap.appendChild(au);
+                if (entry.source !== 'upload') {
+                    const tag = document.createElement('div'); tag.className = 'source-tag';
+                    tag.textContent = entry.source === 'prev' ? 'from previous take' : entry.source;
+                    wrap.appendChild(tag);
+                }
+                el.appendChild(wrap);
+            });
+            return;
+        }
         const initOnly = this.state.files.filter(x => x.role === 'init');
         this.state.files.forEach((entry, idx) => {
             const wrap = document.createElement('div'); wrap.className = 'thumb';
@@ -1143,14 +1748,26 @@ class TabController {
     buildParams() {
         const schema = this.currentSchema();
         const p = {};
-        const intKeys = ['width','height','num_inference_steps','n_images','fps'];
+        const intKeys = ['width','height','num_inference_steps','n_images','fps',
+                         'n_audios','top_k','repaint_start','repaint_end'];
         const readField = (key) => {
             const el = this.paramInput(key);
             if (!el || el.disabled || el.value === '' || el.value == null) return;
+            // Non-numeric knobs (audio tab): honour the schema's declared type
+            // instead of forcing everything through parseFloat.
+            const spec = schema ? schema.fields[key] : null;
+            if (spec && typeof spec === 'object' && spec.type === 'bool') {
+                p[key] = (el.value === '1' || el.value === 'true');
+                return;
+            }
+            if (spec && typeof spec === 'object' && spec.type === 'enum') {
+                p[key] = el.value;
+                return;
+            }
             let v = parseFloat(el.value);
             if (!isFinite(v)) return;
             if (intKeys.includes(key)) v = Math.round(v);
-            if (key === 'n_images') v = Math.max(1, Math.min(4, v));
+            if (key === 'n_images' || key === 'n_audios') v = Math.max(1, Math.min(4, v));
             p[key] = v;
         };
         if (schema) {
@@ -1200,15 +1817,28 @@ class TabController {
         if (negative && (!schema || schema.neg)) fd.append('negative_prompt', negative);
         fd.append('params', JSON.stringify(paramsObj));
 
-        const initField = this.name === 'video' ? 'images[]' : 'init_images[]';
-        const allowInit   = this.name === 'video' || !schema || schema.initImage;
-        const allowInpaint = this.name === 'video' || !schema || schema.inpaint;
-        for (const entry of this.state.files) {
-            if (entry.role === 'init' && allowInit) fd.append(initField, entry.file, entry.file.name);
-            else if (entry.role === 'mask' && allowInpaint) fd.append('mask', entry.file, 'mask.png');
+        if (this.name === 'audio') {
+            const lyrics = this.elLyrics ? this.elLyrics.value.trim() : '';
+            if (lyrics && (!schema || schema.lyrics)) fd.append('lyrics', lyrics);
+            const allowRef = !schema || schema.refAudio;
+            for (const entry of this.state.files) {
+                if (entry.role === 'reference' && allowRef) {
+                    fd.append('ref_audio[]', entry.file, entry.file.name);
+                }
+            }
+            const prevRef = this.state.files.find(x => x.role === 'reference' && x.source === 'prev');
+            if (prevRef && prevRef.ref) fd.append('prev_ref', JSON.stringify(prevRef.ref));
+        } else {
+            const initField = this.name === 'video' ? 'images[]' : 'init_images[]';
+            const allowInit   = this.name === 'video' || !schema || schema.initImage;
+            const allowInpaint = this.name === 'video' || !schema || schema.inpaint;
+            for (const entry of this.state.files) {
+                if (entry.role === 'init' && allowInit) fd.append(initField, entry.file, entry.file.name);
+                else if (entry.role === 'mask' && allowInpaint) fd.append('mask', entry.file, 'mask.png');
+            }
+            const prevEntry = this.state.files.find(x => x.role === 'init' && x.source === 'prev');
+            if (prevEntry && prevEntry.ref) fd.append('prev_ref', JSON.stringify(prevEntry.ref));
         }
-        const prevEntry = this.state.files.find(x => x.role === 'init' && x.source === 'prev');
-        if (prevEntry && prevEntry.ref) fd.append('prev_ref', JSON.stringify(prevEntry.ref));
 
         this.elSubmit.disabled = true;
         this.elSubmitStat.textContent = 'submitting…';
@@ -1220,6 +1850,7 @@ class TabController {
             toast('Job ' + k + ' queued.');
             this.state.files = [];
             this.elPrompt.value = ''; this.elNegative.value = ''; this.elAdvParams.value = '';
+            if (this.elLyrics) this.elLyrics.value = '';
             this.renderThumbs();
             this.refreshJobs();
         } catch (e) {
@@ -1296,13 +1927,13 @@ class TabController {
     }
     updateRow(ref, j) {
         const set = (slot, val, node, fn) => { if (ref.last[slot] === val) return; ref.last[slot] = val; fn(node, val); };
-        const promptCol = this.keyField === 'i2v_job_key' ? 'i2v_job_prompt' : 't2i_job_prompt';
-        const statusCol = this.keyField === 'i2v_job_key' ? 'i2v_job_status' : 't2i_job_status';
-        const progCol   = this.keyField === 'i2v_job_key' ? 'i2v_job_progress' : 't2i_job_progress';
-        const msgCol    = this.keyField === 'i2v_job_key' ? 'i2v_job_message' : 't2i_job_message';
-        const startCol  = this.keyField === 'i2v_job_key' ? 'i2v_job_started_dtime' : 't2i_job_started_dtime';
-        const dCol      = this.keyField === 'i2v_job_key' ? 'i2v_job_dtime' : 't2i_job_dtime';
-        const revCol    = this.keyField === 'i2v_job_key' ? 'i2v_job_revision_dtime' : 't2i_job_revision_dtime';
+        const promptCol = this.colPrefix + '_prompt';
+        const statusCol = this.colPrefix + '_status';
+        const progCol   = this.colPrefix + '_progress';
+        const msgCol    = this.colPrefix + '_message';
+        const startCol  = this.colPrefix + '_started_dtime';
+        const dCol      = this.colPrefix + '_dtime';
+        const revCol    = this.colPrefix + '_revision_dtime';
         const status    = String(j[statusCol] || '?');
         // Elapsed time since the job kicked off + freshness of the last
         // engine ack. "Loading model" at 5 % for 25 min is a different
@@ -1362,17 +1993,34 @@ class TabController {
         if (!ref.detail) return;
         const d = ref.detail.querySelector('.row-detail');
         const blocks = [];
-        const err = this.name === 'video' ? j.i2v_job_error : j.t2i_job_error;
-        const status = this.name === 'video' ? j.i2v_job_status : j.t2i_job_status;
-        const started = this.name === 'video' ? j.i2v_job_started_dtime : j.t2i_job_started_dtime;
-        const completed = this.name === 'video' ? j.i2v_job_completed_dtime : j.t2i_job_completed_dtime;
-        const size = this.name === 'video' ? j.i2v_job_size_bytes : j.t2i_job_size_bytes;
+        const err = j[this.colPrefix + '_error'];
+        const status = j[this.colPrefix + '_status'];
+        const started = j[this.colPrefix + '_started_dtime'];
+        const completed = j[this.colPrefix + '_completed_dtime'];
+        const size = j[this.colPrefix + '_size_bytes'];
         if (err) blocks.push('<div><strong>Error:</strong> ' + esc(err) + '</div>');
         blocks.push('<div class="small">Started: ' + esc(started || '—') + ' &middot; Completed: ' + esc(completed || '—') + ' &middot; Size: ' + (size ? Math.round(size / 1024) + 'kB' : '—') + '</div>');
         if (this.name === 'video') {
             if (j.i2v_job_output_path) {
                 blocks.push('<div style="margin-top:8px">Output:</div><video src="' + esc(j.i2v_job_output_path) + '" controls preload="metadata"></video>' +
                             '<div class="small"><a href="' + esc(j.i2v_job_output_path) + '" download>Download</a></div>');
+            }
+        } else if (this.name === 'audio') {
+            let outs = [];
+            const outsRaw = j.t2a_job_outputs;
+            try { outs = typeof outsRaw === 'string' ? JSON.parse(outsRaw) : (outsRaw || []); } catch (e) {}
+            if (j.t2a_job_lyrics) {
+                blocks.push('<details><summary>Lyrics sent</summary><pre class="small" style="white-space:pre-wrap">' +
+                            esc(j.t2a_job_lyrics) + '</pre></details>');
+            }
+            if (outs.length) {
+                blocks.push('<div style="margin-top:8px">Takes:</div><div class="audio-results">' +
+                    outs.map((o, i) =>
+                        '<div class="take"><div class="small">Take ' + (i + 1) +
+                        (o.size_bytes ? ' &middot; ' + Math.round(o.size_bytes / 1024) + ' kB' : '') +
+                        ' &middot; <a href="' + esc(o.path) + '" download>Download</a></div>' +
+                        '<audio src="' + esc(o.path) + '" controls preload="metadata"></audio></div>'
+                    ).join('') + '</div>');
             }
         } else {
             const outsRaw = j.t2i_job_outputs;
@@ -1501,7 +2149,12 @@ const Picker = {
         body.innerHTML = '<div class="empty">Loading…</div>';
         $('picker-modal').classList.remove('hidden');
         try {
-            const r = await fetch('/api/admin-ai-image.php?action=list_recent_outputs&limit=24');
+            // Audio pulls from its own endpoint — a picture is no use as a
+            // style reference for a song.
+            const url = tab.name === 'audio'
+                ? '/api/admin-ai-audio.php?action=list_recent_outputs&limit=24'
+                : '/api/admin-ai-image.php?action=list_recent_outputs&limit=24';
+            const r = await fetch(url);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
             this.render(d);
@@ -1513,6 +2166,10 @@ const Picker = {
     render(d) {
         const body = $('picker-body');
         const blocks = [];
+        if ((d.audios || []).length) {
+            blocks.push('<div class="picker-section"><h4>Recent takes</h4><div class="picker-grid">' +
+                d.audios.map(it => this.cell(it, 'audio')).join('') + '</div></div>');
+        }
         if ((d.images || []).length) {
             blocks.push('<div class="picker-section"><h4>Recent images</h4><div class="picker-grid">' +
                 d.images.map(it => this.cell(it, 'image')).join('') + '</div></div>');
@@ -1524,21 +2181,28 @@ const Picker = {
         if (!blocks.length) blocks.push('<div class="empty">No previous outputs yet.</div>');
         body.innerHTML = blocks.join('');
         body.querySelectorAll('.picker-cell[data-key]').forEach(el => {
-            el.addEventListener('click', () => this.pick({
-                kind:  el.dataset.kind,
-                key:   Number(el.dataset.key),
-                index: Number(el.dataset.index || 0),
-                path:  el.dataset.path,
-            }));
+            el.addEventListener('click', (e) => {
+                // The audio cells embed a real player — pressing play must not
+                // also count as picking the clip.
+                if (e.target.closest && e.target.closest('audio')) return;
+                this.pick({
+                    kind:  el.dataset.kind,
+                    key:   Number(el.dataset.key),
+                    index: Number(el.dataset.index || 0),
+                    path:  el.dataset.path,
+                });
+            });
         });
     },
     cell(it, kind) {
         const path = esc(it.path);
-        const tag  = kind === 'video' ? 'video' : 'image';
+        const tag  = kind;
         const thumb = kind === 'video'
             ? '<video class="pthumb" src="' + path + '" preload="metadata" muted></video>'
+            : kind === 'audio'
+            ? '<div class="pthumb" style="display:flex;align-items:center;justify-content:center;height:auto;padding:10px;background:#f4f5fb"><audio src="' + path + '" controls preload="none" style="width:100%"></audio></div>'
             : '<img class="pthumb" src="' + path + '" alt="">';
-        const idx = kind === 'image' ? (it.index || 0) : 0;
+        const idx = (kind === 'image' || kind === 'audio') ? (it.index || 0) : 0;
         return '<div class="picker-cell" data-kind="' + kind + '" data-key="' + it.key + '" data-index="' + idx + '" data-path="' + path + '">' +
             thumb +
             '<div class="pinfo"><span class="ptag">' + tag + ' #' + it.key + '</span>' +
@@ -1550,7 +2214,10 @@ const Picker = {
             const r = await fetch(ref.path);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const blob = await r.blob();
-            const filename = ref.kind + '_' + ref.key + (ref.kind === 'image' ? ('_' + ref.index + '.' + (ref.path.split('.').pop() || 'png')) : '.first.png');
+            const ext = (ref.path.split('.').pop() || '').toLowerCase();
+            const filename = ref.kind === 'audio'
+                ? ref.kind + '_' + ref.key + '_' + ref.index + '.' + (ext || 'wav')
+                : ref.kind + '_' + ref.key + (ref.kind === 'image' ? ('_' + ref.index + '.' + (ext || 'png')) : '.first.png');
             const tab = this.targetTab;
             tab.addPrev({ kind: ref.kind, key: ref.key, index: ref.index }, blob, filename);
             toast('Added ' + ref.kind + ' #' + ref.key + ' as input.');
@@ -1638,7 +2305,7 @@ const MaskPainter = {
     },
 };
 
-const TABS = { video: null, image: null };
+const TABS = { video: null, image: null, audio: null };
 function activateTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
@@ -1647,8 +2314,10 @@ document.addEventListener('DOMContentLoaded', () => {
     FieldHelp.init();
     TABS.video = new TabController('video');
     TABS.image = new TabController('image');
+    TABS.audio = new TabController('audio');
     TABS.video.init();
     TABS.image.init();
+    TABS.audio.init();
     document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
     document.querySelectorAll('[data-act="picker-close"], #picker-modal').forEach(el => {
         el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'picker-close') Picker.close(); });

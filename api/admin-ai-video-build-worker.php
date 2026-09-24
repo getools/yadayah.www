@@ -203,6 +203,10 @@ function generateStartFrame(PDO $db, int $jobKey, array $job, array $vparams, st
         $r = curl_exec($ch);
         $c = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+        // 404 = the engine forgot the job (its JOBS map is in-memory, so a
+        // restart wipes it). That never recovers — fail now instead of
+        // spinning until the deadline.
+        if ($c === 404) bailJob($db, $jobKey, "start frame lost — the image engine restarted mid-job");
         if ($r === false || $c >= 400) { fwrite(STDERR, "start frame poll HTTP $c; retrying\n"); sleep(3); continue; }
         $j = json_decode((string)$r, true) ?: [];
         $st = (string)($j['status'] ?? '');
@@ -352,6 +356,9 @@ while (time() < $deadline) {
     $resp = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
+    // Same as the start-frame poll: a 404 means the engine restarted and lost
+    // the job, which no amount of retrying fixes — don't sit here for 2 hours.
+    if ($code === 404) bailJob($db, $jobKey, "job lost — the video engine restarted mid-job");
     if ($resp === false || $code >= 400) {
         fwrite(STDERR, "poll HTTP $code; retrying\n");
         sleep(5);
