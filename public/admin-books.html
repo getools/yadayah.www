@@ -89,8 +89,16 @@
         .cover-icon-strip { display: flex; align-items: center; gap: 16px; padding: 12px 14px; background: #f7f8fc; border: 1px solid #e2e5f2; border-radius: 8px; margin-bottom: 18px; }
         .cover-icon-box { flex: 0 0 60px; width: 60px; height: 73px; background: #f0f0f0; border-radius: 3px; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
         .cover-icon-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
-        .cover-icon-note { flex: 1 1 auto; font-size: 0.8rem; color: #555; line-height: 1.5; }
+        .cover-icon-main { flex: 1 1 auto; min-width: 0; }
+        .cover-icon-note { font-size: 0.8rem; color: #555; line-height: 1.5; }
         .cover-icon-note strong { color: #31345A; }
+        /* Source picker + rebuild/remove, on their own row so a long note
+           doesn't squeeze them out at narrower widths. */
+        .cover-icon-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+        .cover-icon-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: #31345A; }
+        .cover-icon-pick select { font-size: 0.78rem; padding: 4px 6px; border: 1px solid #c9c9c9; border-radius: 4px; background: #fff; }
+        .cover-icon-acts .cover-icon-del { color: #b3261e; border-color: #e6bdb9; }
+        .cover-icon-hint { font-size: 0.78rem; color: #888; font-style: italic; }
         .cover-slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
         .cover-slot { position: relative; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
         .cover-slot h4 { margin: 0; font-size: 0.82rem; color: #31345A; }
@@ -842,6 +850,18 @@ var coverIconBusy = '';  // label shown in the icon strip while it rebuilds
 // every icon-affecting action; used only by the popover preview.
 var coverIconBust = 0;
 
+function coverSlotLabel(slot) {
+    var s = COVER_SLOTS.find(function(x){ return x.slot === slot; });
+    return s ? s.label.replace(' · ', ' ') : slot;
+}
+
+// Which artwork slot the icon is generated from. The column is NULL on every
+// book that predates the picker, and the icon was the 2D front back then.
+function coverIconSlot() {
+    var v = coverPopVol, s = v && v.volume_img_icon_slot;
+    return COVER_SLOTS.some(function(x){ return x.slot === s; }) ? s : 'front_2d';
+}
+
 // Mirror of the site's fallback so the admin shows what visitors actually see.
 function legacyCoverUrl(v) {
     var m = v.volume_code ? String(v.volume_code).match(/s\d{2}v\d{2}/i) : null;
@@ -882,8 +902,10 @@ function closeCoverPopover() {
     document.body.style.overflow = '';
 }
 
-// The derived icon is rebuilt server-side on every 2D-front upload, so the
-// strip carries its own busy line instead of borrowing a slot's overlay.
+// The derived icon is rebuilt server-side whenever its source slot is
+// uploaded, so the strip carries its own busy line instead of borrowing a
+// slot's overlay. Any of the six slots can be the source — the picker below
+// re-points it, which rebuilds the icon immediately.
 function renderCoverIconStrip() {
     var v = coverPopVol;
     var strip = document.getElementById('cover-icon-strip');
@@ -891,21 +913,45 @@ function renderCoverIconStrip() {
     var legacy = legacyCoverUrl(v);
     var icon = v.volume_img_icon || '';
     var iconImg = icon || legacy;
+    var src = coverIconSlot();
+    var filled = COVER_SLOTS.filter(function(s){ return !!v['volume_img_' + s.slot]; });
     var note;
     if (icon) {
-        note = '<strong>Icon</strong> — 245×300 max, rebuilt from the 2D front on every upload. '
+        note = '<strong>Icon</strong> — 245×300 max, generated from <strong>' + esc(coverSlotLabel(src))
+             + '</strong> and rebuilt whenever that image is replaced. '
              + 'This is what search results and other thumbnails use.';
     } else if (legacy) {
-        note = '<strong>Icon</strong> — none uploaded; falling back to the legacy '
-             + '<code>/images/covers</code> file. Upload a 2D front to replace it.';
+        note = '<strong>Icon</strong> — none generated; falling back to the legacy '
+             + '<code>/images/covers</code> file. Pick a source image below to replace it.';
     } else {
-        note = '<strong>Icon</strong> — none. Upload a 2D front cover and the icon is generated from it; '
+        note = '<strong>Icon</strong> — none. Pick any of the artwork images below as the source; '
              + 'until then this book shows a blank thumbnail in search results.';
     }
-    var act = coverIconBusy
-        ? '<span class="cover-inline-busy"><span class="cover-spin"></span>' + esc(coverIconBusy) + '</span>'
-        : '<button type="button" class="btn btn-secondary btn-sm" ' + (v.volume_img_front_2d ? '' : 'disabled ')
-          + 'title="Regenerate the icon from the stored 2D front image" onclick="regenCoverIcon()">Rebuild icon</button>';
+
+    var acts;
+    if (coverIconBusy) {
+        acts = '<span class="cover-inline-busy"><span class="cover-spin"></span>' + esc(coverIconBusy) + '</span>';
+    } else if (!filled.length) {
+        acts = '<span class="cover-icon-hint">Upload any cover image below to generate an icon.</span>';
+    } else {
+        // The picker is the generate action: choosing a slot re-points the
+        // icon and rebuilds it in one step, so there is no separate "apply".
+        var opts = filled.map(function(s) {
+            return '<option value="' + s.slot + '"' + (s.slot === src ? ' selected' : '') + '>'
+                 + esc(s.label) + '</option>';
+        }).join('');
+        acts = '<label class="cover-icon-pick">Generate from '
+             + '<select onchange="regenCoverIcon(this.value)" '
+             +   'title="Build the icon from this artwork image">' + opts + '</select></label>'
+             + '<button type="button" class="btn btn-secondary btn-sm" '
+             +   (v['volume_img_' + src] ? '' : 'disabled ')
+             +   'title="Rebuild the icon from the image it already uses" '
+             +   'onclick="regenCoverIcon()">Rebuild</button>'
+             + '<button type="button" class="btn btn-secondary btn-sm cover-icon-del" ' + (icon ? '' : 'disabled ')
+             +   'title="Clear the icon; the artwork images are left alone" '
+             +   'onclick="deleteCoverIcon()">Remove icon</button>';
+    }
+
     var iconSrc = iconImg
         ? esc(iconImg) + (coverIconBust ? (iconImg.indexOf('?') < 0 ? '?t=' : '&t=') + coverIconBust : '')
         : '';
@@ -913,8 +959,10 @@ function renderCoverIconStrip() {
         '<div class="cover-icon-box">'
       + (iconSrc ? '<img src="' + iconSrc + '" alt="" onerror="this.remove()">' : '<span class="cover-empty">—</span>')
       + '</div>'
-      + '<div class="cover-icon-note">' + note + '</div>'
-      + act;
+      + '<div class="cover-icon-main">'
+      +   '<div class="cover-icon-note">' + note + '</div>'
+      +   '<div class="cover-icon-acts">' + acts + '</div>'
+      + '</div>';
 }
 
 function coverIconBusyState(label) {
@@ -1016,7 +1064,11 @@ function uploadCoverSlot(slot, input) {
     fd.append('image_file', file);
 
     var size = coverSizeLabel(file.size);
-    var derivesIcon = (slot === 'front_2d');
+    // Only the icon's own source slot refreshes it — see coverIconSlot(); a
+    // book with no icon yet adopts whichever slot is filled first.
+    var v0 = coverPopVol;
+    var derivesIcon = (slot === coverIconSlot())
+                   || !!(v0 && !v0.volume_img_icon && !v0.volume_img_icon_slot);
     var done = function() {
         coverSlotBusy(slot, false);
         if (derivesIcon) coverIconBusyState('');
@@ -1053,10 +1105,17 @@ function uploadCoverSlot(slot, input) {
 
 function deleteCoverSlot(slot) {
     if (!coverPopKey) return;
-    yesNoConfirm('Remove this image?', function(yes) {
+    // Pin the key now: the confirm is async, and anything that closes the
+    // popover in the meantime nulls coverPopKey — the request would then post
+    // volume_key:null and come back "Volume key required".
+    var key = coverPopKey;
+    var label = coverSlotLabel(slot);
+    // Dropping the icon's source slot drops the derived icon with it.
+    var derivesIcon = (slot === coverIconSlot());
+    yesNoConfirm('Remove the ' + label + ' image?'
+               + (derivesIcon ? '\n\nThe book icon is generated from this image, so it will be removed too.' : ''),
+      function(yes) {
         if (!yes) return;
-        // Dropping the 2D front nulls the derived icon too.
-        var derivesIcon = (slot === 'front_2d');
         var done = function() {
             coverSlotBusy(slot, false);
             if (derivesIcon) coverIconBusyState('');
@@ -1066,7 +1125,7 @@ function deleteCoverSlot(slot) {
         fetch(API + '/admin-books-cover-upload.php', {
             method: 'POST', credentials: 'include',
             headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ action: 'delete', volume_key: coverPopKey, slot: slot })
+            body: JSON.stringify({ action: 'delete', volume_key: key, slot: slot })
         }).then(function(r){ return safeJson(r); }).then(function(d) {
             if (d && d.error) { alert(d.error); done(); return; }
             coverSlotBusy(slot, 'Refreshing…', null);
@@ -1078,13 +1137,18 @@ function deleteCoverSlot(slot) {
     });
 }
 
-function regenCoverIcon() {
+// slot re-points the icon at a different artwork image; omit it to rebuild
+// from the source it already uses.
+function regenCoverIcon(slot) {
     if (!coverPopKey) return;
-    coverIconBusyState('Rebuilding icon…');
+    var key = coverPopKey;
+    var req = { action: 'regen_icon', volume_key: key };
+    if (slot) req.slot = slot;
+    coverIconBusyState(slot ? 'Generating icon from ' + coverSlotLabel(slot) + '…' : 'Rebuilding icon…');
     fetch(API + '/admin-books-cover-upload.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ action: 'regen_icon', volume_key: coverPopKey })
+        body: JSON.stringify(req)
     }).then(function(r){ return safeJson(r); }).then(function(d) {
         if (d && d.error) { alert(d.error); coverIconBusyState(''); return; }
         return refreshCoverPopover().then(
@@ -1094,6 +1158,31 @@ function regenCoverIcon() {
     }).catch(function(err) {
         alert('Icon rebuild failed: ' + (err && err.message ? err.message : 'network'));
         coverIconBusyState('');
+    });
+}
+
+// Clears the derived icon only — the six artwork slots are untouched.
+function deleteCoverIcon() {
+    if (!coverPopKey) return;
+    var key = coverPopKey;   // see deleteCoverSlot: the confirm is async
+    yesNoConfirm('Remove the book icon?\n\nThe cover artwork stays; only the generated icon is cleared, '
+               + 'so search results fall back to the legacy thumbnail (or a blank box).', function(yes) {
+        if (!yes) return;
+        coverIconBusyState('Removing icon…');
+        fetch(API + '/admin-books-cover-upload.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ action: 'delete_icon', volume_key: key })
+        }).then(function(r){ return safeJson(r); }).then(function(d) {
+            if (d && d.error) { alert(d.error); coverIconBusyState(''); return; }
+            return refreshCoverPopover().then(
+                function(){ coverIconBusyState(''); },
+                function(){ coverIconBusyState(''); }
+            );
+        }).catch(function(err) {
+            alert('Icon remove failed: ' + (err && err.message ? err.message : 'network'));
+            coverIconBusyState('');
+        });
     });
 }
 
@@ -1440,8 +1529,11 @@ function saveVolume() {
 // readable. cb(true|false) is invoked when the user clicks one of the buttons.
 function yesNoConfirm(message, cb) {
     var ov = document.createElement('div');
+    // Above every other overlay (the cover/TTS popovers sit at 3000) — a
+    // confirm rendered *underneath* the popover that asked for it is invisible,
+    // and the click that dismisses it lands on the popover instead.
     ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);'
-                     + 'z-index:2000;display:flex;justify-content:center;align-items:center;padding:20px;';
+                     + 'z-index:4000;display:flex;justify-content:center;align-items:center;padding:20px;';
     var card = document.createElement('div');
     card.style.cssText = 'background:#fff;border-radius:10px;max-width:600px;width:100%;'
                        + 'box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow:hidden;';

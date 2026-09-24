@@ -3,9 +3,13 @@
  * Admin API for book cover artwork.
  *
  * Six artwork slots per volume — front / spine / back, each in 2D and 3D —
- * plus a derived icon that is regenerated from the 2D front on every upload.
- * The icon is the thumbnail every other surface consumes (search results
- * today); the full-size slots are for book pages and marketing.
+ * plus a derived icon. The icon is the thumbnail every other surface consumes
+ * (search results today); the full-size slots are for book pages and marketing.
+ *
+ * Any of the six slots can be the icon's source. `volume_img_icon_slot` records
+ * which one; NULL means the historical default, the 2D front. The icon is
+ * rebuilt automatically whenever its source slot is uploaded/replaced, and
+ * cleared when its source slot is deleted — the other five slots don't touch it.
  *
  * Uploads keep the untouched file in originals/ and serve a scaled display
  * copy, same shape as the logo/resource uploaders. Filenames are unique per
@@ -13,7 +17,7 @@
  *
  * POST multipart  volume_key, slot, image_file      — upload / replace a slot
  * POST json       {action:'delete',     volume_key, slot}
- * POST json       {action:'regen_icon', volume_key}
+ * POST json       {action:'regen_icon', volume_key, slot?}   slot = new source
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/image-helpers.php';
@@ -79,17 +83,43 @@ function coverUnlink(?string $webPath, string $uploadDir, string $origDir): void
  * their own thumbnail rule any more, so a rebuild here and an upload produce
  * byte-identical files under the same name.
  */
-function coverBuildIcon(?string $front2d, string $uploadDir, string $origDir, string $webDir): ?string {
-    if (!$front2d) return null;
-    $src = coverAbs($front2d, $origDir);
-    if (!$src || !is_file($src)) $src = coverAbs($front2d, $uploadDir);   // original pruned? fall back
+function coverBuildIcon(?string $slotPath, string $uploadDir, string $origDir, string $webDir): ?string {
+    if (!$slotPath) return null;
+    $src = coverAbs($slotPath, $origDir);
+    if (!$src || !is_file($src)) $src = coverAbs($slotPath, $uploadDir);   // original pruned? fall back
     if (!$src || !is_file($src)) return null;
 
     // Variant names key off the slot's own filename, not the source's, so a
     // fallback to the display copy still yields '<stem>-icon.<ext>'.
-    $made = makeImageSizes($src, $uploadDir, basename(coverAbs($front2d, $uploadDir)));
+    $made = makeImageSizes($src, $uploadDir, basename(coverAbs($slotPath, $uploadDir)));
     if (empty($made['icon'])) return null;
     return rtrim($webDir, '/') . '/' . $made['icon'];
+}
+
+/** Which slot the icon is derived from. NULL in the DB = the 2D front. */
+function coverIconSlot(array $vol, array $slots): string {
+    $s = (string)($vol['volume_img_icon_slot'] ?? '');
+    return in_array($s, $slots, true) ? $s : 'front_2d';
+}
+
+/**
+ * Retire the old icon file — but only when it is genuinely orphaned.
+ *
+ * Since the icon is the '-icon' member of its source slot's size set, the file
+ * it points at usually still belongs to a slot that is very much alive (that is
+ * exactly the case when the admin re-points the icon at a different slot).
+ * Deleting it there would blow a hole in that slot's srcset, so leave any file
+ * that is still a variant of a stored slot alone and only unlink strays —
+ * standalone icons from before covers shared the common size set.
+ */
+function coverRetireIcon(?string $iconPath, array $vol, array $slots, string $uploadDir, string $origDir): void {
+    if (!$iconPath) return;
+    foreach ($slots as $s) {
+        $p = $vol['volume_img_' . $s] ?? null;
+        if (!$p) continue;
+        if (preg_replace('/-icon(\.[A-Za-z0-9]+)$/', '$1', basename($iconPath)) === basename($p)) return;
+    }
+    coverUnlink($iconPath, $uploadDir, $origDir);
 }
 
 // ── Delete a slot ────────────────────────────────────────────────────────
@@ -98,28 +128,47 @@ if ($action === 'delete') {
     if (!in_array($slot, $COVER_SLOTS, true)) errorResponse('Unknown slot');
     $col = 'volume_img_' . $slot;                       // whitelisted above
 
+    // Unlinking the slot takes its whole size set with it — including the
+    // '-icon' variant, when this is the slot the icon is derived from. So read
+    // the icon-source decision first, then delete.
+    $iconSlot = coverIconSlot($vol, $COVER_SLOTS);
     coverUnlink($vol[$col] ?? null, $UPLOAD_DIR, $ORIG_DIR);
 
-    // Dropping the 2D front also drops the icon it fed.
-    if ($slot === 'front_2d') {
-        coverUnlink($vol['volume_img_icon'] ?? null, $UPLOAD_DIR, $ORIG_DIR);
-        $db->prepare("UPDATE yy_volume SET $col = NULL, volume_img_icon = NULL WHERE volume_key = ?")->execute([$key]);
-        jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null, 'icon' => null]);
+    // Dropping the slot the icon is derived from drops the icon it fed. The
+    // source pointer resets so the next upload falls back to the 2D front.
+    if ($slot === $iconSlot) {
+        coverRetireIcon($vol['volume_img_icon'] ?? null, $vol, $COVER_SLOTS, $UPLOAD_DIR, $ORIG_DIR);
+        $db->prepare("UPDATE yy_volume SET $col = NULL, volume_img_icon = NULL, volume_img_icon_slot = NULL WHERE volume_key = ?")->execute([$key]);
+        jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null, 'icon' => null, 'icon_slot' => null]);
     }
 
     $db->prepare("UPDATE yy_volume SET $col = NULL WHERE volume_key = ?")->execute([$key]);
     jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null]);
 }
 
-// ── Rebuild the icon from the existing 2D front ──────────────────────────
+// ── Rebuild the icon, optionally re-pointing it at a different slot ──────
 if ($action === 'regen_icon') {
-    $icon = coverBuildIcon($vol['volume_img_front_2d'] ?? null, $UPLOAD_DIR, $ORIG_DIR, $WEB_DIR);
-    if (!$icon) errorResponse('No 2D front image to derive an icon from');
+    // An explicit slot re-points the icon; omitting it rebuilds from whatever
+    // slot the icon already uses.
+    $want = (string)($body['slot'] ?? $_POST['slot'] ?? '');
+    if ($want !== '' && !in_array($want, $COVER_SLOTS, true)) errorResponse('Unknown slot');
+    $iconSlot = $want !== '' ? $want : coverIconSlot($vol, $COVER_SLOTS);
+
+    $icon = coverBuildIcon($vol['volume_img_' . $iconSlot] ?? null, $UPLOAD_DIR, $ORIG_DIR, $WEB_DIR);
+    if (!$icon) errorResponse('That slot has no image to derive an icon from');
     if (($vol['volume_img_icon'] ?? null) && $vol['volume_img_icon'] !== $icon) {
-        coverUnlink($vol['volume_img_icon'], $UPLOAD_DIR, $ORIG_DIR);
+        coverRetireIcon($vol['volume_img_icon'], $vol, $COVER_SLOTS, $UPLOAD_DIR, $ORIG_DIR);
     }
-    $db->prepare("UPDATE yy_volume SET volume_img_icon = ? WHERE volume_key = ?")->execute([$icon, $key]);
-    jsonResponse(['icon' => $icon]);
+    $db->prepare("UPDATE yy_volume SET volume_img_icon = ?, volume_img_icon_slot = ? WHERE volume_key = ?")
+       ->execute([$icon, $iconSlot, $key]);
+    jsonResponse(['icon' => $icon, 'icon_slot' => $iconSlot]);
+}
+
+// ── Clear the icon without touching any artwork slot ─────────────────────
+if ($action === 'delete_icon') {
+    coverRetireIcon($vol['volume_img_icon'] ?? null, $vol, $COVER_SLOTS, $UPLOAD_DIR, $ORIG_DIR);
+    $db->prepare("UPDATE yy_volume SET volume_img_icon = NULL, volume_img_icon_slot = NULL WHERE volume_key = ?")->execute([$key]);
+    jsonResponse(['deleted' => true, 'icon' => null, 'icon_slot' => null]);
 }
 
 // ── Upload / replace a slot ──────────────────────────────────────────────
@@ -176,15 +225,22 @@ $resp = [
     'sizes' => array_map(fn($f) => $WEB_DIR . '/' . $f, $sizes),
 ];
 
-if ($slot === 'front_2d') {
+// Only the icon's own source slot refreshes it — replacing, say, the 3D spine
+// must not yank an icon the admin deliberately pointed at the 2D back. The
+// exception is a book with no icon at all: whatever is uploaded first becomes
+// the source, so a book whose artwork isn't a 2D front still gets a thumbnail.
+$adoptsIcon = empty($vol['volume_img_icon']) && empty($vol['volume_img_icon_slot']);
+if ($slot === coverIconSlot($vol, $COVER_SLOTS) || $adoptsIcon) {
     // The icon is always derived, never uploaded — it is simply the 'icon'
     // member of the set we just built.
     $icon = !empty($sizes['icon']) ? $WEB_DIR . '/' . $sizes['icon'] : null;
     if (($vol['volume_img_icon'] ?? null) && $vol['volume_img_icon'] !== $icon) {
-        coverUnlink($vol['volume_img_icon'], $UPLOAD_DIR, $ORIG_DIR);
+        coverRetireIcon($vol['volume_img_icon'], $vol, $COVER_SLOTS, $UPLOAD_DIR, $ORIG_DIR);
     }
-    $db->prepare("UPDATE yy_volume SET $col = ?, volume_img_icon = ? WHERE volume_key = ?")->execute([$webPath, $icon, $key]);
+    $db->prepare("UPDATE yy_volume SET $col = ?, volume_img_icon = ?, volume_img_icon_slot = ? WHERE volume_key = ?")
+       ->execute([$webPath, $icon, $slot, $key]);
     $resp['icon'] = $icon;
+    $resp['icon_slot'] = $slot;
 } else {
     $db->prepare("UPDATE yy_volume SET $col = ? WHERE volume_key = ?")->execute([$webPath, $key]);
 }
