@@ -1,0 +1,21 @@
+[Unit]
+Description=Push trigger: rebuild the flipbook when a book PDF changes
+Documentation=file:/opt/yada-www/systemd/README.md
+
+[Path]
+# Any PDF landing in (or being overwritten inside) public/pdf must end up as a
+# rebuilt flipbook. The DOCX upload routes already push-trigger via
+# jobs/book-pipeline (book-pipeline.path), but a PDF that arrives by any OTHER
+# route -- author pair-upload stamping the file, a manual scp/rsync, an
+# out-of-band re-export -- used to wait for the */10 cron backstop. This watch
+# turns every such write into an immediate run of the worker, whose Phase 6
+# flipbook sweep sees "PDF newer than pages/" and regenerates.
+PathChanged=/opt/yada-www/public/pdf
+Unit=book-pdf-trigger.service
+# Never let a burst (e.g. rsyncing every book at once) trip the default
+# 200-events-in-2s trigger limit: a tripped path unit FAILS and silently stops
+# watching until someone restarts it. Debouncing happens in the trigger unit.
+TriggerLimitIntervalSec=0
+
+[Install]
+WantedBy=paths.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Book pipeline worker (docx -> pdf -> parse -> flipbook)
+Documentation=file:/opt/yada-www/book-pipeline-worker.sh
+
+[Service]
+Type=oneshot
+# The worker holds its own flock (fd 9). If a run is already in progress we
+# exit 0 rather than fail — the in-flight run's phase-7 chain will pick up
+# whatever this trigger was for as soon as it finishes its current volume.
+ExecStart=/bin/bash -c 'flock -n /var/lock/cron-book-pipeline-worker-sh.lock -c "nice -n 19 ionice -c 3 /opt/yada-www/book-pipeline-worker.sh" || exit 0'
+StandardOutput=append:/var/log/book-pipeline.log
+StandardError=append:/var/log/book-pipeline.log
+TimeoutStartSec=0

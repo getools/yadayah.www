@@ -1,0 +1,13 @@
+[Unit]
+Description=Push trigger: run the book pipeline the moment a DOCX job is queued
+
+[Path]
+# admin-books.php / admin-books-upload-pair.php drop a job .json here the
+# instant a docx is uploaded (the dir is bind-mounted into the web container).
+# inotify on the directory turns that write into an immediate start — this is
+# the push event that replaces waiting for the */10 cron tick.
+PathChanged=/opt/yada-www/public/jobs/book-pipeline
+Unit=book-pipeline.service
+
+[Install]
+WantedBy=paths.target

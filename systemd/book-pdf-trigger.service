@@ -1,0 +1,17 @@
+[Unit]
+Description=Debounce PDF writes, then run the book pipeline (flipbook sweep)
+Documentation=file:/opt/yada-www/systemd/README.md
+# A PDF copy storm must not rate-limit us into a failed state.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+# The settle delay does double duty:
+#  1. it debounces -- a path unit drops further events while its trigger unit
+#     is active, so N PDFs written inside the window collapse into ONE run;
+#  2. it keeps us off a half-written file: pdftoppm on a PDF still being
+#     copied would fail and burn one of Phase 6's 3 allowed attempts.
+# --no-block so this oneshot returns immediately and the path unit re-arms;
+# book-pipeline.service takes flock -n and exits 0 if a run is already going,
+# and that run's phase-7 chain picks up whatever we queued.
+ExecStart=/bin/bash -c 'sleep 45; systemctl start --no-block book-pipeline.service'
