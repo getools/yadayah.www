@@ -7,6 +7,15 @@
  *   php _word_harvest.php --min=3 --ratio=0.3 tune the candidate filter
  *   php _word_harvest.php --recount-only      only refresh counts, add nothing
  *   php _word_harvest.php --index --apply     ALSO rebuild yy_word_occurrence
+ *   php _word_harvest.php --no-books-coverage skip pass 3b (see below)
+ *
+ * Books coverage (pass 3b)
+ *   word_source_code says where a word was first catalogued, NOT whether the
+ *   books use it — so a kirk/perry word could occur thousands of times and
+ *   still be invisible when the Words tab is filtered to Books. Pass 3b closes
+ *   that: every distinct spelling occurring in the books gets its own 'books'
+ *   row. On by default, so a post-parse refresh keeps it true and a future
+ *   bulk import cannot silently re-open the gap.
  *
  * The occurrence index
  *   --index records, per paragraph, how many times each word's spellings occur
@@ -42,6 +51,10 @@ $args    = $_SERVER['argv'];
 $APPLY   = in_array('--apply', $args, true);
 $RECOUNT = in_array('--recount-only', $args, true);
 $INDEX   = in_array('--index', $args, true);
+/* Books coverage (pass 3b): give every spelling that actually occurs in the
+   books its own 'books' row, even when another source already catalogues the
+   word. On by default so a parse keeps it true; --no-books-coverage skips it. */
+$COVERAGE = !in_array('--no-books-coverage', $args, true);
 $MIN_ITALIC = 3;
 $MIN_RATIO  = 0.30;
 foreach ($args as $a) {
@@ -366,9 +379,80 @@ if (!$RECOUNT) {
     }
 }
 
+/* ═══ Pass 3b — Books coverage ══════════════════════════════════════════
+   word_source_code records WHERE A WORD WAS FIRST CATALOGUED, not whether the
+   books use it. Pass 3 only ever creates a 'books' row for a spelling no word
+   owns yet, so a word Strong's or Perry already had could occur thousands of
+   times in the books and still have no Books entry — filtering the Words tab
+   to Books hid it completely. 'mashal' was the case that surfaced this: 1,156
+   occurrences across 35 volumes, catalogued under kirk and perry, absent from
+   Books.
+
+   The rule here is deliberately the LITERAL one the user chose: every distinct
+   spelling that occurs in the books at all (corpus count > 0) gets its own
+   'books' row. It is NOT the candidate test above.
+
+   ⚠ That means spellings which merely COLLIDE with common English get a Books
+   entry too — 'by' (39,350), 'my' (15,325), 'man' (8,693), 'day' (7,182) are
+   transliteration spellings whose counts come almost entirely from the English
+   words. The stricter italic-ratio test would have excluded them (and 469
+   others) but would also have dropped names the books usually set in plain
+   text, Yahowah among them. The user chose coverage over precision; these rows
+   are identifiable and removable by source + spelling if that is revisited.
+
+   ⚠ word_hebrew is left NULL, as for every harvested word, so word_yt stays
+   NULL and these rows do NOT reach the public glossary letter web (which
+   filters LEFT(word_yt,1)). The noise above is therefore confined to the admin
+   Words tab. Do not "helpfully" copy the Hebrew across from the source word —
+   that would publish them.
+
+   Matching is on the exact lower-cased spelling, not normKey(), because the
+   question is which spelling the books actually print: 'any' and 'ʾany' are
+   different spellings and each earns its own row. */
+
+$booksGap = [];
+if (!$RECOUNT && $COVERAGE) {
+    say('');
+    say('Books coverage — spellings that occur in the books with no Books row …');
+
+    $booksHave = [];      // lower-cased spelling => already owned by a books row
+    foreach ($words as $w) {
+        if ((string)$w['word_source_code'] !== 'books') continue;
+        foreach ($spellings[(int)$w['word_key']] ?? [] as $text) {
+            $lc = mb_strtolower(trim((string)$text));
+            if ($lc !== '') $booksHave[$lc] = true;
+        }
+    }
+
+    foreach ($words as $w) {
+        if ((string)$w['word_source_code'] === 'books') continue;
+        foreach ($spellings[(int)$w['word_key']] ?? [] as $text) {
+            $lc = mb_strtolower(trim((string)$text));
+            if ($lc === '' || isset($booksHave[$lc]) || isset($booksGap[$lc])) continue;
+            $c = $corpus[$lc] ?? 0;
+            if ($c <= 0) continue;                 // not in the books at all
+            // Keep the casing the books themselves use most often.
+            $forms = $surface[$lc] ?? [$lc => 1];
+            arsort($forms);
+            $booksGap[$lc] = ['text' => (string)array_key_first($forms), 'count' => $c];
+        }
+    }
+
+    uasort($booksGap, function ($a, $b) { return $b['count'] <=> $a['count']; });
+    say(sprintf('  %s spelling(s) need a Books row', number_format(count($booksGap))));
+
+    $show = 20;
+    foreach ($args as $a) if (preg_match('/^--top=(\d+)$/', $a, $m)) $show = (int)$m[1];
+    $i = 0;
+    foreach ($booksGap as $r) {
+        say(sprintf('  %8s in books  %s', number_format($r['count']), $r['text']));
+        if (++$i >= $show) break;
+    }
+}
+
 /* ═══ Write ═════════════════════════════════════════════════════════════ */
 
-if ($APPLY && !$RECOUNT && $newRows) {
+if ($APPLY && !$RECOUNT && ($newRows || $booksGap)) {
     say('');
     say('Inserting …');
     $db->beginTransaction();
@@ -392,8 +476,21 @@ if ($APPLY && !$RECOUNT && $newRows) {
             $insT->execute([$wk, $r['text'], $r['count']]);
             $n++;
         }
+        // Pass 3b's rows go in the SAME transaction: both lists are 'books'
+        // words born of the same scan, and a half-applied coverage pass would
+        // leave the Books source inconsistent with the counts just written.
+        $nCov = 0;
+        foreach ($booksGap as $r) {
+            $insW->execute(['books', $r['text'], $r['count']]);
+            $wk = (int)$insW->fetchColumn();
+            $insT->execute([$wk, $r['text'], $r['count']]);
+            $nCov++;
+        }
         $db->commit();
         say('  inserted ' . number_format($n) . ' words with word_source_code = books');
+        if ($nCov) {
+            say('  inserted ' . number_format($nCov) . ' Books-coverage rows for spellings other sources already held');
+        }
         // The scan attributed tokens using the spelling map loaded BEFORE these
         // words existed, so they have no occurrence rows yet.
         say('  ⚠ re-run with --index --apply to index the new words');

@@ -134,13 +134,17 @@ fi
 
 inserted=$(echo "$a_out" | sed -n 's/^  inserted \([0-9,]*\) words.*/\1/p' | tr -d ',')
 candidates=$(echo "$a_out" | sed -n 's/^  \([0-9,]*\) candidates .*/\1/p' | tr -d ',')
-log "  pass A ok — ${candidates:-0} candidate(s), ${inserted:-0} new word(s) inserted"
+# Pass 3b (Books coverage) inserts too, and its rows are just as absent from the
+# index as pass 3's — so pass B has to run when EITHER inserted anything.
+coverage=$(echo "$a_out" | sed -n 's/^  inserted \([0-9,]*\) Books-coverage rows.*/\1/p' | tr -d ',')
+total_inserted=$(( ${inserted:-0} + ${coverage:-0} ))
+log "  pass A ok — ${candidates:-0} candidate(s), ${inserted:-0} new word(s), ${coverage:-0} Books-coverage row(s)"
 
 # ── Pass B: re-index so the words pass A inserted are reachable ───────────
 # Only needed when pass A actually inserted: the driver itself prints
 # "re-run with --index --apply to index the new words" in that case.
-if [ "$DRY_RUN" -eq 0 ] && [ "${inserted:-0}" -gt 0 ]; then
-    log "  pass B: --recount-only --index --apply (indexing ${inserted} new word(s))"
+if [ "$DRY_RUN" -eq 0 ] && [ "$total_inserted" -gt 0 ]; then
+    log "  pass B: --recount-only --index --apply (indexing ${total_inserted} new row(s))"
     b_rc=0
     b_out=$(docker exec "$WEB_CONTAINER" php "$HARVEST" --recount-only --index --apply 2>&1) || b_rc=$?
     echo "$b_out" >> "$LOGFILE"
