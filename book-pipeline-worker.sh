@@ -53,6 +53,15 @@ DOCX_DIR=/opt/yada-www/public/u/books-word
 PDF_DIR=/opt/yada-www/public/pdf
 FLIP_DIR=/opt/yada-www/public/flipbook
 LOCK=/var/lock/book-pipeline-worker.lock
+
+# Set whenever a parse succeeds; consumed by Phase 6.8. A file rather than a
+# variable because the work it queues is deliberately deferred past the END of
+# this run — see Phase 6.8 — and must survive into the next one.
+GLOSSARY_DIRTY=/var/lib/yada/glossary-dirty
+# Refresh anyway once the marker is this old, so a volume that can never finish
+# cannot starve the glossary forever.
+GLOSSARY_MAX_DEFER_HOURS=6
+
 PG_CONTAINER=yada-postgres-prod
 WEB_CONTAINER=yada-www-web-1
 RSSHUB_CONTAINER=yada-www-rsshub-1
@@ -674,6 +683,14 @@ process_job() {
                 "Volume $volume_key parser failed (exit $pv_rc)" "$pv_output"
         else
             log "Parser succeeded for volume $volume_key"
+            # Book text changed → the glossary is now out of step with it, in
+            # both directions: the book may introduce transliterations the
+            # lexicon lacks, and this volume's yy_word_occurrence rows have
+            # just been CASCADE-deleted with its old paragraphs, so every
+            # word's series→volume→chapter→page→paragraph drill-down has lost
+            # them while word_count_yy still claims them. Mark it; Phase 6.8
+            # runs the corpus-wide refresh once the queue has drained.
+            mkdir -p "$(dirname "$GLOSSARY_DIRTY")" && touch "$GLOSSARY_DIRTY"
             # Book text changed → tts pronunciation tune occurrence counts (the
             # # column in admin-tts) are now stale. Recount all tunes corpus-
             # wide, detached, so the pipeline returns immediately. A full sweep
@@ -1024,7 +1041,68 @@ if [ -x /opt/yada-www/parsers/parse_volume_from_bundle.py ]; then
             log_monitor_event "book_parse" "error" "Volume $parse_target parse-sweep failed (exit $ps_rc)" "$ps_output"
         else
             log "Parse-sweep: volume $parse_target succeeded"
+            # Same as Phase 4 — a parse invalidates the lexicon's counts and
+            # its occurrence index. Phase 6.8 picks this up.
+            mkdir -p "$(dirname "$GLOSSARY_DIRTY")" && touch "$GLOSSARY_DIRTY"
         fi
+    fi
+fi
+
+# ── Phase 6.8: glossary refresh ───────────────────────────────────
+# A parse leaves the Hebrew lexicon stale two ways, neither of which reports
+# an error (see glossary-refresh.sh for the full account):
+#   • new words     the book may use transliterations yy_word doesn't have.
+#   • references    yy_word_occurrence is ON DELETE CASCADE from yy_paragraph
+#                   and the parser DELETEs + re-inserts the volume's
+#                   paragraphs, so the volume's occurrence rows are dropped
+#                   while word_count_yy keeps counting them. The Words-tab
+#                   drill-down then just undercounts, silently.
+#
+# The refresh is corpus-wide and cannot be scoped to one volume (word_count_yy
+# is a whole-books total; the index is a single TRUNCATE + reinsert). So
+# running it per parsed volume would redo identical work for every book in a
+# drain. Instead it is DEFERRED until the queue is empty and no parse target
+# remains — 33 volumes re-parsed back to back cost one refresh, not 33 — and
+# the marker file carries that intent across runs. It is cheap when it does
+# run (~25s, ~430MB), which is why it is in-band under the same flock rather
+# than detached like the tts tune recount: no second writer can race the
+# TRUNCATE.
+#
+# Deliberately does NOT set DID_WORK — the refresh is the last thing a drain
+# needs, and re-arming the chain for it would just spin an empty run.
+if [ -f "$GLOSSARY_DIRTY" ] && [ -x /opt/yada-www/glossary-refresh.sh ]; then
+    shopt -s nullglob
+    gl_jobs=("$JOBS_DIR"/*.json)
+    gl_parse_left=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -c "SELECT count(*) FROM yy_volume WHERE volume_docx IS NOT NULL AND (volume_parse_status IS NULL OR volume_parse_status IN ('queued','stale','skipped')) AND COALESCE(volume_pipeline_status,'') NOT IN ('queued','running','waiting-docx','error','warning','flipbook-running')" 2>/dev/null)
+    gl_age_h=$(( ( $(date +%s) - $(stat -c %Y "$GLOSSARY_DIRTY") ) / 3600 ))
+
+    if [ ${#gl_jobs[@]} -eq 0 ] && [ "${gl_parse_left:-0}" -eq 0 ]; then
+        gl_go=1; gl_why="queue drained"
+    elif [ "$gl_age_h" -ge "$GLOSSARY_MAX_DEFER_HOURS" ]; then
+        gl_go=1; gl_why="deferred ${gl_age_h}h — forcing"
+    else
+        gl_go=0
+    fi
+
+    if [ "$gl_go" -eq 1 ]; then
+        log "Glossary refresh: $gl_why — refreshing lexicon counts, new words and occurrence index"
+        gl_rc=0
+        gl_out=$(/opt/yada-www/glossary-refresh.sh 2>&1) || gl_rc=$?
+        echo "$gl_out" >> /var/log/book-pipeline.log
+        if [ "$gl_rc" -eq 0 ]; then
+            rm -f "$GLOSSARY_DIRTY"
+            log "Glossary refresh: done"
+        elif [ "$gl_rc" -eq 75 ]; then
+            # Another refresh holds the lock. It may have started before our
+            # parse, so keep the marker and let the next run settle it.
+            log "Glossary refresh: already running — staying queued"
+        else
+            log "Glossary refresh: FAILED (exit $gl_rc) — marker kept, will retry"
+            log_monitor_event "glossary_refresh" "error" \
+                "Glossary refresh failed after parse (exit $gl_rc)" "$gl_out"
+        fi
+    else
+        log "Glossary refresh: queued (${#gl_jobs[@]} job(s), ${gl_parse_left:-0} parse target(s) left, marker ${gl_age_h}h old)"
     fi
 fi
 
