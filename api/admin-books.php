@@ -162,7 +162,13 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'upload_docx') {
         UPDATE yy_volume
            SET volume_code = ?,
                volume_docx = ?,
-               volume_pdf  = COALESCE(volume_pdf, ?),
+               -- Unconditional, NOT COALESCE(volume_pdf, ?). volume_code is
+               -- the canonical root and the pipeline renders the PDF to
+               -- <code>.pdf, so honoring an older volume_pdf here left the
+               -- DB pointing at a name the pipeline would never write again
+               -- — which is how s04v05 ended up with a Mashal docx, a Mishal
+               -- PDF and a flipbook nobody could reach.
+               volume_pdf  = ?,
                volume_pipeline_status = 'queued',
                volume_pipeline_message = 'Awaiting host worker (libreoffice + flipbook build)',
                volume_pipeline_retry_count = 0,
@@ -593,8 +599,20 @@ if ($method === 'PUT') {
     $renamedDocx = null; $renamedPdf = null;
     $oldDocxName = null; $oldPdfName = null;   // Surfaced to the client so it
                                                 // can prompt + register 301s.
+    // volume_code is the canonical root for EVERY artifact of a book, so a
+    // code change has to drag all of them along: the Word file, the PDF, the
+    // flipbook directory (whose slug comes from volume_file) and the narrated
+    // audio (named "{volume_code}-c{NN}-p{N}.mp3" by the TTS build worker,
+    // bundled as "{volume_code}.mp3.zip"). Renaming only the docx + pdf — all
+    // this did until 2026-09-24 — leaves the book half-renamed in a way
+    // nothing reports: /books drops its Read link because that is gated on
+    // <volume_code>/index.php, and inside the flipbook every book_code call
+    // (bookmarks, TTS audio, paragraph text) answers "book_code not found",
+    // because they all resolve through yy_volume.volume_code.
+    $renamedFlip = null; $oldFlipSlug = null;
+    $extraPairs  = [];                          // additional {from,to} URL pairs
     if ($newCode !== null) {
-        $cur = $db->prepare("SELECT volume_code, volume_docx, volume_pdf FROM yy_volume WHERE volume_key = ?");
+        $cur = $db->prepare("SELECT volume_code, volume_docx, volume_pdf, volume_file FROM yy_volume WHERE volume_key = ?");
         $cur->execute([$key]);
         $oldRow = $cur->fetch();
         if ($oldRow && $newCode !== $oldRow['volume_code']) {
@@ -627,6 +645,67 @@ if ($method === 'PUT') {
                 if ($r['col'] === 'volume_docx') { $renamedDocx = $r['new']; $oldDocxName = $r['old']; }
                 if ($r['col'] === 'volume_pdf')  { $renamedPdf  = $r['new']; $oldPdfName  = $r['old']; }
             }
+
+            // -- the flipbook directory ------------------------------
+            // migrate_flipbook.sh derives the URL slug from volume_file
+            // (spaces to hyphens, apostrophes stripped), so volume_file is
+            // what has to move for the book to live at its new URL. Move
+            // the built directory rather than forcing a rebuild: the pages
+            // are identical, and preserving their mtime keeps the pipeline
+            // worker's flipbook sweep from re-rendering 600 pages for a
+            // pure rename.
+            $oldFlip = str_replace("'", '', str_replace(' ', '-', (string)($oldRow['volume_file'] ?? '')));
+            if ($oldFlip !== '' && $oldFlip !== $newCode) {
+                $oldDir = $publicRoot . '/' . $oldFlip;
+                $newDir = $publicRoot . '/' . $newCode;
+                if (is_dir($oldDir) && !file_exists($newDir) && @rename($oldDir, $newDir)) {
+                    // The wrapper carries the book code the viewer sends to
+                    // every book_code endpoint; left stale it 404s them all.
+                    $idx = $newDir . '/index.php';
+                    if (is_file($idx) && ($php = @file_get_contents($idx)) !== false) {
+                        $fixed = preg_replace("/('bookCode'\s*=>\s*')[^']*(')/", '${1}' . $newCode . '${2}', $php, 1);
+                        if ($fixed && $fixed !== $php) @file_put_contents($idx, $fixed);
+                    }
+                }
+                // Record the rename even if the directory was absent: the
+                // DB has to point at the new slug either way, and the sweep
+                // builds the flipbook there on its next pass.
+                $renamedFlip = $newCode;
+                $oldFlipSlug = $oldFlip;
+                $extraPairs[] = ['from' => '/' . $oldFlip,       'to' => '/' . $newCode . '/'];
+                $extraPairs[] = ['from' => '/' . $oldFlip . '/', 'to' => '/' . $newCode . '/'];
+            }
+
+            // -- narrated audio --------------------------------------
+            // Parts and the zip bundle are both named from the code, and
+            // yy_tts_audio.tts_audio_path is what the player reads, so the
+            // rows move with the files.
+            $oldCode = (string)$oldRow['volume_code'];
+            if ($oldCode !== '' && $oldCode !== $newCode) {
+                $ttsDir = $publicRoot . '/u/tts-audio';
+                $audio  = array_merge(
+                    glob($ttsDir . '/' . $oldCode . '-*.mp3') ?: [],
+                    glob($ttsDir . '/' . $oldCode . '.mp3.zip') ?: []
+                );
+                foreach ($audio as $oldAbs) {
+                    $ob = basename($oldAbs);
+                    $nb = $newCode . substr($ob, strlen($oldCode));
+                    if ($ob === $nb || file_exists($ttsDir . '/' . $nb)) continue;
+                    if (@rename($oldAbs, $ttsDir . '/' . $nb)) {
+                        $extraPairs[] = ['from' => '/u/tts-audio/' . $ob, 'to' => '/u/tts-audio/' . $nb];
+                    }
+                }
+                $db->prepare("
+                    UPDATE yy_tts_audio
+                       SET tts_audio_path = replace(tts_audio_path, ?, ?)
+                     WHERE volume_key = ? AND tts_audio_path LIKE ?
+                ")->execute([
+                    '/u/tts-audio/' . $oldCode,
+                    '/u/tts-audio/' . $newCode,
+                    $key,
+                    '/u/tts-audio/' . $oldCode . '%',
+                ]);
+            }
         }
     }
 
@@ -640,6 +719,7 @@ if ($method === 'PUT') {
     // rename fired, otherwise honored.
     if ($renamedDocx !== null) { $fields[] = "volume_docx = ?"; $params[] = $renamedDocx; }
     if ($renamedPdf  !== null) { $fields[] = "volume_pdf  = ?"; $params[] = $renamedPdf;  }
+    if ($renamedFlip !== null) { $fields[] = "volume_file = ?"; $params[] = $renamedFlip; }
     foreach (['volume_label', 'volume_pdf', 'volume_docx'] as $col) {
         if ($col === 'volume_pdf'  && $renamedPdf  !== null) continue;
         if ($col === 'volume_docx' && $renamedDocx !== null) continue;
@@ -682,10 +762,14 @@ if ($method === 'PUT') {
     $renames = [];
     if ($renamedDocx) $renames[] = ['from' => '/u/books-word/' . $oldDocxName, 'to' => '/u/books-word/' . $renamedDocx];
     if ($renamedPdf)  $renames[] = ['from' => '/pdf/'         . $oldPdfName,   'to' => '/pdf/'         . $renamedPdf];
+    // Flipbook + audio pairs, so the redirect prompt covers every URL the
+    // rename moved rather than just the two document downloads.
+    foreach ($extraPairs as $p) $renames[] = $p;
     jsonResponse([
         'saved'        => true,
         'renamed_docx' => $renamedDocx,
         'renamed_pdf'  => $renamedPdf,
+        'renamed_flip' => $renamedFlip,
         'renames'      => $renames,
     ]);
 }

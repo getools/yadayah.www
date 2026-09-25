@@ -1504,8 +1504,15 @@ function saveVolume() {
         var pending = (d.renames && d.renames.length) ? d.renames : [];
         var afterRedirects = function() { closeForm(); loadBooks(); };
         if (!pending.length) { afterRedirects(); return; }
-        var msg = 'Files were renamed:\n\n'
-                + pending.map(function(p){ return '  ' + p.from + '  →  ' + p.to; }).join('\n')
+        // A code change moves the Word file, the PDF, the flipbook directory
+        // and every narrated chapter — which for a fully narrated book is 20+
+        // paths. List the first few and count the rest, or the prompt becomes
+        // a wall of MP3 names; the redirect request still carries all pairs.
+        var SHOWN = 6;
+        var lines = pending.slice(0, SHOWN).map(function(p){ return '  ' + p.from + '  →  ' + p.to; });
+        if (pending.length > SHOWN) lines.push('  … and ' + (pending.length - SHOWN) + ' more');
+        var msg = pending.length + ' path' + (pending.length === 1 ? ' was' : 's were') + ' renamed:\n\n'
+                + lines.join('\n')
                 + '\n\nAdd 301 redirects from the old URLs to the new ones?';
         yesNoConfirm(msg, function(yes) {
             if (!yes) { afterRedirects(); return; }

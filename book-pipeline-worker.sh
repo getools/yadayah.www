@@ -693,6 +693,22 @@ process_job() {
     log "Job done volume_key=$volume_key"
 }
 
+# ── Phase 0: rename reconcile ─────────────────────────────────────
+# Runs FIRST so every later phase sees one set of names. volume_code is the
+# canonical root for a book's docx, PDF, flipbook slug and audio; when a
+# rename only lands on some of those, this drags the rest across (moving
+# files, never re-rendering) and leaves 301s behind. The admin PUT does the
+# same work inline, so in the normal path this is a no-op costing one query
+# — it is here for renames that arrive any other way (psql, an import, an
+# older client), which is exactly how s04v05 sat half-renamed.
+if [ -x /opt/yada-www/book-rename-reconcile.sh ]; then
+    rr_out=$(/opt/yada-www/book-rename-reconcile.sh --apply 2>&1)
+    if ! printf '%s' "$rr_out" | grep -q 'already match their volume_code'; then
+        echo "$rr_out" >> /var/log/book-pipeline.log
+        DID_WORK=1
+    fi
+fi
+
 # Process at most ONE job per invocation. Each job runs LibreOffice
 # (DOCX→PDF) then Puppeteer/Chrome (FlipHTML5 upload + download). Both
 # are RAM-heavy on a 7.8G host — running two simultaneously would race
