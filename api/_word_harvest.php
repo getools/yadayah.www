@@ -221,6 +221,15 @@ say('Recounting existing words …');
 $updWord     = $db->prepare('UPDATE yy_word SET word_count_yy = ? WHERE word_key = ?');
 $updTranslit = $db->prepare('UPDATE yy_word_translit SET word_translit_count_yy = ? WHERE word_translit_key = ?');
 
+// Begin a single transaction that spans both Pass 2 (word-count UPDATEs) and
+// Pass 2b (occurrence-index TRUNCATE+INSERT).  Without this, a mid-run crash
+// commits the individual UPDATEs (auto-commit) while the index rebuild never
+// runs, leaving word_count_yy ahead of yy_word_occurrence and firing the
+// mismatch warning on every subsequent refresh until the next complete run.
+// With the transaction, any crash rolls both back together, leaving the DB in
+// the consistent pre-run state so the next cycle can retry cleanly.
+if ($APPLY && $INDEX) $db->beginTransaction();
+
 $wordChanged = 0; $translitChanged = 0; $wordTotals = [];
 
 foreach ($words as $w) {
@@ -285,17 +294,21 @@ if ($INDEX) {
     $sumCounts = 0;
     foreach ($wordTotals as $t) $sumCounts += $t;
     if ($occTotal !== $sumCounts) {
-        say(sprintf('  ⚠ index total %s != recounted total %s — NOT writing',
+        say(sprintf('  ⚠ index total %s != recounted total %s — rolling back word counts and aborting',
             number_format($occTotal), number_format($sumCounts)));
-        $INDEX = false;
+        // The scan produced internally inconsistent counts (a code bug).
+        // Roll back the word-count UPDATEs from Pass 2 so the DB stays
+        // consistent (old counts + old index), then fail so the worker retries.
+        if ($APPLY) $db->rollBack();
+        exit(1);
     }
 
     if ($INDEX && $APPLY) {
-        $db->beginTransaction();
         try {
             // Full rebuild: a word whose spellings changed must not keep rows
-            // from its old ones. Transactional, so a failure leaves the old
-            // index in place rather than an empty one.
+            // from its old ones. TRUNCATE+INSERT share the outer transaction
+            // (begun before Pass 2), so a failure rolls back both the
+            // occurrence rows and the word-count UPDATEs atomically.
             $db->exec('TRUNCATE yy_word_occurrence');
             $chunk = 500;
             for ($i = 0; $i < count($occRows); $i += $chunk) {
@@ -310,7 +323,7 @@ if ($INDEX) {
             say('  written');
         } catch (\Exception $e) {
             $db->rollBack();
-            say('  FAILED, rolled back: ' . $e->getMessage());
+            say('  FAILED, rolled back word counts and occurrence index: ' . $e->getMessage());
             exit(1);
         }
     }
