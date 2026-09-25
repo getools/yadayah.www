@@ -217,17 +217,38 @@ foreach ($words as $w) {
     // yy_word_translit row, so the total must be summed over DISTINCT spellings
     // — adding every entry counts the preferred one twice.
     $counted = [];
+    // What the DATABASE will leave in word_count_yy the moment we touch any of
+    // this word's yy_word_translit rows: trg_translit_count_recalc fires and
+    // rewrites it as a PLAIN SUM over the translit rows. That is a different
+    // rule from ours — it cannot see the preferred spelling (which lives on
+    // yy_word, not in the rows) and it does not de-duplicate — so the two
+    // answers diverge whenever a spelling is stored only on yy_word, or twice.
+    // Track it so the write below can tell what the row really holds now.
+    $triggerSum = 0;
+    $touchedTranslit = false;
     foreach ($spellings[$wk] ?? [] as $tk => $text) {
         $lc = mb_strtolower(trim($text));
         $c  = $corpus[$lc] ?? 0;
         if (!isset($counted[$lc])) { $sum += $c; $counted[$lc] = true; }
         if ($tk !== 'w') {
             $translitChanged++;
-            if ($APPLY) $updTranslit->execute([$c, (int)$tk]);
+            $triggerSum += $c;
+            if ($APPLY) { $updTranslit->execute([$c, (int)$tk]); $touchedTranslit = true; }
         }
     }
     $wordTotals[$wk] = $sum;
-    if ((int)$w['word_count_yy'] !== $sum) {
+    // ⚠ Compare against what the row holds AFTER those translit writes, not the
+    // value loaded before the scan. The trigger has already overwritten
+    // word_count_yy with $triggerSum, so skipping the write when the PRE-scan
+    // value happened to match would leave the TRIGGER's answer standing instead
+    // of ours — and the occurrence index, which is built from the same spelling
+    // map this loop sums, would then disagree with the count column it hangs
+    // off. That is exactly how 'kebes' (word 7813) came to show 0 against an
+    // index of 54: its only translit row is the two-in-one string
+    // 'kebes, kebesah', which matches no token, so the trigger computed 0 while
+    // the preferred spelling 'kebes' genuinely occurs 54 times.
+    $current = $touchedTranslit ? $triggerSum : (int)$w['word_count_yy'];
+    if ($current !== $sum) {
         $wordChanged++;
         if ($APPLY) $updWord->execute([$sum, $wk]);
     }
