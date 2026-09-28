@@ -324,3 +324,41 @@ function rescaleAllImages(PDO $db, string $destDir): int {
 
     return $count;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Books-page cover thumbnails
+//
+// The /books grid has always read its card art from a fixed filename in
+// /images/covers, one per volume. Admin can now generate that file from any
+// of a volume's cover-art slots (admin-books-cover-upload.php, action
+// 'regen_books'), so the convention lives here where both the writer and the
+// reader (api/books-grid.php) can share it.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Legacy per-book thumbnails: /images/covers/<PREFIX><token>-245x300.jpg */
+const BOOKS_COVER_DIR    = '/images/covers/';
+const BOOKS_COVER_PREFIX = 'YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.';
+const BOOKS_COVER_W      = 245;
+const BOOKS_COVER_H      = 300;
+
+/**
+ * The filename token for a volume: its sNNvNN code where it has one (every
+ * book in a numbered series), else the volume code itself — standalone books
+ * like The Little Green Book never had a legacy thumbnail, so there is no
+ * historical name to match and their own code is the stable choice.
+ */
+function booksCoverToken(string $volumeCode): ?string {
+    if (preg_match('/(s\d{2}v\d{2})/i', $volumeCode, $m)) return strtolower($m[1]);
+    // Anything that could escape the covers directory or confuse a URL is not
+    // a usable token; such a volume simply gets no books-page image.
+    $clean = trim($volumeCode);
+    return ($clean !== '' && preg_match('/^[A-Za-z0-9._-]+$/', $clean)) ? $clean : null;
+}
+
+/** Web path of a volume's books-page thumbnail, or null if it can't have one. */
+function booksCoverPath(string $volumeCode): ?string {
+    $token = booksCoverToken($volumeCode);
+    return $token === null ? null
+        : BOOKS_COVER_DIR . BOOKS_COVER_PREFIX . $token . '-'
+          . BOOKS_COVER_W . 'x' . BOOKS_COVER_H . '.jpg';
+}

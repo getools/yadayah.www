@@ -99,6 +99,11 @@
         .cover-icon-pick select { font-size: 0.78rem; padding: 4px 6px; border: 1px solid #c9c9c9; border-radius: 4px; background: #fff; }
         .cover-icon-acts .cover-icon-del { color: #b3261e; border-color: #e6bdb9; }
         .cover-icon-hint { font-size: 0.78rem; color: #888; font-style: italic; }
+        /* The Books Page strip is the icon strip in a different colour, so it
+           reads as a sibling of it rather than as part of the slot grid. */
+        .cover-books-strip { background: #fbf8f2; border-color: #eae0cc; }
+        .cover-books-strip .cover-icon-note strong { color: #7a5c15; }
+        .cover-icon-note code { font-size: 0.74rem; background: #fff; border: 1px solid #e4e4e4; border-radius: 3px; padding: 1px 4px; word-break: break-all; }
         .cover-slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
         .cover-slot { position: relative; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
         .cover-slot h4 { margin: 0; font-size: 0.82rem; color: #31345A; }
@@ -349,8 +354,9 @@
 </div>
 
 <!-- Cover-art popover — six artwork slots per book (front / spine / back, in
-     2D and 3D). The icon used by search results and other thumbnails is
-     derived automatically from the 2D front, never uploaded directly. -->
+     2D and 3D) plus two derived images, never uploaded directly: the icon
+     search results use, and the Books Page thumbnail the /books grid reads
+     from its fixed /images/covers filename. -->
 <div id="cover-popover-overlay" onclick="if(event.target===this)closeCoverPopover()">
     <div class="cover-popover-panel">
         <div class="tts-popover-head">
@@ -361,6 +367,7 @@
         </div>
         <div class="cover-popover-body">
             <div id="cover-icon-strip" class="cover-icon-strip"></div>
+            <div id="cover-books-strip" class="cover-icon-strip cover-books-strip"></div>
             <div id="cover-slot-grid" class="cover-slot-grid"></div>
         </div>
     </div>
@@ -849,6 +856,10 @@ var coverIconBusy = '';  // label shown in the icon strip while it rebuilds
 // cached icon and the rebuild would look like it did nothing. Stamped on
 // every icon-affecting action; used only by the popover preview.
 var coverIconBust = 0;
+// Same story for the Books Page image, which always writes the SAME
+// /images/covers filename — its own busy line and cache-buster.
+var coverBooksBusy = '';
+var coverBooksBust = 0;
 
 function coverSlotLabel(slot) {
     var s = COVER_SLOTS.find(function(x){ return x.slot === slot; });
@@ -860,6 +871,28 @@ function coverSlotLabel(slot) {
 function coverIconSlot() {
     var v = coverPopVol, s = v && v.volume_img_icon_slot;
     return COVER_SLOTS.some(function(x){ return x.slot === s; }) ? s : 'front_2d';
+}
+
+// Which artwork slot the Books Page image is generated from. Mirror of
+// coverBooksSlot() in the API — NULL defaults to the 3D front, the shape every
+// hand-made /images/covers thumbnail already is.
+function coverBooksSlot() {
+    var v = coverPopVol, s = v && v.volume_img_books_slot;
+    return COVER_SLOTS.some(function(x){ return x.slot === s; }) ? s : 'front_3d';
+}
+
+// The fixed /images/covers filename the /books grid reads for this book —
+// mirror of booksCoverPath() in image-helpers.php. Deliberately NOT the same
+// as legacyCoverUrl() below: that one mirrors the READER's fallback, which has
+// no name for a book outside the sNNvNN series, while this one is the path we
+// WRITE, and a standalone book gets its own code as the token.
+function booksPagePath(v) {
+    var code = v && v.volume_code ? String(v.volume_code) : '';
+    var m = code.match(/s\d{2}v\d{2}/i);
+    var token = m ? m[0].toLowerCase() : (/^[A-Za-z0-9._-]+$/.test(code) ? code : '');
+    return token
+        ? '/images/covers/YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.' + token + '-245x300.jpg'
+        : '';
 }
 
 // Mirror of the site's fallback so the admin shows what visitors actually see.
@@ -888,6 +921,7 @@ function openCoverPopover(volumeKey) {
     coverPopKey = volumeKey;
     coverBusy = {};
     coverIconBusy = '';
+    coverBooksBusy = '';
     document.getElementById('cover-pop-title').textContent = v.volume_label || ('Volume ' + volumeKey);
     renderCoverPopover(v);
     document.getElementById('cover-popover-overlay').classList.add('open');
@@ -971,9 +1005,85 @@ function coverIconBusyState(label) {
     renderCoverIconStrip();
 }
 
+// The Books Page image: the 245×300 JPEG the /books card grid shows. Unlike
+// the icon it is not stored under /u — it is written straight to the fixed
+// /images/covers filename the grid has always read, so generating one REPLACES
+// whatever is serving that path today. That is why it is never adopted
+// automatically on upload and why the first generate asks first; "Remove" puts
+// the file it replaced back.
+function renderCoverBooksStrip() {
+    var v = coverPopVol;
+    var strip = document.getElementById('cover-books-strip');
+    if (!v || !strip) return;
+    var path = booksPagePath(v);
+    var mine = v.volume_img_books || '';
+    var src = coverBooksSlot();
+    var filled = COVER_SLOTS.filter(function(s){ return !!v['volume_img_' + s.slot]; });
+
+    var note;
+    if (!path) {
+        note = '<strong>Books Page</strong> — this book has no usable book code, '
+             + 'so there is no <code>/images/covers</code> filename to write.';
+    } else if (mine) {
+        note = '<strong>Books Page</strong> — 245×300 max, generated from <strong>' + esc(coverSlotLabel(src))
+             + '</strong> and rebuilt whenever that image is replaced. '
+             + 'This is the cover the <a href="/books" target="_blank" rel="noopener">Books page</a> card shows.'
+             + '<br><code>' + esc(path) + '</code>';
+    } else {
+        note = '<strong>Books Page</strong> — none generated; the Books page is using the file already at '
+             + 'this path, or the 3D front if there is none. Picking a source below <strong>replaces that '
+             + 'file</strong> (Remove puts it back).'
+             + '<br><code>' + esc(path) + '</code>';
+    }
+
+    var acts;
+    if (!path) {
+        acts = '';
+    } else if (coverBooksBusy) {
+        acts = '<span class="cover-inline-busy"><span class="cover-spin"></span>' + esc(coverBooksBusy) + '</span>';
+    } else if (!filled.length) {
+        acts = '<span class="cover-icon-hint">Upload any cover image below to generate one.</span>';
+    } else {
+        // Same contract as the icon picker: choosing a slot IS the action.
+        var opts = filled.map(function(s) {
+            return '<option value="' + s.slot + '"' + (s.slot === src ? ' selected' : '') + '>'
+                 + esc(s.label) + '</option>';
+        }).join('');
+        acts = '<label class="cover-icon-pick">Generate from '
+             + '<select onchange="regenCoverBooks(this.value)" '
+             +   'title="Build the Books page thumbnail from this artwork image">' + opts + '</select></label>'
+             + '<button type="button" class="btn btn-secondary btn-sm" '
+             +   (v['volume_img_' + src] ? '' : 'disabled ')
+             +   'title="Rebuild from the image it already uses" '
+             +   'onclick="regenCoverBooks()">Rebuild</button>'
+             + '<button type="button" class="btn btn-secondary btn-sm cover-icon-del" ' + (mine ? '' : 'disabled ')
+             +   'title="Delete the generated thumbnail and restore the file it replaced" '
+             +   'onclick="deleteCoverBooks()">Remove</button>';
+    }
+
+    // The file keeps its name forever, so without the buster a rebuild looks
+    // like it did nothing. onerror hides the box when nothing is there yet.
+    var imgSrc = path ? esc(path) + (coverBooksBust ? '?t=' + coverBooksBust : '') : '';
+    strip.innerHTML =
+        '<div class="cover-icon-box">'
+      + (imgSrc ? '<img src="' + imgSrc + '" alt="" onerror="this.remove()">' : '<span class="cover-empty">—</span>')
+      + '</div>'
+      + '<div class="cover-icon-main">'
+      +   '<div class="cover-icon-note">' + note + '</div>'
+      + (acts ? '<div class="cover-icon-acts">' + acts + '</div>' : '')
+      + '</div>';
+}
+
+function coverBooksBusyState(label) {
+    coverBooksBusy = label || '';
+    if (label) coverBooksBust = Date.now();
+    renderCoverBooksStrip();
+}
+
 function renderCoverPopover(v) {
     coverPopVol = v;
     renderCoverIconStrip();
+    renderCoverBooksStrip();
 
     var html = '';
     for (var i = 0; i < COVER_SLOTS.length; i++) {
@@ -1069,12 +1179,17 @@ function uploadCoverSlot(slot, input) {
     var v0 = coverPopVol;
     var derivesIcon = (slot === coverIconSlot())
                    || !!(v0 && !v0.volume_img_icon && !v0.volume_img_icon_slot);
+    // The Books Page image follows its source slot too, but only once it
+    // exists — an upload never creates one (see renderCoverBooksStrip).
+    var derivesBooks = !!(v0 && v0.volume_img_books) && (slot === coverBooksSlot());
     var done = function() {
         coverSlotBusy(slot, false);
         if (derivesIcon) coverIconBusyState('');
+        if (derivesBooks) coverBooksBusyState('');
     };
     coverSlotBusy(slot, 'Uploading 0% of ' + size, 0);
     if (derivesIcon) coverIconBusyState('Rebuilding icon…');
+    if (derivesBooks) coverBooksBusyState('Rebuilding Books page image…');
 
     var xhr = new XMLHttpRequest();
     xhr.open('POST', API + '/admin-books-cover-upload.php', true);
@@ -1110,18 +1225,24 @@ function deleteCoverSlot(slot) {
     // volume_key:null and come back "Volume key required".
     var key = coverPopKey;
     var label = coverSlotLabel(slot);
-    // Dropping the icon's source slot drops the derived icon with it.
+    // Dropping the icon's source slot drops the derived icon with it — and the
+    // Books page image, if that was generated from this slot.
     var derivesIcon = (slot === coverIconSlot());
+    var derivesBooks = !!(coverPopVol && coverPopVol.volume_img_books) && (slot === coverBooksSlot());
     yesNoConfirm('Remove the ' + label + ' image?'
-               + (derivesIcon ? '\n\nThe book icon is generated from this image, so it will be removed too.' : ''),
+               + (derivesIcon ? '\n\nThe book icon is generated from this image, so it will be removed too.' : '')
+               + (derivesBooks ? '\n\nThe Books page thumbnail is generated from this image, so it is removed too '
+                               + 'and the file it replaced is put back.' : ''),
       function(yes) {
         if (!yes) return;
         var done = function() {
             coverSlotBusy(slot, false);
             if (derivesIcon) coverIconBusyState('');
+            if (derivesBooks) coverBooksBusyState('');
         };
         coverSlotBusy(slot, 'Removing…', null);
         if (derivesIcon) coverIconBusyState('Updating icon…');
+        if (derivesBooks) coverBooksBusyState('Removing Books page image…');
         fetch(API + '/admin-books-cover-upload.php', {
             method: 'POST', credentials: 'include',
             headers: {'Content-Type':'application/json'},
@@ -1182,6 +1303,74 @@ function deleteCoverIcon() {
         }).catch(function(err) {
             alert('Icon remove failed: ' + (err && err.message ? err.message : 'network'));
             coverIconBusyState('');
+        });
+    });
+}
+
+// slot re-points the Books Page image at a different artwork image; omit it to
+// rebuild from the source it already uses.
+function regenCoverBooks(slot) {
+    if (!coverPopKey) return;
+    var v = coverPopVol;
+    // Generating the FIRST one overwrites whatever file is serving that path
+    // today — for most books a hand-made thumbnail we cannot reproduce. Later
+    // rebuilds only overwrite our own output, so they go straight through.
+    if (v && !v.volume_img_books) {
+        var key = coverPopKey;   // pin: the confirm is async and closing nulls it
+        yesNoConfirm('Generate the Books page thumbnail for this book?\n\n'
+                   + booksPagePath(v) + '\n\nThis replaces the file at that path on the live site. '
+                   + 'The file it replaces is kept, and "Remove" puts it back.', function(yes) {
+            if (!yes) { renderCoverBooksStrip(); return; }   // reset the picker
+            coverBooksPost(key, slot);
+        });
+        return;
+    }
+    coverBooksPost(coverPopKey, slot);
+}
+
+function coverBooksPost(key, slot) {
+    var req = { action: 'regen_books', volume_key: key };
+    if (slot) req.slot = slot;
+    coverBooksBusyState(slot ? 'Generating from ' + coverSlotLabel(slot) + '…' : 'Rebuilding…');
+    fetch(API + '/admin-books-cover-upload.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(req)
+    }).then(function(r){ return safeJson(r); }).then(function(d) {
+        if (d && d.error) { alert(d.error); coverBooksBusyState(''); return; }
+        return refreshCoverPopover().then(
+            function(){ coverBooksBusyState(''); },
+            function(){ coverBooksBusyState(''); }
+        );
+    }).catch(function(err) {
+        alert('Books page image failed: ' + (err && err.message ? err.message : 'network'));
+        coverBooksBusyState('');
+    });
+}
+
+// Deletes the generated thumbnail and restores the file it shadowed, so the
+// Books page goes back to exactly what it showed before.
+function deleteCoverBooks() {
+    if (!coverPopKey) return;
+    var key = coverPopKey;   // see deleteCoverSlot: the confirm is async
+    yesNoConfirm('Remove the generated Books page thumbnail?\n\nThe cover artwork stays. The file that was '
+               + 'at this path before it was generated is put back, so the Books page returns to its '
+               + 'previous cover.', function(yes) {
+        if (!yes) return;
+        coverBooksBusyState('Removing…');
+        fetch(API + '/admin-books-cover-upload.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ action: 'delete_books', volume_key: key })
+        }).then(function(r){ return safeJson(r); }).then(function(d) {
+            if (d && d.error) { alert(d.error); coverBooksBusyState(''); return; }
+            return refreshCoverPopover().then(
+                function(){ coverBooksBusyState(''); },
+                function(){ coverBooksBusyState(''); }
+            );
+        }).catch(function(err) {
+            alert('Remove failed: ' + (err && err.message ? err.message : 'network'));
+            coverBooksBusyState('');
         });
     });
 }

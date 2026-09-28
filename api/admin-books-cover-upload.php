@@ -15,9 +15,19 @@
  * copy, same shape as the logo/resource uploaders. Filenames are unique per
  * upload so a replacement never collides with a cached URL.
  *
+ * A second derived image, the "Books Page" image, works the same way but
+ * lands outside /u: the /books grid reads its card art from a fixed filename
+ * in /images/covers (see booksCoverPath() in image-helpers.php), so generating
+ * one writes that exact path. Unlike the icon it is never adopted implicitly —
+ * it overwrites a file the site is already serving, so it only ever changes
+ * when an admin asks for it.
+ *
  * POST multipart  volume_key, slot, image_file      — upload / replace a slot
- * POST json       {action:'delete',     volume_key, slot}
- * POST json       {action:'regen_icon', volume_key, slot?}   slot = new source
+ * POST json       {action:'delete',       volume_key, slot}
+ * POST json       {action:'regen_icon',   volume_key, slot?}   slot = new source
+ * POST json       {action:'delete_icon',  volume_key}
+ * POST json       {action:'regen_books',  volume_key, slot?}   slot = new source
+ * POST json       {action:'delete_books', volume_key}
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/image-helpers.php';
@@ -37,6 +47,13 @@ $FULL_MAX_H  = 1600;
 $UPLOAD_DIR = uploadDir('covers');
 $ORIG_DIR   = uploadDir('covers/originals');
 $WEB_DIR    = uploadUrl('covers');
+
+// The Books Page image is NOT an upload — it goes to the public /images/covers
+// tree the books grid reads, which predates /u and is not under uploadDir().
+// On prod api/ is mounted inside the docroot, so DOCUMENT_ROOT is the honest
+// answer; the repo layout (api/ beside public/) is the fallback.
+$BOOKS_DIR      = booksCoversDir();
+$BOOKS_KEEP_DIR = $BOOKS_DIR . '/originals';
 
 $db = getDb();
 
@@ -122,6 +139,98 @@ function coverRetireIcon(?string $iconPath, array $vol, array $slots, string $up
     coverUnlink($iconPath, $uploadDir, $origDir);
 }
 
+/** Absolute path of the public /images/covers tree the books grid reads. */
+function booksCoversDir(): string {
+    $root = rtrim((string)($_SERVER['DOCUMENT_ROOT'] ?? ''), '/');
+    foreach ([$root, __DIR__ . '/..', dirname(__DIR__) . '/public'] as $base) {
+        if ($base !== '' && is_dir($base . '/images/covers')) return $base . '/images/covers';
+    }
+    errorResponse('The /images/covers directory could not be found', 500);
+}
+
+/** Which slot the Books Page image is derived from; NULL falls back to the 3D front. */
+function coverBooksSlot(array $vol, array $slots): string {
+    $s = (string)($vol['volume_img_books_slot'] ?? '');
+    if (in_array($s, $slots, true)) return $s;
+    // The grid's own fallback prefers the 3D front, and every hand-made
+    // thumbnail in /images/covers is a 3D render, so that is the default.
+    return 'front_3d';
+}
+
+/**
+ * Write a volume's Books Page thumbnail from one of its artwork slots.
+ *
+ * Always a JPEG at BOOKS_COVER_W x BOOKS_COVER_H max, whatever the source
+ * format, because that is what every consumer of /images/covers expects.
+ * Aspect is preserved and the image is never upscaled, so a 2:3 front cover
+ * comes out 245x300's height-bound 200x300 rather than stretched.
+ *
+ * @return string|null  web path written, or null when there was nothing to build.
+ */
+function coverBuildBooksImage(?string $slotPath, string $code, string $uploadDir, string $origDir, string $booksDir, string $keepDir): ?string {
+    $web = booksCoverPath($code);
+    if (!$slotPath || $web === null) return null;
+
+    $src = coverAbs($slotPath, $origDir);                      // untouched upload wins
+    if (!$src || !is_file($src)) $src = coverAbs($slotPath, $uploadDir);
+    if (!$src || !is_file($src)) return null;
+
+    $img = imgLoad($src, strtolower(pathinfo($src, PATHINFO_EXTENSION)));
+    if (!$img) return null;
+    $w = imagesx($img);
+    $h = imagesy($img);
+    $ratio = min(BOOKS_COVER_W / $w, BOOKS_COVER_H / $h, 1);   // never upscale
+    $nw = max(1, (int)round($w * $ratio));
+    $nh = max(1, (int)round($h * $ratio));
+
+    $out = imagecreatetruecolor($nw, $nh);
+    // JPEG carries no alpha, so matte a transparent PNG/WEBP onto white
+    // instead of letting it composite down to black.
+    imagefilledrectangle($out, 0, 0, $nw, $nh, imagecolorallocate($out, 255, 255, 255));
+    imagecopyresampled($out, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+
+    $dest = $booksDir . '/' . basename($web);
+    coverKeepBooksOriginal($dest, $keepDir);
+
+    // Write a temp file and rename: the hand-made thumbnails are root-owned,
+    // so www-data can replace one through the directory but cannot open it for
+    // writing. The rename is atomic, so the grid never sees a half-written JPEG.
+    $tmp = $dest . '.tmp' . getmypid();
+    $ok = imagejpeg($out, $tmp, 88);
+    imagedestroy($img);
+    imagedestroy($out);
+    if (!$ok) { @unlink($tmp); return null; }
+    @chmod($tmp, 0664);
+    if (!@rename($tmp, $dest)) { @unlink($tmp); return null; }
+    return $web;
+}
+
+/**
+ * Stash the file already at $dest the FIRST time we overwrite it.
+ *
+ * The hand-made 245x300 thumbnails are not reproducible from anything we hold,
+ * so generating over one has to be undoable — delete_books puts it back. Only
+ * the first copy is kept: after that the file at $dest is one of ours.
+ */
+function coverKeepBooksOriginal(string $dest, string $keepDir): void {
+    if (!is_file($dest)) return;
+    $keep = rtrim($keepDir, '/') . '/' . basename($dest);
+    if (is_file($keep)) return;
+    if (!is_dir($keepDir)) @mkdir($keepDir, 02775, true);
+    @copy($dest, $keep);
+}
+
+/** Drop a generated Books Page image, restoring the hand-made file it replaced. */
+function coverRemoveBooksImage(?string $web, string $booksDir, string $keepDir): void {
+    if (!$web) return;
+    $dest = $booksDir . '/' . basename($web);
+    $keep = rtrim($keepDir, '/') . '/' . basename($web);
+    if (is_file($keep)) {
+        if (@copy($keep, $dest)) { @unlink($keep); return; }
+    }
+    if (is_file($dest)) @unlink($dest);
+}
+
 // ── Delete a slot ────────────────────────────────────────────────────────
 if ($action === 'delete') {
     $slot = (string)($body['slot'] ?? $_POST['slot'] ?? '');
@@ -134,16 +243,26 @@ if ($action === 'delete') {
     $iconSlot = coverIconSlot($vol, $COVER_SLOTS);
     coverUnlink($vol[$col] ?? null, $UPLOAD_DIR, $ORIG_DIR);
 
+    // Same rule for the Books Page image: losing the artwork it was generated
+    // from means the grid should go back to whatever it showed before, so the
+    // hand-made thumbnail (if we shadowed one) comes back.
+    $booksCleared = false;
+    if (($vol['volume_img_books'] ?? '') !== '' && $slot === coverBooksSlot($vol, $COVER_SLOTS)) {
+        coverRemoveBooksImage($vol['volume_img_books'], $BOOKS_DIR, $BOOKS_KEEP_DIR);
+        $db->prepare("UPDATE yy_volume SET volume_img_books = NULL, volume_img_books_slot = NULL WHERE volume_key = ?")->execute([$key]);
+        $booksCleared = true;
+    }
+
     // Dropping the slot the icon is derived from drops the icon it fed. The
     // source pointer resets so the next upload falls back to the 2D front.
     if ($slot === $iconSlot) {
         coverRetireIcon($vol['volume_img_icon'] ?? null, $vol, $COVER_SLOTS, $UPLOAD_DIR, $ORIG_DIR);
         $db->prepare("UPDATE yy_volume SET $col = NULL, volume_img_icon = NULL, volume_img_icon_slot = NULL WHERE volume_key = ?")->execute([$key]);
-        jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null, 'icon' => null, 'icon_slot' => null]);
+        jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null, 'icon' => null, 'icon_slot' => null, 'books_cleared' => $booksCleared]);
     }
 
     $db->prepare("UPDATE yy_volume SET $col = NULL WHERE volume_key = ?")->execute([$key]);
-    jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null]);
+    jsonResponse(['deleted' => true, 'slot' => $slot, 'path' => null, 'books_cleared' => $booksCleared]);
 }
 
 // ── Rebuild the icon, optionally re-pointing it at a different slot ──────
@@ -169,6 +288,31 @@ if ($action === 'delete_icon') {
     coverRetireIcon($vol['volume_img_icon'] ?? null, $vol, $COVER_SLOTS, $UPLOAD_DIR, $ORIG_DIR);
     $db->prepare("UPDATE yy_volume SET volume_img_icon = NULL, volume_img_icon_slot = NULL WHERE volume_key = ?")->execute([$key]);
     jsonResponse(['deleted' => true, 'icon' => null, 'icon_slot' => null]);
+}
+
+// ── Rebuild the Books Page image, optionally from a different slot ──────
+if ($action === 'regen_books') {
+    $want = (string)($body['slot'] ?? $_POST['slot'] ?? '');
+    if ($want !== '' && !in_array($want, $COVER_SLOTS, true)) errorResponse('Unknown slot');
+    $booksSlot = $want !== '' ? $want : coverBooksSlot($vol, $COVER_SLOTS);
+
+    if (booksCoverPath((string)($vol['volume_code'] ?? '')) === null) {
+        errorResponse('This book has no usable book code, so it has no Books page filename');
+    }
+    $web = coverBuildBooksImage($vol['volume_img_' . $booksSlot] ?? null, (string)$vol['volume_code'],
+                                $UPLOAD_DIR, $ORIG_DIR, $BOOKS_DIR, $BOOKS_KEEP_DIR);
+    if (!$web) errorResponse('That slot has no image to build the Books page thumbnail from');
+
+    $db->prepare("UPDATE yy_volume SET volume_img_books = ?, volume_img_books_slot = ? WHERE volume_key = ?")
+       ->execute([$web, $booksSlot, $key]);
+    jsonResponse(['books' => $web, 'books_slot' => $booksSlot]);
+}
+
+// ── Drop the Books Page image, restoring the file it replaced ───────────
+if ($action === 'delete_books') {
+    coverRemoveBooksImage($vol['volume_img_books'] ?? null, $BOOKS_DIR, $BOOKS_KEEP_DIR);
+    $db->prepare("UPDATE yy_volume SET volume_img_books = NULL, volume_img_books_slot = NULL WHERE volume_key = ?")->execute([$key]);
+    jsonResponse(['deleted' => true, 'books' => null, 'books_slot' => null]);
 }
 
 // ── Upload / replace a slot ──────────────────────────────────────────────
@@ -243,6 +387,20 @@ if ($slot === coverIconSlot($vol, $COVER_SLOTS) || $adoptsIcon) {
     $resp['icon_slot'] = $slot;
 } else {
     $db->prepare("UPDATE yy_volume SET $col = ? WHERE volume_key = ?")->execute([$webPath, $key]);
+}
+
+// A Books Page image already generated from this slot follows the new artwork.
+// Never adopted implicitly the way the icon is: this file is one the public
+// site already serves, so it appears only when an admin asks for it.
+if (($vol['volume_img_books'] ?? '') !== '' && $slot === coverBooksSlot($vol, $COVER_SLOTS)) {
+    $books = coverBuildBooksImage($webPath, (string)($vol['volume_code'] ?? ''),
+                                  $UPLOAD_DIR, $ORIG_DIR, $BOOKS_DIR, $BOOKS_KEEP_DIR);
+    if ($books) {
+        $db->prepare("UPDATE yy_volume SET volume_img_books = ?, volume_img_books_slot = ? WHERE volume_key = ?")
+           ->execute([$books, $slot, $key]);
+        $resp['books'] = $books;
+        $resp['books_slot'] = $slot;
+    }
 }
 
 // Replaced file goes last, so a failed UPDATE never leaves the row pointing

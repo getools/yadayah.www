@@ -21,10 +21,6 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/image-helpers.php';
 
-/** Legacy per-book thumbnails: /images/covers/<PREFIX><token>-245x300.jpg */
-const BOOKS_COVER_DIR    = '/images/covers/';
-const BOOKS_COVER_PREFIX = 'YY.book_.3d.6x9-vertical-softcover-spine.00490x00600.';
-
 /**
  * The one book that is not a YY volume: it lives on its own domain and its
  * cover is a different shape (300x264, hence the 'itc' class). Everything
@@ -63,19 +59,29 @@ function booksHasFlipbook(string $code): bool {
 }
 
 /**
- * Card thumbnail. Prefers the legacy 245x300 JPEG the page has always used,
- * so existing cards render byte-identically; falls back to the volume's
- * uploaded cover art (front-3D, then front-2D), so a NEW book only needs a
- * cover slot filled in and no legacy file at all.
+ * Card thumbnail. Prefers the 245x300 JPEG at the volume's fixed
+ * /images/covers path, so existing cards render byte-identically; falls back
+ * to the volume's uploaded cover art (front-3D, then front-2D), so a NEW book
+ * only needs a cover slot filled in and no file there at all.
  *
- * Some legacy files are saved HTTP redirects rather than images, so the
- * fallback is gated on getimagesize(), not merely on the file existing.
+ * That file is either one of the hand-made originals or, since 2026-09-28, one
+ * generated in admin from a cover-art slot (the "Books Page" image, which
+ * records its source in volume_img_books). Both live at the same path — the
+ * column only tells us an admin generated this one, which is what earns the
+ * cache-buster: regenerating rewrites the same filename, so without it the
+ * grid would keep showing the art that was replaced.
+ *
+ * Some of the original files are saved HTTP redirects rather than images, so
+ * this is gated on getimagesize(), not merely on the file existing.
  */
-function booksCoverUrl(?string $token, ?string $front3d, ?string $front2d): ?string {
-    if ($token !== null) {
-        $web = BOOKS_COVER_DIR . BOOKS_COVER_PREFIX . $token . '-245x300.jpg';
+function booksCoverUrl(string $code, ?string $booksImg, ?string $front3d, ?string $front2d): ?string {
+    $web = booksCoverPath($code);
+    if ($web !== null) {
         $abs = booksDocRoot() . $web;
-        if (is_file($abs) && @getimagesize($abs)) return $web;
+        if (is_file($abs) && @getimagesize($abs)) {
+            $mtime = ($booksImg ?? '') !== '' ? @filemtime($abs) : 0;
+            return $mtime ? $web . '?v=' . $mtime : $web;
+        }
     }
     foreach ([$front3d, $front2d] as $slot) {
         if (($slot ?? '') !== '') return imageSizeUrl($slot, 'sm');
@@ -114,7 +120,7 @@ $audioVolumes = array_flip(array_map('intval', $pdo->query("
 $rows = $pdo->query("
     SELECT v.volume_key, v.series_key, v.volume_number, v.volume_sort,
            v.volume_code, v.volume_label, v.volume_amazon_asin,
-           v.volume_img_front_3d, v.volume_img_front_2d
+           v.volume_img_front_3d, v.volume_img_front_2d, v.volume_img_books
       FROM yy_volume v
       JOIN yy_series s ON s.series_key = v.series_key
      WHERE v.volume_active_flag = TRUE
@@ -127,10 +133,14 @@ foreach ($rows as $r) {
     $code = $r['volume_code'];
     if (($code ?? '') === '') continue;                     // unnamed row → no URLs to build
 
-    $token = preg_match('/-(s\d{2}v\d{2})-/', $code, $m) ? $m[1] : null;
-    $ov    = BOOKS_OVERRIDES[$code] ?? [];
+    $ov       = BOOKS_OVERRIDES[$code] ?? [];
+    $booksImg = $r['volume_img_books'] ?? null;
 
-    $img = $ov['img'] ?? booksCoverUrl($token, $r['volume_img_front_3d'], $r['volume_img_front_2d']);
+    // An admin-generated Books Page image is an explicit choice for this grid,
+    // so it outranks even the override's hard-coded art — and because it is a
+    // standard 245x300 it no longer wants the override's odd-shape class.
+    $img = (($booksImg ?? '') !== '' ? null : ($ov['img'] ?? null))
+        ?? booksCoverUrl($code, $booksImg, $r['volume_img_front_3d'], $r['volume_img_front_2d']);
     if ($img === null) continue;                            // no cover → no card, rather than a broken image
 
     // Which editions this book actually has. The override's read_url is an
@@ -165,7 +175,7 @@ foreach ($rows as $r) {
         'audio_url'  => ($hasFlipbook && isset($audioVolumes[(int)$r['volume_key']]))
                             ? '/' . $code . '/#auto=1'
                             : null,
-        'cls'        => $ov['cls'] ?? '',
+        'cls'        => (($booksImg ?? '') !== '') ? '' : ($ov['cls'] ?? ''),
     ];
 }
 
