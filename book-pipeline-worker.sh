@@ -272,6 +272,29 @@ handle_preempt() {
     mv -f "$job" "$JOBS_DIR/done/" 2>/dev/null || rm -f "$job"
 }
 
+# ── TTS marker remap after a parse ────────────────────────────────
+# The parser DELETEs + re-inserts a volume's paragraphs; yy_tts_audio_marker's
+# paragraph_key FK is ON DELETE SET NULL, so already-built chapter audio keeps
+# its OLD paragraph_number/page. A re-render that repaginates the book (or
+# re-splits page-spanning paragraphs) then turns the flipbook to the wrong page
+# and highlights the wrong paragraph — silently (s05v01/s04v04, 2026-09-28).
+# The narration is unaffected, so re-key the markers from yy_paragraph_rev
+# instead of re-synthesizing. Seconds per volume; best effort — never affects
+# the parse outcome. rc 2 = some chapter's build-time corpus didn't match.
+remap_tts_markers() {
+    local vk="$1" rm_output rm_rc=0
+    [ -f /opt/yada-www/parsers/tts_marker_remap.py ] || return 0
+    rm_output=$(timeout 900 python3 /opt/yada-www/parsers/tts_marker_remap.py --volume "$vk" --apply 2>&1) || rm_rc=$?
+    echo "$rm_output" >> /var/log/book-pipeline.log
+    if [ "$rm_rc" -ne 0 ]; then
+        log "TTS marker remap for volume $vk exited $rm_rc"
+        log_monitor_event "tts_marker_remap" "warning" \
+            "Volume $vk TTS marker remap exited $rm_rc — flipbook audio paging may be off" "$rm_output"
+    else
+        log "TTS marker remap for volume $vk: $(echo "$rm_output" | tail -1)"
+    fi
+}
+
 # Process a single job file.
 process_job() {
     local job="$1"
@@ -691,6 +714,7 @@ process_job() {
             # them while word_count_yy still claims them. Mark it; Phase 6.8
             # runs the corpus-wide refresh once the queue has drained.
             mkdir -p "$(dirname "$GLOSSARY_DIRTY")" && touch "$GLOSSARY_DIRTY"
+            remap_tts_markers "$volume_key"
             # Book text changed → tts pronunciation tune occurrence counts (the
             # # column in admin-tts) are now stale. Recount all tunes corpus-
             # wide, detached, so the pipeline returns immediately. A full sweep
@@ -1044,6 +1068,7 @@ if [ -x /opt/yada-www/parsers/parse_volume_from_bundle.py ]; then
             # Same as Phase 4 — a parse invalidates the lexicon's counts and
             # its occurrence index. Phase 6.8 picks this up.
             mkdir -p "$(dirname "$GLOSSARY_DIRTY")" && touch "$GLOSSARY_DIRTY"
+            remap_tts_markers "$parse_target"
         fi
     fi
 fi

@@ -14,6 +14,19 @@
         main { max-width: 1100px; margin: 0 auto; padding: 22px 0; }
         section { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; margin-bottom: 18px; }
         section h2 { font-size: 1rem; margin: 0 0 12px; color: #333; }
+        /* Audio → Voices: the admin-tts Voices pane framed via ?embed=voices.
+           Breaks out of main's 1100px so the 13-column catalog isn't cramped.
+           Fixed height (not auto-sized) because the pane pins its player to
+           the viewport bottom and opens modals — both need a real viewport. */
+        section.voices-embed { width: min(1600px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%); padding: 0; overflow: hidden; }
+        section.voices-embed iframe { display: block; width: 100%; height: calc(100vh - 80px); min-height: 640px; border: 0; }
+        /* Audio sub-tabs (Text to Audio | Voices). Own class, not .tab, so the
+           top-level activateTab() leaves them alone. */
+        .subtabs { display:flex; gap:4px; margin: -4px 0 14px; }
+        .subtab { background: #f0f0f3; color: #555; border: 1px solid var(--line); border-radius: 14px; padding: 5px 14px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+        .subtab:hover { color: var(--fg); }
+        .subtab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .subpanel.hidden { display: none; }
         .desc { color: var(--muted); font-size: 0.85rem; margin: -4px 0 12px; }
         label { font-weight: 600; font-size: 0.86rem; color:#444; display:block; margin: 10px 0 4px; }
         input[type=text], textarea, input[type=number], select { width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:4px; font:inherit; font-size:0.9rem; background:#fff; }
@@ -348,6 +361,11 @@
         </section>
     </div>
     <div class="tab-panel hidden" data-panel="audio">
+        <div class="subtabs">
+            <button class="subtab active" type="button" data-subtab="t2a">Text to Audio</button>
+            <button class="subtab" type="button" data-subtab="voices">Voices</button>
+        </div>
+        <div class="subpanel" data-subpanel="t2a">
         <section>
             <h2>Text to Audio</h2>
 
@@ -488,6 +506,15 @@
                 <tbody data-slot="jobs"><tr><td colspan="6"><div class="empty">No jobs yet.</div></td></tr></tbody>
             </table>
         </section>
+        </div>
+
+        <!-- Voices sub-tab: Admin → TTS → Voices framed in embed mode (one
+             implementation, two places). src is set on first Voices visit. -->
+        <div class="subpanel hidden" data-subpanel="voices">
+        <section class="voices-embed">
+            <iframe id="voices-frame" data-src="/admin-tts?embed=voices" title="TTS Voices"></iframe>
+        </section>
+        </div>
     </div>
 </main>
 </div>
@@ -2740,6 +2767,15 @@ function activateTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
 }
+function activateAudioSubtab(name) {
+    document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.subtab === name));
+    document.querySelectorAll('.subpanel').forEach(p => p.classList.toggle('hidden', p.dataset.subpanel !== name));
+    if (name === 'voices') loadVoicesFrame();
+}
+function loadVoicesFrame() {
+    const f = $('voices-frame');
+    if (f && !f.getAttribute('src')) f.src = f.dataset.src;
+}
 document.addEventListener('DOMContentLoaded', () => {
     FieldHelp.init();
     TABS.video = new TabController('video');
@@ -2749,6 +2785,7 @@ document.addEventListener('DOMContentLoaded', () => {
     TABS.image.init();
     TABS.audio.init();
     document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
+    document.querySelectorAll('.subtab').forEach(t => t.addEventListener('click', () => activateAudioSubtab(t.dataset.subtab)));
     document.querySelectorAll('[data-act="picker-close"], #picker-modal').forEach(el => {
         el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'picker-close') Picker.close(); });
     });

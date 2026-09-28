@@ -35,7 +35,10 @@
         html.tts-embed .tts-tabs { display: none !important; }
         html.tts-embed #app.container { max-width: none; margin: 0; padding: 10px 16px; }
         html.tts-embed .tts-pane { display: none !important; }
-        html.tts-embed #pane-books { display: block !important; }
+        html.tts-embed-books #pane-books { display: block !important; }
+        /* ?embed=voices — the Voices pane framed inside Admin → AI → Audio.
+           Same pane as the Voices tab here, just without the page chrome. */
+        html.tts-embed-voices #pane-voices { display: block !important; }
         /* Checkbox sized for easy click target in the dense voice row. */
         .voice-row input[type=checkbox] { width: 18px; height: 18px; margin: 0; padding: 0; cursor: pointer; justify-self: center; }
 
@@ -181,7 +184,13 @@
   // page chrome never flashes when admin-tts is framed inside the Admin →
   // Books TTS popover. The full embed behaviour (force Books tab) is wired
   // in the load handler further down.
-  try { if (new URLSearchParams(location.search).get('embed')) document.documentElement.classList.add('tts-embed'); } catch (e) {}
+  try {
+    var _emb = new URLSearchParams(location.search).get('embed');
+    if (_emb) {
+      document.documentElement.classList.add('tts-embed');
+      document.documentElement.classList.add('tts-embed-' + String(_emb).replace(/[^a-z0-9_-]/gi, ''));
+    }
+  } catch (e) {}
 </script>
 
 <div id="app" class="container">
@@ -240,41 +249,10 @@
         </div>
     </div>
 
-    <!-- ── Voices tab — preview + catalog ────────────────────────── -->
+    <!-- ── Voices tab — narrate + catalog + providers ─────────────── -->
     <div id="pane-voices" class="tts-pane">
-        <!-- Providers section. Per-engine settings that shape how the
-             synth pipeline talks to each provider. Initially exposes
-             Phonetic-vs-IPA preference (drives which side of the per-tune
-             SUB/IPA lexicon the engine receives at synth time); easy to
-             extend with more columns as needed. -->
         <div class="tts-section">
-            <h3>Providers</h3>
-            <p class="desc">Per-engine settings for the TTS providers below.
-                <strong>Pronunciation</strong>: which lexicon formats this
-                engine can actually consume at synth time — <em>Phonetic</em>
-                (respelling like <code>to-MAH-to</code>, every engine) and/or
-                <em>IPA</em> (<code>təˈmɑːtoʊ</code>; Azure / ElevenLabs /
-                Inworld today — local GPU engines flatten IPA to the
-                respelling). The Pronunciations tab disables its IPA column
-                toggle for any voice whose provider can't process IPA.</p>
-            <table class="tts-table" id="providers-table" style="width:100%;font-size:0.85rem;">
-                <thead>
-                    <tr>
-                        <th style="text-align:left;">Provider</th>
-                        <th style="width:120px;text-align:center;" title="Number of voices this provider contributes to the catalog below">Voices</th>
-                        <th style="width:110px;text-align:center;" title="Whether custom voices can be trained / cloned for this provider (drives the Add Custom Voice flow)">Custom</th>
-                        <th style="width:220px;text-align:center;" title="Which pronunciation formats this engine can consume at synth time. Drives the Pronunciations tab IPA↔Phonetic toggle.">Pronunciation</th>
-                    </tr>
-                </thead>
-                <tbody id="providers-tbody">
-                    <tr><td colspan="4" style="text-align:center;color:#888;padding:12px;">Loading…</td></tr>
-                </tbody>
-            </table>
-            <div id="providers-status" class="status-msg" style="margin-top:6px;"></div>
-        </div>
-
-        <div class="tts-section">
-            <h3>Preview any voice</h3>
+            <h3>Narrate</h3>
             <p class="desc">Type a phrase (bold/italic routes through the translation / word_definition voices). Use the ▶ button on a Voice catalog row below to hear any voice say it. Pronunciations + pauses apply automatically.</p>
             <div class="preview-area">
                 <!-- Tiny toolbar: Bold + Italic apply formatting to the
@@ -288,7 +266,7 @@
                     <button type="button" class="pv-fmt" onclick="pvFormat('italic')"  title="Italic (Ctrl+I)"                                                  style="font-weight:normal;font-style:italic;padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.85rem;">I</button>
                     <button type="button" class="pv-fmt" onclick="pvFormat('removeFormat')" title="Clear formatting on the selection"                          style="padding:3px 9px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;color:#666;">clear</button>
                 </div>
-                <div id="preview-text" contenteditable="true" data-placeholder="Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah." spellcheck="false" style="min-height:140px;height:160px;max-height:600px;overflow:auto;resize:vertical;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;line-height:1.6;background:#fff;outline:none;">Yahowah commanded the children of <b>Yisraʾel</b> to keep the <b>Shabuwʿah</b>.</div>
+                <div id="preview-text" contenteditable="true" data-placeholder="Yahowah commanded the children of Yisraʾel to keep the Shabuwʿah." spellcheck="false" style="min-height:280px;height:320px;max-height:600px;overflow:auto;resize:vertical;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;line-height:1.6;background:#fff;outline:none;">Yahowah commanded the children of <b>Yisraʾel</b> to keep the <b>Shabuwʿah</b>.</div>
                 <!-- Cascading starting-point picker: each dropdown is disabled
                      until the one before it has a selection. Picking a
                      paragraph drops its HTML into #preview-text above so the
@@ -332,7 +310,7 @@
         <!-- ── Voice catalog ──────────────────────────────────────── -->
         <div class="tts-section">
             <h3>Voice catalog</h3>
-            <p class="desc">Every voice Azure offers in your region. Uncheck a row to hide it from the picker dropdowns above. Click ▶ to hear a row's voice say the text from <em>Preview any voice</em>, using that section's Rate &amp; Pitch.</p>
+            <p class="desc">Every voice Azure offers in your region. Uncheck a row to hide it from the picker dropdowns above. Click ▶ to hear a row's voice say the text from <em>Narrate</em>, using that section's Rate &amp; Pitch.</p>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;">
                 <!-- Provider scope: drives the table below, the "Check for New
                      Voices" refresh, AND which provider "Add Custom Voice"
@@ -429,6 +407,37 @@
                 <button type="button" id="vc-audio-close" title="Close player" onclick="closeVcAudio()" style="flex:0 0 auto;background:none;border:none;font-size:1.1rem;line-height:1;cursor:pointer;color:#888;padding:2px 6px;">✕</button>
             </div>
             <div id="vc-status" class="status-msg"></div>
+        </div>
+
+        <!-- Providers section. Per-engine settings that shape how the
+             synth pipeline talks to each provider. Initially exposes
+             Phonetic-vs-IPA preference (drives which side of the per-tune
+             SUB/IPA lexicon the engine receives at synth time); easy to
+             extend with more columns as needed. -->
+        <div class="tts-section">
+            <h3>Providers</h3>
+            <p class="desc">Per-engine settings for the TTS providers below.
+                <strong>Pronunciation</strong>: which lexicon formats this
+                engine can actually consume at synth time — <em>Phonetic</em>
+                (respelling like <code>to-MAH-to</code>, every engine) and/or
+                <em>IPA</em> (<code>təˈmɑːtoʊ</code>; Azure / ElevenLabs /
+                Inworld today — local GPU engines flatten IPA to the
+                respelling). The Pronunciations tab disables its IPA column
+                toggle for any voice whose provider can't process IPA.</p>
+            <table class="tts-table" id="providers-table" style="width:100%;font-size:0.85rem;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">Provider</th>
+                        <th style="width:120px;text-align:center;" title="Number of voices this provider contributes to the catalog below">Voices</th>
+                        <th style="width:110px;text-align:center;" title="Whether custom voices can be trained / cloned for this provider (drives the Add Custom Voice flow)">Custom</th>
+                        <th style="width:220px;text-align:center;" title="Which pronunciation formats this engine can consume at synth time. Drives the Pronunciations tab IPA↔Phonetic toggle.">Pronunciation</th>
+                    </tr>
+                </thead>
+                <tbody id="providers-tbody">
+                    <tr><td colspan="4" style="text-align:center;color:#888;padding:12px;">Loading…</td></tr>
+                </tbody>
+            </table>
+            <div id="providers-status" class="status-msg" style="margin-top:6px;"></div>
         </div>
     </div>
 
@@ -1361,6 +1370,7 @@ window.addEventListener('load', function() {
     }
     // Embed mode (TTS popover on Admin → Books): always land on the Books
     // pane regardless of the last-used tab, since it's the only pane shown.
+    if (params.get('embed') === 'voices') { activateTtsTab('voices'); return; }
     if (params.get('embed')) { activateTtsTab('books'); return; }
     var t = sessionState.load('activeTab', '');
     if (t) activateTtsTab(t);
@@ -2447,7 +2457,9 @@ async function pvLoadSelected() {
 // the 5 selected keys and replayed through the (async) cascade on restore.
 var PV_LS_PICKS  = 'admin-tts.pv.picks';
 var PV_LS_TEXT   = 'admin-tts.pv.text';
-var PV_LS_HEIGHT = 'admin-tts.pv.height';
+// v2: the default height doubled (160→320px) — a fresh key so the height
+// auto-saved under the old key doesn't keep the field at the old size.
+var PV_LS_HEIGHT = 'admin-tts.pv.height.v2';
 var PV_LS_SIZES  = 'admin-tts.pv.sizes';
 // Persist the Min / Target / Max chunk fields so they survive a reload (the
 // operator's values are the source of truth, not the HTML defaults).
