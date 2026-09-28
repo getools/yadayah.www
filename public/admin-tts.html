@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790517603">
+    <meta name="page-version" content="1790574533">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
@@ -253,7 +253,7 @@
     <div id="pane-voices" class="tts-pane">
         <div class="tts-section">
             <h3>Narrate</h3>
-            <p class="desc">Type a phrase (bold/italic routes through the translation / word_definition voices). Use the ▶ button on a Voice catalog row below to hear any voice say it. Pronunciations + pauses apply automatically.</p>
+            <p class="desc">Type a phrase (bold/italic routes through the translation / word_definition voices). Pick a Voice and click <strong>Generate</strong> to render it, then <strong>Download MP3</strong> — or use the ▶ button on a Voice catalog row below to hear any voice say it. Pronunciations + pauses apply automatically.</p>
             <div class="preview-area">
                 <!-- Tiny toolbar: Bold + Italic apply formatting to the
                      selection in the contenteditable below. The endpoint
@@ -301,6 +301,17 @@
                     <label>Min <input type="number" id="preview-chunk-min" min="20" max="400" step="10" autocomplete="off" style="width:71px" title="Provider chunk minimum — saved to the provider on change"></label>
                     <label>Target <input type="number" id="preview-chunk-target" min="40" max="500" step="10" autocomplete="off" style="width:71px" title="Provider chunk target — saved to the provider on change"></label>
                     <label>Max <input type="number" id="preview-chunk-max" min="60" max="600" step="10" autocomplete="off" style="width:71px" title="Provider chunk maximum — saved to the provider on change"></label>
+                </div>
+                <!-- Generate: render the text above with the chosen voice and
+                     offer the MP3 for download. Same endpoint as ▶ (previewSynth). -->
+                <div class="pv-generate" data-no-persist style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;font-size:0.85rem;">
+                    <label style="display:flex;align-items:center;gap:4px;">Voice
+                        <select id="pv-voice" onchange="pvOnVoiceChange()" style="min-width:260px;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;"><option value="">Loading voices…</option></select></label>
+                    <label style="display:flex;align-items:center;gap:4px;">Style
+                        <select id="pv-style" onchange="pvSaveVoicePick()" disabled style="min-width:120px;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.85rem;"><option value="">(none)</option></select></label>
+                    <button type="button" id="pv-generate" onclick="pvGenerate()" title="Render the text above with the selected voice, Style, Rate &amp; Pitch" style="padding:5px 16px;border:1px solid #31345A;border-radius:4px;background:#31345A;color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;">Generate</button>
+                    <a id="pv-download" download style="display:none;padding:5px 12px;border:1px solid #31345A;border-radius:4px;background:#fff;color:#31345A;text-decoration:none;font-size:0.85rem;font-weight:600;">⬇ Download MP3</a>
+                    <span id="pv-gen-status" style="color:#666;font-size:0.8rem;"></span>
                 </div>
                 <div id="preview-status" class="status-msg"></div>
                 <audio id="preview-audio" controls style="width:100%;margin-top:8px;display:none"></audio>
@@ -832,7 +843,7 @@ function activateTtsTab(tabName) {
     btn.classList.add('active');
     var pane = $('pane-' + tabName);
     if (pane) pane.classList.add('active');
-    if (tabName === 'voices') { loadProviders(); loadVoiceCatalog(); pvEnsureSeriesLoaded(); }
+    if (tabName === 'voices') { loadProviders(); loadVoiceCatalog(); pvEnsureSeriesLoaded(); pvInitVoicePicker(); }
     if (tabName === 'pronunciations') loadTunes();
     if (tabName === 'pauses') loadPauses();
     if (tabName === 'fonts')  loadFonts();
@@ -4564,11 +4575,123 @@ async function playVoiceTest(tr, v) {
         }, setStatus);
         setStatus('');
         if (audio) { audio.src = url; audio.style.display = ''; audio.play(); }
+        pvSelectVoice(v.tts_voice_code, style);
     } catch (e) {
         setStatus('Play failed: ' + e.message, true);
         if (audio) audio.style.display = 'none';
     } finally {
         btn.disabled = false; btn.textContent = '▶';
+    }
+}
+
+// ── Narrate → Generate / Download MP3 ────────────────────────────────
+// Renders the Narrate text with the voice picked here (all ACTIVE voices,
+// every provider — ensureVoicesCache) through the same previewSynth path as
+// ▶, then plays it and exposes the MP3 (admin-tts-preview always returns
+// audio/mpeg) as a download. The picked voice is remembered per browser.
+var PV_LS_VOICE = 'admin-tts.pv.voice';
+var _pvGenUrl = null;
+async function pvInitVoicePicker() {
+    var sel = $('pv-voice');
+    if (!sel || sel.dataset.loaded) return;
+    var cache;
+    try { cache = await ensureVoicesCache(); }
+    catch (e) { sel.innerHTML = '<option value="">Failed to load voices</option>'; return; }
+    sel.dataset.loaded = '1';
+    var groups = {};
+    cache.voices.forEach(function (v) {
+        var prov = v.provider_label || v.provider_main || v.tts_name || 'Other';
+        (groups[prov] = groups[prov] || []).push(v);
+    });
+    sel.innerHTML = '<option value="">Voice…</option>';
+    Object.keys(groups).sort().forEach(function (prov) {
+        var og = document.createElement('optgroup');
+        og.label = prov;
+        groups[prov].sort(function (a, b) { return String(a.tts_voice_label || a.tts_voice_code).localeCompare(String(b.tts_voice_label || b.tts_voice_code)); })
+            .forEach(function (v) {
+                var o = document.createElement('option');
+                o.value = v.tts_voice_code;
+                o.textContent = v.tts_voice_label || v.tts_voice_code;
+                og.appendChild(o);
+            });
+        sel.appendChild(og);
+    });
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(PV_LS_VOICE) || 'null'); } catch (e) {}
+    if (saved && saved.voice) pvSelectVoice(saved.voice, saved.style, true);
+}
+function pvVoiceByCode(code) {
+    var list = (PRONS_VOICES_CACHE && PRONS_VOICES_CACHE.voices) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].tts_voice_code === code) return list[i];
+    return null;
+}
+// Point the picker at a voice (e.g. after ▶ on a catalog row); ignored when
+// that voice isn't in the active list.
+function pvSelectVoice(code, style, noSave) {
+    var sel = $('pv-voice');
+    if (!sel || !code || !Array.prototype.some.call(sel.options, function (o) { return o.value === code; })) return;
+    sel.value = code;
+    pvOnVoiceChange(style || '', noSave);
+}
+function pvSaveVoicePick() {
+    try { localStorage.setItem(PV_LS_VOICE, JSON.stringify({ voice: $('pv-voice').value, style: $('pv-style').value })); } catch (e) {}
+}
+function pvOnVoiceChange(style, noSave) {
+    var sel = $('pv-voice'), stSel = $('pv-style');
+    var v = pvVoiceByCode(sel.value);
+    var styles = (v && v.tts_voice_styles) || [];
+    // Only the voice's real styles. A voice that has its own "default" style
+    // lands on it; one without (Azure: chat, cheerful…) gets a leading
+    // "(none)" = no style, which is also all a style-less voice shows.
+    var ownDefault = null;
+    styles.forEach(function (s) { if (ownDefault === null && String(s).toLowerCase() === 'default') ownDefault = s; });
+    stSel.innerHTML = (ownDefault === null ? '<option value="">(none)</option>' : '') + styles.map(function (s) {
+        return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+    }).join('');
+    stSel.disabled = !styles.length;
+    if (ownDefault !== null) stSel.value = ownDefault;
+    if (typeof style === 'string' && styles.indexOf(style) >= 0) stSel.value = style;
+    if (v && v.provider_key !== undefined) pvApplyProviderChunk(v.provider_key);
+    if (noSave !== true) pvSaveVoicePick();
+}
+async function pvGenerate() {
+    var sel = $('pv-voice'), btn = $('pv-generate'), dl = $('pv-download'), st = $('pv-gen-status');
+    var audio = $('preview-audio');
+    var setSt = function (m, isErr) { st.textContent = m || ''; st.style.color = isErr ? '#c0392b' : '#666'; };
+    if (!sel.value) { setSt('Pick a voice first.', true); sel.focus(); return; }
+    var text = previewTextHtml();
+    if (!text) { setSt('Type or load some text first.', true); return; }
+    var v = pvVoiceByCode(sel.value);
+    var style = $('pv-style').value || null;
+    pvSaveVoicePick();
+    btn.disabled = true; btn.textContent = 'Generating…';
+    dl.style.display = 'none';
+    setSt('rendering…');
+    try {
+        var url = await previewSynth({
+            tts_key: TTS_KEY,
+            voice_code: sel.value,
+            style: style,
+            rate_pct: parseInt($('preview-rate').value, 10) || 0,
+            pitch_st: parseFloat($('preview-pitch').value) || 0,
+            volume: 100,
+            chunk_min: pvChunkSizes().min, chunk_target: pvChunkSizes().target, chunk_max: pvChunkSizes().max,
+            text: text,
+        }, setSt);
+        if (_pvGenUrl) { try { URL.revokeObjectURL(_pvGenUrl); } catch (e) {} }
+        _pvGenUrl = url;
+        var d = new Date(), p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+        var slug = String((v && (v.tts_voice_label || v.tts_voice_code)) || sel.value).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'voice';
+        dl.href = url;
+        dl.download = 'narrate-' + slug + '-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '.mp3';
+        dl.style.display = '';
+        setSt('');
+        audio.src = url; audio.style.display = 'block';
+        audio.play().catch(function () {});
+    } catch (e) {
+        setSt('Generate failed: ' + e.message, true);
+    } finally {
+        btn.disabled = false; btn.textContent = 'Generate';
     }
 }
 
