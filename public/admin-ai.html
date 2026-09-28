@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790575201">
+    <meta name="page-version" content="1790628533">
     <meta charset="UTF-8">
     <title>AI — Yada Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2763,18 +2763,35 @@ const MaskPainter = {
 };
 
 const TABS = { video: null, image: null, audio: null };
+// The selected tab / Audio sub-tab persist through session-state.js (per
+// user, localStorage + server), and are re-selected on reload.
+function saveTabState(key, value) {
+    try { if (window.sessionState) sessionState.save(key, value); } catch (e) {}
+}
 function activateTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+    if (name === 'audio') loadVoicesFrame();
+    saveTabState('activeTab', name);
 }
 function activateAudioSubtab(name) {
     document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.subtab === name));
     document.querySelectorAll('.subpanel').forEach(p => p.classList.toggle('hidden', p.dataset.subpanel !== name));
     if (name === 'voices') loadVoicesFrame();
+    saveTabState('audioSubtab', name);
 }
+// session-state.js loads after this script, so restore on window load.
+window.addEventListener('load', () => {
+    if (!window.sessionState) return;
+    const tab = sessionState.load('activeTab', '');
+    const sub = sessionState.load('audioSubtab', '');
+    if (sub && document.querySelector('.subtab[data-subtab="' + sub + '"]')) activateAudioSubtab(sub);
+    if (tab && document.querySelector('.tab[data-tab="' + tab + '"]')) activateTab(tab);
+});
 function loadVoicesFrame() {
     const f = $('voices-frame');
-    if (f && !f.getAttribute('src')) f.src = f.dataset.src;
+    // Only once it's actually on screen (Audio tab AND Voices sub-tab).
+    if (f && !f.getAttribute('src') && f.offsetParent !== null) f.src = f.dataset.src;
 }
 document.addEventListener('DOMContentLoaded', () => {
     FieldHelp.init();
