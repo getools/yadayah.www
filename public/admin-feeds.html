@@ -282,26 +282,26 @@
                     <th style="width:36px;vertical-align:top;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
                     <th style="width:120px;">Thumb<br><button onclick="recClearFilters()" style="margin-top:4px;background:#fff;border:1px solid #ccc;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:normal;">Clear filters</button></th>
                     <th style="width:90px;" class="rec-sortable" data-col="key">
-                        <span class="rec-sortable-label" onclick="recSort('key')">Key</span><br>
+                        <span class="rec-sortable-label" onclick="recSort('key', event)" title="Shift+click to add as a secondary sort">Key</span><br>
                         <input type="text" class="rec-filter" id="rec-f-key" oninput="recDebouncedReload()" placeholder="…" onclick="event.stopPropagation()">
                     </th>
                     <th class="rec-sortable" data-col="title">
-                        <span class="rec-sortable-label" onclick="recSort('title')">Title</span><br>
+                        <span class="rec-sortable-label" onclick="recSort('title', event)" title="Shift+click to add as a secondary sort">Title</span><br>
                         <input type="text" class="rec-filter" id="rec-f-title" oninput="recDebouncedReload()" placeholder="search title…" onclick="event.stopPropagation()">
                     </th>
                     <th style="width:170px;" class="rec-sortable" data-col="published">
-                        <span class="rec-sortable-label" onclick="recSort('published')">Published</span><br>
+                        <span class="rec-sortable-label" onclick="recSort('published', event)" title="Shift+click to add as a secondary sort">Published</span><br>
                         <input type="date" class="rec-filter" id="rec-f-pub-from" onchange="loadRecordings(1)" style="margin-bottom:2px;" title="From" onclick="event.stopPropagation()">
                         <input type="date" class="rec-filter" id="rec-f-pub-to"   onchange="loadRecordings(1)" title="To"   onclick="event.stopPropagation()">
                     </th>
                     <th style="width:140px;" class="rec-sortable" data-col="feed">
-                        <span class="rec-sortable-label" onclick="recSort('feed')">Source</span><br>
+                        <span class="rec-sortable-label" onclick="recSort('feed', event)" title="Shift+click to add as a secondary sort">Source</span><br>
                         <select class="rec-filter" id="rec-f-feed" onchange="loadRecordings(1)" onclick="event.stopPropagation()">
                             <option value="">All</option>
                         </select>
                     </th>
                     <th style="width:120px;" class="rec-sortable" data-col="duration">
-                        <span class="rec-sortable-label" onclick="recSort('duration')">Duration</span><br>
+                        <span class="rec-sortable-label" onclick="recSort('duration', event)" title="Shift+click to add as a secondary sort">Duration</span><br>
                         <input type="text" class="rec-filter" id="rec-f-dur-min" oninput="recDebouncedReload()" placeholder="min mm:ss" style="margin-bottom:2px;" onclick="event.stopPropagation()">
                         <input type="text" class="rec-filter" id="rec-f-dur-max" oninput="recDebouncedReload()" placeholder="max mm:ss" onclick="event.stopPropagation()">
                     </th>
@@ -313,7 +313,7 @@
                         </div>
                     </th>
                     <th style="width:120px;" class="rec-sortable" data-col="processed">
-                        <span class="rec-sortable-label" onclick="recSort('processed')">Recording</span>
+                        <span class="rec-sortable-label" onclick="recSort('processed', event)" title="Shift+click to add as a secondary sort">Recording</span>
                         <div class="rec-status-checks" onclick="event.stopPropagation()">
                             <label><input type="checkbox" id="rec-f-status-complete" onchange="loadRecordings(1)"> Complete</label>
                             <label><input type="checkbox" id="rec-f-status-partial"  onchange="loadRecordings(1)" checked> Partial</label>
@@ -466,6 +466,7 @@
 <script src="js/admin-links.js?v=4"></script>
 <script src="js/admin-ui-state.js?v=1"></script>
 <script src="/js/admin-login.js?v=8"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script>
 var API = '/api';
 var feeds = [];
@@ -475,6 +476,7 @@ var _itemsTotalPages = 1;
 var _itemsPerPage = (window.adminUI && parseInt(adminUI.load('feeds', 'itemsPerPage'), 10)) || 100;
 var _itemsSort = (window.adminUI && adminUI.load('feeds', 'itemsSort')) || 'publish_dtime';
 var _itemsDir  = (window.adminUI && adminUI.load('feeds', 'itemsDir'))  || 'desc';
+var _itemsKeys = (window.MultiSort && window.adminUI && MultiSort.parse(adminUI.load('feeds', 'itemsSortKeys'))) || [{ col: _itemsSort, dir: _itemsDir }];
 var _catFilterOpts = '<option value="">All</option>';
 var _catFilterOptsFiltered = '<option value="">All</option>';
 var _pageFilterOpts = '<option value="">All</option>';
@@ -542,16 +544,16 @@ function buildFeedFilterDropdown() {
     return '<select id="filter-feed" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.feed=this.value;loadItems(1)">' + opts + '</select>';
 }
 
-function sortItems(col) {
-    if (_itemsSort === col) {
-        _itemsDir = _itemsDir === 'desc' ? 'asc' : 'desc';
-    } else {
-        _itemsSort = col;
-        _itemsDir = (col === 'feed_name' || col === 'feed_item_title' || col === 'category_title') ? 'asc' : 'desc';
-    }
+function sortItems(col, ev) {
+    // Plain click = sort by this column alone; Shift+click adds a tie-breaker.
+    _itemsKeys = MultiSort.click(_itemsKeys, col, ev,
+        (col === 'feed_name' || col === 'feed_item_title' || col === 'category_title') ? 'asc' : 'desc');
+    _itemsSort = _itemsKeys[0].col;
+    _itemsDir = _itemsKeys[0].dir;
     if (window.adminUI) {
         adminUI.save('feeds', 'itemsSort', _itemsSort);
         adminUI.save('feeds', 'itemsDir', _itemsDir);
+        adminUI.save('feeds', 'itemsSortKeys', _itemsKeys);
     }
     loadItems(1);
 }
@@ -662,7 +664,7 @@ function loadItems(page) {
     var titleFilter = _savedFilters.title;
     var tagsFilter = _savedFilters.tags;
     var catFilter = _savedFilters.category;
-    var url = API + '/admin-feeds.php?items=1&page=' + page + '&limit=' + _itemsPerPage + '&sort=' + _itemsSort + '&dir=' + _itemsDir;
+    var url = API + '/admin-feeds.php?items=1&page=' + page + '&limit=' + _itemsPerPage + '&sort=' + _itemsSort + '&dir=' + _itemsDir + '&sorts=' + encodeURIComponent(MultiSort.toParam(_itemsKeys));
     if (feedKey) url += '&feed_key=' + feedKey;
     if (search) url += '&search=' + encodeURIComponent(search);
     if (titleFilter) url += '&title=' + encodeURIComponent(titleFilter);
@@ -719,18 +721,18 @@ function loadItems(page) {
         }
         document.getElementById('items-count').textContent = (d.total || items.length) + ' item(s) — page ' + (d.page || 1) + '/' + _itemsTotalPages;
         var ths = 'cursor:pointer;user-select:none;';
-        var iarr = function(col) { return _itemsSort === col ? (_itemsDir === 'asc' ? ' ▲' : ' ▼') : ''; };
+        var iarr = function(col) { return MultiSort.arrowHtml(_itemsKeys, col); };
         var html = '<table class="feeds-table"><thead><tr>'
             + '<th>Thumb<br><button onclick="itemsClearFilters()" style="margin-top:4px;background:#fff;border:1px solid #ccc;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:0.7rem;font-weight:normal;">Clear filters</button></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\')">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_name\')">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\')">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\')">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_key\', event)" title="Shift+click to add as a secondary sort">Key' + iarr('feed_item_key') + '<br><input type="text" id="filter-key" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.key=this.value;loadItems(1);}"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_name\', event)" title="Shift+click to add as a secondary sort">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\', event)" title="Shift+click to add as a secondary sort">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\', event)" title="Shift+click to add as a secondary sort">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
             + '<th>Page<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'category_title\')">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
-            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\')">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'category_title\', event)" title="Shift+click to add as a secondary sort">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
+            + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\', event)" title="Shift+click to add as a secondary sort">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
-            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\')">Status' + iarr('status') + '<br><select id="filter-status" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onStatusFilterChange()">'
+            + '<th style="' + ths + 'width:110px;" onclick="sortItems(\'status\', event)" title="Shift+click to add as a secondary sort">Status' + iarr('status') + '<br><select id="filter-status" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onStatusFilterChange()">'
                 + '<option value=""' + (_savedFilters.status === '' ? ' selected' : '') + '>All</option>'
                 + '<option value="active"' + (_savedFilters.status === 'active' ? ' selected' : '') + '>Active</option>'
                 + '<option value="restricted"' + (_savedFilters.status === 'restricted' ? ' selected' : '') + '>Restricted</option>'
@@ -2667,6 +2669,7 @@ var _recBatchActive = false;
 var _recBatchAbort = false;
 var _recSort = (window.adminUI && adminUI.load('feeds', 'recSort')) || 'published';
 var _recDir  = (window.adminUI && adminUI.load('feeds', 'recDir'))  || 'desc';
+var _recKeys = (window.MultiSort && window.adminUI && MultiSort.parse(adminUI.load('feeds', 'recSortKeys'))) || [{ col: _recSort, dir: _recDir }];
 var _recPage = (window.adminUI && parseInt(adminUI.load('feeds', 'recPage'), 10)) || 1;
 var _recSearchTimer = null;
 var _recRestored = false;
@@ -2675,12 +2678,15 @@ function recDebouncedReload() {
     if (_recSearchTimer) clearTimeout(_recSearchTimer);
     _recSearchTimer = setTimeout(function(){ loadRecordings(1); }, 350);
 }
-function recSort(col) {
-    if (_recSort === col) _recDir = _recDir === 'asc' ? 'desc' : 'asc';
-    else { _recSort = col; _recDir = (col === 'title' || col === 'feed') ? 'asc' : 'desc'; }
+function recSort(col, ev) {
+    // Plain click = sort by this column alone; Shift+click adds a tie-breaker.
+    _recKeys = MultiSort.click(_recKeys, col, ev, (col === 'title' || col === 'feed') ? 'asc' : 'desc');
+    _recSort = _recKeys[0].col;
+    _recDir = _recKeys[0].dir;
     if (window.adminUI) {
         adminUI.save('feeds', 'recSort', _recSort);
         adminUI.save('feeds', 'recDir', _recDir);
+        adminUI.save('feeds', 'recSortKeys', _recKeys);
     }
     loadRecordings(1);
 }
@@ -2804,7 +2810,8 @@ function loadRecordings(page) {
     var durMax = recParseDuration(v('rec-f-dur-max'));
 
     var qs = 'page=' + page + '&per_page=' + perPage
-           + '&sort=' + encodeURIComponent(_recSort) + '&dir=' + _recDir;
+           + '&sort=' + encodeURIComponent(_recSort) + '&dir=' + _recDir
+           + '&sorts=' + encodeURIComponent(MultiSort.toParam(_recKeys));
     if (v('rec-f-key'))      qs += '&key=' + encodeURIComponent(v('rec-f-key'));
     if (v('rec-f-title'))    qs += '&title=' + encodeURIComponent(v('rec-f-title'));
     if (v('rec-f-pub-from')) qs += '&pub_from=' + encodeURIComponent(v('rec-f-pub-from'));
@@ -2935,8 +2942,10 @@ function renderRecordings(d) {
         var col = th.getAttribute('data-col');
         var span = th.querySelector('.rec-sortable-label');
         if (!span) return;
-        var label = span.textContent.replace(/[ ▲▼]+$/, '');
-        span.textContent = label + (col === d.sort ? (d.dir === 'asc' ? ' ▲' : ' ▼') : '');
+        var label = span.textContent.replace(/[ ▲▼0-9]+$/, '');
+        // d.sorts is only echoed by an API that understands multi-column sorts;
+        // otherwise show just the single column the server actually applied.
+        span.innerHTML = label + MultiSort.arrowHtml(d.sorts !== undefined ? _recKeys : [{ col: d.sort, dir: d.dir }], col);
     });
     if (!_recItems.length) {
         body.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:30px;color:#888;">No items match the current filters.</td></tr>';
@@ -3345,7 +3354,7 @@ TRANSCRIPT_GEN_MODELS.forEach(function(m){ if (!m.label) m.label = m.notes; });
 // ════════════════════════════════════════════════════════════════════════
 var _GS_PREFS_KEY = 'yada.genStudio.v1';
 var _gsSel    = { baseline: {}, edits: {}, primary: null };
-var _gsSort   = [ { col: 'cost', dir: 1 }, { col: 'blocks', dir: -1 }, { col: 'service', dir: 1 } ];
+var _gsSort   = [ { col: 'cost', dir: 'asc' }, { col: 'blocks', dir: 'desc' }, { col: 'service', dir: 'asc' } ];
 var _gsItems  = [];     // [{key, title}]
 var _gsSingle = false;  // opened scoped to a single feed item?
 var _gsState  = {};     // itemKey -> { title, baselineCodes:[], editsCodes:[], primary, jobs:[{model,jobKey,state}], editsState, initJobKey }
@@ -3553,19 +3562,14 @@ function _gsSortVal(m, col) {
     }
 }
 function _gsSortedModels() {
-    return TRANSCRIPT_GEN_MODELS.slice().sort(function(a, b) {
-        for (var i = 0; i < _gsSort.length; i++) {
-            var s = _gsSort[i], av = _gsSortVal(a, s.col), bv = _gsSortVal(b, s.col);
-            if (av < bv) return -s.dir; if (av > bv) return s.dir;
-        }
-        return 0;
-    });
+    return TRANSCRIPT_GEN_MODELS.slice().sort(MultiSort.comparator(_gsSort, null, function(a, b, col) {
+        var av = _gsSortVal(a, col), bv = _gsSortVal(b, col);
+        return av < bv ? -1 : (av > bv ? 1 : 0);
+    }));
 }
-function _gsSortBy(col) {
-    var idx = -1; for (var i = 0; i < _gsSort.length; i++) if (_gsSort[i].col === col) { idx = i; break; }
-    if (idx === 0) { _gsSort[0].dir *= -1; }
-    else if (idx > 0) { var s = _gsSort.splice(idx, 1)[0]; _gsSort.unshift(s); }
-    else { _gsSort.unshift({ col: col, dir: (col === 'blocks') ? -1 : 1 }); }
+function _gsSortBy(col, ev) {
+    // Plain click = sort by this column alone; Shift+click adds a tie-breaker.
+    _gsSort = MultiSort.click(_gsSort, col, ev, (col === 'blocks') ? 'desc' : 'asc');
     _gsRenderTable();
 }
 
@@ -3578,12 +3582,12 @@ function _gsRenderTable() {
     ];
     var ind = function(col) {
         for (var i = 0; i < _gsSort.length; i++) if (_gsSort[i].col === col)
-            return '<span style="color:#0b7285;font-size:0.7rem;"> ' + (_gsSort[i].dir > 0 ? '▲' : '▼') + (_gsSort.length > 1 ? (i + 1) : '') + '</span>';
+            return '<span style="color:#0b7285;font-size:0.7rem;"> ' + (_gsSort[i].dir === 'asc' ? '▲' : '▼') + (_gsSort.length > 1 ? (i + 1) : '') + '</span>';
         return '';
     };
     thead.innerHTML = '<tr style="background:#eef0f7;">' + cols.map(function(c) {
         var align = (c.col === 'cost') ? 'right' : (c.col === 'service' ? 'left' : 'center');
-        return '<th onclick="_gsSortBy(\'' + c.col + '\')" style="padding:6px 8px;text-align:' + align + ';cursor:pointer;user-select:none;border-bottom:1px solid #d8dcec;white-space:nowrap;">' + esc(c.label) + ind(c.col) + '</th>';
+        return '<th onclick="_gsSortBy(\'' + c.col + '\', event)" title="Shift+click to add as a secondary sort" style="padding:6px 8px;text-align:' + align + ';cursor:pointer;user-select:none;border-bottom:1px solid #d8dcec;white-space:nowrap;">' + esc(c.label) + ind(c.col) + '</th>';
     }).join('') + '</tr>';
     tbody.innerHTML = _gsSortedModels().map(function(m) {
         var bc = _gsSel.baseline[m.code] ? ' checked' : '';
@@ -5301,6 +5305,7 @@ function loadTranscript() {
             // badges + side panel once rows are in the DOM.
             loadBookmarks();
             updateJobUI(d.job);
+            loadLastAutoFix();
             // Resume live polling for an in-flight generation job. This used to
             // be done by populateViewSelect() on open, but that now loads lazily,
             // so we key off d.job (the latest job, already in this response).
@@ -7494,6 +7499,7 @@ function soloSpeakerFilter(box) {
 window._bookmarksBySeg = window._bookmarksBySeg || {};
 window._bookmarksAll   = window._bookmarksAll   || [];
 window._bookmarkSort   = window._bookmarkSort   || { col: 'segment', dir: 'asc' };
+window._bookmarkSortKeys = window._bookmarkSortKeys || [{ col: window._bookmarkSort.col, dir: window._bookmarkSort.dir }];
 
 // Strip the leading zero from "0H:MM:SS" so "0:12:34" reads as 0:12:34
 // instead of 00:12:34. DB segments remain 2-digit (Postgres to_char
@@ -7706,10 +7712,9 @@ function renderBookmarksPane() {
     var pane = document.getElementById('t-val-bookmarks-pane');
     if (!pane) return;
     var rows = window._bookmarksAll.slice();
-    sortBookmarkRows(rows, window._bookmarkSort);
+    sortBookmarkRows(rows, window._bookmarkSortKeys);
     var arrow = function(col) {
-        if (window._bookmarkSort.col !== col) return '';
-        return window._bookmarkSort.dir === 'asc' ? ' ▲' : ' ▼';
+        return MultiSort.arrowHtml(window._bookmarkSortKeys, col);
     };
     var html = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">'
         + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Bookmarks <span style="font-weight:400;color:#999;">(' + rows.length + ')</span></label>'
@@ -7717,12 +7722,12 @@ function renderBookmarksPane() {
         + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
         + '<thead style="background:#f5f5f5;position:sticky;top:0;">'
         + '<tr>'
-        +   '<th onclick="sortBookmarks(\'user\')"    style="padding:4px 4px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:28px;" title="User — click to sort">'
+        +   '<th onclick="sortBookmarks(\'user\', event)"    style="padding:4px 4px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:28px;" title="User — click to sort · Shift+click adds a secondary sort">'
         +     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
         +     arrow('user')
         +   '</th>'
-        +   '<th onclick="sortBookmarks(\'segment\')" style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:70px;">Time' + arrow('segment') + '</th>'
-        +   '<th onclick="sortBookmarks(\'note\')"    style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note'    + arrow('note')    + '</th>'
+        +   '<th onclick="sortBookmarks(\'segment\', event)" title="Shift+click to add as a secondary sort" style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:70px;">Time' + arrow('segment') + '</th>'
+        +   '<th onclick="sortBookmarks(\'note\', event)"    title="Shift+click to add as a secondary sort" style="padding:4px 6px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note'    + arrow('note')    + '</th>'
         + '</tr></thead><tbody>';
     if (!rows.length) {
         html += '<tr><td colspan="3" style="padding:10px;text-align:center;color:#999;font-style:italic;">No bookmarks yet.</td></tr>';
@@ -7742,29 +7747,26 @@ function renderBookmarksPane() {
     pane.innerHTML = html;
 }
 
-function sortBookmarks(col) {
-    if (window._bookmarkSort.col === col) {
-        window._bookmarkSort.dir = (window._bookmarkSort.dir === 'asc') ? 'desc' : 'asc';
-    } else {
-        window._bookmarkSort.col = col;
-        window._bookmarkSort.dir = 'asc';
-    }
+function sortBookmarks(col, ev) {
+    // Plain click = sort by this column alone; Shift+click adds a tie-breaker.
+    window._bookmarkSortKeys = MultiSort.click(window._bookmarkSortKeys, col, ev, 'asc');
+    window._bookmarkSort = { col: window._bookmarkSortKeys[0].col, dir: window._bookmarkSortKeys[0].dir };
     renderBookmarksPane();
     if (document.getElementById('bm-modal-tbody')) renderBookmarksModalTable();
 }
 
+// s = key array [{col, dir}, …] (or a legacy single {col, dir}).
 function sortBookmarkRows(rows, s) {
-    var dir = (s.dir === 'desc') ? -1 : 1;
-    rows.sort(function(a, b) {
+    rows.sort(MultiSort.comparator(MultiSort.parse(s) || [{ col: 'segment', dir: 'asc' }], null, function(a, b, col) {
         var av, bv;
-        if (s.col === 'segment')      { av = a.segment_secs || 0;        bv = b.segment_secs || 0; }
-        else if (s.col === 'user')    { av = (a.user_handle || a.user_display || '').toLowerCase(); bv = (b.user_handle || b.user_display || '').toLowerCase(); }
-        else if (s.col === 'created') { av = a.created || ''; bv = b.created || ''; }
-        else                          { av = (a.note || '').toLowerCase(); bv = (b.note || '').toLowerCase(); }
-        if (av < bv) return -1 * dir;
-        if (av > bv) return  1 * dir;
+        if (col === 'segment')      { av = a.segment_secs || 0;        bv = b.segment_secs || 0; }
+        else if (col === 'user')    { av = (a.user_handle || a.user_display || '').toLowerCase(); bv = (b.user_handle || b.user_display || '').toLowerCase(); }
+        else if (col === 'created') { av = a.created || ''; bv = b.created || ''; }
+        else                        { av = (a.note || '').toLowerCase(); bv = (b.note || '').toLowerCase(); }
+        if (av < bv) return -1;
+        if (av > bv) return  1;
         return 0;
-    });
+    }));
 }
 
 // Full Bookmarks modal — opened from the toolbar Bookmarks button.
@@ -7783,11 +7785,11 @@ function openBookmarksModal() {
             +   '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">'
             +     '<thead style="background:#f5f5f5;position:sticky;top:0;">'
             +       '<tr>'
-            +         '<th id="bm-th-user"    onclick="sortBookmarks(\'user\')"    style="padding:8px 10px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:36px;" title="User — click to sort">'
+            +         '<th id="bm-th-user"    onclick="sortBookmarks(\'user\', event)"    style="padding:8px 10px;text-align:center;cursor:pointer;border-bottom:1px solid #ddd;width:36px;" title="User — click to sort · Shift+click adds a secondary sort">'
             +           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>'
             +         '</th>'
-            +         '<th id="bm-th-segment" onclick="sortBookmarks(\'segment\')" style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:110px;">Timestamp</th>'
-            +         '<th id="bm-th-note"    onclick="sortBookmarks(\'note\')"    style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note</th>'
+            +         '<th id="bm-th-segment" onclick="sortBookmarks(\'segment\', event)" title="Shift+click to add as a secondary sort" style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;width:110px;">Timestamp</th>'
+            +         '<th id="bm-th-note"    onclick="sortBookmarks(\'note\', event)"    title="Shift+click to add as a secondary sort" style="padding:8px 10px;text-align:left;cursor:pointer;border-bottom:1px solid #ddd;">Note</th>'
             +         '<th style="padding:8px 10px;width:40px;border-bottom:1px solid #ddd;"></th>'
             +       '</tr>'
             +     '</thead>'
@@ -7812,17 +7814,16 @@ function renderBookmarksModalTable() {
     var tbody = document.getElementById('bm-modal-tbody');
     if (!tbody) return;
     var rows = window._bookmarksAll.slice();
-    sortBookmarkRows(rows, window._bookmarkSort);
+    sortBookmarkRows(rows, window._bookmarkSortKeys);
     var arrow = function(col) {
-        if (window._bookmarkSort.col !== col) return '';
-        return window._bookmarkSort.dir === 'asc' ? ' ▲' : ' ▼';
+        return MultiSort.arrowHtml(window._bookmarkSortKeys, col);
     };
     var thU = document.getElementById('bm-th-user');
     var thS = document.getElementById('bm-th-segment');
     var thN = document.getElementById('bm-th-note');
     if (thU) thU.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:middle;"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1z"/></svg>' + arrow('user');
-    if (thS) thS.textContent = 'Timestamp' + arrow('segment');
-    if (thN) thN.textContent = 'Note'      + arrow('note');
+    if (thS) thS.innerHTML = 'Timestamp' + arrow('segment');
+    if (thN) thN.innerHTML = 'Note'      + arrow('note');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="4" style="padding:24px;text-align:center;color:#999;">No bookmarks for this transcript.</td></tr>';
         return;
@@ -8187,13 +8188,13 @@ function renderLastResultNote(job) {
         bg = '#fdecea'; color = '#7a1c0c';
         fullErr = String(job.job_error || job.job_message || 'Unknown');
         _txLastError = fullErr;
-        label = 'Last attempt failed (' + ago + '): ' + esc(fullErr.substring(0, 200)) + (fullErr.length > 200 ? '\u2026' : '');
+        label = 'Last transcription attempt failed (' + ago + '): ' + esc(fullErr.substring(0, 200)) + (fullErr.length > 200 ? '\u2026' : '');
     } else if (job.job_status === 'complete') {
         bg = '#e8f5e9'; color = '#1b5e20';
-        label = '&#10003; Last run complete (' + ago + ')' + (job.job_message ? ': ' + esc(job.job_message) : '');
+        label = '&#10003; Last transcription run complete (' + ago + ')' + (job.job_message ? ': ' + esc(job.job_message) : '');
     } else if (job.job_status === 'cancelled') {
         bg = '#fff8dc'; color = '#7a5c00';
-        label = 'Last attempt cancelled (' + ago + ')';
+        label = 'Last transcription attempt cancelled (' + ago + ')';
     } else {
         return;
     }
@@ -9063,6 +9064,7 @@ function tdCorrRowHtml(c) {
 // header sorts client-side; clicking the active header flips direction.
 var _tdCorrItems = [];
 var _tdCorrSort = { col: 'count', dir: 'desc' };   // matches the server's default order
+var _tdCorrKeys = [{ col: 'count', dir: 'desc' }]; // full multi-column sort (Shift+click); _tdCorrSort = primary
 // col -> [accessor, type]. type 'num' also covers booleans (0/1).
 var TD_CORR_COLS = {
     wrong:    [function(c){ return (c.correction_wrong || '').toLowerCase(); }, 'str'],
@@ -9073,21 +9075,18 @@ var TD_CORR_COLS = {
     active:   [function(c){ return c.correction_active_flag ? 1 : 0; },        'num'],
     lastseen: [function(c){ return c.correction_last_seen_dtime || ''; },      'str']
 };
-function sortCorrectionsBy(col) {
+function sortCorrectionsBy(col, ev) {
     if (!TD_CORR_COLS[col]) return;
-    if (_tdCorrSort.col === col) {
-        _tdCorrSort.dir = _tdCorrSort.dir === 'asc' ? 'desc' : 'asc';
-    } else {
-        _tdCorrSort.col = col;
-        // Text columns read best ascending; numeric/flags most-useful descending.
-        _tdCorrSort.dir = TD_CORR_COLS[col][1] === 'str' ? 'asc' : 'desc';
-    }
+    // Plain click = sort by this column alone; Shift+click adds a tie-breaker.
+    // Text columns read best ascending; numeric/flags most-useful descending.
+    _tdCorrKeys = MultiSort.click(_tdCorrKeys, col, ev, TD_CORR_COLS[col][1] === 'str' ? 'asc' : 'desc');
+    _tdCorrSort = { col: _tdCorrKeys[0].col, dir: _tdCorrKeys[0].dir };
     renderCorrections();
 }
 function tdCorrTh(col, label, extra) {
-    var active = _tdCorrSort.col === col;
-    var arrow = active ? (_tdCorrSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
-    return '<th onclick="sortCorrectionsBy(\'' + col + '\')" title="Sort by ' + label + '" style="padding:6px;cursor:pointer;user-select:none;white-space:nowrap;'
+    var active = MultiSort.rank(_tdCorrKeys, col) > 0;
+    var arrow = MultiSort.arrowHtml(_tdCorrKeys, col);
+    return '<th onclick="sortCorrectionsBy(\'' + col + '\', event)" title="Sort by ' + label + ' · Shift+click adds a secondary sort" style="padding:6px;cursor:pointer;user-select:none;white-space:nowrap;'
         + (active ? 'color:#31345A;font-weight:700;' : 'color:#555;')
         + (extra || '') + '">' + label + '<span style="color:#31345A;">' + arrow + '</span></th>';
 }
@@ -9104,14 +9103,14 @@ function renderCorrections() {
     if (!el) return;
     _tdCorrections = {};
     if (!_tdCorrItems.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">No corrections yet.</div>'; return; }
-    var spec = TD_CORR_COLS[_tdCorrSort.col] || TD_CORR_COLS.count;
-    var get = spec[0], mul = _tdCorrSort.dir === 'asc' ? 1 : -1;
+    var mul = (_tdCorrKeys[0] && _tdCorrKeys[0].dir === 'asc') ? 1 : -1;
+    var byCols = MultiSort.comparator(_tdCorrKeys, null, function(a, b, col) {
+        var get = (TD_CORR_COLS[col] || TD_CORR_COLS.count)[0], av = get(a), bv = get(b);
+        return av < bv ? -1 : (av > bv ? 1 : 0);
+    });
     var items = _tdCorrItems.slice().sort(function(a, b) {
-        var av = get(a), bv = get(b);
-        if (av < bv) return -1 * mul;
-        if (av > bv) return 1 * mul;
         // Stable tiebreak so equal rows don't jump around between sorts.
-        return (a.correction_key - b.correction_key) * mul;
+        return byCols(a, b) || (a.correction_key - b.correction_key) * mul;
     });
     var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
         + '<thead style="background:#f5f5f5;"><tr>'
@@ -9477,7 +9476,7 @@ var SC_AI_CHUNK = 6;
 var _scRunning = false;
 var _scCancel = false;
 var _scAbort = null;
-function scBeginRun() { _scRunning = true; _scCancel = false; _scAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null; }
+function scBeginRun() { _scRunning = true; _scCancel = false; _scAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null; _afText = ''; _afPct = null; afRunning(); }
 function scEndRun()   { _scRunning = false; _scAbort = null; }
 function scCancelRun() {
     _scCancel = true;
@@ -9485,6 +9484,63 @@ function scCancelRun() {
     scEndRun();
     scHideProgress();
     scSetStatus('AI correction cancelled.');
+    afFinish('cancelled');
+}
+
+// ── Auto-Fix status banner on the transcript card ────────────────────────────
+// The "Last transcription run" banner (renderLastResultNote) belongs to the
+// transcription JOB table, so Auto-Fix never moved it and a finished Auto-Fix
+// looked like nothing had happened. This separate banner tracks Auto-Fix
+// itself: live while a pass runs (mirrors sc-status + progress), then the
+// finish time. On load it shows when Auto-Fix last applied, from the
+// server's pre-apply snapshots.
+var _afFinal = null;   // {item, state, html}: outcome of a run in THIS tab; wins over the server lookup
+var _afText = '', _afPct = null;
+function renderAutoFixNote(state, html) {
+    var old = document.getElementById('t-autofix-note');
+    if (old) old.remove();
+    if (!state) return;
+    var pal = {running: ['#ede7fb', '#4a2596'], complete: ['#e8f5e9', '#1b5e20'],
+               failed: ['#fdecea', '#7a1c0c'], cancelled: ['#fff8dc', '#7a5c00']}[state];
+    var w = document.createElement('div');
+    w.id = 't-autofix-note';
+    w.style.cssText = 'background:' + pal[0] + ';color:' + pal[1] + ';padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:0.82rem;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;';
+    w.innerHTML = '<div style="flex:1;">' + html + '</div>'
+        + (state === 'running' ? '' : '<button onclick="this.parentNode.remove();" style="background:none;border:none;color:inherit;cursor:pointer;font-size:1.1rem;opacity:0.6;padding:0 4px;" title="Dismiss">&times;</button>');
+    var anchor = document.getElementById('t-last-result') || document.getElementById('t-progress');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(w, anchor.nextSibling);
+    else { var card = document.getElementById('t-card'); if (card) card.appendChild(w); }
+}
+function afRunning() {
+    renderAutoFixNote('running', '&#9203; Auto-Fix running'
+        + (_afText ? ' — ' + esc(_afText) : '…')
+        + (_afPct != null ? ' (' + Math.round(_afPct) + '%)' : ''));
+}
+function afFinish(state, detail) {
+    var lead = {complete: '&#10003; Auto-Fix complete', failed: '&#10007; Auto-Fix failed', cancelled: 'Auto-Fix cancelled'}[state];
+    var html = lead + ' (' + new Date().toLocaleString() + ')' + (detail ? ': ' + esc(detail) : '');
+    _afFinal = {item: _transcriptItemKey, state: state, html: html};
+    renderAutoFixNote(state, html);
+}
+// Called from loadTranscript. A live run keeps its banner; a run finished in
+// this tab shows its outcome; otherwise ask the server when Auto-Fix last applied.
+function loadLastAutoFix() {
+    if (_scRunning) return;
+    if (_afFinal && _afFinal.item === _transcriptItemKey) { renderAutoFixNote(_afFinal.state, _afFinal.html); return; }
+    _afFinal = null;
+    renderAutoFixNote(null);
+    var item = _transcriptItemKey;
+    scGet('snapshots').then(function(d){
+        if (item !== _transcriptItemKey || _scRunning || _afFinal) return;
+        var hit = null;
+        ((d && d.items) || []).some(function(it){
+            if (/^before (AI cleanup|caption re-flow)/.test(it.snapshot_reason || '')) { hit = it; return true; }
+            return false;
+        });
+        if (!hit) return;
+        var when = hit.dtime_iso ? new Date(hit.dtime_iso).toLocaleString() : hit.dtime;
+        renderAutoFixNote('complete', '&#10003; Last Auto-Fix applied (' + esc(when) + ')');
+    }).catch(function(){});
 }
 
 function scEndpoint() { return API + '/admin-transcript-captionfit.php'; }
@@ -9507,10 +9563,14 @@ function scGet(action) {
 }
 function scVal(id) { var e = document.getElementById(id); return e ? e.value : ''; }
 function scNum(id) { return parseFloat(scVal(id)); }
-function scSetStatus(t) { var e = document.getElementById('sc-status'); if (e) e.textContent = t || ''; }
+function scSetStatus(t) {
+    var e = document.getElementById('sc-status'); if (e) e.textContent = t || '';
+    if (_scRunning) { _afText = t || ''; afRunning(); }
+}
 function scShowProgress(pct) {
     var w = document.getElementById('sc-progress'); var b = document.getElementById('sc-bar');
     if (w) w.style.display = 'block'; if (b) b.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    if (_scRunning) { _afPct = Math.max(0, Math.min(100, pct)); afRunning(); }
 }
 function scHideProgress() { var w = document.getElementById('sc-progress'); if (w) w.style.display = 'none'; }
 // Render a full, readable error in the preview pane (not the tiny status line),
@@ -9863,8 +9923,8 @@ function scAiPreview() {
     // proxy cap. Small slices keep every request well under it and stream
     // progress; a stalled slice re-warms and retries once (see catch above).
     scEnsureWarm(model, baselines).then(function(){ scSetStatus(running); return next(0, false); })
-        .then(function(){ scEndRun(); })
-        .catch(function(e){ scEndRun(); if (_scCancel) return; scShowError('AI cleanup', e); });
+        .then(function(){ scEndRun(); loadLastAutoFix(); })
+        .catch(function(e){ scEndRun(); if (_scCancel) return; loadLastAutoFix(); scShowError('AI cleanup', e); });
 }
 
 function scRenderAi() {
@@ -9972,6 +10032,7 @@ function scAiApply() {
     scPost({action: 'ai_apply', changes: changes}).then(function(d){
         if (!d || d.error) { alert(d ? d.error : 'apply failed'); scEnableApply(true); return; }
         scSetStatus('Applied ' + d.updated + ' correction(s). Snapshot #' + d.snapshot_key + ' saved.');
+        afFinish('complete', 'applied ' + d.updated + ' AI correction(s)');
         loadTranscript();
         scResetPreview();
     });
@@ -9989,6 +10050,7 @@ function scFitApply() {
     scPost({action: 'fit_apply', cues: cues}).then(function(d){
         if (!d || d.error) { alert(d ? d.error : 'apply failed'); scEnableApply(true); return; }
         scSetStatus('Applied ' + d.inserted + ' cues. Snapshot #' + d.snapshot_key + ' saved.');
+        afFinish('complete', 'applied caption sizing (' + d.inserted + ' cues)');
         loadTranscript();
         scResetPreview();
     });
@@ -10061,12 +10123,13 @@ function scPipeline() {
         scEndRun();
         if (_scCancel) return;
         scHideProgress();
+        afFinish('complete', steps.join(' + ') + ' applied');
         loadTranscript();
         scSetStatus('Done — ' + steps.join(' + ') + ' applied. Closing…');
         // Process applies directly (no review step), so auto-close the popover
         // once it finishes — briefly leaving the "Done" message on screen first.
         setTimeout(function(){ if (!_scRunning) { scResetPreview(); closeSmartCaptions(); } }, 900);
-    }).catch(function(e){ scEndRun(); if (_scCancel) return; scShowError('Process', e); });
+    }).catch(function(e){ scEndRun(); if (_scCancel) return; afFinish('failed', String((e && e.message) || e)); scShowError('Process', e); });
 }
 
 function scRevert() {

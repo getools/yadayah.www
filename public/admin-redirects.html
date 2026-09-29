@@ -98,11 +98,11 @@
     <table class="redir-table">
         <thead>
             <tr>
-                <th style="cursor:pointer;user-select:none;" onclick="toggleSort('url')">Request URL <span id="sort-url"></span></th>
+                <th style="cursor:pointer;user-select:none;" title="Shift+click to add as a secondary sort" onclick="toggleSort('url', event)">Request URL <span id="sort-url"></span></th>
                 <th>Target URL</th>
-                <th style="cursor:pointer;user-select:none;" onclick="toggleSort('hits')">Hits <span id="sort-hits"></span></th>
+                <th style="cursor:pointer;user-select:none;" title="Shift+click to add as a secondary sort" onclick="toggleSort('hits', event)">Hits <span id="sort-hits"></span></th>
                 <th>Status</th>
-                <th style="cursor:pointer;user-select:none;" onclick="toggleSort('date')">Created <span id="sort-date"></span></th>
+                <th style="cursor:pointer;user-select:none;" title="Shift+click to add as a secondary sort" onclick="toggleSort('date', event)">Created <span id="sort-date"></span></th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -144,6 +144,7 @@
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script>
 var API = '/api';
 var redirects = [];
@@ -202,20 +203,19 @@ var totalCount = 0;
 var searchTerm = '';
 var currentSort = 'date';
 var currentDir = 'DESC';
+var currentSortKeys = [{col: 'date', dir: 'desc'}];
 
-function toggleSort(col) {
-    if (currentSort === col) {
-        currentDir = currentDir === 'DESC' ? 'ASC' : 'DESC';
-    } else {
-        currentSort = col;
-        currentDir = col === 'url' ? 'ASC' : 'DESC';
-    }
+function toggleSort(col, ev) {
+    currentSortKeys = MultiSort.click(currentSortKeys, col, ev, col === 'url' ? 'asc' : 'desc');
+    currentSort = currentSortKeys[0].col;
+    currentDir = currentSortKeys[0].dir.toUpperCase();
     loadRedirects(1);
 }
 
 function loadRedirects(page) {
     page = page || currentPage || 1;
-    var url = API + '/redirects.php?page=' + page + '&limit=100&sort=' + currentSort + '&dir=' + currentDir;
+    var url = API + '/redirects.php?page=' + page + '&limit=100&sort=' + currentSort + '&dir=' + currentDir
+        + '&sort_keys=' + encodeURIComponent(MultiSort.toParam(currentSortKeys));
     if (currentFilter && currentFilter !== 'all') url += '&filter=' + encodeURIComponent(currentFilter);
     if (searchTerm) url += '&search=' + encodeURIComponent(searchTerm);
     fetch(url, {credentials:'include'})
@@ -241,10 +241,10 @@ function renderRedirects() {
     var filtered = redirects;
 
     document.getElementById('redir-count').textContent = totalCount + ' redirect' + (totalCount !== 1 ? 's' : '') + ' (page ' + currentPage + '/' + totalPages + ')';
-    var arrow = function(col) { return currentSort === col ? (currentDir === 'DESC' ? ' ▼' : ' ▲') : ''; };
-    document.getElementById('sort-url').textContent = arrow('url');
-    document.getElementById('sort-hits').textContent = arrow('hits');
-    document.getElementById('sort-date').textContent = arrow('date');
+    var arrow = function(col) { return MultiSort.arrowHtml(currentSortKeys, col); };
+    document.getElementById('sort-url').innerHTML = arrow('url');
+    document.getElementById('sort-hits').innerHTML = arrow('hits');
+    document.getElementById('sort-date').innerHTML = arrow('date');
 
     var html = '';
     filtered.forEach(function(r) {

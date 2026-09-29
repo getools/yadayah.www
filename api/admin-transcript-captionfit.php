@@ -479,6 +479,7 @@ if ($action === 'ai_apply') {
 if ($action === 'snapshots') {
     if (!$itemKey) errorResponse('item_key required');
     $st = $db->prepare("SELECT snapshot_key, to_char(snapshot_dtime,'YYYY-MM-DD HH24:MI') AS dtime,
+                               to_char(snapshot_dtime AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS dtime_iso,
                                snapshot_reason, snapshot_rows
                           FROM yy_transcript_snapshot WHERE feed_item_key = ?
                          ORDER BY snapshot_dtime DESC LIMIT 25");

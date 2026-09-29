@@ -60,16 +60,16 @@
             <table class="pages-table">
                 <thead>
                     <tr>
-                        <th class="sortable" data-col="page_code" onclick="setSort('page_code')">Code<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_title" onclick="setSort('page_title')">Title<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_toolbar" onclick="setSort('page_toolbar')">Header<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_header_sort" onclick="setSort('page_header_sort')">H.Sort<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="parent_label" onclick="setSort('parent_label')">Parent<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_parent_sort" onclick="setSort('page_parent_sort')">P.Sort<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_footer_col" onclick="setSort('page_footer_col')">Footer<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_footer_sort" onclick="setSort('page_footer_sort')">F.Sort<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_toolbar_flag" onclick="setSort('page_toolbar_flag')" title="Page has a sub-toolbar of children">Sub-T<span class="sort-indicator"></span></th>
-                        <th class="sortable" data-col="page_active_flag" onclick="setSort('page_active_flag')">Active<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_code" onclick="setSort('page_code', event)" title="Shift+click to add as a secondary sort">Code<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_title" onclick="setSort('page_title', event)" title="Shift+click to add as a secondary sort">Title<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_toolbar" onclick="setSort('page_toolbar', event)" title="Shift+click to add as a secondary sort">Header<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_header_sort" onclick="setSort('page_header_sort', event)" title="Shift+click to add as a secondary sort">H.Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="parent_label" onclick="setSort('parent_label', event)" title="Shift+click to add as a secondary sort">Parent<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_parent_sort" onclick="setSort('page_parent_sort', event)" title="Shift+click to add as a secondary sort">P.Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_footer_col" onclick="setSort('page_footer_col', event)" title="Shift+click to add as a secondary sort">Footer<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_footer_sort" onclick="setSort('page_footer_sort', event)" title="Shift+click to add as a secondary sort">F.Sort<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_toolbar_flag" onclick="setSort('page_toolbar_flag', event)" title="Page has a sub-toolbar of children · Shift+click adds a secondary sort">Sub-T<span class="sort-indicator"></span></th>
+                        <th class="sortable" data-col="page_active_flag" onclick="setSort('page_active_flag', event)" title="Shift+click to add as a secondary sort">Active<span class="sort-indicator"></span></th>
                         <th></th>
                     </tr>
                 </thead>
@@ -158,6 +158,7 @@
 
 </div>
 
+<script src="/js/multi-sort.js?v=1"></script>
 <script src="js/admin-links.js?v=4"></script>
 <script>
 var API = '/api';
@@ -215,7 +216,7 @@ function togglePassword() {
 // ── List ──
 var allPages = [];
 // sortStack: array of {col, dir} — index 0 = primary, 1 = secondary, etc.
-var sortStack = [{col:'page_toolbar', dir:1}, {col:'page_header_sort', dir:1}];
+var sortStack = [{col:'page_toolbar', dir:'asc'}, {col:'page_header_sort', dir:'asc'}];
 
 var HEADER_LABELS = {0: 'None', 1: 'Main', 2: 'Sub'};
 var FOOTER_LABELS = {0: 'N/A', 1: '1', 2: '2', 3: '3'};
@@ -227,20 +228,9 @@ function loadList() {
     });
 }
 
-function setSort(col) {
-    var idx = sortStack.findIndex(function(s) { return s.col === col; });
-    if (idx === 0) {
-        // Already primary — toggle direction
-        sortStack[0].dir = -sortStack[0].dir;
-    } else if (idx > 0) {
-        // Already secondary — move to primary, toggle direction
-        var entry = sortStack.splice(idx, 1)[0];
-        entry.dir = -entry.dir;
-        sortStack.unshift(entry);
-    } else {
-        // New column — prepend as primary, keep others as secondary
-        sortStack.unshift({col: col, dir: 1});
-    }
+function setSort(col, ev) {
+    // Click = sort by this column alone (again flips it); Shift+click = add/flip/drop a tie-breaker.
+    sortStack = MultiSort.click(sortStack, col, ev, 'asc');
     renderList();
 }
 
@@ -255,10 +245,9 @@ function renderList() {
     document.querySelectorAll('.pages-table thead th[data-col]').forEach(function(th) {
         var col = th.getAttribute('data-col');
         var span = th.querySelector('.sort-indicator');
-        var rank = sortStack.findIndex(function(s) { return s.col === col; });
+        var rank = MultiSort.rank(sortStack, col) - 1;
         if (rank >= 0) {
-            var arrow = sortStack[rank].dir === 1 ? '▲' : '▼';
-            span.textContent = sortStack.length > 1 ? (rank + 1) + arrow : arrow;
+            span.innerHTML = MultiSort.arrowHtml(sortStack, col).replace(/^ /, '');
             span.style.color = rank === 0 ? '#3498db' : '#aaa';
         } else {
             span.textContent = '';
@@ -266,19 +255,16 @@ function renderList() {
         }
     });
 
-    var sorted = allPages.slice().sort(function(a, b) {
-        for (var i = 0; i < sortStack.length; i++) {
-            var col = sortStack[i].col, dir = sortStack[i].dir;
+    var sorted = allPages.slice().sort(MultiSort.comparator(sortStack, null, function(a, b, col) {
             var av = a[col], bv = b[col];
             if (av == null) av = typeof bv === 'number' ? 0 : '';
             if (bv == null) bv = typeof av === 'number' ? 0 : '';
             if (typeof av === 'boolean') av = av ? 1 : 0;
             if (typeof bv === 'boolean') bv = bv ? 1 : 0;
-            if (av < bv) return -dir;
-            if (av > bv) return dir;
-        }
-        return 0;
-    });
+            if (av < bv) return -1;
+            if (av > bv) return 1;
+            return 0;
+    }));
 
     tbody.innerHTML = sorted.map(function(r) {
         var badge = r.page_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>';

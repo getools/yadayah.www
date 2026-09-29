@@ -124,6 +124,7 @@
 </div>
 
 <script src="js/admin-links.js?v=2"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script>
 var API = '/api';
 
@@ -161,14 +162,12 @@ function loadFiles() {
 var _allFiles = [];
 var _sortCol = 'name';
 var _sortDir = 1; // 1 = asc, -1 = desc
+var _sortKeys = [{col: 'name', dir: 'asc'}];
 
-function sortFiles(col) {
-    if (_sortCol === col) {
-        _sortDir *= -1;
-    } else {
-        _sortCol = col;
-        _sortDir = 1;
-    }
+function sortFiles(col, ev) {
+    _sortKeys = MultiSort.click(_sortKeys, col, ev, 'asc');
+    _sortCol = _sortKeys[0].col;
+    _sortDir = _sortKeys[0].dir === 'asc' ? 1 : -1;
     renderFiles(_allFiles);
 }
 
@@ -180,9 +179,9 @@ function renderFiles(files) {
     }
 
     // Sort
-    var sorted = files.slice().sort(function(a, b) {
+    var sorted = files.slice().sort(MultiSort.comparator(_sortKeys, null, function(a, b, col) {
         var va, vb;
-        switch (_sortCol) {
+        switch (col) {
             case 'name': va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); break;
             case 'status': va = a.in_database ? 1 : 0; vb = b.in_database ? 1 : 0; break;
             case 'size': va = a.size || 0; vb = b.size || 0; break;
@@ -190,15 +189,17 @@ function renderFiles(files) {
             case 'modified': va = a.modified || ''; vb = b.modified || ''; break;
             default: va = ''; vb = '';
         }
-        if (va < vb) return -1 * _sortDir;
-        if (va > vb) return 1 * _sortDir;
+        if (va < vb) return -1;
+        if (va > vb) return 1;
         return 0;
-    });
+    }));
 
     function thSort(col, label, cls) {
-        var arrow = _sortCol === col ? (_sortDir === 1 ? '&#9650;' : '&#9660;') : '&#9650;';
-        var active = _sortCol === col ? ' sorted' : '';
-        return '<th class="' + (cls || '') + active + '" onclick="sortFiles(\'' + col + '\')">' + label + '<span class="sort-arrow">' + arrow + '</span></th>';
+        var d = MultiSort.dir(_sortKeys, col), r = MultiSort.rank(_sortKeys, col);
+        var arrow = d ? (d === 'asc' ? '&#9650;' : '&#9660;') : '&#9650;';
+        if (d && _sortKeys.length > 1) arrow += '<sup>' + r + '</sup>';
+        var active = d ? ' sorted' : '';
+        return '<th class="' + (cls || '') + active + '" title="Shift+click to add as a secondary sort" onclick="sortFiles(\'' + col + '\', event)">' + label + '<span class="sort-arrow">' + arrow + '</span></th>';
     }
 
     var html = '<table class="files-table"><thead><tr>' +

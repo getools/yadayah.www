@@ -659,12 +659,12 @@
                 <thead>
                     <tr>
                         <th class="col-yycopy" title="Has an editable YY copy">YY</th>
-                        <th class="col-strongs sortable" onclick="lxSort('strongs')">Strong's<span class="sort-mark" data-sort="strongs"></span></th>
-                        <th class="col-lang sortable" onclick="lxSort('language')" title="Language of the word">Lng<span class="sort-mark" data-sort="language"></span></th>
-                        <th class="col-translit sortable" onclick="lxSort('translit')">Translit<span class="sort-mark" data-sort="translit"></span></th>
-                        <th class="col-count sortable" onclick="lxSort('count')">#<span class="sort-mark" data-sort="count"></span></th>
-                        <th class="col-hebrew sortable" onclick="lxSort('hebrew')">Hebrew<span class="sort-mark" data-sort="hebrew"></span></th>
-                        <th class="col-yt sortable" onclick="lxSort('yt')">YT<span class="sort-mark" data-sort="yt"></span></th>
+                        <th class="col-strongs sortable" onclick="lxSort('strongs', event)" title="Shift+click to add as a secondary sort">Strong's<span class="sort-mark" data-sort="strongs"></span></th>
+                        <th class="col-lang sortable" onclick="lxSort('language', event)" title="Language of the word · Shift+click adds a secondary sort">Lng<span class="sort-mark" data-sort="language"></span></th>
+                        <th class="col-translit sortable" onclick="lxSort('translit', event)" title="Shift+click to add as a secondary sort">Translit<span class="sort-mark" data-sort="translit"></span></th>
+                        <th class="col-count sortable" onclick="lxSort('count', event)" title="Shift+click to add as a secondary sort">#<span class="sort-mark" data-sort="count"></span></th>
+                        <th class="col-hebrew sortable" onclick="lxSort('hebrew', event)" title="Shift+click to add as a secondary sort">Hebrew<span class="sort-mark" data-sort="hebrew"></span></th>
+                        <th class="col-yt sortable" onclick="lxSort('yt', event)" title="Shift+click to add as a secondary sort">YT<span class="sort-mark" data-sort="yt"></span></th>
                         <th>Definition</th>
                     </tr>
                     <!-- Column filters. Every box narrows the server-side query and
@@ -696,6 +696,7 @@
     </div>
 </div>
 
+<script src="/js/multi-sort.js?v=1"></script>
 <script src="js/admin-links.js?v=4"></script>
 <script src="/js/admin-login.js?v=8"></script>
 <script>
@@ -947,7 +948,7 @@ var LX_HALF_RINGS = [
 ];
 var LX_HALF_RING_SET = {};
 LX_HALF_RINGS.forEach(function(r) { LX_HALF_RING_SET[r[0]] = 1; });
-var lxState = { q: '', source: '', sort: 'translit', dir: 'asc', offset: 0, limit: 100 };
+var lxState = { q: '', source: '', sort: 'translit', dir: 'asc', keys: [{col: 'translit', dir: 'asc'}], offset: 0, limit: 100 };
 var lxLastTotal = 0;   // rows the current filter matches — bounds the page jump
 var lxFilterTimer = null;
 var lxCountOp = 'gt';        // 'gt' = at least, 'lt' = at most
@@ -1153,13 +1154,11 @@ function lxSetPosGender(w) {
     document.getElementById('lx-code').value = (w && w.word_code) || '';
 }
 
-function lxSort(key) {
-    if (lxState.sort === key) {
-        lxState.dir = (lxState.dir === 'asc') ? 'desc' : 'asc';
-    } else {
-        lxState.sort = key;
-        lxState.dir = LX_SORT_DESC_FIRST[key] ? 'desc' : 'asc';
-    }
+function lxSort(key, ev) {
+    // Click = sort by this column alone (again flips it); Shift+click = add/flip/drop a tie-breaker.
+    lxState.keys = MultiSort.click(lxState.keys, key, ev, LX_SORT_DESC_FIRST[key] ? 'desc' : 'asc');
+    lxState.sort = lxState.keys[0].col;
+    lxState.dir = lxState.keys[0].dir;
     lxReload(true);
 }
 
@@ -1192,7 +1191,8 @@ function loadWords() {
         var limSel = document.getElementById('lx-limit');
         if (limSel) lxState.limit = parseInt(limSel.value, 10) || lxState.limit;
         var p = 'limit=' + lxState.limit + '&offset=' + lxState.offset
-              + '&sort=' + encodeURIComponent(lxState.sort) + '&dir=' + encodeURIComponent(lxState.dir);
+              + '&sort=' + encodeURIComponent(lxState.sort) + '&dir=' + encodeURIComponent(lxState.dir)
+              + '&sorts=' + encodeURIComponent(MultiSort.toParam(lxState.keys));
         if (lxState.q) p += '&q=' + encodeURIComponent(lxState.q);
         if (lxState.source) p += '&source=' + encodeURIComponent(lxState.source);
         var copiedSel = document.getElementById('lx-copied');
@@ -1221,8 +1221,7 @@ function renderWords(words, total) {
         total ? (total.toLocaleString() + (total === 1 ? ' word' : ' words')) : '';
 
     document.querySelectorAll('.gw-table .sort-mark').forEach(function(el) {
-        el.textContent = el.getAttribute('data-sort') === lxState.sort
-            ? (lxState.dir === 'desc' ? ' ▼' : ' ▲') : '';
+        el.innerHTML = MultiSort.arrowHtml(lxState.keys, el.getAttribute('data-sort'));
     });
 
     if (!words.length) {

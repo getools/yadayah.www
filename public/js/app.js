@@ -935,20 +935,15 @@ $(function () {
         });
     }
 
-    // Column header sort (3-state: none → asc → desc → none)
+    // Column header sort (3-state: none → asc → desc → none; Shift+click adds tie-breakers)
     $(document).on('click', '.sortable', function (e) {
         if ($(e.target).is('select')) return;
         var col = $(this).data('sort-key') || $(this).data('col');
-        var currentDir = null;
-        if (listPrefs.sorts && listPrefs.sorts.length === 1 && listPrefs.sorts[0].col === col) {
-            currentDir = listPrefs.sorts[0].dir;
-        }
-        if (currentDir === null) {
-            listPrefs.sorts = [{ col: col, dir: 'asc' }];
-        } else if (currentDir === 'asc') {
-            listPrefs.sorts = [{ col: col, dir: 'desc' }];
-        } else {
+        var sorts = listPrefs.sorts || [];
+        if (!e.shiftKey && sorts.length === 1 && sorts[0].col === col && sorts[0].dir === 'desc') {
             listPrefs.sorts = [];
+        } else {
+            listPrefs.sorts = MultiSort.click(sorts, col, e, 'asc');
         }
         updateSortIndicators();
         renderTable();
@@ -965,16 +960,15 @@ $(function () {
                 $icon = $('<span class="sort-icon"></span>');
                 $th.append($icon);
             }
-            var activeSort = null;
-            if (listPrefs.sorts && listPrefs.sorts.length === 1 && listPrefs.sorts[0].col === sortKey) {
-                activeSort = listPrefs.sorts[0].dir;
-            }
+            var activeSort = MultiSort.dir(listPrefs.sorts, sortKey) || null;
+            var rankSup = (activeSort && listPrefs.sorts.length > 1)
+                ? '<sup class="ms-rank">' + MultiSort.rank(listPrefs.sorts, sortKey) + '</sup>' : '';
             if (activeSort === 'asc') {
                 $th.addClass('sort-asc');
-                $icon.html('&#9650;'); // ▲
+                $icon.html('&#9650;' + rankSup); // ▲
             } else if (activeSort === 'desc') {
                 $th.addClass('sort-desc');
-                $icon.html('&#9660;'); // ▼
+                $icon.html('&#9660;' + rankSup); // ▼
             } else {
                 $th.addClass('sort-none');
                 $icon.html('&#8693;'); // ⇅

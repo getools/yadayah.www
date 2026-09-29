@@ -243,13 +243,13 @@
                 <table id="words-table">
                     <thead>
                         <tr>
-                            <th class="col-active sortable" data-col="active">Active</th>
-                            <th class="col-strongs sortable" data-col="strongs">Strong's</th>
-                            <th class="col-hebrew sortable" data-col="hebrew">Hebrew</th>
-                            <th class="col-yt sortable" data-col="yt">YT</th>
+                            <th class="col-active sortable" data-col="active" title="Shift+click to add as a secondary sort">Active</th>
+                            <th class="col-strongs sortable" data-col="strongs" title="Shift+click to add as a secondary sort">Strong's</th>
+                            <th class="col-hebrew sortable" data-col="hebrew" title="Shift+click to add as a secondary sort">Hebrew</th>
+                            <th class="col-yt sortable" data-col="yt" title="Shift+click to add as a secondary sort">YT</th>
                             <th class="col-translits">Translits</th>
                             <th class="col-def">Definition</th>
-                            <th class="col-count sortable" data-col="count">Count</th>
+                            <th class="col-count sortable" data-col="count" title="Shift+click to add as a secondary sort">Count</th>
                         </tr>
                         <tr class="filter-row">
                             <th><select id="filter-active" class="col-filter" onchange="applyFilters()"><option value="">All</option><option value="1">Yes</option><option value="0">No</option></select></th>
@@ -340,12 +340,12 @@
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script>
 var API = 'api';
 var allWords = [];
 var editingWordId = null;
-var sortCol = 'strongs';
-var sortDir = 'asc';
+var sortKeys = [{col: 'strongs', dir: 'asc'}];
 var countMode = 'gt'; // 'gt' or 'lt'
 var allPosList = [];
 var allSourceList = [];
@@ -584,7 +584,7 @@ function renderTable(words) {
     currentWords = words;
     var f = getColumnFilters();
     var filtered = words.filter(function(w) { return matchesFilters(w, f); });
-    var sorted = filtered.slice().sort(function(a, b) {
+    var sorted = filtered.slice().sort(MultiSort.comparator(sortKeys, null, function(a, b, sortCol) {
         var va, vb;
         switch (sortCol) {
             case 'active': va = a.word_active_flag ? 1 : 0; vb = b.word_active_flag ? 1 : 0; break;
@@ -594,10 +594,10 @@ function renderTable(words) {
             case 'count': va = a.word_count_yy || 0; vb = b.word_count_yy || 0; break;
             default: va = a.word_strongs; vb = b.word_strongs;
         }
-        if (va < vb) return sortDir === 'asc' ? -1 : 1;
-        if (va > vb) return sortDir === 'asc' ? 1 : -1;
+        if (va < vb) return -1;
+        if (va > vb) return 1;
         return 0;
-    });
+    }));
 
     document.getElementById('result-count').textContent = filtered.length + (filtered.length !== words.length ? ' / ' + words.length : '') + ' words';
 
@@ -623,9 +623,13 @@ function renderTable(words) {
     var ths = document.querySelectorAll('#words-table .sortable');
     for (var j = 0; j < ths.length; j++) {
         ths[j].classList.remove('sort-asc', 'sort-desc');
-        if (ths[j].getAttribute('data-col') === sortCol) {
-            ths[j].classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+        var msCol = ths[j].getAttribute('data-col'), msDir = MultiSort.dir(sortKeys, msCol);
+        if (msDir) {
+            ths[j].classList.add(msDir === 'asc' ? 'sort-asc' : 'sort-desc');
         }
+        var msArrow = ths[j].querySelector('.ms-arrow');
+        if (!msArrow) { msArrow = document.createElement('span'); msArrow.className = 'ms-arrow'; ths[j].appendChild(msArrow); }
+        msArrow.innerHTML = MultiSort.arrowHtml(sortKeys, msCol);
     }
 }
 
@@ -634,12 +638,7 @@ document.getElementById('words-table').addEventListener('click', function(e) {
     var th = e.target.closest('.sortable');
     if (!th) return;
     var col = th.getAttribute('data-col');
-    if (sortCol === col) {
-        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortCol = col;
-        sortDir = 'asc';
-    }
+    sortKeys = MultiSort.click(sortKeys, col, e, 'asc');
     doSearch();
 });
 

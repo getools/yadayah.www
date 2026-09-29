@@ -210,6 +210,24 @@ $cntStmt->execute($params);
 $total = (int)$cntStmt->fetchColumn();
 
 $orderBy = "$sortCol $dir NULLS LAST, fi.feed_item_key DESC";
+// Multi-column sort from the admin table (Shift+click): ?sorts=col:asc,col2:desc.
+// Columns whitelisted via $sortMap, directions forced to ASC/DESC; unknown or
+// duplicate entries are skipped. Falls back to the single sort/dir above.
+$sortsApplied = [];
+$sortsRaw = trim((string)($_GET['sorts'] ?? ''));
+if ($sortsRaw !== '') {
+    $orderParts = [];
+    foreach (explode(',', $sortsRaw) as $sortPart) {
+        $sortBits = explode(':', trim($sortPart), 2);
+        $sortKey = $sortBits[0];
+        if (!isset($sortMap[$sortKey]) || isset($sortsApplied[$sortKey])) continue;
+        $sortDir = strtolower(trim($sortBits[1] ?? '')) === 'asc' ? 'ASC' : 'DESC';
+        $sortsApplied[$sortKey] = strtolower($sortDir);
+        $orderParts[] = $sortMap[$sortKey] . " $sortDir NULLS LAST";
+        if (count($orderParts) >= 8) break;
+    }
+    if ($orderParts) $orderBy = implode(', ', $orderParts) . ", fi.feed_item_key DESC";
+}
 
 $stmt = $db->prepare("
     SELECT fi.feed_item_key,
@@ -407,6 +425,7 @@ jsonResponse([
     'per_page' => $perPage,
     'total_pages' => max(1, (int)ceil($total / max(1, $perPage))),
     'sort' => $sort, 'dir' => strtolower($dir),
+    'sorts' => implode(',', array_map(function ($c, $d) { return "$c:$d"; }, array_keys($sortsApplied), $sortsApplied)),
     'feeds' => $feedsStmt->fetchAll(),
     'pages' => $allPages,
     'categories' => $allCategories,

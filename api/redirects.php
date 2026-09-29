@@ -46,7 +46,20 @@ if ($method === 'GET') {
     $sortCol = 'redirect_dtime';
     if ($sort === 'hits') $sortCol = 'redirect_hit_count';
     elseif ($sort === 'url') $sortCol = 'redirect_request';
-    $stmt = $db->prepare("SELECT * FROM yy_redirect" . $whereStr . " ORDER BY $sortCol $dir NULLS LAST LIMIT ? OFFSET ?");
+    // Multi-column sort: sort_keys=url:asc,hits:desc (whitelisted columns + directions only)
+    $sortMap = ['date' => 'redirect_dtime', 'hits' => 'redirect_hit_count', 'url' => 'redirect_request'];
+    $orderParts = [];
+    $seenCols = [];
+    foreach (explode(',', (string)($_GET['sort_keys'] ?? '')) as $sk) {
+        $skp = explode(':', trim($sk), 2);
+        $skCol = $sortMap[$skp[0]] ?? null;
+        if ($skCol === null || isset($seenCols[$skCol])) continue;
+        $seenCols[$skCol] = true;
+        $skDir = strtolower(trim($skp[1] ?? '')) === 'asc' ? 'ASC' : 'DESC';
+        $orderParts[] = "$skCol $skDir NULLS LAST";
+    }
+    $orderBy = $orderParts ? implode(', ', $orderParts) : "$sortCol $dir NULLS LAST";
+    $stmt = $db->prepare("SELECT * FROM yy_redirect" . $whereStr . " ORDER BY $orderBy LIMIT ? OFFSET ?");
     $stmt->execute(array_merge($params, [$limit, $offset]));
 
     jsonResponse([

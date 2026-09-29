@@ -30,7 +30,7 @@
  *   yy_letter map the trigger uses (see ?action=meta).
  *
  * GET ?action=meta      — sources, definition sources, Hebrew↔YT letter map
- * GET                   — paged list (?q= ?source= ?letter= ?limit= ?offset= ?sort= ?dir=)
+ * GET                   — paged list (?q= ?source= ?letter= ?limit= ?offset= ?sort= ?dir= ?sorts=col:dir,…)
  *                         ?source= takes one code or a comma-separated list.
  *                         plus per-column filters: ?f_strongs= ?f_translit= ?f_hebrew=
  *                         ?f_yt= ?f_def= ?f_count= (&f_count_op=gt|lt)
@@ -612,9 +612,27 @@ if ($method === 'GET' && !$key) {
     $dirParam    = strtolower((string)($_GET['dir'] ?? ''));
     $desc        = $dirParam === 'desc' ? true : ($dirParam === 'asc' ? false : $defaultDesc);
 
+    // Multi-column sort (Shift+click in the list): ?sorts=col:dir,col2:dir.
+    // Columns are whitelisted through $sortMap and directions to asc/desc, so no
+    // request text reaches the SQL. When it yields any key it replaces sort/dir.
+    $sortKeys = [];
+    foreach (explode(',', (string)($_GET['sorts'] ?? '')) as $part) {
+        $bits = explode(':', trim($part), 2);
+        $col  = $bits[0];
+        if ($col === '' || !isset($sortMap[$col]) || isset($sortKeys[$col])) continue;
+        $d = strtolower($bits[1] ?? '');
+        $sortKeys[$col] = $d === 'desc' ? true : ($d === 'asc' ? false : ($col === 'count' || $col === 'recent'));
+    }
+    if (!$sortKeys) $sortKeys = [$sortKey => $desc];
+    $sortKey = array_keys($sortKeys)[0];
+    $desc    = $sortKeys[$sortKey];
+
+    $order = '';
+    foreach ($sortKeys as $col => $d) {
+        $order .= $sortMap[$col] . ($d ? ' DESC' : ' ASC') . ' NULLS LAST, ';
+    }
     // Preferred spelling breaks ties so paging is stable across identical keys.
-    $order = $sortMap[$sortKey] . ($desc ? ' DESC' : ' ASC') . ' NULLS LAST,'
-           . ' lower(w.word_translit) ASC NULLS LAST, w.word_key ASC';
+    $order .= 'lower(w.word_translit) ASC NULLS LAST, w.word_key ASC';
 
     $countStmt = $db->prepare('SELECT count(*) FROM yy_word w' . $sql);
     $countStmt->execute($params);
@@ -638,6 +656,7 @@ if ($method === 'GET' && !$key) {
         'offset' => $offset,
         'sort'   => $sortKey,
         'dir'    => $desc ? 'desc' : 'asc',
+        'sorts'  => implode(',', array_map(fn($c, $d) => $c . ':' . ($d ? 'desc' : 'asc'), array_keys($sortKeys), $sortKeys)),
     ]);
 }
 

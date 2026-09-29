@@ -36,6 +36,7 @@
         .blocks-table th, .blocks-table td { padding:6px 10px; text-align:left; border-bottom:1px solid #eee; }
         .blocks-table th { color:#888; font-weight:600; }
         .blocks-table td { font-family:ui-monospace,Menlo,Consolas,monospace; }
+        .save-msg { float:right; font-size:0.8rem; font-weight:400; color:#888; }
         .agent-err { color:#c0392b; font-size:0.85rem; margin:-8px 0 14px; }
         @media (max-width:760px) {
             .setting-row { flex-wrap:wrap; gap:8px; }
@@ -78,12 +79,12 @@
     <h1>Manage</h1>
 
     <div class="card" id="ai-server">
-        <h2 class="section-title">AI Server</h2>
+        <h2 class="section-title">AI Server <span id="save-msg" class="save-msg"></span></h2>
         <div class="hint-box">
             Limits the Puget AI server's internet traffic so it doesn't compete with a live show.
             <b>Upload</b> = data leaving the AI server (results sent back to the website, anything it sends out);
             <b>Download</b> = data arriving (audio sent in for transcription, model and image downloads).
-            Local-network and SSH traffic is never limited. Changes reach the AI server within about 15 seconds.
+            Local-network and SSH traffic is never limited. Changes save automatically and reach the AI server within about 15 seconds.
         </div>
 
         <div class="status-panel" id="status-panel"></div>
@@ -124,10 +125,6 @@
             <div class="s-help">Caps total incoming speed. <span id="h-download_kbps"></span> Blank or 0 = unthrottled (minimum 32).</div>
         </div>
 
-        <div class="button-row" style="margin-top:18px;">
-            <button class="btn btn-primary" id="btn-save" onclick="saveSettings()">Save</button>
-            <span id="save-msg" style="margin-left:14px; align-self:center;"></span>
-        </div>
 
         <div id="blocks-wrap" style="display:none">
             <div class="sub-title">Transfers cut off (last 24 hours)</div>
@@ -265,7 +262,6 @@ function fillInputs(s) {
     FIELDS_BOOL.forEach(function(c) { document.getElementById('f-' + c).checked = !!s[c]; });
     FIELDS_NUM.forEach(function(c) { document.getElementById('f-' + c).value = s[c] ? s[c] : ''; });
     updateHints();
-    if (window.AdminDirty && AdminDirty.reset) AdminDirty.reset();
 }
 
 function fetchState() {
@@ -289,29 +285,70 @@ function schedulePoll() {
     }, 10000);
 }
 
-function saveSettings() {
-    var btn = document.getElementById('btn-save');
+// Autosave: each field is saved on its own as soon as it changes (numbers
+// after a short pause in typing), so there is no Save button.
+var _saveTimers = {};
+var _saveSeq = 0, _saveDone = 0, _saveErr = null;
+
+function setSaveMsg(text, color) {
     var msg = document.getElementById('save-msg');
-    btn.disabled = true; msg.textContent = 'Saving…'; msg.style.color = '#888';
+    msg.textContent = text; msg.style.color = color || '#888';
+}
+
+function saveField(code) {
+    clearTimeout(_saveTimers[code]);
+    _saveTimers[code] = null;
+    var el = document.getElementById('f-' + code);
     var body = {};
-    FIELDS_BOOL.forEach(function(c) { body[c] = document.getElementById('f-' + c).checked ? 1 : 0; });
-    FIELDS_NUM.forEach(function(c) { body[c] = document.getElementById('f-' + c).value; });
+    body[code] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value;
+    var seq = ++_saveSeq;
+    setSaveMsg('Saving…');
     fetch(API + '/admin-manage.php', {
-        method: 'POST', credentials: 'include',
+        method: 'POST', credentials: 'include', keepalive: true,
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(body)
     }).then(function(r){return safeJson(r);}).then(function(d) {
-        btn.disabled = false;
-        if (d && d.saved) {
-            msg.textContent = 'Saved ✓ — the AI server picks this up within ~15s'; msg.style.color = '#27ae60';
-            loadAll();
-            setTimeout(function(){ msg.textContent = ''; }, 4000);
-        } else {
-            msg.textContent = (d && d.error) ? d.error : 'Save failed';
-            msg.style.color = '#c0392b';
+        if (!d || !d.saved) throw new Error((d && d.error) || 'Save failed');
+        // Show the stored value (the server clamps out-of-range numbers),
+        // unless the field is being edited again.
+        if (el.type !== 'checkbox' && document.activeElement !== el && d.values && code in d.values) {
+            el.value = d.values[code] ? d.values[code] : '';
+            updateHints();
         }
-    }).catch(function(){ btn.disabled = false; msg.textContent = 'Save failed'; msg.style.color = '#c0392b'; });
+        finishSave(seq, null);
+    }).catch(function(e) {
+        finishSave(seq, (e && e.message) || 'Save failed');
+    });
 }
+
+function finishSave(seq, err) {
+    if (err) _saveErr = err;
+    _saveDone = Math.max(_saveDone, seq);
+    if (_saveDone < _saveSeq) return;            // later saves still in flight
+    for (var k in _saveTimers) { if (_saveTimers[k]) return; }   // a typed value is still pending
+    if (_saveErr) setSaveMsg('⚠ Not saved: ' + _saveErr + ' — change the field to retry', '#c0392b');
+    else setSaveMsg('All changes saved ✓', '#27ae60');
+    _saveErr = null;
+    fetchState().then(function(d) { if (d && d.settings) renderStatus(d); }).catch(function(){});
+}
+
+FIELDS_BOOL.forEach(function(c) {
+    document.getElementById('f-' + c).addEventListener('change', function() { saveField(c); });
+});
+FIELDS_NUM.forEach(function(c) {
+    var el = document.getElementById('f-' + c);
+    el.addEventListener('input', function() {
+        clearTimeout(_saveTimers[c]);
+        setSaveMsg('Saving…');
+        _saveTimers[c] = setTimeout(function() { saveField(c); }, 800);
+    });
+    // Leaving the field saves right away if a save is still pending.
+    el.addEventListener('change', function() { if (_saveTimers[c]) saveField(c); });
+});
+// Flush anything still waiting on the typing pause if the page is closed.
+window.addEventListener('pagehide', function() {
+    FIELDS_NUM.forEach(function(c) { if (_saveTimers[c]) saveField(c); });
+});
 
 ['upload_kbps', 'download_kbps'].forEach(function(c) { document.getElementById('f-' + c).addEventListener('input', updateHints); });
 document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });

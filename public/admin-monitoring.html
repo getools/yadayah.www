@@ -135,27 +135,26 @@
 
 <script src="js/admin-links.js?v=4"></script>
 <script src="js/admin-ui-state.js?v=1"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script>
 var API = '/api';
 var allEvents = [];
 var _monSort = 'event_dtime';
 var _monDir = 'desc';
+var _monSortKeys = [{col: 'event_dtime', dir: 'desc'}];
 
-function monSort(col) {
-    if (_monSort === col) {
-        _monDir = _monDir === 'desc' ? 'asc' : 'desc';
-    } else {
-        _monSort = col;
-        _monDir = col === 'event_key' || col === 'event_source' || col === 'event_client_ip' ? 'asc' : 'desc';
-    }
-    allEvents.sort(function(a, b) {
+function monSort(col, ev) {
+    _monSortKeys = MultiSort.click(_monSortKeys, col, ev,
+        col === 'event_key' || col === 'event_source' || col === 'event_client_ip' ? 'asc' : 'desc');
+    _monSort = _monSortKeys[0].col;
+    _monDir = _monSortKeys[0].dir;
+    allEvents.sort(MultiSort.comparator(_monSortKeys, null, function(a, b, col) {
         var va = a[col], vb = b[col];
         if (va == null) va = '';
         if (vb == null) vb = '';
         if (col === 'event_key') { va = parseInt(va) || 0; vb = parseInt(vb) || 0; }
-        var cmp = va < vb ? -1 : va > vb ? 1 : 0;
-        return _monDir === 'asc' ? cmp : -cmp;
-    });
+        return va < vb ? -1 : va > vb ? 1 : 0;
+    }));
     renderEvents();
 }
 
@@ -322,14 +321,14 @@ function renderEvents() {
         return;
     }
     var thStyle = 'cursor:pointer;user-select:none;';
-    var arrow = function(col) { return _monSort === col ? (_monDir === 'asc' ? ' ▲' : ' ▼') : ''; };
+    var arrow = function(col) { return MultiSort.arrowHtml(_monSortKeys, col); };
     var html = '<table class="event-table"><thead><tr>'
-        + '<th style="' + thStyle + '" onclick="monSort(\'event_key\')">#' + arrow('event_key') + '</th>'
-        + '<th style="' + thStyle + '" onclick="monSort(\'event_dtime\')">Time' + arrow('event_dtime') + '</th>'
-        + '<th style="' + thStyle + '" onclick="monSort(\'event_source\')">Source' + arrow('event_source') + '</th>'
-        + '<th style="' + thStyle + '" onclick="monSort(\'event_severity\')">Severity' + arrow('event_severity') + '</th>'
+        + '<th style="' + thStyle + '" title="Shift+click to add as a secondary sort" onclick="monSort(\'event_key\', event)">#' + arrow('event_key') + '</th>'
+        + '<th style="' + thStyle + '" title="Shift+click to add as a secondary sort" onclick="monSort(\'event_dtime\', event)">Time' + arrow('event_dtime') + '</th>'
+        + '<th style="' + thStyle + '" title="Shift+click to add as a secondary sort" onclick="monSort(\'event_source\', event)">Source' + arrow('event_source') + '</th>'
+        + '<th style="' + thStyle + '" title="Shift+click to add as a secondary sort" onclick="monSort(\'event_severity\', event)">Severity' + arrow('event_severity') + '</th>'
         + '<th>Message</th><th>File</th><th>Page</th>'
-        + '<th style="' + thStyle + '" onclick="monSort(\'event_client_ip\')">IP' + arrow('event_client_ip') + '</th>'
+        + '<th style="' + thStyle + '" title="Shift+click to add as a secondary sort" onclick="monSort(\'event_client_ip\', event)">IP' + arrow('event_client_ip') + '</th>'
         + '<th>Action</th><th></th></tr></thead><tbody>';
     allEvents.forEach(function(e) {
         var resolved = e.event_resolved_flag === true || e.event_resolved_flag === 't';

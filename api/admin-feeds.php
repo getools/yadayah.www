@@ -81,6 +81,25 @@ if ($method === 'GET' && isset($_GET['items'])) {
                        ELSE 0 END",
     ];
     $orderCol = $sortMap[$sort] ?? $sortMap['publish_dtime'];
+    // Multi-column sort from the admin table (Shift+click): ?sorts=col:asc,col2:desc.
+    // Columns whitelisted via $sortMap, directions forced to ASC/DESC; unknown or
+    // duplicate entries are skipped. Falls back to the single sort/dir above.
+    $orderSql = "$orderCol $dir NULLS LAST";
+    $sortsRaw = trim((string)($_GET['sorts'] ?? ''));
+    if ($sortsRaw !== '') {
+        $orderParts = [];
+        $seenSort = [];
+        foreach (explode(',', $sortsRaw) as $sortPart) {
+            $sortBits = explode(':', trim($sortPart), 2);
+            $sortKey = $sortBits[0];
+            if (!isset($sortMap[$sortKey]) || isset($seenSort[$sortKey])) continue;
+            $seenSort[$sortKey] = true;
+            $sortDir = strtolower(trim($sortBits[1] ?? '')) === 'asc' ? 'ASC' : 'DESC';
+            $orderParts[] = $sortMap[$sortKey] . " $sortDir NULLS LAST";
+            if (count($orderParts) >= 8) break;
+        }
+        if ($orderParts) $orderSql = implode(', ', $orderParts);
+    }
 
     $stmt = $db->prepare("
         SELECT fi.*, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, f.feed_name,
@@ -111,7 +130,7 @@ if ($method === 'GET' && isset($_GET['items'])) {
         FROM yy_feed_item fi
         JOIN yy_feed f ON fi.feed_key = f.feed_key
         WHERE $whereStr
-        ORDER BY $orderCol $dir NULLS LAST
+        ORDER BY $orderSql
         LIMIT ? OFFSET ?
     ");
     $stmt->execute(array_merge($params, [$limit, $offset]));
