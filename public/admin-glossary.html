@@ -205,9 +205,14 @@
             background: #f4f6f8; border: 1px solid #e1e5ea; border-radius: 4px;
         }
 
-        /* Parts of speech: a wrapping row of checkboxes, one per
-           word_strongs_pos_* boolean, inside each Strong's card. */
-        .lx-pos { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 620px; }
+        /* Parts of speech: four fixed columns of checkboxes (LX_SG_POS_COLS),
+           one per word_strongs_pos_* boolean, inside each Strong's card.
+           Sub-types (Demonstrative under Pronoun, …) are indented. */
+        .lx-pos { display: grid; grid-template-columns: repeat(4, max-content); gap: 0 28px; max-width: 620px; }
+        .lx-pos-col { display: flex; flex-direction: column; gap: 6px; }
+        .field-row .lx-pos label { flex: none; }  /* not .field-row label's 140px basis: in a column that is height */
+        .lx-pos label.lx-pos-sub { padding-left: 20px; }
+        @media (max-width: 700px) { .lx-pos { grid-template-columns: repeat(2, max-content); row-gap: 6px; } }
         .lx-pos label {
             display: flex; align-items: center; gap: 5px; cursor: pointer;
             font-size: 0.85rem; color: #444; white-space: nowrap;
@@ -1809,6 +1814,41 @@ function lxShowYtPlain() {
     document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
 }
 
+/* Parts-of-speech layout for the Strong's card: four columns, top to bottom.
+   [suffix after 'word_strongs_pos_', label, indented sub-type?]. The API's
+   labels (lxMeta.strongs_pos) are only a fallback: a column it sends that is
+   not listed here still shows, at the foot of the last column. */
+var LX_SG_POS_COLS = [
+    [['noun', 'Noun'], ['noun_proper', 'Proper Noun'], ['verb', 'Verb'],
+     ['adjective', 'Adjective'], ['adverb', 'Adverb'], ['preposition', 'Preposition']],
+    [['pronoun', 'Pronoun'], ['pronoun_demonstrative', 'Demonstrative', 1],
+     ['pronoun_indefinite', 'Indefinite', 1], ['pronoun_interrogative', 'Interrogative', 1],
+     ['pronoun_personal', 'Personal', 1], ['pronoun_relative', 'Relative', 1]],
+    [['infinitive', 'Infinitive'], ['article', 'Article'], ['particle', 'Particle'],
+     ['participle', 'Participle'], ['participle_interrogative', 'Interrogative', 1],
+     ['participle_relative', 'Relative', 1]],
+    [['conjunction', 'Conjunction'], ['interjection', 'Interjection'],
+     ['substantive', 'Substantive'], ['gentilic', 'Gentilic'], ['patronymic', 'Patronymic']]
+];
+
+function lxSgPosCols(s) {
+    var box = function(col, label, sub) {
+        return '<label' + (sub ? ' class="lx-pos-sub"' : '') + '><input type="checkbox" class="lx-sg-pos" data-col="'
+             + esc(col) + '"' + (s[col] ? ' checked' : '') + '> ' + esc(label) + '</label>';
+    };
+    var placed = {};
+    var cols = LX_SG_POS_COLS.map(function(list) {
+        return list.map(function(f) {
+            placed['word_strongs_pos_' + f[0]] = true;
+            return box('word_strongs_pos_' + f[0], f[1], f[2]);
+        });
+    });
+    (lxMeta.strongs_pos || []).forEach(function(p) {
+        if (!placed[p.col]) cols[cols.length - 1].push(box(p.col, p.label));
+    });
+    return cols.map(function(c) { return '<div class="lx-pos-col">' + c.join('') + '</div>'; }).join('');
+}
+
 /* Strong's: one card per yy_word_strongs row. The radio marks the preferred
    row, whose code the API mirrors into yy_word.word_strongs. With no rows, the
    state select keeps the two empties apart:
@@ -1874,10 +1914,7 @@ function lxAddStrongs(s, preferred, quiet) {
         + '<label class="lx-sg-top">Definition</label><textarea class="lx-sg-wide" data-col="word_strongs_definition" rows="2">'
         + esc(s.word_strongs_definition || '') + '</textarea>'
         + '<label class="lx-sg-top">Part of Speech</label><div class="lx-pos lx-sg-wide">'
-        + (lxMeta.strongs_pos || []).map(function(p) {
-              return '<label><input type="checkbox" class="lx-sg-pos" data-col="' + esc(p.col) + '"'
-                   + (s[p.col] ? ' checked' : '') + '> ' + esc(p.label) + '</label>';
-          }).join('')
+        + lxSgPosCols(s)
         + '</div></div>';
     card.innerHTML = html;
 
