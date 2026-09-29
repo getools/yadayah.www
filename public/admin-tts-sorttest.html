@@ -125,6 +125,10 @@
         #vc-audio-row.fixed-player { position:fixed; left:0; right:0; bottom:0; z-index:1200; margin:0; padding:8px 16px; background:#fff; border-top:1px solid #ccc; box-shadow:0 -2px 10px rgba(0,0,0,0.14); }
         /* Reserve space so the fixed bar never hides the last voice rows. */
         body.vc-playing { padding-bottom:64px; }
+        /* Multi-column sort (multiSortClick): Shift+click headers; no text
+           selection on shift, and the priority number sits small after the arrow. */
+        th[onclick^="sortVoicesBy"], th[onclick^="sortTunesBy"] { user-select:none; }
+        .vc-sort-arrow sup, .sort-arrow sup { font-size:0.68em; margin-left:1px; }
         .tts-table .col-toggle { width:60px; text-align:center; }
         .tts-table tr.inactive td { color:#aaa; }
 
@@ -321,7 +325,7 @@
         <!-- ── Voice catalog ──────────────────────────────────────── -->
         <div class="tts-section">
             <h3>Voice catalog</h3>
-            <p class="desc">Every voice Azure offers in your region. Uncheck a row to hide it from the picker dropdowns above. Click ▶ to hear a row's voice say the text from <em>Narrate</em>, using that section's Rate &amp; Pitch.</p>
+            <p class="desc">Every voice Azure offers in your region. Uncheck a row to hide it from the picker dropdowns above. Click ▶ to hear a row's voice say the text from <em>Narrate</em>, using that section's Rate &amp; Pitch. <em>Click a column header to sort; <strong>Shift+click</strong> more headers to add them as tie-breakers (the small number shows each column's sort order).</em></p>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;flex-wrap:wrap;">
                 <!-- Provider scope: drives the table below, the "Check for New
                      Voices" refresh, AND which provider "Add Custom Voice"
@@ -340,17 +344,17 @@
                 <thead>
                     <tr>
                         <th style="width:36px;text-align:center;" title="Active — uncheck to hide from voice pickers">On</th>
-                        <th style="width:120px;text-align:left;cursor:pointer;" onclick="sortVoicesBy('provider')" title="TTS provider (Azure, Chatterbox, Kokoro, CosyVoice, Qwen3 …)">Provider<span class="vc-sort-arrow" data-col="provider"></span></th>
-                        <th style="text-align:left;cursor:pointer;" onclick="sortVoicesBy('label')">Voice<span class="vc-sort-arrow" data-col="label"></span></th>
+                        <th style="width:120px;text-align:left;cursor:pointer;" onclick="sortVoicesBy('provider', event)" title="TTS provider (Azure, Chatterbox, Kokoro, CosyVoice, Qwen3 …)">Provider<span class="vc-sort-arrow" data-col="provider"></span></th>
+                        <th style="text-align:left;cursor:pointer;" onclick="sortVoicesBy('label', event)">Voice<span class="vc-sort-arrow" data-col="label"></span></th>
                         <th style="width:140px;text-align:center;" title="Speaking style — picked here is used by ▶ play">Style</th>
-                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('language')">Lang<span class="vc-sort-arrow" data-col="language"></span></th>
-                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('region')">Region<span class="vc-sort-arrow" data-col="region"></span></th>
-                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('gender')">Gender<span class="vc-sort-arrow" data-col="gender"></span></th>
-                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('type')">Type<span class="vc-sort-arrow" data-col="type"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('language', event)">Lang<span class="vc-sort-arrow" data-col="language"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('region', event)">Region<span class="vc-sort-arrow" data-col="region"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('gender', event)">Gender<span class="vc-sort-arrow" data-col="gender"></span></th>
+                        <th style="width:64px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('type', event)">Type<span class="vc-sort-arrow" data-col="type"></span></th>
                         <th style="width:54px;text-align:center;" title="Multilingual (can pronounce languages other than its primary locale)">Multi</th>
-                        <th style="width:100px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('downloaded')" title="Last time the row was refreshed from Azure">Downloaded<span class="vc-sort-arrow" data-col="downloaded"></span></th>
+                        <th style="width:100px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('downloaded', event)" title="Last time the row was refreshed from Azure">Downloaded<span class="vc-sort-arrow" data-col="downloaded"></span></th>
                         <th style="width:30px;text-align:center;" title="Click the icon to add or edit a longer description">Description</th>
-                        <th style="width:60px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('custom')" title="Custom-trained voice (created through Add Custom Voice) — click ✎ to edit">Custom<span class="vc-sort-arrow" data-col="custom"></span></th>
+                        <th style="width:60px;text-align:center;cursor:pointer;" onclick="sortVoicesBy('custom', event)" title="Custom-trained voice (created through Add Custom Voice) — click ✎ to edit">Custom<span class="vc-sort-arrow" data-col="custom"></span></th>
                         <th style="width:48px;text-align:center;">▶</th>
                     </tr>
                     <!-- Filter row — directly under each column label. -->
@@ -464,7 +468,7 @@
                         style="background:none;border:none;color:#31345A;cursor:pointer;font-size:0.8rem;padding:2px 4px;line-height:1;">▸</button>
             </div>
             <div id="prons-help" style="display:none;margin:6px 0 10px;">
-                <p class="desc">When the TTS engine encounters a row's <strong>Text</strong> string in the source it substitutes the IPA pronunciation instead, wrapped in an Azure <code>&lt;phoneme alphabet="ipa"&gt;</code> tag. Each column controls one piece of how that substitution behaves:</p>
+                <p class="desc">When the TTS engine encounters a row's <strong>Text</strong> string in the source it substitutes the IPA pronunciation instead, wrapped in an Azure <code>&lt;phoneme alphabet="ipa"&gt;</code> tag. Each column controls one piece of how that substitution behaves: <em>Click a column header to sort; <strong>Shift+click</strong> more headers to add them as tie-breakers (the small number shows each column's sort order).</em></p>
                 <ul class="desc" style="margin-top:0;line-height:1.55;padding-left:1.4em;">
                     <li><strong>Active</strong> — checkbox at the left toggles the rule on/off without deleting the row.</li>
                     <li><strong>Text</strong> — the source-text needle. Apostrophe-equivalent characters (straight, curly, half-rings) are interchangeable when the needle contains one; a trailing possessive <code>'s</code> is matched separately and the phonetic gets a <code>z</code> appended.
@@ -543,17 +547,17 @@
             <table class="tts-table">
                 <thead>
                     <tr>
-                        <th onclick="sortTunesBy('active')" style="width:32px;text-align:center;cursor:pointer;" title="Active — uncheck to disable this rule. Click to sort by active state."><span class="sort-arrow" data-col="active"></span></th>
-                        <th onclick="sortTunesBy('print')"      style="width:14%;cursor:pointer;" title="Click to sort by Text">Text<span class="sort-arrow" data-col="print"></span></th>
-                        <th onclick="sortTunesBy('book_count')" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
-                        <th class="col-sub" onclick="sortTunesBy('sub')" style="width:17%;text-align:left;cursor:pointer;" title="Phonetic re-spelling (the SUB field). Local engines use this; Azure can use it too when no IPA is set. Click to sort by phonetic.">Phonetic<span class="sort-arrow" data-col="sub"></span></th>
-                        <th class="col-ipa" onclick="sortTunesBy('ipa')" style="width:17%;text-align:left;cursor:pointer;" title="IPA pronunciation. Azure uses this via <phoneme alphabet='ipa'> SSML. Click to sort by IPA.">IPA<span class="sort-arrow" data-col="ipa"></span></th>
-                        <th class="col-sapi" onclick="sortTunesBy('sapi')" style="width:12%;cursor:pointer;" title="Reference SAPI phoneme codes. Azure neural voices don't accept SAPI; kept for cross-checking with older tools. Click to sort by SAPI.">SAPI <span style="color:#999;font-weight:400;">(ref)</span><span class="sort-arrow" data-col="sapi"></span></th>
+                        <th onclick="sortTunesBy('active', event)" style="width:32px;text-align:center;cursor:pointer;" title="Active — uncheck to disable this rule. Click to sort by active state."><span class="sort-arrow" data-col="active"></span></th>
+                        <th onclick="sortTunesBy('print', event)"      style="width:14%;cursor:pointer;" title="Click to sort by Text">Text<span class="sort-arrow" data-col="print"></span></th>
+                        <th onclick="sortTunesBy('book_count', event)" style="width:50px;text-align:right;cursor:pointer;" title="Number of occurrences in the books — click to sort">#<span class="sort-arrow" data-col="book_count"></span></th>
+                        <th class="col-sub" onclick="sortTunesBy('sub', event)" style="width:17%;text-align:left;cursor:pointer;" title="Phonetic re-spelling (the SUB field). Local engines use this; Azure can use it too when no IPA is set. Click to sort by phonetic.">Phonetic<span class="sort-arrow" data-col="sub"></span></th>
+                        <th class="col-ipa" onclick="sortTunesBy('ipa', event)" style="width:17%;text-align:left;cursor:pointer;" title="IPA pronunciation. Azure uses this via <phoneme alphabet='ipa'> SSML. Click to sort by IPA.">IPA<span class="sort-arrow" data-col="ipa"></span></th>
+                        <th class="col-sapi" onclick="sortTunesBy('sapi', event)" style="width:12%;cursor:pointer;" title="Reference SAPI phoneme codes. Azure neural voices don't accept SAPI; kept for cross-checking with older tools. Click to sort by SAPI.">SAPI <span style="color:#999;font-weight:400;">(ref)</span><span class="sort-arrow" data-col="sapi"></span></th>
                         <th style="width:36px"></th>
-                        <th onclick="sortTunesBy('provider')" style="width:110px;cursor:pointer;" title="Per-tune provider scope. When set, this tune only fires when synthesizing through that engine. Use it for engine-specific respellings (e.g. a Chatterbox-only phonetic). Leave blank to apply to all engines.">Provider<span class="sort-arrow" data-col="provider"></span></th>
-                        <th onclick="sortTunesBy('voice')" style="width:130px;cursor:pointer;" title="Per-tune voice override. When set, this word switches to that voice mid-sentence. A tune with a voice wins over one without when the same text matches both.">Voice<span class="sort-arrow" data-col="voice"></span></th>
-                        <th colspan="2" onclick="sortTunesBy('seed')" style="width:47px;text-align:center;cursor:pointer;" title="Seed range for stochastic local engines (Chatterbox). Book builds pick a fresh random int in [min..max] for every occurrence — leave min==max for deterministic identical audio. The Pronunciation ▶ preview pins to seed_max so the audition stays reproducible across clicks. Click to sort by seed (min).">Seeds<span class="sort-arrow" data-col="seed"></span></th>
-                        <th onclick="sortTunesBy('note')" style="width:30px;text-align:center;cursor:pointer;" title="Click the icon to add or edit a note. Click header to sort by note.">Note<span class="sort-arrow" data-col="note"></span></th>
+                        <th onclick="sortTunesBy('provider', event)" style="width:110px;cursor:pointer;" title="Per-tune provider scope. When set, this tune only fires when synthesizing through that engine. Use it for engine-specific respellings (e.g. a Chatterbox-only phonetic). Leave blank to apply to all engines.">Provider<span class="sort-arrow" data-col="provider"></span></th>
+                        <th onclick="sortTunesBy('voice', event)" style="width:130px;cursor:pointer;" title="Per-tune voice override. When set, this word switches to that voice mid-sentence. A tune with a voice wins over one without when the same text matches both.">Voice<span class="sort-arrow" data-col="voice"></span></th>
+                        <th colspan="2" onclick="sortTunesBy('seed', event)" style="width:47px;text-align:center;cursor:pointer;" title="Seed range for stochastic local engines (Chatterbox). Book builds pick a fresh random int in [min..max] for every occurrence — leave min==max for deterministic identical audio. The Pronunciation ▶ preview pins to seed_max so the audition stays reproducible across clicks. Click to sort by seed (min).">Seeds<span class="sort-arrow" data-col="seed"></span></th>
+                        <th onclick="sortTunesBy('note', event)" style="width:30px;text-align:center;cursor:pointer;" title="Click the icon to add or edit a note. Click header to sort by note.">Note<span class="sort-arrow" data-col="note"></span></th>
                         <th style="width:32px;text-align:right;"></th>
                     </tr>
                 </thead>
@@ -1303,14 +1307,10 @@ async function submitCustomizeVoice() {
     }
 
     var styleEl = document.getElementById('cv-style-name');
-    var styleRaw = styleEl ? styleEl.value.trim() : '';
-    // Style name is an identifier (engine clip slot + JSON key) — slugify
-    // instead of rejecting: "Fake Story" → "fake-story".
-    var styleName = styleRaw ? styleRaw.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '') : 'default';
-    if (!styleName) {
-        s.textContent = 'Style name "' + styleRaw + '" needs at least one letter or digit.'; s.style.color = '#c0392b'; return;
+    var styleName = (styleEl && styleEl.value.trim() ? styleEl.value.trim() : 'default').toLowerCase();
+    if (!/^[a-z0-9_-]+$/.test(styleName)) {
+        s.textContent = 'Style name must be alphanumeric (dashes/underscores ok).'; s.style.color = '#c0392b'; return;
     }
-    if (styleEl && styleRaw && styleEl.value !== styleName) styleEl.value = styleName;
 
     var fd = new FormData();
     fd.append('provider',     prov);
@@ -2686,13 +2686,50 @@ document.addEventListener('keydown', function (e) {
     }, true);
 })();
 
+// ── Multi-column sort (shared by Voice catalog + Pronunciations) ──────
+// keys = [{col, dir}], first is the primary sort. Plain click = sort by that
+// column alone (clicking the primary again flips it). Shift+click = add the
+// column as the next tie-breaker; Shift+click it again flips it, and a third
+// time drops it (the last remaining key only flips).
+function multiSortClick(keys, col, additive, defaultDir) {
+    var dflt = defaultDir || 'asc';
+    var flip = function (d) { return d === 'asc' ? 'desc' : 'asc'; };
+    var i = -1;
+    keys.forEach(function (k, j) { if (k.col === col) i = j; });
+    if (!additive) {
+        return [{ col: col, dir: i === 0 ? flip(keys[0].dir) : dflt }];
+    }
+    var out = keys.map(function (k) { return { col: k.col, dir: k.dir }; });
+    if (i < 0) out.push({ col: col, dir: dflt });
+    else if (out[i].dir === dflt || out.length === 1) out[i].dir = flip(out[i].dir);
+    else out.splice(i, 1);
+    return out;
+}
+// Arrow for a header: ▲/▼, plus its priority number once 2+ keys are active.
+function multiSortArrowHtml(keys, col) {
+    for (var i = 0; i < keys.length; i++) {
+        if (keys[i].col !== col) continue;
+        return ' ' + (keys[i].dir === 'asc' ? '▲' : '▼') + (keys.length > 1 ? '<sup>' + (i + 1) + '</sup>' : '');
+    }
+    return '';
+}
+// Parse a saved key list, dropping anything malformed.
+function multiSortParse(raw) {
+    try {
+        var v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!Array.isArray(v)) return null;
+        v = v.filter(function (k) { return k && typeof k.col === 'string' && (k.dir === 'asc' || k.dir === 'desc'); });
+        return v.length ? v.map(function (k) { return { col: k.col, dir: k.dir }; }) : null;
+    } catch (e) { return null; }
+}
+
 // ── Voice catalog ────────────────────────────────────────────────────
 // Reads every row in yy_tts_voice, renders a filterable table, and lets
 // the admin toggle active flags + audition individual voices. Test text
 // persists in localStorage so the same phrase is reused across reloads.
 var VC_STATE = {
     voices: [],
-    sort: { col: 'label', dir: 'asc' },
+    sort: [{ col: 'label', dir: 'asc' }],   // multi-column, see multiSortClick
     // Catalog row currently selected for inline editing (tts_voice_key) or null.
     selectedKey: null,
     // Cached from loadProviders() so the per-column Provider filter can
@@ -3822,11 +3859,7 @@ function openCustomVoicePopover(opts) {
             if (!f && (!nm || nmEl.dataset.fixed)) return;
             // An unnamed clip retrains the 'default' slot (backend default too).
             if (!nm) nm = 'default';
-            // Slugify instead of rejecting: "fake story" → "fake-story".
-            var nmRaw = nm;
-            nm = nm.replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
-            if (!nm) { rowErr = 'Style name "' + nmRaw + '" needs at least one letter or digit.'; return; }
-            if (!nmEl.dataset.fixed && nmEl.value !== nm) nmEl.value = nm;
+            if (!/^[a-z0-9_-]+$/.test(nm)) { rowErr = 'Style name "' + nm + '" must be alphanumeric (dashes/underscores ok).'; return; }
             if (!f) { rowErr = 'Choose a reference audio clip for style "' + nm + '".'; return; }
             if (styleJobs.some(function (j) { return j.style === nm; })) { rowErr = 'Style "' + nm + '" is listed twice.'; return; }
             styleJobs.push({ style: nm, file: f });
@@ -4027,17 +4060,15 @@ function fillSelect(id, values) {
     if (prev) sel.value = prev;
 }
 
-function sortVoicesBy(col) {
-    if (VC_STATE.sort.col === col) {
-        VC_STATE.sort.dir = (VC_STATE.sort.dir === 'asc') ? 'desc' : 'asc';
-    } else {
-        VC_STATE.sort.col = col;
-        VC_STATE.sort.dir = 'asc';
-    }
-    document.querySelectorAll('.vc-sort-arrow').forEach(function (s) {
-        s.textContent = (s.dataset.col === col) ? (VC_STATE.sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
-    });
+function sortVoicesBy(col, ev) {
+    VC_STATE.sort = multiSortClick(VC_STATE.sort, col, !!(ev && ev.shiftKey), 'asc');
+    if (window.sessionState && sessionState.save) sessionState.save('vcSortKeys', JSON.stringify(VC_STATE.sort));
     filterVoices();
+}
+function vcRenderSortArrows() {
+    document.querySelectorAll('.vc-sort-arrow').forEach(function (s) {
+        s.innerHTML = multiSortArrowHtml(VC_STATE.sort, s.dataset.col);
+    });
 }
 
 function filterVoices() {
@@ -4069,7 +4100,12 @@ function filterVoices() {
         return true;
     });
 
-    var col = VC_STATE.sort.col, dir = VC_STATE.sort.dir === 'asc' ? 1 : -1;
+    // Restore a saved multi-column sort once (session-state hydrates late).
+    if (!VC_STATE.sortRestored && window.sessionState && sessionState.load) {
+        VC_STATE.sortRestored = true;
+        var savedVcSort = multiSortParse(sessionState.load('vcSortKeys', ''));
+        if (savedVcSort) VC_STATE.sort = savedVcSort;
+    }
     var keyFns = {
         provider:   function (v) { return (v.provider_main || v.tts_name || v.tts_code || '').toLowerCase(); },
         label:      function (v) { return (v.tts_voice_label || '').toLowerCase(); },
@@ -4080,13 +4116,18 @@ function filterVoices() {
         custom:     function (v) { return vcIsCustom(v) ? 1 : 0; },
         downloaded: function (v) { return v.tts_voice_download_dtime || ''; },
     };
-    var keyFn = keyFns[col] || keyFns.language;
+    var sortKeys = VC_STATE.sort.filter(function (k) { return keyFns[k.col]; });
+    if (!sortKeys.length) sortKeys = [{ col: 'language', dir: 'asc' }];
     rows.sort(function (a, b) {
-        var ka = keyFn(a), kb = keyFn(b);
-        if (ka < kb) return -1 * dir;
-        if (ka > kb) return  1 * dir;
+        for (var i = 0; i < sortKeys.length; i++) {
+            var keyFn = keyFns[sortKeys[i].col], dir = sortKeys[i].dir === 'asc' ? 1 : -1;
+            var ka = keyFn(a), kb = keyFn(b);
+            if (ka < kb) return -1 * dir;
+            if (ka > kb) return  1 * dir;
+        }
         return 0;
     });
+    vcRenderSortArrows();
 
     var tbody = $('voices-tbody');
     tbody.innerHTML = '';
@@ -4166,7 +4207,10 @@ function buildVoiceRow(v) {
         '<td style="text-align:center;padding:4px 2px;">' + escapeHtml(v.tts_voice_type     || '') + '</td>' +
         (isSelected
             ? '<td style="padding:4px 2px;"><select class="vc-edit-multi" style="width:100%;box-sizing:border-box;padding:2px;border:1px solid #7f9fd6;border-radius:3px;font-size:0.74rem;background:#fff;">'
-oice_download_dtime)) + '">' + (vcFmtDt(v.tts_voice_download_dtime) || '—') + '</td>' +
+                + [['', '—'], ['yes', 'yes'], ['no', 'no']].map(function (o) { return '<option value="' + o[0] + '"' + (vcMultiSelectValue(v) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')
+                + '</select></td>'
+            : '<td style="text-align:center;padding:4px 2px;color:' + (isMulti ? '#2e7d32' : '#aaa') + ';">' + (isMulti ? '✓' : '') + '</td>') +
+        '<td style="text-align:center;padding:4px 2px;font-variant-numeric:tabular-nums;color:#666;font-size:0.78rem;" title="' + escapeHtml(vcFmtDtFull(v.tts_voice_download_dtime)) + '">' + (vcFmtDt(v.tts_voice_download_dtime) || '—') + '</td>' +
         // Pen-icon note button — mirrors the Pronunciations table's
         // .t-note-btn so the look + interaction model is consistent.
         '<td style="text-align:center;padding:4px 2px;width:30px;">'
@@ -4812,10 +4856,13 @@ async function loadTunes() {
         }
         // Restore the last sort column + direction so a refresh keeps the
         // user's chosen order (e.g. by Voice or by # — desc).
+        // tunesSortKeys = the multi-column list; tunesSortCol/Dir are the
+        // older single-column keys, still read when no list was saved yet.
+        var savedTunesSort = multiSortParse(sessionState.load('tunesSortKeys', ''));
         var savedSortCol = sessionState.load('tunesSortCol', '');
         var savedSortDir = sessionState.load('tunesSortDir', '');
-        if (savedSortCol) TUNES_SORT.col = savedSortCol;
-        if (savedSortDir === 'asc' || savedSortDir === 'desc') TUNES_SORT.dir = savedSortDir;
+        if (savedTunesSort) TUNES_SORT = savedTunesSort;
+        else if (savedSortCol) TUNES_SORT = [{ col: savedSortCol, dir: (savedSortDir === 'desc' ? 'desc' : 'asc') }];
     }
     renderTunes();
     // Surface the preview bar's Warmup / Cooldown carrier fields up front so
@@ -4941,7 +4988,7 @@ function onTunesTestVoiceChange() {
     if (window.sessionState && sessionState.save) sessionState.save('pronsVoice', $('tunes-test-voice').value);
 }
 
-var TUNES_SORT      = { col: 'print', dir: 'asc' };
+var TUNES_SORT      = [{ col: 'print', dir: 'asc' }];   // multi-column, see multiSortClick
 var TUNES_PAGE_SIZE = 50;       // 'all' or a positive integer
 var TUNES_PAGE_IDX  = 0;        // zero-based
 var TUNES_FILTER    = '';       // case-insensitive substring filter on Print
@@ -4968,17 +5015,14 @@ function jumpToTunesPage(v) {
     if (window.sessionState) sessionState.save('tunesPageIdx', TUNES_PAGE_IDX);
     renderTunes();
 }
-function sortTunesBy(col) {
-    if (TUNES_SORT.col === col) {
-        TUNES_SORT.dir = TUNES_SORT.dir === 'asc' ? 'desc' : 'asc';
-    } else {
-        TUNES_SORT.col = col;
-        TUNES_SORT.dir = (col === 'book_count' || col === 'active' || col === 'seed') ? 'desc' : 'asc';
-    }
+function sortTunesBy(col, ev) {
+    TUNES_SORT = multiSortClick(TUNES_SORT, col, !!(ev && ev.shiftKey),
+        (col === 'book_count' || col === 'active' || col === 'seed') ? 'desc' : 'asc');
     TUNES_PAGE_IDX = 0; // re-sort always returns to first page
     if (window.sessionState) {
-        sessionState.save('tunesSortCol', TUNES_SORT.col);
-        sessionState.save('tunesSortDir', TUNES_SORT.dir);
+        sessionState.save('tunesSortKeys', JSON.stringify(TUNES_SORT));
+        sessionState.save('tunesSortCol', TUNES_SORT[0].col);
+        sessionState.save('tunesSortDir', TUNES_SORT[0].dir);
         sessionState.save('tunesPageIdx', TUNES_PAGE_IDX);
     }
     renderTunes();
@@ -5014,37 +5058,40 @@ function renderTunes() {
             return (t.tts_tune_print || '').toLowerCase().indexOf(TUNES_FILTER) !== -1;
         });
     }
-    var dir = TUNES_SORT.dir === 'desc' ? -1 : 1;
     // Map provider_key → label once so the Provider sort can compare by name.
     var providerLabelByKey = {};
     (CATALOG && CATALOG.providers || []).forEach(function (p) {
         providerLabelByKey[p.provider_key] = (p.provider_label || '').toLowerCase();
     });
     var cmpText = function (av, bv) {
-        return (av || '').localeCompare(bv || '', undefined, { sensitivity: 'base' }) * dir;
+        return (av || '').localeCompare(bv || '', undefined, { sensitivity: 'base' });
+    };
+    // Ascending comparison for one column; the sort loop applies direction.
+    var cmpCol = function (col, a, b) {
+        if (col === 'book_count') {
+            return (parseInt(a.tts_tune_book_count,10)||0) - (parseInt(b.tts_tune_book_count,10)||0);
+        }
+        if (col === 'active') {
+            // Active rows (flag !== false) sort as 1, inactive as 0.
+            return ((a.tts_tune_active_flag !== false) ? 1 : 0) - ((b.tts_tune_active_flag !== false) ? 1 : 0);
+        }
+        if (col === 'seed') {
+            return (parseInt(a.tts_tune_seed_min,10)||0) - (parseInt(b.tts_tune_seed_min,10)||0);
+        }
+        if (col === 'voice')    return cmpText(a.tts_tune_voice_code, b.tts_tune_voice_code);
+        if (col === 'provider') return cmpText(providerLabelByKey[a.provider_key], providerLabelByKey[b.provider_key]);
+        if (col === 'sub')  return cmpText(a.tts_tune_phonetic_sub,  b.tts_tune_phonetic_sub);
+        if (col === 'ipa')  return cmpText(a.tts_tune_phonetic_ipa,  b.tts_tune_phonetic_ipa);
+        if (col === 'sapi') return cmpText(a.tts_tune_phonetic_sapi, b.tts_tune_phonetic_sapi);
+        if (col === 'note') return cmpText(a.tts_tune_note,          b.tts_tune_note);
+        return cmpText(a.tts_tune_print, b.tts_tune_print);
     };
     var sorted = src.slice().sort(function(a, b) {
-        if (TUNES_SORT.col === 'book_count') {
-            return ((parseInt(a.tts_tune_book_count,10)||0) - (parseInt(b.tts_tune_book_count,10)||0)) * dir;
+        for (var i = 0; i < TUNES_SORT.length; i++) {
+            var c = cmpCol(TUNES_SORT[i].col, a, b);
+            if (c) return TUNES_SORT[i].dir === 'desc' ? -c : c;
         }
-        if (TUNES_SORT.col === 'active') {
-            // Active rows (flag !== false) sort as 1, inactive as 0.
-            return (((a.tts_tune_active_flag !== false) ? 1 : 0) - ((b.tts_tune_active_flag !== false) ? 1 : 0)) * dir;
-        }
-        if (TUNES_SORT.col === 'seed') {
-            return ((parseInt(a.tts_tune_seed_min,10)||0) - (parseInt(b.tts_tune_seed_min,10)||0)) * dir;
-        }
-        if (TUNES_SORT.col === 'voice') {
-            return cmpText(a.tts_tune_voice_code, b.tts_tune_voice_code);
-        }
-        if (TUNES_SORT.col === 'provider') {
-            return cmpText(providerLabelByKey[a.provider_key], providerLabelByKey[b.provider_key]);
-        }
-        if (TUNES_SORT.col === 'sub')  return cmpText(a.tts_tune_phonetic_sub,  b.tts_tune_phonetic_sub);
-        if (TUNES_SORT.col === 'ipa')  return cmpText(a.tts_tune_phonetic_ipa,  b.tts_tune_phonetic_ipa);
-        if (TUNES_SORT.col === 'sapi') return cmpText(a.tts_tune_phonetic_sapi, b.tts_tune_phonetic_sapi);
-        if (TUNES_SORT.col === 'note') return cmpText(a.tts_tune_note,          b.tts_tune_note);
-        return cmpText(a.tts_tune_print, b.tts_tune_print);
+        return 0;
     });
     // Pagination over the filtered + sorted list.
     var total = sorted.length;
@@ -5077,8 +5124,7 @@ function renderTunes() {
         b.disabled = TUNES_PAGE_IDX >= pages - 1; b.style.opacity = b.disabled ? '0.45' : '1';
     });
     document.querySelectorAll('#pane-pronunciations .sort-arrow').forEach(function(s) {
-        var col = s.dataset.col;
-        s.textContent = (col === TUNES_SORT.col) ? (TUNES_SORT.dir === 'asc' ? ' ▲' : ' ▼') : '';
+        s.innerHTML = multiSortArrowHtml(TUNES_SORT, s.dataset.col);
     });
 }
 

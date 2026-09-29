@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790661601">
+    <meta name="page-version" content="1790708378">
     <meta charset="UTF-8">
     <title>AI — Yada Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,178 +10,186 @@
     <link rel="stylesheet" href="css/login.css">
     <style>
         :root { --fg:#222; --muted:#666; --line:#e2e2e2; --bg:#fafafa; --card:#fff; --accent:#31345A; --accent-hover:#252850; --ok:#1f883d; --warn:#c47a00; --err:#b3261e; }
-        * { box-sizing: border-box; }
-        main { max-width: 1100px; margin: 0 auto; padding: 22px 0; }
-        section { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; margin-bottom: 18px; }
-        section h2 { font-size: 1rem; margin: 0 0 12px; color: #333; }
-        /* Audio → Voices: the admin-tts Voices pane framed via ?embed=voices.
-           Breaks out of main's 1100px so the 13-column catalog isn't cramped.
-           Fixed height (not auto-sized) because the pane pins its player to
-           the viewport bottom and opens modals — both need a real viewport. */
-        section.voices-embed { width: min(1600px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%); padding: 0; overflow: hidden; }
-        section.voices-embed iframe { display: block; width: 100%; height: calc(100vh - 80px); min-height: 640px; border: 0; }
-        /* Audio sub-tabs (Text to Audio | Voices). Own class, not .tab, so the
-           top-level activateTab() leaves them alone. */
-        .subtabs { display:flex; gap:4px; margin: -4px 0 14px; }
-        .subtab { background: #f0f0f3; color: #555; border: 1px solid var(--line); border-radius: 14px; padding: 5px 14px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
-        .subtab:hover { color: var(--fg); }
-        .subtab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .subpanel.hidden { display: none; }
-        .desc { color: var(--muted); font-size: 0.85rem; margin: -4px 0 12px; }
-        label { font-weight: 600; font-size: 0.86rem; color:#444; display:block; margin: 10px 0 4px; }
-        input[type=text], textarea, input[type=number], select { width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:4px; font:inherit; font-size:0.9rem; background:#fff; }
-        textarea { min-height: 70px; resize: vertical; }
-        button { background: var(--accent); color:#fff; border:none; border-radius:4px; padding:8px 16px; cursor:pointer; font-weight:600; font-size:0.9rem; }
-        button:hover { background: var(--accent-hover); }
-        button[disabled] { background:#888; cursor:wait; }
-        button.ghost { background:#eee; color:#333; }
-        button.ghost:hover { background:#ddd; }
-        button.danger { background:#b3261e; }
-        button.danger:hover { background:#922018; }
-        .tabs { display:flex; gap:4px; border-bottom: 2px solid var(--line); margin-bottom: 16px; }
-        .tab { background: transparent; color: #555; border: none; border-radius: 6px 6px 0 0; padding: 9px 18px; cursor: pointer; font-weight: 600; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-        .tab:hover { background: #f0f0f3; color: var(--fg); }
-        .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: #fff; }
-        .tab-panel { display: block; }
-        .tab-panel.hidden { display: none; }
-        .provider-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 6px 0 4px; }
-        .provider-card { border:1px solid var(--line); border-radius:6px; padding:10px 12px; cursor:pointer; background:#fcfcfc; position:relative; }
-        .provider-card.selected { border-color: var(--accent); background:#f4f5fb; box-shadow: 0 0 0 1px var(--accent) inset; }
-        .provider-card.offline { opacity: 0.55; cursor: not-allowed; }
-        .provider-card .pname { font-weight:600; font-size:0.92rem; }
-        .provider-card .pmeta { font-size:0.78rem; color: var(--muted); margin-top:3px; }
-        .provider-card .badge { position:absolute; top:8px; right:10px; font-size:0.7rem; padding:2px 6px; border-radius:10px; font-weight:600; }
-        .badge.on { background:#daf3e0; color: var(--ok); }
-        .badge.off { background:#eee; color:#777; }
-        .badge.in-flight { background:#fdf3da; color: var(--warn); }
-        .badge.done { background:#daf3e0; color: var(--ok); }
-        .badge.fail { background:#fbe1de; color: var(--err); }
-        .badge.cancelled { background:#eee; color:#666; }
-        .input-actions { display:flex; gap:8px; flex-wrap: wrap; margin-bottom:8px; }
-        .input-actions button { padding:5px 10px; font-size:0.82rem; }
-        .uploader { border:2px dashed #ccc; border-radius:6px; padding:18px; text-align:center; background:#fff; cursor:pointer; }
-        .uploader.drag { border-color: var(--accent); background:#f4f5fb; }
-        .uploader input[type=file] { display:none; }
-        .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-        .thumb { position: relative; width: 92px; }
-        .thumb img { width:92px; height:92px; object-fit:cover; border-radius:4px; border:1px solid var(--line); display:block; }
-        .thumb .role { position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.62); color:#fff; font-size:0.66rem; padding:1px 5px; border-radius:3px; }
-        .thumb .actions { position:absolute; top:4px; right:4px; display:flex; gap:3px; }
-        .thumb .actions button { background:#000a; color:#fff; border:none; width:18px; height:18px; border-radius:50%; cursor:pointer; padding:0; font-size:0.7rem; line-height:1; }
-        .thumb .source-tag { position:absolute; bottom:3px; left:3px; right:3px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.62rem; padding:1px 4px; border-radius:3px; text-align:center; }
-        .params-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 12px; align-items: end; }
-        .params-grid > div { display: flex; flex-direction: column; }
-        .params-grid label { margin: 0 0 3px; font-weight: 600; color:#555; font-size: 0.78rem; }
-        /* A parameter the currently-selected service does not accept: dimmed +
-           non-interactive, with a small "n/a" note so the operator knows it was
-           intentionally disabled (not broken). */
-        .pfield-off { opacity: 0.4; }
-        .pfield-off input, .pfield-off select, .pfield-off textarea { background:#f3f3f3; cursor:not-allowed; }
-        .pfield-off .na-tag { display:inline; }
-        .na-tag { display:none; color:#999; font-weight:normal; font-size:0.72em; margin-left:4px; }
-        /* Always-visible sibling of .na-tag, for text that varies per service. */
-        .opt-tag { color:#999; font-weight:normal; font-size:0.72em; margin-left:4px; }
-        /* ── Field help ───────────────────────────────────────────────────
-           Every input carries two levels of explanation, both driven from the
-           HELP map in JS (markup only tags a field with data-help="<key>"):
-             1. a one-line hint rendered under the label, toggleable site-wide
-                via the "Field help" switch in the tab bar (remembered per
-                browser in localStorage);
-             2. a "?" button on the label that opens the long-form popover —
-                what the parameter does, how to drive it, typical values.
-           Grid cells stretch so that the inputs still bottom-align in a row
-           even when the hints above them wrap to different heights. */
-        .helpq { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-left:5px; padding:0; border:1px solid #c3c3cc; border-radius:50%; background:#fff; color:#7a7a88; font-size:9px; font-weight:700; line-height:1; cursor:help; vertical-align:middle; }
-        .helpq:hover, .helpq.open { background: var(--accent); border-color: var(--accent); color:#fff; }
-        .fhint { display:block; font-weight:400; font-size:0.72rem; line-height:1.35; color:#8a8a96; margin:0 0 4px; }
-        .params-grid .fhint { margin:0 0 5px; }
-        body.help-off .fhint { display:none; }
-        .params-grid { align-items: stretch; }
-        .params-grid > div > input, .params-grid > div > select { margin-top: auto; }
-        .help-toggle { margin-left:auto; align-self:center; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:4px 10px; font-size:0.76rem; font-weight:600; margin-bottom:4px; }
-        .help-toggle:hover { background:#f0f0f3; color:var(--fg); }
-        .help-pop { position:absolute; z-index:7000; width:360px; max-width:calc(100vw - 24px); background:#fff; border:1px solid #d8d8e0; border-radius:7px; box-shadow:0 8px 26px #0000002e; padding:12px 14px; font-size:0.8rem; line-height:1.5; color:#3c3c46; }
-        .help-pop[hidden] { display:none; }
-        .help-pop h4 { margin:0 0 6px; font-size:0.84rem; color: var(--accent); }
-        .help-pop p  { margin:0 0 7px; }
-        .help-pop ul { margin:0 0 7px; padding-left:17px; }
-        .help-pop li { margin-bottom:3px; }
-        .help-pop b  { color:#22222c; }
-        .help-pop code { background:#f2f2f6; border-radius:3px; padding:0 4px; font-size:0.94em; }
-        .help-pop .hp-close { position:absolute; top:5px; right:6px; background:transparent; color:#999; border:none; font-size:1.05rem; line-height:1; padding:2px 5px; cursor:pointer; }
-        .help-pop .hp-close:hover { color:#333; background:transparent; }
-        .gate-off { opacity: 0.45; pointer-events: none; }
-        .gate-note { font-size:0.76rem; color: var(--warn); margin:4px 0 0; display:none; }
-        .gate-note.show { display:block; }
-        /* Explains what the form will do, rather than warning about a limit. */
-        .gate-note.info { color:#777; }
-        .jobs-table { width:100%; border-collapse: collapse; font-size: 0.88rem; }
-        .jobs-table th { text-align:left; font-weight:600; color:#555; padding:8px 8px; border-bottom: 1px solid var(--line); font-size:0.8rem; text-transform: uppercase; letter-spacing: 0.4px; }
-        .jobs-table td { padding:8px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
-        .jobs-table tr.expanded > td { background: #fbfbfd; }
-        .progress { background:#eee; border-radius:3px; height:8px; min-width:80px; overflow:hidden; }
-        .progress > i { display:block; height:100%; background: var(--accent); transition: width 0.3s; }
-        .prompt-snip { color:#444; max-width: 340px; }
-        .row-detail { padding: 6px 8px 12px; background:#fbfbfd; font-size:0.85rem; color:#555; }
-        .row-detail video, .row-detail img { max-width: 240px; border:1px solid var(--line); border-radius:4px; margin: 6px 6px 0 0; vertical-align: top; }
-        .row-actions { display:flex; gap:6px; flex-wrap: wrap; }
-        .row-actions button { padding:4px 10px; font-size:0.78rem; }
-        .toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent); color:#fff; padding: 12px 18px; border-radius:6px; font-size:0.88rem; z-index:5000; box-shadow: 0 4px 12px #0002; max-width: 360px; opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; }
-        .toast.show { opacity: 1; transform: translateY(0); }
-        .toast.err { background: var(--err); }
-        .empty { color: var(--muted); font-style: italic; padding: 18px 8px; }
-        .small { font-size: 0.78rem; color: var(--muted); }
-        details { margin-top: 8px; }
-        details > summary { cursor: pointer; font-size: 0.84rem; color: var(--muted); padding: 4px 0; }
-        .modal-overlay { position:fixed; inset:0; background:#0009; z-index:6000; display:flex; align-items:center; justify-content:center; padding:24px; }
-        .modal-overlay.hidden { display:none; }
-        .modal { background:#fff; border-radius:8px; max-width:840px; width:100%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
-        .modal-header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
-        .modal-header h3 { margin:0; font-size:1rem; }
-        .modal-header .close-x { background:transparent; color:#666; border:none; font-size:1.4rem; padding:0; width:28px; cursor:pointer; }
-        .modal-body { padding:14px 18px; overflow-y:auto; flex:1; }
-        .picker-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-        .picker-cell { border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; background:#fcfcfc; }
-        .picker-cell:hover { border-color: var(--accent); }
-        .picker-cell .pthumb { width:100%; height:120px; background:#222; display:block; object-fit:cover; }
-        .picker-cell .pinfo { padding:6px 8px; font-size:0.74rem; color:#555; }
-        .picker-cell .pinfo .ptag { background: var(--accent); color:#fff; padding:1px 5px; border-radius:3px; font-weight:600; margin-right:4px; }
-        .picker-section { margin-bottom: 18px; }
-        .picker-section h4 { font-size:0.82rem; color:#777; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-        /* Library cells sit above the recent-output sections and are visually
-           distinct: these are the kept references, not whatever ran last. */
-        .picker-cell.lib { border-color: var(--accent); position: relative; }
-        .picker-cell.lib .plabel { font-weight:600; color:#333; display:block; }
-        .picker-cell .pdel { position:absolute; top:4px; right:4px; border:none; border-radius:3px;
-                             background:#000a; color:#fff; width:20px; height:20px; line-height:18px;
-                             font-size:0.8rem; cursor:pointer; padding:0; display:none; }
-        .picker-cell.lib:hover .pdel { display:block; }
-        .picker-cell .pdel:hover { background:#c0392b; }
-        .lib-empty { color:#888; font-size:0.8rem; padding:6px 0 10px; }
-        .save-lib-field { margin-bottom:10px; }
-        .save-lib-field label { display:block; font-size:0.8rem; color:#555; margin-bottom:3px; }
-        .save-lib-field input, .save-lib-field select, .save-lib-field textarea {
-            width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:4px; font:inherit; }
-        .mask-painter { position:relative; background:#222; display:inline-block; max-width:100%; }
-        .mask-painter canvas { display:block; max-width:100%; }
-        .mask-painter .canvas-base { position:absolute; inset:0; }
-        .mask-toolbar { padding:8px; display:flex; gap:8px; align-items:center; background:#f5f5f7; border-top:1px solid var(--line); }
-        .mask-toolbar label { margin:0; font-size:0.75rem; font-weight:500; }
-        .mask-toolbar input[type=range] { width:120px; }
-        .image-results { display:flex; flex-wrap:wrap; gap:6px; }
-        .out-cell { display:flex; flex-direction:column; align-items:center; gap:4px; }
-        button.tiny { font-size:0.7rem; padding:2px 8px; }
-        .image-results img { max-width:200px; max-height:200px; border:1px solid var(--line); border-radius:4px; }
-        /* Audio has no thumbnail to show, so a reference clip is represented by
-           a name + inline player card rather than the .thumb image tile. */
-        .audio-chip { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fcfcfc; width:250px; }
-        .audio-chip .aname { font-size:0.76rem; color:#444; font-weight:600; display:flex; justify-content:space-between; gap:6px; align-items:center; }
-        .audio-chip .aname button { background:#0008; color:#fff; border:none; width:18px; height:18px; border-radius:50%; cursor:pointer; padding:0; font-size:0.7rem; line-height:1; flex:0 0 auto; }
-        .audio-chip audio { width:100%; margin-top:6px; }
-        .audio-chip .source-tag { position:static; background:none; color:var(--muted); font-size:0.68rem; padding:2px 0 0; text-align:left; }
-        .audio-results { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
-        .audio-results .take { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; max-width:520px; }
-        .audio-results .take audio { width:100%; }
+        /* Everything below is scoped to stop at .tts-host: Audio → Voices mounts
+           the admin-tts page inline and its styles must render exactly as on
+           /admin-tts, untouched by this page's bare label/button/.badge rules. */
+        @scope (:root) to (.tts-host) {
+            * { box-sizing: border-box; }
+            main { max-width: 1100px; margin: 0 auto; padding: 22px 0; }
+            section { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; margin-bottom: 18px; }
+            section h2 { font-size: 1rem; margin: 0 0 12px; color: #333; }
+            /* Audio → Voices: the admin-tts Voices pane mounted inline (no iframe)
+               by VoicesInline. Breaks out of main's 1100px so the 13-column
+               catalog isn't cramped. Margin-based, NOT transform — a transformed
+               ancestor would capture the pane's position:fixed player bar. */
+            .voices-inline { width: min(1600px, calc(100vw - 32px)); margin-left: calc((100% - min(1600px, calc(100vw - 32px))) / 2); }
+            .voices-inline .voices-msg { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; color: var(--muted); }
+            .voices-inline .voices-msg.err { color: var(--err); }
+            /* Audio sub-tabs (Text to Audio | Voices). Own class, not .tab, so the
+               top-level activateTab() leaves them alone. */
+            .subtabs { display:flex; gap:4px; margin: -4px 0 14px; }
+            .subtab { background: #f0f0f3; color: #555; border: 1px solid var(--line); border-radius: 14px; padding: 5px 14px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+            .subtab:hover { color: var(--fg); }
+            .subtab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+            .subpanel.hidden { display: none; }
+            .desc { color: var(--muted); font-size: 0.85rem; margin: -4px 0 12px; }
+            label { font-weight: 600; font-size: 0.86rem; color:#444; display:block; margin: 10px 0 4px; }
+            input[type=text], textarea, input[type=number], select { width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:4px; font:inherit; font-size:0.9rem; background:#fff; }
+            textarea { min-height: 70px; resize: vertical; }
+            button { background: var(--accent); color:#fff; border:none; border-radius:4px; padding:8px 16px; cursor:pointer; font-weight:600; font-size:0.9rem; }
+            button:hover { background: var(--accent-hover); }
+            button[disabled] { background:#888; cursor:wait; }
+            button.ghost { background:#eee; color:#333; }
+            button.ghost:hover { background:#ddd; }
+            button.danger { background:#b3261e; }
+            button.danger:hover { background:#922018; }
+            .tabs { display:flex; gap:4px; border-bottom: 2px solid var(--line); margin-bottom: 16px; }
+            .tab { background: transparent; color: #555; border: none; border-radius: 6px 6px 0 0; padding: 9px 18px; cursor: pointer; font-weight: 600; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+            .tab:hover { background: #f0f0f3; color: var(--fg); }
+            .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: #fff; }
+            .tab-panel { display: block; }
+            .tab-panel.hidden { display: none; }
+            .provider-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 6px 0 4px; }
+            .provider-card { border:1px solid var(--line); border-radius:6px; padding:10px 12px; cursor:pointer; background:#fcfcfc; position:relative; }
+            .provider-card.selected { border-color: var(--accent); background:#f4f5fb; box-shadow: 0 0 0 1px var(--accent) inset; }
+            .provider-card.offline { opacity: 0.55; cursor: not-allowed; }
+            .provider-card .pname { font-weight:600; font-size:0.92rem; }
+            .provider-card .pmeta { font-size:0.78rem; color: var(--muted); margin-top:3px; }
+            .provider-card .badge { position:absolute; top:8px; right:10px; font-size:0.7rem; padding:2px 6px; border-radius:10px; font-weight:600; }
+            .badge.on { background:#daf3e0; color: var(--ok); }
+            .badge.off { background:#eee; color:#777; }
+            .badge.in-flight { background:#fdf3da; color: var(--warn); }
+            .badge.done { background:#daf3e0; color: var(--ok); }
+            .badge.fail { background:#fbe1de; color: var(--err); }
+            .badge.cancelled { background:#eee; color:#666; }
+            .input-actions { display:flex; gap:8px; flex-wrap: wrap; margin-bottom:8px; }
+            .input-actions button { padding:5px 10px; font-size:0.82rem; }
+            .uploader { border:2px dashed #ccc; border-radius:6px; padding:18px; text-align:center; background:#fff; cursor:pointer; }
+            .uploader.drag { border-color: var(--accent); background:#f4f5fb; }
+            .uploader input[type=file] { display:none; }
+            .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+            .thumb { position: relative; width: 92px; }
+            .thumb img { width:92px; height:92px; object-fit:cover; border-radius:4px; border:1px solid var(--line); display:block; }
+            .thumb .role { position:absolute; top:4px; left:4px; background:rgba(0,0,0,0.62); color:#fff; font-size:0.66rem; padding:1px 5px; border-radius:3px; }
+            .thumb .actions { position:absolute; top:4px; right:4px; display:flex; gap:3px; }
+            .thumb .actions button { background:#000a; color:#fff; border:none; width:18px; height:18px; border-radius:50%; cursor:pointer; padding:0; font-size:0.7rem; line-height:1; }
+            .thumb .source-tag { position:absolute; bottom:3px; left:3px; right:3px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.62rem; padding:1px 4px; border-radius:3px; text-align:center; }
+            .params-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 12px; align-items: end; }
+            .params-grid > div { display: flex; flex-direction: column; }
+            .params-grid label { margin: 0 0 3px; font-weight: 600; color:#555; font-size: 0.78rem; }
+            /* A parameter the currently-selected service does not accept: dimmed +
+               non-interactive, with a small "n/a" note so the operator knows it was
+               intentionally disabled (not broken). */
+            .pfield-off { opacity: 0.4; }
+            .pfield-off input, .pfield-off select, .pfield-off textarea { background:#f3f3f3; cursor:not-allowed; }
+            .pfield-off .na-tag { display:inline; }
+            .na-tag { display:none; color:#999; font-weight:normal; font-size:0.72em; margin-left:4px; }
+            /* Always-visible sibling of .na-tag, for text that varies per service. */
+            .opt-tag { color:#999; font-weight:normal; font-size:0.72em; margin-left:4px; }
+            /* ── Field help ───────────────────────────────────────────────────
+               Every input carries two levels of explanation, both driven from the
+               HELP map in JS (markup only tags a field with data-help="<key>"):
+                 1. a one-line hint rendered under the label, toggleable site-wide
+                    via the "Field help" switch in the tab bar (remembered per
+                    browser in localStorage);
+                 2. a "?" button on the label that opens the long-form popover —
+                    what the parameter does, how to drive it, typical values.
+               Grid cells stretch so that the inputs still bottom-align in a row
+               even when the hints above them wrap to different heights. */
+            .helpq { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-left:5px; padding:0; border:1px solid #c3c3cc; border-radius:50%; background:#fff; color:#7a7a88; font-size:9px; font-weight:700; line-height:1; cursor:help; vertical-align:middle; }
+            .helpq:hover, .helpq.open { background: var(--accent); border-color: var(--accent); color:#fff; }
+            .fhint { display:block; font-weight:400; font-size:0.72rem; line-height:1.35; color:#8a8a96; margin:0 0 4px; }
+            .params-grid .fhint { margin:0 0 5px; }
+            body.help-off .fhint { display:none; }
+            .params-grid { align-items: stretch; }
+            .params-grid > div > input, .params-grid > div > select { margin-top: auto; }
+            .help-toggle { margin-left:auto; align-self:center; background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:4px 10px; font-size:0.76rem; font-weight:600; margin-bottom:4px; }
+            .help-toggle:hover { background:#f0f0f3; color:var(--fg); }
+            .help-pop { position:absolute; z-index:7000; width:360px; max-width:calc(100vw - 24px); background:#fff; border:1px solid #d8d8e0; border-radius:7px; box-shadow:0 8px 26px #0000002e; padding:12px 14px; font-size:0.8rem; line-height:1.5; color:#3c3c46; }
+            .help-pop[hidden] { display:none; }
+            .help-pop h4 { margin:0 0 6px; font-size:0.84rem; color: var(--accent); }
+            .help-pop p  { margin:0 0 7px; }
+            .help-pop ul { margin:0 0 7px; padding-left:17px; }
+            .help-pop li { margin-bottom:3px; }
+            .help-pop b  { color:#22222c; }
+            .help-pop code { background:#f2f2f6; border-radius:3px; padding:0 4px; font-size:0.94em; }
+            .help-pop .hp-close { position:absolute; top:5px; right:6px; background:transparent; color:#999; border:none; font-size:1.05rem; line-height:1; padding:2px 5px; cursor:pointer; }
+            .help-pop .hp-close:hover { color:#333; background:transparent; }
+            .gate-off { opacity: 0.45; pointer-events: none; }
+            .gate-note { font-size:0.76rem; color: var(--warn); margin:4px 0 0; display:none; }
+            .gate-note.show { display:block; }
+            /* Explains what the form will do, rather than warning about a limit. */
+            .gate-note.info { color:#777; }
+            .jobs-table { width:100%; border-collapse: collapse; font-size: 0.88rem; }
+            .jobs-table th { text-align:left; font-weight:600; color:#555; padding:8px 8px; border-bottom: 1px solid var(--line); font-size:0.8rem; text-transform: uppercase; letter-spacing: 0.4px; }
+            .jobs-table td { padding:8px 8px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+            .jobs-table tr.expanded > td { background: #fbfbfd; }
+            .progress { background:#eee; border-radius:3px; height:8px; min-width:80px; overflow:hidden; }
+            .progress > i { display:block; height:100%; background: var(--accent); transition: width 0.3s; }
+            .prompt-snip { color:#444; max-width: 340px; }
+            .row-detail { padding: 6px 8px 12px; background:#fbfbfd; font-size:0.85rem; color:#555; }
+            .row-detail video, .row-detail img { max-width: 240px; border:1px solid var(--line); border-radius:4px; margin: 6px 6px 0 0; vertical-align: top; }
+            .row-actions { display:flex; gap:6px; flex-wrap: wrap; }
+            .row-actions button { padding:4px 10px; font-size:0.78rem; }
+            .toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent); color:#fff; padding: 12px 18px; border-radius:6px; font-size:0.88rem; z-index:5000; box-shadow: 0 4px 12px #0002; max-width: 360px; opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; }
+            .toast.show { opacity: 1; transform: translateY(0); }
+            .toast.err { background: var(--err); }
+            .empty { color: var(--muted); font-style: italic; padding: 18px 8px; }
+            .small { font-size: 0.78rem; color: var(--muted); }
+            details { margin-top: 8px; }
+            details > summary { cursor: pointer; font-size: 0.84rem; color: var(--muted); padding: 4px 0; }
+            .modal-overlay { position:fixed; inset:0; background:#0009; z-index:6000; display:flex; align-items:center; justify-content:center; padding:24px; }
+            .modal-overlay.hidden { display:none; }
+            .modal { background:#fff; border-radius:8px; max-width:840px; width:100%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+            .modal-header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+            .modal-header h3 { margin:0; font-size:1rem; }
+            .modal-header .close-x { background:transparent; color:#666; border:none; font-size:1.4rem; padding:0; width:28px; cursor:pointer; }
+            .modal-body { padding:14px 18px; overflow-y:auto; flex:1; }
+            .picker-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+            .picker-cell { border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; background:#fcfcfc; }
+            .picker-cell:hover { border-color: var(--accent); }
+            .picker-cell .pthumb { width:100%; height:120px; background:#222; display:block; object-fit:cover; }
+            .picker-cell .pinfo { padding:6px 8px; font-size:0.74rem; color:#555; }
+            .picker-cell .pinfo .ptag { background: var(--accent); color:#fff; padding:1px 5px; border-radius:3px; font-weight:600; margin-right:4px; }
+            .picker-section { margin-bottom: 18px; }
+            .picker-section h4 { font-size:0.82rem; color:#777; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+            /* Library cells sit above the recent-output sections and are visually
+               distinct: these are the kept references, not whatever ran last. */
+            .picker-cell.lib { border-color: var(--accent); position: relative; }
+            .picker-cell.lib .plabel { font-weight:600; color:#333; display:block; }
+            .picker-cell .pdel { position:absolute; top:4px; right:4px; border:none; border-radius:3px;
+                                 background:#000a; color:#fff; width:20px; height:20px; line-height:18px;
+                                 font-size:0.8rem; cursor:pointer; padding:0; display:none; }
+            .picker-cell.lib:hover .pdel { display:block; }
+            .picker-cell .pdel:hover { background:#c0392b; }
+            .lib-empty { color:#888; font-size:0.8rem; padding:6px 0 10px; }
+            .save-lib-field { margin-bottom:10px; }
+            .save-lib-field label { display:block; font-size:0.8rem; color:#555; margin-bottom:3px; }
+            .save-lib-field input, .save-lib-field select, .save-lib-field textarea {
+                width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:4px; font:inherit; }
+            .mask-painter { position:relative; background:#222; display:inline-block; max-width:100%; }
+            .mask-painter canvas { display:block; max-width:100%; }
+            .mask-painter .canvas-base { position:absolute; inset:0; }
+            .mask-toolbar { padding:8px; display:flex; gap:8px; align-items:center; background:#f5f5f7; border-top:1px solid var(--line); }
+            .mask-toolbar label { margin:0; font-size:0.75rem; font-weight:500; }
+            .mask-toolbar input[type=range] { width:120px; }
+            .image-results { display:flex; flex-wrap:wrap; gap:6px; }
+            .out-cell { display:flex; flex-direction:column; align-items:center; gap:4px; }
+            button.tiny { font-size:0.7rem; padding:2px 8px; }
+            .image-results img { max-width:200px; max-height:200px; border:1px solid var(--line); border-radius:4px; }
+            /* Audio has no thumbnail to show, so a reference clip is represented by
+               a name + inline player card rather than the .thumb image tile. */
+            .audio-chip { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fcfcfc; width:250px; }
+            .audio-chip .aname { font-size:0.76rem; color:#444; font-weight:600; display:flex; justify-content:space-between; gap:6px; align-items:center; }
+            .audio-chip .aname button { background:#0008; color:#fff; border:none; width:18px; height:18px; border-radius:50%; cursor:pointer; padding:0; font-size:0.7rem; line-height:1; flex:0 0 auto; }
+            .audio-chip audio { width:100%; margin-top:6px; }
+            .audio-chip .source-tag { position:static; background:none; color:var(--muted); font-size:0.68rem; padding:2px 0 0; text-align:left; }
+            .audio-results { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+            .audio-results .take { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; max-width:520px; }
+            .audio-results .take audio { width:100%; }
+        }
+        /* admin-tts sets this on <body> while its voice player bar is open. */
+        body.vc-playing { padding-bottom: 64px; }
     </style>
 </head>
 <body>
@@ -508,12 +516,13 @@
         </section>
         </div>
 
-        <!-- Voices sub-tab: Admin → TTS → Voices framed in embed mode (one
-             implementation, two places). src is set on first Voices visit. -->
+        <!-- Voices sub-tab: Admin → TTS → Voices mounted inline from the live
+             /admin-tts page (one implementation, two places) — see
+             VoicesInline. Mounted on first Voices visit. -->
         <div class="subpanel hidden" data-subpanel="voices">
-        <section class="voices-embed">
-            <iframe id="voices-frame" data-src="/admin-tts?embed=voices" title="TTS Voices"></iframe>
-        </section>
+        <div class="voices-inline">
+            <div id="tts-inline" class="tts-host"></div>
+        </div>
         </div>
     </div>
 </main>
@@ -2771,13 +2780,13 @@ function saveTabState(key, value) {
 function activateTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
-    if (name === 'audio') loadVoicesFrame();
+    if (name === 'audio') loadVoicesInline();
     saveTabState('activeTab', name);
 }
 function activateAudioSubtab(name) {
     document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.subtab === name));
     document.querySelectorAll('.subpanel').forEach(p => p.classList.toggle('hidden', p.dataset.subpanel !== name));
-    if (name === 'voices') loadVoicesFrame();
+    if (name === 'voices') loadVoicesInline();
     saveTabState('audioSubtab', name);
 }
 // session-state.js loads after this script, so restore on window load.
@@ -2788,11 +2797,121 @@ window.addEventListener('load', () => {
     if (sub && document.querySelector('.subtab[data-subtab="' + sub + '"]')) activateAudioSubtab(sub);
     if (tab && document.querySelector('.tab[data-tab="' + tab + '"]')) activateTab(tab);
 });
-function loadVoicesFrame() {
-    const f = $('voices-frame');
-    // Only once it's actually on screen (Audio tab AND Voices sub-tab).
-    if (f && !f.getAttribute('src') && f.offsetParent !== null) f.src = f.dataset.src;
+// ── Audio → Voices: the admin-tts Voices pane, mounted inline ─────────────
+// One implementation, two places: rather than copy ~3k lines of Voices JS,
+// this fetches the LIVE /admin-tts page and mounts it into #tts-inline —
+// its markup (all panes present so its script runs unmodified, with only
+// #pane-voices shown via admin-tts's own ?embed=voices CSS), its <style>
+// (wrapped in @scope (.tts-host) so it can't touch this page), and its main
+// inline script. The script is patched in exactly two ways, both asserted:
+//   • its `function $` is dropped — this page already has an identical
+//     `const $`, and redeclaring it is a SyntaxError that kills the script;
+//   • document.body.append/removeChild → ttsFloatHost(), so its popovers and
+//     overlays land inside a .tts-host and keep their admin-tts styling.
+// Its DOMContentLoaded/load handlers never fire here (both already past), so
+// we replay what they do in embed=voices mode: bootstrap() + activateTtsTab.
+function ttsFloatHost() {
+    let el = document.getElementById('tts-inline-float');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'tts-inline-float';
+        el.className = 'tts-host';
+        document.body.appendChild(el);
+    }
+    return el;
 }
+const VoicesInline = {
+    state: 'idle',   // idle | loading | ready | error
+    msg(text, isErr) {
+        $('tts-inline').innerHTML = '<div class="voices-msg' + (isErr ? ' err' : '') + '">' + text + '</div>';
+    },
+    loadScript(url) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = url;
+            s.onload = resolve;
+            s.onerror = () => reject(new Error('could not load ' + url));
+            document.body.appendChild(s);
+        });
+    },
+    async mount() {
+        const host = $('tts-inline');
+        // Only once it's actually on screen (Audio tab AND Voices sub-tab).
+        if (!host || host.offsetParent === null || this.state !== 'idle') return;
+        this.state = 'loading';
+        this.msg('Loading Voices…');
+        try {
+            const r = await fetch('/admin-tts', { credentials: 'include', cache: 'no-cache' });
+            if (!r.ok) throw new Error('HTTP ' + r.status + ' fetching /admin-tts');
+            const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+            const app = doc.getElementById('app');
+            const main = [...doc.querySelectorAll('script:not([src])')]
+                .find(s => /\nasync function bootstrap\(/.test(s.textContent));
+            if (!app || !main || !doc.getElementById('pane-voices')) {
+                throw new Error('/admin-tts layout not recognised (#app, #pane-voices or bootstrap() missing)');
+            }
+
+            // Script patch first, so a mismatch fails before anything is mounted.
+            let js = main.textContent;
+            const dollar = /^function \$\(id\) \{ return document\.getElementById\(id\); \}[ \t]*$/m;
+            if (!dollar.test(js)) throw new Error('/admin-tts $() definition changed — mount aborted');
+            js = js.replace(dollar, '// $() — provided by admin-ai (identical const $)');
+            js = js.replace(/document\.body\.(appendChild|removeChild)\(/g, 'ttsFloatHost().$1(');
+
+            // Styles: admin-tts's own embed=voices rules hide its chrome and
+            // every pane but Voices; point them (and #app) at the mount.
+            // :scope, not .tts-host — inside @scope every selector is
+            // implicitly a DESCENDANT of the scope root.
+            const css = [...doc.head.querySelectorAll('style')].map(s => s.textContent).join('\n')
+                .replace(/#app\b/g, '#tts-app')
+                .replace(/html\.tts-embed-voices\b/g, ':scope')
+                .replace(/html\.tts-embed(?![\w-])/g, ':scope');
+            const st = document.createElement('style');
+            st.id = 'tts-inline-css';
+            st.textContent = '@scope (.tts-host) {\n' + css + '\n}';
+            document.head.appendChild(st);
+
+            // Markup: the whole app (minus its header/nav, which duplicates
+            // ours and #user-display), then its body-level modals.
+            const hdr = app.querySelector('.app-header');
+            if (hdr) hdr.remove();
+            app.id = 'tts-app';
+            host.textContent = '';
+            host.appendChild(document.importNode(app, true));
+            const float = ttsFloatHost();
+            [...doc.body.children].forEach(el => {
+                if (el !== app && el.tagName !== 'SCRIPT') float.appendChild(document.importNode(el, true));
+            });
+
+            // Helper scripts it needs that this page doesn't already load.
+            const have = new Set([...document.scripts].filter(s => s.src).map(s => new URL(s.src).pathname));
+            for (const s of doc.querySelectorAll('script[src]')) {
+                if (s.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_PRECEDING) continue; // after main
+                const url = new URL(s.getAttribute('src'), location.href);
+                if (have.has(url.pathname) || /admin-nav\.js$/.test(url.pathname)) continue;
+                await this.loadScript(url.pathname + url.search);
+            }
+
+            const s = document.createElement('script');
+            s.textContent = js;
+            document.body.appendChild(s);
+            if (typeof window.bootstrap !== 'function' || typeof window.activateTtsTab !== 'function') {
+                throw new Error('admin-tts script did not initialise (see console)');
+            }
+            window.bootstrap().catch(e => {
+                if (!/401/.test(e.message || '')) console.error('TTS bootstrap failed:', e);
+            });
+            window.activateTtsTab('voices');
+            this.state = 'ready';
+        } catch (e) {
+            console.error('Voices mount failed:', e);
+            this.state = 'error';
+            this.msg('Voices failed to load: ' + esc(e.message || String(e)) +
+                ' — <a href="/admin-tts">open Admin → TTS</a>, or reload this page.', true);
+        }
+    },
+};
+function loadVoicesInline() { VoicesInline.mount(); }
 document.addEventListener('DOMContentLoaded', () => {
     FieldHelp.init();
     TABS.video = new TabController('video');
