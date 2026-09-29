@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790661603">
+    <meta name="page-version" content="1790695716">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TTS Admin - Yada Yah</title>
@@ -1896,20 +1896,27 @@ async function renderCategoryRows() {
     });
 }
 
+// <option> list for a style <select>. No "(default)"/"(no style)" placeholder
+// next to a real "default" style: a voice that has its own `default` style
+// lists only its styles (default first, so it is the preselected value);
+// voices with styles but no `default` (Azure) get a leading "(none)" = no style.
+function styleOptionsHtml(styles) {
+    styles = (styles || []).filter(function (s) { return s && s !== 'general'; });
+    var def = null;
+    styles.forEach(function (s) { if (def === null && String(s).toLowerCase() === 'default') def = s; });
+    var ordered = def === null ? styles : [def].concat(styles.filter(function (s) { return s !== def; }));
+    return (def === null ? '<option value="">(none)</option>' : '')
+         + ordered.map(function (s) { return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>'; }).join('');
+}
+
 // Rebuild a style <select> from the styles list on the currently-selected
 // voice option. `selected` is the style to pre-select (empty string keeps
 // "no style"). Used by both the Voices tab and the Build-audio modal.
 function populateStyleOptions(voiceSel, styleSel, selected) {
     var styles = (voiceSel.selectedOptions[0]?.dataset.styles || '').split(',').filter(Boolean);
-    styleSel.innerHTML = '<option value="">(no style)</option>';
-    styles.forEach(function(s) {
-        if (s === 'general') return;
-        var o = document.createElement('option');
-        o.value = s; o.textContent = s;
-        styleSel.appendChild(o);
-    });
+    styleSel.innerHTML = styleOptionsHtml(styles);
     if (selected && styles.indexOf(selected) !== -1) styleSel.value = selected;
-    styleSel.disabled = styles.length === 0;
+    styleSel.disabled = styles.filter(function (s) { return s !== 'general'; }).length === 0;
 }
 
 async function saveSystem() {
@@ -3554,13 +3561,9 @@ function openCustomVoicePopover(opts) {
     // (filled in async so each shows its ORIGINAL uploaded filename, not just
     // the style key); both modes can add a clip (which auto-trains). Falls back
     // to the DB style names if the box is unreachable.
+    // (Edit mode lists each existing style + its clip as a row in
+    // #cvp-style-rows, filled in async below.)
     var clipsListHtml = '';
-    if (mode === 'edit') {
-        clipsListHtml = '<div style="margin-top:6px;font-size:0.82rem;color:#444;">'
-            + '<strong>Reference clips used to train this voice</strong>'
-            + '<div id="cvp-clips" style="margin-top:4px;color:#888;">Loading…</div>'
-            + '</div>';
-    }
 
     var gender = (v && v.tts_voice_gender) || '';
     var genderOpts = ['', 'Male', 'Female', 'Neutral'].map(function (g) {
@@ -3569,12 +3572,8 @@ function openCustomVoicePopover(opts) {
 
     var codeInitial = mode === 'edit' ? (v.tts_voice_code || '') : prefix;
     var styleHint = mode === 'add'
-        ? 'first clip must be <code>default</code>'
-        : 'name for the clip you add below (e.g. <code>happy</code>, <code>stoic</code>)';
-    var styleInitial = mode === 'add' ? 'default' : '';
-    var audioReqNote = mode === 'add'
-        ? (noAudio ? '' : ' (required)')
-        : ' — adding one trains a new style on Save';
+        ? 'the first style is always <code>default</code> and needs a clip; add more styles (e.g. <code>happy</code>, <code>stoic</code>), each with its own clip'
+        : 'each style has its own training clip; "Replace clip" retrains that style and "+ Add style" trains a new one on Save';
 
     var title = (mode === 'add' ? 'Add Custom Voice — ' : 'Edit Custom Voice — ')
               + escapeHtml(mode === 'add' ? provLabel : (v.tts_voice_label || v.tts_voice_code));
@@ -3593,11 +3592,9 @@ function openCustomVoicePopover(opts) {
                 '<textarea id="cvp-desc" autocomplete="off" readonly rows="2" placeholder="When to pick this voice over others" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;font-family:inherit;resize:vertical;">' + escapeHtml((v && v.tts_voice_description) || '') + '</textarea>' +
                 extraHtml +
                 (noAudio ? '' :
-                    '<label style="font-weight:600;display:block;margin:8px 0 3px;font-size:0.82rem;">Style <span style="color:#888;font-weight:normal;">(' + styleHint + ')</span></label>' +
-                    '<input id="cvp-style" type="text" autocomplete="off" readonly value="' + escapeHtml(styleInitial) + '" placeholder="default" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:3px;font-size:0.85rem;">' +
-                    '<label style="font-weight:600;display:block;margin:8px 0 3px;font-size:0.82rem;">Reference audio' + audioReqNote + '</label>' +
-                    '<input id="cvp-audio" type="file" accept="audio/wav,audio/mp3,audio/x-wav,audio/mpeg,audio/mp4,audio/flac,audio/ogg" style="font-size:0.82rem;width:100%;">' +
-                    '<audio id="cvp-preview" controls style="display:none;width:100%;margin-top:6px;"></audio>'
+                    '<label style="font-weight:600;display:block;margin:8px 0 3px;font-size:0.82rem;">' + 'Styles &amp; reference audio' + ' <span style="color:#888;font-weight:normal;">(' + styleHint + ')</span></label>' +
+                    '<div id="cvp-style-rows"></div>' +
+                    '<button type="button" class="cvp-add-style" style="margin-top:2px;padding:3px 10px;border:1px solid #31345A;background:#fff;color:#31345A;border-radius:3px;cursor:pointer;font-size:0.8rem;">+ Add ' + (mode === 'add' ? 'another ' : '') + 'style</button>'
                 ) +
                 clipsListHtml +
             '</div>' +
@@ -3640,7 +3637,6 @@ function openCustomVoicePopover(opts) {
         ['#cvp-name',   (v && v.tts_voice_label) || ''],
         ['#cvp-gender', gender],
         ['#cvp-desc',   (v && v.tts_voice_description) || ''],
-        ['#cvp-style',  styleInitial],
     ];
     (function walk(fields) {
         (fields || []).forEach(function (f) {
@@ -3687,15 +3683,66 @@ function openCustomVoicePopover(opts) {
     // Backdrop clicks do not dismiss — avoids losing entered data / uploads.
     // Close only via the × or Cancel button.
 
-    // Audio preview.
-    var audioInput = panel.querySelector('#cvp-audio');
-    if (audioInput) {
-        audioInput.addEventListener('change', function () {
-            var prev = panel.querySelector('#cvp-preview');
-            if (!prev) return;
-            if (audioInput.files && audioInput.files[0]) { prev.src = URL.createObjectURL(audioInput.files[0]); prev.style.display = ''; }
-            else prev.style.display = 'none';
+    // Style rows: each row = one style + its own reference clip. Add mode starts
+    // with the fixed `default` row; edit mode lists the voice's EXISTING styles
+    // (each with a player for its training clip + "Replace clip" + remove), and
+    // "+ Add style" appends blank rows for new styles.
+    var styleRowsBox = panel.querySelector('#cvp-style-rows');
+    var ROW_BTN = 'font-size:0.72rem;border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:3px;cursor:pointer;padding:0 5px;';
+    function addStyleRow(fixedName, existing) {
+        if (!styleRowsBox) return;
+        var row = document.createElement('div');
+        row.className = 'cvp-style-row';
+        row.style.cssText = 'border:1px solid #e3e3e3;border-radius:4px;padding:6px 8px;margin-bottom:6px;background:#fafafa;';
+        var fileInput = '<input class="cvp-style-file" type="file" accept="audio/wav,audio/mp3,audio/x-wav,audio/mpeg,audio/mp4,audio/flac,audio/ogg" style="flex:1 1 auto;min-width:0;font-size:0.8rem;">';
+        if (existing) {
+            // Existing style: its training clip(s) + player, then Replace clip.
+            var clipNames = (existing.clips || []).map(function (c) { return c.name || c.file; }).filter(Boolean);
+            var au = existing.audio;
+            row.innerHTML = '<div style="display:flex;gap:6px;align-items:baseline;">'
+                + '<span class="cvp-style-name" data-fixed="' + escapeHtml(fixedName) + '" style="font-size:0.84rem;font-weight:600;">' + escapeHtml(fixedName) + '</span>'
+                + '<span style="flex:1 1 auto;min-width:0;font-size:0.76rem;color:#777;overflow-wrap:anywhere;">' + escapeHtml(clipNames.join(', ')) + '</span>'
+                + '<button type="button" class="cvp-del-style" data-style="' + escapeHtml(fixedName) + '" data-last="' + (existing.last ? '1' : '0') + '" style="' + ROW_BTN + '">remove</button>'
+                + '</div>'
+                + (au
+                    ? '<audio class="cvp-style-current" controls preload="none" src="' + API + '/admin-tts-voice-edit.php?action=clip_audio&code=' + encodeURIComponent(v.tts_voice_code) + '&style=' + encodeURIComponent(fixedName) + '" style="width:100%;margin-top:4px;height:32px;"></audio>'
+                    : '<div style="font-size:0.75rem;color:#a06a00;margin-top:3px;">Training clip is on the GPU box only — no playable copy on the web server yet.</div>')
+                + '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;"><span style="font-size:0.76rem;color:#555;flex:0 0 auto;">Replace clip:</span>' + fileInput + '</div>'
+                + '<audio class="cvp-style-preview" controls style="display:none;width:100%;margin-top:4px;height:32px;"></audio>';
+        } else {
+            row.innerHTML = '<div style="display:flex;gap:6px;align-items:center;">'
+                + (fixedName
+                    ? '<span class="cvp-style-name" data-fixed="' + escapeHtml(fixedName) + '" style="flex:0 0 140px;font-size:0.84rem;font-weight:600;padding:4px 2px;">' + escapeHtml(fixedName) + '</span>'
+                    : '<input class="cvp-style-name" type="text" autocomplete="off" placeholder="style name, e.g. happy" style="flex:0 0 140px;min-width:0;padding:4px 6px;border:1px solid #ccc;border-radius:3px;font-size:0.84rem;">')
+                + fileInput
+                + (fixedName ? '' : '<button type="button" class="cvp-style-row-del" title="Remove this row" style="border:none;background:none;color:#c0392b;font-size:1.1rem;line-height:1;cursor:pointer;padding:0 2px;">&times;</button>')
+                + '</div>'
+                + '<audio class="cvp-style-preview" controls style="display:none;width:100%;margin-top:4px;height:32px;"></audio>';
+        }
+        var fileIn = row.querySelector('.cvp-style-file');
+        var prev = row.querySelector('.cvp-style-preview');
+        fileIn.addEventListener('change', function () {
+            if (fileIn.files && fileIn.files[0]) {
+                prev.src = URL.createObjectURL(fileIn.files[0]); prev.style.display = '';
+                // Unnamed row → suggest a style name from the file name.
+                var nm = row.querySelector('input.cvp-style-name');
+                if (nm && !nm.value.trim()) {
+                    nm.value = fileIn.files[0].name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+                }
+            } else { prev.removeAttribute('src'); prev.style.display = 'none'; }
         });
+        var del = row.querySelector('.cvp-style-row-del');
+        if (del) del.addEventListener('click', function () { row.remove(); });
+        var rm = row.querySelector('.cvp-del-style');
+        if (rm) bindRemove(rm);
+        // Existing styles stay above any newly added rows.
+        var firstNew = existing ? styleRowsBox.querySelector('.cvp-style-row:not([data-existing])') : null;
+        if (existing) row.dataset.existing = '1';
+        styleRowsBox.insertBefore(row, firstNew);
+    }
+    if (styleRowsBox) {
+        if (mode === 'add') addStyleRow('default');
+        panel.querySelector('.cvp-add-style').addEventListener('click', function () { addStyleRow(null); });
     }
 
     // Remove one reference clip (= remove its style). Removing the last one is
@@ -3722,46 +3769,37 @@ function openCustomVoicePopover(opts) {
         });
     }
 
-    // Populate the clip list from the box (original filenames). Falls back to
-    // the DB style names when the box is unreachable.
-    var clipsBox = panel.querySelector('#cvp-clips');
-    function renderClipsFallback() {
-        if (!clipsBox) return;
-        if (!styles.length) { clipsBox.innerHTML = '<span style="color:#888;">none yet</span>'; return; }
-        clipsBox.innerHTML = '<ul style="margin:0;padding-left:18px;">' + styles.map(function (s) {
-            return '<li style="margin:1px 0;">' + escapeHtml(s)
-                + ' <button type="button" class="cvp-del-style" data-style="' + escapeHtml(s)
-                + '" data-last="' + (styles.length === 1 ? '1' : '0')
-                + '" style="font-size:0.72rem;border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:3px;cursor:pointer;padding:0 5px;margin-left:6px;">remove</button></li>';
-        }).join('') + '</ul>';
-        clipsBox.querySelectorAll('.cvp-del-style').forEach(bindRemove);
-    }
-    if (mode === 'edit' && clipsBox) {
+    // Edit mode: one row per existing style. The clips endpoint gives each
+    // style's original upload filename(s) from the box, and `audio` when the
+    // web server holds a playable copy. Falls back to the DB style names.
+    if (mode === 'edit' && styleRowsBox) {
+        var loadingEl = document.createElement('div');
+        loadingEl.style.cssText = 'font-size:0.8rem;color:#888;margin-bottom:6px;';
+        loadingEl.textContent = 'Loading styles…';
+        styleRowsBox.appendChild(loadingEl);
+        var renderExisting = function (rows) {
+            loadingEl.remove();
+            if (!rows.length) {
+                loadingEl.textContent = 'No styles yet — use "+ Add style".';
+                styleRowsBox.insertBefore(loadingEl, styleRowsBox.firstChild);
+                return;
+            }
+            // `default` first, then the rest in their stored order.
+            rows = rows.filter(function (r) { return r.style === 'default'; })
+                .concat(rows.filter(function (r) { return r.style !== 'default'; }));
+            rows.forEach(function (row) {
+                addStyleRow(row.style, { clips: row.clips || [], audio: row.audio || null, last: rows.length === 1 });
+            });
+        };
         fetch(API + '/admin-tts-voice-edit.php?action=clips&code=' + encodeURIComponent(v.tts_voice_code), { credentials: 'include' })
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (!d || !d.ok || d.engine_offline || !Array.isArray(d.styles)) { renderClipsFallback(); return; }
-                var rows = d.styles;
-                if (!rows.length) { clipsBox.innerHTML = '<span style="color:#888;">none yet</span>'; return; }
-                var single = rows.length === 1;
-                clipsBox.innerHTML = '<ul style="margin:0;padding-left:18px;">' + rows.map(function (row) {
-                    var clips = row.clips && row.clips.length ? row.clips : [{ name: row.style, file: '' }];
-                    var names = clips.map(function (c) {
-                        var label = c.name || c.file || row.style;
-                        var fileNote = (c.file && c.name && c.file !== c.name)
-                            ? ' <span style="color:#999;">(' + escapeHtml(c.file) + ')</span>' : '';
-                        return escapeHtml(label) + fileNote;
-                    }).join('<br>');
-                    var styleTag = (row.style && row.style !== 'default')
-                        ? ' <span style="color:#888;">[' + escapeHtml(row.style) + ']</span>' : '';
-                    return '<li style="margin:2px 0;">' + names + styleTag
-                        + ' <button type="button" class="cvp-del-style" data-style="' + escapeHtml(row.style)
-                        + '" data-last="' + (single ? '1' : '0')
-                        + '" style="font-size:0.72rem;border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:3px;cursor:pointer;padding:0 5px;margin-left:6px;">remove</button></li>';
-                }).join('') + '</ul>';
-                clipsBox.querySelectorAll('.cvp-del-style').forEach(bindRemove);
+                if (!d || !d.ok || !Array.isArray(d.styles)) throw new Error('bad response');
+                // Offline box with no DB styles either → use what the row carried.
+                renderExisting(d.styles.length || !d.engine_offline ? d.styles
+                    : styles.map(function (s) { return { style: s, clips: [] }; }));
             })
-            .catch(function () { renderClipsFallback(); });
+            .catch(function () { renderExisting(styles.map(function (s) { return { style: s, clips: [] }; })); });
     }
 
     panel.querySelector('.cvp-save').addEventListener('click', async function () {
@@ -3769,24 +3807,36 @@ function openCustomVoicePopover(opts) {
         var name   = (panel.querySelector('#cvp-name').value || '').trim();
         var genderV= (panel.querySelector('#cvp-gender').value || '').trim();
         var desc   = (panel.querySelector('#cvp-desc').value || '').trim();
-        var styleEl= panel.querySelector('#cvp-style');
-        var styleV = (styleEl && styleEl.value.trim() ? styleEl.value.trim() : (mode === 'add' ? 'default' : '')).toLowerCase();
-        var fileEl = panel.querySelector('#cvp-audio');
-        var file   = fileEl && fileEl.files ? fileEl.files[0] : null;
+        // Collect the style rows: [{style, file}], skipping fully-blank rows.
+        var styleJobs = [], rowErr = '';
+        panel.querySelectorAll('.cvp-style-row').forEach(function (row) {
+            if (rowErr) return;
+            var nmEl = row.querySelector('.cvp-style-name');
+            var nm = (nmEl.dataset.fixed || nmEl.value || '').trim().toLowerCase();
+            var fEl = row.querySelector('.cvp-style-file');
+            var f = fEl && fEl.files ? fEl.files[0] : null;
+            if (!f && (!nm || nmEl.dataset.fixed)) return;
+            // An unnamed clip retrains the 'default' slot (backend default too).
+            if (!nm) nm = 'default';
+            if (!/^[a-z0-9_-]+$/.test(nm)) { rowErr = 'Style name "' + nm + '" must be alphanumeric (dashes/underscores ok).'; return; }
+            if (!f) { rowErr = 'Choose a reference audio clip for style "' + nm + '".'; return; }
+            if (styleJobs.some(function (j) { return j.style === nm; })) { rowErr = 'Style "' + nm + '" is listed twice.'; return; }
+            styleJobs.push({ style: nm, file: f });
+        });
         var qSpeaker = panel.querySelector('#cv-qwen-speaker');
         var cvPrompt = panel.querySelector('#cv-cosy-prompt');
 
         if (!code) { statusEl.textContent = 'Voice code is required.'; statusEl.style.color = '#c0392b'; return; }
         if (!/^[A-Za-z0-9_-]+$/.test(code)) { statusEl.textContent = 'Code must be alphanumeric (dashes/underscores ok).'; statusEl.style.color = '#c0392b'; return; }
-        if (styleV && !/^[a-z0-9_-]+$/.test(styleV)) { statusEl.textContent = 'Style name must be alphanumeric.'; statusEl.style.color = '#c0392b'; return; }
+        if (rowErr) { statusEl.textContent = rowErr; statusEl.style.color = '#c0392b'; return; }
 
         var saveBtn = panel.querySelector('.cvp-save');
         saveBtn.disabled = true;
 
         try {
             // Validate the create-with-clip / builtin-speaker preconditions.
-            if (mode === 'add' && !noAudio && !file) {
-                throw new Error('Choose a reference audio clip to train the voice.');
+            if (mode === 'add' && !noAudio && !(styleJobs[0] && styleJobs[0].style === 'default')) {
+                throw new Error('Choose a reference audio clip for the default style.');
             }
             if (noAudio && mode === 'add' && qSpeaker && !qSpeaker.value) {
                 throw new Error('Pick a base speaker.');
@@ -3806,19 +3856,23 @@ function openCustomVoicePopover(opts) {
                 if (!ed.ok) throw new Error(ed.error || ('HTTP ' + er.status));
             }
 
-            // Train a clip if needed (add = first/default clip; edit = new style clip).
-            if ((mode === 'add') || (mode === 'edit' && file)) {
-                // Style name is optional: an unnamed edit-mode clip retrains the
-                // voice's 'default' slot (backend also defaults to 'default').
-                statusEl.textContent = noAudio ? 'Registering…' : 'Training… this can take a moment'; statusEl.style.color = '#666';
+            // Train one clip per style row, in order (add = `default` first, which
+            // creates the voice; each later row adds a style to it). A builtin-
+            // speaker provider (noAudio) registers once with no clip.
+            if (noAudio && mode === 'add') styleJobs = [{ style: 'default', file: null }];
+            for (var ji = 0; ji < styleJobs.length; ji++) {
+                var job = styleJobs[ji];
+                statusEl.textContent = noAudio ? 'Registering…'
+                    : 'Training style "' + job.style + '"' + (styleJobs.length > 1 ? ' (' + (ji + 1) + '/' + styleJobs.length + ')' : '') + '… this can take a moment';
+                statusEl.style.color = '#666';
                 var fd = new FormData();
                 fd.append('provider', engineCode);
                 fd.append('code', code);
                 fd.append('label', name);
                 fd.append('gender', genderV);
                 fd.append('description', desc);
-                fd.append('style_name', styleV || 'default');
-                if (file && !noAudio) fd.append('audio', file, file.name);
+                fd.append('style_name', job.style);
+                if (job.file && !noAudio) fd.append('audio', job.file, job.file.name);
                 if (qSpeaker && qSpeaker.value) fd.append('voice_id', qSpeaker.value);
                 if (cvPrompt && cvPrompt.value.trim()) fd.append('prompt_text', cvPrompt.value.trim());
                 // Qwen3-Omni voice-character fields (rendered only for that
@@ -3844,7 +3898,11 @@ function openCustomVoicePopover(opts) {
                 var tr2 = await fetch(API + '/admin-tts-customize.php', { method: 'POST', credentials: 'include', body: fd });
                 var ct = tr2.headers.get('content-type') || '';
                 var td = ct.indexOf('json') >= 0 ? await tr2.json() : { error: await tr2.text() };
-                if (!tr2.ok || !td.ok) throw new Error(td.error || ('HTTP ' + tr2.status));
+                if (!tr2.ok || !td.ok) {
+                    var done = styleJobs.slice(0, ji).map(function (j) { return j.style; });
+                    throw new Error((styleJobs.length > 1 ? 'style "' + job.style + '": ' : '') + (td.error || ('HTTP ' + tr2.status))
+                        + (done.length ? ' (already saved: ' + done.join(', ') + ')' : ''));
+                }
             }
 
             statusEl.textContent = '✓ Saved. Reloading…'; statusEl.style.color = '#2e7d32';
@@ -4058,8 +4116,7 @@ function buildVoiceRow(v) {
                   + '<input type="text" class="vc-edit-style" value="' + escapeHtml(styles.join(', ')) + '" placeholder="styles, comma-sep" title="Comma-separated style names" style="width:100%;box-sizing:border-box;padding:2px 4px;border:1px solid #7f9fd6;border-radius:3px;font-size:0.76rem;">'
                   + '</td>';
     } else if (styles.length) {
-        var opts = '<option value="">(default)</option>'
-                 + styles.map(function (s) { return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>'; }).join('');
+        var opts = styleOptionsHtml(styles);
         styleCell = '<td style="text-align:center;padding:4px 2px;">'
                   + '<select class="vc-style" style="width:100%;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:0.78rem;color:#333;">' + opts + '</select>'
                   + '</td>';

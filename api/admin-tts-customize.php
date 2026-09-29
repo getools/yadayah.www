@@ -32,6 +32,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/gpu-client.php';
+require_once __DIR__ . '/_tts_voice_clips.php';
 
 $user = requireAuth();
 $db = getDb();
@@ -513,6 +514,12 @@ try {
                       $r['status'] >= 400 ? $r['status'] : 502);
     }
     $engineVoice = $r['data']['voice'] ?? [];
+
+    // Keep a prod-side copy of the training clip so the Edit popover can play
+    // it even when the box is offline. Non-fatal: the engine already has it.
+    if (!$isBuiltin && $relayPath && !ttsClipSave($code, $styleName, $relayPath, (string)$origName)) {
+        error_log("ttsClipSave($code,$styleName) failed");
+    }
 
     // For non-default style additions: just update the JSONB array in DB.
     if ($existingVoice && $styleName !== 'default') {

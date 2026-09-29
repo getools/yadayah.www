@@ -16,6 +16,7 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/gpu-client.php';
+require_once __DIR__ . '/_tts_voice_clips.php';
 
 $user = requireAuth();
 $db   = getDb();
@@ -28,10 +29,26 @@ setCurrentUser($db, (int)$user['user_key']);
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'clips') {
     $code = trim((string)($_GET['code'] ?? ''));
     if ($code === '') errorResponse('code required');
-    $r = gpuRequest('GET', '/tts/voices', ['timeout' => 20]);
+    // Each style row also says whether prod holds a playable copy of its clip
+    // (`audio`, see _tts_voice_clips.php) so the popover can offer a player.
+    $withLocal = function (array $rows) use ($code) {
+        foreach ($rows as &$row) {
+            $lc = ttsClipFind($code, (string)$row['style']);
+            $row['audio'] = $lc ? ['name' => $lc['orig_name'], 'bytes' => $lc['bytes']] : null;
+            if ($lc && empty($row['clips'])) $row['clips'] = [['file' => basename($lc['path']), 'name' => $lc['orig_name']]];
+        }
+        return $rows;
+    };
+    $r = gpuRequest('GET', '/tts/voices', ['timeout' => 8]);
     if (!($r['ok'] ?? false) || !is_array($r['data'] ?? null)) {
-        // Box offline/unconfigured — degrade gracefully (modal falls back to styles).
-        jsonResponse(['ok' => true, 'styles' => [], 'engine_offline' => true]);
+        // Box offline/unconfigured — list the DB styles with any prod-side copies.
+        $st = $db->prepare("SELECT tts_voice_styles FROM yy_tts_voice WHERE tts_voice_code = ? LIMIT 1");
+        $st->execute([$code]);
+        $rows = [];
+        foreach ((json_decode((string)$st->fetchColumn(), true) ?: []) as $s) {
+            if ($s && $s !== 'general') $rows[] = ['style' => (string)$s, 'clips' => []];
+        }
+        jsonResponse(['ok' => true, 'styles' => $withLocal($rows), 'engine_offline' => true]);
     }
     $entry = null;
     foreach ($r['data'] as $v) { if (($v['code'] ?? '') === $code) { $entry = $v; break; } }
@@ -49,7 +66,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'clips')
         }
         $out[] = ['style' => (string)$styleName, 'clips' => $clips];
     }
-    jsonResponse(['ok' => true, 'styles' => $out]);
+    jsonResponse(['ok' => true, 'styles' => $withLocal($out)]);
+}
+
+// ── GET action=clip_audio ───────────────────────────────────────────────
+// Stream the prod-side copy of one style's training clip (for the popover's
+// player). 404 when no copy is held.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'clip_audio') {
+    $lc = ttsClipFind(trim((string)($_GET['code'] ?? '')), trim((string)($_GET['style'] ?? '')));
+    if (!$lc) errorResponse('no stored clip for that style', 404);
+    $types = ['mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'm4a' => 'audio/mp4', 'flac' => 'audio/flac', 'ogg' => 'audio/ogg'];
+    header('Content-Type: ' . ($types[$lc['ext']] ?? 'application/octet-stream'));
+    header('Content-Length: ' . $lc['bytes']);
+    header('Content-Disposition: inline; filename="' . str_replace('"', '', $lc['orig_name']) . '"');
+    header('Cache-Control: private, no-store');
+    readfile($lc['path']);
+    exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
@@ -96,6 +128,7 @@ if ($action === 'edit') {
         // Box renamed — now mirror in the DB and use the new code downstream.
         $db->prepare("UPDATE yy_tts_voice SET tts_voice_code = ?, tts_voice_revision_dtime = NOW() WHERE tts_voice_key = ?")
            ->execute([$newCode, (int)$voice['tts_voice_key']]);
+        ttsClipRename($code, $newCode);
         $code = $newCode;
     }
 
@@ -153,6 +186,7 @@ if ($action === 'delete') {
                                               tts_voice_revision_dtime = NOW()
                         WHERE tts_voice_key = ?")
            ->execute([json_encode($cur), (int)$voice['tts_voice_key']]);
+        ttsClipDelete($code, $style);
         if ($isLocal) {
             $r = gpuDeleteVoice($code, $style, 30);
             if (!$r['ok'] && ($r['status'] ?? 0) !== 0 && ($r['status'] ?? 0) !== 404) {
@@ -163,6 +197,7 @@ if ($action === 'delete') {
     }
     // Whole-voice delete.
     $db->prepare("DELETE FROM yy_tts_voice WHERE tts_voice_key = ?")->execute([(int)$voice['tts_voice_key']]);
+    ttsClipDelete($code);
     if ($isLocal) {
         $r = gpuDeleteVoice($code, '', 30);
         if (!$r['ok'] && ($r['status'] ?? 0) !== 0 && ($r['status'] ?? 0) !== 404) {
