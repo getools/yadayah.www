@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_word_strongs.php';
 
 $user = requireAuth();
 $db = getDb();
@@ -146,6 +147,8 @@ function handlePost(PDO $db, array $user): void {
         ]);
         $wordId = (int)$db->lastInsertId('yy_word_word_key_seq');
         insertTranslits($db, $wordId, $data['translits'] ?? []);
+        // word_strongs is the mirror of the preferred yy_word_strongs row.
+        syncWordStrongsFromCode($db, $wordId, normalizeStrongs($data['word_strongs']) ?: null);
         $db->commit();
     } catch (\Exception $e) {
         $db->rollBack();
@@ -199,6 +202,7 @@ function handlePut(PDO $db, array $user): void {
         $del = $db->prepare("DELETE FROM yy_word_translit WHERE word_key = ?");
         $del->execute([$wordId]);
         insertTranslits($db, $wordId, $data['translits'] ?? []);
+        syncWordStrongsFromCode($db, $wordId, normalizeStrongs($data['word_strongs']) ?: null);
         $db->commit();
     } catch (\Exception $e) {
         $db->rollBack();
@@ -289,6 +293,12 @@ function handlePatch(PDO $db, array $user): void {
         $params[] = $wordKey;
         $stmt = $db->prepare("UPDATE yy_word SET " . implode(', ', $sets) . " WHERE word_key = ?");
         $stmt->execute($params);
+        if (array_key_exists('word_strongs', $data['fields'])) {
+            $cur = $db->prepare('SELECT word_strongs FROM yy_word WHERE word_key = ?');
+            $cur->execute([$wordKey]);
+            $code = $cur->fetchColumn();
+            syncWordStrongsFromCode($db, $wordKey, $code === false ? null : $code);
+        }
 
         // Return updated word
         $stmt = $db->prepare("SELECT * FROM yy_word WHERE word_key = ?");

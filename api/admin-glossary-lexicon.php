@@ -17,6 +17,10 @@
  *   yy_word_translit           every spelling of the word.  The preferred one is
  *                              mirrored into yy_word.word_translit.
  *   yy_word_definition         every definition, tagged by source (word_source_key).
+ *   yy_word_strongs            every Strong's entry of the word, parts of speech
+ *                              included. yy_word.word_strongs_key names the
+ *                              preferred one and yy_word.word_strongs mirrors its
+ *                              code — see _word_strongs.php.
  *
  * ⚠ word_yt has a DB trigger, trg_word_yt, that derives it from word_hebrew on
  *   any statement whose SET list mentions word_hebrew.  The editor now lets YT be
@@ -38,6 +42,7 @@
  * DELETE ?key=N         — delete the word and its satellites
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_word_strongs.php';
 
 $user = requireAuth();
 $db     = getDb();
@@ -64,9 +69,7 @@ const WORD_COLS = "w.word_key,
      w.word_definition_perry,
      w.word_pronunciation_strongs, w.word_pronunciation_yy,
      w.word_pronunciation_ipa, w.word_pronunciation_phonetic, w.word_gender_key,
-     w.word_yy_copy_key, w.word_language,
-     (SELECT array_agg(m.word_pos_key ORDER BY m.word_pos_key)
-        FROM yy_word_pos_map m WHERE m.word_key = w.word_key) AS word_pos_keys";
+     w.word_yy_copy_key, w.word_language, w.word_code, w.word_strongs_key";
 
 /**
  * Postgres hands array_agg() back through PDO as the literal '{1,2,11}', not a
@@ -255,6 +258,11 @@ if ($method === 'GET' && $action === 'meta') {
         'pos'              => $pos,
         'genders'          => $genders,
         'languages'        => $languages,
+        // yy_word_strongs pickers: 23 part-of-speech booleans and the gender codes.
+        'strongs_pos'      => array_map(function ($c, $l) { return ['col' => $c, 'label' => $l]; },
+                                        array_keys(WORD_STRONGS_POS), WORD_STRONGS_POS),
+        'strongs_genders'  => array_map(function ($c, $l) { return ['code' => $c, 'label' => $l]; },
+                                        array_keys(WORD_STRONGS_GENDERS), WORD_STRONGS_GENDERS),
         'source_counts'    => $counts,
         'default_def_cols' => DEFAULT_DEF_COLS,
     ]);
@@ -482,7 +490,7 @@ if ($method === 'GET' && $key) {
     );
     $d->execute([$key]);
     $word['definitions'] = $d->fetchAll();
-    $word['word_pos_keys'] = pgIntArray($word['word_pos_keys'] ?? null);
+    $word['strongs'] = wordStrongsRows($db, $key);
 
     jsonResponse($word);
 }
@@ -500,7 +508,7 @@ if ($method === 'GET' && !$key) {
 
     if ($q !== '') {
         // Search the word itself and any of its alternate spellings/definitions.
-        $where[] = '(w.word_strongs ILIKE :q OR w.word_hebrew ILIKE :q
+        $where[] = '(w.word_strongs ILIKE :q OR w.word_code ILIKE :q OR w.word_hebrew ILIKE :q
                      OR w.word_yt ILIKE :q OR w.word_translit ILIKE :q
                      OR w.word_definition_yy ILIKE :q OR w.word_definition_kirk ILIKE :q
                      OR w.word_definition_perry ILIKE :q
@@ -622,10 +630,6 @@ if ($method === 'GET' && !$key) {
     $stmt->execute($params);
 
     $rows = $stmt->fetchAll();
-    foreach ($rows as &$row) {
-        $row['word_pos_keys'] = pgIntArray($row['word_pos_keys'] ?? null);
-    }
-    unset($row);
 
     jsonResponse([
         'words'  => $rows,
@@ -733,9 +737,7 @@ function forkWordToYy(PDO $db, int $origKey): int {
     /* word_key, user_key and the revision columns are assigned by the insert and
        its triggers; word_count_yy is harvested, so the copy starts with none;
        word_yy_copy_key is the link itself and belongs only to the original. */
-    $copy = 'word_strongs, word_hebrew, word_yt, word_translit,
-             word_flag_noun, word_flag_verb, word_flag_adjective, word_flag_adverb,
-             word_flag_preposition, word_flag_conjunction, word_flag_subst, word_flag_pronoun,
+    $copy = 'word_strongs, word_hebrew, word_yt, word_translit, word_code, word_language,
              word_definition_kirk, word_definition_yy, word_definition_external, word_definition_perry,
              word_active_flag, word_pronunciation_strongs, word_pronunciation_yy,
              word_pronunciation_ipa, word_pronunciation_phonetic, word_gender_key';
@@ -749,18 +751,16 @@ function forkWordToYy(PDO $db, int $origKey): int {
     $newKey = (int)$ins->fetchColumn();
     if ($newKey <= 0) throw new \RuntimeException('Could not copy word ' . $origKey);
 
-    // Spellings, parts of speech and definitions come along, minus their counts:
-    // occurrences belong to the word that was actually harvested.
+    // Spellings, Strong's entries (parts of speech included) and definitions
+    // come along, minus their counts: occurrences belong to the word that was
+    // actually harvested.
     $db->prepare(
         'INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort)
          SELECT ?, word_translit_text, word_translit_sort
            FROM yy_word_translit WHERE word_key = ?'
     )->execute([$newKey, $origKey]);
 
-    $db->prepare(
-        'INSERT INTO yy_word_pos_map (word_key, word_pos_key, word_pos_map_sort)
-         SELECT ?, word_pos_key, word_pos_map_sort FROM yy_word_pos_map WHERE word_key = ?'
-    )->execute([$newKey, $origKey]);
+    copyWordStrongs($db, $origKey, $newKey);
 
     $db->prepare(
         'INSERT INTO yy_word_definition
@@ -889,41 +889,27 @@ function applyExplicitYt(PDO $db, int $wordKey, array $data): void {
 }
 
 /**
- * Replace a word's parts of speech.
+ * Apply the Strong's part of a POST/PUT body.
  *
- * $keys is a list of word_pos_key. Rows that are already correct are left
- * untouched rather than deleted and re-inserted: every write fires the rev
- * trigger, so a blind wipe-and-rewrite would add two history rows per part of
- * speech on every save even when nothing changed.
+ *   strongs        list of yy_word_strongs rows (parts of speech included) —
+ *                  authoritative when present; see saveWordStrongs()
+ *   strongs_state  'none' | 'unknown' — what word_strongs holds when the list
+ *                  is empty ('' = has no Strong's entry, NULL = not yet known)
+ *   word_strongs   the legacy single string; used only when `strongs` is absent,
+ *                  after the main UPDATE has stored it, and synced onto the rows
+ *                  by syncWordStrongsFromCode()
+ *
+ * Parts of speech live on yy_word_strongs now; yy_word_pos_map is no longer
+ * read or written.
  */
-function savePartsOfSpeech(PDO $db, int $wordKey, array $keys): void {
-    $want = [];
-    foreach ($keys as $k) {
-        $k = (int)$k;
-        if ($k > 0) $want[$k] = true;
-    }
-
-    $have = [];
-    $st = $db->prepare('SELECT word_pos_key FROM yy_word_pos_map WHERE word_key = ?');
-    $st->execute([$wordKey]);
-    foreach ($st->fetchAll() as $r) $have[(int)$r['word_pos_key']] = true;
-
-    $add = array_diff_key($want, $have);
-    $del = array_diff_key($have, $want);
-
-    if ($add) {
-        // Guard against a key that is not in the lookup: the FK would throw
-        // and lose the whole save.
-        $ins = $db->prepare(
-            'INSERT INTO yy_word_pos_map (word_key, word_pos_key)
-             SELECT ?, ? WHERE EXISTS (SELECT 1 FROM yy_word_pos WHERE word_pos_key = ?)'
-        );
-        foreach (array_keys($add) as $k) $ins->execute([$wordKey, $k, $k]);
-    }
-    if ($del) {
-        $ph = implode(',', array_fill(0, count($del), '?'));
-        $db->prepare("DELETE FROM yy_word_pos_map WHERE word_key = ? AND word_pos_key IN ($ph)")
-           ->execute(array_merge([$wordKey], array_keys($del)));
+function applyStrongs(PDO $db, int $wordKey, array $data): void {
+    if (array_key_exists('strongs', $data) && is_array($data['strongs'])) {
+        saveWordStrongs($db, $wordKey, $data['strongs'], (string)($data['strongs_state'] ?? ''));
+    } elseif (array_key_exists('word_strongs', $data)) {
+        $cur = $db->prepare('SELECT word_strongs FROM yy_word WHERE word_key = ?');
+        $cur->execute([$wordKey]);
+        $code = $cur->fetchColumn();
+        syncWordStrongsFromCode($db, $wordKey, $code === false ? null : $code);
     }
 }
 
@@ -940,7 +926,9 @@ if ($method === 'POST') {
     /* Same three states as the PUT: NULL = not yet determined, '' = established
        that the word has no Strong's entry, anything else must parse. A new word
        with nothing supplied is unknown, not "has none". */
-    $rawStrongs = $data['word_strongs'] ?? null;
+    $rawStrongs = (array_key_exists('strongs', $data) && is_array($data['strongs']))
+        ? null                                  // the list sets it, via applyStrongs()
+        : ($data['word_strongs'] ?? null);
     if ($rawStrongs === null) {
         $strongs = null;
     } elseif (trim((string)$rawStrongs) === '') {
@@ -962,8 +950,8 @@ if ($method === 'POST') {
                  word_count_yy, word_active_flag,
                  word_pronunciation_strongs, word_pronunciation_yy,
                  word_pronunciation_ipa, word_pronunciation_phonetic, word_gender_key,
-                 word_language)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 word_language, word_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING word_key'
         );
         $stmt->execute([
@@ -984,6 +972,7 @@ if ($method === 'POST') {
             trim((string)($data['word_pronunciation_phonetic'] ?? '')) ?: null,
             ((int)($data['word_gender_key'] ?? 0)) ?: null,
             trim((string)($data['word_language'] ?? '')) ?: null,
+            trim((string)($data['word_code'] ?? '')) ?: null,
         ]);
         $wordKey = (int)$stmt->fetchColumn();
 
@@ -994,10 +983,8 @@ if ($method === 'POST') {
             $db->prepare('UPDATE yy_word SET word_translit = ? WHERE word_key = ?')->execute([$pref, $wordKey]);
         }
         applyExplicitYt($db, $wordKey, $data);
+        applyStrongs($db, $wordKey, $data);
         applyDefaultLanguage($db, $wordKey);
-        if (array_key_exists('word_pos_keys', $data) && is_array($data['word_pos_keys'])) {
-            savePartsOfSpeech($db, $wordKey, $data['word_pos_keys']);
-        }
         // Definitions supplied on create go in as rows too, and the default is
         // mirrored back over whatever the word_definition_* column was seeded with.
         if (array_key_exists('definitions', $data) && is_array($data['definitions'])) {
@@ -1013,6 +1000,9 @@ if ($method === 'POST') {
             }
         }
         $db->commit();
+    } catch (\InvalidArgumentException $e) {
+        $db->rollBack();
+        errorResponse($e->getMessage());
     } catch (\Exception $e) {
         $db->rollBack();
         errorResponse('Failed to create word: ' . $e->getMessage(), 500);
@@ -1086,6 +1076,8 @@ if ($method === 'PUT' && $key) {
         'word_gender_key'             => 'fkey',
         // char(1) FK into yy_word_language; '' means "not classified" -> NULL.
         'word_language'               => 'text',
+        // Root: the word's unique spelling/identifier in its native language.
+        'word_code'                   => 'text',
     ];
 
     // The editor sends both word_translit and the full translits list on every
@@ -1100,6 +1092,11 @@ if ($method === 'PUT' && $key) {
     // Same collision for definitions: the default definition is mirrored into
     // its source's word_definition_* column below, so a scalar of the same name
     // sent alongside the list would assign that column twice. The list wins.
+    // The Strong's list is authoritative and writes the word_strongs mirror
+    // itself (applyStrongs), so the scalar must not also reach the SET clause.
+    $strongsSupplied = array_key_exists('strongs', $data) && is_array($data['strongs']);
+    if ($strongsSupplied) unset($allowed['word_strongs']);
+
     $defsSupplied = array_key_exists('definitions', $data) && is_array($data['definitions']);
     if ($defsSupplied) {
         foreach (DEFAULT_DEF_COLS as $ddCol) unset($allowed[$ddCol]);
@@ -1170,9 +1167,8 @@ if ($method === 'PUT' && $key) {
 
         // A word_yt on its own is a real edit even though it is not in $allowed —
         // it is applied below, after the trigger has had its say.
-        if (!$fields && !$defsSupplied
-                     && !array_key_exists('word_yt', $data)
-                     && !array_key_exists('word_pos_keys', $data)) {
+        if (!$fields && !$defsSupplied && !$strongsSupplied
+                     && !array_key_exists('word_yt', $data)) {
             $db->rollBack();
             errorResponse('Nothing to update');
         }
@@ -1182,11 +1178,12 @@ if ($method === 'PUT' && $key) {
             $db->prepare('UPDATE yy_word SET ' . implode(', ', $fields) . ' WHERE word_key = ?')->execute($params);
         }
         applyExplicitYt($db, $key, $data);
+        applyStrongs($db, $key, $data);
         applyDefaultLanguage($db, $key);
-        if (array_key_exists('word_pos_keys', $data) && is_array($data['word_pos_keys'])) {
-            savePartsOfSpeech($db, $key, $data['word_pos_keys']);
-        }
         $db->commit();
+    } catch (\InvalidArgumentException $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        errorResponse($e->getMessage());
     } catch (\Exception $e) {
         if ($db->inTransaction()) $db->rollBack();
         errorResponse('Failed to save word: ' . $e->getMessage(), 500);
@@ -1202,6 +1199,7 @@ if ($method === 'DELETE' && $key) {
     $db->beginTransaction();
     try {
         $db->prepare('DELETE FROM yy_word_definition WHERE word_key = ?')->execute([$key]);
+        $db->prepare('DELETE FROM yy_word_strongs    WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_translit   WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_pos_map    WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_twot       WHERE word_key = ?')->execute([$key]);

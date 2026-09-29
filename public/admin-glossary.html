@@ -163,11 +163,36 @@
         #lx-yt-plain {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        /* Strong's is stored as one string (H0001) but edited as two fields:
-           the language letter and the zero-padded number. */
-        .lx-strongs-lang { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
-        .lx-strongs-num { width: 78px !important; text-align: center; font-variant-numeric: tabular-nums; }
-        .lx-strongs-suffix { width: 34px !important; text-align: center; }
+        /* Language + Root share the panel's first row. The inline Root label
+           must not take .field-row label's 140px column. */
+        .lx-lang-root select { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
+        .field-row .lx-lang-root .lx-inline-label { flex: none; margin-left: 14px; }
+        .field-row input#lx-code { width: 34ch; text-align: left; }
+
+        /* Strong's: one card per yy_word_strongs row. The header carries the
+           number; details (letters, pronunciation, parts of speech, …) fold. */
+        .lx-sg-list { display: flex; flex-direction: column; gap: 8px; max-width: 780px; }
+        .lx-sg { border: 1px solid #e1e5ea; border-radius: 4px; background: #fbfcfd; }
+        .lx-sg.is-pref { border-color: #3498db; background: #f2f8fd; }
+        .lx-sg-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 8px; }
+        .lx-sg-head label { flex: none; font-size: 0.78rem; color: #888; display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 400; }
+        .lx-sg-head select { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
+        .lx-sg .lx-sg-head input.lx-sg-num { width: 70px !important; text-align: center; font-variant-numeric: tabular-nums; }
+        .lx-sg .lx-sg-head input.lx-sg-suffix { width: 34px !important; text-align: center; }
+        .lx-sg-code { min-width: 64px; font-weight: 700; color: #1a5276; font-variant-numeric: tabular-nums; }
+        .lx-sg-sum { flex: 1; min-width: 120px; font-size: 0.82rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lx-sg-toggle { font-size: 0.78rem; }
+        .lx-sg .lx-x { border: none; background: none; color: #c0392b; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; }
+        .lx-sg-body { display: none; padding: 8px 10px 10px; border-top: 1px solid #e6eaef; }
+        .lx-sg.is-open .lx-sg-body { display: block; }
+        .lx-sg-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+        .field-row .lx-sg-grid > label { flex: none; font-size: 0.8rem; color: #666; white-space: nowrap; }
+        .lx-sg-grid select { justify-self: start; padding: 5px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; background: #fff; }
+        .lx-sg .lx-sg-grid input.lx-sg-original { font-size: 1.15rem; }
+        .lx-sg-grid .lx-sg-pos-label { align-self: start; padding-top: 3px; }
+        .lx-sg-grid .lx-pos { max-width: none; }
+        .lx-sg-empty { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .lx-sg-empty select { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
 
         /* # is harvested from yy_word_occurrence, never typed — shown as a
            derived value rather than an input so it cannot be edited here. */
@@ -177,7 +202,8 @@
             background: #f4f6f8; border: 1px solid #e1e5ea; border-radius: 4px;
         }
 
-        /* Parts of speech: a wrapping row of checkboxes, one per yy_word_pos. */
+        /* Parts of speech: a wrapping row of checkboxes, one per
+           word_strongs_pos_* boolean, inside each Strong's card. */
         .lx-pos { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 620px; }
         .lx-pos label {
             display: flex; align-items: center; gap: 5px; cursor: pointer;
@@ -505,20 +531,32 @@
                  edited in place, saving forks them to a YY copy. -->
             <div id="lx-fork-note" class="lx-fork-note" style="display:none"></div>
 
-            <div class="field-row"><label for="lx-strongs-num">Strong's</label>
-                <div class="field-input"><div class="char-inputs">
-                    <select id="lx-strongs-lang" class="lx-strongs-lang" onchange="lxStrongsLangChanged()">
-                        <option value="unknown"></option>
-                        <option value="none">&ndash;&ndash;</option>
-                        <option value="H">H</option>
-                        <option value="G">G</option>
-                    </select>
-                    <input type="text" id="lx-strongs-num" class="lx-strongs-num" maxlength="4"
-                           placeholder="0000" inputmode="numeric" autocomplete="off">
-                    <input type="text" id="lx-strongs-suffix" class="lx-strongs-suffix" maxlength="1"
-                           autocomplete="off" title="Optional letter distinguishing words that share one Strong's number">
-                    <span style="color:#888;font-size:0.82rem;">Leave <strong>blank</strong> when it is not yet known; pick <strong>&ndash;&ndash;</strong> once you have established the word has no Strong's entry. Otherwise H for Hebrew, G for Greek &mdash; 4 digits, zero-padded. Trailing letter only when two words share a number (a, b, c).</span>
-                </div></div></div>
+            <div class="field-row"><label for="lx-language">Language</label>
+                <div class="field-input">
+                    <div class="char-inputs lx-lang-root">
+                        <select id="lx-language"></select>
+                        <label for="lx-code" class="lx-inline-label">Root</label>
+                        <input type="text" id="lx-code" maxlength="32" autocomplete="off" spellcheck="false" dir="auto">
+                    </div>
+                    <div class="lx-hint">Unique spelling/letters/identifier for the word in its native language.</div>
+                </div></div>
+
+            <div class="field-row" style="align-items:flex-start;"><label>Strong's</label>
+                <div class="field-input">
+                    <!-- Shown only while the word has no Strong's entries: keeps
+                         "not yet determined" (NULL) apart from "has none" (''). -->
+                    <div id="lx-sg-empty" class="lx-sg-empty">
+                        <select id="lx-strongs-state">
+                            <option value="unknown">Not yet determined</option>
+                            <option value="none">Has no Strong's entry</option>
+                        </select>
+                    </div>
+                    <div id="lx-sg-list" class="lx-sg-list"></div>
+                    <div style="margin-top:8px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxAddStrongs()">+ Add Strong's number</button>
+                    </div>
+                    <div class="lx-hint">The selected entry is the preferred one &mdash; its number is what the word list and public glossary show. H for Hebrew, G for Greek; 4 digits, zero-padded; a trailing letter (a, b, c) only when two words share a number.</div>
+                </div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label>Translit</label>
                 <div class="field-input">
@@ -574,18 +612,6 @@
                         </span>
                     </div>
                 </div></div>
-
-            <div class="field-row" style="align-items:flex-start;"><label>Part of Speech</label>
-                <div class="field-input">
-                    <div id="lx-pos" class="lx-pos"></div>
-                    <div class="lx-hint">A word can be more than one &mdash; tick every part of speech that applies.</div>
-                </div></div>
-
-            <div class="field-row"><label for="lx-language">Language</label>
-                <div class="field-input"><div class="char-inputs">
-                    <select id="lx-language"></select>
-                    <span style="color:#888;font-size:0.82rem;">leave blank if not yet classified</span>
-                </div></div></div>
 
             <div class="field-row"><label for="lx-gender">Gender</label>
                 <div class="field-input"><div class="char-inputs">
@@ -1081,14 +1107,10 @@ function lxRenderSources() {
     }).join('');
 }
 
-/* Parts of speech and gender both come from lookups in ?action=meta, so they
-   are rendered once when meta lands rather than rebuilt per record. */
+/* Language and gender come from lookups in ?action=meta, so they are rendered
+   once when meta lands rather than rebuilt per record. (Parts of speech now
+   live on each Strong's card — see lxAddStrongs.) */
 function lxRenderPosGender() {
-    document.getElementById('lx-pos').innerHTML = (lxMeta.pos || []).map(function(p) {
-        return '<label><input type="checkbox" class="lx-pos-cb" value="' + p.word_pos_key + '"> '
-             + esc(p.word_pos_label || p.word_pos_code || ('#' + p.word_pos_key)) + '</label>';
-    }).join('');
-
     /* The list's Language filter. Blank = no filter; the lookup supplies the rest.
        Options are built in their SHORT form; lxBindLangFilter swaps them to the
        long form while the list is open. */
@@ -1120,22 +1142,10 @@ function lxRenderPosGender() {
 
 /* One setter for both New Word (an empty object clears everything) and Edit. */
 function lxSetPosGender(w) {
-    var keys = {};
-    ((w && w.word_pos_keys) || []).forEach(function(k) { keys[String(k)] = true; });
-    document.querySelectorAll('.lx-pos-cb').forEach(function(cb) {
-        cb.checked = !!keys[cb.value];
-    });
     document.getElementById('lx-gender').value = (w && w.word_gender_key) ? String(w.word_gender_key) : '';
     document.getElementById('lx-language').value =
         (w && w.word_language) ? String(w.word_language).trim() : '';
-}
-
-function lxCollectPos() {
-    var out = [];
-    document.querySelectorAll('.lx-pos-cb').forEach(function(cb) {
-        if (cb.checked) out.push(parseInt(cb.value, 10));
-    });
-    return out;
+    document.getElementById('lx-code').value = (w && w.word_code) || '';
 }
 
 function lxSort(key) {
@@ -1799,48 +1809,170 @@ function lxShowYtPlain() {
     document.getElementById('lx-yt-plain').textContent = yt ? '(' + yt + ')' : '';
 }
 
-/* Strong's: one stored string, two edit fields. Splitting is forgiving so a
-   legacy bare number or a lower-case letter still loads into the right boxes;
-   joining always hands the API letter + digits, which it canonicalises. */
-function lxSetStrongs(stored) {
-    var m = /^([A-Za-z])?0*([0-9]{1,4})([A-Za-z])?$/.exec(String(stored == null ? '' : stored).trim());
-    /* Three states, and NULL is NOT the same as ''.
-         null  → blank   nobody has determined it yet  (the 4,101 books words)
-         ''    → '--'    established: this word has no Strong's entry
-         value → H / G
-       Never default to 'H' for an unknown — that claims a number nobody assigned. */
-    document.getElementById('lx-strongs-lang').value =
-        m ? ((m[1] || 'H').toUpperCase()) : (stored == null ? 'unknown' : 'none');
-    document.getElementById('lx-strongs-num').value = m ? lxPad4(m[2]) : '';
-    document.getElementById('lx-strongs-suffix').value = (m && m[3]) ? m[3].toLowerCase() : '';
-    lxStrongsLangChanged();
+/* Strong's: one card per yy_word_strongs row. The radio marks the preferred
+   row, whose code the API mirrors into yy_word.word_strongs. With no rows, the
+   state select keeps the two empties apart:
+     unknown → NULL  nobody has determined it yet  (the books words)
+     none    → ''    established: this word has no Strong's entry
+   Never default a new card's number — that claims a number nobody assigned. */
+var LX_SG_TEXT = [
+    // [column, label, maxlength, extra attributes]
+    ['word_strongs_original',      'Original',      64,  ' dir="auto" lang="he" class="lx-sg-original"'],
+    ['word_strongs_translit',      'Translit',      64,  ''],
+    ['word_strongs_pronunciation', 'Pronunciation', 100, ''],
+    ['word_strongs_phonetic',      'Phonetic',      100, ''],
+    ['word_strongs_origin',        'Origin',        64,  '']
+];
+
+function lxRenderStrongs(list, stored) {
+    document.getElementById('lx-sg-list').innerHTML = '';
+    (list || []).forEach(function(s, i) { lxAddStrongs(s, i === 0, true); });
+    document.getElementById('lx-strongs-state').value = (stored === '' ? 'none' : 'unknown');
+    lxStrongsChanged();
 }
 
-/* Neither blank (unknown) nor '--' (has none) can carry a number, so in both
-   cases the boxes are cleared and locked until H or G is picked. */
-function lxStrongsLangChanged() {
-    var v      = document.getElementById('lx-strongs-lang').value;
-    var none   = (v === 'unknown' || v === 'none');
-    var num    = document.getElementById('lx-strongs-num');
-    var suffix = document.getElementById('lx-strongs-suffix');
-    if (none) { num.value = ''; suffix.value = ''; }
-    num.disabled = suffix.disabled = none;
-    // Only the number's tooltip is ours to set — the suffix carries its own
-    // explanation from the markup and must keep it.
-    num.title = none ? "Pick H or G first — '--' means this word has no Strong's number." : '';
+function lxAddStrongs(s, preferred, quiet) {
+    s = s || {};
+    var wrap = document.getElementById('lx-sg-list');
+    if (preferred === undefined) preferred = !wrap.children.length;
+    var card = document.createElement('div');
+    card.className = 'lx-sg';
+    // Blank for a new card: the API inserts when there is no key.
+    card.setAttribute('data-key', s.word_strongs_key || '');
+
+    var lang = s.word_strongs_language || '';
+    var html =
+          '<div class="lx-sg-head">'
+        + '<label title="Preferred entry"><input type="radio" name="lx-sg-pref" class="lx-sg-pref"'
+        + (preferred ? ' checked' : '') + '> preferred</label>'
+        + '<select class="lx-sg-lang">'
+        +   '<option value=""' + (lang ? '' : ' selected') + '></option>'
+        +   '<option value="H"' + (lang === 'H' ? ' selected' : '') + '>H</option>'
+        +   '<option value="G"' + (lang === 'G' ? ' selected' : '') + '>G</option>'
+        + '</select>'
+        + '<input type="text" class="lx-sg-num" maxlength="4" placeholder="0000" inputmode="numeric" autocomplete="off"'
+        + ' value="' + (s.word_strongs_number ? lxPad4(s.word_strongs_number) : '') + '">'
+        + '<input type="text" class="lx-sg-suffix" maxlength="1" autocomplete="off"'
+        + ' title="Optional letter distinguishing words that share one Strong\'s number"'
+        + ' value="' + esc(s.word_strongs_suffix || '') + '">'
+        + '<span class="lx-sg-code"></span>'
+        + '<span class="lx-sg-sum"></span>'
+        + '<button type="button" class="btn btn-secondary btn-sm lx-sg-toggle">Details</button>'
+        + '<button type="button" class="lx-x" title="Remove this Strong\'s entry">&times;</button>'
+        + '</div>'
+        + '<div class="lx-sg-body"><div class="lx-sg-grid">';
+    LX_SG_TEXT.forEach(function(f) {
+        html += '<label>' + f[1] + '</label>'
+              + '<input type="text" data-col="' + f[0] + '" maxlength="' + f[2] + '" autocomplete="off"' + f[3]
+              + ' value="' + esc(s[f[0]] || '') + '">';
+    });
+    html += '<label>Gender</label><select data-col="word_strongs_gender"><option value=""></option>'
+          + (lxMeta.strongs_genders || []).map(function(g) {
+                return '<option value="' + esc(g.code) + '"' + (s.word_strongs_gender === g.code ? ' selected' : '')
+                     + '>' + esc(g.label) + '</option>';
+            }).join('')
+          + '</select>'
+          + '<label>Definition</label><textarea data-col="word_strongs_definition" rows="3">'
+          + esc(s.word_strongs_definition || '') + '</textarea>'
+          + '<label class="lx-sg-pos-label">Part of Speech</label><div class="lx-pos">'
+          + (lxMeta.strongs_pos || []).map(function(p) {
+                return '<label><input type="checkbox" class="lx-sg-pos" data-col="' + esc(p.col) + '"'
+                     + (s[p.col] ? ' checked' : '') + '> ' + esc(p.label) + '</label>';
+            }).join('')
+          + '</div></div></div>';
+    card.innerHTML = html;
+
+    card.querySelector('.lx-sg-toggle').addEventListener('click', function() {
+        card.classList.toggle('is-open');
+        this.textContent = card.classList.contains('is-open') ? 'Hide details' : 'Details';
+    });
+    card.querySelector('.lx-x').addEventListener('click', function() {
+        var code = card.querySelector('.lx-sg-code').textContent;
+        if (card.getAttribute('data-key') && !confirm('Remove Strong\'s ' + (code || 'entry') + ' from this word?')) return;
+        card.remove();
+        lxStrongsChanged();
+    });
+    var num = card.querySelector('.lx-sg-num');
+    // Show the padded form as soon as the field is left, so what is on screen
+    // is what gets stored.
+    num.addEventListener('blur', function() {
+        var v = this.value.trim();
+        if (/^[0-9]{1,4}$/.test(v)) this.value = lxPad4(v);
+        lxStrongsChanged();
+    });
+    card.querySelectorAll('.lx-sg-head select, .lx-sg-head input, .lx-sg-grid input[type=text]').forEach(function(el) {
+        el.addEventListener(el.tagName === 'SELECT' || el.type === 'radio' ? 'change' : 'input', lxStrongsChanged);
+    });
+
+    wrap.appendChild(card);
+    lxStrongsChanged();
+    if (!quiet) {
+        card.classList.add('is-open');
+        card.querySelector('.lx-sg-toggle').textContent = 'Hide details';
+        card.querySelector('.lx-sg-lang').focus();
+    }
 }
 
-function lxGetStrongs() {
-    /* Returns null for unknown and '' for "has none" — the API stores those as
-       NULL and '' respectively, which is the whole point of the distinction. */
-    var lang = document.getElementById('lx-strongs-lang').value;
-    if (lang === 'unknown') return null;
-    if (lang === 'none')    return '';
-    var n = document.getElementById('lx-strongs-num').value.trim();
-    if (!n) return null;
-    // The suffix is meaningless without a number, so it rides along only here.
-    return document.getElementById('lx-strongs-lang').value + n
-         + document.getElementById('lx-strongs-suffix').value.trim().toLowerCase();
+/* Re-derive each card's code and summary, keep exactly one preferred, and
+   show the no-entry state select only when there are no cards. */
+function lxStrongsChanged() {
+    var cards = document.querySelectorAll('#lx-sg-list .lx-sg');
+    if (cards.length && !document.querySelector('#lx-sg-list .lx-sg-pref:checked')) {
+        cards[0].querySelector('.lx-sg-pref').checked = true;
+    }
+    cards.forEach(function(card) {
+        card.querySelector('.lx-sg-code').textContent = lxSgCode(card) || '';
+        var bits = [];
+        ['word_strongs_original', 'word_strongs_translit'].forEach(function(c) {
+            var v = card.querySelector('[data-col="' + c + '"]').value.trim();
+            if (v) bits.push(v);
+        });
+        card.querySelector('.lx-sg-sum').textContent = bits.join(' · ');
+        card.classList.toggle('is-pref', card.querySelector('.lx-sg-pref').checked);
+    });
+    document.getElementById('lx-sg-empty').style.display = cards.length ? 'none' : '';
+}
+
+function lxSgCode(card) {
+    var lang = card.querySelector('.lx-sg-lang').value;
+    var n = card.querySelector('.lx-sg-num').value.trim();
+    if (!lang || !/^[0-9]{1,4}$/.test(n) || !parseInt(n, 10)) return '';
+    return lang + lxPad4(parseInt(n, 10)) + card.querySelector('.lx-sg-suffix').value.trim().toLowerCase();
+}
+
+/* Returns {list, error}. A card left completely blank is dropped rather than
+   treated as an error — it is an entry nobody started. */
+function lxCollectStrongs() {
+    var out = [], seen = {}, error = null;
+    document.querySelectorAll('#lx-sg-list .lx-sg').forEach(function(card, i) {
+        if (error) return;
+        var lang   = card.querySelector('.lx-sg-lang').value;
+        var n      = card.querySelector('.lx-sg-num').value.trim();
+        var suffix = card.querySelector('.lx-sg-suffix').value.trim();
+        var row = {
+            word_strongs_key:      parseInt(card.getAttribute('data-key'), 10) || 0,
+            word_strongs_language: lang,
+            word_strongs_number:   n,
+            word_strongs_suffix:   suffix,
+            preferred:             card.querySelector('.lx-sg-pref').checked
+        };
+        var filled = lang || n || suffix;
+        card.querySelectorAll('.lx-sg-grid [data-col]').forEach(function(el) {
+            var c = el.getAttribute('data-col');
+            if (el.type === 'checkbox') { row[c] = el.checked; if (el.checked) filled = true; }
+            else { row[c] = el.value.trim(); if (row[c]) filled = true; }
+        });
+        if (!filled && !row.word_strongs_key) return;
+        var label = "Strong's entry " + (i + 1);
+        if (!lang)                             { error = label + ': pick H or G.'; return; }
+        if (!/^[0-9]{1,4}$/.test(n) || !parseInt(n, 10)) { error = label + ': the number must be 1–4 digits.'; return; }
+        if (suffix && !/^[A-Za-z]$/.test(suffix)) { error = label + ': the suffix must be a single letter.'; return; }
+        var code = lxSgCode(card);
+        if (seen[code]) { error = code + ' is listed twice.'; return; }
+        seen[code] = true;
+        out.push(row);
+    });
+    return {list: out, error: error};
 }
 
 function lxPad4(n) {
@@ -1848,13 +1980,6 @@ function lxPad4(n) {
     while (n.length < 4) n = '0' + n;
     return n;
 }
-
-/* Show the padded form as soon as the field is left, so what is on screen is
-   what gets stored. */
-document.getElementById('lx-strongs-num').addEventListener('blur', function() {
-    var v = this.value.trim();
-    if (/^[0-9]{1,4}$/.test(v)) this.value = lxPad4(v);
-});
 
 /* Pronunciation fields. One setter for both New Word (an empty object clears
    every box) and Edit (the word row fills them). */
@@ -1894,7 +2019,8 @@ function openWordPanel(title, showDelete) {
 function newWord() {
     lxLoadMeta(function() {
         editingWordKey = null;
-        lxSetStrongs('');
+        // A new word's Strong's status is unknown until someone determines it.
+        lxRenderStrongs([], null);
         document.getElementById('lx-hebrew').value = '';
         document.getElementById('lx-count').textContent = '—';
         // One empty definition ready to type into, on the word's own source.
@@ -1922,7 +2048,7 @@ function editWord(key) {
             .then(function(r){return safeJson(r);}).then(function(w) {
             if (!w || w.error) { alert((w && w.error) || 'Word not found'); return; }
             editingWordKey = key;
-            lxSetStrongs(w.word_strongs);
+            lxRenderStrongs(w.strongs, w.word_strongs);
             document.getElementById('lx-hebrew').value = w.word_hebrew || '';
             document.getElementById('lx-count').textContent =
                 (w.word_count_yy === null || w.word_count_yy === undefined) ? '—' : w.word_count_yy;
@@ -2115,17 +2241,17 @@ function saveWord() {
     var hebrew = document.getElementById('lx-hebrew').value.trim();
     if (!translits.length && !hebrew) return fail('Give the word a spelling or Hebrew text.');
 
-    var strongsNum = document.getElementById('lx-strongs-num').value.trim();
-    if (strongsNum && !/^[0-9]{1,4}$/.test(strongsNum)) return fail("Strong's number must be 1–4 digits.");
-    var strongsSuffix = document.getElementById('lx-strongs-suffix').value.trim();
-    if (strongsSuffix && !/^[A-Za-z]$/.test(strongsSuffix)) return fail("Strong's suffix must be a single letter.");
-    if (strongsSuffix && !strongsNum) return fail("Strong's suffix needs a number to go with it.");
-    var strongs = lxGetStrongs();
+    var strongs = lxCollectStrongs();
+    if (strongs.error) return fail(strongs.error);
 
     // word_count_yy is intentionally NOT sent: it is harvested from
     // yy_word_occurrence by _word_harvest.php, so the panel only displays it.
     var data = {
-        word_strongs: strongs,
+        // The Strong's list is authoritative; the API mirrors the preferred
+        // row's code into word_strongs, or the state ('' / NULL) when empty.
+        strongs: strongs.list,
+        strongs_state: document.getElementById('lx-strongs-state').value,
+        word_code: document.getElementById('lx-code').value.trim(),
         word_hebrew: hebrew,
         // Sent explicitly so a typed spelling survives trg_word_yt, which would
         // otherwise re-derive it from the Hebrew and drop any half-rings.
@@ -2137,7 +2263,6 @@ function saveWord() {
         word_pronunciation_yy:       document.getElementById('lx-pron-yy').value.trim(),
         word_pronunciation_ipa:      document.getElementById('lx-pron-ipa').value.trim(),
         word_pronunciation_phonetic: document.getElementById('lx-pron-phonetic').value.trim(),
-        word_pos_keys: lxCollectPos(),
         word_gender_key: document.getElementById('lx-gender').value,
         word_language: document.getElementById('lx-language').value,
         word_source_code: document.getElementById('lx-source-code').value,
@@ -2180,6 +2305,19 @@ function saveWord() {
                 if (w && !w.error) {
                     document.getElementById('lx-yt').value = w.word_yt || '';
                     lxShowYtPlain();
+                    /* New Strong's cards need the keys the API just assigned, or
+                       the next save would delete and re-insert them. Cards that
+                       were open stay open. */
+                    var open = {};
+                    document.querySelectorAll('#lx-sg-list .lx-sg.is-open .lx-sg-code').forEach(function(el) {
+                        open[el.textContent] = true;
+                    });
+                    lxRenderStrongs(w.strongs, w.word_strongs);
+                    document.querySelectorAll('#lx-sg-list .lx-sg').forEach(function(card) {
+                        if (open[card.querySelector('.lx-sg-code').textContent]) {
+                            card.querySelector('.lx-sg-toggle').click();
+                        }
+                    });
                 }
             });
         }

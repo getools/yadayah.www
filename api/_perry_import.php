@@ -36,6 +36,7 @@
 
 if (PHP_SAPI !== 'cli') { fwrite(STDERR, "CLI only\n"); exit(1); }
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_word_strongs.php';
 
 $opts    = getopt('', ['csv::', 'apply', 'reset', 'limit::']);
 $apply   = array_key_exists('apply', $opts);
@@ -255,6 +256,8 @@ try {
         ]);
         $wk = (int)$insWord->fetchColumn();
         $nW++;
+        // word_strongs is the mirror of a yy_word_strongs row, so give it one.
+        syncWordStrongsFromCode($db, $wk, $p['strongs']);
 
         foreach ($p['spellings'] as $i => $t) { $insTr->execute([$wk, $t, $i]); $nT++; }
         foreach ($p['glosses']   as $g)       { $insDef->execute([$wk, $srcKeys['perry'], $g]); $nD++; }
