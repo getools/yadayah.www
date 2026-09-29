@@ -169,8 +169,9 @@
         .field-row .lx-lang-root .lx-inline-label { flex: none; margin-left: 14px; }
         .field-row input#lx-code { width: 34ch; text-align: left; }
 
-        /* Strong's: one card per yy_word_strongs row. The header carries the
-           number; details (letters, pronunciation, parts of speech, …) fold. */
+        /* Strong's: one card per yy_word_strongs row, every field visible. The
+           number line carries the original letters and translit beside the
+           code; the grid below holds the rest. */
         .lx-sg-list { display: flex; flex-direction: column; gap: 8px; max-width: 780px; }
         .lx-sg { border: 1px solid #e1e5ea; border-radius: 4px; background: #fbfcfd; }
         .lx-sg.is-pref { border-color: #3498db; background: #f2f8fd; }
@@ -180,16 +181,18 @@
         .lx-sg .lx-sg-head input.lx-sg-num { width: 70px !important; text-align: center; font-variant-numeric: tabular-nums; }
         .lx-sg .lx-sg-head input.lx-sg-suffix { width: 34px !important; text-align: center; }
         .lx-sg-code { min-width: 64px; font-weight: 700; color: #1a5276; font-variant-numeric: tabular-nums; }
-        .lx-sg-sum { flex: 1; min-width: 120px; font-size: 0.82rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .lx-sg-toggle { font-size: 0.78rem; }
-        .lx-sg .lx-x { border: none; background: none; color: #c0392b; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; }
-        .lx-sg-body { display: none; padding: 8px 10px 10px; border-top: 1px solid #e6eaef; }
-        .lx-sg.is-open .lx-sg-body { display: block; }
-        .lx-sg-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+        .lx-sg-field { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: #666; }
+        .lx-sg .lx-sg-head .lx-sg-field input { width: 150px; }
+        .lx-sg .lx-sg-head input.lx-sg-original { width: 120px; font-size: 1.1rem; padding-top: 4px; padding-bottom: 4px; }
+        .lx-sg .lx-x { margin-left: auto; border: none; background: none; color: #c0392b; cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 6px; }
+        .lx-sg-grid {
+            display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 10px; align-items: center;
+            padding: 8px 10px 10px; border-top: 1px solid #e6eaef;
+        }
         .field-row .lx-sg-grid > label { flex: none; font-size: 0.8rem; color: #666; white-space: nowrap; }
+        .field-row .lx-sg-grid > label.lx-sg-top { align-self: start; padding-top: 4px; }
         .lx-sg-grid select { justify-self: start; padding: 5px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; background: #fff; }
-        .lx-sg .lx-sg-grid input.lx-sg-original { font-size: 1.15rem; }
-        .lx-sg-grid .lx-sg-pos-label { align-self: start; padding-top: 3px; }
+        .lx-sg-grid .lx-sg-wide { grid-column: 2 / -1; }
         .lx-sg-grid .lx-pos { max-width: none; }
         .lx-sg-empty { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
         .lx-sg-empty select { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
@@ -1812,14 +1815,13 @@ function lxShowYtPlain() {
      unknown → NULL  nobody has determined it yet  (the books words)
      none    → ''    established: this word has no Strong's entry
    Never default a new card's number — that claims a number nobody assigned. */
-var LX_SG_TEXT = [
-    // [column, label, maxlength, extra attributes]
-    ['word_strongs_original',      'Original',      64,  ' dir="auto" lang="he" class="lx-sg-original"'],
-    ['word_strongs_translit',      'Translit',      64,  ''],
-    ['word_strongs_pronunciation', 'Pronunciation', 100, ' placeholder="e.g. ber-EETH"'],
-    ['word_strongs_phonetic',      'Phonetic',      100, ''],
-    ['word_strongs_origin',        'Origin',        64,  '']
-];
+/* Every field of an entry is on the card, always visible: the number line
+   carries the original letters and transliteration beside the code, and the
+   grid below holds the rest. */
+function lxSgInput(s, col, max, attrs) {
+    return '<input type="text" data-col="' + col + '" maxlength="' + max + '" autocomplete="off"'
+         + (attrs || '') + ' value="' + esc(s[col] || '') + '">';
+}
 
 function lxRenderStrongs(list, stored) {
     document.getElementById('lx-sg-list').innerHTML = '';
@@ -1853,36 +1855,32 @@ function lxAddStrongs(s, preferred, quiet) {
         + ' title="Optional letter distinguishing words that share one Strong\'s number"'
         + ' value="' + esc(s.word_strongs_suffix || '') + '">'
         + '<span class="lx-sg-code"></span>'
-        + '<span class="lx-sg-sum"></span>'
-        + '<button type="button" class="btn btn-secondary btn-sm lx-sg-toggle">Details</button>'
+        + '<span class="lx-sg-field lx-sg-field-orig"><span>Original</span>'
+        +   lxSgInput(s, 'word_strongs_original', 64, ' dir="rtl" lang="he" class="lx-sg-original"') + '</span>'
+        + '<span class="lx-sg-field lx-sg-field-tr"><span>Translit</span>'
+        +   lxSgInput(s, 'word_strongs_translit', 64) + '</span>'
         + '<button type="button" class="lx-x" title="Remove this Strong\'s entry">&times;</button>'
         + '</div>'
-        + '<div class="lx-sg-body"><div class="lx-sg-grid">';
-    LX_SG_TEXT.forEach(function(f) {
-        html += '<label>' + f[1] + '</label>'
-              + '<input type="text" data-col="' + f[0] + '" maxlength="' + f[2] + '" autocomplete="off"' + f[3]
-              + ' value="' + esc(s[f[0]] || '') + '">';
-    });
-    html += '<label>Gender</label><select data-col="word_strongs_gender"><option value=""></option>'
-          + (lxMeta.strongs_genders || []).map(function(g) {
-                return '<option value="' + esc(g.code) + '"' + (s.word_strongs_gender === g.code ? ' selected' : '')
-                     + '>' + esc(g.label) + '</option>';
-            }).join('')
-          + '</select>'
-          + '<label>Definition</label><textarea data-col="word_strongs_definition" rows="3">'
-          + esc(s.word_strongs_definition || '') + '</textarea>'
-          + '<label class="lx-sg-pos-label">Part of Speech</label><div class="lx-pos">'
-          + (lxMeta.strongs_pos || []).map(function(p) {
-                return '<label><input type="checkbox" class="lx-sg-pos" data-col="' + esc(p.col) + '"'
-                     + (s[p.col] ? ' checked' : '') + '> ' + esc(p.label) + '</label>';
-            }).join('')
-          + '</div></div></div>';
+        + '<div class="lx-sg-grid">'
+        + '<label>Pronunciation</label>' + lxSgInput(s, 'word_strongs_pronunciation', 100, ' placeholder="e.g. ber-EETH"')
+        + '<label>Phonetic</label>'      + lxSgInput(s, 'word_strongs_phonetic', 100)
+        + '<label>Origin</label>'        + lxSgInput(s, 'word_strongs_origin', 64, ' placeholder="e.g. from H0433"')
+        + '<label>Gender</label><select data-col="word_strongs_gender"><option value=""></option>'
+        + (lxMeta.strongs_genders || []).map(function(g) {
+              return '<option value="' + esc(g.code) + '"' + (s.word_strongs_gender === g.code ? ' selected' : '')
+                   + '>' + esc(g.label) + '</option>';
+          }).join('')
+        + '</select>'
+        + '<label class="lx-sg-top">Definition</label><textarea class="lx-sg-wide" data-col="word_strongs_definition" rows="2">'
+        + esc(s.word_strongs_definition || '') + '</textarea>'
+        + '<label class="lx-sg-top">Part of Speech</label><div class="lx-pos lx-sg-wide">'
+        + (lxMeta.strongs_pos || []).map(function(p) {
+              return '<label><input type="checkbox" class="lx-sg-pos" data-col="' + esc(p.col) + '"'
+                   + (s[p.col] ? ' checked' : '') + '> ' + esc(p.label) + '</label>';
+          }).join('')
+        + '</div></div>';
     card.innerHTML = html;
 
-    card.querySelector('.lx-sg-toggle').addEventListener('click', function() {
-        card.classList.toggle('is-open');
-        this.textContent = card.classList.contains('is-open') ? 'Hide details' : 'Details';
-    });
     card.querySelector('.lx-x').addEventListener('click', function() {
         var code = card.querySelector('.lx-sg-code').textContent;
         if (card.getAttribute('data-key') && !confirm('Remove Strong\'s ' + (code || 'entry') + ' from this word?')) return;
@@ -1897,21 +1895,17 @@ function lxAddStrongs(s, preferred, quiet) {
         if (/^[0-9]{1,4}$/.test(v)) this.value = lxPad4(v);
         lxStrongsChanged();
     });
-    card.querySelectorAll('.lx-sg-head select, .lx-sg-head input, .lx-sg-grid input[type=text]').forEach(function(el) {
+    card.querySelectorAll('.lx-sg-lang, .lx-sg-num, .lx-sg-suffix, .lx-sg-pref').forEach(function(el) {
         el.addEventListener(el.tagName === 'SELECT' || el.type === 'radio' ? 'change' : 'input', lxStrongsChanged);
     });
 
     wrap.appendChild(card);
     lxStrongsChanged();
-    if (!quiet) {
-        card.classList.add('is-open');
-        card.querySelector('.lx-sg-toggle').textContent = 'Hide details';
-        card.querySelector('.lx-sg-lang').focus();
-    }
+    if (!quiet) card.querySelector('.lx-sg-lang').focus();
 }
 
-/* Re-derive each card's code and summary, keep exactly one preferred, and
-   show the no-entry state select only when there are no cards. */
+/* Re-derive each card's code, keep exactly one preferred, and show the
+   no-entry state select only when there are no cards. */
 function lxStrongsChanged() {
     var cards = document.querySelectorAll('#lx-sg-list .lx-sg');
     if (cards.length && !document.querySelector('#lx-sg-list .lx-sg-pref:checked')) {
@@ -1919,12 +1913,6 @@ function lxStrongsChanged() {
     }
     cards.forEach(function(card) {
         card.querySelector('.lx-sg-code').textContent = lxSgCode(card) || '';
-        var bits = [];
-        ['word_strongs_original', 'word_strongs_translit'].forEach(function(c) {
-            var v = card.querySelector('[data-col="' + c + '"]').value.trim();
-            if (v) bits.push(v);
-        });
-        card.querySelector('.lx-sg-sum').textContent = bits.join(' · ');
         card.classList.toggle('is-pref', card.querySelector('.lx-sg-pref').checked);
     });
     document.getElementById('lx-sg-empty').style.display = cards.length ? 'none' : '';
@@ -1954,7 +1942,7 @@ function lxCollectStrongs() {
             preferred:             card.querySelector('.lx-sg-pref').checked
         };
         var filled = lang || n || suffix;
-        card.querySelectorAll('.lx-sg-grid [data-col]').forEach(function(el) {
+        card.querySelectorAll('[data-col]').forEach(function(el) {
             var c = el.getAttribute('data-col');
             if (el.type === 'checkbox') { row[c] = el.checked; if (el.checked) filled = true; }
             else { row[c] = el.value.trim(); if (row[c]) filled = true; }
@@ -2301,18 +2289,8 @@ function saveWord() {
                     document.getElementById('lx-yt').value = w.word_yt || '';
                     lxShowYtPlain();
                     /* New Strong's cards need the keys the API just assigned, or
-                       the next save would delete and re-insert them. Cards that
-                       were open stay open. */
-                    var open = {};
-                    document.querySelectorAll('#lx-sg-list .lx-sg.is-open .lx-sg-code').forEach(function(el) {
-                        open[el.textContent] = true;
-                    });
+                       the next save would delete and re-insert them. */
                     lxRenderStrongs(w.strongs, w.word_strongs);
-                    document.querySelectorAll('#lx-sg-list .lx-sg').forEach(function(card) {
-                        if (open[card.querySelector('.lx-sg-code').textContent]) {
-                            card.querySelector('.lx-sg-toggle').click();
-                        }
-                    });
                 }
             });
         }
