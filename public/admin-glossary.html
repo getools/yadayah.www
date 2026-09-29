@@ -596,9 +596,6 @@
             <div class="field-row" style="align-items:flex-start;"><label>Pronunciation</label>
                 <div class="field-input">
                     <div class="lx-pron">
-                        <label for="lx-pron-strongs">Strong's</label>
-                        <input type="text" id="lx-pron-strongs" maxlength="200" autocomplete="off" placeholder="e.g. ber-EETH">
-
                         <label for="lx-pron-yy">YY</label>
                         <input type="text" id="lx-pron-yy" maxlength="200" autocomplete="off" placeholder="e.g. beryth">
 
@@ -1819,7 +1816,7 @@ var LX_SG_TEXT = [
     // [column, label, maxlength, extra attributes]
     ['word_strongs_original',      'Original',      64,  ' dir="auto" lang="he" class="lx-sg-original"'],
     ['word_strongs_translit',      'Translit',      64,  ''],
-    ['word_strongs_pronunciation', 'Pronunciation', 100, ''],
+    ['word_strongs_pronunciation', 'Pronunciation', 100, ' placeholder="e.g. ber-EETH"'],
     ['word_strongs_phonetic',      'Phonetic',      100, ''],
     ['word_strongs_origin',        'Origin',        64,  '']
 ];
@@ -1984,7 +1981,6 @@ function lxPad4(n) {
 /* Pronunciation fields. One setter for both New Word (an empty object clears
    every box) and Edit (the word row fills them). */
 var LX_PRON_FIELDS = {
-    'lx-pron-strongs':  'word_pronunciation_strongs',
     'lx-pron-yy':       'word_pronunciation_yy',
     'lx-pron-ipa':      'word_pronunciation_ipa',
     'lx-pron-phonetic': 'word_pronunciation_phonetic'
@@ -2259,7 +2255,6 @@ function saveWord() {
         // The definitions list is authoritative; the API mirrors whichever one
         // is default into that source's word_definition_* column.
         definitions: lxCollectDefinitions(),
-        word_pronunciation_strongs:  document.getElementById('lx-pron-strongs').value.trim(),
         word_pronunciation_yy:       document.getElementById('lx-pron-yy').value.trim(),
         word_pronunciation_ipa:      document.getElementById('lx-pron-ipa').value.trim(),
         word_pronunciation_phonetic: document.getElementById('lx-pron-phonetic').value.trim(),

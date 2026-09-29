@@ -911,6 +911,26 @@ function applyStrongs(PDO $db, int $wordKey, array $data): void {
         $code = $cur->fetchColumn();
         syncWordStrongsFromCode($db, $wordKey, $code === false ? null : $code);
     }
+
+    /* word_pronunciation_strongs mirrors the preferred entry's pronunciation.
+       A caller that still sends the column without the list edits the entry,
+       so the mirror below does not undo it. */
+    if (!(array_key_exists('strongs', $data) && is_array($data['strongs']))
+            && array_key_exists('word_pronunciation_strongs', $data)) {
+        $p = trim((string)$data['word_pronunciation_strongs']);
+        $db->prepare('UPDATE yy_word_strongs s SET word_strongs_pronunciation = ?
+                        FROM yy_word w
+                       WHERE w.word_key = ? AND s.word_strongs_key = w.word_strongs_key
+                         AND s.word_strongs_pronunciation IS DISTINCT FROM ?::varchar')
+           ->execute([$p !== '' ? mb_substr($p, 0, 100) : null, $wordKey, $p !== '' ? mb_substr($p, 0, 100) : null]);
+    }
+    $pk = $db->prepare('SELECT word_strongs_key, word_strongs FROM yy_word WHERE word_key = ?');
+    $pk->execute([$wordKey]);
+    $w = $pk->fetch();
+    if ($w) {
+        setWordStrongsPreferred($db, $wordKey, $w['word_strongs_key'] !== null ? (int)$w['word_strongs_key'] : null,
+                                $w['word_strongs']);
+    }
 }
 
 if ($method === 'POST') {

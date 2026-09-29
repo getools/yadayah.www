@@ -12,6 +12,9 @@
  *                              the list sort. With no rows it keeps its old
  *                              meaning: NULL = not yet determined, '' = the word
  *                              has no Strong's entry.
+ *   yy_word.word_pronunciation_strongs
+ *                              MIRROR of the preferred row's pronunciation (NULL
+ *                              with no rows); the editor edits it on the entry.
  *
  * word_strongs_code is derived by the trg_word_strongs_code DB trigger from
  * language + number + suffix; nothing here writes it directly except as a
@@ -95,17 +98,23 @@ function wordStrongsRows(PDO $db, int $wordKey): array {
  */
 function setWordStrongsPreferred(PDO $db, int $wordKey, ?int $prefKey, ?string $empty = null): ?string {
     $code = $empty;
+    $pron = null;
     if ($prefKey) {
-        $c = $db->prepare('SELECT word_strongs_code FROM yy_word_strongs WHERE word_strongs_key = ? AND word_key = ?');
+        $c = $db->prepare('SELECT word_strongs_code, word_strongs_pronunciation
+                             FROM yy_word_strongs WHERE word_strongs_key = ? AND word_key = ?');
         $c->execute([$prefKey, $wordKey]);
-        $found = $c->fetchColumn();
-        if ($found === false) { $prefKey = null; } else { $code = $found; }
+        $found = $c->fetch();
+        if ($found === false) { $prefKey = null; }
+        else { $code = $found['word_strongs_code']; $pron = $found['word_strongs_pronunciation']; }
     }
+    /* word_pronunciation_strongs is a mirror too: the editor edits the Strong's
+       pronunciation on the entry, and the word list's search reads the column. */
     $db->prepare(
-        'UPDATE yy_word SET word_strongs_key = ?, word_strongs = ?
+        'UPDATE yy_word SET word_strongs_key = ?, word_strongs = ?, word_pronunciation_strongs = ?
           WHERE word_key = ?
-            AND (word_strongs_key, word_strongs) IS DISTINCT FROM (?::int, ?::varchar)'
-    )->execute([$prefKey, $code, $wordKey, $prefKey, $code]);
+            AND (word_strongs_key, word_strongs, word_pronunciation_strongs)
+                IS DISTINCT FROM (?::int, ?::varchar, ?::text)'
+    )->execute([$prefKey, $code, $pron, $wordKey, $prefKey, $code, $pron]);
     return $code;
 }
 
@@ -244,7 +253,7 @@ function saveWordStrongs(PDO $db, int $wordKey, array $rows, ?string $empty = nu
  * Call AFTER the caller's own write of word_strongs, inside its transaction.
  */
 function syncWordStrongsFromCode(PDO $db, int $wordKey, ?string $code): void {
-    $cur = $db->prepare('SELECT word_strongs_key, word_translit, word_hebrew FROM yy_word WHERE word_key = ?');
+    $cur = $db->prepare('SELECT word_strongs_key, word_translit, word_hebrew, word_pronunciation_strongs FROM yy_word WHERE word_key = ?');
     $cur->execute([$wordKey]);
     $w = $cur->fetch();
     if (!$w) return;
@@ -279,12 +288,14 @@ function syncWordStrongsFromCode(PDO $db, int $wordKey, ?string $code): void {
             $ins = $db->prepare(
                 "INSERT INTO yy_word_strongs
                     (word_key, word_strongs_code, word_strongs_language, word_strongs_number, word_strongs_suffix,
-                     word_strongs_original, word_strongs_translit)
-                 VALUES (?, '', ?, ?, ?, ?, ?) RETURNING word_strongs_key"
+                     word_strongs_original, word_strongs_translit, word_strongs_pronunciation)
+                 VALUES (?, '', ?, ?, ?, ?, ?, ?) RETURNING word_strongs_key"
             );
             $ins->execute([$wordKey, $lang, $num, $suffix,
                            mb_substr(trim((string)$w['word_hebrew']), 0, 64) ?: null,
-                           mb_substr(trim((string)$w['word_translit']), 0, 64) ?: null]);
+                           mb_substr(trim((string)$w['word_translit']), 0, 64) ?: null,
+                           // Carried over, or the mirror would blank the word's own value.
+                           mb_substr(trim((string)$w['word_pronunciation_strongs']), 0, 100) ?: null]);
             $k = $ins->fetchColumn();
         }
     }
