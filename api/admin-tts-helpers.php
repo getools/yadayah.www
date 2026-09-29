@@ -852,6 +852,49 @@ function placeholdersToBreaks(string $escaped): string {
  * Uses a token round-trip so SSML markup isn't double-escaped.
  */
 /**
+ * True when a standard English word containing an apostrophe ("i'm", "she'd",
+ * "don't", "god's") — any of ' ’ ‘ ʼ ` ´, case-insensitive. Word list:
+ * api/data/english-apostrophe-words.txt (SCOWL/wamerican apostrophe entries).
+ * If the list is missing, logs once and answers false (old matching behaviour).
+ */
+function ttsIsEnglishApostropheWord(string $word): bool {
+    static $set = null;
+    if ($set === null) {
+        $set = [];
+        $lines = @file(__DIR__ . '/data/english-apostrophe-words.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) {
+            error_log('ttsIsEnglishApostropheWord: api/data/english-apostrophe-words.txt missing — English-word apostrophe guard disabled');
+        } else {
+            foreach ($lines as $l) {
+                if ($l[0] !== '#') $set[$l] = true;
+            }
+        }
+    }
+    $w = str_replace(["\u{2019}", "\u{2018}", "\u{02BC}", '`', "\u{00B4}"], "'", mb_strtolower($word, 'UTF-8'));
+    return isset($set[$w]);
+}
+
+/**
+ * Should the tune for $print NOT fire on source word $matched? Apostrophes in
+ * a Print are optional in matching (so "Miqraey" hits "Miqra’ey"), but that
+ * also let Hebrew tune "im" hijack every English "I’m" (Chatterbox: "imm")
+ * and "shed" hijack "she’d". Rule: when the match only works by flexing an
+ * ENGLISH apostrophe the Print doesn't have, and the word as written is a
+ * standard English word, read it normally. Transliterations (Sa’d, Sha’m,
+ * Yahowah’s) aren't dictionary words, so they keep matching. Half-rings ʾ ʿ
+ * are never English apostrophes. $matched is the Print body only — a
+ * possessive 's tail ("Isaac’s" for Print "Isaac") is captured separately and
+ * never reaches here.
+ */
+function ttsTuneFlexesEnglishWord(string $print, string $matched): bool {
+    static $ENG = "/['\x{2019}\x{2018}\x{02BC}`\x{00B4}]/u";
+    $inMatch = preg_match_all($ENG, $matched);
+    if ($inMatch === 0) return false;
+    if ($inMatch <= preg_match_all($ENG, $print)) return false;   // Print spelled it with the apostrophe
+    return ttsIsEnglishApostropheWord($matched);
+}
+
+/**
  * The single tune-substitution driver. EVERY engine path — Azure SSML,
  * plain local (Chatterbox/XTTS/…), Inworld, Kokoro — funnels through here,
  * so the Print matching, the apostrophe-class normalisation, the fast
@@ -900,7 +943,13 @@ function substituteTunes(string $text, array $tunes, callable $render, array &$t
         $tokenMap[$tokenS] = $replS;
         // Group 2 captures a trailing possessive 's; pick the possessive
         // token when it did, the plain token otherwise.
-        $cb = function ($m) use ($token, $tokenS) {
+        // A match that only works by flexing an English apostrophe into a real
+        // English word ("I’m" for Print "im", "she’d" for "shed") is left as
+        // written — the apostrophe is read normally. $skipped keeps it out of
+        // the hit count (book count + seed governance).
+        $skipped = 0;
+        $cb = function ($m) use ($token, $tokenS, $print, &$skipped) {
+            if (ttsTuneFlexesEnglishWord($print, $m[1])) { $skipped++; return $m[0]; }
             return !empty($m[2]) ? $tokenS : $token;
         };
         // Per-rule bold/italic MATCH CRITERIA: the rule only fires inside
@@ -913,6 +962,7 @@ function substituteTunes(string $text, array $tunes, callable $render, array &$t
         } else {
             $text = preg_replace_callback($regex, $cb, $text, -1, $hits);
         }
+        $hits -= $skipped;
         if ($hits > 0) {
             if ($count !== null) $count += $hits;
             // Seed governance. Each tune carries a [seed_min, seed_max] range:
@@ -1318,6 +1368,8 @@ function tunePrintToRegex(string $print, bool $caseSensitive = false): string {
     $body = ($needsLeadingApos ? $APOS_CLASS : '')
           . implode($APOS_CLASS_OPT, $escaped)
           . ($needsTrailingApos ? $APOS_CLASS : '');
+    // (English words like "I’m" are kept away from apostrophe-free Prints by
+    //  the dictionary check in substituteTunes — see ttsTuneFlexesEnglishWord.)
     return '/(?<!' . $wordBoundary . ')(' . $body . ')' . $possessiveTail . '(?!' . $wordBoundary . ')/' . $flags;
 }
 

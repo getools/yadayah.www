@@ -429,8 +429,11 @@ if ($mode === 'meta') {
 }
 
 // Normalize style name.
-$styleName = strtolower($styleName ?: 'default');
-if (!preg_match('/^[a-z0-9_-]+$/', $styleName)) errorResponse('style_name must be alphanumeric (dashes/underscores ok)');
+// Slugify (same rule as the admin-tts.html client) rather than reject:
+// "Fake Story" → "fake-story". Only all-symbol names fail.
+$styleRaw  = $styleName;
+$styleName = trim(preg_replace(['/[^a-z0-9_-]+/', '/-{2,}/'], '-', strtolower($styleName ?: 'default')), '-');
+if ($styleName === '') errorResponse("style_name '$styleRaw' needs at least one letter or digit");
 
 // Engines whose voices are SELECTED from built-ins (no clip): Qwen3-Omni
 // (only 3 hard-coded speakers) and Kokoro (50+ preset voice IDs). Cloning

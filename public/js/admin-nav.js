@@ -62,6 +62,7 @@ var tabs = [
     ['admin-monitoring.html', 'Monitor'],
     ['admin-perf.html', 'Reports', 'Performance + future reports (response times, host CPU steal, DB load).'],
     ['admin-settings.html', 'Settings', 'System settings — Auto-Fix cadence, resource caps, run timeout, and pause.'],
+    ['admin-manage.html', 'Manage', 'Server management — AI server (Puget) upload/download limits, incl. automatic limits during live shows.'],
     ['admin-search.html', 'Search'],
     ['admin-misc.html', 'Misc']
 ];

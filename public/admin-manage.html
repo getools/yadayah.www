@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css?v=13">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .setting-row { display:flex; align-items:center; gap:16px; padding:14px 0; border-bottom:1px solid #eee; }
+        .setting-row:last-child { border-bottom:none; }
+        .setting-row .s-label { flex:0 0 220px; font-weight:600; color:#34495e; }
+        .setting-row .s-control { flex:0 0 190px; }
+        .setting-row .s-help { flex:1; color:#888; font-size:0.82rem; line-height:1.35; }
+        .setting-row input[type=number] { width:120px; padding:7px 9px; border:1px solid #ccc; border-radius:4px; font-size:0.95rem; }
+        .setting-row input[type=number]:focus { outline:none; border-color:#3498db; box-shadow:0 0 0 2px rgba(52,152,219,0.2); }
+        .s-unit { color:#888; font-size:0.85rem; margin-left:6px; }
+        .switch { position:relative; display:inline-block; width:50px; height:26px; }
+        .switch input { opacity:0; width:0; height:0; }
+        .slider { position:absolute; cursor:pointer; inset:0; background:#ccc; transition:.2s; border-radius:26px; }
+        .slider:before { position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px; background:#fff; transition:.2s; border-radius:50%; }
+        input:checked + .slider { background:#e67e22; }
+        input:checked + .slider:before { transform:translateX(24px); }
+        .status-panel { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:20px; }
+        .status-pill { background:#f8f9fa; border:1px solid #e0e0e0; border-radius:8px; padding:10px 14px; min-width:130px; }
+        .status-pill .s-val { font-size:1.25rem; font-weight:700; color:#2c3e50; }
+        .status-pill .s-sub { font-size:0.75rem; color:#888; margin-top:2px; }
+        .status-pill .s-cap { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:#999; }
+        .status-pill.warn .s-val { color:#e67e22; }
+        .status-pill.bad  .s-val { color:#c0392b; }
+        .status-pill.good .s-val { color:#27ae60; }
+        .hint-box { background:#fef9e7; border:1px solid #f7dc6f; border-radius:6px; padding:10px 14px; font-size:0.85rem; color:#7d6608; margin-bottom:18px; line-height:1.45; }
+        .section-title { margin:0 0 14px; font-size:1.15rem; color:#2c3e50; }
+        .sub-title { margin:18px 0 4px; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.05em; color:#999; }
+        .blocks-table { width:100%; border-collapse:collapse; font-size:0.82rem; margin-top:6px; }
+        .blocks-table th, .blocks-table td { padding:6px 10px; text-align:left; border-bottom:1px solid #eee; }
+        .blocks-table th { color:#888; font-weight:600; }
+        .blocks-table td { font-family:ui-monospace,Menlo,Consolas,monospace; }
+        .agent-err { color:#c0392b; font-size:0.85rem; margin:-8px 0 14px; }
+        @media (max-width:760px) {
+            .setting-row { flex-wrap:wrap; gap:8px; }
+            .setting-row .s-label, .setting-row .s-control { flex:0 0 auto; }
+            .setting-row .s-help { flex:1 0 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=23"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Manage</h1>
+
+    <div class="card" id="ai-server">
+        <h2 class="section-title">AI Server</h2>
+        <div class="hint-box">
+            Limits the Puget AI server's internet traffic so it doesn't compete with a live show.
+            <b>Upload</b> = data leaving the AI server (results sent back to the website, anything it sends out);
+            <b>Download</b> = data arriving (audio sent in for transcription, model and image downloads).
+            Local-network and SSH traffic is never limited. Changes reach the AI server within about 15 seconds.
+        </div>
+
+        <div class="status-panel" id="status-panel"></div>
+        <div class="agent-err" id="agent-err" style="display:none"></div>
+
+        <div class="setting-row">
+            <div class="s-label">Limit During Shows</div>
+            <div class="s-control"><label class="switch"><input type="checkbox" id="f-limit_during_shows"><span class="slider"></span></label></div>
+            <div class="s-help">Apply the limits below automatically while a show is live (the red LIVE preview in the upper left of the site). Upcoming/scheduled streams don't count.</div>
+        </div>
+        <div class="setting-row">
+            <div class="s-label">Manually Limit</div>
+            <div class="s-control"><label class="switch"><input type="checkbox" id="f-manual_limit"><span class="slider"></span></label></div>
+            <div class="s-help">Apply the limits below now, regardless of whether a show is running.</div>
+        </div>
+
+        <div class="sub-title">File size</div>
+        <div class="setting-row">
+            <div class="s-label">Upload Limit</div>
+            <div class="s-control"><input type="number" id="f-upload_limit_mb" min="0" step="1" placeholder="none"><span class="s-unit">MB</span></div>
+            <div class="s-help">Any single transfer leaving the AI server that goes past this size is cut off. Blank or 0 = no limit (minimum 1).</div>
+        </div>
+        <div class="setting-row">
+            <div class="s-label">Download Limit</div>
+            <div class="s-control"><input type="number" id="f-download_limit_mb" min="0" step="1" placeholder="none"><span class="s-unit">MB</span></div>
+            <div class="s-help">Any single transfer arriving at the AI server that goes past this size is cut off (for example a model download). Blank or 0 = no limit (minimum 1).</div>
+        </div>
+
+        <div class="sub-title">Speed</div>
+        <div class="setting-row">
+            <div class="s-label">Upload Speed</div>
+            <div class="s-control"><input type="number" id="f-upload_kbps" min="0" step="1" placeholder="none"><span class="s-unit">KB/s</span></div>
+            <div class="s-help">Caps total outgoing speed. <span id="h-upload_kbps"></span> Blank or 0 = unthrottled (minimum 32).</div>
+        </div>
+        <div class="setting-row">
+            <div class="s-label">Download Speed</div>
+            <div class="s-control"><input type="number" id="f-download_kbps" min="0" step="1" placeholder="none"><span class="s-unit">KB/s</span></div>
+            <div class="s-help">Caps total incoming speed. <span id="h-download_kbps"></span> Blank or 0 = unthrottled (minimum 32).</div>
+        </div>
+
+        <div class="button-row" style="margin-top:18px;">
+            <button class="btn btn-primary" id="btn-save" onclick="saveSettings()">Save</button>
+            <span id="save-msg" style="margin-left:14px; align-self:center;"></span>
+        </div>
+
+        <div id="blocks-wrap" style="display:none">
+            <div class="sub-title">Transfers cut off (last 24 hours)</div>
+            <table class="blocks-table">
+                <thead><tr><th>When</th><th>Direction</th><th>AI server</th><th>Remote</th></tr></thead>
+                <tbody id="blocks-rows"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+var API = '/api';
+var FIELDS_BOOL = ['limit_during_shows', 'manual_limit'];
+var FIELDS_NUM = ['upload_limit_mb', 'download_limit_mb', 'upload_kbps', 'download_kbps'];
+var _pollTimer = null;
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+            loadAll();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+
+function doLogin() {
+    var u = document.getElementById('login-user').value;
+    var p = document.getElementById('login-pass').value;
+    var err = document.getElementById('login-error');
+    err.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: u, password: p})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) {
+            document.getElementById('login-screen').classList.remove('visible');
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+            loadAll();
+        } else {
+            err.textContent = d.error || 'Login failed';
+            err.style.display = '';
+        }
+    });
+}
+
+function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function(){ location.reload(); }); }
+function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
+function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+function fmtAgo(secs) {
+    if (secs === null || secs === undefined) return '—';
+    if (secs < 60) return secs + 's ago';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ago';
+    if (secs < 86400) return Math.floor(secs/3600) + 'h ago';
+    return Math.floor(secs/86400) + 'd ago';
+}
+
+function fmtRate(kbps) {
+    if (kbps === null || kbps === undefined) return '—';
+    return kbps >= 1024 ? (kbps/1024).toFixed(1) + ' MB/s' : Math.round(kbps) + ' KB/s';
+}
+
+function limitsText(a) {
+    var parts = [];
+    if (a.upload_mb) parts.push('↑ ' + a.upload_mb + ' MB');
+    if (a.download_mb) parts.push('↓ ' + a.download_mb + ' MB');
+    if (a.upload_kbps) parts.push('↑ ' + a.upload_kbps + ' KB/s');
+    if (a.download_kbps) parts.push('↓ ' + a.download_kbps + ' KB/s');
+    return parts.join(' · ');
+}
+
+function pill(cap, val, cls, sub) {
+    return '<div class="status-pill ' + (cls || '') + '"><div class="s-val">' + esc(val) + '</div>'
+         + (sub ? '<div class="s-sub">' + esc(sub) + '</div>' : '')
+         + '<div class="s-cap">' + esc(cap) + '</div></div>';
+}
+
+// Status-only render — never touches the inputs, so polling can't clobber edits.
+function renderStatus(d) {
+    var pills = [];
+    var show = d.show || {};
+    if (show.live) pills.push(pill('Show', 'LIVE', 'bad', (show.simulated ? '(simulated) ' : '') + (show.title || '')));
+    else if (show.upcoming) pills.push(pill('Show', 'Upcoming', '', show.title || ''));
+    else pills.push(pill('Show', 'Off air', '', show.error || ''));
+
+    if (d.active) pills.push(pill('Limits', 'Active', 'warn', d.reason === 'manual' ? 'Manually limited' : 'Show is live'));
+    else pills.push(pill('Limits', 'Off', 'good'));
+
+    var a = d.agent;
+    var err = document.getElementById('agent-err');
+    err.style.display = 'none';
+    if (!a) {
+        pills.push(pill('AI Server', 'No contact', 'bad', 'agent has never reported'));
+    } else if (a.age_secs > 90) {
+        pills.push(pill('AI Server', 'Offline', 'bad', 'last seen ' + fmtAgo(a.age_secs)));
+    } else {
+        var applied = a.applied;
+        var sub = applied ? 'enforcing ' + limitsText(applied) : 'no limits applied';
+        // The agent reports what it had applied BEFORE this poll's answer, so a
+        // just-saved change shows as pending for one cycle.
+        var inSync = !!applied === !!d.active;
+        pills.push(pill('AI Server', inSync ? 'Online' : 'Updating…', inSync ? 'good' : 'warn', sub));
+        if (a.rates) pills.push(pill('Traffic now', '↑ ' + fmtRate(a.rates.tx_kbps) + '  ↓ ' + fmtRate(a.rates.rx_kbps), '', a.wan_if || ''));
+        if (applied && a.blocked_packets && (a.blocked_packets.up || a.blocked_packets.down)) {
+            pills.push(pill('Cut off', '↑ ' + a.blocked_packets.up + '  ↓ ' + a.blocked_packets.down, 'warn', 'rejected packets'));
+        }
+        if (a.error) { err.textContent = 'AI server: ' + a.error; err.style.display = ''; }
+    }
+    document.getElementById('status-panel').innerHTML = pills.join('');
+
+    var blocks = (a && a.recent_blocks) || [];
+    document.getElementById('blocks-wrap').style.display = blocks.length ? '' : 'none';
+    document.getElementById('blocks-rows').innerHTML = blocks.slice().reverse().map(function(b) {
+        return '<tr><td>' + esc(String(b.at).replace('T', ' ').replace(/[+-]\d{2}:?\d{2}$/, '')) + '</td><td>'
+             + (b.dir === 'up' ? 'Upload' : 'Download') + '</td><td>' + esc(b.local) + '</td><td>' + esc(b.remote) + '</td></tr>';
+    }).join('');
+}
+
+function updateHints() {
+    ['upload_kbps', 'download_kbps'].forEach(function(code) {
+        var v = parseFloat(document.getElementById('f-' + code).value);
+        document.getElementById('h-' + code).textContent = v > 0 ? '≈ ' + (v * 8 / 1000).toFixed(v < 1000 ? 2 : 1) + ' Mbit/s.' : '';
+    });
+}
+
+function fillInputs(s) {
+    FIELDS_BOOL.forEach(function(c) { document.getElementById('f-' + c).checked = !!s[c]; });
+    FIELDS_NUM.forEach(function(c) { document.getElementById('f-' + c).value = s[c] ? s[c] : ''; });
+    updateHints();
+    if (window.AdminDirty && AdminDirty.reset) AdminDirty.reset();
+}
+
+function fetchState() {
+    return fetch(API + '/admin-manage.php', {credentials:'include'}).then(function(r){return safeJson(r);});
+}
+
+function loadAll() {
+    fetchState().then(function(d) {
+        if (!d || !d.settings) return;
+        fillInputs(d.settings);
+        renderStatus(d);
+        schedulePoll();
+    });
+}
+
+function schedulePoll() {
+    clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(function() {
+        if (document.hidden) { schedulePoll(); return; }
+        fetchState().then(function(d) { if (d && d.settings) renderStatus(d); }).catch(function(){}).then(schedulePoll);
+    }, 10000);
+}
+
+function saveSettings() {
+    var btn = document.getElementById('btn-save');
+    var msg = document.getElementById('save-msg');
+    btn.disabled = true; msg.textContent = 'Saving…'; msg.style.color = '#888';
+    var body = {};
+    FIELDS_BOOL.forEach(function(c) { body[c] = document.getElementById('f-' + c).checked ? 1 : 0; });
+    FIELDS_NUM.forEach(function(c) { body[c] = document.getElementById('f-' + c).value; });
+    fetch(API + '/admin-manage.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        btn.disabled = false;
+        if (d && d.saved) {
+            msg.textContent = 'Saved ✓ — the AI server picks this up within ~15s'; msg.style.color = '#27ae60';
+            loadAll();
+            setTimeout(function(){ msg.textContent = ''; }, 4000);
+        } else {
+            msg.textContent = (d && d.error) ? d.error : 'Save failed';
+            msg.style.color = '#c0392b';
+        }
+    }).catch(function(){ btn.disabled = false; msg.textContent = 'Save failed'; msg.style.color = '#c0392b'; });
+}
+
+['upload_kbps', 'download_kbps'].forEach(function(c) { document.getElementById('f-' + c).addEventListener('input', updateHints); });
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/session-state.js?v=1"></script>
+<script src="/js/error-reporter.js?v=14"></script>
+</body>
+</html>
