@@ -4,7 +4,7 @@
  *
  *   php _word_harvest.php                     dry run — report only
  *   php _word_harvest.php --apply             write
- *   php _word_harvest.php --min=3 --ratio=0.3 tune the candidate filter
+ *   php _word_harvest.php --min=2             only add what is presented 2+ times
  *   php _word_harvest.php --recount-only      only refresh counts, add nothing
  *   php _word_harvest.php --index --apply     ALSO rebuild yy_word_occurrence
  *   php _word_harvest.php --no-books-coverage skip pass 3b (see below)
@@ -27,22 +27,26 @@
  *     with --index; the run says so when it happens.
  *
  * How a word is recognised
- *   The books italicise transliterated Hebrew and set the Hebrew itself in the
- *   "Yada Towrah" font.  Italics are also used for book titles and for ordinary
- *   English emphasis, so an italic run alone is not enough.  Two extra signals
- *   separate the lexicon from the noise:
+ *   The books italicise transliterated Hebrew, but italics also mark book
+ *   titles and English emphasis, so italics alone are not enough.  A word is
+ *   only what the books PRESENT: italic, inside a parenthesis, as
+ *   "word – meaning", "a / b – meaning", "(word word)" or "word | meaning".
+ *   See glossEntries().  Each presented WHOLE is a word — a single word, or a
+ *   phrase such as "wa ha nabʿym" — and so is each PART of a phrase ("wa",
+ *   "ha", "nabʿym").  Anything presented at least --min times (default 1) and
+ *   not already on file is added, source 'books'.
  *
- *     half-ring   a token carrying ʿ or ʾ is Hebrew with near-certainty
- *     ratio       italic hits ÷ total corpus hits.  A transliteration is
- *                 almost always italicised; an English word set in italics for
- *                 emphasis is overwhelmingly used in plain text as well.
- *     glossed     REQUIRED for a new word: the books must present it as a
- *                 word at least once — italic "word – meaning", "a / b –",
- *                 "(word word)" or Arabic "word | meaning".  See glossTokens().
+ * Parsed references (--index)
+ *   yy_gloss holds every presented occurrence with the meaning printed there;
+ *   yy_word_gloss links each word to it as the whole ('W') or a part ('P').
+ *   The meaning is the whole's alone.  A word with no default definition gets
+ *   one (source YY) from its first whole reference in book order; an admin can
+ *   change it afterwards.
  *
  * Counts
  *   word_count_yy is how many times the word appears in the books, summed over
- *   every spelling it has.  Each yy_word_translit row also gets its own count.
+ *   every spelling it has — for a phrase, how many times it is presented.
+ *   Each yy_word_translit row also gets its own count.
  *
  * ⚠ yy_word carries the trg_yy_word_rev audit trigger — every UPDATE writes a
  *   yy_word_rev row, so only rows whose value actually changes are written.
@@ -58,11 +62,9 @@ $INDEX   = in_array('--index', $args, true);
    books its own 'books' row, even when another source already catalogues the
    word. On by default so a parse keeps it true; --no-books-coverage skips it. */
 $COVERAGE = !in_array('--no-books-coverage', $args, true);
-$MIN_ITALIC = 3;
-$MIN_RATIO  = 0.30;
+$MIN_PRESENTED = 1;
 foreach ($args as $a) {
-    if (preg_match('/^--min=(\d+)$/', $a, $m))          $MIN_ITALIC = (int)$m[1];
-    if (preg_match('/^--ratio=([0-9.]+)$/', $a, $m))    $MIN_RATIO  = (float)$m[1];
+    if (preg_match('/^--min=(\d+)$/', $a, $m)) $MIN_PRESENTED = max(1, (int)$m[1]);
 }
 
 $db = getDb();
@@ -96,40 +98,101 @@ function cleanToken(string $t): string {
 }
 
 /**
- * Tokens the books PRESENT as a foreign word — the only place a new word may
- * come from.  Italics alone also catch book titles and English emphasis
- * (Merriam-Webster, Mein Kampf, e-tailer), so a candidate must also appear in
- * one of the books' gloss forms, always as ITALIC words:
- *   (wa ha nabʿym – those who …)          italic words right before a spaced dash;
- *   … obstacles and pisah – providing …)  no "(" needed, and English may precede
- *   tahowr / tohorah – purifying …        " / " joins alternatives: both count
+ * The places the books PRESENT a foreign word — the only place a new word may
+ * come from, and the only occurrences that count as a parsed reference.
+ * Italics alone also catch book titles and English emphasis (Merriam-Webster,
+ * Mein Kampf, e-tailer), so the word must be ITALIC and INSIDE A PARENTHESIS,
+ * in one of the books' gloss forms:
+ *   (wa ha nabʿym – those who …)          italic words right before a spaced dash
+ *   (… obstacles and pisah – providing …) the "(" may open earlier, on English
+ *   (… tahowr / tohorah – purifying …)    " / " joins alternatives: each counts
  *   (wa ha nabyʾ ha huwʾ)                 a parenthesis holding only italic words
- *   al-Shaitan | the Adversary            Arabic: the italic word before " | "
+ *   (… al-Shaitan | the Adversary …)      Arabic: italic word before " | "
+ * Outside a parenthesis the same shapes are titles and subtitles
+ * ("Tea with Terrorists – Who They Are?", "Sirat Rasul Allah | Life of …"),
+ * so they do not count.
+ *
  * $glued is the paragraph HTML with half-rings already pulled inside <i>.
- * Returns lower-cased, cleaned tokens, one entry per occurrence.
+ * Returns one entry per presented occurrence, in paragraph order:
+ *   ['phrase' => as printed ("tahowr / tohorah"), 'gloss' => meaning|null,
+ *    'units'  => [ ['text' => a whole word or phrase, 'lc' => lower-cased,
+ *                   'parts' => [['text','lc'], …] when the whole is several
+ *                              words, else [] ], … one per " / " alternative ]]
+ * The meaning belongs to each WHOLE only; the parts of "wa ha nabʿym" are
+ * words in their own right but do not take the phrase's meaning.
+ * The meaning is the text after the dash/bar, up to the next ")" or "(" or the
+ * next presented word; a bare "(italic words)" has none.
  */
-function glossTokens(string $glued): array {
+function glossEntries(string $glued): array {
     // Keep only the italic markup: <i>word</i> in otherwise plain text.
     $s = preg_replace('/<i\b[^>]*>/i', "\x01", $glued);
     $s = preg_replace('/<\/i\s*>/i', "\x02", $s);
     $s = html_entity_decode(strip_tags($s), ENT_QUOTES, 'UTF-8');
     $s = str_replace("\x02\x01", '', $s);                  // back-to-back runs are one run
     $s = str_replace(["\x01", "\x02"], ['<i>', '</i>'], $s);
+    if ((strpos($s, '(') === false && strpos($s, ')') === false) || strpos($s, '<i>') === false) return [];
+
+    // Parenthesis depth at a byte offset.  Paragraphs are split at page
+    // breaks, so a parenthesis can open in the PREVIOUS paragraph: an
+    // unmatched ")" here means the text before it was already inside one
+    // ("…obstacles and pisah – providing … necessary).").  Start at the depth
+    // those unmatched closers imply.
+    preg_match_all('/[()]/', $s, $pm, PREG_OFFSET_CAPTURE);
+    $parens = $pm[0];
+    $start = 0; $run = 0;
+    foreach ($parens as [$ch]) { $run += $ch === '(' ? 1 : -1; $start = max($start, -$run); }
+    $depthAt = function (int $off) use ($parens, $start): int {
+        $d = $start;
+        foreach ($parens as [$ch, $at]) {
+            if ($at >= $off) break;
+            $d = $ch === '(' ? $d + 1 : max(0, $d - 1);
+        }
+        return $d;
+    };
 
     $runs  = '((?:<i>[^<]+<\/i>)(?:(?:\s*\/\s*|\s+)<i>[^<]+<\/i>)*)';
-    $heads = [];
-    if (preg_match_all('/' . $runs . '\s*[\x{2013}\x{2014}]\s/u', $s, $m)) $heads = $m[1];
-    if (preg_match_all('/\(\s*' . $runs . '\s*\)/u', $s, $m))               $heads = array_merge($heads, $m[1]);
-    if (preg_match_all('/(<i>[^<]+<\/i>)\s*\|\s/u', $s, $m))                $heads = array_merge($heads, $m[1]);
+    $heads = [];   // [offset, head, offset where the meaning starts | null]
+    if (preg_match_all('/' . $runs . '\s*[\x{2013}\x{2014}|]\s/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[0] as $i => [$all, $at]) {
+            if ($depthAt($at) > 0) $heads[] = [$at, $m[1][$i][0], $at + strlen($all)];
+        }
+    }
+    if (preg_match_all('/\(\s*' . $runs . '\s*\)/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[1] as [$head, $at]) $heads[] = [$at, $head, null];
+    }
+    usort($heads, function ($a, $b) { return $a[0] <=> $b[0]; });
 
     $out = [];
-    $heads = array_map('strip_tags', $heads);
-    foreach ($heads as $h) {
-        if (!preg_match_all(TOKEN_RE, $h, $t)) continue;
-        foreach ($t[0] as $tok) {
-            $tok = cleanToken($tok);
-            if ($tok !== '') $out[] = mb_strtolower($tok);
+    foreach ($heads as $i => [$at, $head, $from]) {
+        $gloss = null;
+        if ($from !== null) {
+            $to = strlen($s);
+            if (isset($heads[$i + 1])) $to = min($to, $heads[$i + 1][0]);
+            foreach (['(', ')'] as $stop) {
+                $p = strpos($s, $stop, $from);
+                if ($p !== false) $to = min($to, $p);
+            }
+            $g = trim(strip_tags(substr($s, $from, max(0, $to - $from))));
+            $g = preg_replace('/\s+/u', ' ', $g);
+            $g = preg_replace('/(?:[\s,;:]+(?:and|or)?)+$/u', '', $g);
+            if ($g !== '') $gloss = mb_substr($g, 0, 1000);
         }
+        $plainHead = trim(preg_replace('/\s+/u', ' ', strip_tags($head)));
+        // "tahowr / tohorah" are alternatives: each is a whole word of its own.
+        // "wa ha nabʿym" is ONE whole (a phrase) made of parts wa, ha, nabʿym.
+        $units = [];
+        foreach (preg_split('/\s*\/\s*/u', $plainHead) as $alt) {
+            if (!preg_match_all(TOKEN_RE, $alt, $t)) continue;
+            $parts = [];
+            foreach ($t[0] as $tok) {
+                $tok = cleanToken($tok);
+                if ($tok !== '') $parts[] = ['text' => $tok, 'lc' => mb_strtolower($tok)];
+            }
+            if (!$parts) continue;
+            $text = implode(' ', array_column($parts, 'text'));
+            $units[] = ['text' => $text, 'lc' => mb_strtolower($text), 'parts' => count($parts) > 1 ? $parts : []];
+        }
+        if ($units) $out[] = ['phrase' => $plainHead, 'gloss' => $gloss, 'units' => $units];
     }
     return $out;
 }
@@ -185,10 +248,13 @@ foreach ($spellings as $wk => $list) {
 say('Scanning yy_paragraph …' . ($INDEX ? ' (building occurrence index)' : ''));
 
 $corpus  = [];   // lowercased token => times it appears anywhere in the books
-$italic  = [];   // lowercased token => times it appears inside an italic run
 $surface = [];   // lowercased token => [surface form => count], to pick casing
-$glossed = [];   // lowercased token => times it is PRESENTED as a word (see glossTokens)
+$glossed = [];   // lowercased whole or part => times it is PRESENTED (see glossEntries)
+$shown   = [];   // lowercased whole or part => [form as presented => count]
+$phraseCount = []; // lowercased multi-word whole => times presented (its word_count_yy)
 $occRows = [];   // [word_key, paragraph_key, count] for yy_word_occurrence
+$glossOcc   = []; // [gloss_key, paragraph_key, seq, phrase, meaning|null] for yy_gloss
+$glossLinks = []; // [word_key, gloss_key, 'W'hole|'P'art, as printed] for yy_word_gloss
 $paras   = 0;
 
 $stmt = $db->query(
@@ -220,12 +286,6 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
         }
     }
 
-    // One row per (word, paragraph): a word spelled two ways in the same
-    // paragraph sums into a single row, matching how word_count_yy adds up.
-    foreach ($paraHits as $wk => $c) {
-        $occRows[] = [$wk, (int)$row[2], $c];
-    }
-
     if ($html !== '' && strpos($html, '<i') !== false) {
         // The books set half-rings outside the italic run, so a single word
         // arrives split three ways:  <i>ha Ba</i>ʿ<i>al</i>,  ʾ<i>ayl</i>,
@@ -236,25 +296,47 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
         $glued = preg_replace('/<\/i>\s*(' . $hr . ')\s*<i[^>]*>/u', '$1', $html);
         $glued = preg_replace('/(' . $hr . ')(<i[^>]*>)/u', '$2$1', $glued);
         $glued = preg_replace('/(<\/i>)(' . $hr . ')/u', '$2$1', $glued);
-        foreach (glossTokens($glued) as $lc) $glossed[$lc] = ($glossed[$lc] ?? 0) + 1;
-        if (preg_match_all('/<i\b[^>]*>(.*?)<\/i>/si', $glued, $mm)) {
-            foreach ($mm[1] as $run) {
-                $txt = html_entity_decode(strip_tags($run), ENT_QUOTES, 'UTF-8');
-                if (preg_match_all(TOKEN_RE, $txt, $m2)) {
-                    foreach ($m2[0] as $tok) {
-                        $tok = cleanToken($tok);
-                        if ($tok === '') continue;
-                        $lc = mb_strtolower($tok);
-                        $italic[$lc] = ($italic[$lc] ?? 0) + 1;
+        $seq = 0;
+        foreach (glossEntries($glued) as $e) {
+            $seq++;
+            $gk = count($glossOcc) + 1;
+            if ($INDEX) $glossOcc[] = [$gk, (int)$row[2], $seq, $e['phrase'], $e['gloss']];
+            $linked = [];   // one link per (word, role) per occurrence
+            foreach ($e['units'] as $u) {
+                $presented = [['W', $u['text'], $u['lc']]];
+                foreach ($u['parts'] as $p) $presented[] = ['P', $p['text'], $p['lc']];
+                foreach ($presented as [$role, $text, $lc]) {
+                    $glossed[$lc] = ($glossed[$lc] ?? 0) + 1;
+                    $shown[$lc][$text] = ($shown[$lc][$text] ?? 0) + 1;
+                    if ($INDEX && isset($spellToWords[$lc])) {
+                        foreach ($spellToWords[$lc] as $wk) {
+                            if (isset($linked[$wk . $role])) continue;
+                            $linked[$wk . $role] = true;
+                            $glossLinks[] = [$wk, $gk, $role, $text];
+                        }
+                    }
+                }
+                // A multi-word whole has no plain-text token count, so its
+                // occurrences are its presentations.  Same paragraph index.
+                if ($u['parts']) {
+                    $phraseCount[$u['lc']] = ($phraseCount[$u['lc']] ?? 0) + 1;
+                    if ($INDEX && isset($spellToWords[$u['lc']])) {
+                        foreach ($spellToWords[$u['lc']] as $wk) $paraHits[$wk] = ($paraHits[$wk] ?? 0) + 1;
                     }
                 }
             }
         }
     }
+
+    // One row per (word, paragraph): a word spelled two ways in the same
+    // paragraph sums into a single row, matching how word_count_yy adds up.
+    foreach ($paraHits as $wk => $c) {
+        $occRows[] = [$wk, (int)$row[2], $c];
+    }
 }
 
-say(sprintf('  %s paragraphs, %s distinct tokens, %s seen in italics',
-    number_format($paras), number_format(count($corpus)), number_format(count($italic))));
+say(sprintf('  %s paragraphs, %s distinct tokens, %s distinct words/phrases presented',
+    number_format($paras), number_format(count($corpus)), number_format(count($glossed))));
 
 /* ═══ Pass 2 — refresh counts on the words already on file ═══════════════ */
 
@@ -294,7 +376,9 @@ foreach ($words as $w) {
     $touchedTranslit = false;
     foreach ($spellings[$wk] ?? [] as $tk => $text) {
         $lc = mb_strtolower(trim($text));
-        $c  = $corpus[$lc] ?? 0;
+        // A phrase ("wa ha nabʿym") is counted where it is presented; a single
+        // word everywhere it appears.  Pass 1 indexed them the same way.
+        $c  = strpos($lc, ' ') !== false ? ($phraseCount[$lc] ?? 0) : ($corpus[$lc] ?? 0);
         if (!isset($counted[$lc])) { $sum += $c; $counted[$lc] = true; }
         if ($tk !== 'w') {
             $translitChanged++;
@@ -347,6 +431,49 @@ if ($INDEX) {
         exit(1);
     }
 
+    /* Parsed references: every place the books PRESENT a word (glossEntries).
+       yy_gloss holds the occurrence and the meaning printed there; each word
+       links to it as the WHOLE ("wa ha nabʿym", or "tahowr" in "tahowr /
+       tohorah") or as a PART ("wa", "ha", "nabʿym").  The meaning is the
+       whole's only.  A word with no default definition yet gets one, as a YY
+       definition, from the FIRST whole reference in book order that carries a
+       meaning; after that an admin owns it and later runs leave it alone (the
+       default row exists, so the word no longer qualifies). */
+    $withGloss = 0;
+    foreach ($glossOcc as $r) if ($r[4] !== null) $withGloss++;
+    $wholeLinks = 0;
+    foreach ($glossLinks as $r) if ($r[2] === 'W') $wholeLinks++;
+    say(sprintf('  %s presented occurrences (%s with a meaning); %s word links (%s whole, %s part) across %s words',
+        number_format(count($glossOcc)), number_format($withGloss), number_format(count($glossLinks)),
+        number_format($wholeLinks), number_format(count($glossLinks) - $wholeLinks),
+        number_format(count(array_unique(array_column($glossLinks, 0))))));
+
+    $rank = [];   // paragraph_key => position in book order
+    $i = 0;
+    foreach ($db->query(
+        'SELECT p.paragraph_key
+           FROM yy_paragraph p
+           LEFT JOIN yy_series  s ON s.series_key  = p.series_key
+           LEFT JOIN yy_volume  v ON v.volume_key  = p.volume_key
+           LEFT JOIN yy_chapter c ON c.chapter_key = p.chapter_key
+          ORDER BY s.series_sort NULLS LAST, s.series_key, v.volume_sort NULLS LAST, v.volume_key,
+                   c.chapter_sort NULLS FIRST, p.paragraph_page NULLS FIRST, p.paragraph_number NULLS FIRST, p.paragraph_key'
+    )->fetchAll(PDO::FETCH_COLUMN) as $pk) $rank[(int)$pk] = $i++;
+
+    $hasDefault = array_flip(array_map('intval', $db->query(
+        "SELECT DISTINCT d.word_key FROM yy_word_definition d WHERE d.word_definition_default_flag
+          UNION SELECT w.word_key FROM yy_word w WHERE coalesce(trim(w.word_definition_yy), '') <> ''"
+    )->fetchAll(PDO::FETCH_COLUMN)));
+    $firstDef = [];   // word_key => [rank, seq, meaning]
+    foreach ($glossLinks as [$wk, $gk, $role]) {
+        // Only the whole's meaning — "wa" never takes "wa ha nabʿym"'s.
+        [, $pk, $seq, , $g] = $glossOcc[$gk - 1];
+        if ($role !== 'W' || $g === null || isset($hasDefault[$wk])) continue;
+        $pos = [$rank[$pk] ?? PHP_INT_MAX, $seq];
+        if (!isset($firstDef[$wk]) || $pos < [$firstDef[$wk][0], $firstDef[$wk][1]]) $firstDef[$wk] = [$pos[0], $pos[1], $g];
+    }
+    say(sprintf('  %s words get their first default definition from a reference', number_format(count($firstDef))));
+
     if ($INDEX && $APPLY) {
         try {
             // Full rebuild: a word whose spellings changed must not keep rows
@@ -363,6 +490,37 @@ if ($INDEX) {
                 $db->prepare('INSERT INTO yy_word_occurrence (word_key, paragraph_key, occurrence_count) VALUES ' . $vals)
                    ->execute($flat);
             }
+
+            // gloss_key is assigned here (1..n in scan order) so the links can
+            // name it without a round trip; the whole table is rebuilt each run.
+            $db->exec('TRUNCATE yy_word_gloss, yy_gloss');
+            for ($i = 0; $i < count($glossOcc); $i += $chunk) {
+                $slice = array_slice($glossOcc, $i, $chunk);
+                $vals  = implode(',', array_fill(0, count($slice), '(?,?,?,?,?)'));
+                $flat  = [];
+                foreach ($slice as $r) array_push($flat, $r[0], $r[1], $r[2], $r[3], $r[4]);
+                $db->prepare('INSERT INTO yy_gloss (gloss_key, paragraph_key, gloss_seq, gloss_phrase, gloss_text) VALUES ' . $vals)
+                   ->execute($flat);
+            }
+            for ($i = 0; $i < count($glossLinks); $i += $chunk) {
+                $slice = array_slice($glossLinks, $i, $chunk);
+                $vals  = implode(',', array_fill(0, count($slice), '(?,?,?,?)'));
+                $flat  = [];
+                foreach ($slice as $r) array_push($flat, $r[0], $r[1], $r[2], $r[3]);
+                $db->prepare('INSERT INTO yy_word_gloss (word_key, gloss_key, word_gloss_role, word_gloss_translit) VALUES ' . $vals)
+                   ->execute($flat);
+            }
+
+            // word_source_key 2 = yy.  Mirrored into word_definition_yy the way
+            // admin-glossary-lexicon.php mirrors a default into its source column.
+            $insDef = $db->prepare(
+                'INSERT INTO yy_word_definition (word_key, word_source_key, word_definition_text, word_definition_default_flag)
+                 VALUES (?, 2, ?, true)');
+            $mirror = $db->prepare("UPDATE yy_word SET word_definition_yy = ? WHERE word_key = ? AND coalesce(trim(word_definition_yy), '') = ''");
+            foreach ($firstDef as $wk => [, , $g]) {
+                $insDef->execute([$wk, $g]);
+                $mirror->execute([$g, $wk]);
+            }
             $db->commit();
             say('  written');
         } catch (\Exception $e) {
@@ -378,62 +536,56 @@ if ($INDEX) {
 $newRows = [];
 if (!$RECOUNT) {
     say('');
-    say(sprintf('Selecting candidates (italic hits >= %d, ratio >= %.2f, or half-ring) …', $MIN_ITALIC, $MIN_RATIO));
+    say(sprintf('Selecting candidates (presented at least %d time(s)) …', $MIN_PRESENTED));
 
-    $rejected = ['shape' => 0, 'thin' => 0, 'ratio' => 0, 'known' => 0, 'contraction' => 0, 'fragment' => 0, 'unglossed' => 0];
+    // A candidate is anything the books PRESENT (glossEntries): each whole —
+    // a word, or a phrase such as "wa ha nabʿym" — and each part of a phrase.
+    // Every word in it must still be word-shaped and not an English contraction.
+    $rejected = ['shape' => 0, 'contraction' => 0, 'thin' => 0, 'known' => 0];
 
-    foreach ($italic as $lc => $ital) {
-        if (!preg_match(TRANSLIT_RE, $lc))  { $rejected['shape']++; continue; }
-        // Never presented as a word in a gloss — an italic title or English.
-        if (empty($glossed[$lc]))           { $rejected['unglossed']++; continue; }
-        if (isContraction($lc))             { $rejected['contraction']++; continue; }
-        if ($ital < $MIN_ITALIC)            { $rejected['thin']++;  continue; }
-
-        // Plain text contains the italic text, so a real word can never be seen
-        // more often in italics than in the corpus. When it is, the italic token
-        // is a fragment of a word the plain text spells whole — drop it.
-        $total = $corpus[$lc] ?? 0;
-        if ($ital > $total) { $rejected['fragment']++; continue; }
-
-        $ratio    = $total > 0 ? $ital / $total : 0.0;
-        $halfring = (bool)preg_match('/[' . HALFRING . ']/u', $lc);
-
-        if (!$halfring && $ratio < $MIN_RATIO) { $rejected['ratio']++; continue; }
+    foreach ($glossed as $lc => $n) {
+        $bad = null;
+        foreach (explode(' ', $lc) as $w) {
+            if (!preg_match(TRANSLIT_RE, $w)) { $bad = 'shape'; break; }
+            if (isContraction($w))            { $bad = 'contraction'; break; }
+        }
+        if ($bad !== null)       { $rejected[$bad]++; continue; }
+        if ($n < $MIN_PRESENTED) { $rejected['thin']++; continue; }
 
         $k = normKey($lc);
-        if ($k === '' || isset($known[$k]))    { $rejected['known']++; continue; }
+        if ($k === '' || isset($known[$k])) { $rejected['known']++; continue; }
 
-        // Keep the casing the books use most often for this word.
-        $forms = $surface[$lc] ?? [$lc => 1];
+        // Keep the form the books present most often.
+        $forms = $shown[$lc] ?? [$lc => 1];
         arsort($forms);
-        $best = (string)array_key_first($forms);
 
+        $isPhrase = strpos($lc, ' ') !== false;
         $newRows[$k] = [
-            'text'  => $best,
-            'count' => $total,
-            'ital'  => $ital,
-            'ratio' => $ratio,
-            'hr'    => $halfring,
+            'text'   => (string)array_key_first($forms),
+            'count'  => $isPhrase ? ($phraseCount[$lc] ?? 0) : ($corpus[$lc] ?? 0),
+            'shown'  => $n,
+            'phrase' => $isPhrase,
         ];
         $known[$k] = -1;   // block a second candidate that normalises the same
     }
 
-    uasort($newRows, function ($a, $b) { return $b['count'] <=> $a['count']; });
+    uasort($newRows, function ($a, $b) { return $b['shown'] <=> $a['shown']; });
 
-    say(sprintf('  %s candidates  (rejected: %s not word-shaped, %s contractions, %s fragments, %s under %d italic hits, %s below ratio, %s already on file, %s never glossed)',
-        number_format(count($newRows)), number_format($rejected['shape']), number_format($rejected['contraction']), number_format($rejected['fragment']),
-        number_format($rejected['thin']), $MIN_ITALIC, number_format($rejected['ratio']),
-        number_format($rejected['known']), number_format($rejected['unglossed'])));
+    $phrases = count(array_filter($newRows, function ($r) { return $r['phrase']; }));
+    say(sprintf('  %s candidates: %s words, %s phrases  (rejected: %s not word-shaped, %s contractions, %s presented too rarely, %s already on file)',
+        number_format(count($newRows)), number_format(count($newRows) - $phrases), number_format($phrases),
+        number_format($rejected['shape']), number_format($rejected['contraction']),
+        number_format($rejected['thin']), number_format($rejected['known'])));
 
     $show = 40;
     foreach ($args as $a) if (preg_match('/^--top=(\d+)$/', $a, $m)) $show = (int)$m[1];
 
     say('');
-    say('  ── new words, most frequent first ──');
+    say('  ── new words and phrases, most often presented first ──');
     $i = 0;
     foreach ($newRows as $r) {
-        say(sprintf('  %8s in books  %6s italic  ratio %.2f %s  %s',
-            number_format($r['count']), number_format($r['ital']), $r['ratio'], $r['hr'] ? 'HR' : '  ', $r['text']));
+        say(sprintf('  %6s presented  %8s in books  %s  %s',
+            number_format($r['shown']), number_format($r['count']), $r['phrase'] ? 'phrase' : 'word  ', $r['text']));
         if (++$i >= $show) break;
     }
 }
