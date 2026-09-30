@@ -58,15 +58,33 @@
             mapping <code>heavens</code> → <code>shamayim</code>, or <code>messiah</code> → <code>mashyach</code>. Add a
             row in each direction if you want symmetric matching. Auto-detected pairs are only applied once you
             click <b>Accept</b>; <b>Reject</b>ed pairs are kept so the same suggestion stays rejected.
+            Click a column header to sort; Shift+click more headers to add them as tie-breakers.
         </p>
+        <div id="alias-filters" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">
+            <input type="search" id="alias-f-text" placeholder="Filter term or match…" oninput="applyAliasView()"
+                style="flex:1 1 220px;max-width:320px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.88rem">
+            <select id="alias-f-source" onchange="applyAliasView()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.88rem">
+                <option value="">All sources</option>
+                <option value="manual">Manual</option>
+                <option value="auto">Auto</option>
+            </select>
+            <select id="alias-f-status" onchange="applyAliasView()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.88rem">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="clearAliasFilters()">Clear</button>
+            <span id="alias-f-count" style="font-size:0.8rem;color:#888;margin-left:auto"></span>
+        </div>
         <table id="alias-tbl" style="width:100%;border-collapse:collapse;font-size:0.9rem">
             <thead>
                 <tr style="background:#f6f8fa;border-bottom:1px solid #e0e0e0">
-                    <th style="text-align:left;padding:6px 8px;width:35%">Search term</th>
-                    <th style="text-align:left;padding:6px 8px;width:35%">Also match</th>
-                    <th style="padding:6px 8px;width:80px">Weight</th>
-                    <th style="padding:6px 8px;width:160px">Source</th>
-                    <th style="padding:6px 8px;width:200px"></th>
+                    <th class="ms-sortable" data-ms-col="term" style="white-space:nowrap;text-align:left;padding:6px 8px;width:35%;cursor:pointer" onclick="sortAliasesBy('term', event)">Search term<span class="ms-arrow"></span></th>
+                    <th class="ms-sortable" data-ms-col="target" style="white-space:nowrap;text-align:left;padding:6px 8px;width:35%;cursor:pointer" onclick="sortAliasesBy('target', event)">Also match<span class="ms-arrow"></span></th>
+                    <th class="ms-sortable" data-ms-col="weight" style="white-space:nowrap;padding:6px 8px;width:80px;cursor:pointer" onclick="sortAliasesBy('weight', event, 'desc')">Weight<span class="ms-arrow"></span></th>
+                    <th class="ms-sortable" data-ms-col="source" style="white-space:nowrap;padding:6px 8px;width:160px;cursor:pointer" onclick="sortAliasesBy('source', event)">Source<span class="ms-arrow"></span></th>
+                    <th class="ms-sortable" data-ms-col="status" style="white-space:nowrap;padding:6px 8px;width:200px;cursor:pointer;text-align:right" onclick="sortAliasesBy('status', event)">Status<span class="ms-arrow"></span></th>
                 </tr>
             </thead>
             <tbody id="alias-rows"><tr><td colspan="5" style="padding:12px;color:#888">Loading…</td></tr></tbody>
@@ -86,6 +104,7 @@
 
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/admin-links.js?v=4"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script>
 var API = '/api';
 
@@ -218,9 +237,79 @@ function loadAliases() {
         .catch(function(){ document.getElementById('alias-rows').innerHTML = '<tr><td colspan="3" style="color:#c0392b;padding:12px">Failed to load.</td></tr>'; });
 }
 
+// Filters + multi-column sort run client-side over the full list from the API.
+// Sort keys + filters persist per tab (sessionStorage); an empty sort keeps API order.
+var _aliasRows = [];
+var _aliasSortKeys = [];
+function _aliasSS(k, v) {
+    try {
+        if (v === undefined) return sessionStorage.getItem('adminSearch.' + k);
+        sessionStorage.setItem('adminSearch.' + k, v);
+    } catch (e) { return null; }
+}
+function aliasStatus(r) {
+    if (r.alias_curated_flag || r.alias_accepted_flag === true) return 'accepted';
+    return r.alias_accepted_flag === false ? 'rejected' : 'pending';
+}
+function aliasSortValue(r, col) {
+    switch (col) {
+        case 'term':   return r.alias_term || '';
+        case 'target': return r.alias_target || '';
+        case 'weight': return Number(r.alias_weight || 1);
+        case 'source': return r.alias_curated_flag ? 'Manual' : 'Auto';
+        case 'status': return { pending: 0, accepted: 1, rejected: 2 }[aliasStatus(r)];
+    }
+    return '';
+}
+function sortAliasesBy(col, ev, defaultDir) {
+    _aliasSortKeys = MultiSort.click(_aliasSortKeys, col, ev, defaultDir);
+    applyAliasView();
+}
+function clearAliasFilters() {
+    document.getElementById('alias-f-text').value = '';
+    document.getElementById('alias-f-source').value = '';
+    document.getElementById('alias-f-status').value = '';
+    applyAliasView();
+}
+function restoreAliasView() {
+    _aliasSortKeys = MultiSort.parse(_aliasSS('aliasSortKeys')) || [];
+    try {
+        var f = JSON.parse(_aliasSS('aliasFilters') || '{}') || {};
+        document.getElementById('alias-f-text').value   = f.text   || '';
+        document.getElementById('alias-f-source').value = f.source || '';
+        document.getElementById('alias-f-status').value = f.status || '';
+    } catch (e) {}
+}
+function applyAliasView() {
+    var text   = document.getElementById('alias-f-text').value.trim().toLowerCase();
+    var source = document.getElementById('alias-f-source').value;
+    var status = document.getElementById('alias-f-status').value;
+    _aliasSS('aliasFilters', JSON.stringify({ text: text, source: source, status: status }));
+    _aliasSS('aliasSortKeys', JSON.stringify(_aliasSortKeys));
+    var rows = _aliasRows.filter(function(r) {
+        if (source && (r.alias_curated_flag ? 'manual' : 'auto') !== source) return false;
+        if (status && aliasStatus(r) !== status) return false;
+        if (text && (String(r.alias_term || '') + ' | ' + String(r.alias_target || '')).toLowerCase().indexOf(text) < 0) return false;
+        return true;
+    });
+    if (_aliasSortKeys.length) rows.sort(MultiSort.comparator(_aliasSortKeys, aliasSortValue));
+    document.querySelectorAll('#alias-tbl th[data-ms-col]').forEach(function(th) {
+        th.querySelector('.ms-arrow').innerHTML = MultiSort.arrowHtml(_aliasSortKeys, th.dataset.msCol);
+    });
+    document.getElementById('alias-f-count').textContent = rows.length === _aliasRows.length
+        ? _aliasRows.length + ' aliases'
+        : rows.length + ' of ' + _aliasRows.length + ' aliases';
+    drawAliasRows(rows);
+}
 function renderAliases(rows) {
+    _aliasRows = rows;
+    applyAliasView();
+}
+
+function drawAliasRows(rows) {
     var tbody = document.getElementById('alias-rows');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:#888;padding:12px;font-style:italic">No aliases yet — add one below or let user searches auto-detect them.</td></tr>'; return; }
+    if (!_aliasRows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:#888;padding:12px;font-style:italic">No aliases yet — add one below or let user searches auto-detect them.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:#888;padding:12px;font-style:italic">No aliases match the filters.</td></tr>'; return; }
     tbody.innerHTML = rows.map(function(r) {
         var curated = !!r.alias_curated_flag;
         var accepted = r.alias_accepted_flag;   // null = pending, true = accepted, false = rejected
@@ -239,11 +328,11 @@ function renderAliases(rows) {
         } else {
             // Accept/Reject flip alias_accepted_flag; the active choice is shown filled.
             var accBtn = accepted === true
-                ? '<button class="btn btn-sm" style="background:#1b5e20;color:#fff;border-color:#1b5e20" disabled>&#10003; Accepted</button>'
-                : '<button class="btn btn-secondary btn-sm" style="color:#1b5e20;border-color:#a3d4ad" onclick="setAliasAccepted(' + r.alias_key + ', true)" title="Apply this alias to Books searches">Accept</button>';
+                ? '<button class="btn btn-sm" style="background:#1b5e20;color:#fff;border-color:#1b5e20" disabled>Accept</button>'
+                : '<button class="btn btn-sm" style="background:#fff;color:#1b5e20;border:1px solid #1b5e20;font-weight:600" onclick="setAliasAccepted(' + r.alias_key + ', true)" title="Apply this alias to Books searches">Accept</button>';
             var rejBtn = accepted === false
-                ? '<button class="btn btn-sm" style="background:#c0392b;color:#fff;border-color:#c0392b" disabled>&#10007; Rejected</button>'
-                : '<button class="btn btn-secondary btn-sm" style="color:#c0392b;border-color:#e6b0aa" onclick="setAliasAccepted(' + r.alias_key + ', false)" title="Never apply this alias; future auto-detections of it stay rejected">Reject</button>';
+                ? '<button class="btn btn-sm" style="background:#c0392b;color:#fff;border-color:#c0392b" disabled>Reject</button>'
+                : '<button class="btn btn-sm" style="background:#fff;color:#a93226;border:1px solid #a93226;font-weight:600" onclick="setAliasAccepted(' + r.alias_key + ', false)" title="Never apply this alias; future auto-detections of it stay rejected">Reject</button>';
             actions = accBtn + ' ' + rejBtn;
         }
         var rowBg = curated ? '' : (accepted === false ? ';background:#fbeeee;color:#999' : (accepted === true ? '' : ';background:#fffdf5'));
@@ -308,7 +397,7 @@ function deleteAlias(key) {
 
 // Hook loadAliases() into the existing load() so both render on auth success.
 var __origLoad = load;
-load = function() { __origLoad(); loadAliases(); };
+load = function() { __origLoad(); restoreAliasView(); loadAliases(); };
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
 checkAuth();
