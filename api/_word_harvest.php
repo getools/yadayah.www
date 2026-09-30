@@ -44,8 +44,10 @@
  *   change it afterwards.
  *
  * Counts
- *   word_count_yy is how many times the word appears in the books, summed over
- *   every spelling it has — for a phrase, how many times it is presented.
+ *   word_count_yy is how many times the word appears IN ITALICS in the books,
+ *   summed over every spelling it has — for a phrase, how many times it is
+ *   presented.  Plain-text mentions do not count: "me" and "day" in running
+ *   English are not the Hebrew words.
  *   Each yy_word_translit row also gets its own count.
  *
  * ⚠ yy_word carries the trg_yy_word_rev audit trigger — every UPDATE writes a
@@ -107,10 +109,11 @@ function cleanToken(string $t): string {
  *   (… obstacles and pisah – providing …) the "(" may open earlier, on English
  *   (… tahowr / tohorah – purifying …)    " / " joins alternatives: each counts
  *   (wa ha nabyʾ ha huwʾ)                 a parenthesis holding only italic words
- *   (… al-Shaitan | the Adversary …)      Arabic: italic word before " | "
- * Outside a parenthesis the same shapes are titles and subtitles
- * ("Tea with Terrorists – Who They Are?", "Sirat Rasul Allah | Life of …"),
- * so they do not count.
+ *   al-Shaitan | the Adversary            italic word(s) before " | ", with or
+ *                                         without a parenthesis — outside one,
+ *                                         no meaning is recorded (no end marker)
+ * Outside a parenthesis a dash is a title and subtitle
+ * ("Tea with Terrorists – Who They Are?"), so it does not count.
  *
  * $glued is the paragraph HTML with half-rings already pulled inside <i>.
  * Returns one entry per presented occurrence, in paragraph order:
@@ -152,9 +155,18 @@ function glossEntries(string $glued): array {
 
     $runs  = '((?:<i>[^<]+<\/i>)(?:(?:\s*\/\s*|\s+)<i>[^<]+<\/i>)*)';
     $heads = [];   // [offset, head, offset where the meaning starts | null]
-    if (preg_match_all('/' . $runs . '\s*[\x{2013}\x{2014}|]\s/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . $runs . '\s*([\x{2013}\x{2014}|])\s/u', $s, $m, PREG_OFFSET_CAPTURE)) {
         foreach ($m[0] as $i => [$all, $at]) {
-            if ($depthAt($at) > 0) $heads[] = [$at, $m[1][$i][0], $at + strlen($all)];
+            if ($depthAt($at) > 0) {
+                $heads[] = [$at, $m[1][$i][0], $at + strlen($all)];
+            } elseif ($m[2][$i][0] === '|') {
+                // "word | meaning" is the books' Arabic (and Hebrew) gloss even
+                // outside a parenthesis.  There the meaning runs straight on
+                // into the sentence ("Halakhah | the Way has become a set of
+                // laws …") with nothing marking its end, so the word counts but
+                // no meaning is recorded for it.
+                $heads[] = [$at, $m[1][$i][0], null];
+            }
         }
     }
     if (preg_match_all('/\(\s*' . $runs . '\s*\)/u', $s, $m, PREG_OFFSET_CAPTURE)) {
@@ -248,6 +260,7 @@ foreach ($spellings as $wk => $list) {
 say('Scanning yy_paragraph …' . ($INDEX ? ' (building occurrence index)' : ''));
 
 $corpus  = [];   // lowercased token => times it appears anywhere in the books
+$italic  = [];   // lowercased token => times it appears in ITALICS (a single word's count)
 $surface = [];   // lowercased token => [surface form => count], to pick casing
 $glossed = [];   // lowercased whole or part => times it is PRESENTED (see glossEntries)
 $shown   = [];   // lowercased whole or part => [form as presented => count]
@@ -269,6 +282,8 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
     $html  = (string)$row[1];
     $paraHits = [];   // word_key => occurrences in THIS paragraph
 
+    // Every mention, italic or not.  Only used to show how common a new word
+    // is and by Books coverage (pass 3b); word COUNTS come from italics below.
     if ($plain !== '' && preg_match_all(TOKEN_RE, $plain, $m)) {
         foreach ($m[0] as $tok) {
             $tok = cleanToken($tok);
@@ -277,25 +292,45 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
             $corpus[$lc] = ($corpus[$lc] ?? 0) + 1;
             if (!isset($surface[$lc])) $surface[$lc] = [];
             $surface[$lc][$tok] = ($surface[$lc][$tok] ?? 0) + 1;
-
-            if ($INDEX && isset($spellToWords[$lc])) {
-                foreach ($spellToWords[$lc] as $wk) {
-                    $paraHits[$wk] = ($paraHits[$wk] ?? 0) + 1;
-                }
-            }
         }
     }
 
     if ($html !== '' && strpos($html, '<i') !== false) {
+        // Keep only the italic tags: bold and span tags can sit between the
+        // pieces of one word — <b><i>Shin</i></b>ʿ<b><i>ar</i></b> — and would
+        // stop the half-ring glue below, splitting Shinʿar into "Shin" + "ar".
+        $html = strip_tags($html, '<i>');
         // The books set half-rings outside the italic run, so a single word
         // arrives split three ways:  <i>ha Ba</i>ʿ<i>al</i>,  ʾ<i>ayl</i>,
         // <i>raʾa</i>ʾ.  Pull the half-ring back inside before reading the run
         // or the word is harvested as fragments ("ayl" separate from "ʾayl"),
         // which is what made italic counts exceed whole-corpus counts.
+        // ⚠ No whitespace allowed around the ring when joining two runs: in
+        // "<i>waʾamah</i> ʾ<i>atah</i>" the ring after the space STARTS the next
+        // word, and joining across it fused "waʾamahʾatah".
         $hr    = '[' . HALFRING . APOS . ']';
-        $glued = preg_replace('/<\/i>\s*(' . $hr . ')\s*<i[^>]*>/u', '$1', $html);
+        $glued = preg_replace('/<\/i>(' . $hr . ')<i[^>]*>/u', '$1', $html);
         $glued = preg_replace('/(' . $hr . ')(<i[^>]*>)/u', '$2$1', $glued);
         $glued = preg_replace('/(<\/i>)(' . $hr . ')/u', '$2$1', $glued);
+
+        // A single word is counted only where it is ITALIC — a plain "me" or
+        // "day" in running English is not an occurrence of the Hebrew word.
+        if (preg_match_all('/<i\b[^>]*>(.*?)<\/i>/si', preg_replace('/<\/i><i[^>]*>/', '', $glued), $mm)) {
+            foreach ($mm[1] as $run) {
+                $txt = html_entity_decode($run, ENT_QUOTES, 'UTF-8');
+                if (!preg_match_all(TOKEN_RE, $txt, $m2)) continue;
+                foreach ($m2[0] as $tok) {
+                    $tok = cleanToken($tok);
+                    if ($tok === '') continue;
+                    $lc = mb_strtolower($tok);
+                    $italic[$lc] = ($italic[$lc] ?? 0) + 1;
+                    if ($INDEX && isset($spellToWords[$lc])) {
+                        foreach ($spellToWords[$lc] as $wk) $paraHits[$wk] = ($paraHits[$wk] ?? 0) + 1;
+                    }
+                }
+            }
+        }
+
         $seq = 0;
         foreach (glossEntries($glued) as $e) {
             $seq++;
@@ -377,8 +412,8 @@ foreach ($words as $w) {
     foreach ($spellings[$wk] ?? [] as $tk => $text) {
         $lc = mb_strtolower(trim($text));
         // A phrase ("wa ha nabʿym") is counted where it is presented; a single
-        // word everywhere it appears.  Pass 1 indexed them the same way.
-        $c  = strpos($lc, ' ') !== false ? ($phraseCount[$lc] ?? 0) : ($corpus[$lc] ?? 0);
+        // word wherever it is italic.  Pass 1 indexed them the same way.
+        $c  = strpos($lc, ' ') !== false ? ($phraseCount[$lc] ?? 0) : ($italic[$lc] ?? 0);
         if (!isset($counted[$lc])) { $sum += $c; $counted[$lc] = true; }
         if ($tk !== 'w') {
             $translitChanged++;
@@ -562,7 +597,7 @@ if (!$RECOUNT) {
         $isPhrase = strpos($lc, ' ') !== false;
         $newRows[$k] = [
             'text'   => (string)array_key_first($forms),
-            'count'  => $isPhrase ? ($phraseCount[$lc] ?? 0) : ($corpus[$lc] ?? 0),
+            'count'  => $isPhrase ? ($phraseCount[$lc] ?? 0) : ($italic[$lc] ?? 0),
             'shown'  => $n,
             'phrase' => $isPhrase,
         ];
@@ -600,8 +635,9 @@ if (!$RECOUNT) {
    Books.
 
    The rule here is deliberately the LITERAL one the user chose: every distinct
-   spelling that occurs in the books at all (corpus count > 0) gets its own
-   'books' row. It is NOT the candidate test above.
+   spelling that occurs in the books at all gets its own 'books' row. It is NOT
+   the candidate test above.  Since 2026-09-30 "occurs" means occurs in
+   ITALICS, the same rule as word_count_yy, so plain English no longer counts.
 
    ⚠ That means spellings which merely COLLIDE with common English get a Books
    entry too — 'by' (39,350), 'my' (15,325), 'man' (8,693), 'day' (7,182) are
@@ -640,7 +676,9 @@ if (!$RECOUNT && $COVERAGE) {
         foreach ($spellings[(int)$w['word_key']] ?? [] as $text) {
             $lc = mb_strtolower(trim((string)$text));
             if ($lc === '' || isset($booksHave[$lc]) || isset($booksGap[$lc])) continue;
-            $c = $corpus[$lc] ?? 0;
+            // Italic occurrences, the same rule as word_count_yy: a spelling
+            // seen only as plain English ("by", "my", "day") is not in the books.
+            $c = $italic[$lc] ?? 0;
             if ($c <= 0) continue;                 // not in the books at all
             // Keep the casing the books themselves use most often.
             $forms = $surface[$lc] ?? [$lc => 1];
