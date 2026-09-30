@@ -285,7 +285,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=23"></script>
+<script src="/js/admin-nav.js?v=27"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -297,6 +297,8 @@
         <button type="button" id="tab-pages" class="subtab active" onclick="showTab('pages')">Pages</button>
         <button type="button" id="tab-menus" class="subtab" onclick="showTab('menus')">Menus</button>
         <button type="button" id="tab-styles" class="subtab" onclick="showTab('styles')">Styles</button>
+        <button type="button" id="tab-redirects" class="subtab" onclick="showTab('redirects')">Redirects</button>
+        <button type="button" id="tab-links" class="subtab" onclick="showTab('links')">Links</button>
     </div>
 
     <div id="list-view">
@@ -698,6 +700,15 @@
             </table>
             <div style="margin-top:10px;font-size:0.82rem;"><span id="search-band-status"></span></div>
         </div>
+    </div>
+
+    <!-- Redirects / Links tabs — admin-redirects.html and admin-links.html,
+         embedded in iframes (each loaded the first time its tab opens) -->
+    <div id="redirects-tab" style="display:none" data-no-persist>
+        <iframe id="redirects-frame" title="Redirects" style="width:100%;height:80vh;border:0;display:block;"></iframe>
+    </div>
+    <div id="links-tab" style="display:none" data-no-persist>
+        <iframe id="links-frame" title="Links" style="width:100%;height:80vh;border:0;display:block;"></iframe>
     </div>
 </div>
 
@@ -3975,6 +3986,7 @@ function hookTopLevelFields(){
 var pagesView = 'list-view';
 function showView(id){
     pagesView = id;
+    if (currentTab !== 'pages') return;   // another tab is showing; showTab('pages') restores it
     ['list-view','form-view'].forEach(function(v){ document.getElementById(v).style.display = (v===id ? '' : 'none'); });
 }
 
@@ -3985,8 +3997,15 @@ function showTab(tab){
     document.getElementById('tab-pages').classList.toggle('active',  tab === 'pages');
     document.getElementById('tab-menus').classList.toggle('active',  tab === 'menus');
     document.getElementById('tab-styles').classList.toggle('active', tab === 'styles');
+    document.getElementById('tab-redirects').classList.toggle('active', tab === 'redirects');
+    document.getElementById('tab-links').classList.toggle('active', tab === 'links');
     document.getElementById('menus-tab').style.display  = (tab === 'menus')  ? '' : 'none';
     document.getElementById('styles-tab').style.display = (tab === 'styles') ? '' : 'none';
+    document.getElementById('redirects-tab').style.display = (tab === 'redirects') ? '' : 'none';
+    document.getElementById('links-tab').style.display     = (tab === 'links')     ? '' : 'none';
+    if (history.replaceState && (tab === 'redirects' || tab === 'links' || /^#(redirects|links)$/.test(location.hash))) {
+        history.replaceState(null, '', tab === 'redirects' || tab === 'links' ? '#' + tab : location.pathname + location.search);
+    }
     if (tab === 'pages') {
         showView(pagesView);
     } else {
@@ -3994,8 +4013,39 @@ function showTab(tab){
         document.getElementById('form-view').style.display = 'none';
         if (tab === 'menus')  loadMenusTab();
         if (tab === 'styles') loadStylesTab();
+        if (tab === 'redirects') loadEmbedFrame('redirects-frame', '/admin-redirects');
+        if (tab === 'links')     loadEmbedFrame('links-frame', '/admin-links');
     }
 }
+
+// Load an embedded admin page into its tab's iframe once; the frame grows
+// with its content so this page does the scrolling. The src must be the
+// extension-less URL: .html 301s to http:// and is blocked as mixed content.
+function loadEmbedFrame(frameId, src) {
+    var f = document.getElementById(frameId);
+    if (f.getAttribute('src')) return;
+    f.addEventListener('load', function () {
+        var fit = function () {
+            try {
+                // Measure #app, not the document: the document is never
+                // shorter than the frame, so it could only ever grow.
+                var app = f.contentDocument.getElementById('app');
+                var h = app && app.offsetHeight ? app.offsetTop + app.offsetHeight + 40 : 600;
+                f.style.height = Math.max(h, 400) + 'px';
+            } catch (e) { /* cross-origin — keep the 80vh default */ }
+        };
+        fit();
+        try {
+            var ro = new ResizeObserver(fit);
+            ro.observe(f.contentDocument.body);
+            ro.observe(f.contentDocument.getElementById('app'));
+        } catch (e) {}
+    });
+    f.setAttribute('src', src);
+}
+
+// #redirects / #links deep-link those tabs
+if (location.hash === '#redirects' || location.hash === '#links') showTab(location.hash.slice(1));
 
 /* ── Styles tab ─────────────────────────────────────────────────────────
  * Global default fonts (Headers / Subheaders / Body) for every Pages-New

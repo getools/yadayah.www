@@ -29,11 +29,8 @@ if (!document.getElementById('admin-dirty-js')) {
 
 var tabs = [
     ['admin-site.html', 'Site'],
-    ['admin-fonts.html', 'Fonts', 'Central font registry — drives every text editor on the site.'],
-    ['admin-home.html', 'Home'],
     ['admin-books.html', 'Books'],
     ['admin-glossary.html', 'Glossary'],
-    ['admin-lookups.html', 'Lookups'],
     ['admin-ask.html', 'Ask'],
     ['admin-timeline.html', 'Timeline'],
     ['admin-memorial.html', 'Memorial'],
@@ -49,17 +46,13 @@ var tabs = [
     ['admin-vlog.html', 'Vlog'],
     ['admin-feeds.html', 'Feeds'],
     ['admin-pages.html', 'Pages', 'Build and edit every site page - sections, aliases, search flags, menus, and global styles.'],
-    ['admin-redirects.html', 'Redirects'],
-    ['admin-links.html', 'Links'],
     ['admin-resources.html', 'Resources'],
     ['admin-users.html', 'Users'],
-    ['admin-test.html', 'Tests'],
     ['admin-monitoring.html', 'Monitor'],
     ['admin-perf.html', 'Reports', 'Performance + future reports (response times, host CPU steal, DB load).'],
     ['admin-settings.html', 'Settings', 'System settings — Auto-Fix cadence, resource caps, run timeout, and pause.'],
     ['admin-manage.html', 'Manage', 'Server management — AI server (Puget) upload/download limits, incl. automatic limits during live shows.'],
-    ['admin-search.html', 'Search'],
-    ['admin-misc.html', 'Misc']
+    ['admin-search.html', 'Search']
 ];
 
 var nav = document.querySelector('.app-header .nav-tabs');

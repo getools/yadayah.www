@@ -7,7 +7,19 @@
     <title>Links - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=13">
     <link rel="stylesheet" href="css/login.css">
+    <script>
+    // Links lives as a tab on the Pages admin page, which embeds this page in
+    // an iframe. Opened on its own, go to that tab instead.
+    (function () {
+        var framed = false;
+        try { framed = window.self !== window.top; } catch (e) { framed = true; }
+        if (!framed) { location.replace('/admin-pages.html#links'); return; }
+        document.documentElement.classList.add('embedded');
+    })();
+    </script>
     <style>
+        html.embedded .app-header, html.embedded #app > h1 { display: none; }
+        html.embedded .container { max-width: none; padding-top: 0; }
         .pages-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
         .pages-table th, .pages-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
         .pages-table thead th { background: #f8f9fa; font-weight: 600; color: #555; user-select: none; }
@@ -45,7 +57,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=23"></script>
+<script src="/js/admin-nav.js?v=27"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>

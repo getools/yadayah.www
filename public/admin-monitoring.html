@@ -55,6 +55,12 @@
 
         .empty-msg { text-align: center; padding: 40px; color: #999; font-size: 0.9rem; }
         .scan-status { font-size: 0.82rem; color: #27ae60; margin-left: 8px; }
+        .mon-tabs { display: flex; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+        .mon-tab { padding: 8px 20px; font-size: 0.9rem; font-weight: 600; color: #777; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; }
+        .mon-tab:hover { color: #333; }
+        .mon-tab.active { color: #2c3e50; border-bottom-color: #3498db; }
+        .mon-panel { display: none; }
+        .mon-panel.active { display: block; }
     </style>
 </head>
 <body>
@@ -81,7 +87,7 @@
 <div id="app" class="container" style="display:none;max-width:100%;padding:0 16px;box-sizing:border-box;">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=23"></script>
+<script src="/js/admin-nav.js?v=27"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -90,6 +96,13 @@
 
     <h1>Monitoring</h1>
 
+    <div class="mon-tabs">
+        <span class="mon-tab active" data-tab="errors" onclick="monTab('errors')">Errors</span>
+        <span class="mon-tab" data-tab="tests" onclick="monTab('tests')">Tests</span>
+    </div>
+
+    <!-- ══ ERRORS TAB — logged site errors + Auto-Fix ══ -->
+    <div id="mon-errors" class="mon-panel active">
     <div id="summary-area" class="summary-cards"></div>
 
     <div id="youtube-push-area" style="margin-bottom:16px;"></div>
@@ -131,6 +144,12 @@
     <div id="autofix-status" style="display:none;margin-bottom:12px;border-radius:8px;padding:12px 16px;border:1px solid;font-size:0.85rem;"></div>
 
     <div id="events-area"></div>
+    </div>
+
+    <!-- ══ TESTS TAB — admin-test.html, embedded (loaded on first open) ══ -->
+    <div id="mon-tests" class="mon-panel">
+        <iframe id="tests-frame" title="Tests" style="width:100%;height:80vh;border:0;display:block;"></iframe>
+    </div>
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
@@ -157,6 +176,41 @@ function monSort(col, ev) {
     }));
     renderEvents();
 }
+
+// ── Tabs: Errors (this page's own content) and Tests (admin-test in an iframe) ──
+function monTab(name) {
+    if (name !== 'tests') name = 'errors';
+    document.querySelectorAll('.mon-tab').forEach(function(t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
+    document.querySelectorAll('.mon-panel').forEach(function(p) { p.classList.toggle('active', p.id === 'mon-' + name); });
+    if (name === 'tests') loadTestsFrame();
+    if (history.replaceState) history.replaceState(null, '', name === 'errors' ? location.pathname + location.search : '#' + name);
+}
+
+// The frame grows with its content so the Monitor page does the scrolling.
+function loadTestsFrame() {
+    var f = document.getElementById('tests-frame');
+    if (f.getAttribute('src')) return;
+    f.addEventListener('load', function () {
+        var fit = function () {
+            try {
+                // Measure #app, not the document: the document is never
+                // shorter than the frame, so it could only ever grow.
+                var app = f.contentDocument.getElementById('app');
+                var h = app && app.offsetHeight ? app.offsetTop + app.offsetHeight + 40 : 600;
+                f.style.height = Math.max(h, 400) + 'px';
+            } catch (e) { /* cross-origin — keep the 80vh default */ }
+        };
+        fit();
+        try {
+            var ro = new ResizeObserver(fit);
+            ro.observe(f.contentDocument.body);
+            ro.observe(f.contentDocument.getElementById('app'));
+        } catch (e) {}
+    });
+    f.setAttribute('src', '/admin-test');   // .html 301s to http:// (mixed content)
+}
+
+if (location.hash === '#tests') monTab('tests');
 
 function checkAuth() {
     fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {

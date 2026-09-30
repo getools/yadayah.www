@@ -7,7 +7,19 @@
     <title>Tests Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=13">
     <link rel="stylesheet" href="css/login.css">
+    <script>
+    // Tests lives as a tab on the Monitor admin page, which embeds this page
+    // in an iframe. Opened on its own, go to that tab instead.
+    (function () {
+        var framed = false;
+        try { framed = window.self !== window.top; } catch (e) { framed = true; }
+        if (!framed) { location.replace('/admin-monitoring.html#tests'); return; }
+        document.documentElement.classList.add('embedded');
+    })();
+    </script>
     <style>
+        html.embedded .app-header, html.embedded #app > h1 { display: none; }
+        html.embedded .container { max-width: none; padding-top: 0; }
         .test-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .test-table th, .test-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
         .test-table th { background: #f5f5f5; font-weight: 600; font-size: 0.8rem; position: sticky; top: 0; }
@@ -78,7 +90,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=23"></script>
+<script src="/js/admin-nav.js?v=27"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>

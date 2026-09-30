@@ -1,107 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790748002">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Misc - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css?v=13">
-    <link rel="stylesheet" href="css/login.css">
+    <!-- The Misc admin page was retired 2026-09-30 (original kept as
+         admin-misc.html.bak.retired-*). Its only content was a link to
+         modifier-words.html, which is still live. -->
+    <script>location.replace('admin-site.html');</script>
+    <meta http-equiv="refresh" content="0; url=admin-site.html">
 </head>
 <body>
-
-<div id="login-screen" class="login-screen">
-    <div class="login-card">
-        <h1>Admin</h1>
-        <div class="field">
-            <label for="login-user">Login</label>
-            <input type="text" id="login-user" autocomplete="username">
-        </div>
-        <div class="field">
-            <label for="login-pass">Password</label>
-            <div class="pass-wrap">
-                <input type="password" id="login-pass" autocomplete="current-password">
-                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
-            </div>
-        </div>
-        <div id="login-error" class="error-messages" style="display:none"></div>
-        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
-    </div>
-</div>
-
-<div id="app" class="container" style="display:none">
-    <div class="app-header">
-        <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=23"></script>
-        <div class="user-info">
-            <span id="user-display"></span>
-            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
-        </div>
-    </div>
-
-    <h1>Misc</h1>
-    <div class="misc-links" style="padding:20px 0;">
-        <a href="modifier-words.html" class="btn btn-primary">Modifier Words</a>
-    </div>
-</div>
-
-<script src="js/admin-links.js?v=4"></script>
-<script>
-var API = '/api';
-
-function checkAuth() {
-    fetch(API + '/auth.php', {credentials:'include'}).then(r=>r.json()).then(function(d) {
-        if (d.authenticated) {
-            document.getElementById('app').style.display = '';
-            document.getElementById('user-display').textContent = d.user_name;
-            applyPagePermissions(d.pages);
-        } else {
-            document.getElementById('login-screen').classList.add('visible');
-        }
-    });
-}
-
-function doLogin() {
-    var user = document.getElementById('login-user').value;
-    var pass = document.getElementById('login-pass').value;
-    var errEl = document.getElementById('login-error');
-    errEl.style.display = 'none';
-    fetch(API + '/auth.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({login: user, password: pass})
-    }).then(r=>r.json()).then(function(d) {
-        if (d.authenticated) {
-            document.getElementById('login-screen').classList.remove('visible');
-            document.getElementById('app').style.display = '';
-            document.getElementById('user-display').textContent = d.user_name;
-            applyPagePermissions(d.pages);
-        } else {
-            errEl.textContent = d.error || 'Login failed';
-            errEl.style.display = '';
-        }
-    });
-}
-
-function doLogout() {
-    fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function() {
-        location.reload();
-    });
-}
-
-function togglePassword() {
-    var input = document.getElementById('login-pass');
-    input.type = input.type === 'password' ? 'text' : 'password';
-}
-
-document.getElementById('login-pass').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') doLogin();
-});
-
-checkAuth();
-</script>
-<script src="/js/admin-login.js?v=8"></script>
-<script src="/js/session-state.js?v=1"></script>
-<script src="/js/error-reporter.js?v=14"></script>
+    <p>The Misc admin page has been retired. Go to <a href="admin-site.html">Site</a>.</p>
 </body>
 </html>

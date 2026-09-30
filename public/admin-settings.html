@@ -68,7 +68,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=23"></script>
+<script src="/js/admin-nav.js?v=27"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -79,6 +79,8 @@
 
     <div class="settings-tabs">
         <button class="active" data-tab="autofix" onclick="showTab('autofix')">Auto-Fix</button>
+        <button data-tab="auth" onclick="showTab('auth')">Authentication</button>
+        <button data-tab="lookups" onclick="showTab('lookups')">Lookups</button>
     </div>
 
     <div id="tab-autofix" class="settings-tab">
@@ -128,8 +130,11 @@
             <button class="btn btn-primary" id="btn-save" onclick="saveSettings()">Save</button>
             <span id="save-msg" style="margin-left:14px; align-self:center;"></span>
         </div>
+    </div>
 
-        <div class="card" style="margin-top:26px;">
+    <!-- Authentication tab — the Auto-Fix sign-in (was a card under Auto-Fix) -->
+    <div id="tab-auth" class="settings-tab" style="display:none">
+        <div class="card">
             <h2 style="margin-top:0; font-size:1.05rem; color:#2c3e50;">Authentication</h2>
             <div class="hint-box">
                 The agent signs in with the Claude <b>subscription</b> session — never the API key.
@@ -168,6 +173,11 @@
                 <button class="btn btn-primary btn-sm" id="btn-apply-creds" onclick="authApplyCreds()">Install credentials</button>
             </div>
         </div>
+    </div>
+
+    <!-- Lookups tab — admin-lookups.html, embedded (loaded on first open) -->
+    <div id="tab-lookups" class="settings-tab" style="display:none">
+        <iframe id="lookups-frame" title="Lookups" style="width:100%;height:80vh;border:0;display:block;"></iframe>
     </div>
 </div>
 
@@ -218,7 +228,40 @@ function showTab(name) {
     for (var i=0;i<btns.length;i++) btns[i].classList.toggle('active', btns[i].getAttribute('data-tab')===name);
     var tabs = document.querySelectorAll('.settings-tab');
     for (var j=0;j<tabs.length;j++) tabs[j].style.display = (tabs[j].id === 'tab-'+name) ? '' : 'none';
+    if (name === 'lookups') loadLookupsFrame();
+    if (history.replaceState) history.replaceState(null, '', name === 'autofix' ? location.pathname + location.search : '#' + name);
 }
+
+// The Lookups tab is the admin-lookups page in an iframe; the frame grows
+// with its content so the Settings page does the scrolling.
+function loadLookupsFrame() {
+    var f = document.getElementById('lookups-frame');
+    if (f.getAttribute('src')) return;
+    f.addEventListener('load', function () {
+        var fit = function () {
+            try {
+                // Measure #app, not the document: the document is never
+                // shorter than the frame, so it could only ever grow.
+                var app = f.contentDocument.getElementById('app');
+                var h = app && app.offsetHeight ? app.offsetTop + app.offsetHeight + 40 : 600;
+                f.style.height = Math.max(h, 400) + 'px';
+            } catch (e) { /* cross-origin — keep the 80vh default */ }
+        };
+        fit();
+        try {
+            var ro = new ResizeObserver(fit);
+            ro.observe(f.contentDocument.body);
+            ro.observe(f.contentDocument.getElementById('app'));
+        } catch (e) {}
+    });
+    f.setAttribute('src', '/admin-lookups');   // .html 301s to http:// (mixed content)
+}
+
+// #auth / #lookups deep-link a tab
+(function () {
+    var want = (location.hash || '').replace('#', '');
+    if (want && document.getElementById('tab-' + want)) showTab(want);
+})();
 
 function fmtAgo(secs) {
     if (secs === null || secs === undefined) return '—';
