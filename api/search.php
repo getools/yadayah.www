@@ -195,16 +195,16 @@ $snippetLead = (int)floor($snippetLen * 0.32);
 // --- Alias expansion: look up alternate forms for each word in the query ---
 $queryWords = preg_split('/\s+/', $q);
 $aliasTargets = [];
-// Auto-detected aliases must be corroborated by at least 3 distinct sessions
-// before they affect anyone's results. A single user pivoting between thematic
-// terms (e.g. nakam → nacham → shaar) used to be enough to poison the search;
-// this gate keeps weak rows in the table for tracking without applying them.
-// alias_curated_flag = TRUE always wins (admin-curated entries are trusted).
+// Only admin-accepted aliases affect results. Auto-detected rows stay
+// pending (alias_accepted_flag NULL) until an admin clicks Accept or
+// Reject on /admin-search; rejected rows (FALSE) are kept so re-detections
+// of the same pair stay rejected. Manually-added (curated) rows are
+// inserted already accepted.
 foreach ($queryWords as $w) {
     $aliasStmt = $pdo->prepare("
         SELECT alias_target FROM yy_search_alias
          WHERE lower(alias_term) = lower(?)
-           AND (alias_curated_flag = TRUE OR alias_session_count >= 3)
+           AND alias_accepted_flag = TRUE
     ");
     $aliasStmt->execute([$w]);
     $targets = $aliasStmt->fetchAll(PDO::FETCH_COLUMN);
@@ -414,8 +414,8 @@ try {
                 // re-detection, weight + session_count only bump when the
                 // detecting session differs from the last one that bumped it,
                 // so a single user exploring a thematic neighborhood can't
-                // ratchet a bad alias above the runtime gate of 3. Curated
-                // rows are still skipped by the WHERE clause.
+                // ratchet a bad alias. Curated and admin-rejected rows are
+                // skipped by the WHERE clause (a rejected pair stays rejected).
                 $pdo->prepare("
                     INSERT INTO yy_search_alias
                         (alias_term, alias_target, alias_weight, alias_session_count,
@@ -431,6 +431,7 @@ try {
                             alias_last_session  = EXCLUDED.alias_last_session,
                             alias_auto_dtime    = NOW()
                         WHERE NOT yy_search_alias.alias_curated_flag
+                          AND yy_search_alias.alias_accepted_flag IS DISTINCT FROM FALSE
                 ")->execute([$prevQ, $q, $_logSession]);
             }
         }

@@ -1,7 +1,7 @@
 <?php
 // Group + Category filter list for the prototype global search bar.
 // "Group" = a yy_page that has at least one video attached to it via
-// yy_feed_item_page; "Category" = a yy_feed_page_category attached to
+// yy_feed_item_page; "Category" = a yy_category of an Items section on
 // the same page. Only active rows on both sides.
 require_once __DIR__ . '/config.php';
 
@@ -31,14 +31,24 @@ $groups = $pdo->query("
     ORDER BY p.page_header_sort, p.page_title
 ")->fetchAll();
 
+// Categories come from the page system: each Items section's own
+// yy_category set, keyed to the page that owns the section. Only
+// categories with at least one filed item (yy_section_item) are listed.
 $categories = $pdo->query("
-    SELECT category_key,
-           page_key,
-           category_title,
-           category_slug
-    FROM yy_feed_page_category
-    WHERE category_active_flag = TRUE
-    ORDER BY page_key, category_sort, category_title
+    SELECT c.category_key,
+           s.page_key,
+           c.category_title,
+           c.category_slug
+    FROM yy_category c
+    JOIN yy_section s ON s.section_key = c.section_key
+    WHERE c.category_active_flag = TRUE
+      AND s.section_active_flag = TRUE
+      AND s.page_key IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM yy_section_item si
+        WHERE si.category_key = c.category_key
+      )
+    ORDER BY s.page_key, c.category_sort, c.category_title
 ")->fetchAll();
 
 jsonResponse([

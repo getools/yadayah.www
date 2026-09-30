@@ -4,6 +4,7 @@
  * automatic Hebrew consonant-skeleton fuzzy matching in search.php.
  *
  *   GET                       → list all aliases
+ *   POST   ?action=accept|reject&key=N → set alias_accepted_flag TRUE|FALSE
  *   POST   { term, target }   → insert pair
  *   PUT    ?key=N { term, target }
  *   DELETE ?key=N
@@ -25,9 +26,11 @@ if ($method === 'GET') {
                COALESCE(alias_weight, 1)        AS alias_weight,
                COALESCE(alias_session_count, 0) AS alias_session_count,
                COALESCE(alias_curated_flag, FALSE) AS alias_curated_flag,
+               alias_accepted_flag,
                alias_auto_dtime
           FROM yy_search_alias
          ORDER BY alias_curated_flag DESC,
+                  (alias_accepted_flag IS FALSE),
                   alias_weight DESC,
                   lower(alias_term),
                   alias_key
@@ -35,13 +38,14 @@ if ($method === 'GET') {
     jsonResponse($rows);
 }
 
-// Accept an auto-detected alias — bumps weight to 10 and sets the
-// curated flag so future auto-detections don't decrement or rewrite it.
-if ($method === 'POST' && isset($_GET['action']) && $_GET['action'] === 'accept') {
+// Accept / Reject an auto-detected alias. alias_accepted_flag starts NULL
+// (pending); only TRUE rows are applied by search.php. Rejected rows are
+// kept so search.php's auto-detect upsert leaves the pair rejected.
+if ($method === 'POST' && isset($_GET['action']) && in_array($_GET['action'], ['accept', 'reject'], true)) {
     $key = (int)($_GET['key'] ?? 0);
     if (!$key) errorResponse('key required');
-    $db->prepare("UPDATE yy_search_alias SET alias_curated_flag = TRUE, alias_weight = GREATEST(alias_weight, 10) WHERE alias_key = ?")
-       ->execute([$key]);
+    $db->prepare("UPDATE yy_search_alias SET alias_accepted_flag = ? WHERE alias_key = ?")
+       ->execute([$_GET['action'] === 'accept' ? 1 : 0, $key]);
     jsonResponse(['ok' => true]);
 }
 
@@ -55,10 +59,11 @@ if ($method === 'POST') {
     // — keeps them above auto-detected (weight starts at 1) and pins
     // them so the auto-promote upsert never touches them.
     $stmt = $db->prepare("
-        INSERT INTO yy_search_alias (alias_term, alias_target, alias_weight, alias_curated_flag)
-        VALUES (?, ?, 10, TRUE)
+        INSERT INTO yy_search_alias (alias_term, alias_target, alias_weight, alias_curated_flag, alias_accepted_flag)
+        VALUES (?, ?, 10, TRUE, TRUE)
         ON CONFLICT (lower(alias_term), lower(alias_target)) DO UPDATE
-            SET alias_curated_flag = TRUE,
+            SET alias_curated_flag  = TRUE,
+                alias_accepted_flag = TRUE,
                 alias_weight       = GREATEST(yy_search_alias.alias_weight, 10)
         RETURNING alias_key
     ");

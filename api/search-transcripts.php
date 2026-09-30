@@ -5,7 +5,7 @@
 //   q          (required) search text
 //   mode       all | phrase | any   (default: all)
 //   group      page_key      — filter to feed_items linked to this page
-//   category   category_key  — filter to feed_items linked to this category
+//   category   category_key  — filter to feed_items filed under this yy_category (Items section)
 //   page       1-based page number (default 1)
 //   limit      results per page    (default 25, max 100)
 //
@@ -76,9 +76,9 @@ if ($group !== null) {
     $params[] = $group;
 }
 if ($category !== null) {
-    $where[] = "EXISTS (SELECT 1 FROM yy_feed_item_category fic
-                        WHERE fic.feed_item_key = t.feed_item_key
-                          AND fic.category_key = ?)";
+    $where[] = "EXISTS (SELECT 1 FROM yy_section_item si
+                        WHERE si.feed_item_key = t.feed_item_key
+                          AND si.category_key = ?)";
     $params[] = $category;
 }
 $where[] = "fi.feed_item_active_flag = TRUE";
