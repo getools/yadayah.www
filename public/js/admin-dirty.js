@@ -189,23 +189,30 @@ function init() {
 // Auto-detect successful saves: watch for "Saved!" status elements appearing
 // This covers pages that don't explicitly call AdminDirty.afterSave()
 if (typeof MutationObserver !== 'undefined') {
-    new MutationObserver(function(mutations) {
-        for (var i = 0; i < mutations.length; i++) {
-            var t = mutations[i].target;
-            if (t.nodeType !== 1) continue;
-            var text = (t.textContent || '').trim();
-            if ((text === 'Saved!' || text === 'Saved') && t.style.display !== 'none') {
-                // Find the save button in the same section
-                for (var j = 0; j < _tracked.length; j++) {
-                    if (_tracked[j].section.contains(t)) {
-                        _tracked[j].snapshot = takeSnapshot(_tracked[j].section);
-                        updateButton(_tracked[j]);
-                        break;
+    var _armSavesObserver = function() {
+        new MutationObserver(function(mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                var t = mutations[i].target;
+                if (t.nodeType !== 1) continue;
+                var text = (t.textContent || '').trim();
+                if ((text === 'Saved!' || text === 'Saved') && t.style.display !== 'none') {
+                    // Find the save button in the same section
+                    for (var j = 0; j < _tracked.length; j++) {
+                        if (_tracked[j].section.contains(t)) {
+                            _tracked[j].snapshot = takeSnapshot(_tracked[j].section);
+                            updateButton(_tracked[j]);
+                            break;
+                        }
                     }
                 }
             }
-        }
-    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    };
+    if (document.body) {
+        _armSavesObserver();
+    } else {
+        document.addEventListener('DOMContentLoaded', _armSavesObserver);
+    }
 }
 
 function initAndSettle() {

@@ -23,7 +23,7 @@ if (!document.getElementById('admin-error-modal-js')) {
 if (!document.getElementById('admin-dirty-js')) {
     var d = document.createElement('script');
     d.id = 'admin-dirty-js';
-    d.src = '/js/admin-dirty.js?v=3';
+    d.src = '/js/admin-dirty.js?v=4';
     document.head.appendChild(d);
 }
 
