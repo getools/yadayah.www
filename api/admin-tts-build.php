@@ -151,9 +151,17 @@ if ($method === 'GET' && $action === 'list_paragraphs') {
     $skipSet = array_flip(array_map('intval', $settings['skip_paragraphs'] ?? []));
 
     // Voiced set — paragraph_numbers that have a marker (authoritative).
-    $mkStmt = $db->prepare("SELECT DISTINCT paragraph_number FROM yy_tts_audio_marker WHERE tts_audio_key = ? AND paragraph_number IS NOT NULL");
+    // Staged markers (a build in progress, or one held back for failures)
+    // describe the LATEST build, so they win over the live table when present.
+    $mkStmt = $db->prepare("SELECT DISTINCT paragraph_number FROM yy_tts_audio_marker_stage WHERE tts_audio_key = ? AND paragraph_number IS NOT NULL");
     $mkStmt->execute([$audioKey]);
-    $voicedSet = array_flip(array_map('intval', $mkStmt->fetchAll(PDO::FETCH_COLUMN)));
+    $voicedNums = $mkStmt->fetchAll(PDO::FETCH_COLUMN);
+    if (!$voicedNums) {
+        $mkStmt = $db->prepare("SELECT DISTINCT paragraph_number FROM yy_tts_audio_marker WHERE tts_audio_key = ? AND paragraph_number IS NOT NULL");
+        $mkStmt->execute([$audioKey]);
+        $voicedNums = $mkStmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+    $voicedSet = array_flip(array_map('intval', $voicedNums));
 
     // volume_skip_pages ranges — same parsing the build worker uses.
     $skipRanges = [];
@@ -902,7 +910,9 @@ if ($action === 'restart') {
         errorResponse('cannot restart a running build — pause or cancel first');
     }
     ttsWipePartsDir($audioKey);
-    $db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
+    // Only the STAGED markers: the live markers belong to the live MP3, which
+    // keeps playing until the worker publishes a clean rebuild.
+    $db->prepare("DELETE FROM yy_tts_audio_marker_stage WHERE tts_audio_key = ?")->execute([$audioKey]);
     $db->prepare("
         UPDATE yy_tts_audio
            SET tts_audio_status         = 'pending',

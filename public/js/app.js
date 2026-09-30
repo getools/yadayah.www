@@ -11,7 +11,8 @@ $(function () {
     var editingTranslationKey = null;
     var editorReady = false;
     var allTranslations = [];
-    var listPrefs = { sorts: [], filters: {} };
+    var listPrefs = { sorts: [], filters: {}, pageSize: 50 };
+    var listPage = 1;
     var pendingEdit = null;
 
     // ════════════════════════════════════════════
@@ -872,12 +873,15 @@ $(function () {
         var filtered = filterData(allTranslations);
         var sorted = sortData(filtered);
         var $tbody = $('#translations-tbody').empty();
+        renderPager(sorted.length);
         if (sorted.length === 0) {
             $tbody.empty();
             $('#list-empty').show();
             return;
         }
         $('#list-empty').hide();
+        var size = pageSizeValue();
+        if (size) sorted = sorted.slice((listPage - 1) * size, listPage * size);
         $.each(sorted, function (_, t) {
             var row = '<tr data-key="' + t.translation_key + '">' +
                 '<td>' + escHtml(t.cite_book_hebrew) + '</td>' +
@@ -893,6 +897,44 @@ $(function () {
             $tbody.append(row);
         });
     }
+
+    // ── Paging ── pageSize is a row count, or 0 for "All"
+    function pageSizeValue() {
+        var n = parseInt(listPrefs.pageSize, 10);
+        return isNaN(n) ? 50 : n;
+    }
+
+    function renderPager(total) {
+        var size = pageSizeValue();
+        var pages = size ? Math.max(1, Math.ceil(total / size)) : 1;
+        if (listPage > pages) listPage = pages;
+        if (listPage < 1) listPage = 1;
+        var from = total ? (size ? (listPage - 1) * size + 1 : 1) : 0;
+        var to = size ? Math.min(total, listPage * size) : total;
+        $('.list-page-size').val(String(size));
+        $('.list-page-info').text(from + '–' + to + ' of ' + total);
+        $('.list-page-num').text('Page ' + listPage + ' of ' + pages);
+        $('.list-page-first, .list-page-prev').prop('disabled', listPage <= 1);
+        $('.list-page-next, .list-page-last').prop('disabled', listPage >= pages);
+        $('.list-pager').data('pages', pages);
+    }
+
+    $(document).on('change', '.list-page-size', function () {
+        listPrefs.pageSize = parseInt($(this).val(), 10) || 0;
+        listPage = 1;
+        renderTable();
+        savePreferences();
+    });
+
+    $(document).on('click', '.list-pager button', function () {
+        var pages = $('.list-pager').data('pages') || 1;
+        var $b = $(this);
+        if ($b.hasClass('list-page-first')) listPage = 1;
+        else if ($b.hasClass('list-page-prev')) listPage--;
+        else if ($b.hasClass('list-page-next')) listPage++;
+        else if ($b.hasClass('list-page-last')) listPage = pages;
+        renderTable();
+    });
 
     function filterData(data) {
         var filters = {};
@@ -946,6 +988,7 @@ $(function () {
             listPrefs.sorts = MultiSort.click(sorts, col, e, 'asc');
         }
         updateSortIndicators();
+        listPage = 1;
         renderTable();
         savePreferences();
     });
@@ -983,6 +1026,7 @@ $(function () {
             var val = $(this).val();
             if (val) listPrefs.filters[$(this).data('col')] = val;
         });
+        listPage = 1;
         renderTable();
         savePreferences();
     });
@@ -1042,6 +1086,8 @@ $(function () {
                 listPrefs = data.value;
                 if (!listPrefs.sorts) listPrefs.sorts = [];
                 if (!listPrefs.filters) listPrefs.filters = {};
+                if (listPrefs.pageSize == null) listPrefs.pageSize = 50;
+                if ($('#translations-tbody tr').length) renderTable();
             }
         });
     }

@@ -77,7 +77,8 @@ function handleGet(PDO $db, array $user): void {
     }
 
     // Translations with flexible filtering: cite_book_key, chapter_key, verse_key
-    $citeBookKey = $_GET['cite_book_key'] ?? null;
+    // The Entry tab's Scroll dropdown sends scroll_key (= cite_book_key)
+    $citeBookKey = $_GET['cite_book_key'] ?? $_GET['scroll_key'] ?? null;
     $chapterKey = $_GET['chapter_key'] ?? null;
     $verseKey = $_GET['verse_key'] ?? null;
 

@@ -753,11 +753,14 @@ for ($k = 0; $k < $nPara; $k++) {
 }
 $qtFlush();
 
-// Clear any stale markers for this audio row — easier than upserting
-// across schema changes and the table is small.
-$db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
+// Markers for THIS build go to yy_tts_audio_marker_stage, not the live
+// table. The live markers keep matching the live MP3 (which keeps playing
+// through the rebuild) until the publish step at the end swaps the staged
+// MP3 + staged markers in together, in one transaction. Clear any stale
+// staged markers from an earlier, held-back build first.
+$db->prepare("DELETE FROM yy_tts_audio_marker_stage WHERE tts_audio_key = ?")->execute([$audioKey]);
 $insertMarker = $db->prepare("
-    INSERT INTO yy_tts_audio_marker (tts_audio_key, paragraph_key, paragraph_page, paragraph_number, tts_audio_marker_offset_ms, tts_audio_marker_byte_offset)
+    INSERT INTO yy_tts_audio_marker_stage (tts_audio_key, paragraph_key, paragraph_page, paragraph_number, tts_audio_marker_offset_ms, tts_audio_marker_byte_offset)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT (tts_audio_key, paragraph_number, paragraph_page) DO UPDATE
         SET tts_audio_marker_offset_ms   = EXCLUDED.tts_audio_marker_offset_ms,
@@ -1525,8 +1528,12 @@ foreach ($paragraphs as $idx => $p) {
 // at this moment. MP3 frames concatenate cleanly without re-encoding;
 // the per-part probeDurationMs() above already accounted for any
 // per-frame padding so $cumulativeMs is accurate.
-$fh = fopen($finalPath, 'wb');
-if (!$fh) bail($db, $audioKey, "cannot open $finalPath for write");
+// Assemble into <final>.staging, NOT the live file: the live MP3 keeps
+// serving (with its matching live markers) until the publish step below
+// renames the staged file into place.
+$stagePath = $finalPath . '.staging';
+$fh = fopen($stagePath, 'wb');
+if (!$fh) bail($db, $audioKey, "cannot open $stagePath for write");
 $concatBytes = 0;
 for ($i = 0; $i < $nPara; $i++) {
     $pp = $partPath($i);
@@ -1544,7 +1551,7 @@ fclose($fh);
 // so the page→time markers run progressively early. Each marker already
 // stored its exact byte position in the concatenated file
 // (tts_audio_marker_byte_offset); map that byte → true presentation time
-// via ffprobe's packet table — done HERE on the pre-remux $finalPath,
+// via ffprobe's packet table — done HERE on the pre-remux $stagePath,
 // whose byte layout the offsets match — and rewrite the offset_ms.
 // Best-effort: on any failure the loop-derived offsets simply stand.
 $ffprobeForMarkers = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
@@ -1556,7 +1563,7 @@ if ($ffprobeForMarkers) {
     $pkPos = []; $pkPts = [];
     $pkPipe = popen(escapeshellcmd($ffprobeForMarkers)
         . ' -v error -select_streams a:0 -show_entries packet=pts_time,pos -of csv=p=0 '
-        . escapeshellarg($finalPath) . ' 2>/dev/null', 'r');
+        . escapeshellarg($stagePath) . ' 2>/dev/null', 'r');
     if ($pkPipe) {
         while (($ln = fgets($pkPipe)) !== false) {
             $ln = rtrim($ln, "\r\n");
@@ -1579,11 +1586,11 @@ if ($ffprobeForMarkers) {
             };
             try {
                 $mSel = $db->prepare("SELECT paragraph_number, paragraph_page, tts_audio_marker_byte_offset bo
-                                        FROM yy_tts_audio_marker
+                                        FROM yy_tts_audio_marker_stage
                                        WHERE tts_audio_key = ? AND tts_audio_marker_byte_offset IS NOT NULL");
                 $mSel->execute([$audioKey]);
                 $markerRows = $mSel->fetchAll();   // buffer before issuing UPDATEs on same conn
-                $mUpd = $db->prepare("UPDATE yy_tts_audio_marker SET tts_audio_marker_offset_ms = ?
+                $mUpd = $db->prepare("UPDATE yy_tts_audio_marker_stage SET tts_audio_marker_offset_ms = ?
                                        WHERE tts_audio_key = ? AND paragraph_number = ? AND paragraph_page = ?");
                 foreach ($markerRows as $mk) {
                     $newMs = (int)round($timeAtByte((int)$mk['bo']) * 1000);
@@ -1604,14 +1611,9 @@ if ($ffprobeForMarkers) {
 // corrected neighbours. The detached tts-cont-onset-fix.php spawned below then
 // STT-refines every crossing it can confidently match, leaving this char-ratio
 // value only where STT can't. See reference_tts_audio_seekable_remux_and_markers.
-try {
-    $reanchor = ttsReanchorContinuationMarkers($db, $audioKey, true);
-    if (($reanchor['updated'] ?? 0) > 0) {
-        fwrite(STDERR, "re-anchored {$reanchor['updated']} continuation marker(s) to corrected timeline\n");
-    }
-} catch (\Throwable $e) {
-    error_log("[tts-build $audioKey] continuation re-anchor failed (non-fatal): " . $e->getMessage());
-}
+// ttsReanchorContinuationMarkers() works on the LIVE marker table, so it runs
+// inside the publish transaction below, right after the staged markers are
+// copied in (readers never see the un-anchored values).
 
 // Re-mux the byte-concatenated MP3 so it's actually SEEKABLE in browsers.
 // A naive byte-concat of per-paragraph MP3s produces a stream with no
@@ -1624,46 +1626,105 @@ try {
 // keep the concatenated file rather than failing the build.
 $ffmpegBin = trim(shell_exec('which ffmpeg 2>/dev/null') ?: '');
 if ($ffmpegBin) {
-    $remuxPath = $finalPath . '.remux.mp3';
-    $cmd = escapeshellcmd($ffmpegBin) . ' -y -loglevel error -i ' . escapeshellarg($finalPath)
+    $remuxPath = $stagePath . '.remux.mp3';
+    $cmd = escapeshellcmd($ffmpegBin) . ' -y -loglevel error -i ' . escapeshellarg($stagePath)
          . ' -c copy -write_xing 1 -f mp3 ' . escapeshellarg($remuxPath) . ' 2>&1';
     shell_exec($cmd);
     if (is_file($remuxPath) && filesize($remuxPath) > 0) {
         @chmod($remuxPath, 0664);
-        if (!@rename($remuxPath, $finalPath)) { @unlink($remuxPath); }
+        if (!@rename($remuxPath, $stagePath)) { @unlink($remuxPath); }
     } else {
         @unlink($remuxPath);
     }
 }
+@chmod($stagePath, 0664);
 
-$finalSize = filesize($finalPath);
+$finalSize = filesize($stagePath);
 if (!$finalSize) bail($db, $audioKey, "output file is empty (every paragraph failed); first errs: " . implode(' | ', array_slice($failures, 0, 3)));
 
 // Probe duration with ffprobe if available.
 $duration = null;
 $ffprobe = trim(shell_exec('which ffprobe 2>/dev/null') ?: '');
 if ($ffprobe) {
-    $out = shell_exec(escapeshellcmd($ffprobe) . ' -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 ' . escapeshellarg($finalPath) . ' 2>/dev/null');
+    $out = shell_exec(escapeshellcmd($ffprobe) . ' -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 ' . escapeshellarg($stagePath) . ' 2>/dev/null');
     if ($out) $duration = (int)round((float)trim($out));
 }
 
+// ── Publish: swap the staged MP3 + staged markers in together ──
 // Mark the file "live" only on a clean build (zero paragraph failures).
 // The flipbook tts-audio.php endpoint gates the Play button on
-// tts_audio_live_dtime being set — so a partial / error-laden build
-// stays complete-but-not-live and the prior known-good audio (if any)
-// keeps serving until a clean rebuild promotes the new file.
+// tts_audio_live_dtime being set.
+//
+// A build WITH failures is held back when the row already has live audio
+// whose file is on disk: the old MP3, old markers, path and live_dtime stay
+// exactly as they were (the chapter keeps playing, in sync), and the new
+// build stays in <final>.staging + yy_tts_audio_marker_stage for inspection
+// until a clean gap-fill rebuild publishes. With NO prior live audio there
+// is nothing to protect, so it publishes as before (not live), which keeps
+// the manual "stamp live" fix for 400/empty-text failures working.
 $liveNow = ($failureCount === 0) ? date('Y-m-d H:i:sO') : null;
-updateAudio($db, $audioKey, [
-    'tts_audio_status'          => 'complete',
-    'tts_audio_progress'        => 100,
-    'tts_audio_message'         => $failureCount ? "Done with $failureCount paragraph failure(s)" : 'Done',
-    'tts_audio_path'            => $relPath,
-    'tts_audio_size_bytes'      => $finalSize,
-    'tts_audio_duration_secs'   => $duration,
-    'tts_audio_completed_dtime' => date('Y-m-d H:i:sO'),
-    'tts_audio_live_dtime'      => $liveNow,
-    'tts_audio_error'           => $failures ? implode(' | ', array_slice($failures, 0, 5)) : null,
-]);
+$prior = $db->prepare("SELECT tts_audio_path, tts_audio_live_dtime FROM yy_tts_audio WHERE tts_audio_key = ?");
+$prior->execute([$audioKey]);
+$prior = $prior->fetch(PDO::FETCH_ASSOC) ?: [];
+$priorLiveOnDisk = !empty($prior['tts_audio_live_dtime']) && !empty($prior['tts_audio_path'])
+    && is_file($outDir . '/' . basename((string)$prior['tts_audio_path']));
+$failSummary = $failures ? implode(' | ', array_slice($failures, 0, 5)) : null;
+
+if ($failureCount > 0 && $priorLiveOnDisk) {
+    updateAudio($db, $audioKey, [
+        'tts_audio_status'          => 'complete',
+        'tts_audio_progress'        => 100,
+        'tts_audio_message'         => "Done with $failureCount paragraph failure(s) — not published, previous audio still live",
+        'tts_audio_completed_dtime' => date('Y-m-d H:i:sO'),
+        'tts_audio_error'           => $failSummary,
+    ]);
+    fwrite(STDERR, "held back: $failureCount failure(s); previous live audio kept, new build left at $stagePath\n");
+} else {
+    try {
+        $db->beginTransaction();
+        $db->prepare("DELETE FROM yy_tts_audio_marker WHERE tts_audio_key = ?")->execute([$audioKey]);
+        $db->prepare("
+            INSERT INTO yy_tts_audio_marker (tts_audio_key, paragraph_key, paragraph_page, paragraph_number, tts_audio_marker_offset_ms, tts_audio_marker_byte_offset)
+            SELECT tts_audio_key, paragraph_key, paragraph_page, paragraph_number, tts_audio_marker_offset_ms, tts_audio_marker_byte_offset
+              FROM yy_tts_audio_marker_stage
+             WHERE tts_audio_key = ?
+        ")->execute([$audioKey]);
+        // Savepoint: a failed re-anchor must not abort the whole publish
+        // (an error inside a pg transaction poisons every later statement).
+        $db->exec('SAVEPOINT reanchor');
+        try {
+            $reanchor = ttsReanchorContinuationMarkers($db, $audioKey, true);
+            $db->exec('RELEASE SAVEPOINT reanchor');
+            if (($reanchor['updated'] ?? 0) > 0) {
+                fwrite(STDERR, "re-anchored {$reanchor['updated']} continuation marker(s) to corrected timeline\n");
+            }
+        } catch (\Throwable $e) {
+            $db->exec('ROLLBACK TO SAVEPOINT reanchor');
+            error_log("[tts-build $audioKey] continuation re-anchor failed (non-fatal): " . $e->getMessage());
+        }
+        $db->prepare("DELETE FROM yy_tts_audio_marker_stage WHERE tts_audio_key = ?")->execute([$audioKey]);
+        updateAudio($db, $audioKey, [
+            'tts_audio_status'          => 'complete',
+            'tts_audio_progress'        => 100,
+            'tts_audio_message'         => $failureCount ? "Done with $failureCount paragraph failure(s)" : 'Done',
+            'tts_audio_path'            => $relPath,
+            'tts_audio_size_bytes'      => $finalSize,
+            'tts_audio_duration_secs'   => $duration,
+            'tts_audio_completed_dtime' => date('Y-m-d H:i:sO'),
+            'tts_audio_live_dtime'      => $liveNow,
+            'tts_audio_error'           => $failSummary,
+        ]);
+        // Rename LAST, just before commit: atomic on the same filesystem, so
+        // players see either the old file or the new one, never a partial.
+        if (!@rename($stagePath, $finalPath)) {
+            throw new RuntimeException("cannot move $stagePath into place");
+        }
+        $db->commit();
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        bail($db, $audioKey, 'publish failed (previous audio left in place): ' . $e->getMessage());
+    }
+}
 
 // ── Auto page-break continuation onset correction (best-effort, detached) ──
 // Normal page markers are byte-offset-derived (ffprobe packet PTS) and accurate

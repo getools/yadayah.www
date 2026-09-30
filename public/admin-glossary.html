@@ -84,6 +84,10 @@
         .gw-bar select { padding: 7px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; font-family: inherit; background: #fff; }
         .gw-count { font-size: 0.82rem; color: #888; white-space: nowrap; }
         .gw-bar .gw-spacer { margin-left: auto; }
+        .gw-scope { margin-top: -6px; }
+        .gw-scope label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #555; }
+        .gw-scope select { min-width: 90px; }
+        .gw-scope select:disabled { background: #f4f4f4; color: #aaa; }
 
         /* Letter strip — the same YT index the public glossary web uses. */
 
@@ -486,6 +490,7 @@
     <div class="tab-bar">
         <button class="tab-btn active" data-tab="web" onclick="switchTab('web')">Web</button>
         <button class="tab-btn" data-tab="words" onclick="switchTab('words')">Words</button>
+        <button class="tab-btn" data-tab="translations" onclick="switchTab('translations')">Translations</button>
     </div>
 
     <!-- ══ WEB TAB — Hebrew letters (yy_letter) ══ -->
@@ -493,6 +498,11 @@
         <p style="margin:0 0 16px;color:#888;font-size:0.85rem;">Hebrew letters — the letter web on the public Glossary page.</p>
         <div id="edit-panel" class="edit-panel"></div>
         <div id="letter-list" class="letter-list"></div>
+    </div>
+
+    <!-- ══ TRANSLATIONS TAB — admin-translation.html, embedded (loaded on first open) ══ -->
+    <div id="tab-translations" class="tab-content">
+        <iframe id="translations-frame" title="Translations" style="width:100%;height:80vh;border:0;display:block;"></iframe>
     </div>
 
     <!-- ══ WORDS TAB — the Hebrew lexicon (yy_word + yy_word_translit + yy_word_definition) ══ -->
@@ -528,6 +538,17 @@
             <span id="gw-count" class="gw-count"></span>
             <span class="gw-spacer"></span>
             <button class="btn btn-primary" onclick="newWord()">New Word</button>
+        </div>
+
+        <!-- Scroll / Chapter / Verse: only the words transliterated in that
+             passage's translation (?scroll=&chapter=&verse=). Moved here from
+             the retired admin-word page. data-no-persist: the chapter and verse
+             options load asynchronously, so session-state.js could not restore
+             them — lxScopeRestore() does it from LX_SCOPE_STORE instead. -->
+        <div class="gw-bar gw-scope" data-no-persist>
+            <label>Scroll <select id="lx-scroll" onchange="lxScopeChanged('scroll')"><option value="">All</option></select></label>
+            <label>Chapter <select id="lx-chapter" onchange="lxScopeChanged('chapter')" disabled><option value="">All</option></select></label>
+            <label>Verse <select id="lx-verse" onchange="lxScopeChanged('verse')" disabled><option value="">All</option></select></label>
         </div>
 
         <!-- data-no-persist: record fields must not survive a refresh into the
@@ -905,7 +926,7 @@ var LX_SRC_STORE = 'admin-glossary:sources';   // checked Sources filter codes
 var wordsLoaded = false;
 
 function switchTab(name) {
-    if (name !== 'web' && name !== 'words') name = 'web';
+    if (name !== 'web' && name !== 'words' && name !== 'translations') name = 'web';
     var btns = document.querySelectorAll('.tab-bar .tab-btn');
     for (var i = 0; i < btns.length; i++) {
         btns[i].classList.toggle('active', btns[i].getAttribute('data-tab') === name);
@@ -916,11 +937,41 @@ function switchTab(name) {
     }
     try { localStorage.setItem(TAB_STORE, name); } catch (e) { /* private mode */ }
     if (name === 'words' && !wordsLoaded) { wordsLoaded = true; loadWords(); }
+    if (name === 'translations') loadTranslationsFrame();
+}
+
+// The Translations tab is the admin-translation.html page in an iframe; the
+// frame grows with its content so the Glossary page does the scrolling.
+function loadTranslationsFrame() {
+    var f = document.getElementById('translations-frame');
+    if (f.getAttribute('src')) return;
+    f.addEventListener('load', function () {
+        var fit = function () {
+            try {
+                // Measure #app, not the document: the document is never
+                // shorter than the frame, so it could only ever grow.
+                var app = f.contentDocument.getElementById('app');
+                var h = app && app.offsetHeight ? app.offsetTop + app.offsetHeight + 40 : 600;
+                f.style.height = Math.max(h, 400) + 'px';
+            } catch (e) { /* cross-origin — keep the 80vh default */ }
+        };
+        fit();
+        try {
+            var ro = new ResizeObserver(fit);
+            ro.observe(f.contentDocument.body);
+            ro.observe(f.contentDocument.getElementById('app'));
+        } catch (e) {}
+    });
+    f.setAttribute('src', '/admin-translation');   // .html 301s to http:// (mixed content)
 }
 
 function restoreTab() {
     var saved = 'web';
     try { saved = localStorage.getItem(TAB_STORE) || 'web'; } catch (e) {}
+    // #words / #web deep-links a tab (the retired admin-word.html redirects
+    // to #words) and outranks the remembered one.
+    var hash = location.hash.replace('#', '');
+    if (hash === 'words' || hash === 'web' || hash === 'translations') saved = hash;
     switchTab(saved);
 }
 
@@ -1180,9 +1231,84 @@ function lxReload(resetOffset) {
     loadWords();
 }
 
+/* ── Scroll / Chapter / Verse scope ─────────────────────────────────────
+   Options come from ?action=scope, which offers only passages that have
+   translation text. The chosen keys persist in LX_SCOPE_STORE as
+   "scroll,chapter,verse" and are restored level by level, before the first
+   list query, by lxScopeRestore(). */
+var LX_SCOPE_STORE = 'admin-glossary:scope';
+var LX_SCOPE_LEVELS = ['scroll', 'chapter', 'verse'];
+var lxScopeReady = false;
+
+function lxScopeFill(lvl, query, then) {
+    var sel = document.getElementById('lx-' + lvl);
+    fetch(API + '/admin-glossary-lexicon.php?action=scope' + query, {credentials:'include'})
+        .then(function(r){return safeJson(r);}).then(function(d) {
+        sel.innerHTML = '<option value="">All</option>';
+        ((d && d.items) || []).forEach(function(it) {
+            var opt = document.createElement('option');
+            opt.value = it.key;
+            opt.textContent = it.label;
+            sel.appendChild(opt);
+        });
+        sel.disabled = false;
+        if (then) then();
+    });
+}
+
+function lxScopeReset(lvl) {
+    var sel = document.getElementById('lx-' + lvl);
+    sel.innerHTML = '<option value="">All</option>';
+    sel.disabled = true;
+}
+
+function lxScopeSave() {
+    var v = LX_SCOPE_LEVELS.map(function(l) { return document.getElementById('lx-' + l).value; });
+    try { localStorage.setItem(LX_SCOPE_STORE, v.join(',')); } catch (e) { /* private mode */ }
+}
+
+function lxScopeChanged(lvl) {
+    if (lvl === 'scroll') {
+        lxScopeReset('chapter');
+        lxScopeReset('verse');
+        var s = document.getElementById('lx-scroll').value;
+        if (s) lxScopeFill('chapter', '&scroll=' + encodeURIComponent(s));
+    } else if (lvl === 'chapter') {
+        lxScopeReset('verse');
+        var c = document.getElementById('lx-chapter').value;
+        if (c) lxScopeFill('verse', '&chapter=' + encodeURIComponent(c));
+    }
+    lxScopeSave();
+    lxReload(true);
+}
+
+/* Fill the scroll list, then re-select the saved scroll → chapter → verse,
+   loading each level's options before choosing in it. A saved key that is no
+   longer offered stops the chain there. */
+function lxScopeRestore(then) {
+    var saved = [];
+    try { saved = (localStorage.getItem(LX_SCOPE_STORE) || '').split(','); } catch (e) {}
+    function pick(i) {
+        var lvl = LX_SCOPE_LEVELS[i];
+        var sel = document.getElementById('lx-' + lvl);
+        var want = saved[i] || '';
+        if (!/^\d+$/.test(want) || !sel.querySelector('option[value="' + want + '"]')) { then(); return; }
+        sel.value = want;
+        if (i === 2) { then(); return; }
+        var next = LX_SCOPE_LEVELS[i + 1];
+        lxScopeFill(next, '&' + lvl + '=' + encodeURIComponent(want), function() { pick(i + 1); });
+    }
+    lxScopeFill('scroll', '', function() { pick(0); });
+}
+
 /* ── List ──────────────────────────────────────────────────────────────── */
 
 function loadWords() {
+    if (!lxScopeReady) {
+        lxScopeReady = true;
+        lxScopeRestore(loadWords);
+        return;
+    }
     lxLoadMeta(function() {
         lxState.q = document.getElementById('gw-search').value.trim();
         lxState.source = lxSelectedSources().join(',');
@@ -1199,6 +1325,10 @@ function loadWords() {
         if (copiedSel && copiedSel.value) p += '&copied=' + encodeURIComponent(copiedSel.value);
         var langSel = document.getElementById('lx-f-language');
         if (langSel && langSel.value) p += '&language=' + encodeURIComponent(langSel.value);
+        ['scroll', 'chapter', 'verse'].forEach(function(lvl) {
+            var el = document.getElementById('lx-' + lvl);
+            if (el && el.value) p += '&' + lvl + '=' + encodeURIComponent(el.value);
+        });
         Object.keys(LX_FILTERS).forEach(function(id) {
             var el = document.getElementById(id);
             var v = el ? el.value.trim() : '';

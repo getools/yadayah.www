@@ -36,6 +36,12 @@
  *                         ?f_yt= ?f_def= ?f_count= (&f_count_op=gt|lt)
  *                         ?copied=yes|no filters on the YY-copy link.
  *                         ?language=A|G|H|L|none filters on word_language.
+ *                         ?scroll=N [&chapter=N [&verse=N]] limits to the words
+ *                         transliterated in that passage's translation (see
+ *                         lxScopeTokens()).
+ * GET ?action=scope     — scrolls with translation text; &scroll=N → its chapters;
+ *                         &chapter=N → its verses.  Feeds the Scroll/Chapter/Verse
+ *                         filter, which replaced the one on the retired admin-word.
  * GET ?key=N            — one word with its translits and definitions
  * POST                  — create
  * PUT ?key=N            — partial update; unsupplied fields are left alone
@@ -144,6 +150,57 @@ function occBookSlug(?string $volumeCode): ?string {
 
 function lexBody(): array {
     return json_decode(file_get_contents('php://input'), true) ?: [];
+}
+
+/**
+ * Every transliterated token in the translation of a scroll / chapter / verse,
+ * lower-cased — the spellings the Scroll/Chapter/Verse filter matches against.
+ *
+ * Only ITALIC runs are read: the translations set each transliteration in
+ * italics inside "(… – gloss)", and the English around it would otherwise
+ * match lexicon words that double as English ('by', 'day').  Half-rings sit
+ * OUTSIDE the italic run (ʿ<i>amad</i>, <i>ro</i>ʾ<i>sh</i>), so they are
+ * glued back in first — the same fix-up _word_harvest.php applies to the books.
+ * (The old admin-word filter looked for <span class="word">, which no
+ * translation contains, so it always came back empty.)
+ */
+function lxScopeTokens(PDO $db, int $scroll, int $chapter, int $verse): array {
+    $sql = 'SELECT translation_copy FROM yy_translation WHERE cite_book_key = ?';
+    $params = [$scroll];
+    if ($chapter) { $sql .= ' AND cite_chapter_key = ?'; $params[] = $chapter; }
+    if ($verse)   { $sql .= ' AND cite_verse_key = ?';   $params[] = $verse; }
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+
+    $hr  = '[\x{02BF}\x{02BE}\x{2018}\x{2019}\']';
+    $tok = '/[a-zA-Z\x{02BF}\x{02BE}\x{2018}\x{2019}\x{05F3}\'\-]+/u';
+    $out = [];
+    while (($html = $stmt->fetchColumn()) !== false) {
+        if ($html === null || strpos($html, '<i') === false) continue;
+        $g = preg_replace('/<\/i>\s*(' . $hr . ')\s*<i[^>]*>/u', '$1', $html);
+        $g = preg_replace('/(' . $hr . ')(<i[^>]*>)/u', '$2$1', $g);
+        $g = preg_replace('/(<\/i>)(' . $hr . ')/u', '$2$1', $g);
+        if (!preg_match_all('/<i\b[^>]*>(.*?)<\/i>/si', $g, $runs)) continue;
+        foreach ($runs[1] as $run) {
+            $txt = html_entity_decode(strip_tags($run), ENT_QUOTES, 'UTF-8');
+            if (!preg_match_all($tok, $txt, $m)) continue;
+            foreach ($m[0] as $t) {
+                // Same folding as the harvester's cleanToken(): drop a
+                // possessive 's and stray edge hyphens/quotes.
+                $t = preg_replace('/[\x{2018}\x{2019}\x{05F3}\']s$/ui', '', $t);
+                $t = trim($t, "-\u{2018}\u{2019}");
+                if ($t !== '') $out[mb_strtolower($t)] = true;
+            }
+        }
+    }
+    return array_keys($out);
+}
+
+/** A PHP list of strings as a Postgres text[] literal. */
+function pgTextArrayLiteral(array $vals): string {
+    return '{' . implode(',', array_map(function ($v) {
+        return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $v) . '"';
+    }, $vals)) . '}';
 }
 
 /**
@@ -266,6 +323,36 @@ if ($method === 'GET' && $action === 'meta') {
         'source_counts'    => $counts,
         'default_def_cols' => DEFAULT_DEF_COLS,
     ]);
+}
+
+/* ── Scroll / Chapter / Verse choices for the list's scope filter ────────
+   Only passages that have translation text are offered, so no choice can
+   come back empty for want of a translation. */
+if ($method === 'GET' && $action === 'scope') {
+    $scroll  = (int)($_GET['scroll'] ?? 0);
+    $chapter = (int)($_GET['chapter'] ?? 0);
+    if ($chapter) {
+        $st = $db->prepare('SELECT v.cite_verse_key AS key, v.cite_verse_number AS label
+                              FROM yy_cite_verse v
+                             WHERE v.cite_chapter_key = ?
+                               AND EXISTS (SELECT 1 FROM yy_translation t WHERE t.cite_verse_key = v.cite_verse_key)
+                             ORDER BY v.cite_verse_sort, v.cite_verse_number');
+        $st->execute([$chapter]);
+    } elseif ($scroll) {
+        $st = $db->prepare('SELECT c.cite_chapter_key AS key, c.cite_chapter_number AS label
+                              FROM yy_cite_chapter c
+                             WHERE c.cite_book_key = ?
+                               AND EXISTS (SELECT 1 FROM yy_translation t WHERE t.cite_chapter_key = c.cite_chapter_key)
+                             ORDER BY c.cite_chapter_sort, c.cite_chapter_number');
+        $st->execute([$scroll]);
+    } else {
+        $st = $db->query("SELECT b.cite_book_key AS key,
+                                 concat_ws(' / ', NULLIF(b.cite_book_hebrew, ''), b.cite_book_common) AS label
+                            FROM yy_cite_book b
+                           WHERE EXISTS (SELECT 1 FROM yy_translation t WHERE t.cite_book_key = b.cite_book_key)
+                           ORDER BY b.cite_book_sort");
+    }
+    jsonResponse(['items' => $st->fetchAll()]);
 }
 
 /* ── Where a word occurs: series → volume → chapter → page → paragraph ───
@@ -556,6 +643,22 @@ if ($method === 'GET' && !$key) {
     } elseif ($language !== '') {
         $where[] = 'w.word_language = :language';
         $params[':language'] = mb_substr($language, 0, 1);
+    }
+
+    /* Scroll / Chapter / Verse: the words transliterated in that passage's
+       translation, matched on any of their spellings. */
+    $scScroll = (int)($_GET['scroll'] ?? 0);
+    if ($scScroll) {
+        $toks = lxScopeTokens($db, $scScroll, (int)($_GET['chapter'] ?? 0), (int)($_GET['verse'] ?? 0));
+        if (!$toks) {
+            $where[] = 'FALSE';
+        } else {
+            $where[] = '(lower(trim(w.word_translit)) = ANY(CAST(:scope_tok AS text[]))
+                         OR EXISTS (SELECT 1 FROM yy_word_translit s
+                                     WHERE s.word_key = w.word_key
+                                       AND lower(trim(s.word_translit_text)) = ANY(CAST(:scope_tok AS text[]))))';
+            $params[':scope_tok'] = pgTextArrayLiteral($toks);
+        }
     }
 
     /* Per-column filters from the table's filter row. Each narrows independently

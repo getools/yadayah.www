@@ -6,6 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yada Yah Translation Entry</title>
     <link rel="stylesheet" href="css/app.css?v=13">
+    <script>
+    // Translations lives as a tab on the Glossary admin page, which embeds
+    // this page in an iframe. Opened on its own, go to that tab instead.
+    (function () {
+        var framed = false;
+        try { framed = window.self !== window.top; } catch (e) { framed = true; }
+        if (!framed) { location.replace('/admin-glossary.html#translations'); return; }
+        document.documentElement.classList.add('embedded');
+    })();
+    </script>
+    <style>
+        html.embedded .app-header { display: none; }
+        html.embedded .container { max-width: none; padding-top: 0; }
+        .list-pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; font-size: 0.85rem; }
+        .list-pager .list-page-info { color: #888; margin-right: auto; }
+        .list-pager select { width: auto; padding: 4px 6px; }
+        .list-pager button:disabled { opacity: 0.4; cursor: default; }
+    </style>
 </head>
 <body>
     <!-- Login -->
@@ -154,6 +172,25 @@
                         <button id="btn-add-from-list" class="btn btn-primary">Add Translation</button>
                     </div>
                 </div>
+                <div class="list-pager">
+                    <span class="list-page-info"></span>
+                    <label>Rows per page
+                        <select class="list-page-size" data-no-persist>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="75">75</option>
+                            <option value="100">100</option>
+                            <option value="150">150</option>
+                            <option value="200">200</option>
+                            <option value="0">All</option>
+                        </select>
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-first" title="First page">&laquo;</button>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-prev" title="Previous page">&lsaquo;</button>
+                    <span class="list-page-num"></span>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-next" title="Next page">&rsaquo;</button>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-last" title="Last page">&raquo;</button>
+                </div>
                 <div class="table-wrap">
                     <table id="translations-table">
                         <thead>
@@ -184,6 +221,25 @@
                     </table>
                 </div>
                 <div id="list-empty" class="no-translations" style="display:none;">No translations found.</div>
+                <div class="list-pager">
+                    <span class="list-page-info"></span>
+                    <label>Rows per page
+                        <select class="list-page-size" data-no-persist>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="75">75</option>
+                            <option value="100">100</option>
+                            <option value="150">150</option>
+                            <option value="200">200</option>
+                            <option value="0">All</option>
+                        </select>
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-first" title="First page">&laquo;</button>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-prev" title="Previous page">&lsaquo;</button>
+                    <span class="list-page-num"></span>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-next" title="Next page">&rsaquo;</button>
+                    <button type="button" class="btn btn-secondary btn-sm list-page-last" title="Last page">&raquo;</button>
+                </div>
             </div>
         </div>
     </div>
@@ -192,7 +248,7 @@
     <script src="js/tinymce/tinymce.min.js"></script>
     <script src="js/admin-links.js?v=4"></script>
     <script src="/js/multi-sort.js?v=1"></script>
-    <script src="js/app.js?v=12"></script>
+    <script src="js/app.js?v=13"></script>
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/session-state.js?v=1"></script>
 <script src="/js/error-reporter.js?v=14"></script>
