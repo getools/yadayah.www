@@ -36,6 +36,9 @@
  *     ratio       italic hits ÷ total corpus hits.  A transliteration is
  *                 almost always italicised; an English word set in italics for
  *                 emphasis is overwhelmingly used in plain text as well.
+ *     glossed     REQUIRED for a new word: the books must present it as a
+ *                 word at least once — italic "word – meaning", "a / b –",
+ *                 "(word word)" or Arabic "word | meaning".  See glossTokens().
  *
  * Counts
  *   word_count_yy is how many times the word appears in the books, summed over
@@ -92,6 +95,45 @@ function cleanToken(string $t): string {
     return trim($t, "-\u{2018}\u{2019}");
 }
 
+/**
+ * Tokens the books PRESENT as a foreign word — the only place a new word may
+ * come from.  Italics alone also catch book titles and English emphasis
+ * (Merriam-Webster, Mein Kampf, e-tailer), so a candidate must also appear in
+ * one of the books' gloss forms, always as ITALIC words:
+ *   (wa ha nabʿym – those who …)          italic words right before a spaced dash;
+ *   … obstacles and pisah – providing …)  no "(" needed, and English may precede
+ *   tahowr / tohorah – purifying …        " / " joins alternatives: both count
+ *   (wa ha nabyʾ ha huwʾ)                 a parenthesis holding only italic words
+ *   al-Shaitan | the Adversary            Arabic: the italic word before " | "
+ * $glued is the paragraph HTML with half-rings already pulled inside <i>.
+ * Returns lower-cased, cleaned tokens, one entry per occurrence.
+ */
+function glossTokens(string $glued): array {
+    // Keep only the italic markup: <i>word</i> in otherwise plain text.
+    $s = preg_replace('/<i\b[^>]*>/i', "\x01", $glued);
+    $s = preg_replace('/<\/i\s*>/i', "\x02", $s);
+    $s = html_entity_decode(strip_tags($s), ENT_QUOTES, 'UTF-8');
+    $s = str_replace("\x02\x01", '', $s);                  // back-to-back runs are one run
+    $s = str_replace(["\x01", "\x02"], ['<i>', '</i>'], $s);
+
+    $runs  = '((?:<i>[^<]+<\/i>)(?:(?:\s*\/\s*|\s+)<i>[^<]+<\/i>)*)';
+    $heads = [];
+    if (preg_match_all('/' . $runs . '\s*[\x{2013}\x{2014}]\s/u', $s, $m)) $heads = $m[1];
+    if (preg_match_all('/\(\s*' . $runs . '\s*\)/u', $s, $m))               $heads = array_merge($heads, $m[1]);
+    if (preg_match_all('/(<i>[^<]+<\/i>)\s*\|\s/u', $s, $m))                $heads = array_merge($heads, $m[1]);
+
+    $out = [];
+    $heads = array_map('strip_tags', $heads);
+    foreach ($heads as $h) {
+        if (!preg_match_all(TOKEN_RE, $h, $t)) continue;
+        foreach ($t[0] as $tok) {
+            $tok = cleanToken($tok);
+            if ($tok !== '') $out[] = mb_strtolower($tok);
+        }
+    }
+    return $out;
+}
+
 /** English contraction — an apostrophe sitting inside the word (isn’t, o’clock). */
 function isContraction(string $lc): bool {
     return (bool)preg_match('/[a-z][' . APOS . '][a-z]/u', $lc);
@@ -145,6 +187,7 @@ say('Scanning yy_paragraph …' . ($INDEX ? ' (building occurrence index)' : '')
 $corpus  = [];   // lowercased token => times it appears anywhere in the books
 $italic  = [];   // lowercased token => times it appears inside an italic run
 $surface = [];   // lowercased token => [surface form => count], to pick casing
+$glossed = [];   // lowercased token => times it is PRESENTED as a word (see glossTokens)
 $occRows = [];   // [word_key, paragraph_key, count] for yy_word_occurrence
 $paras   = 0;
 
@@ -193,6 +236,7 @@ while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
         $glued = preg_replace('/<\/i>\s*(' . $hr . ')\s*<i[^>]*>/u', '$1', $html);
         $glued = preg_replace('/(' . $hr . ')(<i[^>]*>)/u', '$2$1', $glued);
         $glued = preg_replace('/(<\/i>)(' . $hr . ')/u', '$2$1', $glued);
+        foreach (glossTokens($glued) as $lc) $glossed[$lc] = ($glossed[$lc] ?? 0) + 1;
         if (preg_match_all('/<i\b[^>]*>(.*?)<\/i>/si', $glued, $mm)) {
             foreach ($mm[1] as $run) {
                 $txt = html_entity_decode(strip_tags($run), ENT_QUOTES, 'UTF-8');
@@ -336,10 +380,12 @@ if (!$RECOUNT) {
     say('');
     say(sprintf('Selecting candidates (italic hits >= %d, ratio >= %.2f, or half-ring) …', $MIN_ITALIC, $MIN_RATIO));
 
-    $rejected = ['shape' => 0, 'thin' => 0, 'ratio' => 0, 'known' => 0, 'contraction' => 0, 'fragment' => 0];
+    $rejected = ['shape' => 0, 'thin' => 0, 'ratio' => 0, 'known' => 0, 'contraction' => 0, 'fragment' => 0, 'unglossed' => 0];
 
     foreach ($italic as $lc => $ital) {
         if (!preg_match(TRANSLIT_RE, $lc))  { $rejected['shape']++; continue; }
+        // Never presented as a word in a gloss — an italic title or English.
+        if (empty($glossed[$lc]))           { $rejected['unglossed']++; continue; }
         if (isContraction($lc))             { $rejected['contraction']++; continue; }
         if ($ital < $MIN_ITALIC)            { $rejected['thin']++;  continue; }
 
@@ -374,10 +420,10 @@ if (!$RECOUNT) {
 
     uasort($newRows, function ($a, $b) { return $b['count'] <=> $a['count']; });
 
-    say(sprintf('  %s candidates  (rejected: %s not word-shaped, %s contractions, %s fragments, %s under %d italic hits, %s below ratio, %s already on file)',
+    say(sprintf('  %s candidates  (rejected: %s not word-shaped, %s contractions, %s fragments, %s under %d italic hits, %s below ratio, %s already on file, %s never glossed)',
         number_format(count($newRows)), number_format($rejected['shape']), number_format($rejected['contraction']), number_format($rejected['fragment']),
         number_format($rejected['thin']), $MIN_ITALIC, number_format($rejected['ratio']),
-        number_format($rejected['known'])));
+        number_format($rejected['known']), number_format($rejected['unglossed'])));
 
     $show = 40;
     foreach ($args as $a) if (preg_match('/^--top=(\d+)$/', $a, $m)) $show = (int)$m[1];

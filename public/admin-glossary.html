@@ -47,6 +47,22 @@
         .edit-panel h2 { margin: 0 0 20px; font-size: 1.1rem; color: #31345A; display: flex; align-items: center; gap: 10px; }
         .edit-panel h2 .yt-char { font-family: 'YadaTowrah', serif; font-size: 2rem; color: #1a5276; }
 
+        /* The word editor is a modal popover over the list. Below the IPA
+           helper (z 10006), which opens on top of it. */
+        #gw-backdrop { display: none; position: fixed; inset: 0; background: rgba(20,24,40,0.45); z-index: 9000; }
+        #gw-backdrop.active { display: block; }
+        #gw-panel.active {
+            position: fixed; z-index: 9001; top: 4vh; left: 50%; transform: translateX(-50%);
+            width: min(1000px, calc(100vw - 32px)); max-height: 92vh; overflow-y: auto;
+            margin: 0; box-sizing: border-box; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+        #gw-panel .gw-x {
+            margin-left: auto; border: none; background: none; cursor: pointer;
+            font-size: 1.6rem; line-height: 1; color: #888; padding: 0 4px;
+        }
+        #gw-panel .gw-x:hover { color: #333; }
+        body.gw-modal-open { overflow: hidden; }
+
         .field-row { display: flex; gap: 16px; margin-bottom: 14px; align-items: baseline; }
         .field-row label { flex: 0 0 140px; font-weight: 600; font-size: 0.85rem; color: #555; text-align: right; }
         .field-row .field-input { flex: 1; }
@@ -278,7 +294,7 @@
         tr.lx-occ-row:hover > td { background: #f7f9fb; }
         .lx-occ {
             padding: 12px 16px 14px; border-left: 3px solid #1a5276;
-            font-size: 0.85rem; max-height: 560px; overflow-y: auto;
+            font-size: 0.85rem;
         }
         .lx-occ-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; color: #555; }
         .lx-occ-head strong { color: #1a5276; font-size: 0.95rem; }
@@ -553,8 +569,12 @@
 
         <!-- data-no-persist: record fields must not survive a refresh into the
              next record being edited (session-state.js would otherwise bind them). -->
-        <div id="gw-panel" class="edit-panel" data-no-persist>
-            <h2 id="gw-panel-title">New Word</h2>
+        <div id="gw-backdrop"></div>
+        <div id="gw-panel" class="edit-panel" data-no-persist role="dialog" aria-modal="true" aria-labelledby="gw-panel-title">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+                <h2 id="gw-panel-title">New Word</h2>
+                <button type="button" class="gw-x" onclick="closeWordEdit()" title="Close (Esc)" aria-label="Close">&times;</button>
+            </div>
 
             <!-- Shown only for a word whose source is not YY: those are never
                  edited in place, saving forks them to a YY copy. -->
@@ -2163,8 +2183,19 @@ function openWordPanel(title, showDelete) {
     document.getElementById('gw-error').style.display = 'none';
     var panel = document.getElementById('gw-panel');
     panel.classList.add('active');
-    panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+    panel.scrollTop = 0;
+    document.getElementById('gw-backdrop').classList.add('active');
+    document.body.classList.add('gw-modal-open');
 }
+
+/* Esc closes the editor, but not while the IPA helper is open on top of it.
+   The backdrop does not close it, so a stray click keeps the edits. */
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape' || !document.getElementById('gw-panel').classList.contains('active')) return;
+    var ipa = document.getElementById('ipa-helper-popover');
+    if (ipa && ipa.style.display && ipa.style.display !== 'none') return;
+    closeWordEdit();
+});
 
 function newWord() {
     lxLoadMeta(function() {
@@ -2375,6 +2406,8 @@ function closeWordEdit() {
     editingWordKey = null;
     var panel = document.getElementById('gw-panel');
     panel.classList.remove('active');
+    document.getElementById('gw-backdrop').classList.remove('active');
+    document.body.classList.remove('gw-modal-open');
     document.getElementById('lx-kb').classList.remove('open');
     document.getElementById('lx-yt-kb').classList.remove('open');
 }
