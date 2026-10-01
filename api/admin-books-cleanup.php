@@ -2,7 +2,7 @@
 /**
  * Admin Books → Cleanup tab.
  *
- * GET ?action=search&q=…[&bold=1][&italic=1][&case=1][&volume=N]
+ * GET ?action=search&q=…[&bold=1][&italic=1][&case=1][&volumes=N,N,…]
  *   Every place the Find text occurs in the parsed book text (yy_paragraph),
  *   as excerpts with the surrounding words. bold / italic narrow the hits to
  *   text that carries that formatting in the source: every character of the
@@ -33,25 +33,27 @@ if (mb_strlen($q) > 500) errorResponse('Find text is too long');
 $wantBold   = !empty($_GET['bold']);
 $wantItalic = !empty($_GET['italic']);
 $matchCase  = !empty($_GET['case']);
-$volumeKey  = (int)($_GET['volume'] ?? 0);
+// Books to search (omitted = all). `volume` is the older single-book form.
+$volumeKeys = array_values(array_unique(array_filter(array_map('intval',
+    explode(',', (string)($_GET['volumes'] ?? $_GET['volume'] ?? ''))))));
 
 $db = getDb();
 
 $like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
 $sql = "SELECT p.paragraph_key, p.paragraph_number, p.paragraph_page, p.paragraph_text_html,
-               v.volume_key, v.volume_code, v.volume_label, c.chapter_number, c.chapter_name
+               v.volume_key, v.volume_code, v.volume_label, v.volume_number,
+               s.series_key, s.series_label, c.chapter_number, c.chapter_name
           FROM yy_paragraph p
           JOIN yy_volume v ON v.volume_key = p.volume_key
           LEFT JOIN yy_series s ON s.series_key = v.series_key
           LEFT JOIN yy_chapter c ON c.chapter_key = p.chapter_key
          WHERE p.paragraph_active_flag
            AND p.paragraph_text_plain " . ($matchCase ? 'LIKE' : 'ILIKE') . " :like"
-     . ($volumeKey ? ' AND p.volume_key = :vol' : '') . "
+     . ($volumeKeys ? ' AND p.volume_key IN (' . implode(',', $volumeKeys) . ')' : '') . "
          ORDER BY s.series_sort, s.series_key, v.volume_sort, v.volume_number, v.volume_key, p.paragraph_number
          LIMIT " . (CLEANUP_MAX_CANDIDATES + 1);
 $stmt = $db->prepare($sql);
 $stmt->bindValue(':like', $like);
-if ($volumeKey) $stmt->bindValue(':vol', $volumeKey, PDO::PARAM_INT);
 $stmt->execute();
 $rows = $stmt->fetchAll();
 
@@ -88,11 +90,15 @@ foreach ($rows as $r) {
             'volume_key'    => $vk,
             'volume_code'   => $r['volume_code'],
             'volume_label'  => $r['volume_label'],
+            'volume_number' => $r['volume_number'] === null ? null : (int)$r['volume_number'],
+            'series_key'    => $r['series_key'] === null ? null : (int)$r['series_key'],
+            'series_label'  => $r['series_label'],
             'book_slug'     => $slugs[$vk],
             'chapter'       => $r['chapter_number'] === null ? null : (int)$r['chapter_number'],
             'chapter_name'  => $r['chapter_name'],
             'match'         => $hit,
             'excerpt'       => cleanupExcerpt($parsed['runs'], $text, $start, $end),
+            'paragraph'     => cleanupExcerpt($parsed['runs'], $text, $start, $end, null),
         ];
     }
 }
@@ -156,14 +162,16 @@ function cleanupCharBoundary(string $s, int $pos, int $dir): int {
 }
 
 /**
- * The match with CLEANUP_CONTEXT_CHARS of context either side, as HTML that
- * keeps the source bold/italic and wraps the match in <mark>.
+ * The match with $context characters either side (null = the whole
+ * paragraph), as HTML that keeps the source bold/italic and wraps the match
+ * in <mark>.
  */
-function cleanupExcerpt(array $runs, string $text, int $start, int $end): string {
+function cleanupExcerpt(array $runs, string $text, int $start, int $end, ?int $context = CLEANUP_CONTEXT_CHARS): string {
+    if ($context === null) return cleanupRunsHtml($runs, $text, 0, strlen($text), $start, $end);
     $before = substr($text, 0, $start);
     $after  = substr($text, $end);
-    $ctxB = mb_substr($before, -CLEANUP_CONTEXT_CHARS);
-    $ctxA = mb_substr($after, 0, CLEANUP_CONTEXT_CHARS);
+    $ctxB = mb_substr($before, -$context);
+    $ctxA = mb_substr($after, 0, $context);
     $ws = $start - strlen($ctxB);
     $we = $end + strlen($ctxA);
     // Start/end on a word boundary rather than mid-word.
@@ -172,7 +180,13 @@ function cleanupExcerpt(array $runs, string $text, int $start, int $end): string
     $ws = cleanupCharBoundary($text, $ws, 1);
     $we = cleanupCharBoundary($text, $we, -1);
 
-    $out = $ws > 0 ? '… ' : '';
+    return ($ws > 0 ? '… ' : '') . cleanupRunsHtml($runs, $text, $ws, $we, $start, $end)
+        . ($we < strlen($text) ? ' …' : '');
+}
+
+/** Runs clipped to [ws,we) as <b>/<i> HTML, with [start,end) in <mark>. */
+function cleanupRunsHtml(array $runs, string $text, int $ws, int $we, int $start, int $end): string {
+    $out = '';
     $cuts = [$start, $end];
     foreach ($runs as [$rs, $re, $rb, $ri]) {
         $a = max($rs, $ws); $z = min($re, $we);
@@ -186,11 +200,11 @@ function cleanupExcerpt(array $runs, string $text, int $start, int $end): string
             $seg = htmlspecialchars(substr($text, $p0, $p1 - $p0), ENT_QUOTES, 'UTF-8');
             if ($ri) $seg = '<i>' . $seg . '</i>';
             if ($rb) $seg = '<b>' . $seg . '</b>';
-            if ($p0 >= $start && $p1 <= $end) $seg = '<mark>' . $seg . '</mark>';
+            if ($p0 === $start) $out .= '<mark>';
             $out .= $seg;
+            if ($p1 === $end) $out .= '</mark>';
         }
     }
-    if ($we < strlen($text)) $out .= ' …';
     return $out;
 }
 

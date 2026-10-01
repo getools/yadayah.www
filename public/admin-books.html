@@ -180,7 +180,17 @@
         .cl-tool { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
         .cl-tool h3 { margin: 0 0 12px; font-size: 1rem; color: #2c3e50; }
         .cl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .cl-row > label { font-weight: 600; font-size: 0.88rem; color: #555; }
+        .cl-row > label { font-weight: 600; font-size: 0.88rem; color: #555; width: 58px; flex: none; }
+        .cl-row-replace { margin-top: 8px; }
+        .cl-row input#cl-replace {
+            flex: 1; min-width: 200px; max-width: 480px; padding: 6px 10px; font-size: 1rem;
+            border: 1px solid #ccc; border-radius: 4px;
+            font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .cl-row input#cl-replace.is-bold { font-weight: 700; }
+        .cl-row input#cl-replace.is-italic { font-style: italic; }
+        #cl-results.replacing .cl-hit .ex mark { background: #fde2e2; text-decoration: line-through; text-decoration-color: #c0392b; }
+        .cl-hit .ex ins.cl-new { background: #d5f5e3; text-decoration: none; margin-left: 2px; }
         .cl-row input#cl-find {
             flex: 1; min-width: 200px; max-width: 480px; padding: 6px 10px; font-size: 1rem;
             border: 1px solid #ccc; border-radius: 4px;
@@ -201,19 +211,68 @@
         .cl-fmt:hover { border-color: #3498db; background: #f2f8fd; }
         .cl-fmt.active { background: #2c3e50; border-color: #2c3e50; color: #fff; }
         .cl-opts { margin-top: 10px; font-size: 0.85rem; color: #555; }
-        .cl-opts label { display: flex; align-items: center; gap: 6px; font-weight: 400; }
-        .cl-opts select { max-width: 360px; }
+        .cl-case-btn { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 0.9rem; font-weight: 600; letter-spacing: -0.5px; }
+        .cl-opt-label { font-weight: 600; color: #555; }
+        .cl-books-wrap { position: relative; }
+        .cl-books-btn { padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer;
+            font-size: 0.85rem; color: #333; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cl-books-btn:hover { border-color: #3498db; }
+        .cl-books-btn .caret { color: #888; font-size: 0.75rem; margin-left: 4px; }
+        .cl-books-pop { position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; width: 440px; max-width: calc(100vw - 32px);
+            background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.15); }
+        .cl-tree { max-height: 420px; overflow-y: auto; padding: 8px 6px; font-size: 0.85rem; }
+        .cl-tree label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 4px; border-radius: 3px; flex: 1; min-width: 0; }
+        .cl-tree label:hover { background: #f0f4ff; }
+        .cl-tree label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cl-tree .cl-node { display: flex; align-items: center; }
+        .cl-tree .cl-all { font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 4px; margin-bottom: 4px; }
+        .cl-tree .cl-series-row { font-weight: 600; }
+        .cl-tree .cl-twisty { flex: none; width: 20px; height: 20px; border: none; background: none; cursor: pointer; color: #666;
+            font-size: 0.7rem; padding: 0; transition: transform 0.15s; }
+        .cl-tree .cl-series.open > .cl-node .cl-twisty { transform: rotate(90deg); }
+        .cl-tree .cl-books { display: none; padding-left: 26px; }
+        .cl-tree .cl-series.open > .cl-books { display: block; }
+        .cl-tree .cl-n { color: #999; font-weight: 400; margin-left: auto; padding-left: 8px; flex: none; }
+        .cl-pop-foot { display: flex; gap: 6px; justify-content: flex-end; padding: 8px; border-top: 1px solid #eee; }
+        .cl-res-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+        .cl-res-bar[hidden] { display: none; }
+        .cl-res-bar .cl-summary { margin-bottom: 0; }
+        .cl-full-btn { font-family: inherit; font-size: 0.8rem; padding: 5px 10px; }
+        .cl-hit .ex-full { display: none; }
+        #cl-results.full .cl-hit .ex-short { display: none; }
+        #cl-results.full .cl-hit .ex-full { display: inline; }
+        .cl-hit.flip .ex-short { display: none; }
+        .cl-hit.flip .ex-full { display: inline; }
+        #cl-results.full .cl-hit.flip .ex-short { display: inline; }
+        #cl-results.full .cl-hit.flip .ex-full { display: none; }
         .cl-summary { font-size: 0.85rem; color: #666; margin-bottom: 10px; }
         .cl-summary .warn { color: #b9770e; }
-        .cl-book { margin-bottom: 14px; border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; }
-        .cl-book-h { padding: 8px 12px; background: #f5f5f5; font-weight: 600; font-size: 0.85rem; border-bottom: 1px solid #e0e0e0; }
-        .cl-book-h .n { color: #888; font-weight: 400; margin-left: 6px; }
+        .cl-res-tools { display: flex; gap: 6px; align-items: center; }
+        .cl-res-tools .btn { padding: 4px 10px; font-size: 0.78rem; }
+        .cl-series-f { margin-bottom: 12px; border: 1px solid #d5dbe2; border-radius: 6px; background: #fff; overflow: hidden; }
+        .cl-book { border-top: 1px solid #e0e0e0; }
+        .cl-fold-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: none; text-align: left;
+            cursor: pointer; font: inherit; font-size: 0.88rem; font-weight: 600; color: #2c3e50; }
+        .cl-series-f > .cl-fold-h { background: #e9eef3; font-size: 0.92rem; }
+        .cl-book > .cl-fold-h { background: #f7f7f7; padding-left: 30px; font-size: 0.85rem; color: #333; }
+        .cl-fold-h:hover { background: #e3ecf7; }
+        .cl-fold-h .tw { flex: none; width: 12px; font-size: 0.65rem; color: #666; transition: transform 0.15s; }
+        .cl-fold.open > .cl-fold-h .tw { transform: rotate(90deg); }
+        .cl-fold-h .code { color: #999; font-weight: 400; font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cl-fold-h .n { margin-left: auto; flex: none; color: #555; font-weight: 600; font-size: 0.78rem; background: #fff;
+            border: 1px solid #d5dbe2; border-radius: 10px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+        .cl-fold > .cl-fold-b { display: none; }
+        .cl-fold.open > .cl-fold-b { display: block; }
+        .cl-book .cl-hit { padding-left: 30px; }
         .cl-hit { display: flex; gap: 12px; padding: 7px 12px; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem;
             line-height: 1.5; color: #333; text-decoration: none; }
         .cl-hit:last-child { border-bottom: none; }
-        a.cl-hit:hover { background: #f0f4ff; }
+        .cl-hit:hover { background: #f7f9fc; }
         .cl-hit .loc { flex: none; width: 150px; color: #888; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
-        .cl-hit .ex { flex: 1; min-width: 0;
+        .cl-hit a.loc { text-decoration: none; }
+        .cl-hit a.loc:hover { color: #2980b9; text-decoration: underline; }
+        .cl-hit a.loc .ext { font-size: 0.7rem; margin-left: 3px; }
+        .cl-hit .ex { flex: 1; min-width: 0; cursor: pointer;
             font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif; }
         .cl-hit .ex mark { background: #fde68a; color: inherit; padding: 0; }
         @media (max-width: 640px) { .cl-hit { flex-direction: column; gap: 2px; } .cl-hit .loc { width: auto; } }
@@ -392,20 +451,48 @@
                 <label for="cl-find">Find</label>
                 <input type="text" id="cl-find" maxlength="500" autocomplete="off" spellcheck="false"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();clSearch();}">
-                <button type="button" class="cl-ring" data-ch="ʾ" title="Insert right half ring">ʾ</button>
-                <button type="button" class="cl-ring" data-ch="ʿ" title="Insert left half ring">ʿ</button>
+                <button type="button" class="cl-ring" data-for="cl-find" data-ch="ʾ" title="Insert right half ring">ʾ</button>
+                <button type="button" class="cl-ring" data-for="cl-find" data-ch="ʿ" title="Insert left half ring">ʿ</button>
                 <button type="button" class="cl-fmt" id="cl-bold" title="Bold — only match text that is bold in the book"><b>B</b></button>
                 <button type="button" class="cl-fmt" id="cl-italic" title="Italic — only match text that is italic in the book"><i>I</i></button>
+                <button type="button" class="cl-fmt cl-case-btn" id="cl-case" title="Match case" aria-pressed="false">Aa</button>
                 <button type="button" class="btn btn-primary btn-sm" id="cl-search-btn" onclick="clSearch()">Search</button>
             </div>
+            <div class="cl-row cl-row-replace">
+                <label for="cl-replace">Replace</label>
+                <input type="text" id="cl-replace" maxlength="500" autocomplete="off" spellcheck="false"
+                       placeholder="Replacement text (preview shown in the results)">
+                <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʾ" title="Insert right half ring">ʾ</button>
+                <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʿ" title="Insert left half ring">ʿ</button>
+                <button type="button" class="cl-fmt" id="cl-rbold" title="Bold — the replacement text is bold"><b>B</b></button>
+                <button type="button" class="cl-fmt" id="cl-ritalic" title="Italic — the replacement text is italic"><i>I</i></button>
+            </div>
             <div class="cl-row cl-opts">
-                <label><input type="checkbox" id="cl-case"> Match case</label>
-                <label>Book
-                    <select id="cl-volume" onmousedown="clFillVolumes()" onfocus="clFillVolumes()"><option value="">All books</option></select>
-                </label>
+                <span class="cl-opt-label">Books</span>
+                <div class="cl-books-wrap">
+                    <button type="button" class="cl-books-btn" id="cl-books-btn" onclick="clToggleBooks()" aria-expanded="false">
+                        <span id="cl-books-label">All Books</span> <span class="caret">&#9662;</span>
+                    </button>
+                    <div class="cl-books-pop" id="cl-books-pop" hidden>
+                        <div class="cl-tree" id="cl-tree"></div>
+                        <div class="cl-pop-foot">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="clTreeExpandAll(true)">Expand all</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="clTreeExpandAll(false)">Collapse all</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="clToggleBooks(false)">Done</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div id="cl-summary" class="cl-summary"></div>
+        <div class="cl-res-bar" id="cl-res-bar" hidden>
+            <div id="cl-summary" class="cl-summary"></div>
+            <div class="cl-res-tools">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="clFoldAll(true)">Expand all</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="clFoldAll(false)">Collapse all</button>
+                <button type="button" class="cl-fmt cl-full-btn" id="cl-full" aria-pressed="false"
+                        title="Show the whole paragraph around each match instead of a short excerpt">Show Entire Paragraph</button>
+            </div>
+        </div>
         <div id="cl-results"></div>
     </div>
 </div>
@@ -2546,24 +2633,35 @@ function initFlipbookTab() {
 // like the Glossary word editor's.
 var clBound = false;
 function clInit() {
-    clFillVolumes();
     if (clBound) return;
     clBound = true;
     var input = document.getElementById('cl-find');
+    var repl = document.getElementById('cl-replace');
     document.querySelectorAll('#tab-cleanup .cl-ring').forEach(function(btn) {
         // Swallow the mousedown so the input keeps its caret.
         btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
-        btn.addEventListener('click', function() { clInsertAtCaret(input, btn.getAttribute('data-ch')); });
+        btn.addEventListener('click', function() {
+            var target = document.getElementById(btn.getAttribute('data-for'));
+            clInsertAtCaret(target, btn.getAttribute('data-ch'));
+            if (target === repl) clRefreshPreview();
+        });
     });
-    [['cl-bold', 'is-bold'], ['cl-italic', 'is-italic']].forEach(function(p) {
+    [['cl-bold', 'is-bold', input], ['cl-italic', 'is-italic', input], ['cl-case', ''], ['cl-full', ''],
+     ['cl-rbold', 'is-bold', repl], ['cl-ritalic', 'is-italic', repl]].forEach(function(p) {
         var btn = document.getElementById(p[0]);
         btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
         btn.addEventListener('click', function() {
             var on = btn.classList.toggle('active');
             btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-            input.classList.toggle(p[1], on);
+            if (p[1]) p[2].classList.toggle(p[1], on);
+            if (p[0] === 'cl-full') {
+                document.getElementById('cl-results').classList.toggle('full', on);
+                document.querySelectorAll('#cl-results .cl-hit.flip').forEach(function(h) { h.classList.remove('flip'); });
+            }
+            if (p[2] === repl) clRefreshPreview();
         });
     });
+    repl.addEventListener('input', clRefreshPreview);
     input.focus();
 }
 
@@ -2577,20 +2675,102 @@ function clInsertAtCaret(input, ch) {
     input.focus();
 }
 
-// Book picker, from the list the Books tab already loaded.
-function clFillVolumes() {
-    var sel = document.getElementById('cl-volume');
-    if (sel.options.length > 1 || !allVolumes.length) return;
-    var vols = allVolumes.slice().sort(function(a, b) {
-        return String(a.volume_code || '').localeCompare(String(b.volume_code || ''));
+// Book picker: a collapsible All Books → series → book checkbox tree, built
+// from the list the Books tab already loaded. Nothing ticked is treated
+// the same as everything ticked (search all books).
+var clTreeBuilt = false;
+function clBuildTree() {
+    if (clTreeBuilt || !allVolumes.length) return;
+    clTreeBuilt = true;
+    var bySeries = {};
+    allVolumes.forEach(function(v) { (bySeries[v.series_key] = bySeries[v.series_key] || []).push(v); });
+    var series = (allSeries || []).filter(function(s) { return bySeries[s.series_key]; })
+        .sort(function(a, b) { return (a.series_sort || 0) - (b.series_sort || 0) || a.series_key - b.series_key; });
+    // Volumes whose series isn't in allSeries still need a home.
+    Object.keys(bySeries).forEach(function(k) {
+        if (!series.some(function(s) { return String(s.series_key) === k; })) series.push({series_key: k, series_label: 'Series ' + k});
     });
-    vols.forEach(function(v) {
-        var o = document.createElement('option');
-        o.value = v.volume_key;
-        o.textContent = v.volume_code || v.volume_label || ('Volume ' + v.volume_key);
-        sel.appendChild(o);
+    var html = '<div class="cl-node cl-all"><span class="cl-twisty" style="visibility:hidden"></span>'
+        + '<label><input type="checkbox" data-level="all" checked><span>All Books</span>'
+        + '<span class="cl-n">' + allVolumes.length + '</span></label></div>';
+    series.forEach(function(s) {
+        var vols = bySeries[s.series_key].slice().sort(function(a, b) {
+            return (a.volume_sort || 0) - (b.volume_sort || 0) || (a.volume_number || 0) - (b.volume_number || 0)
+                || String(a.volume_code || '').localeCompare(String(b.volume_code || ''));
+        });
+        html += '<div class="cl-series" data-series="' + esc(String(s.series_key)) + '">'
+            + '<div class="cl-node cl-series-row"><button type="button" class="cl-twisty" title="Expand / collapse">&#9654;</button>'
+            + '<label><input type="checkbox" data-level="series" checked><span>' + esc(s.series_label || s.series_name || '') + '</span>'
+            + '<span class="cl-n">' + vols.length + '</span></label></div><div class="cl-books">'
+            + vols.map(function(v) {
+                return '<div class="cl-node"><label title="' + esc(v.volume_code || '') + '">'
+                    + '<input type="checkbox" data-level="book" value="' + v.volume_key + '" checked>'
+                    + '<span>' + esc((v.volume_number ? v.volume_number + ' · ' : '') + (v.volume_label || v.volume_code || '')) + '</span></label></div>';
+            }).join('')
+            + '</div></div>';
+    });
+    var tree = document.getElementById('cl-tree');
+    tree.innerHTML = html;
+    tree.addEventListener('click', function(e) {
+        var tw = e.target.closest('.cl-twisty');
+        if (tw && tw.closest('.cl-series')) tw.closest('.cl-series').classList.toggle('open');
+    });
+    tree.addEventListener('change', function(e) {
+        var cb = e.target, lvl = cb.getAttribute('data-level');
+        if (lvl === 'all') tree.querySelectorAll('input[type=checkbox]').forEach(function(x) { x.checked = cb.checked; x.indeterminate = false; });
+        else if (lvl === 'series') cb.closest('.cl-series').querySelectorAll('.cl-books input').forEach(function(x) { x.checked = cb.checked; });
+        clTreeSync();
     });
 }
+
+// Roll book ticks up into series and All Books (checked / indeterminate).
+function clTreeSync() {
+    var tree = document.getElementById('cl-tree');
+    var all = 0, on = 0, parts = [];
+    tree.querySelectorAll('.cl-series').forEach(function(s) {
+        var books = s.querySelectorAll('.cl-books input'), n = 0;
+        books.forEach(function(b) { if (b.checked) n++; });
+        var cb = s.querySelector('input[data-level=series]');
+        cb.checked = n === books.length; cb.indeterminate = n > 0 && n < books.length;
+        all += books.length; on += n;
+        if (n === books.length) parts.push(s.querySelector('.cl-series-row label span').textContent);
+        else s.querySelectorAll('.cl-books input:checked').forEach(function(b) { parts.push(b.closest('label').textContent); });
+    });
+    var a = tree.querySelector('input[data-level=all]');
+    a.checked = on === all; a.indeterminate = on > 0 && on < all;
+    document.getElementById('cl-books-label').textContent = on === all ? 'All Books'
+        : on === 0 ? 'No books ticked (searches all)'
+        : on + ' of ' + all + ' books: ' + parts.join(', ');
+}
+
+// The ticked volume keys, or '' when every book (or none) is ticked.
+function clSelectedVolumes() {
+    var boxes = document.querySelectorAll('#cl-tree .cl-books input'), keys = [];
+    boxes.forEach(function(b) { if (b.checked) keys.push(b.value); });
+    return (keys.length === 0 || keys.length === boxes.length) ? '' : keys.join(',');
+}
+
+function clToggleBooks(force) {
+    clBuildTree();
+    var pop = document.getElementById('cl-books-pop');
+    var open = force === undefined ? pop.hidden : force;
+    pop.hidden = !open;
+    document.getElementById('cl-books-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function clTreeExpandAll(open) {
+    document.querySelectorAll('#cl-tree .cl-series').forEach(function(s) { s.classList.toggle('open', open); });
+}
+
+// Click outside or Escape closes the picker.
+document.addEventListener('mousedown', function(e) {
+    var pop = document.getElementById('cl-books-pop');
+    if (pop && !pop.hidden && !e.target.closest('.cl-books-wrap')) clToggleBooks(false);
+});
+document.addEventListener('keydown', function(e) {
+    var pop = document.getElementById('cl-books-pop');
+    if (e.key === 'Escape' && pop && !pop.hidden) clToggleBooks(false);
+});
 
 var clSeq = 0;
 function clSearch() {
@@ -2602,19 +2782,21 @@ function clSearch() {
     var italic = document.getElementById('cl-italic').classList.contains('active');
     var params = 'action=search&q=' + encodeURIComponent(q)
         + (bold ? '&bold=1' : '') + (italic ? '&italic=1' : '')
-        + (document.getElementById('cl-case').checked ? '&case=1' : '');
-    var vol = document.getElementById('cl-volume').value;
-    if (vol) params += '&volume=' + encodeURIComponent(vol);
+        + (document.getElementById('cl-case').classList.contains('active') ? '&case=1' : '');
+    var vols = clTreeBuilt ? clSelectedVolumes() : '';
+    if (vols) params += '&volumes=' + vols;
 
     var seq = ++clSeq;
     var btn = document.getElementById('cl-search-btn');
     btn.disabled = true;
     summary.textContent = 'Searching…';
+    document.getElementById('cl-res-bar').hidden = false;
     fetch(API + '/admin-books-cleanup.php?' + params, {credentials: 'include'})
         .then(function(r) { return safeJson(r); })
         .then(function(d) {
             if (seq !== clSeq) return;
             if (d.error) { summary.textContent = d.error; out.innerHTML = ''; return; }
+            clLast = {d: d, q: q, bold: bold, italic: italic};
             clRender(d, q, bold, italic);
         })
         .catch(function(e) { if (seq === clSeq) { summary.textContent = 'Search failed: ' + (e && e.message || e); out.innerHTML = ''; } })
@@ -2629,16 +2811,78 @@ function clRender(d, q, bold, italic) {
     if (d.scan_truncated) s += ' · <span class="warn">only the first ' + d.scanned + ' paragraphs were scanned — narrow the search or pick a book</span>';
     document.getElementById('cl-summary').innerHTML = s;
 
-    var groups = [], byVol = {};
+    // Series → book folders, in the order the API returns (series, then
+    // volume sort). Small result sets open fully; larger ones open the
+    // series level only so the book counts are visible at a glance.
+    var series = [], bySeries = {};
     (d.results || []).forEach(function(r) {
-        if (!byVol[r.volume_key]) { byVol[r.volume_key] = {r: r, hits: []}; groups.push(byVol[r.volume_key]); }
-        byVol[r.volume_key].hits.push(r);
+        var sk = r.series_key === null ? 'none' : r.series_key;
+        var s = bySeries[sk];
+        if (!s) { s = bySeries[sk] = {label: r.series_label || 'No series', books: [], byVol: {}, n: 0}; series.push(s); }
+        var b = s.byVol[r.volume_key];
+        if (!b) { b = s.byVol[r.volume_key] = {r: r, hits: []}; s.books.push(b); }
+        b.hits.push(r); s.n++;
     });
-    document.getElementById('cl-results').innerHTML = groups.map(function(g) {
-        return '<div class="cl-book"><div class="cl-book-h">' + esc(g.r.volume_code || g.r.volume_label)
-            + '<span class="n">' + g.hits.length + '</span></div>'
-            + g.hits.map(clHitHtml).join('') + '</div>';
+    var openBooks = (d.results || []).length <= 60;
+    document.getElementById('cl-results').classList.toggle('replacing', clReplacement() !== null);
+    var cnt = function(n) { return '<span class="n">' + n + ' match' + (n === 1 ? '' : 'es') + '</span>'; };
+    document.getElementById('cl-results').innerHTML = series.map(function(s) {
+        return '<div class="cl-fold cl-series-f open">'
+            + '<button type="button" class="cl-fold-h"><span class="tw">&#9654;</span>' + esc(s.label)
+            + '<span class="code">' + s.books.length + ' book' + (s.books.length === 1 ? '' : 's') + '</span>' + cnt(s.n) + '</button>'
+            + '<div class="cl-fold-b">' + s.books.map(function(b) {
+                var r = b.r;
+                return '<div class="cl-fold cl-book' + (openBooks ? ' open' : '') + '">'
+                    + '<button type="button" class="cl-fold-h"><span class="tw">&#9654;</span>'
+                    + esc((r.volume_number ? r.volume_number + ' · ' : '') + (r.volume_label || r.volume_code))
+                    + '<span class="code">' + esc(r.volume_code || '') + '</span>' + cnt(b.hits.length) + '</button>'
+                    + '<div class="cl-fold-b">' + b.hits.map(clHitHtml).join('') + '</div></div>';
+            }).join('') + '</div></div>';
     }).join('');
+}
+
+function clFoldAll(open) {
+    document.querySelectorAll('#cl-results .cl-fold').forEach(function(f) { f.classList.toggle('open', open); });
+}
+
+document.addEventListener('click', function(e) {
+    var h = e.target.closest('#cl-results .cl-fold-h');
+    if (h) { h.parentNode.classList.toggle('open'); return; }
+    var ex = e.target.closest('#cl-results .cl-hit .ex');
+    // Leave a drag-select alone so excerpt text can still be copied.
+    if (ex && !String(window.getSelection ? window.getSelection() : '')) ex.parentNode.classList.toggle('flip');
+});
+
+// Replace preview: each match is struck through and followed by the
+// replacement, styled per the Replace field's B / I. Shown once the Replace
+// field has text or a format; an empty Replace with a format set previews a
+// deletion as just the strike-through.
+var clLast = null;
+function clReplacement() {
+    var text = document.getElementById('cl-replace').value;
+    var b = document.getElementById('cl-rbold').classList.contains('active');
+    var i = document.getElementById('cl-ritalic').classList.contains('active');
+    if (text === '' && !b && !i) return null;
+    var h = esc(text);
+    if (i) h = '<i>' + h + '</i>';
+    if (b) h = '<b>' + h + '</b>';
+    return h === '' ? '' : '<ins class="cl-new">' + h + '</ins>';
+}
+
+function clWithReplacement(html) {
+    var rep = clReplacement();
+    return rep === null ? html : html.replace('</mark>', '</mark>' + rep);
+}
+
+function clRefreshPreview() {
+    if (!clLast) return;
+    // Keep which folders are open across the re-render.
+    var open = [];
+    document.querySelectorAll('#cl-results .cl-fold').forEach(function(f, i) { if (f.classList.contains('open')) open.push(i); });
+    clRender(clLast.d, clLast.q, clLast.bold, clLast.italic);
+    var folds = document.querySelectorAll('#cl-results .cl-fold');
+    folds.forEach(function(f) { f.classList.remove('open'); });
+    open.forEach(function(i) { if (folds[i]) folds[i].classList.add('open'); });
 }
 
 function clHitHtml(r) {
@@ -2646,14 +2890,18 @@ function clHitHtml(r) {
         + (r.page !== null ? 'p. ' + r.page + ' · ' : '')
         + '¶ ' + (r.number === null ? '?' : r.number);
     // excerpt is server-built HTML: escaped text inside <b>/<i>/<mark> only.
-    var body = '<span class="loc"' + (r.chapter_name ? ' title="' + esc(r.chapter_name) + '"' : '') + '>' + loc + '</span>'
-        + '<span class="ex">' + r.excerpt + '</span>';
+    var chap = r.chapter_name ? esc(r.chapter_name) + ' — ' : '';
+    var locHtml = '<span class="loc"' + (r.chapter_name ? ' title="' + esc(r.chapter_name) + '"' : '') + '>' + loc + '</span>';
     if (r.book_slug && r.page !== null) {
         var url = '/' + encodeURIComponent(r.book_slug) + '/#p=' + r.page
             + (r.number !== null ? '&h=' + r.number : '') + '&q=' + encodeURIComponent(r.match);
-        return '<a class="cl-hit" href="' + url + '" target="_blank" rel="noopener" title="Open this page in the flipbook">' + body + '</a>';
+        locHtml = '<a class="loc" href="' + url + '" target="_blank" rel="noopener" title="' + chap
+            + 'Open this page in the flipbook">' + loc + '<span class="ext">&#8599;</span></a>';
     }
-    return '<div class="cl-hit">' + body + '</div>';
+    // Clicking the excerpt flips this one result between excerpt and whole paragraph.
+    return '<div class="cl-hit">' + locHtml
+        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt) + '</span>'
+        + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt) + '</span></span></div>';
 }
 
 // Section field definitions — drives both render and save payload.
