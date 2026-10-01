@@ -1375,6 +1375,17 @@ if ($method === 'PUT' && $key) {
 
     $db->beginTransaction();
     try {
+        /* Lock the word row before touching anything. Spellings and
+           definitions are replaced as DELETE + INSERT, so two saves of the same
+           word running at once each delete only what THEY saw and both insert
+           — word 41552 ended up with its spelling three times (2026-10-01).
+           Holding the row makes concurrent saves queue instead.
+           lock_timeout keeps a save from hanging until statement_timeout when
+           glossary-refresh.sh (book pipeline, one long transaction over every
+           spelling) holds the rows: it fails fast with a clear message. */
+        $db->exec("SET LOCAL lock_timeout = '20s'");
+        $db->prepare('SELECT word_key FROM yy_word WHERE word_key = ? FOR UPDATE')->execute([$key]);
+
         $fields = [];
         $params = [];
         foreach ($allowed as $col => $type) {
@@ -1455,6 +1466,15 @@ if ($method === 'PUT' && $key) {
     } catch (\InvalidArgumentException $e) {
         if ($db->inTransaction()) $db->rollBack();
         errorResponse($e->getMessage());
+    } catch (\PDOException $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        // 55P03 lock_not_available / 57014 statement timeout: the word is held
+        // by another writer, almost always the post-parse glossary refresh.
+        if (in_array($e->getCode(), ['55P03', '57014'], true)) {
+            errorResponse('Nothing was saved: this word is locked by the glossary refresh that runs'
+                . ' after a book is parsed (it can take several minutes). Try Save again shortly.', 423);
+        }
+        errorResponse('Failed to save word: ' . $e->getMessage(), 500);
     } catch (\Exception $e) {
         if ($db->inTransaction()) $db->rollBack();
         errorResponse('Failed to save word: ' . $e->getMessage(), 500);

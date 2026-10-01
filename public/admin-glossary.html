@@ -317,6 +317,27 @@
             background: #f7f9fb; border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
         }
 
+        /* Result of Save: confirms what was written (or says nothing was).
+           Above the edit panel (9001) and the occurrences window (9100). */
+        .lx-saved-modal { position: fixed; inset: 0; z-index: 9200; background: rgba(20,24,40,0.35); }
+        .lx-saved-modal[hidden] { display: none; }
+        .lx-saved {
+            position: absolute; top: 14vh; left: 50%; transform: translateX(-50%);
+            width: min(560px, calc(100vw - 32px)); max-height: 72vh; overflow-y: auto; box-sizing: border-box;
+            background: #fff; border-radius: 6px; border-top: 4px solid #1e8449;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3); padding: 16px 20px; font-size: 0.9rem;
+        }
+        .lx-saved.is-error { border-top-color: #c0392b; }
+        .lx-saved h3 { margin: 0 0 8px; color: #1e8449; font-size: 1.05rem; }
+        .lx-saved.is-error h3 { color: #c0392b; }
+        .lx-saved p { margin: 6px 0; color: #333; }
+        .lx-saved table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+        .lx-saved th { text-align: left; vertical-align: top; white-space: nowrap; color: #555; font-weight: 600; padding: 4px 12px 4px 0; }
+        .lx-saved td { padding: 4px 0; font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; word-break: break-word; }
+        .lx-saved tr + tr th, .lx-saved tr + tr td { border-top: 1px solid #eee; }
+        .lx-saved-warn { color: #b9770e !important; }
+        .lx-saved-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
         .lx-node { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
         .lx-node:hover { background: #eef4fa; }
         .lx-twist {
@@ -603,6 +624,8 @@
         <div id="gw-backdrop"></div>
         <div id="lx-occ-modal" class="lx-occ-modal" hidden role="dialog" aria-modal="true" aria-label="Occurrences"
              onclick="if (event.target === this) lxCloseOccPopup()"></div>
+        <div id="lx-saved-modal" class="lx-saved-modal" hidden role="alertdialog" aria-modal="true" aria-label="Save result"
+             onclick="if (event.target === this) lxCloseSaveResult()"></div>
         <div id="gw-panel" class="edit-panel" data-no-persist role="dialog" aria-modal="true" aria-labelledby="gw-panel-title">
             <div style="display:flex;align-items:flex-start;gap:10px">
                 <h2 id="gw-panel-title">New Word</h2>
@@ -2399,6 +2422,7 @@ function openWordPanel(title, showDelete) {
 /* Esc closes the editor, but not while the IPA helper is open on top of it.
    The backdrop does not close it, so a stray click keeps the edits. */
 document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && lxCloseSaveResult()) return;
     if (e.key !== 'Escape' || !document.getElementById('gw-panel').classList.contains('active')) return;
     if (lxCloseOccPopup()) return;
     var ipa = document.getElementById('ipa-helper-popover');
@@ -2409,6 +2433,7 @@ document.addEventListener('keydown', function(e) {
 function newWord() {
     lxLoadMeta(function() {
         editingWordKey = null;
+        lxSnapshot = null;
         // A new word's Strong's status is unknown until someone determines it.
         lxRenderStrongs([], null);
         lxRenderCount(null);
@@ -2472,6 +2497,9 @@ function editWord(key) {
             document.getElementById('lx-yt').value = w.word_yt || '';
             lxShowYtPlain();
             openWordPanel('Edit: ' + (w.word_translit || w.word_hebrew || 'word'), true);
+            // What the word looked like on opening, for the after-Save summary.
+            var snap = lxBuildPayload();
+            lxSnapshot = snap.error ? null : snap.data;
         });
     });
 }
@@ -2707,14 +2735,9 @@ function closeWordEdit() {
     document.getElementById('lx-yt-kb').classList.remove('open');
 }
 
-function saveWord() {
-    var statusEl = document.getElementById('gw-status');
-    var errorEl = document.getElementById('gw-error');
-    statusEl.style.display = 'none';
-    errorEl.style.display = 'none';
-
-    function fail(msg) { errorEl.textContent = msg; errorEl.style.display = ''; }
-
+/* The panel's fields as a save body, or {error}. Also taken when a word is
+   opened (lxSnapshot), so the confirmation after Save can list what changed. */
+function lxBuildPayload() {
     var translits = lxCollectTranslits();
     /* Base replaces the old Hebrew box: for a Hebrew word it is also written to
        word_hebrew (which the public glossary and trg_word_yt read) and YT is
@@ -2722,10 +2745,10 @@ function saveWord() {
     var lang = document.getElementById('lx-language').value;
     var base = document.getElementById('lx-code').value.trim();
     var hebrew = lang === 'H' ? base : '';
-    if (!translits.length && !base) return fail('Give the word a spelling or a Base.');
+    if (!translits.length && !base) return {error: 'Give the word a spelling or a Base.'};
 
     var strongs = lxCollectStrongs();
-    if (strongs.error) return fail(strongs.error);
+    if (strongs.error) return {error: strongs.error};
 
     // word_count_yy is intentionally NOT sent: it is harvested from
     // yy_word_occurrence by _word_harvest.php, so the panel only displays it.
@@ -2753,57 +2776,194 @@ function saveWord() {
     };
     var pref = translits.filter(function(t) { return t.preferred; })[0];
     data.word_translit = pref ? pref.word_translit_text : (translits[0] ? translits[0].word_translit_text : '');
+    return {data: data};
+}
+
+/* The word as it was when the panel opened; null for a new word. */
+var lxSnapshot = null;
+
+/* Human-readable list of what differs between two save bodies. */
+function lxDescribeChanges(before, after) {
+    var out = [];
+    function optText(id, v) {
+        var o = document.querySelector('#' + id + ' option[value="' + String(v == null ? '' : v).replace(/"/g, '\\"') + '"]');
+        return o ? o.textContent.trim() : String(v == null ? '' : v);
+    }
+    function show(v) { v = (v == null ? '' : String(v)).trim(); return v === '' ? '(blank)' : v; }
+    function scalar(label, key, selectId) {
+        var a = before ? before[key] : '', b = after[key];
+        if (String(a == null ? '' : a).trim() === String(b == null ? '' : b).trim()) return;
+        if (selectId) { a = optText(selectId, a); b = optText(selectId, b); }
+        out.push(before ? [label, show(a) + ' → ' + show(b)] : [label, show(b)]);
+    }
+    function spellings(d) { return (d ? d.translits : []).map(function(t) { return t.word_translit_text; }); }
+    var sa = spellings(before), sb = spellings(after);
+    if (sa.join('\u0001') !== sb.join('\u0001')) {
+        var removed = sa.filter(function(s) { return sb.indexOf(s) < 0; });
+        var added   = sb.filter(function(s) { return sa.indexOf(s) < 0; });
+        var parts = [];
+        if (added.length)   parts.push('added ' + added.join(', '));
+        if (removed.length) parts.push('removed ' + removed.join(', '));
+        if (!parts.length)  parts.push('reordered');
+        out.push(['Spellings', parts.join('; ') + ' — now: ' + (sb.join(', ') || '(none)')]);
+    }
+    scalar('Preferred spelling', 'word_translit');
+    scalar('Base', 'word_code');
+    scalar('YT', 'word_yt');
+    scalar('Language', 'word_language', 'lx-language');
+    scalar('Gender', 'word_gender_key', 'lx-gender');
+    scalar('Pronunciation (YY)', 'word_pronunciation_yy');
+    scalar('Pronunciation (IPA)', 'word_pronunciation_ipa');
+    scalar('Pronunciation (phonetic)', 'word_pronunciation_phonetic');
+    scalar("Strong's status", 'strongs_state', 'lx-strongs-state');
+    if (!before || before.word_active_flag !== after.word_active_flag) {
+        out.push(['Active', after.word_active_flag ? 'yes' : 'no']);
+    }
+    function sgList(d) {
+        return (d ? d.strongs : []).map(function(s) {
+            return s.word_strongs_language + lxPad4(s.word_strongs_number) + (s.word_strongs_suffix || '')
+                + (s.preferred ? ' (preferred)' : '');
+        });
+    }
+    var ga = sgList(before), gb = sgList(after);
+    if (ga.join() !== gb.join() || JSON.stringify(before ? before.strongs : []) !== JSON.stringify(after.strongs)) {
+        out.push(["Strong's", gb.join(', ') || '(none)']);
+    }
+    function defs(d) { return (d ? d.definitions : []); }
+    var da = defs(before), db = defs(after);
+    if (JSON.stringify(da) !== JSON.stringify(db)) {
+        var ta = da.map(function(x) { return x.word_definition_text; });
+        var tb = db.map(function(x) { return x.word_definition_text; });
+        var dAdd = tb.filter(function(t) { return ta.indexOf(t) < 0; }).length;
+        var dDel = ta.filter(function(t) { return tb.indexOf(t) < 0; }).length;
+        var dParts = [];
+        if (dAdd) dParts.push(dAdd + ' added/edited');
+        if (dDel) dParts.push(dDel + ' removed/replaced');
+        if (!dParts.length) dParts.push('source, part of speech, default or active flag changed');
+        var defRow = db.filter(function(x) { return x['default']; })[0];
+        out.push(['Definitions', dParts.join(', ') + (defRow ? ' — default: “' + defRow.word_definition_text + '”' : '')]);
+    }
+    return out;
+}
+
+/* The result window shown after Save: `ok` false = nothing was saved. */
+function lxShowSaveResult(ok, heading, intro, rows, warnings, openKey) {
+    var m = document.getElementById('lx-saved-modal');
+    var html = '<div class="lx-saved' + (ok ? '' : ' is-error') + '">'
+        + '<h3>' + esc(heading) + '</h3>';
+    if (intro) html += '<p>' + esc(intro) + '</p>';
+    if (rows && rows.length) {
+        html += '<table>' + rows.map(function(r) {
+            return '<tr><th>' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    (warnings || []).forEach(function(w) { html += '<p class="lx-saved-warn">⚠ ' + esc(w) + '</p>'; });
+    html += '<div class="lx-saved-btns">';
+    if (openKey) html += '<button type="button" class="btn btn-secondary" onclick="lxCloseSaveResult();editWord(' + (+openKey) + ')">Open word</button>';
+    html += '<button type="button" class="btn btn-primary" id="lx-saved-ok" onclick="lxCloseSaveResult()">OK</button></div></div>';
+    m.innerHTML = html;
+    m.hidden = false;
+    document.getElementById('lx-saved-ok').focus();
+}
+
+function lxCloseSaveResult() {
+    var m = document.getElementById('lx-saved-modal');
+    if (m.hidden) return false;
+    m.hidden = true;
+    m.innerHTML = '';
+    return true;
+}
+
+/* Compare what the server now holds with what was sent, so a save that
+   silently did not stick is reported instead of confirmed. */
+function lxVerifySaved(w, sent) {
+    var warn = [];
+    var got = (w.translits || []).map(function(t) { return t.word_translit_text; });
+    var want = sent.translits.map(function(t) { return t.word_translit_text; });
+    if (got.join('\u0001') !== want.join('\u0001')) {
+        warn.push('Spellings stored are ' + (got.join(', ') || '(none)') + ', not ' + (want.join(', ') || '(none)') + '.');
+    }
+    if (sent.word_translit && (w.word_translit || '') !== sent.word_translit) {
+        warn.push('Preferred spelling stored is ' + (w.word_translit || '(blank)') + ', not ' + sent.word_translit + '.');
+    }
+    return warn;
+}
+
+var lxSaving = false;
+
+function saveWord() {
+    if (lxSaving) return;                      // a second click must not race the first
+    var statusEl = document.getElementById('gw-status');
+    var errorEl = document.getElementById('gw-error');
+    var saveBtn = document.getElementById('gw-save');
+    statusEl.style.display = 'none';
+    errorEl.style.display = 'none';
+
+    function fail(msg) {
+        errorEl.textContent = msg; errorEl.style.display = '';
+        lxShowSaveResult(false, 'Not saved', msg);
+    }
+
+    var built = lxBuildPayload();
+    if (built.error) return fail(built.error);
+    var data = built.data;
+    var before = lxSnapshot;
+    var changes = lxDescribeChanges(before, data);
+    var base = data.word_code;
 
     var isNew = !editingWordKey;
     var url = API + '/admin-glossary-lexicon.php' + (isNew ? '' : '?key=' + editingWordKey);
+
+    lxSaving = true;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    function done() { lxSaving = false; saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
 
     fetch(url, {
         method: isNew ? 'POST' : 'PUT', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(data)
     }).then(function(r){return safeJson(r);}).then(function(d) {
+        done();
         if (!d || d.error) return fail((d && d.error) || 'Save failed');
-        if (d.word_key) editingWordKey = d.word_key;
 
         /* A YY master with this Language and Base already existed, so the word
-           was only linked to it and nothing was written to it. */
+           was only linked to it and nothing was written to it. Reopen on the
+           master so the edits can be made there. */
         if (d.linked) {
             loadWords();
             editWord(d.word_key);
-            alert('A YY word with this Language and Base already exists, so this word is now linked to it.\n'
-                + 'Your changes were NOT applied. You are now on the YY word; make them here.');
+            lxShowSaveResult(false, 'Linked — changes NOT applied',
+                'A YY word with this Language and Base already exists, so this word is now linked to it. '
+                + 'Your changes were not applied. You are now on the YY word; make them there.');
             return;
         }
 
-        /* An outside-source word forks on save, so the row that was written is
-           not the one the panel was opened on. Reopen on the copy rather than
-           leaving the original's key on screen. */
-        if (d.forked_from) {
-            loadWords();
-            editWord(d.word_key);
-            alert('This word came from another source, so an editable YY copy was created.\n'
-                + 'You are now editing that copy; the original is unchanged, now links to it, and is read-only.');
-            return;
-        }
-        document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || base);
-        document.getElementById('gw-delete').style.display = '';
-        if (isNew) lxRenderNotWord(false);
-        statusEl.style.display = '';
-        setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
-        // Re-read so word_yt (written by the DB trigger) and counts show through.
+        var savedKey = d.word_key || editingWordKey;
+        var name = data.word_translit || base || 'word';
+        closeWordEdit();
         loadWords();
-        if (editingWordKey) {
-            fetch(API + '/admin-glossary-lexicon.php?key=' + editingWordKey, {credentials:'include'})
-                .then(function(r){return safeJson(r);}).then(function(w) {
-                if (w && !w.error) {
-                    document.getElementById('lx-yt').value = w.word_yt || '';
-                    lxShowYtPlain();
-                    /* New Strong's cards need the keys the API just assigned, or
-                       the next save would delete and re-insert them. */
-                    lxRenderStrongs(w.strongs, w.word_strongs);
-                }
-            });
-        }
+
+        // Read the word back: confirm what is actually stored, not what was sent.
+        fetch(API + '/admin-glossary-lexicon.php?key=' + savedKey, {credentials:'include'})
+            .then(function(r){return safeJson(r);}).then(function(w) {
+            var warn = (w && !w.error) ? lxVerifySaved(w, data)
+                                       : ['Could not read the word back to confirm the save.'];
+            var intro;
+            if (d.forked_from) {
+                intro = 'This word came from another source, so an editable YY copy (#' + savedKey + ') was created '
+                    + 'with these changes. The original (#' + d.forked_from + ') is unchanged, now links to it, and is read-only.';
+            } else if (isNew) {
+                intro = 'New word #' + savedKey + ' was created.';
+            } else {
+                intro = changes.length ? 'Word #' + savedKey + ' was updated:' : 'Word #' + savedKey + ' saved — nothing had changed.';
+            }
+            lxShowSaveResult(!warn.length, (warn.length ? 'Saved with problems: ' : 'Saved: ') + name,
+                intro, changes, warn, savedKey);
+        });
+    }).catch(function(e) {
+        done();
+        fail('Save failed: ' + (e && e.message ? e.message : 'network error') + '. Nothing may have been saved.');
     });
 }
 
