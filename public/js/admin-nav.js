@@ -39,7 +39,6 @@ var tabs = [
     ['admin-tts.html', 'TTS', 'Configure voices, pronunciations, pauses, and generate audio per book.'],
     ['admin-chat.html', 'Chat'],
     ['admin-comments.html', 'Comments'],
-    ['admin-doyouyada.html', 'DoYou?'],
     ['admin-feeds.html', 'Feeds'],
     ['admin-pages.html', 'Pages', 'Build and edit every site page - sections, aliases, search flags, menus, and global styles.'],
     ['admin-resources.html', 'Resources'],

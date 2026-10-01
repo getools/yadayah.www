@@ -112,6 +112,9 @@ function cleanToken(string $t): string {
  *   al-Shaitan | the Adversary            italic word(s) before " | ", with or
  *                                         without a parenthesis — outside one,
  *                                         no meaning is recorded (no end marker)
+ *   Tauhid (the oneness of Allah)         italic word(s) then a short plain-English
+ *                                         parenthesis — the parenthesis is the meaning
+ *                                         (citations, titles and asides refused)
  * Outside a parenthesis a dash is a title and subtitle
  * ("Tea with Terrorists – Who They Are?"), so it does not count.
  *
@@ -171,6 +174,36 @@ function glossEntries(string $glued): array {
     }
     if (preg_match_all('/\(\s*' . $runs . '\s*\)/u', $s, $m, PREG_OFFSET_CAPTURE)) {
         foreach ($m[1] as [$head, $at]) $heads[] = [$at, $head, null];
+    }
+    // "word (meaning)" — italic word(s) followed by a parenthesis of plain
+    // English: "Tauhid (the oneness of Allah)", "Nabaʿym (Prophets)".  The same
+    // shape also carries citations, titles and asides, which are refused:
+    //   digits anywhere          towr (H8449), Quran 003.197 (It is), … (2002)
+    //   Hebrew/Greek script      ʾisheh (אִשֶּׁה)
+    //   a multi-word Title       New International Version (NIV)
+    //   an aside                 naʾaph (which not-so-coincidently appears …)
+    // What is left must be short: ≤12 words starting lower-case, or ≤8 words
+    // starting with a capital.  The parenthesis is the meaning.
+    if (preg_match_all('/' . $runs . '\s*\(([^()<]{2,200})\)/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[0] as $i => [, $at]) {
+            $head = $m[1][$i][0];
+            [$body, $bodyAt] = $m[2][$i];
+            $plainHead = trim(strip_tags($head));
+            $body = trim($body);
+            if (preg_match('/\d/', $plainHead . $body)) continue;
+            if (preg_match('/[\x{0370}-\x{03FF}\x{1F00}-\x{1FFF}\x{0590}-\x{05FF}]/u', $body)) continue;
+            // A Title Has Every Main Word Capitalised ("Exegetical Dictionary of
+            // the New Testament") — the small linking words don't count.
+            $toks = array_filter(preg_split('/\s+/u', $plainHead), function ($t) {
+                return !preg_match('/^(?:of|the|and|a|an|in|on|to|for)$/', $t);
+            });
+            if (count($toks) >= 2 && !array_filter($toks, function ($t) { return !preg_match('/^\p{Lu}/u', ltrim($t, "\u{02BE}\u{02BF}")); })) continue;
+            if (preg_match('/^(?:see|cf|i\.e|e\.g|or|and|also|ibid|pl|sing|which|that|who|since|however|reading|once|scribed|copyright)\b/iu', $body)) continue;
+            $n = count(preg_split('/\s+/u', $body));
+            $short = preg_match('/^\p{Ll}/u', $body) ? $n <= 12 : (preg_match('/^\p{Lu}/u', $body) && $n <= 8);
+            if (!$short) continue;
+            $heads[] = [$at, $head, $bodyAt];
+        }
     }
     usort($heads, function ($a, $b) { return $a[0] <=> $b[0]; });
 
