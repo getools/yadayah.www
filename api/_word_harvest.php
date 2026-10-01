@@ -115,7 +115,12 @@ function cleanToken(string $t): string {
  *   Tauhid (the oneness of Allah)         italic word(s) then a short plain-English
  *                                         parenthesis — the parenthesis is the meaning
  *                                         (citations, titles and asides refused)
- * Outside a parenthesis a dash is a title and subtitle
+ *   (… from niyr and nuwr – the fiery …)  a plain "and"/"or" joins alternatives too
+ *   “hamets – add yeast,”                 quotation marks stand in for the
+ *                                         parenthesis; meaning ends at the ”
+ *   sheman, meaning “olive oil.”          defined in a sentence: meaning / means /
+ *                                         a comma, then the quotation is the meaning
+ * Otherwise, outside a parenthesis a dash is a title and subtitle
  * ("Tea with Terrorists – Who They Are?"), so it does not count.
  *
  * $glued is the paragraph HTML with half-rings already pulled inside <i>.
@@ -136,7 +141,7 @@ function glossEntries(string $glued): array {
     $s = html_entity_decode(strip_tags($s), ENT_QUOTES, 'UTF-8');
     $s = str_replace("\x02\x01", '', $s);                  // back-to-back runs are one run
     $s = str_replace(["\x01", "\x02"], ['<i>', '</i>'], $s);
-    if ((strpos($s, '(') === false && strpos($s, ')') === false) || strpos($s, '<i>') === false) return [];
+    if (strpos($s, '<i>') === false) return [];
 
     // Parenthesis depth at a byte offset.  Paragraphs are split at page
     // breaks, so a parenthesis can open in the PREVIOUS paragraph: an
@@ -156,8 +161,10 @@ function glossEntries(string $glued): array {
         return $d;
     };
 
-    $runs  = '((?:<i>[^<]+<\/i>)(?:(?:\s*\/\s*|\s+)<i>[^<]+<\/i>)*)';
-    $heads = [];   // [offset, head, offset where the meaning starts | null]
+    // Italic runs joined by spaces (one phrase), " / " or a plain "and"/"or"
+    // (alternatives: "niyr and nuwr – the fiery light" makes BOTH words).
+    $runs  = '((?:<i>[^<]+<\/i>)(?:(?:\s*\/\s*|\s+(?:(?:and|or)\s+)?)<i>[^<]+<\/i>)*)';
+    $heads = [];   // [offset, head, offset where the meaning starts | null, offset where it must end?]
     if (preg_match_all('/' . $runs . '\s*([\x{2013}\x{2014}|])\s/u', $s, $m, PREG_OFFSET_CAPTURE)) {
         foreach ($m[0] as $i => [$all, $at]) {
             if ($depthAt($at) > 0) {
@@ -205,13 +212,39 @@ function glossEntries(string $glued): array {
             $heads[] = [$at, $head, $bodyAt];
         }
     }
+    // A quotation mark stands in for the parenthesis: “hamets – add yeast,”
+    // “Bacha Bazi – Boy Play.”  The meaning ends at the closing quote.
+    // (Inside a parenthesis the dash rule above has it already.)
+    if (preg_match_all('/“\s*' . $runs . '\s*[\x{2013}\x{2014}]\s/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[1] as $i => [$head, $at]) {
+            if ($depthAt($at) > 0) continue;
+            $from = $m[0][$i][1] + strlen($m[0][$i][0]);
+            $end  = strpos($s, '”', $from);
+            $heads[] = [$at, $head, $from, $end === false ? null : $end];
+        }
+    }
+    // The word defined in a sentence: sheman, meaning “olive oil.” ·
+    // balad means “country or nation” · stoicheo, “proceeding to march …”.
+    // The quotation is the meaning.
+    if (preg_match_all('/' . $runs . '\s*(?:,\s*)?(?:meaning:?|means:?|,)\s*“([^”]{2,300})”/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[1] as $i => [$head, $at]) {
+            [$q, $qAt] = $m[2][$i];
+            $heads[] = [$at, $head, $qAt, $qAt + strlen($q)];
+        }
+    }
     usort($heads, function ($a, $b) { return $a[0] <=> $b[0]; });
+    // One presentation per spot: the first rule to claim an offset keeps it.
+    $byAt = [];
+    foreach ($heads as $h) if (!isset($byAt[$h[0]])) $byAt[$h[0]] = $h;
+    $heads = array_values($byAt);
 
     $out = [];
-    foreach ($heads as $i => [$at, $head, $from]) {
+    foreach ($heads as $i => $h) {
+        [$at, $head, $from] = $h;
         $gloss = null;
         if ($from !== null) {
             $to = strlen($s);
+            if (isset($h[3])) $to = min($to, $h[3]);
             if (isset($heads[$i + 1])) $to = min($to, $heads[$i + 1][0]);
             foreach (['(', ')'] as $stop) {
                 $p = strpos($s, $stop, $from);
@@ -219,14 +252,17 @@ function glossEntries(string $glued): array {
             }
             $g = trim(strip_tags(substr($s, $from, max(0, $to - $from))));
             $g = preg_replace('/\s+/u', ' ', $g);
-            $g = preg_replace('/(?:[\s,;:]+(?:and|or)?)+$/u', '', $g);
+            $g = preg_replace('/(?:[\s,;:.]+(?:and|or)?)+$/u', '', $g);
             if ($g !== '') $gloss = mb_substr($g, 0, 1000);
         }
         $plainHead = trim(preg_replace('/\s+/u', ' ', strip_tags($head)));
-        // "tahowr / tohorah" are alternatives: each is a whole word of its own.
-        // "wa ha nabʿym" is ONE whole (a phrase) made of parts wa, ha, nabʿym.
+        // "tahowr / tohorah" and "niyr and nuwr" are alternatives: each is a
+        // whole word of its own.  "wa ha nabʿym" is ONE whole (a phrase) made
+        // of parts wa, ha, nabʿym.  Only a PLAIN "and"/"or" between italic runs
+        // separates; inside the italics it would be part of the phrase.
+        $altHead = preg_replace('/<\/i>\s+(?:and|or)\s+<i>/u', '</i> / <i>', $head);
         $units = [];
-        foreach (preg_split('/\s*\/\s*/u', $plainHead) as $alt) {
+        foreach (preg_split('/\s*\/\s*/u', trim(preg_replace('/\s+/u', ' ', strip_tags($altHead)))) as $alt) {
             if (!preg_match_all(TOKEN_RE, $alt, $t)) continue;
             $parts = [];
             foreach ($t[0] as $tok) {
