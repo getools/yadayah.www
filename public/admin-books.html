@@ -245,6 +245,14 @@
         .cl-hit.flip .ex-full { display: inline; }
         #cl-results.full .cl-hit.flip .ex-short { display: inline; }
         #cl-results.full .cl-hit.flip .ex-full { display: none; }
+        .cl-rep-actions { display: inline-flex; gap: 6px; margin-left: 8px; }
+        .cl-rep-actions .btn:disabled { opacity: 0.45; cursor: default; }
+        .cl-hit.current { box-shadow: inset 4px 0 0 #3498db; background: #eef5fc; }
+        #cl-results .cl-hit.replaced .ex mark { background: #d5f5e3; text-decoration: none; }
+        .cl-hit.replaced .loc::after { content: '✓ replaced'; display: block; color: #1e8449; font-weight: 600; }
+        .cl-hit.failed .loc::after { content: attr(data-fail); display: block; color: #c0392b; font-weight: 600; white-space: normal; }
+        .cl-summary .ok { color: #1e8449; }
+        .cl-summary .bad { color: #c0392b; }
         .cl-summary { font-size: 0.85rem; color: #666; margin-bottom: 10px; }
         .cl-summary .warn { color: #b9770e; }
         .cl-res-tools { display: flex; gap: 6px; align-items: center; }
@@ -466,6 +474,14 @@
                 <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʿ" title="Insert left half ring">ʿ</button>
                 <button type="button" class="cl-fmt" id="cl-rbold" title="Bold — the replacement text is bold"><b>B</b></button>
                 <button type="button" class="cl-fmt" id="cl-ritalic" title="Italic — the replacement text is italic"><i>I</i></button>
+                <span class="cl-rep-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" id="cl-rep-next" onclick="clReplaceNext()" disabled
+                            title="Replace the highlighted match, then move to the next one">Replace Next</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="cl-skip" onclick="clSkip()" disabled
+                            title="Leave the highlighted match and move to the next one">Skip</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="cl-rep-all" onclick="clReplaceAll()" disabled
+                            title="Replace every match of the last search">Replace All</button>
+                </span>
             </div>
             <div class="cl-row cl-opts">
                 <span class="cl-opt-label">Books</span>
@@ -2796,11 +2812,175 @@ function clSearch() {
         .then(function(d) {
             if (seq !== clSeq) return;
             if (d.error) { summary.textContent = d.error; out.innerHTML = ''; return; }
-            clLast = {d: d, q: q, bold: bold, italic: italic};
+            clLast = {d: d, q: q, bold: bold, italic: italic, vols: vols,
+                      matchCase: document.getElementById('cl-case').classList.contains('active')};
+            clCur = 0;
             clRender(d, q, bold, italic);
+            clSetCurrent(0);
         })
         .catch(function(e) { if (seq === clSeq) { summary.textContent = 'Search failed: ' + (e && e.message || e); out.innerHTML = ''; } })
         .then(function() { if (seq === clSeq) btn.disabled = false; });
+}
+
+// ── Replace Next / Skip / Replace All ──
+// Each edit goes into the book's Word DOCX AND its parsed paragraphs (the
+// server lines the two up and refuses a match it can't place in the DOCX),
+// then the book is queued for PDF / flipbook / re-parse like an upload.
+var clCur = -1;       // index into clLast.d.results of the highlighted match
+var clBusy = false;
+
+function clReplaceArgs() {
+    return {
+        q: clLast.q, bold: clLast.bold, italic: clLast.italic, case: clLast.matchCase,
+        replace: document.getElementById('cl-replace').value,
+        rbold: document.getElementById('cl-rbold').classList.contains('active'),
+        ritalic: document.getElementById('cl-ritalic').classList.contains('active')
+    };
+}
+
+function clUpdateRepButtons() {
+    var has = clLast && clLast.d && (clLast.d.results || []).length > 0;
+    var cur = has && clCur >= 0 && clCur < clLast.d.results.length;
+    document.getElementById('cl-rep-next').disabled = clBusy || !cur;
+    document.getElementById('cl-skip').disabled = clBusy || !cur;
+    document.getElementById('cl-rep-all').disabled = clBusy || !has || !clLast.d.total;
+}
+
+// Highlight result i (or the next one still pending from i), open its
+// folders and scroll it into view.
+function clSetCurrent(i, noScroll) {
+    var res = clLast && clLast.d ? (clLast.d.results || []) : [];
+    while (i < res.length && (res[i].replaced || res[i].failReason)) i++;
+    clCur = i < res.length ? i : -1;
+    document.querySelectorAll('#cl-results .cl-hit.current').forEach(function(h) { h.classList.remove('current'); });
+    if (clCur >= 0) {
+        var row = document.querySelector('#cl-results .cl-hit[data-idx="' + clCur + '"]');
+        if (row) {
+            row.classList.add('current');
+            for (var f = row.closest('.cl-fold'); f; f = f.parentNode.closest('.cl-fold')) f.classList.add('open');
+            if (!noScroll) row.scrollIntoView({block: 'center', behavior: 'smooth'});
+        }
+    }
+    clUpdateRepButtons();
+}
+
+function clSkip() { if (clCur >= 0) clSetCurrent(clCur + 1); }
+
+function clConfirmEmpty(args) {
+    if (args.replace !== '') return true;
+    return confirm('The Replace field is empty — this DELETES the matched text. Continue?');
+}
+
+function clPost(body) {
+    return fetch(API + '/admin-books-cleanup.php?action=replace', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    }).then(function(r) { return safeJson(r); });
+}
+
+function clReplaceNext() {
+    if (clBusy || clCur < 0) return;
+    var args = clReplaceArgs();
+    if (!clConfirmEmpty(args)) return;
+    var r = clLast.d.results[clCur];
+    var body = Object.assign({mode: 'next', volume_key: r.volume_key,
+        target: {paragraph_key: r.paragraph_key, start: r.start, match: r.match}}, args);
+    clBusy = true; clUpdateRepButtons();
+    var summary = document.getElementById('cl-summary');
+    var saved = summary.innerHTML;
+    summary.textContent = 'Replacing in ' + (r.volume_code || r.volume_label) + '…';
+    clPost(body).then(function(d) {
+        summary.innerHTML = saved;
+        if (d.error) { r.failReason = d.error; }
+        else if (d.replaced) {
+            var it = d.items && d.items[0];
+            r.replaced = true;
+            if (it) {
+                r.excerpt = it.excerpt; r.paragraph = it.paragraph;
+                // Later matches in the same paragraph moved by the length change.
+                clLast.d.results.forEach(function(o) {
+                    if (o !== r && o.paragraph_key === r.paragraph_key && o.start > r.start) o.start += it.delta;
+                });
+            }
+        } else {
+            r.failReason = d.failed && d.failed.length ? 'Not replaced: ' + d.failed[0]
+                : 'Not replaced: could not find this spot in the Word DOCX';
+        }
+        var idx = clCur;
+        clRefreshPreview();
+        clSetCurrent(r.replaced ? idx + 1 : idx + 1);
+        if (!r.replaced) clFlash('<span class="bad">' + esc(r.failReason) + '</span>');
+        else clFlash('<span class="ok">Replaced in ' + esc(r.volume_code || r.volume_label)
+            + ' — DOCX + text updated; the book is queued to rebuild.</span>');
+    }).catch(function(e) {
+        summary.innerHTML = saved;
+        clFlash('<span class="bad">Replace failed: ' + esc(e && e.message || String(e)) + '</span>');
+    }).then(function() { clBusy = false; clUpdateRepButtons(); });
+}
+
+function clFlash(html) {
+    var s = document.getElementById('cl-summary');
+    s.innerHTML = s.innerHTML.replace(/<div class="cl-flash">[\s\S]*?<\/div>$/, '') + '<div class="cl-flash">' + html + '</div>';
+}
+
+function clReplaceAll() {
+    if (clBusy || !clLast) return;
+    var d = clLast.d, args = clReplaceArgs();
+    // Every book the search covered. When the list was cut short, some books
+    // may hold matches that aren't on screen, so walk the whole selection.
+    var vks = [];
+    if (d.shown === d.total && !d.scan_truncated) {
+        (d.results || []).forEach(function(r) { if (vks.indexOf(r.volume_key) < 0) vks.push(r.volume_key); });
+    } else if (clLast.vols) {
+        vks = clLast.vols.split(',').map(Number);
+    } else {
+        vks = allVolumes.map(function(v) { return v.volume_key; });
+    }
+    if (!vks.length) return;
+    var fmt = [args.rbold ? 'bold' : '', args.ritalic ? 'italic' : ''].filter(Boolean).join(' + ');
+    if (!confirm('Replace ' + d.total + ' match' + (d.total === 1 ? '' : 'es') + ' of “' + clLast.q + '” with “' + args.replace + '”'
+        + (fmt ? ' (' + fmt + ')' : '') + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
+        + 'This edits each book\'s Word DOCX (the previous copy is kept in u/books-word-backup) and its parsed text, '
+        + 'then queues every changed book to rebuild its PDF, flipbook and paragraphs.')) return;
+    if (!clConfirmEmpty(args)) return;
+
+    clBusy = true; clUpdateRepButtons();
+    var summary = document.getElementById('cl-summary');
+    var tot = {replaced: 0, unmapped: 0, failed: 0, books: 0}, problems = [];
+    var name = function(vk) {
+        var v = allVolumes.find(function(x) { return x.volume_key == vk; });
+        return v ? (v.volume_code || v.volume_label) : 'volume ' + vk;
+    };
+    var step = function(i) {
+        if (i >= vks.length) return Promise.resolve();
+        summary.textContent = 'Replacing… book ' + (i + 1) + ' of ' + vks.length + ' (' + name(vks[i]) + ') — '
+            + tot.replaced + ' replaced so far';
+        return clPost(Object.assign({mode: 'all', volume_key: vks[i]}, args)).then(function(r) {
+            if (r.error) { problems.push(r.error); return; }
+            if (r.replaced) { tot.replaced += r.replaced; tot.books++; }
+            tot.unmapped += r.unmapped || 0;
+            tot.failed += (r.failed || []).length;
+            if (r.unmapped) problems.push(name(vks[i]) + ': ' + r.unmapped + ' not found in the DOCX — left unchanged');
+            (r.failed || []).forEach(function(f) { problems.push(name(vks[i]) + ': ' + f); });
+        }, function(e) {
+            problems.push(name(vks[i]) + ': ' + (e && e.message || e));
+        }).then(function() { return step(i + 1); });
+    };
+    step(0).then(function() {
+        clBusy = false;
+        var msg = '<span class="ok">Replaced ' + tot.replaced + ' in ' + tot.books + ' book' + (tot.books === 1 ? '' : 's')
+            + ' (DOCX + text). Changed books are queued to rebuild.</span>';
+        if (problems.length) msg += '<br><span class="bad">' + problems.map(esc).join('<br>') + '</span>';
+        var keep = msg;
+        // Re-run the search so the list shows what is left.
+        clSearch();
+        var wait = setInterval(function() {
+            if (!document.getElementById('cl-search-btn').disabled) {
+                clearInterval(wait);
+                clFlash(keep);
+            }
+        }, 300);
+    });
 }
 
 function clRender(d, q, bold, italic) {
@@ -2824,6 +3004,7 @@ function clRender(d, q, bold, italic) {
         b.hits.push(r); s.n++;
     });
     var openBooks = (d.results || []).length <= 60;
+    (d.results || []).forEach(function(r, i) { r._idx = i; });
     document.getElementById('cl-results').classList.toggle('replacing', clReplacement() !== null);
     var cnt = function(n) { return '<span class="n">' + n + ' match' + (n === 1 ? '' : 'es') + '</span>'; };
     document.getElementById('cl-results').innerHTML = series.map(function(s) {
@@ -2883,6 +3064,7 @@ function clRefreshPreview() {
     var folds = document.querySelectorAll('#cl-results .cl-fold');
     folds.forEach(function(f) { f.classList.remove('open'); });
     open.forEach(function(i) { if (folds[i]) folds[i].classList.add('open'); });
+    clSetCurrent(clCur, true);
 }
 
 function clHitHtml(r) {
@@ -2899,9 +3081,11 @@ function clHitHtml(r) {
             + 'Open this page in the flipbook">' + loc + '<span class="ext">&#8599;</span></a>';
     }
     // Clicking the excerpt flips this one result between excerpt and whole paragraph.
-    return '<div class="cl-hit">' + locHtml
-        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt) + '</span>'
-        + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt) + '</span></span></div>';
+    var cls = 'cl-hit' + (r.replaced ? ' replaced' : '') + (r.failReason ? ' failed' : '');
+    var pre = r.replaced ? function(h) { return h; } : clWithReplacement;
+    return '<div class="' + cls + '" data-idx="' + r._idx + '"' + (r.failReason ? ' data-fail="' + esc(r.failReason) + '"' : '') + '>' + locHtml
+        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + pre(r.excerpt) + '</span>'
+        + '<span class="ex-full">' + pre(r.paragraph || r.excerpt) + '</span></span></div>';
 }
 
 // Section field definitions — drives both render and save payload.
