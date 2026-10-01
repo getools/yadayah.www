@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790834402">
+    <meta name="page-version" content="1790880932">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
@@ -161,6 +161,62 @@
         .sub-tab.active { color: #2c3e50; border-bottom-color: #3498db; }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
+        /* Cleanup tab. Half-rings come from Yada Towrah, every other glyph
+           from the UI font (same trick as the Glossary word editor). */
+        @font-face {
+            font-family: 'YadaTowrah';
+            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            font-weight: normal; font-style: normal; font-display: swap;
+        }
+        @font-face {
+            font-family: 'YadaTowrahRings';
+            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
+                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            unicode-range: U+02BE-02BF;
+            size-adjust: 140%;
+            font-weight: normal; font-style: normal; font-display: swap;
+        }
+        .cl-tool { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+        .cl-tool h3 { margin: 0 0 12px; font-size: 1rem; color: #2c3e50; }
+        .cl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .cl-row > label { font-weight: 600; font-size: 0.88rem; color: #555; }
+        .cl-row input#cl-find {
+            flex: 1; min-width: 200px; max-width: 480px; padding: 6px 10px; font-size: 1rem;
+            border: 1px solid #ccc; border-radius: 4px;
+            font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .cl-row input#cl-find.is-bold { font-weight: 700; }
+        .cl-row input#cl-find.is-italic { font-style: italic; }
+        .cl-ring {
+            flex: none; min-width: 28px; padding: 3px 4px; line-height: 1;
+            font-family: 'YadaTowrah', serif; font-size: 1.2rem; color: #1a5276;
+            border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer;
+        }
+        .cl-ring:hover { border-color: #3498db; background: #f2f8fd; }
+        .cl-fmt {
+            flex: none; min-width: 30px; padding: 4px 6px; line-height: 1; font-size: 1rem; font-family: Georgia, serif;
+            border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; color: #333; cursor: pointer;
+        }
+        .cl-fmt:hover { border-color: #3498db; background: #f2f8fd; }
+        .cl-fmt.active { background: #2c3e50; border-color: #2c3e50; color: #fff; }
+        .cl-opts { margin-top: 10px; font-size: 0.85rem; color: #555; }
+        .cl-opts label { display: flex; align-items: center; gap: 6px; font-weight: 400; }
+        .cl-opts select { max-width: 360px; }
+        .cl-summary { font-size: 0.85rem; color: #666; margin-bottom: 10px; }
+        .cl-summary .warn { color: #b9770e; }
+        .cl-book { margin-bottom: 14px; border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; }
+        .cl-book-h { padding: 8px 12px; background: #f5f5f5; font-weight: 600; font-size: 0.85rem; border-bottom: 1px solid #e0e0e0; }
+        .cl-book-h .n { color: #888; font-weight: 400; margin-left: 6px; }
+        .cl-hit { display: flex; gap: 12px; padding: 7px 12px; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem;
+            line-height: 1.5; color: #333; text-decoration: none; }
+        .cl-hit:last-child { border-bottom: none; }
+        a.cl-hit:hover { background: #f0f4ff; }
+        .cl-hit .loc { flex: none; width: 150px; color: #888; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+        .cl-hit .ex { flex: 1; min-width: 0;
+            font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif; }
+        .cl-hit .ex mark { background: #fde68a; color: inherit; padding: 0; }
+        @media (max-width: 640px) { .cl-hit { flex-direction: column; gap: 2px; } .cl-hit .loc { width: auto; } }
         /* Series tab */
         .series-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .series-table th, .series-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
@@ -269,6 +325,7 @@
         <span class="sub-tab active" onclick="switchTab('books')">Books</span>
         <span class="sub-tab" id="subtab-series" onclick="switchTab('series')">Series</span>
         <span class="sub-tab" id="subtab-flipbook" onclick="switchTab('flipbook')">Flipbook</span>
+        <span class="sub-tab" id="subtab-cleanup" onclick="switchTab('cleanup')">Cleanup</span>
     </div>
 
     <!-- Books tab -->
@@ -323,6 +380,33 @@
         <div id="fb-form-container">
             <div style="text-align:center;padding:30px;color:#888;">Loading…</div>
         </div>
+    </div>
+
+    <!-- Cleanup tab — text tools that work across the parsed book text
+         (yy_paragraph). API: /api/admin-books-cleanup.php. ids/functions
+         carry a cl prefix so they can't collide with the other tabs. -->
+    <div id="tab-cleanup" class="tab-panel">
+        <div class="cl-tool">
+            <h3>Search/Replace</h3>
+            <div class="cl-row">
+                <label for="cl-find">Find</label>
+                <input type="text" id="cl-find" maxlength="500" autocomplete="off" spellcheck="false"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();clSearch();}">
+                <button type="button" class="cl-ring" data-ch="ʾ" title="Insert right half ring">ʾ</button>
+                <button type="button" class="cl-ring" data-ch="ʿ" title="Insert left half ring">ʿ</button>
+                <button type="button" class="cl-fmt" id="cl-bold" title="Bold — only match text that is bold in the book"><b>B</b></button>
+                <button type="button" class="cl-fmt" id="cl-italic" title="Italic — only match text that is italic in the book"><i>I</i></button>
+                <button type="button" class="btn btn-primary btn-sm" id="cl-search-btn" onclick="clSearch()">Search</button>
+            </div>
+            <div class="cl-row cl-opts">
+                <label><input type="checkbox" id="cl-case"> Match case</label>
+                <label>Book
+                    <select id="cl-volume" onmousedown="clFillVolumes()" onfocus="clFillVolumes()"><option value="">All books</option></select>
+                </label>
+            </div>
+        </div>
+        <div id="cl-summary" class="cl-summary"></div>
+        <div id="cl-results"></div>
     </div>
 </div>
 
@@ -2201,6 +2285,7 @@ function switchTab(name) {
     if (history.replaceState) history.replaceState(null, '', name === 'books' ? location.pathname + location.search : '#' + name);
     if (name === 'series') serLoadSeries();
     if (name === 'flipbook' && !fbLoaded) { fbLoaded = true; fbLoad(); }
+    if (name === 'cleanup') clInit();
 }
 
 // Series keeps its own page permission ('series' in PAGE_SETTING_MAP)
@@ -2452,6 +2537,123 @@ function serDoUpload(blob, filename) {
 var fbLoaded = false;
 function initFlipbookTab() {
     if (location.hash === '#flipbook') switchTab('flipbook');
+    if (location.hash === '#cleanup') switchTab('cleanup');
+}
+
+// ── Cleanup tab: Search/Replace ─────────────────────────────
+// Find text + optional Bold / Italic: those narrow the hits to text that has
+// that formatting in the book (unset = any formatting). Half-ring keys work
+// like the Glossary word editor's.
+var clBound = false;
+function clInit() {
+    clFillVolumes();
+    if (clBound) return;
+    clBound = true;
+    var input = document.getElementById('cl-find');
+    document.querySelectorAll('#tab-cleanup .cl-ring').forEach(function(btn) {
+        // Swallow the mousedown so the input keeps its caret.
+        btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
+        btn.addEventListener('click', function() { clInsertAtCaret(input, btn.getAttribute('data-ch')); });
+    });
+    [['cl-bold', 'is-bold'], ['cl-italic', 'is-italic']].forEach(function(p) {
+        var btn = document.getElementById(p[0]);
+        btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
+        btn.addEventListener('click', function() {
+            var on = btn.classList.toggle('active');
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            input.classList.toggle(p[1], on);
+        });
+    });
+    input.focus();
+}
+
+function clInsertAtCaret(input, ch) {
+    var start = input.selectionStart, end = input.selectionEnd;
+    if (start === null || start === undefined) { input.value += ch; }
+    else {
+        input.value = input.value.slice(0, start) + ch + input.value.slice(end);
+        input.setSelectionRange(start + ch.length, start + ch.length);
+    }
+    input.focus();
+}
+
+// Book picker, from the list the Books tab already loaded.
+function clFillVolumes() {
+    var sel = document.getElementById('cl-volume');
+    if (sel.options.length > 1 || !allVolumes.length) return;
+    var vols = allVolumes.slice().sort(function(a, b) {
+        return String(a.volume_code || '').localeCompare(String(b.volume_code || ''));
+    });
+    vols.forEach(function(v) {
+        var o = document.createElement('option');
+        o.value = v.volume_key;
+        o.textContent = v.volume_code || v.volume_label || ('Volume ' + v.volume_key);
+        sel.appendChild(o);
+    });
+}
+
+var clSeq = 0;
+function clSearch() {
+    var q = document.getElementById('cl-find').value;
+    var summary = document.getElementById('cl-summary');
+    var out = document.getElementById('cl-results');
+    if (!q.trim()) { summary.textContent = 'Enter something to find.'; out.innerHTML = ''; return; }
+    var bold = document.getElementById('cl-bold').classList.contains('active');
+    var italic = document.getElementById('cl-italic').classList.contains('active');
+    var params = 'action=search&q=' + encodeURIComponent(q)
+        + (bold ? '&bold=1' : '') + (italic ? '&italic=1' : '')
+        + (document.getElementById('cl-case').checked ? '&case=1' : '');
+    var vol = document.getElementById('cl-volume').value;
+    if (vol) params += '&volume=' + encodeURIComponent(vol);
+
+    var seq = ++clSeq;
+    var btn = document.getElementById('cl-search-btn');
+    btn.disabled = true;
+    summary.textContent = 'Searching…';
+    fetch(API + '/admin-books-cleanup.php?' + params, {credentials: 'include'})
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            if (seq !== clSeq) return;
+            if (d.error) { summary.textContent = d.error; out.innerHTML = ''; return; }
+            clRender(d, q, bold, italic);
+        })
+        .catch(function(e) { if (seq === clSeq) { summary.textContent = 'Search failed: ' + (e && e.message || e); out.innerHTML = ''; } })
+        .then(function() { if (seq === clSeq) btn.disabled = false; });
+}
+
+function clRender(d, q, bold, italic) {
+    var fmt = [bold ? 'bold' : '', italic ? 'italic' : ''].filter(Boolean).join(' + ');
+    var s = d.total + ' match' + (d.total === 1 ? '' : 'es') + ' for “' + esc(q) + '”' + (fmt ? ' (' + fmt + ')' : '');
+    if (d.shown < d.total) s += ' — showing the first ' + d.shown;
+    if (d.format_rejected) s += ' · ' + d.format_rejected + ' more with the text but not the formatting';
+    if (d.scan_truncated) s += ' · <span class="warn">only the first ' + d.scanned + ' paragraphs were scanned — narrow the search or pick a book</span>';
+    document.getElementById('cl-summary').innerHTML = s;
+
+    var groups = [], byVol = {};
+    (d.results || []).forEach(function(r) {
+        if (!byVol[r.volume_key]) { byVol[r.volume_key] = {r: r, hits: []}; groups.push(byVol[r.volume_key]); }
+        byVol[r.volume_key].hits.push(r);
+    });
+    document.getElementById('cl-results').innerHTML = groups.map(function(g) {
+        return '<div class="cl-book"><div class="cl-book-h">' + esc(g.r.volume_code || g.r.volume_label)
+            + '<span class="n">' + g.hits.length + '</span></div>'
+            + g.hits.map(clHitHtml).join('') + '</div>';
+    }).join('');
+}
+
+function clHitHtml(r) {
+    var loc = (r.chapter !== null ? 'Ch ' + r.chapter + ' · ' : '')
+        + (r.page !== null ? 'p. ' + r.page + ' · ' : '')
+        + '¶ ' + (r.number === null ? '?' : r.number);
+    // excerpt is server-built HTML: escaped text inside <b>/<i>/<mark> only.
+    var body = '<span class="loc"' + (r.chapter_name ? ' title="' + esc(r.chapter_name) + '"' : '') + '>' + loc + '</span>'
+        + '<span class="ex">' + r.excerpt + '</span>';
+    if (r.book_slug && r.page !== null) {
+        var url = '/' + encodeURIComponent(r.book_slug) + '/#p=' + r.page
+            + (r.number !== null ? '&h=' + r.number : '') + '&q=' + encodeURIComponent(r.match);
+        return '<a class="cl-hit" href="' + url + '" target="_blank" rel="noopener" title="Open this page in the flipbook">' + body + '</a>';
+    }
+    return '<div class="cl-hit">' + body + '</div>';
 }
 
 // Section field definitions — drives both render and save payload.
