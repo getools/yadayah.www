@@ -183,11 +183,17 @@
         #lx-yt-plain {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        /* Language + Root share the panel's first row. The inline Root label
-           must not take .field-row label's 140px column. */
+        /* Language + Base (+ YT, Hebrew only) share the panel's first row. The
+           inline labels must not take .field-row label's 140px column. */
+        .field-row .lx-lang-root { flex-wrap: wrap; row-gap: 6px; }
         .lx-lang-root select { padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; background: #fff; }
         .field-row .lx-lang-root .lx-inline-label { flex: none; margin-left: 14px; }
-        .field-row input#lx-code { width: 34ch; text-align: left; }
+        .field-row input#lx-code { width: 140px; text-align: left; }
+        /* Base in a right-to-left script (Hebrew, Arabic): sized like the old
+           Hebrew box so pointing stays legible. Set by lxApplyLanguage(). */
+        .field-row input#lx-code.is-rtl { font-size: 1.35rem; direction: rtl; text-align: right; padding: 2px 8px; }
+        .lx-yt-wrap { display: inline-flex; align-items: center; gap: 8px; }
+        .lx-yt-wrap[hidden] { display: none; }
 
         /* Strong's: one card per yy_word_strongs row, every field visible. The
            number line carries the original letters and translit beside the
@@ -301,6 +307,16 @@
         .lx-occ-head .lx-occ-close { margin-left: auto; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-size: 0.78rem; padding: 3px 9px; }
         .lx-occ-loading, .lx-occ-empty { color: #999; font-style: italic; padding: 4px 0; }
 
+        /* The same drill-down, opened from the editor's # field: a window over
+           the edit panel (which is itself a modal at z-index 9001). */
+        .lx-occ-modal { position: fixed; inset: 0; z-index: 9100; background: rgba(20,24,40,0.35); }
+        .lx-occ-modal[hidden] { display: none; }
+        .lx-occ-modal .lx-occ {
+            position: absolute; top: 8vh; left: 50%; transform: translateX(-50%);
+            width: min(880px, calc(100vw - 32px)); max-height: 80vh; overflow-y: auto; box-sizing: border-box;
+            background: #f7f9fb; border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+
         .lx-node { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
         .lx-node:hover { background: #eef4fa; }
         .lx-twist {
@@ -398,7 +414,7 @@
         .lx-fork-note .lx-linked-list button { margin: 2px 6px 0 0; }
         /* A word linked to its YY master is read-only: its rows are inert
            (lxSetLocked) and dimmed, and Save is hidden. */
-        #gw-panel.lx-locked .field-row { opacity: 0.6; }
+        #gw-panel.lx-locked .field-row:not(.lx-ro-ok) { opacity: 0.6; }
 
         /* Definitions repeater: one card per yy_word_definition row. The default
            is highlighted and a retired (inactive) one is dimmed but still shown. */
@@ -434,8 +450,6 @@
         .lx-hint { font-size: 0.78rem; color: #999; margin-top: 4px; }
 
         /* ── Hebrew keyboard ── */
-        .lx-heb-wrap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .lx-heb-wrap input#lx-hebrew { font-size: 1.35rem; direction: rtl; text-align: right; max-width: 280px; }
         .lx-kb {
             display: none; margin-top: 10px; padding: 12px; border: 1px solid #dde2e8;
             border-radius: 6px; background: #fafbfc; max-width: 620px;
@@ -465,10 +479,10 @@
            Selected by id: `.field-row input[type=text]` above sets
            `font-family: inherit` and outranks a plain class selector, which left
            this box showing Latin letters instead of Yada Towrah glyphs. */
-        .lx-heb-wrap input#lx-yt {
+        .field-row input#lx-yt {
             font-family: 'YadaTowrah', serif; font-size: 1.15rem; color: #1a5276;
             direction: rtl; unicode-bidi: bidi-override; text-align: right;
-            max-width: 280px; padding: 4px 10px;
+            width: 110px; padding: 4px 10px;
         }
         /* YT keys carry Hebrew-shaped glyphs, so they need the same room as the
            Hebrew keyboard rather than the narrower Latin default. */
@@ -587,6 +601,8 @@
         <!-- data-no-persist: record fields must not survive a refresh into the
              next record being edited (session-state.js would otherwise bind them). -->
         <div id="gw-backdrop"></div>
+        <div id="lx-occ-modal" class="lx-occ-modal" hidden role="dialog" aria-modal="true" aria-label="Occurrences"
+             onclick="if (event.target === this) lxCloseOccPopup()"></div>
         <div id="gw-panel" class="edit-panel" data-no-persist role="dialog" aria-modal="true" aria-labelledby="gw-panel-title">
             <div style="display:flex;align-items:flex-start;gap:10px">
                 <h2 id="gw-panel-title">New Word</h2>
@@ -602,14 +618,26 @@
                 this list by default, and kept so the harvest never imports it again.
             </div>
 
-            <div class="field-row"><label for="lx-language">Language</label>
+            <div class="field-row" style="align-items:flex-start;"><label for="lx-language">Language</label>
                 <div class="field-input">
                     <div class="char-inputs lx-lang-root">
                         <select id="lx-language"></select>
                         <label for="lx-code" class="lx-inline-label">Base</label>
-                        <input type="text" id="lx-code" maxlength="32" autocomplete="off" spellcheck="false" dir="auto">
+                        <input type="text" id="lx-code" maxlength="250" autocomplete="off" spellcheck="false" dir="auto">
+                        <!-- Keys come from the selected Language (lxKeyboardFor);
+                             hidden for a language with no keyboard. -->
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleKeyboard()" id="lx-kb-toggle">Letters &amp; marks</button>
+                        <!-- Hebrew only (lxApplyLanguage). -->
+                        <span id="lx-yt-wrap" class="lx-yt-wrap" hidden>
+                            <label for="lx-yt" class="lx-inline-label">YT</label>
+                            <input type="text" id="lx-yt" autocomplete="off" spellcheck="false">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleYtKeyboard()" id="lx-yt-kb-toggle">YT letters</button>
+                            <span id="lx-yt-plain" style="color:#888;font-size:0.82rem;"></span>
+                        </span>
                     </div>
-                    <div class="lx-hint">Unique spelling/letters/identifier for the word in its native language.</div>
+                    <div id="lx-kb" class="lx-kb"></div>
+                    <div id="lx-yt-kb" class="lx-kb"></div>
+                    <div class="lx-hint">Unique spelling/letters/identifier for the word in its native language. For Hebrew it is also the word's Hebrew text, and YT is linked to it &mdash; editing either box updates the other.</div>
                 </div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label>Strong's</label>
@@ -638,31 +666,13 @@
                     <div class="lx-hint">The selected spelling is the preferred one, saved on the word itself; the rest are kept as alternates.</div>
                 </div></div>
 
-            <div class="field-row"><label>#</label>
+            <!-- lx-ro-ok: stays usable on a read-only (linked) word — it only
+                 opens the occurrences window. -->
+            <div class="field-row lx-ro-ok"><label>#</label>
                 <div class="field-input"><div class="char-inputs">
                     <span id="lx-count" class="lx-count-derived">&mdash;</span>
-                    <span style="color:#888;font-size:0.82rem;">times the word appears in the books &mdash; derived from the book index, not editable</span>
+                    <span id="lx-count-hint" style="color:#888;font-size:0.82rem;">times the word appears in the books &mdash; derived from the book index, not editable</span>
                 </div></div></div>
-
-            <div class="field-row" style="align-items:flex-start;"><label for="lx-hebrew">Hebrew</label>
-                <div class="field-input">
-                    <div class="lx-heb-wrap">
-                        <input type="text" id="lx-hebrew" lang="he" dir="rtl">
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleKeyboard()" id="lx-kb-toggle">Letters &amp; marks</button>
-                    </div>
-                    <div id="lx-kb" class="lx-kb"></div>
-                </div></div>
-
-            <div class="field-row" style="align-items:flex-start;"><label for="lx-yt">YT</label>
-                <div class="field-input">
-                    <div class="lx-heb-wrap">
-                        <input type="text" id="lx-yt" autocomplete="off" spellcheck="false">
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="lxToggleYtKeyboard()" id="lx-yt-kb-toggle">YT letters</button>
-                        <span id="lx-yt-plain" style="color:#888;font-size:0.82rem;"></span>
-                    </div>
-                    <div id="lx-yt-kb" class="lx-kb"></div>
-                    <div class="lx-hint">Linked to the Hebrew spelling — editing either box updates the other.</div>
-                </div></div>
 
             <div class="field-row" style="align-items:flex-start;"><label>Pronunciation</label>
                 <div class="field-input">
@@ -1071,6 +1081,59 @@ var LX_MARKS = [
     ['ָ', 'qamats'],  ['ֹ', 'holam'],   ['ֻ', 'qubuts'],  ['ּ', 'dagesh'],
     ['ׁ', 'shin dot'],['ׂ', 'sin dot'], ['ֽ', 'meteg'],   ['ֿ', 'rafe']
 ];
+/* Keyboards for the non-Hebrew languages: [character, name]. Hebrew's comes
+   from yy_letter + LX_MARKS + LX_PUNCT (lxKeyboardFor). Marks are combining
+   characters, typed after the letter they sit on. */
+var LX_KEYBOARDS = {
+    G: {
+        letters: [
+            ['α','alpha'],['β','beta'],['γ','gamma'],['δ','delta'],['ε','epsilon'],['ζ','zeta'],
+            ['η','eta'],['θ','theta'],['ι','iota'],['κ','kappa'],['λ','lambda'],['μ','mu'],
+            ['ν','nu'],['ξ','xi'],['ο','omicron'],['π','pi'],['ρ','rho'],['σ','sigma'],
+            ['ς','final sigma'],['τ','tau'],['υ','upsilon'],['φ','phi'],['χ','chi'],['ψ','psi'],['ω','omega'],
+            ['Α','Alpha'],['Β','Beta'],['Γ','Gamma'],['Δ','Delta'],['Ε','Epsilon'],['Ζ','Zeta'],
+            ['Η','Eta'],['Θ','Theta'],['Ι','Iota'],['Κ','Kappa'],['Λ','Lambda'],['Μ','Mu'],
+            ['Ν','Nu'],['Ξ','Xi'],['Ο','Omicron'],['Π','Pi'],['Ρ','Rho'],['Σ','Sigma'],
+            ['Τ','Tau'],['Υ','Upsilon'],['Φ','Phi'],['Χ','Chi'],['Ψ','Psi'],['Ω','Omega']
+        ],
+        marks: [
+            ['̓','smooth breathing'],['̔','rough breathing'],['́','acute'],
+            ['̀','grave'],['͂','circumflex'],['ͅ','iota subscript'],['̈','diaeresis']
+        ],
+        punct: [['·','ano teleia'],[';','question mark'],['’','elision'],[' ','space']]
+    },
+    L: {
+        letters: [
+            ['ā','a macron'],['ē','e macron'],['ī','i macron'],['ō','o macron'],['ū','u macron'],['ȳ','y macron'],
+            ['Ā','A macron'],['Ē','E macron'],['Ī','I macron'],['Ō','O macron'],['Ū','U macron'],
+            ['ă','a breve'],['ĕ','e breve'],['ĭ','i breve'],['ŏ','o breve'],['ŭ','u breve'],
+            ['ë','e diaeresis'],['ï','i diaeresis'],['ü','u diaeresis'],
+            ['æ','ae'],['œ','oe'],['Æ','AE'],['Œ','OE']
+        ],
+        marks: [['̄','macron'],['̆','breve'],['̈','diaeresis']],
+        punct: []
+    },
+    A: {
+        letters: [
+            ['ا','alif'],['ب','ba'],['ت','ta'],['ث','tha'],['ج','jim'],['ح','ha'],['خ','kha'],
+            ['د','dal'],['ذ','dhal'],['ر','ra'],['ز','zay'],['س','sin'],['ش','shin'],['ص','sad'],
+            ['ض','dad'],['ط','ta'],['ظ','za'],['ع','ayn'],['غ','ghayn'],['ف','fa'],['ق','qaf'],
+            ['ك','kaf'],['ل','lam'],['م','mim'],['ن','nun'],['ه','ha'],['و','waw'],['ي','ya'],
+            ['ء','hamza'],['آ','alif madda'],['أ','alif hamza above'],['إ','alif hamza below'],
+            ['ؤ','waw hamza'],['ئ','ya hamza'],['ة','ta marbuta'],['ى','alif maqsura']
+        ],
+        marks: [
+            ['َ','fatha'],['ُ','damma'],['ِ','kasra'],['ْ','sukun'],['ّ','shadda'],
+            ['ً','fathatan'],['ٌ','dammatan'],['ٍ','kasratan'],['ٰ','dagger alif'],['ٓ','madda']
+        ],
+        punct: [['،','comma'],['؛','semicolon'],['؟','question mark'],['ـ','tatweel'],[' ','space']]
+    }
+};
+
+/* Base is typed right-to-left in these. */
+var LX_RTL = { H: 1, A: 1 };
+var LX_LANG_TAG = { H: 'he', A: 'ar', G: 'el', L: 'la' };
+
 var LX_PUNCT = [
     ['־', 'maqaf'], ['׃', 'sof pasuq'], ['׳', 'geresh'], ['״', 'gershayim'],
     ['׀', 'paseq'], [' ', 'nbsp'], [' ', 'space']
@@ -1247,7 +1310,13 @@ function lxSetPosGender(w) {
     document.getElementById('lx-gender').value = (w && w.word_gender_key) ? String(w.word_gender_key) : '';
     document.getElementById('lx-language').value =
         (w && w.word_language) ? String(w.word_language).trim() : '';
-    document.getElementById('lx-code').value = (w && w.word_code) || '';
+    /* Base is the word's native spelling. For Hebrew it is also the Hebrew text
+       (saveWord writes both), and words saved before that have it only in
+       word_hebrew, so fall back to it. */
+    var lang = (w && w.word_language) ? String(w.word_language).trim() : '';
+    document.getElementById('lx-code').value =
+        (w && w.word_code) || (lang === 'H' && w.word_hebrew) || '';
+    lxApplyLanguage(false);
 }
 
 function lxSort(key, ev) {
@@ -1627,23 +1696,85 @@ function lxToggleOccurrences(wordKey, ev) {
         + '</div></td>';
     row.parentNode.insertBefore(tr, row.nextSibling);
 
+    lxOccLoadRoot(wordKey, 'lx-occ-body-' + wordKey, 'lx-occ-sum-' + wordKey);
+}
+
+/* Fill an occurrences panel's top (series) level. Shared by the list's row
+   panel and the editor's window. */
+function lxOccLoadRoot(wordKey, bodyId, sumId) {
     var rootCtx = { level: 'series', params: { key: wordKey }, flip: null, word: wordKey };
     fetch(lxOccUrl(rootCtx.params), { credentials: 'include' })
         .then(function (r) { return safeJson(r); })
         .then(function (d) {
-            var body = document.getElementById('lx-occ-body-' + wordKey);
+            var body = document.getElementById(bodyId);
             if (!body) return;   // panel closed while the request was in flight
             if (!d || d.error) {
                 body.innerHTML = '<div class="lx-occ-empty">' + esc((d && d.error) || 'Could not load occurrences') + '</div>';
                 return;
             }
-            var sum = document.getElementById('lx-occ-sum-' + wordKey);
+            var sum = document.getElementById(sumId);
             if (sum) {
                 sum.textContent = (d.total || 0).toLocaleString() + ' in '
                     + d.rows.length + (d.rows.length === 1 ? ' series' : ' series');
             }
             body.innerHTML = lxOccRender(rootCtx, d.rows);
         });
+}
+
+/* The editor's # field: a count above zero opens the same drill-down in a
+   window over the panel. */
+function lxRenderCount(cnt) {
+    var el = document.getElementById('lx-count');
+    var hint = document.getElementById('lx-count-hint');
+    var base = 'times the word appears in the books &mdash; derived from the book index, not editable';
+    if (cnt === null || cnt === undefined) {
+        el.textContent = '—';
+        hint.innerHTML = base;
+    } else if (cnt > 0) {
+        el.innerHTML = '<button type="button" class="lx-count-btn" title="Show where this word appears"'
+            + ' onclick="lxOpenOccPopup()">' + Number(cnt).toLocaleString() + '</button>';
+        hint.innerHTML = base + '; click the number to see where';
+    } else {
+        el.textContent = cnt;
+        hint.innerHTML = base;
+    }
+}
+
+function lxOpenOccPopup() {
+    var key = editingWordKey;
+    if (!key) return;
+    // One drill-down at a time: the list's row panel shares lxOccCtx/lxOccWord.
+    document.querySelectorAll('tr.lx-occ-row').forEach(function (r) { r.remove(); });
+    document.querySelectorAll('.lx-count-btn.open').forEach(function (b) { b.classList.remove('open'); });
+    lxOccCtx = {};
+    lxOccWord = key;
+    // Highlight the spellings shown in the editor, preferred first.
+    var tr = lxCollectTranslits();
+    lxOccSpellings[key] = tr.filter(function (t) { return t.preferred; })
+        .concat(tr.filter(function (t) { return !t.preferred; }))
+        .map(function (t) { return t.word_translit_text; });
+
+    var title = document.getElementById('gw-panel-title').textContent.replace(/^Edit:\s*/, '');
+    var m = document.getElementById('lx-occ-modal');
+    m.innerHTML = '<div class="lx-occ">'
+        + '<div class="lx-occ-head"><strong>Occurrences</strong>'
+        + '<span>' + esc(title) + '</span>'
+        + '<span id="lx-occm-sum"></span>'
+        + '<button type="button" class="lx-occ-close" onclick="lxCloseOccPopup()">Close</button>'
+        + '</div><div id="lx-occm-body"><div class="lx-occ-loading">Loading…</div></div>'
+        + '</div>';
+    m.hidden = false;
+    lxOccLoadRoot(key, 'lx-occm-body', 'lx-occm-sum');
+}
+
+function lxCloseOccPopup() {
+    var m = document.getElementById('lx-occ-modal');
+    if (m.hidden) return false;
+    m.hidden = true;
+    m.innerHTML = '';
+    lxOccCtx = {};
+    lxOccWord = null;
+    return true;
 }
 
 /**
@@ -1832,11 +1963,52 @@ function lxCollectTranslits() {
     return out;
 }
 
-/* ── Hebrew keyboard + YT preview ──────────────────────────────────────── */
+/* ── Base keyboard (per language) + YT preview ─────────────────────────── */
+
+function lxLang() { return document.getElementById('lx-language').value; }
+
+/* The keys for a language, or null when it has none. */
+function lxKeyboardFor(lang) {
+    if (lang === 'H') {
+        return {
+            letters: (lxMeta.letters || []).map(function(l) { return [l.letter_hebrew, l.letter_label || '']; }),
+            marks: LX_MARKS, punct: LX_PUNCT
+        };
+    }
+    return LX_KEYBOARDS[lang] || null;
+}
+
+/* Fit the Base box, its keyboard and YT to the selected language. `sync` is
+   true when the user changed the language: a Base typed before Hebrew was
+   chosen then fills in YT. On load the stored YT is kept as it is. */
+function lxApplyLanguage(sync) {
+    var lang = lxLang();
+    var code = document.getElementById('lx-code');
+    code.dir = LX_RTL[lang] ? 'rtl' : (lang ? 'ltr' : 'auto');
+    code.lang = LX_LANG_TAG[lang] || '';
+    code.classList.toggle('is-rtl', !!LX_RTL[lang]);
+
+    var kb = document.getElementById('lx-kb');
+    document.getElementById('lx-kb-toggle').style.display = lxKeyboardFor(lang) ? '' : 'none';
+    if (kb.dataset.built !== lang) {
+        // Rebuilt for the new language the next time it is opened.
+        kb.classList.remove('open');
+        kb.innerHTML = '';
+        delete kb.dataset.built;
+    }
+
+    var isHeb = lang === 'H';
+    document.getElementById('lx-yt-wrap').hidden = !isHeb;
+    if (!isHeb) document.getElementById('lx-yt-kb').classList.remove('open');
+    if (isHeb && sync) lxSyncFromHebrew();
+}
 
 function lxBuildKeyboard() {
     var kb = document.getElementById('lx-kb');
-    if (kb.dataset.built) return;
+    var lang = lxLang();
+    if (kb.dataset.built === lang) return;
+    var layout = lxKeyboardFor(lang);
+    if (!layout) return;
 
     function keys(items, cls) {
         return items.map(function(it) {
@@ -1850,17 +2022,21 @@ function lxBuildKeyboard() {
         }).join('');
     }
 
-    var letters = (lxMeta.letters || []).map(function(l) { return [l.letter_hebrew, l.letter_label || '']; });
-    var html = '<h4>Letters</h4><div class="lx-keys">' + keys(letters, 'letter') + '</div>'
-        + '<h4>Vowels &amp; marks</h4><div class="lx-keys">' + keys(LX_MARKS, 'mark') + '</div>'
-        + '<h4>Punctuation</h4><div class="lx-keys">' + keys(LX_PUNCT, 'punct') + '</div>';
+    var html = '';
+    if (layout.letters.length) html += '<h4>Letters</h4><div class="lx-keys">' + keys(layout.letters, 'letter') + '</div>';
+    if (layout.marks.length)   html += '<h4>' + (lang === 'H' ? 'Vowels &amp; marks' : 'Marks') + '</h4><div class="lx-keys">' + keys(layout.marks, 'mark') + '</div>';
+    if (layout.punct.length)   html += '<h4>Punctuation</h4><div class="lx-keys">' + keys(layout.punct, 'punct') + '</div>';
     kb.innerHTML = html;
 
-    kb.addEventListener('click', function(e) {
-        var btn = e.target.closest('button[data-ch]');
-        if (btn) lxInsertChar('lx-hebrew', btn.getAttribute('data-ch'));
-    });
-    kb.dataset.built = '1';
+    // Bound once: the keyboard's content is rebuilt per language, the element is not.
+    if (!kb.dataset.bound) {
+        kb.addEventListener('click', function(e) {
+            var btn = e.target.closest('button[data-ch]');
+            if (btn) lxInsertChar('lx-code', btn.getAttribute('data-ch'));
+        });
+        kb.dataset.bound = '1';
+    }
+    kb.dataset.built = lang;
 }
 
 /* The YT picker: one key per YT letter (base forms only — a final form shares its
@@ -1911,11 +2087,13 @@ function lxInsertIntoInput(input, ch) {
 
 function lxInsertChar(targetId, ch) {
     lxInsertIntoInput(document.getElementById(targetId), ch);
-    if (targetId === 'lx-hebrew') lxSyncFromHebrew(); else lxSyncFromYt();
+    if (targetId === 'lx-yt') lxSyncFromYt();
+    else if (lxLang() === 'H') lxSyncFromHebrew();
 }
 
 function lxToggleKeyboard() {
     lxBuildKeyboard();
+    if (!document.getElementById('lx-kb').dataset.built) return;
     document.getElementById('lx-kb').classList.toggle('open');
 }
 
@@ -1966,14 +2144,15 @@ function lxYtToHebrew(yt) {
     });
 }
 
-/* Keep the two boxes in step. Assigning .value fires no input event, so the
-   guard is belt-and-braces against a future dispatch turning this into a loop. */
+/* Keep Base and YT in step (Hebrew words only). Assigning .value fires no input
+   event, so the guard is belt-and-braces against a future dispatch turning this
+   into a loop. */
 var lxSyncing = false;
 
 function lxSyncFromHebrew() {
     if (lxSyncing) return;
     lxSyncing = true;
-    document.getElementById('lx-yt').value = lxHebrewToYt(document.getElementById('lx-hebrew').value);
+    document.getElementById('lx-yt').value = lxHebrewToYt(document.getElementById('lx-code').value);
     lxShowYtPlain();
     lxSyncing = false;
 }
@@ -1981,7 +2160,7 @@ function lxSyncFromHebrew() {
 function lxSyncFromYt() {
     if (lxSyncing) return;
     lxSyncing = true;
-    document.getElementById('lx-hebrew').value = lxYtToHebrew(document.getElementById('lx-yt').value);
+    document.getElementById('lx-code').value = lxYtToHebrew(document.getElementById('lx-yt').value);
     lxShowYtPlain();
     lxSyncing = false;
 }
@@ -2221,6 +2400,7 @@ function openWordPanel(title, showDelete) {
    The backdrop does not close it, so a stray click keeps the edits. */
 document.addEventListener('keydown', function(e) {
     if (e.key !== 'Escape' || !document.getElementById('gw-panel').classList.contains('active')) return;
+    if (lxCloseOccPopup()) return;
     var ipa = document.getElementById('ipa-helper-popover');
     if (ipa && ipa.style.display && ipa.style.display !== 'none') return;
     closeWordEdit();
@@ -2231,8 +2411,7 @@ function newWord() {
         editingWordKey = null;
         // A new word's Strong's status is unknown until someone determines it.
         lxRenderStrongs([], null);
-        document.getElementById('lx-hebrew').value = '';
-        document.getElementById('lx-count').textContent = '—';
+        lxRenderCount(null);
         // One empty definition ready to type into, on the word's own source.
         lxRenderDefinitions([]);
         lxAddDefinition();
@@ -2244,7 +2423,8 @@ function newWord() {
         document.getElementById('lx-translits').innerHTML = '';
         document.getElementById('lx-yt').value = '';
         lxSetPronunciation({});
-        lxSetPosGender({});
+        // Most glossary words are Hebrew, so a new one starts there.
+        lxSetPosGender({ word_language: 'H' });
         document.getElementById('lx-kb').classList.remove('open');
         document.getElementById('lx-yt-kb').classList.remove('open');
         lxAddTranslit('', null, true);
@@ -2261,9 +2441,7 @@ function editWord(key) {
             if (!w || w.error) { alert((w && w.error) || 'Word not found'); return; }
             editingWordKey = key;
             lxRenderStrongs(w.strongs, w.word_strongs);
-            document.getElementById('lx-hebrew').value = w.word_hebrew || '';
-            document.getElementById('lx-count').textContent =
-                (w.word_count_yy === null || w.word_count_yy === undefined) ? '—' : w.word_count_yy;
+            lxRenderCount(w.word_count_yy);
             lxSetPronunciation(w);
             lxSetPosGender(w);
             document.getElementById('lx-source-code').value = (w.word_source_code || 'yy').trim();
@@ -2402,7 +2580,7 @@ function lxRenderForkNote(w) {
 function lxSetLocked(locked) {
     var panel = document.getElementById('gw-panel');
     panel.classList.toggle('lx-locked', locked);
-    panel.querySelectorAll('.field-row').forEach(function(r) { r.inert = locked; });
+    panel.querySelectorAll('.field-row:not(.lx-ro-ok)').forEach(function(r) { r.inert = locked; });
     document.getElementById('gw-save').style.display = locked ? 'none' : '';
     document.getElementById('gw-cancel').textContent = locked ? 'Close' : 'Cancel';
     if (locked) {
@@ -2519,6 +2697,7 @@ function lxCollectDefinitions() {
 }
 
 function closeWordEdit() {
+    lxCloseOccPopup();
     editingWordKey = null;
     var panel = document.getElementById('gw-panel');
     panel.classList.remove('active');
@@ -2537,8 +2716,13 @@ function saveWord() {
     function fail(msg) { errorEl.textContent = msg; errorEl.style.display = ''; }
 
     var translits = lxCollectTranslits();
-    var hebrew = document.getElementById('lx-hebrew').value.trim();
-    if (!translits.length && !hebrew) return fail('Give the word a spelling or Hebrew text.');
+    /* Base replaces the old Hebrew box: for a Hebrew word it is also written to
+       word_hebrew (which the public glossary and trg_word_yt read) and YT is
+       kept; any other language has neither. */
+    var lang = document.getElementById('lx-language').value;
+    var base = document.getElementById('lx-code').value.trim();
+    var hebrew = lang === 'H' ? base : '';
+    if (!translits.length && !base) return fail('Give the word a spelling or a Base.');
 
     var strongs = lxCollectStrongs();
     if (strongs.error) return fail(strongs.error);
@@ -2550,11 +2734,11 @@ function saveWord() {
         // row's code into word_strongs, or the state ('' / NULL) when empty.
         strongs: strongs.list,
         strongs_state: document.getElementById('lx-strongs-state').value,
-        word_code: document.getElementById('lx-code').value.trim(),
+        word_code: base,
         word_hebrew: hebrew,
         // Sent explicitly so a typed spelling survives trg_word_yt, which would
         // otherwise re-derive it from the Hebrew and drop any half-rings.
-        word_yt: document.getElementById('lx-yt').value.trim(),
+        word_yt: lang === 'H' ? document.getElementById('lx-yt').value.trim() : '',
         // The definitions list is authoritative; the API mirrors whichever one
         // is default into that source's word_definition_* column.
         definitions: lxCollectDefinitions(),
@@ -2562,7 +2746,7 @@ function saveWord() {
         word_pronunciation_ipa:      document.getElementById('lx-pron-ipa').value.trim(),
         word_pronunciation_phonetic: document.getElementById('lx-pron-phonetic').value.trim(),
         word_gender_key: document.getElementById('lx-gender').value,
-        word_language: document.getElementById('lx-language').value,
+        word_language: lang,
         word_source_code: document.getElementById('lx-source-code').value,
         word_active_flag: document.getElementById('gw-active').checked,
         translits: translits
@@ -2601,7 +2785,7 @@ function saveWord() {
                 + 'You are now editing that copy; the original is unchanged, now links to it, and is read-only.');
             return;
         }
-        document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || hebrew);
+        document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || base);
         document.getElementById('gw-delete').style.display = '';
         if (isNew) lxRenderNotWord(false);
         statusEl.style.display = '';
@@ -2626,7 +2810,7 @@ function saveWord() {
 function deleteWord() {
     if (!editingWordKey) return;
     var label = document.querySelector('#lx-translits .lx-tr-text');
-    var name = (label && label.value.trim()) || document.getElementById('lx-hebrew').value.trim() || 'this word';
+    var name = (label && label.value.trim()) || document.getElementById('lx-code').value.trim() || 'this word';
     if (!confirm('Delete "' + name + '" and all of its spellings and definitions?')) return;
 
     fetch(API + '/admin-glossary-lexicon.php?key=' + editingWordKey, {
@@ -2648,7 +2832,8 @@ document.getElementById('gw-search').addEventListener('input', function() {
     wordSearchTimer = setTimeout(function() { lxReload(true); }, 250);
 });
 
-document.getElementById('lx-hebrew').addEventListener('input', lxSyncFromHebrew);
+document.getElementById('lx-code').addEventListener('input', function() { if (lxLang() === 'H') lxSyncFromHebrew(); });
+document.getElementById('lx-language').addEventListener('change', function() { lxApplyLanguage(true); });
 document.getElementById('lx-yt').addEventListener('input', lxSyncFromYt);
 
 document.getElementById('login-pass').addEventListener('keydown', function(e) {
