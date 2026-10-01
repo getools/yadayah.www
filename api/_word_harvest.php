@@ -288,13 +288,18 @@ function isContraction(string $lc): bool {
    that spell it (the occurrence index needs that; the recount does not). */
 
 $words = $db->query(
-    "SELECT word_key, word_translit, word_count_yy, word_source_code FROM yy_word"
+    "SELECT word_key, word_translit, word_count_yy, word_source_code, word_excluded_flag FROM yy_word"
 )->fetchAll();
 
 $spellings = [];   // word_key => [translit_key|'w' => text]
 $known     = [];   // normalised spelling => word_key  (for de-duping candidates)
+/* "Not a word" (admin Glossary): rows kept ONLY so they are never imported
+   again. Their spellings stay in $known, so Pass 3 already skips them; Pass 3b
+   also treats them as covered, and Pass 2b gives them no seeded definition. */
+$excluded  = [];   // word_key => true
 
 foreach ($words as $w) {
+    if (!empty($w['word_excluded_flag'])) $excluded[(int)$w['word_key']] = true;
     $spellings[$w['word_key']] = [];
     if (trim((string)$w['word_translit']) !== '') {
         $spellings[$w['word_key']]['w'] = trim($w['word_translit']);
@@ -572,7 +577,7 @@ if ($INDEX) {
     foreach ($glossLinks as [$wk, $gk, $role]) {
         // Only the whole's meaning — "wa" never takes "wa ha nabʿym"'s.
         [, $pk, $seq, , $g] = $glossOcc[$gk - 1];
-        if ($role !== 'W' || $g === null || isset($hasDefault[$wk])) continue;
+        if ($role !== 'W' || $g === null || isset($hasDefault[$wk]) || isset($excluded[$wk])) continue;
         $pos = [$rank[$pk] ?? PHP_INT_MAX, $seq];
         if (!isset($firstDef[$wk]) || $pos < [$firstDef[$wk][0], $firstDef[$wk][1]]) $firstDef[$wk] = [$pos[0], $pos[1], $g];
     }
@@ -733,7 +738,8 @@ if (!$RECOUNT && $COVERAGE) {
 
     $booksHave = [];      // lower-cased spelling => already owned by a books row
     foreach ($words as $w) {
-        if ((string)$w['word_source_code'] !== 'books') continue;
+        // A "Not a word" spelling, from any source, must not spawn a Books row.
+        if ((string)$w['word_source_code'] !== 'books' && !isset($excluded[(int)$w['word_key']])) continue;
         foreach ($spellings[(int)$w['word_key']] ?? [] as $text) {
             $lc = mb_strtolower(trim((string)$text));
             if ($lc !== '') $booksHave[$lc] = true;

@@ -36,6 +36,8 @@
  *                         ?f_yt= ?f_def= ?f_count= (&f_count_op=gt|lt)
  *                         ?copied=yes|no filters on the YY-copy link.
  *                         ?language=A|G|H|L|none filters on word_language.
+ *                         ?excluded=only|all — "Not a word" entries are HIDDEN
+ *                         unless this asks for them (only = just those, all = both).
  *                         ?scroll=N [&chapter=N [&verse=N]] limits to the words
  *                         transliterated in that passage's translation (see
  *                         lxScopeTokens()).
@@ -45,6 +47,11 @@
  * GET ?key=N            — one word with its translits and definitions
  * POST                  — create
  * PUT ?key=N            — partial update; unsupplied fields are left alone
+ * PUT ?key=N&action=exclude {excluded: bool}
+ *                       — flag/unflag "Not a word" (word_excluded_flag). Written
+ *                         in place on the word AND its YY-copy link partner; it
+ *                         never forks. The row is kept so its spellings stay in
+ *                         _word_harvest.php's known set and it is not re-imported.
  * DELETE ?key=N         — delete the word and its satellites
  */
 require_once __DIR__ . '/config.php';
@@ -75,7 +82,8 @@ const WORD_COLS = "w.word_key,
      w.word_definition_perry,
      w.word_pronunciation_strongs, w.word_pronunciation_yy,
      w.word_pronunciation_ipa, w.word_pronunciation_phonetic, w.word_gender_key,
-     w.word_yy_copy_key, w.word_language, w.word_code, w.word_strongs_key";
+     w.word_master_word_key, w.word_language, w.word_code, w.word_strongs_key,
+     w.word_excluded_flag";
 
 /**
  * Postgres hands array_agg() back through PDO as the literal '{1,2,11}', not a
@@ -579,6 +587,25 @@ if ($method === 'GET' && $key) {
     $word['definitions'] = $d->fetchAll();
     $word['strongs'] = wordStrongsRows($db, $key);
 
+    /* The editor needs to know, before Save, where an edit would land: a word
+       already linked is read-only and points at its master; an unlinked
+       outside-source word may have a YY master waiting for it (same Language
+       and Base), which Save would link to rather than copy. */
+    $word['master'] = null;
+    $word['master_candidate'] = null;
+    if (!empty($word['word_master_word_key'])) {
+        $word['master'] = wordSummary($db, (int)$word['word_master_word_key']);
+    } elseif (trim((string)$word['word_source_code']) !== 'yy') {
+        $mk = findYyMaster($db, $word['word_language'], $word['word_code']);
+        if ($mk) $word['master_candidate'] = wordSummary($db, $mk);
+    }
+    $l = $db->prepare(
+        'SELECT word_key, trim(word_source_code) AS word_source_code, word_translit
+           FROM yy_word WHERE word_master_word_key = ? ORDER BY word_source_code, word_key'
+    );
+    $l->execute([$key]);
+    $word['linked_words'] = $l->fetchAll();
+
     jsonResponse($word);
 }
 
@@ -628,11 +655,17 @@ if ($method === 'GET' && !$key) {
         $params[':letter'] = $letter;
     }
 
-    /* Copy-on-write link: 'yes' = outside-source words already forked to a YY
-       copy, 'no' = not yet. Anything else means no filter. */
+    /* Master link: 'yes' = outside-source words already linked to their YY
+       master, 'no' = not yet. Anything else means no filter. */
     $copied = trim((string)($_GET['copied'] ?? ''));
-    if ($copied === 'yes')     $where[] = 'w.word_yy_copy_key IS NOT NULL';
-    elseif ($copied === 'no')  $where[] = 'w.word_yy_copy_key IS NULL';
+    if ($copied === 'yes')     $where[] = 'w.word_master_word_key IS NOT NULL';
+    elseif ($copied === 'no')  $where[] = 'w.word_master_word_key IS NULL';
+
+    /* "Not a word" entries are kept only to block re-import, so they are hidden
+       unless asked for: 'only' = just those, 'all' = everything. */
+    $excluded = trim((string)($_GET['excluded'] ?? ''));
+    if ($excluded === 'only')     $where[] = 'w.word_excluded_flag';
+    elseif ($excluded !== 'all')  $where[] = 'NOT w.word_excluded_flag';
 
     /* Language: a code from yy_word_language, or 'none' for the rows that have
        not been classified yet. Validated against the lookup so a bad code
@@ -847,8 +880,9 @@ function applyDefaultLanguage(PDO $db, int $wordKey): void {
  * Words that came from an outside source (Kirk/Strong's, Books, Perry) are not
  * edited in place: the first edit copies the whole record — spellings, parts of
  * speech and definitions included — onto a new yy_word row whose source is 'yy',
- * and stamps word_yy_copy_key on the ORIGINAL so the two stay associated and the
- * list can filter on whether a word has been copied yet.
+ * and stamps word_master_word_key on the ORIGINAL so the two stay associated and
+ * the list can filter on whether a word has been copied yet. Used only when no
+ * YY word with the same Language and Base exists yet (see findYyMaster).
  *
  * The copy is exact; the caller's edits are then applied to it by the normal
  * update path, so there is only one place that knows how to write a word.
@@ -858,7 +892,7 @@ function applyDefaultLanguage(PDO $db, int $wordKey): void {
 function forkWordToYy(PDO $db, int $origKey): int {
     /* word_key, user_key and the revision columns are assigned by the insert and
        its triggers; word_count_yy is harvested, so the copy starts with none;
-       word_yy_copy_key is the link itself and belongs only to the original. */
+       word_master_word_key is the link itself and belongs only to the original. */
     $copy = 'word_strongs, word_hebrew, word_yt, word_translit, word_code, word_language,
              word_definition_kirk, word_definition_yy, word_definition_external, word_definition_perry,
              word_active_flag, word_pronunciation_strongs, word_pronunciation_yy,
@@ -896,10 +930,46 @@ function forkWordToYy(PDO $db, int $origKey): int {
     )->execute([$newKey, $origKey]);
 
     // The link lives on the original, which is otherwise left exactly as it was.
-    $db->prepare('UPDATE yy_word SET word_yy_copy_key = ? WHERE word_key = ?')
+    $db->prepare('UPDATE yy_word SET word_master_word_key = ? WHERE word_key = ?')
        ->execute([$newKey, $origKey]);
 
     return $newKey;
+}
+
+/**
+ * The YY word that is the master for a given Language + Base, or null.
+ *
+ * Both must be set: with either one blank there is nothing to match on, and
+ * the caller falls back to forking a fresh copy. Base compares trimmed and
+ * case-insensitively. Should more than one YY word share the pair, the oldest
+ * wins so the choice is stable.
+ */
+function findYyMaster(PDO $db, $language, $code): ?int {
+    $language = trim((string)$language);
+    $code     = trim((string)$code);
+    if ($language === '' || $code === '') return null;
+    $st = $db->prepare(
+        "SELECT word_key FROM yy_word
+          WHERE trim(word_source_code) = 'yy'
+            AND word_language = ?
+            AND lower(trim(word_code)) = lower(?)
+          ORDER BY word_key LIMIT 1"
+    );
+    $st->execute([$language, $code]);
+    $k = $st->fetchColumn();
+    return $k ? (int)$k : null;
+}
+
+/** Just enough of a word to label a link to it in the editor. */
+function wordSummary(PDO $db, int $key): ?array {
+    $st = $db->prepare(
+        'SELECT word_key, trim(word_source_code) AS word_source_code, word_translit,
+                word_hebrew, word_language, word_code
+           FROM yy_word WHERE word_key = ?'
+    );
+    $st->execute([$key]);
+    $r = $st->fetch();
+    return $r ?: null;
 }
 
 /**
@@ -1153,35 +1223,94 @@ if ($method === 'POST') {
     jsonResponse(['saved' => true, 'word_key' => $wordKey], 201);
 }
 
+/* ── "Not a word" flag ─────────────────────────────────────────────────────
+   Must come before the general PUT, which would fork a non-YY word. This is a
+   verdict on the entry, not an edit of its content, so it is written in place
+   on the word the admin opened — the harvested original is the row whose
+   spellings block re-import — and on its master-link partner in either
+   direction, so neither half of a forked pair stays public. */
+if ($method === 'PUT' && $key && $action === 'exclude') {
+    setCurrentUser($db, $user['user_key']);
+    $data = lexBody();
+    if (!array_key_exists('excluded', $data)) errorResponse('excluded is required');
+    $flag = (int)(bool)$data['excluded'];
+
+    $st = $db->prepare('SELECT word_key, word_master_word_key FROM yy_word WHERE word_key = ?');
+    $st->execute([$key]);
+    $w = $st->fetch();
+    if (!$w) errorResponse('Word not found', 404);
+
+    $keys = [(int)$w['word_key']];
+    if (!empty($w['word_master_word_key'])) $keys[] = (int)$w['word_master_word_key'];
+    $st = $db->prepare('SELECT word_key FROM yy_word WHERE word_master_word_key = ?');
+    $st->execute([$key]);
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $k) $keys[] = (int)$k;
+    $keys = array_values(array_unique($keys));
+
+    // Only rows whose flag actually changes, so a repeat click writes no rev rows.
+    $ph = implode(',', array_fill(0, count($keys), '?'));
+    $up = $db->prepare("UPDATE yy_word SET word_excluded_flag = ?::boolean
+                         WHERE word_key IN ($ph) AND word_excluded_flag <> ?::boolean");
+    $up->execute(array_merge([$flag], $keys, [$flag]));
+
+    jsonResponse(['saved' => true, 'word_key' => $key, 'excluded' => (bool)$flag,
+                  'word_keys' => $keys, 'changed' => $up->rowCount()]);
+}
+
 if ($method === 'PUT' && $key) {
     setCurrentUser($db, $user['user_key']);
     $data = lexBody();
 
     $exists = $db->prepare(
-        'SELECT word_translit, word_source_code, word_yy_copy_key FROM yy_word WHERE word_key = ?'
+        'SELECT word_translit, word_source_code, word_master_word_key, word_language, word_code
+           FROM yy_word WHERE word_key = ?'
     );
     $exists->execute([$key]);
     $current = $exists->fetch();
     if (!$current) errorResponse('Word not found', 404);
 
+    /* A word already linked to its YY master is read-only: its data is edited
+       on the master. The editor locks such a word, so this only catches a stale
+       panel or a direct call. */
+    if (!empty($current['word_master_word_key'])) {
+        jsonResponse([
+            'error' => 'This word is linked to YY word #' . (int)$current['word_master_word_key']
+                     . ' and cannot be edited. Edit that word instead.',
+            'word_master_word_key' => (int)$current['word_master_word_key'],
+        ], 409);
+    }
+
     /* Copy-on-write: a word from an outside source is never edited in place.
-       The first edit forks it to a YY copy and the original keeps a link; later
-       edits are routed to that copy, so a word forks exactly once. Everything
-       below then runs against $key unchanged — the copy is just another word. */
+       The edit belongs to the YY word with the same Language and Base (taken
+       from the edit, so a corrected Base finds the right master), and the
+       original is linked to it via word_master_word_key.
+         - No such YY word: the original is forked to a new YY copy, which then
+           takes the edit. Everything below runs against $key unchanged — the
+           copy is just another word.
+         - One already exists: the original is only LINKED. The panel holds the
+           outside-source word's spellings, definitions and Strong's, and the
+           save path replaces those lists wholesale, so applying it would wipe
+           the master's own data. The editor warns about this before Save and
+           then reopens on the master. */
     $forkedFrom = null;
     if (trim((string)$current['word_source_code']) !== 'yy') {
         $forkedFrom = $key;
-        if (!empty($current['word_yy_copy_key'])) {
-            $key = (int)$current['word_yy_copy_key'];
-        } else {
-            $db->beginTransaction();
-            try {
-                $key = forkWordToYy($db, $key);
-                $db->commit();
-            } catch (\Exception $e) {
-                if ($db->inTransaction()) $db->rollBack();
-                errorResponse('Could not create an editable copy: ' . $e->getMessage(), 500);
-            }
+        $lang = array_key_exists('word_language', $data) ? $data['word_language'] : $current['word_language'];
+        $code = array_key_exists('word_code', $data)     ? $data['word_code']     : $current['word_code'];
+        $masterKey = findYyMaster($db, $lang, $code);
+        if ($masterKey) {
+            $db->prepare('UPDATE yy_word SET word_master_word_key = ? WHERE word_key = ?')
+               ->execute([$masterKey, $key]);
+            jsonResponse(['saved' => false, 'linked' => true, 'word_key' => $masterKey,
+                          'forked_from' => $forkedFrom]);
+        }
+        $db->beginTransaction();
+        try {
+            $key = forkWordToYy($db, $key);
+            $db->commit();
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            errorResponse('Could not create an editable copy: ' . $e->getMessage(), 500);
         }
         $exists->execute([$key]);
         $current = $exists->fetch();
@@ -1347,6 +1476,8 @@ if ($method === 'DELETE' && $key) {
         $db->prepare('DELETE FROM yy_word_twot       WHERE word_key = ?')->execute([$key]);
         $db->prepare('DELETE FROM yy_word_translation WHERE word_key = ?')->execute([$key]);
         $db->prepare('UPDATE yy_word_import SET word_key = NULL WHERE word_key = ?')->execute([$key]);
+        // Words that had this one as their master become editable again.
+        $db->prepare('UPDATE yy_word SET word_master_word_key = NULL WHERE word_master_word_key = ?')->execute([$key]);
         $stmt = $db->prepare('DELETE FROM yy_word WHERE word_key = ?');
         $stmt->execute([$key]);
         if (!$stmt->rowCount()) { $db->rollBack(); errorResponse('Word not found', 404); }

@@ -50,6 +50,10 @@ var tabs = [
     ['admin-search.html', 'Search']
 ];
 
+// Exposed so the /admin landing page can list every section from this
+// same list (it adds icons + descriptions; new tabs show up automatically).
+window.ADMIN_NAV_TABS = tabs;
+
 var nav = document.querySelector('.app-header .nav-tabs');
 if (!nav) return;
 

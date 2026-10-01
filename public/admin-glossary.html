@@ -362,6 +362,9 @@
         }
         table.gw-table .src-tag.src-books { background: #e6f4ea; color: #2e7d4f; }
         table.gw-table .src-tag.src-yy { background: #e8f0fb; color: #2d5f9a; }
+        /* "Not a word": kept only to block re-import; hidden unless the filter shows it. */
+        table.gw-table tr.is-notword .col-translit { text-decoration: line-through; color: #999; }
+        table.gw-table .src-tag.lx-notword-tag { background: #fdecea; color: #b03a2e; text-decoration: none; }
         .gw-empty { padding: 26px 12px; text-align: center; color: #999; font-style: italic; font-size: 0.88rem; }
         .gw-checkbox-row { display: flex; align-items: center; gap: 8px; }
         .gw-danger { margin-left: auto; }
@@ -385,10 +388,17 @@
             font-size: 0.84rem; line-height: 1.45;
         }
         .lx-fork-note.has-copy { border-color: #bcd9ef; background: #f2f8fd; color: #1a5276; }
+        .lx-fork-note.is-notword { border-color: #f1b7b0; background: #fdecea; color: #8e2c22; }
         .lx-fork-note button {
             margin-left: 8px; font-size: 0.78rem; padding: 3px 9px; cursor: pointer;
             border: 1px solid #ccc; border-radius: 3px; background: #fff;
         }
+        .lx-fork-note.is-locked { border-color: #c9c9c9; background: #f4f4f4; color: #444; }
+        .lx-fork-note .lx-linked-list { margin-top: 4px; }
+        .lx-fork-note .lx-linked-list button { margin: 2px 6px 0 0; }
+        /* A word linked to its YY master is read-only: its rows are inert
+           (lxSetLocked) and dimmed, and Save is hidden. */
+        #gw-panel.lx-locked .field-row { opacity: 0.6; }
 
         /* Definitions repeater: one card per yy_word_definition row. The default
            is highlighted and a retired (inactive) one is dimmed but still shown. */
@@ -537,10 +547,17 @@
             <div id="lx-source" class="gw-srcfilter" data-no-persist>
                 <span class="gw-srcfilter-label">Sources</span>
             </div>
-            <select id="lx-copied" onchange="lxReload(true)" title="Filter on the YY-copy link">
-                <option value="">Copied: any</option>
-                <option value="yes">Has a YY copy</option>
-                <option value="no">No YY copy</option>
+            <select id="lx-copied" onchange="lxReload(true)" title="Filter on the link to a YY master word">
+                <option value="">YY master: any</option>
+                <option value="yes">Linked to a YY master</option>
+                <option value="no">No YY master</option>
+            </select>
+            <!-- "Not a word" entries stay in the DB only so the harvest never
+                 imports them again; hidden by default (API ?excluded=). -->
+            <select id="lx-excluded" onchange="lxReload(true)" title="Entries flagged as not a word">
+                <option value="">Hide not-a-word</option>
+                <option value="only">Only not-a-word</option>
+                <option value="all">Include not-a-word</option>
             </select>
             <!-- Lives here, not in #lx-pager: the pager is innerHTML-rebuilt on
                  every load, which would wipe the choice and its saved state. -->
@@ -576,9 +593,14 @@
                 <button type="button" class="gw-x" onclick="closeWordEdit()" title="Close (Esc)" aria-label="Close">&times;</button>
             </div>
 
-            <!-- Shown only for a word whose source is not YY: those are never
-                 edited in place, saving forks them to a YY copy. -->
+            <!-- Shown for a word whose source is not YY (never edited in place:
+                 saving copies it to, or links it to, its YY master), and for a
+                 YY word that other words are linked to. -->
             <div id="lx-fork-note" class="lx-fork-note" style="display:none"></div>
+            <div id="lx-notword-note" class="lx-fork-note is-notword" style="display:none">
+                Flagged <strong>not a word</strong>: hidden from the public glossary and from
+                this list by default, and kept so the harvest never imports it again.
+            </div>
 
             <div class="field-row"><label for="lx-language">Language</label>
                 <div class="field-input">
@@ -687,11 +709,14 @@
                 </div></div></div>
 
             <div class="button-row">
-                <button class="btn btn-primary" onclick="saveWord()">Save</button>
-                <button class="btn btn-secondary" onclick="closeWordEdit()">Cancel</button>
+                <button class="btn btn-primary" id="gw-save" onclick="saveWord()">Save</button>
+                <button class="btn btn-secondary" id="gw-cancel" onclick="closeWordEdit()">Cancel</button>
                 <span id="gw-status" class="save-status" style="display:none">Saved!</span>
                 <span id="gw-error" class="save-error" style="display:none"></span>
-                <button class="btn btn-secondary gw-danger" id="gw-delete" style="display:none;color:#c0392b" onclick="deleteWord()">Delete</button>
+                <!-- Acts at once on the word as opened (no Save, no YY fork). -->
+                <button class="btn btn-secondary gw-danger" id="gw-notword" style="display:none"
+                        onclick="lxToggleNotWord()" title="Keep the entry but hide it and block re-import">Not a word</button>
+                <button class="btn btn-secondary" id="gw-delete" style="display:none;color:#c0392b" onclick="deleteWord()">Delete</button>
             </div>
         </div>
 
@@ -699,7 +724,7 @@
             <table class="gw-table">
                 <thead>
                     <tr>
-                        <th class="col-yycopy" title="Has an editable YY copy">YY</th>
+                        <th class="col-yycopy" title="Linked to a YY master word">YY</th>
                         <th class="col-strongs sortable" onclick="lxSort('strongs', event)" title="Shift+click to add as a secondary sort">Strong's<span class="sort-mark" data-sort="strongs"></span></th>
                         <th class="col-lang sortable" onclick="lxSort('language', event)" title="Language of the word · Shift+click adds a secondary sort">Lng<span class="sort-mark" data-sort="language"></span></th>
                         <th class="col-translit sortable" onclick="lxSort('translit', event)" title="Shift+click to add as a secondary sort">Translit<span class="sort-mark" data-sort="translit"></span></th>
@@ -1343,6 +1368,8 @@ function loadWords() {
         if (lxState.source) p += '&source=' + encodeURIComponent(lxState.source);
         var copiedSel = document.getElementById('lx-copied');
         if (copiedSel && copiedSel.value) p += '&copied=' + encodeURIComponent(copiedSel.value);
+        var exclSel = document.getElementById('lx-excluded');
+        if (exclSel && exclSel.value) p += '&excluded=' + encodeURIComponent(exclSel.value);
         var langSel = document.getElementById('lx-f-language');
         if (langSel && langSel.value) p += '&language=' + encodeURIComponent(langSel.value);
         ['scroll', 'chapter', 'verse'].forEach(function(lvl) {
@@ -1415,15 +1442,16 @@ function renderWords(words, total) {
               + esc(langCode) + '</span>'
             : '<span class="lx-lang-none">-</span>';
 
-        /* YY column: 'Y' opens the editable copy this word was forked to, '-'
-           means it has none yet. stopPropagation so it does not also fire the
-           row's own onclick and open the ORIGINAL. */
-        var yyCell = w.word_yy_copy_key
-            ? '<button type="button" class="lx-yy-link" title="Open the YY copy of this word"'
-              + ' onclick="event.stopPropagation(); editWord(' + w.word_yy_copy_key + ')">Y</button>'
+        /* YY column: 'Y' opens the YY master this word is linked to (where its
+           data is edited), '-' means it has none yet. stopPropagation so it does
+           not also fire the row's own onclick and open the ORIGINAL. */
+        var yyCell = w.word_master_word_key
+            ? '<button type="button" class="lx-yy-link" title="Open the YY master of this word"'
+              + ' onclick="event.stopPropagation(); editWord(' + w.word_master_word_key + ')">Y</button>'
             : '<span class="lx-yy-none">-</span>';
 
-        html += '<tr class="' + (inactive ? 'inactive' : '') + '" id="lx-row-' + w.word_key + '"'
+        var notWord = w.word_excluded_flag === true || w.word_excluded_flag === 't';
+        html += '<tr class="' + (inactive ? 'inactive' : '') + (notWord ? ' is-notword' : '') + '" id="lx-row-' + w.word_key + '"'
             + ' onclick="editWord(' + w.word_key + ')">'
             + '<td class="col-yycopy">' + yyCell + '</td>'
             /* '' means established-no-Strong's and shows a dash; null means nobody
@@ -1434,6 +1462,7 @@ function renderWords(words, total) {
             + '<td class="col-lang">' + langCell + '</td>'
             + '<td class="col-translit">' + esc(pref || '(none)')
             + (src ? '<span class="src-tag src-' + esc(src) + '">' + esc(src) + '</span>' : '')
+            + (notWord ? '<span class="src-tag lx-notword-tag">not a word</span>' : '')
             + (alts.length ? '<span class="alt">' + esc(alts.join(', ')) + '</span>' : '')
             + '</td>'
             + '<td class="col-count">' + cntCell + '</td>'
@@ -2208,6 +2237,8 @@ function newWord() {
         lxRenderDefinitions([]);
         lxAddDefinition();
         document.getElementById('lx-fork-note').style.display = 'none';
+        lxSetLocked(false);
+        lxRenderNotWord(null);
         document.getElementById('lx-source-code').value = 'yy';
         document.getElementById('gw-active').checked = true;
         document.getElementById('lx-translits').innerHTML = '';
@@ -2257,6 +2288,7 @@ function editWord(key) {
             lxRenderDefinitions(w.definitions);
             if (!(w.definitions || []).length) lxAddDefinition();
             lxRenderForkNote(w);
+            lxRenderNotWord(w.word_excluded_flag === true || w.word_excluded_flag === 't');
             // Show the stored YT rather than re-deriving it — a hand-typed spelling
             // (half-rings included) must survive opening the record.
             document.getElementById('lx-yt').value = w.word_yt || '';
@@ -2266,33 +2298,117 @@ function editWord(key) {
     });
 }
 
+/* "Not a word": a verdict on the entry, not an edit, so it is written at once
+   on the word as opened (the API never forks for it) and does not wait for
+   Save. null = a new, unsaved word, which has nothing to flag yet. */
+var lxEditingNotWord = false;
+function lxRenderNotWord(flag) {
+    var btn = document.getElementById('gw-notword');
+    lxEditingNotWord = !!flag;
+    btn.style.display = flag === null ? 'none' : '';
+    btn.textContent = flag ? 'Restore as a word' : 'Not a word';
+    document.getElementById('lx-notword-note').style.display = flag ? '' : 'none';
+}
+
+function lxToggleNotWord() {
+    if (!editingWordKey) return;
+    var next = !lxEditingNotWord;
+    if (next && !confirm('Flag this entry as not a word?\n\nIt stays in the database so it is never '
+            + 'imported again, but is hidden from the public glossary and from this list by default.')) return;
+    var errorEl = document.getElementById('gw-error');
+    errorEl.style.display = 'none';
+    fetch(API + '/admin-glossary-lexicon.php?key=' + editingWordKey + '&action=exclude', {
+        method: 'PUT', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({excluded: next})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (!d || d.error) {
+            errorEl.textContent = (d && d.error) || 'Could not update the flag';
+            errorEl.style.display = '';
+            return;
+        }
+        lxRenderNotWord(next);
+        loadWords();
+    });
+}
+
 /* Words from an outside source (Kirk/Strong's, Books, Perry) are never edited in
-   place — the first save copies the record to a new YY-sourced word and links
-   the original to it. Say so up front rather than surprising the user after. */
+   place. Their data lives on the YY word with the same Language and Base (the
+   master), and word_master_word_key links them to it:
+     - linked already       -> read-only here, with a link to the master;
+     - a master exists      -> Save only links (the edits are NOT applied);
+     - no master yet        -> Save creates a YY copy and links to it.
+   Say which up front rather than surprising the user after. A YY word lists the
+   words linked to it. */
 function lxRenderForkNote(w) {
     var el = document.getElementById('lx-fork-note');
     var code = (w.word_source_code || '').trim();
-    if (!code || code === 'yy') { el.style.display = 'none'; el.innerHTML = ''; return; }
+    lxSetLocked(!!w.word_master_word_key);
 
-    var label = code;
-    (lxMeta.sources || []).forEach(function(s) {
-        if (s.word_source_code === code) label = s.word_source_label;
-    });
-
-    if (w.word_yy_copy_key) {
-        el.className = 'lx-fork-note has-copy';
-        el.innerHTML = 'This <strong>' + esc(label) + '</strong> word has already been copied for editing. '
-            + 'Saving here updates that copy, not the original.'
-            + '<button type="button" id="lx-open-copy">Open the copy</button>';
-        el.querySelector('#lx-open-copy').addEventListener('click', function() {
-            editWord(w.word_yy_copy_key);
+    function srcLabel(c) {
+        var label = c;
+        (lxMeta.sources || []).forEach(function(s) {
+            if (s.word_source_code === c) label = s.word_source_label;
         });
-    } else {
-        el.className = 'lx-fork-note';
-        el.innerHTML = 'This word comes from <strong>' + esc(label) + '</strong> and is not edited directly. '
-            + 'Saving creates an editable <strong>YY</strong> copy and links this record to it.';
+        return label;
     }
-    el.style.display = '';
+    function wordLabel(m) {
+        return '#' + m.word_key + (m.word_translit || m.word_hebrew ? ' ' + (m.word_translit || m.word_hebrew) : '');
+    }
+    function openBtn(text, key) {
+        return '<button type="button" data-open-word="' + key + '">' + esc(text) + '</button>';
+    }
+
+    var html = '', cls = 'lx-fork-note';
+    if (!code || code === 'yy') {
+        var linked = w.linked_words || [];
+        if (linked.length) {
+            cls += ' has-copy';
+            html = 'This is the <strong>YY</strong> master for ' + linked.length
+                + (linked.length === 1 ? ' word' : ' words') + ' from other sources:'
+                + '<div class="lx-linked-list">' + linked.map(function(l) {
+                    return openBtn(srcLabel(l.word_source_code) + ' ' + wordLabel(l), l.word_key);
+                }).join('') + '</div>';
+        }
+    } else if (w.word_master_word_key) {
+        cls += ' is-locked';
+        html = 'This <strong>' + esc(srcLabel(code)) + '</strong> word is linked to its <strong>YY</strong> master '
+            + '<strong>' + esc(w.master ? wordLabel(w.master) : '#' + w.word_master_word_key) + '</strong> '
+            + 'and is read-only. Edit the word there.'
+            + openBtn('Open the YY word', w.word_master_word_key);
+    } else if (w.master_candidate) {
+        html = 'This word comes from <strong>' + esc(srcLabel(code)) + '</strong> and is not edited directly. '
+            + 'A <strong>YY</strong> word with the same Language and Base already exists '
+            + '(<strong>' + esc(wordLabel(w.master_candidate)) + '</strong>). Saving links this word to it '
+            + 'and does <strong>not</strong> apply the changes made here; make them on that word.'
+            + openBtn('Open the YY word', w.master_candidate.word_key);
+    } else {
+        html = 'This word comes from <strong>' + esc(srcLabel(code)) + '</strong> and is not edited directly. '
+            + 'Saving creates an editable <strong>YY</strong> copy and links this record to it, unless a YY word '
+            + 'with the same Language and Base already exists, in which case it is linked to that one instead.';
+    }
+
+    el.className = cls;
+    el.innerHTML = html;
+    el.style.display = html ? '' : 'none';
+    el.querySelectorAll('[data-open-word]').forEach(function(b) {
+        b.addEventListener('click', function() { editWord(+b.getAttribute('data-open-word')); });
+    });
+}
+
+/* Read-only mode for a word linked to its YY master: every field row goes inert
+   (no clicks, no focus, no typing) and Save is hidden. "Not a word" and Delete
+   stay — they are verdicts on the entry, not edits of its data. */
+function lxSetLocked(locked) {
+    var panel = document.getElementById('gw-panel');
+    panel.classList.toggle('lx-locked', locked);
+    panel.querySelectorAll('.field-row').forEach(function(r) { r.inert = locked; });
+    document.getElementById('gw-save').style.display = locked ? 'none' : '';
+    document.getElementById('gw-cancel').textContent = locked ? 'Close' : 'Cancel';
+    if (locked) {
+        document.getElementById('lx-kb').classList.remove('open');
+        document.getElementById('lx-yt-kb').classList.remove('open');
+    }
 }
 
 /* ── Definitions repeater ───────────────────────────────────────────────
@@ -2465,6 +2581,16 @@ function saveWord() {
         if (!d || d.error) return fail((d && d.error) || 'Save failed');
         if (d.word_key) editingWordKey = d.word_key;
 
+        /* A YY master with this Language and Base already existed, so the word
+           was only linked to it and nothing was written to it. */
+        if (d.linked) {
+            loadWords();
+            editWord(d.word_key);
+            alert('A YY word with this Language and Base already exists, so this word is now linked to it.\n'
+                + 'Your changes were NOT applied. You are now on the YY word; make them here.');
+            return;
+        }
+
         /* An outside-source word forks on save, so the row that was written is
            not the one the panel was opened on. Reopen on the copy rather than
            leaving the original's key on screen. */
@@ -2472,11 +2598,12 @@ function saveWord() {
             loadWords();
             editWord(d.word_key);
             alert('This word came from another source, so an editable YY copy was created.\n'
-                + 'You are now editing that copy; the original is unchanged and now links to it.');
+                + 'You are now editing that copy; the original is unchanged, now links to it, and is read-only.');
             return;
         }
         document.getElementById('gw-panel-title').textContent = 'Edit: ' + (data.word_translit || hebrew);
         document.getElementById('gw-delete').style.display = '';
+        if (isNew) lxRenderNotWord(false);
         statusEl.style.display = '';
         setTimeout(function(){ statusEl.style.display = 'none'; }, 3000);
         // Re-read so word_yt (written by the DB trigger) and counts show through.

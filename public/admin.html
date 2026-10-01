@@ -32,13 +32,38 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=29"></script>
+<script src="/js/admin-nav.js?v=31"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
         </div>
     </div>
+    <div id="admin-sections" class="admin-sections"></div>
 </div>
+
+<style>
+.admin-sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.admin-section {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: #fff; border: 1px solid #e3e6ea; border-radius: 8px;
+    padding: 16px; color: inherit; text-decoration: none;
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.admin-section:hover { border-color: #3498db; box-shadow: 0 4px 14px rgba(52,152,219,.15); transform: translateY(-1px); }
+.admin-section:focus-visible { outline: 2px solid #3498db; outline-offset: 2px; }
+.admin-section-icon {
+    flex: none; width: 40px; height: 40px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: #eaf4fc; color: #3498db;
+}
+.admin-section-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.admin-section-body { min-width: 0; }
+.admin-section h3 { margin: 0 0 4px; font-size: 1.05rem; color: #2c3e50; }
+.admin-section p { margin: 0; font-size: .875rem; line-height: 1.45; color: #5d6d7e; }
+.admin-section-tabs { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.admin-section-tabs span { font-size: .72rem; padding: 2px 7px; border-radius: 10px; background: #f0f2f5; color: #566573; }
+@media (max-width: 600px) { .admin-sections { grid-template-columns: 1fr; } }
+</style>
 
 <script>
 var API = '/api';
@@ -90,6 +115,127 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
 });
 
+// Icon (SVG path data), description and sub-tabs for each admin section,
+// keyed by page. Which sections exist, their order and labels come from
+// admin-nav.js (window.ADMIN_NAV_TABS); a tab missing here still gets a card.
+var SECTION_INFO = {
+    'admin-site': {
+        icon: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/>',
+        desc: 'Site-wide look and feel: header, logo, toolbars, page headings, backgrounds, fonts and custom CSS.',
+        tabs: ['General', 'Header', 'Logo', 'Toolbars', 'Backgrounds', 'Fonts', 'CSS']
+    },
+    'admin-books': {
+        icon: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
+        desc: 'Book volumes and series: Word and PDF files, cover art, parsing, and the flipbook editions.',
+        tabs: ['Books', 'Series', 'Flipbook']
+    },
+    'admin-glossary': {
+        icon: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
+        desc: 'The Hebrew lexicon: words, transliterations, Strong\'s numbers and definitions, plus the scripture translations.',
+        tabs: ['Words', 'Translations']
+    },
+    'admin-ask': {
+        icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6"/><path d="M12 15h.01"/>',
+        desc: 'Ask Yada, the AI question-and-answer assistant: its model, response guidelines, curated Q&A, users and session log.',
+        tabs: ['General', 'AI', 'Q&A', 'Users', 'Log']
+    },
+    'admin-timeline': {
+        icon: '<path d="M3 12h18"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 6v4"/><path d="M18 14v4"/>',
+        desc: 'Entries and display settings for the historical timeline page.',
+        tabs: ['Dates', 'Config']
+    },
+    'admin-memorial': {
+        icon: '<path d="M12 2c1 3 4 4.5 4 8a4 4 0 0 1-8 0c0-2 1-3 1.5-4"/><path d="M8 22h8"/><path d="M12 14v8"/>',
+        desc: 'The October 7 memorial: the records of those remembered, and the page settings.',
+        tabs: ['Records', 'Settings']
+    },
+    'admin-media': {
+        icon: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/>',
+        desc: 'Social and media platform links (platform, handle, icon, sort order) shown across the site.'
+    },
+    'admin-ai': {
+        icon: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/>',
+        desc: 'AI generation on the GPU server: text-to-image, image-to-video, music and audio, and the voice library.',
+        tabs: ['Image', 'Video', 'Audio', 'Voices']
+    },
+    'admin-tts': {
+        icon: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>',
+        desc: 'Book narration: voices, pronunciations, pauses and profiles, chapter audio builds, and sync and QA.',
+        tabs: ['Books', 'Voices', 'Pronunciations', 'Pauses', 'Profiles', 'Fonts', 'Sync / QA']
+    },
+    'admin-chat': {
+        icon: '<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>',
+        desc: 'Community chat settings: categories, icons, images, tab labels and section titles.'
+    },
+    'admin-comments': {
+        icon: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-4-.9L3 21l1.9-5A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/><path d="M8 11h8"/><path d="M8 15h5"/>',
+        desc: 'Reader comments and private messages: moderation, settings, and the notification email templates.'
+    },
+    'admin-feeds': {
+        icon: '<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>',
+        desc: 'Video and podcast feeds: sources, items and the pages they feed, plus transcript generation, corrections and the Whisper glossary.',
+        tabs: ['Sources', 'Items', 'Pages', 'Corrections', 'Glossary']
+    },
+    'admin-pages': {
+        icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/>',
+        desc: 'Build and edit every site page and its sections, the menus, global styles, URL redirects and links.',
+        tabs: ['Pages', 'Menus', 'Styles', 'Redirects', 'Links']
+    },
+    'admin-resources': {
+        icon: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+        desc: 'The curated list of outside resources and reference links shown on the Resources page.'
+    },
+    'admin-users': {
+        icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
+        desc: 'User accounts: roles, which admin pages each user can open, status, passwords and linked accounts.'
+    },
+    'admin-monitoring': {
+        icon: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+        desc: 'Site health: logged errors with their resolution notes, and the automated test suite.',
+        tabs: ['Errors', 'Tests']
+    },
+    'admin-perf': {
+        icon: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+        desc: 'Performance reports: response times, host CPU steal and database load.'
+    },
+    'admin-settings': {
+        icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+        desc: 'System settings: the Auto-Fix pipeline (cadence, resource caps, timeout, pause), lookup tables and authentication.',
+        tabs: ['Auto-Fix', 'Lookups', 'Authentication']
+    },
+    'admin-manage': {
+        icon: '<rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01"/><path d="M6 17h.01"/>',
+        desc: 'Server management: AI server (GPU box) upload and download limits, including the automatic limits during live shows.'
+    },
+    'admin-search': {
+        icon: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+        desc: 'Site search tuning: synonyms and aliases (accept or reject auto-detected ones), sources and weights.'
+    }
+};
+
+function renderAdminSections() {
+    var host = document.getElementById('admin-sections');
+    var tabs = window.ADMIN_NAV_TABS || [];
+    if (!host || !tabs.length) return;
+    function esc(s) {
+        return String(s).replace(/[&<>"]/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; });
+    }
+    host.innerHTML = tabs.map(function(t) {
+        var key = t[0].replace(/\.html$/, '');
+        var info = SECTION_INFO[key] || {};
+        var icon = info.icon || '<rect x="3" y="3" width="18" height="18" rx="2"/>';
+        var desc = info.desc || t[2] || '';
+        var sub = (info.tabs || []).map(function(s) { return '<span>' + esc(s) + '</span>'; }).join('');
+        return '<a class="admin-section" href="' + esc(t[0]) + '">' +
+            '<div class="admin-section-icon"><svg viewBox="0 0 24 24" aria-hidden="true">' + icon + '</svg></div>' +
+            '<div class="admin-section-body"><h3>' + esc(t[1]) + '</h3>' +
+            (desc ? '<p>' + esc(desc) + '</p>' : '') +
+            (sub ? '<div class="admin-section-tabs">' + sub + '</div>' : '') +
+            '</div></a>';
+    }).join('');
+}
+
+renderAdminSections();
 checkAuth();
 </script>
 <script src="/js/admin-login.js?v=6"></script>
