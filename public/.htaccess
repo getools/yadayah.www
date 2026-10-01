@@ -64,8 +64,8 @@ RewriteCond %{REQUEST_URI} (.+)/$
 RewriteRule ^(.+)/$ /$1 [R=301,L]
 
 # Redirect old .html URLs to clean paths (301 permanent)
-RewriteCond %{THE_REQUEST} \s/+(books|vlog|basics|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media|translations|chat|admin|admin-[a-z]+|10-7-memorial)\.html[\s?] [NC]
-RewriteRule ^(books|vlog|basics|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|music|media|translations|chat|admin|admin-[a-z]+|10-7-memorial)\.html$ /$1 [R=301,L]
+RewriteCond %{THE_REQUEST} \s/+(books|vlog|basics|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|DoYouYada|music|media|translations|chat|admin|admin-[a-z]+|10-7-memorial)\.html[\s?] [NC]
+RewriteRule ^(books|vlog|basics|ask|timeline|glossary|dss|search|Craig_Winn|resources|invite|blog|DoYouYada|music|media|translations|chat|admin|admin-[a-z]+|10-7-memorial)\.html$ /$1 [R=301,L]
 
 # ─────────────────────────────────────────────────────────────────────────
 # Pages-New cutover (2026-08-06)
@@ -94,7 +94,7 @@ RewriteRule ^10-7-memorial/(.+)$ /page.php?code=10-7-memorial&name=$1 [L,QSA]
 
 # Content pages. Case-sensitive: the two mixed-case slugs have their own
 # canonical 301s further down, which feed back into this rule.
-RewriteRule ^(books|vlog|shorts|basics|music|invite|translations|glossary|dss|grammar|ask|timeline|chat|media|resources|family|search|moon|10-7-memorial|Craig_Winn|privacy|terms|atwarreligion|search-books)$ /page.php?code=$1 [L,QSA]
+RewriteRule ^(books|vlog|shorts|basics|music|invite|translations|glossary|dss|grammar|ask|timeline|chat|media|resources|family|search|moon|10-7-memorial|Craig_Winn|privacy|terms|atwarreligion|search-books|blog|DoYouYada)$ /page.php?code=$1 [L,QSA]
 
 # Redirect /time to /timeline
 RewriteRule ^time$ /timeline [R=301,L,NC]
