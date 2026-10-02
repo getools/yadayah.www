@@ -785,9 +785,15 @@ if ($APPLY && !$RECOUNT && ($newRows || $booksGap)) {
         // trg_word_yt only fires when word_hebrew is set, so word_yt stays NULL
         // and the word will not surface on the public letter web until an admin
         // fills the Hebrew in — which is what the Words tab keyboard is for.
+        // Language from the spelling alone, the same rule as the admin API's
+        // applyDefaultLanguage(): al- → Arabic, a half-ring (ʾ ʿ) → Hebrew,
+        // otherwise NULL (not yet classified).
         $insW = $db->prepare(
-            'INSERT INTO yy_word (word_source_code, word_translit, word_count_yy, word_active_flag)
-             VALUES (?, ?, ?, true) RETURNING word_key'
+            "INSERT INTO yy_word (word_source_code, word_translit, word_count_yy, word_active_flag, word_language)
+             VALUES (?, ?, ?, true,
+                     CASE WHEN ?::text ILIKE 'al-%' THEN 'A'
+                          WHEN ?::text ~ '[ʾʿ]'     THEN 'H' END)
+             RETURNING word_key"
         );
         $insT = $db->prepare(
             'INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort, word_translit_count_yy)
@@ -795,7 +801,7 @@ if ($APPLY && !$RECOUNT && ($newRows || $booksGap)) {
         );
         $n = 0;
         foreach ($newRows as $r) {
-            $insW->execute(['books', $r['text'], $r['count']]);
+            $insW->execute(['books', $r['text'], $r['count'], $r['text'], $r['text']]);
             $wk = (int)$insW->fetchColumn();
             $insT->execute([$wk, $r['text'], $r['count']]);
             $n++;
@@ -805,7 +811,7 @@ if ($APPLY && !$RECOUNT && ($newRows || $booksGap)) {
         // leave the Books source inconsistent with the counts just written.
         $nCov = 0;
         foreach ($booksGap as $r) {
-            $insW->execute(['books', $r['text'], $r['count']]);
+            $insW->execute(['books', $r['text'], $r['count'], $r['text'], $r['text']]);
             $wk = (int)$insW->fetchColumn();
             $insT->execute([$wk, $r['text'], $r['count']]);
             $nCov++;

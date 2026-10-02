@@ -946,6 +946,10 @@ function saveTranslits(PDO $db, int $wordKey, array $translits, ?string $fallbac
  *
  *   Strong's G…            → G, Greek
  *   Strong's H… or Hebrew  → H, Hebrew
+ *   spelling starts al-    → A, Arabic
+ *   spelling has ʾ or ʿ    → H, Hebrew (user's rule 2026-10-02: a half-ring
+ *                            all but certainly marks a Hebrew transliteration;
+ *                            any spelling of the word counts)
  *
  * Hebrew text on its own is enough; word_yt is not required, since trg_word_yt
  * derives YT from word_hebrew anyway and a word written in Hebrew is Hebrew
@@ -962,12 +966,20 @@ function applyDefaultLanguage(PDO $db, int $wordKey): void {
         "UPDATE yy_word
             SET word_language = CASE
                     WHEN upper(left(trim(word_strongs), 1)) = 'G' THEN 'G'
+                    WHEN upper(left(trim(word_strongs), 1)) = 'H'
+                      OR COALESCE(word_hebrew, '') <> '' THEN 'H'
+                    WHEN word_translit ILIKE 'al-%' THEN 'A'
                     ELSE 'H'
                 END
           WHERE word_key = ?
             AND word_language IS NULL
             AND (upper(left(trim(word_strongs), 1)) IN ('H', 'G')
-                 OR COALESCE(word_hebrew, '') <> '')"
+                 OR COALESCE(word_hebrew, '') <> ''
+                 OR word_translit ILIKE 'al-%'
+                 OR word_translit ~ '[ʾʿ]'
+                 OR EXISTS (SELECT 1 FROM yy_word_translit t
+                             WHERE t.word_key = yy_word.word_key
+                               AND t.word_translit_text ~ '[ʾʿ]'))"
     )->execute([$wordKey]);
 }
 
