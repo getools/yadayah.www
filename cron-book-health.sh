@@ -110,7 +110,7 @@ log "Book health: ${ok}/${#URLS[@]} OK, ${fail} failed"
 #      safety net for parses run by hand (parse_volume.py etc).
 #   C. Any live marker whose paragraph number/page no longer matches the
 #      text — the flipbook would turn to the wrong page mid-narration.
-empty_ch=$($PSQL -At -F ' | ' -c "SELECT v.volume_code, 'ch '||c.chapter_number, c.chapter_name FROM yy_chapter c JOIN yy_volume v USING (volume_key) WHERE v.volume_active_flag IS DISTINCT FROM false AND v.volume_parse_status IS DISTINCT FROM 'running' AND NOT EXISTS (SELECT 1 FROM yy_paragraph p WHERE p.chapter_key=c.chapter_key) ORDER BY 1" 2>&1)
+empty_ch=$($PSQL -At -F ' | ' -c "SELECT v.volume_code, 'ch '||c.chapter_number, c.chapter_name FROM yy_chapter c JOIN yy_volume v USING (volume_key) WHERE v.volume_active_flag IS DISTINCT FROM false AND v.volume_parse_status = 'success' AND COALESCE(v.volume_pipeline_status,'') NOT IN ('queued','running','waiting-docx','flipbook-running') AND NOT EXISTS (SELECT 1 FROM yy_paragraph p WHERE p.chapter_key=c.chapter_key) ORDER BY 1" 2>&1)
 if [ -n "$empty_ch" ]; then
     while IFS= read -r row; do
         emit_event "empty-chapter|$row" warning "Book health: chapter has no paragraphs — $row" \
