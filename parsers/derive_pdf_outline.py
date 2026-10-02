@@ -12,16 +12,18 @@ no chapters.
 
 This rebuilds the outline from two sources that do survive conversion:
 
-  * the DOCX's `yychapter`-styled paragraphs, which are the chapter titles
-    in document order (chapter N is the Nth such paragraph), and
+  * the DOCX's `yychapter`-styled paragraphs (or `yycnum`+`yychap` paragraph
+    pairs used by older books), which are the chapter titles in document order,
+    and
   * the DOCX's `TOC1` entries, which additionally cover unnumbered back
     matter such as RESOURCES.
 
-For books without `yychapter` headings (e.g. companion/reference books that
-use `yyheadingsection` for all sections), sections are detected by the same
-style and located via case-insensitive title matching in the top lines of
-each PDF page. The TOC entries are emitted as unnumbered (no leading "N  ")
-so the bundle parser resolves them by chapter_name rather than chapter_number.
+For books without `yychapter`/`yychap` headings (e.g. companion/reference
+books that use `yyheadingsection` or `yysec` for all sections), sections are
+detected by those styles and located via case-insensitive title matching in
+the top lines of each PDF page. The TOC entries are emitted as unnumbered
+(no leading "N  ") so the bundle parser resolves them by chapter_name rather
+than chapter_number.
 
 For books that use no YY heading styles at all (authored before the style
 convention), chapters are detected from consecutive Normal-style paragraph
@@ -74,25 +76,40 @@ def docx_paragraphs(docx_path):
 def outline_targets(docx_path):
     """Return ([chapter titles], [back-matter titles], [section titles]).
 
-    chapters    — yychapter-styled paragraphs (numbered YY chapters)
+    chapters    — yychapter-styled paragraphs (numbered YY chapters), or
+                  yycnum+yychap paragraph pairs (older split-style convention),
+                  or consecutive Normal digit+title pairs (pre-style books)
     back_matter — TOC1 entries not already covered by chapters
-    sections    — yyheadingsection-styled paragraphs (unnumbered sections
-                  used in companion/reference books that lack yychapter)
+    sections    — yyheadingsection- or yysec-styled paragraphs (unnumbered
+                  sections used in companion/reference books that lack yychapter)
 
-    Fallback: if neither yychapter nor yyheadingsection paragraphs are found,
-    chapters are detected from consecutive Normal-style paragraph pairs where
-    a bare digit immediately precedes a title text.  This handles books
+    Fallback: if neither yychapter nor yyheadingsection/yysec paragraphs are
+    found, chapters are detected from consecutive Normal-style paragraph pairs
+    where a bare digit immediately precedes a title text.  This handles books
     authored before the heading-style convention (e.g. s04v06).
     """
     chapters, toc_entries, sections = [], [], []
     all_paras = list(docx_paragraphs(docx_path))
+    prev_cnum = None  # holds a pending yycnum value until yychap consumes it
     for style, text in all_paras:
         if style == "yychapter":
             chapters.append(text)
-        elif style == "yyheadingsection":
+            prev_cnum = None
+        elif style == "yycnum" and re.match(r"^\d+$", text):
+            # Split-style chapter number paragraph — wait for the yychap title.
+            prev_cnum = text
+        elif style == "yychap":
+            # Combine with the preceding yycnum (if any) into "NTitle" shape.
+            chapters.append((prev_cnum or "") + text)
+            prev_cnum = None
+        elif style in ("yyheadingsection", "yysec"):
             sections.append(text)
+            prev_cnum = None
         elif style == "TOC1":
             toc_entries.append(text)
+            prev_cnum = None
+        else:
+            prev_cnum = None
 
     # A TOC1 line is "<title><tab><printed page>"; strip the trailing page
     # number so the titles can be compared against the chapter list.
@@ -302,7 +319,7 @@ def main():
 
     chapters, back_matter, sections = outline_targets(docx_path)
     if not chapters and not sections:
-        sys.stderr.write("[outline] no yychapter or yyheadingsection paragraphs in %s - "
+        sys.stderr.write("[outline] no chapter or section headings found in %s - "
                          "cannot derive an outline\n" % docx_path)
         return 1
 
