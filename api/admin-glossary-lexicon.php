@@ -363,6 +363,66 @@ if ($method === 'GET' && $action === 'scope') {
     jsonResponse(['items' => $st->fetchAll()]);
 }
 
+/* ── All Books → Series → Books → Chapters, for the list's Books filter ──
+   GET ?action=books            → series, each with its books
+   GET ?action=books&volume=V   → that book's chapters (key 0 = front/back matter)
+   Only books/chapters with indexed occurrences are offered, since the filter
+   reads yy_word_occurrence and anything else could only return nothing. */
+if ($method === 'GET' && $action === 'books') {
+    $volume = (int)($_GET['volume'] ?? 0);
+    if ($volume) {
+        $st = $db->prepare(
+            'SELECT p.chapter_key, c.chapter_name, c.chapter_label, c.chapter_number
+               FROM yy_paragraph p
+               LEFT JOIN yy_chapter c ON c.chapter_key = p.chapter_key
+              WHERE p.volume_key = ? AND p.paragraph_active_flag IS NOT FALSE
+                AND EXISTS (SELECT 1 FROM yy_word_occurrence o WHERE o.paragraph_key = p.paragraph_key)
+              GROUP BY p.chapter_key, c.chapter_name, c.chapter_label, c.chapter_number, c.chapter_sort
+              ORDER BY c.chapter_sort NULLS FIRST, c.chapter_number NULLS FIRST, p.chapter_key'
+        );
+        $st->execute([$volume]);
+        $rows = array_map(function ($r) {
+            $name = trim((string)($r['chapter_name'] ?: $r['chapter_label'] ?: ''));
+            return [
+                'key'   => $r['chapter_key'] === null ? 0 : (int)$r['chapter_key'],
+                'label' => $r['chapter_key'] === null
+                    ? 'Front / back matter'
+                    : (($r['chapter_number'] !== null ? 'Chapter ' . $r['chapter_number'] : 'Chapter')
+                        . ($name !== '' ? ' — ' . $name : '')),
+            ];
+        }, $st->fetchAll());
+        jsonResponse(['chapters' => $rows]);
+    }
+
+    $rows = $db->query(
+        'SELECT s.series_key, s.series_label, s.series_name, s.series_number,
+                v.volume_key, v.volume_label, v.volume_number, v.volume_code
+           FROM yy_volume v
+           JOIN yy_series s ON s.series_key = v.series_key
+          WHERE v.volume_key IN (SELECT p.volume_key FROM yy_paragraph p
+                                  WHERE EXISTS (SELECT 1 FROM yy_word_occurrence o
+                                                 WHERE o.paragraph_key = p.paragraph_key))
+          ORDER BY s.series_sort, s.series_number, s.series_key,
+                   v.volume_sort, v.volume_number, v.volume_key'
+    )->fetchAll();
+    $series = [];
+    foreach ($rows as $r) {
+        $sk = (int)$r['series_key'];
+        if (!isset($series[$sk])) {
+            $label = trim((string)($r['series_label'] ?: $r['series_name'] ?: ''));
+            $series[$sk] = ['key' => $sk, 'label' => $label !== '' ? $label : 'Series ' . $r['series_number'], 'books' => []];
+        }
+        $label = trim((string)$r['volume_label']);
+        $series[$sk]['books'][] = [
+            'key'   => (int)$r['volume_key'],
+            'label' => ($r['volume_number'] !== null ? $r['volume_number'] . ' · ' : '')
+                       . ($label !== '' ? $label : (string)$r['volume_code']),
+            'code'  => (string)$r['volume_code'],
+        ];
+    }
+    jsonResponse(['series' => array_values($series)]);
+}
+
 /* ── Where a word occurs: series → volume → chapter → page → paragraph ───
    One level per request, so opening a 25,000-hit word costs the same as any
    other.  Reads yy_word_occurrence (built by api/_word_harvest.php --index),
@@ -692,6 +752,43 @@ if ($method === 'GET' && !$key) {
                                        AND lower(trim(s.word_translit_text)) = ANY(CAST(:scope_tok AS text[]))))';
             $params[':scope_tok'] = pgTextArrayLiteral($toks);
         }
+    }
+
+    /* Books filter: words that occur in the chosen books (?vols=1,2 — whole
+       books) and/or chapters (?chaps=V:C,… — chapter C of book V; C=0 is the
+       book's front/back matter). A YY master matches when any word linked to
+       it occurs there, since occurrences are indexed on the harvested word. */
+    $bkVols = [];
+    foreach (explode(',', (string)($_GET['vols'] ?? '')) as $v) {
+        if ((int)$v > 0) $bkVols[(int)$v] = true;
+    }
+    $bkChaps = [];
+    foreach (explode(',', (string)($_GET['chaps'] ?? '')) as $vc) {
+        if (!preg_match('/^(\d+):(\d+)$/', trim($vc), $m) || isset($bkVols[(int)$m[1]])) continue;
+        $bkChaps[(int)$m[1]][(int)$m[2]] = true;
+    }
+    if ($bkVols || $bkChaps) {
+        $or = [];
+        if ($bkVols) $or[] = 'p.volume_key IN (' . implode(',', array_keys($bkVols)) . ')';
+        foreach ($bkChaps as $v => $cs) {
+            $c = [];
+            $real = array_filter(array_keys($cs));
+            if ($real) $c[] = 'p.chapter_key IN (' . implode(',', $real) . ')';
+            if (isset($cs[0])) $c[] = 'p.chapter_key IS NULL';
+            $or[] = '(p.volume_key = ' . (int)$v . ' AND (' . implode(' OR ', $c) . '))';
+        }
+        // Keys are cast to int above, so inlining them is safe. ARRAY(...) is an
+        // init-plan, evaluated once: as a plain IN/OR subquery, the paged query's
+        // LIMIT let the planner re-run it per row (>120s with most books ticked).
+        $where[] = 'w.word_key = ANY(ARRAY(
+                       WITH hit AS (SELECT DISTINCT o.word_key FROM yy_word_occurrence o
+                                      JOIN yy_paragraph p ON p.paragraph_key = o.paragraph_key
+                                     WHERE p.paragraph_active_flag IS NOT FALSE
+                                       AND (' . implode(' OR ', $or) . '))
+                       SELECT word_key FROM hit
+                       UNION
+                       SELECT m.word_master_word_key FROM yy_word m JOIN hit ON hit.word_key = m.word_key
+                        WHERE m.word_master_word_key IS NOT NULL))';
     }
 
     /* Per-column filters from the table's filter row. Each narrows independently
@@ -1131,8 +1228,12 @@ if ($method === 'POST') {
 
     $translit = trim((string)($data['word_translit'] ?? ''));
     $hebrew   = trim((string)($data['word_hebrew'] ?? ''));
-    if ($translit === '' && $hebrew === '') {
-        errorResponse('Give the word a transliteration or Hebrew spelling.');
+    // Base (word_code) is the native spelling for every language; the panel
+    // only mirrors it into word_hebrew for Hebrew, so a Greek/Latin/Arabic word
+    // may arrive with Base alone.
+    $code     = trim((string)($data['word_code'] ?? ''));
+    if ($translit === '' && $hebrew === '' && $code === '') {
+        errorResponse('Give the word a spelling or a Base.');
     }
 
     /* Same three states as the PUT: NULL = not yet determined, '' = established

@@ -15,6 +15,7 @@
  * POST ?action=replace  — see cleanupReplace().
  * GET  ?action=pending[&volume=N]   — queued (not yet reprocessed) changes.
  * POST ?action=reprocess {volume_keys}  /  ?action=discard {volume_keys}
+ * GET  ?action=word_meta / ?action=words — the glossary word picker; see cleanupWords().
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
  * and formatting test then run against paragraph_text_html, which is what
@@ -27,12 +28,34 @@ const CLEANUP_PAGE_MATCHES   = 300;   // matches per page when a book is expande
 const CLEANUP_CONTEXT_CHARS  = 90;    // characters either side of a match
 // Fonts whose letters are glyph art (YT, Paleo…): never wrap replacement letters in them.
 const CLEANUP_GLYPH_FONTS = ['Yada Towrah', 'PictoHeb', 'Isaiah Scroll', 'Moabite Stone', 'Semitic Early', 'Hebrew Script'];
+// Glossary word picker (cleanupWords). Top-level consts must come before the
+// action routing below, which calls the functions that use them.
+const CLEANUP_WORD_BASE_SQL = "coalesce(nullif(trim(w.word_code), ''), nullif(trim(w.word_hebrew), ''))";
+const CLEANUP_WORD_SCRIPT_SQL = "CASE
+        WHEN coalesce(nullif(trim(w.word_code), ''), nullif(trim(w.word_hebrew), '')) IS NULL THEN 'none'
+        WHEN coalesce(nullif(trim(w.word_code), ''), w.word_hebrew) ~ '[\\u0590-\\u05FF]' THEN 'hebrew'
+        WHEN coalesce(nullif(trim(w.word_code), ''), w.word_hebrew) ~ '[\\u0700-\\u074F]' THEN 'syriac'
+        WHEN coalesce(nullif(trim(w.word_code), ''), w.word_hebrew) ~ '[\\u0370-\\u03FF\\u1F00-\\u1FFF]' THEN 'greek'
+        WHEN coalesce(nullif(trim(w.word_code), ''), w.word_hebrew) ~ '[\\u0600-\\u06FF]' THEN 'arabic'
+        WHEN coalesce(nullif(trim(w.word_code), ''), w.word_hebrew) ~ '[A-Za-z]' THEN 'latin'
+        ELSE 'other' END";
+// Find wildcard: ❜ (U+275C, the page's "any apostrophe" key) matches any one
+// half-ring or apostrophe-like mark. Keep in step with APOS_CLASS in
+// _docx_replace.py so Replace finds exactly what Search found.
+const CLEANUP_APOS_WILDCARD = "\u{275C}";
+const CLEANUP_APOS_CLASS = "[\u{02BF}\u{02BE}'`\u{2018}\u{2019}\u{201A}\u{201B}\u{00B4}\u{02BC}\u{02BB}\u{02B9}\u{2032}]";
+const CLEANUP_WORD_SCRIPTS = [
+    'hebrew' => 'Hebrew / Aramaic (square script)', 'syriac' => 'Syriac (Aramaic)', 'greek' => 'Greek',
+    'arabic' => 'Arabic', 'latin' => 'Latin letters', 'other' => 'Other', 'none' => 'No base spelling',
+];
 
 $action = $_GET['action'] ?? '';
 if ($action === 'replace')   cleanupReplace($authUser);      // each responds and exits
 if ($action === 'pending')   cleanupPending();
 if ($action === 'reprocess') cleanupReprocess($authUser);
 if ($action === 'discard')   cleanupDiscard($authUser);
+if ($action === 'word_meta') cleanupWordMeta();
+if ($action === 'words')     cleanupWords();
 if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
 
 $q = (string)($_GET['q'] ?? '');
@@ -41,8 +64,9 @@ if (mb_strlen($q) > 500) errorResponse('Find text is too long');
 $wantBold   = !empty($_GET['bold']);
 $wantItalic = !empty($_GET['italic']);
 $matchCase  = !empty($_GET['case']);
-$pattern = '/' . preg_quote($q, '/') . '/u' . ($matchCase ? '' : 'i');
-$like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+$wholeWord  = !empty($_GET['word']);
+$pattern = cleanupFindPattern($q, $matchCase, $wholeWord);
+$like = cleanupFindLike($q);
 $op = $matchCase ? 'LIKE' : 'ILIKE';
 $db = getDb();
 
@@ -332,6 +356,7 @@ function cleanupReplace(array $authUser): void {
     if (mb_strlen($replace) > 500) errorResponse('Replace text is too long');
     $wantBold = !empty($in['bold']); $wantItalic = !empty($in['italic']);
     $matchCase = !empty($in['case']);
+    $wholeWord = !empty($in['word']);
     $rBold = !empty($in['rbold']); $rItalic = !empty($in['ritalic']);
     $vk = (int)($in['volume_key'] ?? 0);
     if (!$vk) errorResponse('volume_key required');
@@ -357,7 +382,7 @@ function cleanupReplace(array $authUser): void {
     $st = $db->prepare('SELECT paragraph_key, paragraph_number, paragraph_text_html, paragraph_text_plain, paragraph_text_raw
                           FROM yy_paragraph WHERE volume_key = ? AND paragraph_active_flag ORDER BY paragraph_number');
     $st->execute([$vk]);
-    $pattern = '/' . preg_quote($q, '/') . '/u' . ($matchCase ? '' : 'i');
+    $pattern = cleanupFindPattern($q, $matchCase, $wholeWord);
     $stream = '';
     $dbList = [];      // every text match, for alignment
     $meta = [];        // id → [paragraph_key, start, hit]
@@ -405,7 +430,7 @@ function cleanupReplace(array $authUser): void {
     $tmpOut = $stageDir . '/.' . $paths['name'] . '.cleanup-' . getmypid() . '.tmp';
     $res = cleanupRunDocxScript([
         'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'], 'docx_out' => $tmpOut,
-        'find' => $q, 'case' => $matchCase,
+        'find' => $q, 'case' => $matchCase, 'whole' => $wholeWord,
         'replace' => $replace, 'bold' => $rBold, 'italic' => $rItalic,
         'db' => $dbList,
     ]);
@@ -481,7 +506,7 @@ function cleanupReplace(array $authUser): void {
         // 3. Paragraphs + change log in one transaction; on failure undo step 2.
         try {
             $batch = bin2hex(random_bytes(8));
-            $opts = json_encode(['mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase,
+            $opts = json_encode(['mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
                                  'rbold' => $rBold, 'ritalic' => $rItalic]);
             $db->beginTransaction();
             $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
@@ -850,4 +875,135 @@ function cleanupRawJson(string $html): string {
                    'font' => $sf ? $sf['font'] : '', 'style' => $sf ? $sf['style'] : null];
     }
     return json_encode($runs, JSON_UNESCAPED_UNICODE);
+}
+
+/* ── Glossary word picker ────────────────────────────────────────────────
+ *
+ * GET ?action=word_meta — filter options with counts: languages, base-letter
+ *     scripts, sources.
+ * GET ?action=words&language=&script=&sources=a,b&q=&phrases=0|1
+ *                  &sort=translit|base|language|source|count&dir=asc|desc
+ *                  &offset=&limit=
+ *     yy_word rows (not-a-word excluded). q matches the preferred spelling or
+ *     any yy_word_translit spelling. phrases=0 (default) drops entries whose
+ *     spelling has a space.
+ *
+ * "Base letters" is the script of the word's native spelling: Base
+ * (word_code), falling back to word_hebrew since Base is still mostly empty.
+ * Aramaic written in square script reads as Hebrew letters — the script is
+ * the same; Syriac is listed apart.
+ */
+function cleanupWordMeta(): void {
+    $db = getDb();
+    $langs = $db->query("SELECT l.word_language_code AS code, l.word_language_label AS label, count(w.word_key) AS n
+                           FROM yy_word_language l
+                           LEFT JOIN yy_word w ON w.word_language = l.word_language_code AND NOT w.word_excluded_flag
+                          GROUP BY 1, 2, l.word_language_sort ORDER BY l.word_language_sort")->fetchAll();
+    $none = (int)$db->query("SELECT count(*) FROM yy_word WHERE word_language IS NULL AND NOT word_excluded_flag")->fetchColumn();
+    $langs[] = ['code' => 'none', 'label' => 'Not classified', 'n' => $none];
+    $scripts = [];
+    $rows = $db->query("SELECT " . CLEANUP_WORD_SCRIPT_SQL . " AS s, count(*) AS n FROM yy_word w
+                         WHERE NOT w.word_excluded_flag GROUP BY 1")->fetchAll(PDO::FETCH_KEY_PAIR);
+    foreach (CLEANUP_WORD_SCRIPTS as $code => $label) {
+        if (!empty($rows[$code])) $scripts[] = ['code' => $code, 'label' => $label, 'n' => (int)$rows[$code]];
+    }
+    // Every source, even at zero (yy must stay findable).
+    $sources = $db->query("SELECT s.word_source_code AS code, s.word_source_label AS label, count(w.word_key) AS n
+                             FROM yy_word_source s
+                             LEFT JOIN yy_word w ON trim(w.word_source_code) = s.word_source_code AND NOT w.word_excluded_flag
+                            GROUP BY 1, 2, s.word_source_sort ORDER BY s.word_source_sort, s.word_source_label")->fetchAll();
+    jsonResponse(['languages' => $langs, 'scripts' => $scripts, 'sources' => $sources]);
+}
+
+function cleanupWords(): void {
+    $db = getDb();
+    $where = ['NOT w.word_excluded_flag'];
+    $p = [];
+    $lang = (string)($_GET['language'] ?? '');
+    if ($lang === 'none') $where[] = 'w.word_language IS NULL';
+    elseif ($lang !== '') { $where[] = 'w.word_language = :lang'; $p[':lang'] = substr($lang, 0, 1); }
+    $script = (string)($_GET['script'] ?? '');
+    if ($script !== '' && isset(CLEANUP_WORD_SCRIPTS[$script])) {
+        $where[] = '(' . CLEANUP_WORD_SCRIPT_SQL . ') = :script';
+        $p[':script'] = $script;
+    }
+    $srcs = array_values(array_unique(array_filter(array_map('trim', explode(',', (string)($_GET['sources'] ?? ''))))));
+    if ($srcs) {
+        $in = [];
+        foreach ($srcs as $i => $s) { $in[] = ":src$i"; $p[":src$i"] = $s; }
+        $where[] = "COALESCE(trim(w.word_source_code), '') IN (" . implode(',', $in) . ')';
+    }
+    // Half-rings and apostrophes are ignored on both sides, so "anaw" finds
+    // ʿanaw and Strong's 'anaw alike.
+    $q = trim(preg_replace("/[\x{02BE}\x{02BF}\x{02BC}'\x{2018}\x{2019}]/u", '', (string)($_GET['q'] ?? '')));
+    if ($q !== '') {
+        $like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+        $strip = function ($col) { return "regexp_replace($col, '[\\u02BE\\u02BF\\u02BC''\\u2018\\u2019]', '', 'g')"; };
+        $where[] = '(' . $strip('w.word_translit') . ' ILIKE :q OR EXISTS (SELECT 1 FROM yy_word_translit t
+                      WHERE t.word_key = w.word_key AND ' . $strip('t.word_translit_text') . ' ILIKE :q))';
+        $p[':q'] = $like;
+    }
+    if (empty($_GET['phrases'])) $where[] = "position(' ' in trim(coalesce(w.word_translit, ''))) = 0";
+
+    $dir = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'DESC' : 'ASC';
+    // Spelling order ignores the half-rings and case, so ʿanaw files under a.
+    $translitKey = "lower(regexp_replace(coalesce(w.word_translit, ''), '[\\u02BE\\u02BF\\u02BC]', '', 'g'))";
+    $sorts = [
+        'translit' => "$translitKey $dir",
+        'base'     => CLEANUP_WORD_BASE_SQL . " $dir NULLS LAST, $translitKey",
+        'language' => "w.word_language $dir NULLS LAST, $translitKey",
+        'source'   => "s.word_source_label $dir NULLS LAST, $translitKey",
+        'count'    => "coalesce(w.word_count_yy, 0) $dir, $translitKey",
+    ];
+    $order = $sorts[$_GET['sort'] ?? 'translit'] ?? $sorts['translit'];
+    $limit = max(1, min(500, (int)($_GET['limit'] ?? 100)));
+    $offset = max(0, (int)($_GET['offset'] ?? 0));
+    $whereSql = implode(' AND ', $where);
+
+    $st = $db->prepare("SELECT count(*) FROM yy_word w WHERE $whereSql");
+    $st->execute($p);
+    $total = (int)$st->fetchColumn();
+    $st = $db->prepare("SELECT w.word_key, w.word_translit, " . CLEANUP_WORD_BASE_SQL . " AS base,
+                               (" . CLEANUP_WORD_SCRIPT_SQL . ") AS script, w.word_language,
+                               trim(w.word_source_code) AS source, s.word_source_label AS source_label,
+                               coalesce(w.word_count_yy, 0) AS count,
+                               (SELECT string_agg(DISTINCT t.word_translit_text, ' · ')
+                                  FROM yy_word_translit t
+                                 WHERE t.word_key = w.word_key AND t.word_translit_text IS DISTINCT FROM w.word_translit) AS alts
+                          FROM yy_word w
+                          LEFT JOIN yy_word_source s ON s.word_source_code = trim(w.word_source_code)
+                         WHERE $whereSql
+                         ORDER BY $order, w.word_key
+                         LIMIT $limit OFFSET $offset");
+    $st->execute($p);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$r) { $r['word_key'] = (int)$r['word_key']; $r['count'] = (int)$r['count']; }
+    jsonResponse(['total' => $total, 'offset' => $offset, 'words' => $rows]);
+}
+
+/**
+ * The Find text as a PCRE pattern: literal, except ❜ = any apostrophe-like mark.
+ * $whole: the match may not run on into a neighbouring letter, digit or
+ * half-ring (so "anaw" skips ʿanaw, but "God" still finds God’s). Like Word,
+ * an edge of the Find text that is not itself a word character gets no test.
+ * Keep in step with find_pattern() in _docx_replace.py.
+ */
+function cleanupFindPattern(string $q, bool $matchCase, bool $whole = false): string {
+    $parts = explode(CLEANUP_APOS_WILDCARD, $q);
+    $re = implode(CLEANUP_APOS_CLASS, array_map(function ($p) { return preg_quote($p, '/'); }, $parts));
+    if ($whole) {
+        $wordChar = '[\p{L}\p{N}\p{M}\x{02BE}\x{02BF}]';
+        $isWord = function ($ch) { return $ch === CLEANUP_APOS_WILDCARD || preg_match('/^[\p{L}\p{N}\p{M}\x{02BE}\x{02BF}]$/u', $ch); };
+        if ($isWord(mb_substr($q, 0, 1))) $re = '(?<!' . $wordChar . ')' . $re;
+        if ($isWord(mb_substr($q, -1))) $re .= '(?!' . $wordChar . ')';
+    }
+    return '/' . $re . '/u' . ($matchCase ? '' : 'i');
+}
+
+/** LIKE prefilter for the Find text: ❜ becomes `_` (any one character). */
+function cleanupFindLike(string $q): string {
+    $parts = explode(CLEANUP_APOS_WILDCARD, $q);
+    return '%' . implode('_', array_map(function ($p) {
+        return strtr($p, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']);
+    }, $parts)) . '%';
 }

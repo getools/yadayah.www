@@ -20,6 +20,7 @@ switch ($action) {
             FROM yy_word w
             WHERE w.word_active_flag = true
               AND NOT w.word_excluded_flag  -- not-a-word flag (admin Glossary)
+              AND w.word_master_word_key IS NULL  -- linked words show as their YY master
               AND LEFT(w.word_yt, 1) = ?
             ORDER BY w.word_strongs ASC
         ");

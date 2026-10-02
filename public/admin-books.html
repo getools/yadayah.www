@@ -196,12 +196,17 @@
             border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer;
         }
         .cl-ring:hover { border-color: #3498db; background: #f2f8fd; }
+        /* The "any apostrophe" key: a large quote, drawn from a text font (YT has no such glyph). */
+        .cl-ring.cl-apos { font-family: Georgia, 'Times New Roman', serif; font-size: 1.35rem; font-weight: 700; color: #8e44ad; }
         .cl-fmt {
             flex: none; min-width: 30px; padding: 4px 6px; line-height: 1; font-size: 1rem; font-family: Georgia, serif;
             border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; color: #333; cursor: pointer;
         }
         .cl-fmt:hover { border-color: #3498db; background: #f2f8fd; }
         .cl-fmt.active { background: #2c3e50; border-color: #2c3e50; color: #fff; }
+        /* Whole-word icon: "ab" over a bracket, as in code editors. */
+        .cl-word-btn { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 0.82rem; font-weight: 600; padding: 3px 6px 2px; }
+        .cl-ww { display: inline-block; line-height: 1; padding: 0 2px 2px; border: 1.5px solid currentColor; border-top: none; }
         .cl-case-btn { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 0.9rem; font-weight: 600; letter-spacing: -0.5px; }
         .cl-rep-actions { display: inline-flex; gap: 6px; margin-left: 8px; flex-wrap: wrap; }
         .cl-rep-actions .btn:disabled, .cl-queue-actions .btn:disabled { opacity: 0.45; cursor: default; }
@@ -296,6 +301,44 @@
         #cl-results .cl-hit.replaced .ex mark { background: #d5f5e3; text-decoration: none; }
         .cl-hit.replaced .loc::after { content: '✓ replaced (queued)'; display: block; color: #1e8449; font-weight: 600; }
         .cl-hit.failed .loc::after { content: attr(data-fail); display: block; color: #c0392b; font-weight: 600; white-space: normal; }
+        /* Glossary word picker */
+        .cl-wl-wrap { flex-direction: column; align-items: stretch; }
+        .cl-grid > .cl-lbl-top { align-self: start; padding-top: 6px; }
+        .cl-wl-filters select { max-width: 230px; }
+        .cl-wl-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+            border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.85rem; color: #333; }
+        .cl-wl-toggle:hover { border-color: #3498db; }
+        .cl-wl-toggle .tw { font-size: 0.65rem; color: #666; transition: transform 0.15s; }
+        .cl-wl-toggle[aria-expanded="true"] .tw { transform: rotate(90deg); }
+        .cl-wl-count { color: #999; font-size: 0.78rem; }
+        .cl-wl { border: 1px solid #e0e0e0; border-radius: 6px; background: #fafbfc; padding: 8px 10px; }
+        .cl-wl[hidden] { display: none; }
+        .cl-wl-filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 0.82rem; color: #555; margin-bottom: 8px; }
+        .cl-wl-filters label { display: inline-flex; align-items: center; gap: 5px; }
+        .cl-wl-filters select, .cl-wl-filters input[type=text] { font-size: 0.82rem; padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; }
+        .cl-wl-filters input#cl-wl-q { width: 150px;
+            font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .cl-wl-srcs { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; padding: 2px 8px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
+        .cl-wl-srcs label { gap: 3px; cursor: pointer; }
+        .cl-wl-srcs .n { color: #aaa; font-size: 0.75rem; }
+        .cl-wl-table { max-height: 300px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
+        .cl-wl-table table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+        .cl-wl-table th { position: sticky; top: 0; background: #f5f5f5; text-align: left; font-size: 0.78rem; font-weight: 600;
+            padding: 5px 8px; border-bottom: 1px solid #e0e0e0; cursor: pointer; user-select: none; white-space: nowrap; z-index: 1; }
+        .cl-wl-table th:hover { background: #eaeef3; }
+        .cl-wl-table th.asc::after { content: ' ▲'; font-size: 0.65rem; color: #3498db; }
+        .cl-wl-table th.desc::after { content: ' ▼'; font-size: 0.65rem; color: #3498db; }
+        .cl-wl-table td { padding: 4px 8px; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
+        .cl-wl-table tbody tr { cursor: pointer; }
+        .cl-wl-table tbody tr:hover { background: #f0f4ff; }
+        .cl-wl-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .cl-wl-table td.tr { font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a5276; font-weight: 600; }
+        .cl-wl-table td.tr .alt { display: block; font-weight: 400; font-size: 0.75rem; color: #999; }
+        .cl-wl-table td.tr .alt span { cursor: pointer; }
+        .cl-wl-table td.tr .alt span:hover { color: #2980b9; text-decoration: underline; }
+        .cl-wl-table td.base { direction: rtl; text-align: left; font-family: 'SBL Hebrew', 'Times New Roman', serif; font-size: 1rem; }
+        .cl-wl-table td.dim { color: #bbb; }
+        .cl-wl-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 0.78rem; color: #888; }
         @media (max-width: 640px) { .cl-hit { flex-direction: column; gap: 2px; } .cl-hit .loc { width: auto; } .cl-grid { grid-template-columns: 1fr; row-gap: 4px; } }
         /* Series tab */
         .series-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -470,15 +513,48 @@
             <h3>Search/Replace</h3>
             <!-- Two columns: labels | fields and their buttons. -->
             <div class="cl-grid">
+                <!-- Glossary word picker (yy_word): pick a word to search for it. -->
+                <span class="cl-lbl cl-lbl-top">Words</span>
+                <div class="cl-fields cl-wl-wrap">
+                    <button type="button" class="cl-wl-toggle" id="cl-wl-toggle" aria-expanded="false" title="Show / hide the glossary word list — click a word to search for it">
+                        <span class="tw">&#9654;</span> Glossary words <span class="cl-wl-count" id="cl-wl-count"></span>
+                    </button>
+                    <div class="cl-wl" id="cl-wl" hidden>
+                        <div class="cl-wl-filters">
+                            <label>Language <select id="cl-wl-lang"><option value="">All</option></select></label>
+                            <label>Base letters <select id="cl-wl-script"><option value="">All</option></select></label>
+                            <span class="cl-wl-srcs" id="cl-wl-srcs" title="Sources — none ticked = all"></span>
+                            <label>Transliteration <input type="text" id="cl-wl-q" autocomplete="off" spellcheck="false" placeholder="contains…"></label>
+                            <label class="cl-wl-chk"><input type="checkbox" id="cl-wl-phrases"> Include Phrases</label>
+                        </div>
+                        <div class="cl-wl-table">
+                            <table>
+                                <thead><tr>
+                                    <th data-sort="translit" title="Sort by transliteration (half-rings ignored); click again to reverse">Transliteration</th>
+                                    <th data-sort="base" title="Native spelling (Base, else the Hebrew) — click to sort">Base</th>
+                                    <th data-sort="language" title="Language — click to sort">Lng</th>
+                                    <th data-sort="source" title="Where the word came from — click to sort">Source</th>
+                                    <th data-sort="count" class="num" title="Times the word appears in the books — click to sort">Count</th>
+                                </tr></thead>
+                                <tbody id="cl-wl-body"></tbody>
+                            </table>
+                        </div>
+                        <div class="cl-wl-foot"><span id="cl-wl-status"></span>
+                            <button type="button" class="btn btn-secondary btn-sm" id="cl-wl-more" hidden>Show more</button></div>
+                    </div>
+                </div>
+
                 <label for="cl-find">Find</label>
                 <div class="cl-fields">
                     <input type="text" id="cl-find" maxlength="500" autocomplete="off" spellcheck="false"
                            onkeydown="if(event.key==='Enter'){event.preventDefault();clSearch();}">
                     <button type="button" class="cl-ring" data-for="cl-find" data-ch="ʾ" title="Insert right half ring">ʾ</button>
                     <button type="button" class="cl-ring" data-for="cl-find" data-ch="ʿ" title="Insert left half ring">ʿ</button>
+                    <button type="button" class="cl-ring cl-apos" data-for="cl-find" data-ch="❜" title="Any apostrophe: inserts ❜, which matches any ONE of ʿ ʾ ' ` ‘ ’ ‚ ‛ ´ ʼ ʻ ʹ ′ (left/right half ring, straight/curly single quote, backtick and similar)">❜</button>
                     <button type="button" class="cl-fmt" id="cl-bold" title="Bold — only match text that is bold in the book"><b>B</b></button>
                     <button type="button" class="cl-fmt" id="cl-italic" title="Italic — only match text that is italic in the book"><i>I</i></button>
                     <button type="button" class="cl-fmt cl-case-btn" id="cl-case" title="Match case" aria-pressed="false">Aa</button>
+                    <button type="button" class="cl-fmt cl-word-btn" id="cl-word" aria-pressed="true" title="Whole words only (on by default): a match may not run on into a neighbouring letter, digit or half-ring — &quot;anaw&quot; skips ʿanaw, &quot;God&quot; still finds God’s"><span class="cl-ww">ab</span></button>
                     <button type="button" class="btn btn-primary btn-sm" id="cl-search-btn" onclick="clSearch()">Search</button>
                 </div>
 
@@ -503,7 +579,7 @@
                 <span class="cl-lbl">Books</span>
                 <div class="cl-fields">
                     <div class="cl-books-wrap">
-                        <button type="button" class="cl-books-btn" id="cl-books-btn" onclick="clToggleBooks()" aria-expanded="false">
+                        <button type="button" class="cl-books-btn" id="cl-books-btn" onclick="clToggleBooks()" aria-expanded="false" title="Choose which books to search">
                             <span id="cl-books-label">All Books</span> <span class="caret">&#9662;</span>
                         </button>
                         <div class="cl-books-pop" id="cl-books-pop" hidden>
@@ -524,7 +600,7 @@
         <!-- Queued (staged, not yet reprocessed) DOCX changes. -->
         <div class="cl-queue cl-fold open" id="cl-queue" hidden>
             <div class="cl-queue-h">
-                <button type="button" class="cl-fold-h cl-queue-toggle"><span class="tw">&#9654;</span>Queued DOCX changes
+                <button type="button" class="cl-fold-h cl-queue-toggle" title="Show / hide the queued changes"><span class="tw">&#9654;</span>Queued DOCX changes
                     <span class="code" id="cl-queue-sum"></span></button>
                 <span class="cl-queue-actions">
                     <button type="button" class="btn btn-secondary btn-sm" onclick="clLoadPending()">Refresh</button>
@@ -553,7 +629,7 @@
     <div class="form-panel">
         <div class="form-header">
             <h3 id="form-title">Add Volume</h3>
-            <button onclick="closeForm()">&times;</button>
+            <button onclick="closeForm()" title="Close">&times;</button>
         </div>
         <div class="form-body">
             <input type="hidden" id="f-key">
@@ -587,7 +663,7 @@
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">PDF</label>
                     <a id="f-pdf-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
-                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-pdf" onclick="regeneratePdfFromForm(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-pdf" onclick="regeneratePdfFromForm(this)" title="Regenerate the PDF from this book's DOCX" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
                 <div id="f-pdf-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
             </div>
@@ -595,7 +671,7 @@
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">FLIP</label>
                     <a id="f-flip-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
-                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-flip" onclick="regenerateFlipbookFromForm(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-flip" onclick="regenerateFlipbookFromForm(this)" title="Rebuild the flipbook from this book's PDF" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
                 <div id="f-flip-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
             </div>
@@ -603,7 +679,7 @@
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">TTS</label>
                     <a id="f-tts-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
-                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-tts" onclick="openTtsForVolume(this)" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="f-regen-tts" onclick="openTtsForVolume(this)" title="Open TTS narration for this book" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
                 <div id="f-tts-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
             </div>
@@ -649,7 +725,7 @@
     <div class="form-panel">
         <div class="form-header">
             <h3 id="series-form-title">Edit Series</h3>
-            <button onclick="closeSeriesForm()">&times;</button>
+            <button onclick="closeSeriesForm()" title="Close">&times;</button>
         </div>
         <div class="form-body">
             <input type="hidden" id="sf-key">
@@ -1398,7 +1474,7 @@ function renderCoverIconStrip() {
         : '';
     strip.innerHTML =
         '<div class="cover-icon-box">'
-      + (iconSrc ? '<img src="' + iconSrc + '" alt="" onerror="this.remove()">' : '<span class="cover-empty">—</span>')
+      + (iconSrc ? '<img src="' + iconSrc + '" alt="" title="Current icon image" onerror="this.remove()">' : '<span class="cover-empty" title="No icon image yet">—</span>')
       + '</div>'
       + '<div class="cover-icon-main">'
       +   '<div class="cover-icon-note">' + note + '</div>'
@@ -1473,7 +1549,7 @@ function renderCoverBooksStrip() {
     var imgSrc = path ? esc(path) + (coverBooksBust ? '?t=' + coverBooksBust : '') : '';
     strip.innerHTML =
         '<div class="cover-icon-box">'
-      + (imgSrc ? '<img src="' + imgSrc + '" alt="" onerror="this.remove()">' : '<span class="cover-empty">—</span>')
+      + (imgSrc ? '<img src="' + imgSrc + '" alt="" title="Current Books-page image" onerror="this.remove()">' : '<span class="cover-empty" title="No Books-page image yet">—</span>')
       + '</div>'
       + '<div class="cover-icon-main">'
       +   '<div class="cover-icon-note">' + note + '</div>'
@@ -1499,7 +1575,7 @@ function renderCoverPopover(v) {
         html += '<div class="cover-slot" id="cover-slot-' + s.slot + '">'
               + '<h4>' + s.label + '</h4>'
               + '<div class="cover-preview">'
-              + (cur ? '<a href="' + esc(cur) + '" target="_blank" rel="noopener"><img src="' + esc(cur) + '" alt=""></a>'
+              + (cur ? '<a href="' + esc(cur) + '" target="_blank" rel="noopener" title="Open this image full size"><img src="' + esc(cur) + '" alt=""></a>'
                      : '<span class="cover-empty">no image</span>')
               + '</div>'
               + '<input type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" '
@@ -1886,8 +1962,8 @@ function renderBooks() {
                 + '<td>' + (v.volume_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>') + '</td>'
                 + '<td onclick="event.stopPropagation()">' + lockCell(v) + '</td>'
                 + '<td class="actions" onclick="event.stopPropagation()">'
-                + '<button onclick="editVolume(' + v.volume_key + ')">Edit</button>'
-                + '<button class="del" onclick="deleteVolume(' + v.volume_key + ',\'' + esc(v.volume_label).replace(/'/g,"\\'") + '\')">Del</button>'
+                + '<button onclick="editVolume(' + v.volume_key + ')" title="Edit this volume">Edit</button>'
+                + '<button class="del" title="Delete this volume" onclick="deleteVolume(' + v.volume_key + ',\'' + esc(v.volume_label).replace(/'/g,"\\'") + '\')">Del</button>'
                 + '</td></tr>';
         }
     }
@@ -2461,10 +2537,10 @@ function serRenderTable() {
             + '<td>' + esc(s.series_name || '') + '</td>'
             + '<td>' + (s.series_number || 0) + '</td>'
             + '<td>' + (s.series_sort || 0) + '</td>'
-            + '<td>' + (s.series_image ? '<img class="thumb" src="' + esc(s.series_image) + '">' : '—') + '</td>'
+            + '<td>' + (s.series_image ? '<img class="thumb" src="' + esc(s.series_image) + '" title="Series image">' : '—') + '</td>'
             + '<td class="actions">'
-            + '<button onclick="event.stopPropagation();serEditSeries(' + s.series_key + ')">Edit</button>'
-            + '<button class="del" onclick="event.stopPropagation();serDeleteSeries(' + s.series_key + ',\'' + esc(s.series_label).replace(/'/g, "\\'") + '\')">Delete</button>'
+            + '<button onclick="event.stopPropagation();serEditSeries(' + s.series_key + ')" title="Edit this series">Edit</button>'
+            + '<button class="del" title="Delete this series (only if no volumes use it)" onclick="event.stopPropagation();serDeleteSeries(' + s.series_key + ',\'' + esc(s.series_label).replace(/'/g, "\\'") + '\')">Delete</button>'
             + '</td></tr>';
     }
     html += '</tbody></table>';
@@ -2686,9 +2762,165 @@ function initFlipbookTab() {
 // book's DOCX; the queue panel reprocesses (or discards) them per book.
 // Every option, and the Books selection, is remembered in this browser.
 var CL_STORE = 'yy.adminBooks.cleanup.v1';
+// ── Glossary word picker ──
+// Lists yy_word (filtered + sorted server-side). Clicking a word — or one of
+// its other spellings — puts it in Find and searches. Filters, sort and the
+// open/closed state are remembered with the rest of the Cleanup options.
+var clWl = {meta: null, offset: 0, total: 0, seq: 0, sort: 'translit', dir: 'asc', timer: null};
+
+function clWlState() {
+    var srcs = [];
+    document.querySelectorAll('#cl-wl-srcs input:checked').forEach(function(c) { srcs.push(c.value); });
+    // Until the options arrive (panel never opened), keep what was saved.
+    var p = clWl.meta ? null : (clWl.pending || {});
+    return {
+        open: !document.getElementById('cl-wl').hidden,
+        lang: p ? (p.lang || '') : document.getElementById('cl-wl-lang').value,
+        script: p ? (p.script || '') : document.getElementById('cl-wl-script').value,
+        sources: p ? (p.sources || []) : srcs,
+        q: document.getElementById('cl-wl-q').value,
+        phrases: document.getElementById('cl-wl-phrases').checked,
+        sort: clWl.sort, dir: clWl.dir
+    };
+}
+
+// Put saved picker filters/sort/open state in place (on load, and again if
+// the server copy turns out to be newer).
+function clWlApply(saved) {
+    saved = saved || {};
+    clWl.sort = saved.sort || 'translit';
+    clWl.dir = saved.dir === 'desc' ? 'desc' : 'asc';
+    document.getElementById('cl-wl-q').value = saved.q || '';
+    document.getElementById('cl-wl-phrases').checked = !!saved.phrases;
+    clWl.pending = saved;   // applied once the select/checkbox options exist
+    if (clWl.meta) {
+        var setSel = function(id, v) { var el = document.getElementById(id); el.value = v || ''; if (el.value !== (v || '')) el.value = ''; };
+        setSel('cl-wl-lang', saved.lang);
+        setSel('cl-wl-script', saved.script);
+        var on = saved.sources || [];
+        document.querySelectorAll('#cl-wl-srcs input').forEach(function(c) { c.checked = on.indexOf(c.value) >= 0; });
+    }
+    var isOpen = !document.getElementById('cl-wl').hidden;
+    if (!!saved.open !== isOpen) clWlOpen(!!saved.open, true);
+    else if (isOpen && clWl.loaded) clWlReload();
+}
+
+function clWlInit(saved) {
+    clWlApply(saved);
+    document.getElementById('cl-wl-toggle').addEventListener('click', function() { clWlOpen(document.getElementById('cl-wl').hidden); });
+    ['cl-wl-lang', 'cl-wl-script', 'cl-wl-phrases'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', function() { clWlReload(); clSaveState(); });
+    });
+    document.getElementById('cl-wl-srcs').addEventListener('change', function() { clWlReload(); clSaveState(); });
+    document.getElementById('cl-wl-q').addEventListener('input', function() {
+        clearTimeout(clWl.timer);
+        clWl.timer = setTimeout(function() { clWlReload(); clSaveState(); }, 250);
+    });
+    document.querySelectorAll('#cl-wl th[data-sort]').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var k = th.getAttribute('data-sort');
+            if (clWl.sort === k) clWl.dir = clWl.dir === 'asc' ? 'desc' : 'asc';
+            else { clWl.sort = k; clWl.dir = k === 'count' ? 'desc' : 'asc'; }
+            clWlReload(); clSaveState();
+        });
+    });
+    document.getElementById('cl-wl-more').addEventListener('click', function() { clWlLoad(true); });
+    document.getElementById('cl-wl-body').addEventListener('click', function(e) {
+        var alt = e.target.closest('.alt span[data-t]');
+        var tr = e.target.closest('tr[data-t]');
+        var t = alt ? alt.getAttribute('data-t') : tr ? tr.getAttribute('data-t') : null;
+        if (!t) return;
+        document.getElementById('cl-find').value = t;
+        clSaveState();
+        clSearch();
+    });
+}
+
+function clWlOpen(open, quiet) {
+    document.getElementById('cl-wl').hidden = !open;
+    document.getElementById('cl-wl-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) clWlMeta().then(function() { if (!clWl.loaded) clWlReload(); });
+    if (!quiet) clSaveState();
+}
+
+function clWlMeta() {
+    if (clWl.meta) return Promise.resolve();
+    return fetch(API + '/admin-books-cleanup.php?action=word_meta', {credentials: 'include'})
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            if (d.error) return;
+            clWl.meta = d;
+            var p = clWl.pending || {};
+            var fill = function(id, list, val) {
+                var sel = document.getElementById(id);
+                sel.innerHTML = '<option value="">All</option>' + list.map(function(o) {
+                    return '<option value="' + esc(o.code) + '">' + esc(o.label) + ' (' + o.n + ')</option>';
+                }).join('');
+                sel.value = val || '';
+                if (sel.value !== (val || '')) sel.value = '';
+            };
+            fill('cl-wl-lang', d.languages, p.lang);
+            fill('cl-wl-script', d.scripts, p.script);
+            var on = p.sources || [];
+            document.getElementById('cl-wl-srcs').innerHTML = d.sources.map(function(s) {
+                return '<label><input type="checkbox" value="' + esc(s.code) + '"' + (on.indexOf(s.code) >= 0 ? ' checked' : '') + '>'
+                    + esc(s.label) + ' <span class="n">' + s.n + '</span></label>';
+            }).join('');
+        });
+}
+
+function clWlReload() { clWl.offset = 0; clWlLoad(false); }
+
+function clWlLoad(append) {
+    var st = clWlState();
+    var qs = 'action=words&limit=100&offset=' + (append ? clWl.offset : 0)
+        + '&sort=' + clWl.sort + '&dir=' + clWl.dir
+        + (st.lang ? '&language=' + encodeURIComponent(st.lang) : '')
+        + (st.script ? '&script=' + encodeURIComponent(st.script) : '')
+        + (st.sources.length ? '&sources=' + encodeURIComponent(st.sources.join(',')) : '')
+        + (st.q.trim() ? '&q=' + encodeURIComponent(st.q.trim()) : '')
+        + (st.phrases ? '&phrases=1' : '');
+    var seq = ++clWl.seq;
+    document.querySelectorAll('#cl-wl th[data-sort]').forEach(function(th) {
+        th.classList.remove('asc', 'desc');
+        if (th.getAttribute('data-sort') === clWl.sort) th.classList.add(clWl.dir);
+    });
+    document.getElementById('cl-wl-status').textContent = 'Loading…';
+    fetch(API + '/admin-books-cleanup.php?' + qs, {credentials: 'include'})
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            if (seq !== clWl.seq) return;
+            if (d.error) { document.getElementById('cl-wl-status').textContent = d.error; return; }
+            clWl.loaded = true;
+            clWl.total = d.total;
+            var langs = {};
+            (clWl.meta ? clWl.meta.languages : []).forEach(function(l) { langs[l.code] = l.label; });
+            var html = (d.words || []).map(function(w) {
+                var alts = w.alts ? w.alts.split(' · ') : [];
+                return '<tr data-t="' + esc(w.word_translit || '') + '" title="Search the books for this word">'
+                    + '<td class="tr">' + esc(w.word_translit || '') + (alts.length ? '<span class="alt">'
+                        + alts.map(function(a) { return '<span data-t="' + esc(a) + '" title="Search for this spelling">' + esc(a) + '</span>'; }).join(' · ')
+                        + '</span>' : '') + '</td>'
+                    + '<td class="base' + (w.base ? '' : ' dim') + '">' + (w.base ? esc(w.base) : '–') + '</td>'
+                    + '<td' + (w.word_language ? ' title="' + esc(langs[w.word_language] || '') + '"' : ' class="dim"') + '>'
+                        + esc(w.word_language || '–') + '</td>'
+                    + '<td>' + esc(w.source_label || w.source || '') + '</td>'
+                    + '<td class="num">' + w.count + '</td></tr>';
+            }).join('');
+            var body = document.getElementById('cl-wl-body');
+            if (append) body.insertAdjacentHTML('beforeend', html); else { body.innerHTML = html; body.closest('.cl-wl-table').scrollTop = 0; }
+            clWl.offset = (append ? clWl.offset : 0) + (d.words || []).length;
+            document.getElementById('cl-wl-status').textContent = clWl.total
+                ? 'Showing ' + clWl.offset + ' of ' + clWl.total + ' — click a word to search for it'
+                : 'No words match these filters.';
+            document.getElementById('cl-wl-count').textContent = '(' + clWl.total + ')';
+            document.getElementById('cl-wl-more').hidden = clWl.offset >= clWl.total;
+        });
+}
+
 var CL_TOGGLES = [   // [button id, input class, input id, state key]
     ['cl-bold', 'is-bold', 'cl-find', 'bold'], ['cl-italic', 'is-italic', 'cl-find', 'italic'],
-    ['cl-case', '', null, 'case'],
+    ['cl-case', '', null, 'case'], ['cl-word', '', null, 'word'],
     ['cl-rbold', 'is-bold', 'cl-replace', 'rbold'], ['cl-ritalic', 'is-italic', 'cl-replace', 'ritalic'],
     ['cl-full', '', null, 'full']
 ];
@@ -2702,10 +2934,38 @@ function clSaveState() {
     var s = {
         find: document.getElementById('cl-find').value,
         replace: document.getElementById('cl-replace').value,
-        books: clTreeBuilt ? clSelectedList() : clSavedBooks
+        books: clTreeBuilt ? clSelectedList() : clSavedBooks,
+        words: clWlState()
     };
     CL_TOGGLES.forEach(function(t) { s[t[3]] = clIsOn(t[0]); });
+    clTouched = true;
     try { localStorage.setItem(CL_STORE, JSON.stringify(s)); } catch (e) {}
+    // Per-user, server-side (session-state.js → yy_user_session_state), so
+    // the options follow the admin to any browser.
+    if (window.sessionState) window.sessionState.save('cl-state', s);
+}
+var clTouched = false;
+
+// The saved Cleanup options: session-state's copy first, else this browser's.
+function clLoadSaved() {
+    var v = window.sessionState ? window.sessionState.load('cl-state') : undefined;
+    return (v && typeof v === 'object') ? v : clReadStore();
+}
+
+function clApplyState(s) {
+    var find = document.getElementById('cl-find'), repl = document.getElementById('cl-replace');
+    if (s.find !== undefined) find.value = s.find || '';
+    if (s.replace !== undefined) repl.value = s.replace || '';
+    CL_TOGGLES.forEach(function(t) { clSetToggle(t[0], t[3] === 'word' ? s.word !== false : !!s[t[3]]); });
+    clSavedBooks = Array.isArray(s.books) ? s.books.map(String) : null;
+    if (clTreeBuilt) {
+        document.querySelectorAll('#cl-tree .cl-books input').forEach(function(b) {
+            b.checked = !clSavedBooks || clSavedBooks.indexOf(b.value) >= 0;
+        });
+        clTreeSync();
+    } else if (clSavedBooks) {
+        clWhenVolumes(function() { clBuildTree(); });
+    }
 }
 function clIsOn(id) { return document.getElementById(id).classList.contains('active'); }
 function clSetToggle(id, on) {
@@ -2749,18 +3009,29 @@ function clInit() {
     repl.addEventListener('input', function() { clRefreshRows(); clSaveState(); });
 
     // Put the last session's options back.
-    var s = clReadStore();
-    find.value = s.find || '';
-    repl.value = s.replace || '';
-    CL_TOGGLES.forEach(function(t) { clSetToggle(t[0], !!s[t[3]]); });
-    clSavedBooks = Array.isArray(s.books) ? s.books.map(String) : null;
-    if (clSavedBooks) clWhenVolumes(function() { clBuildTree(); });
+    var s = clLoadSaved();
+    clApplyState(s);
 
     document.querySelector('#cl-queue .cl-queue-toggle').addEventListener('click', function() {
         document.getElementById('cl-queue').classList.toggle('open');
     });
     clLoadPending();
+    clWlInit(s.words);
     find.focus();
+    // In a browser that hasn't saved anything yet, the options arrive from the
+    // server a moment later; take them unless the admin has already changed something.
+    if (window.sessionState) {
+        fetch(API + '/session-state.php?scope=' + encodeURIComponent(window.sessionState.scope), {credentials: 'include'})
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) {
+                var srv = d && d.items && d.items['cl-state'];
+                if (!srv || typeof srv !== 'object' || clTouched) return;
+                if (JSON.stringify(srv) === JSON.stringify(s)) return;
+                clApplyState(srv);
+                clWlApply(srv.words);
+            })
+            .catch(function() {});
+    }
 }
 
 // The Books tab loads allVolumes; #cleanup can open before it lands.
@@ -2891,7 +3162,7 @@ var clBusy = false;
 
 function clFilterParams(s) {
     return 'q=' + encodeURIComponent(s.q) + (s.bold ? '&bold=1' : '') + (s.italic ? '&italic=1' : '')
-        + (s.matchCase ? '&case=1' : '');
+        + (s.matchCase ? '&case=1' : '') + (s.whole ? '&word=1' : '');
 }
 
 function clSearch() {
@@ -2900,7 +3171,7 @@ function clSearch() {
     var out = document.getElementById('cl-results');
     document.getElementById('cl-res-bar').hidden = false;
     if (!q.trim()) { summary.textContent = 'Enter something to find.'; out.innerHTML = ''; return Promise.resolve(); }
-    var s = {q: q, bold: clIsOn('cl-bold'), italic: clIsOn('cl-italic'), matchCase: clIsOn('cl-case')};
+    var s = {q: q, bold: clIsOn('cl-bold'), italic: clIsOn('cl-italic'), matchCase: clIsOn('cl-case'), whole: clIsOn('cl-word')};
     var vols = clSelectedVolumes();
     var seq = ++clSeq;
     var btn = document.getElementById('cl-search-btn');
@@ -2930,7 +3201,8 @@ function clSearch() {
 
 function clSummaryHtml() {
     var s = clLast;
-    var fmt = [s.bold ? 'bold' : '', s.italic ? 'italic' : ''].filter(Boolean).join(' + ');
+    var fmt = [s.bold ? 'bold' : '', s.italic ? 'italic' : '', s.matchCase ? 'match case' : '', s.whole ? 'whole words' : '']
+        .filter(Boolean).join(' + ');
     var h = s.total + ' match' + (s.total === 1 ? '' : 'es') + ' for “' + esc(s.q) + '”' + (fmt ? ' (' + fmt + ')' : '')
         + ' in ' + s.order.length + ' book' + (s.order.length === 1 ? '' : 's');
     if (s.formatRejected) h += ' · ' + s.formatRejected + ' more with the text but not the formatting';
@@ -2951,12 +3223,12 @@ function clRenderAll() {
     document.getElementById('cl-results').classList.toggle('replacing', clReplacement() !== null);
     document.getElementById('cl-results').innerHTML = series.map(function(g) {
         return '<div class="cl-fold cl-series-f open">'
-            + '<button type="button" class="cl-fold-h"><span class="tw">&#9654;</span>' + esc(g.label)
+            + '<button type="button" class="cl-fold-h" title="Show / hide this series\' matches"><span class="tw">&#9654;</span>' + esc(g.label)
             + '<span class="code">' + g.vks.length + ' book' + (g.vks.length === 1 ? '' : 's') + '</span>' + cnt(g.n) + '</button>'
             + '<div class="cl-fold-b">' + g.vks.map(function(vk) {
                 var v = s.books[vk].v;
                 return '<div class="cl-fold cl-book" data-vk="' + vk + '">'
-                    + '<button type="button" class="cl-fold-h"><span class="tw">&#9654;</span>'
+                    + '<button type="button" class="cl-fold-h" title="Show / hide this book\'s matches"><span class="tw">&#9654;</span>'
                     + esc((v.volume_number ? v.volume_number + ' · ' : '') + (v.volume_label || v.volume_code))
                     + '<span class="code">' + esc(v.volume_code || '') + '</span>' + cnt(v.count) + '</button>'
                     + '<div class="cl-fold-b" id="cl-bk-' + vk + '"></div></div>';
@@ -3124,7 +3396,7 @@ function clSkip() { if (clCur && !clBusy) clGoFrom(clCur.vk, clCur.i + 1); }
 
 function clReplaceArgs() {
     return {
-        q: clLast.q, bold: clLast.bold, italic: clLast.italic, case: clLast.matchCase,
+        q: clLast.q, bold: clLast.bold, italic: clLast.italic, case: clLast.matchCase, word: clLast.whole,
         replace: document.getElementById('cl-replace').value,
         rbold: clIsOn('cl-rbold'), ritalic: clIsOn('cl-ritalic')
     };
@@ -3250,7 +3522,7 @@ function clRenderQueue() {
     document.getElementById('cl-qtree').innerHTML = series.map(function(g) {
         var sk = 's' + g.key;
         return '<div class="cl-qseries' + (open[sk] || open[sk] === undefined ? ' open' : '') + '" data-key="' + sk + '">'
-            + '<div class="cl-node cl-series-row"><button type="button" class="cl-twisty">&#9654;</button>'
+            + '<div class="cl-node cl-series-row"><button type="button" class="cl-twisty" title="Expand / collapse">&#9654;</button>'
             + '<label><input type="checkbox" data-level="series"><span>' + esc(g.label) + '</span>'
             + '<span class="cl-n">' + g.n + '</span></label></div><div class="cl-qkids">'
             + g.vols.map(function(v) {

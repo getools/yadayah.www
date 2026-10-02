@@ -33,6 +33,7 @@ $sql = "
     JOIN yy_word w ON s.word_key = w.word_key
     WHERE w.word_active_flag = true
       AND NOT w.word_excluded_flag  -- not-a-word flag (admin Glossary)
+      AND w.word_master_word_key IS NULL  -- linked words show as their YY master
       AND LOWER(s.word_translit_text) IN ($placeholders)
     ORDER BY s.word_translit_sort
 ";
