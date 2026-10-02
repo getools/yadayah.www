@@ -282,8 +282,12 @@ function cleanupBookSlug(?string $volumeCode): ?string {
 /* ── Replace + the queue ─────────────────────────────────────────────────
  *
  * POST ?action=replace  JSON body:
- *   {mode: 'next'|'all', volume_key, q, bold, italic, case,
- *    replace, rbold, ritalic, target: {paragraph_key, start, match}}
+ *   {mode: 'next'|'all'|'some', volume_key, q, bold, italic, case, word,
+ *    replace, rbold, ritalic,
+ *    target: {paragraph_key, start, match}        — next: that one match
+ *    targets: [{paragraph_key, start, match}, …]  — some: just these
+ *    exclude: [{paragraph_key, start, match}, …]} — all: every match but these
+ * The page sends 'all' (optionally with exclude) or 'some', per its checkboxes.
  *
  * One volume per request (Cloudflare cuts a request off at ~100s), so the
  * page walks Replace All book by book.
@@ -349,7 +353,7 @@ function cleanupReplace(array $authUser): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
     $mode = $in['mode'] ?? '';
-    if ($mode !== 'next' && $mode !== 'all') errorResponse('mode must be next or all');
+    if (!in_array($mode, ['next', 'all', 'some'], true)) errorResponse('mode must be next, all or some');
     $q = (string)($in['q'] ?? '');
     if (trim($q) === '') errorResponse('Enter something to find');
     $replace = (string)($in['replace'] ?? '');
@@ -389,6 +393,18 @@ function cleanupReplace(array $authUser): void {
     $paraRow = [];
     $target = $in['target'] ?? null;
     $targetFound = false;
+    // mode 'some': only these matches; mode 'all' + exclude: all but these.
+    // Each is {paragraph_key, start, match}, as the search listed it.
+    $keyed = function ($list) {
+        $out = [];
+        foreach ((array)$list as $t) {
+            if (is_array($t)) $out[(int)($t['paragraph_key'] ?? 0) . ':' . (int)($t['start'] ?? -1)] = (string)($t['match'] ?? '');
+        }
+        return $out;
+    };
+    $targets = $keyed($in['targets'] ?? []);
+    $exclude = $keyed($in['exclude'] ?? []);
+    $targetsFound = 0;
     while ($r = $st->fetch()) {
         $pk = (int)$r['paragraph_key'];
         $parsed = cleanupParseHtml((string)$r['paragraph_text_html']);
@@ -399,15 +415,19 @@ function cleanupReplace(array $authUser): void {
         $paraRow[$pk] = $r;
         foreach ($m[0] as [$hit, $start]) {
             $end = $start + strlen($hit);
+            $id = $pk . ':' . $start;
             if ($mode === 'next') {
                 $apply = $target && (int)$target['paragraph_key'] === $pk
                     && (int)$target['start'] === $start && (string)$target['match'] === $hit;
                 if ($apply) $targetFound = true;
+            } elseif ($mode === 'some') {
+                $apply = isset($targets[$id]) && $targets[$id] === $hit;
+                if ($apply) $targetsFound++;
             } else {
-                $apply = !($wantBold || $wantItalic)
-                    || cleanupHasFormat($parsed['runs'], $text, $start, $end, $wantBold, $wantItalic);
+                $apply = (!($wantBold || $wantItalic)
+                        || cleanupHasFormat($parsed['runs'], $text, $start, $end, $wantBold, $wantItalic))
+                    && !(isset($exclude[$id]) && $exclude[$id] === $hit);
             }
-            $id = $pk . ':' . $start;
             $meta[$id] = [$pk, $start, $hit];
             $dbList[] = ['id' => $id, 'apply' => $apply, 'pos' => $base + $start, 'end' => $base + $end];
         }
@@ -416,7 +436,9 @@ function cleanupReplace(array $authUser): void {
         errorResponse('That match is no longer in the text — search again.', 409);
     }
     $toApply = count(array_filter($dbList, function ($d) { return $d['apply']; }));
-    if (!$toApply) jsonResponse(['volume_key' => $vk, 'replaced' => 0, 'unmapped' => 0, 'failed' => [], 'items' => []]);
+    // Ticked matches the text no longer has (changed since the search).
+    $missing = $mode === 'some' ? count($targets) - $targetsFound : 0;
+    if (!$toApply) jsonResponse(['volume_key' => $vk, 'replaced' => 0, 'unmapped' => 0, 'missing' => $missing, 'failed' => [], 'items' => []]);
     foreach ($dbList as &$d) {
         $d['before'] = cleanupUtf8Clean(substr($stream, max(0, $d['pos'] - 600), $d['pos'] - max(0, $d['pos'] - 600)));
         $d['after']  = cleanupUtf8Clean(substr($stream, $d['end'], 600));
@@ -551,6 +573,7 @@ function cleanupReplace(array $authUser): void {
         'failed'       => array_values($res['failed'] ?? []),
         'docx_matches' => $res['docx_matches'] ?? null,
         'items'        => $items,
+        'missing'      => $missing,
     ]);
 }
 

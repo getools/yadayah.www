@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790880932">
+    <meta name="page-version" content="1790920640">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
@@ -264,11 +264,26 @@
         .cl-book { border-top: 1px solid #e0e0e0; }
         .cl-fold-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: none; text-align: left;
             cursor: pointer; font: inherit; font-size: 0.88rem; font-weight: 600; color: #2c3e50; background: none; }
-        .cl-series-f > .cl-fold-h { background: #e9eef3; font-size: 0.92rem; }
-        .cl-book > .cl-fold-h { background: #f7f7f7; padding-left: 30px; font-size: 0.85rem; color: #333; }
-        .cl-series-f > .cl-fold-h:hover, .cl-book > .cl-fold-h:hover { background: #e3ecf7; }
+        .cl-fold-hrow { display: flex; align-items: center; }
+        .cl-fold-hrow > .cl-sel { flex: none; margin: 0 0 0 12px; cursor: pointer; }
+        .cl-series-f > .cl-fold-hrow { background: #e9eef3; }
+        .cl-series-f > .cl-fold-hrow .cl-fold-h { font-size: 0.92rem; }
+        .cl-book > .cl-fold-hrow { background: #f7f7f7; padding-left: 18px; }
+        .cl-book > .cl-fold-hrow .cl-fold-h { font-size: 0.85rem; color: #333; }
+        .cl-series-f > .cl-fold-hrow:hover, .cl-book > .cl-fold-hrow:hover { background: #e3ecf7; }
+        .cl-sel-bar { flex-basis: 100%; display: flex; align-items: center; gap: 14px; padding: 6px 12px;
+            background: #fff; border: 1px solid #d5dbe2; border-radius: 6px; order: 3; }
+        .cl-sel-all { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #555; cursor: pointer; }
+        .cl-sel-bar #cl-rep-run:disabled { opacity: 0.45; cursor: default; }
+        /* Top-aligned with the row's first line of text, not centred on a long excerpt. */
+        .cl-hit { align-items: flex-start; }
+        .cl-hit > .cl-sel { flex: none; align-self: flex-start; margin: 4px 0 0; cursor: pointer; }
+        /* Unticked: no replace preview, slightly faded. */
+        #cl-results.replacing .cl-hit.unpicked .ex mark { background: #fde68a; text-decoration: none; }
+        .cl-hit.unpicked .ex ins.cl-new { display: none; }
+        .cl-hit.unpicked { opacity: 0.7; }
         .cl-fold-h .tw { flex: none; width: 12px; font-size: 0.65rem; color: #666; transition: transform 0.15s; }
-        .cl-fold.open > .cl-fold-h .tw, .cl-fold.open > .cl-queue-h .tw { transform: rotate(90deg); }
+        .cl-fold.open > .cl-fold-hrow .tw, .cl-fold.open > .cl-queue-h .tw { transform: rotate(90deg); }
         .cl-fold-h .code { color: #999; font-weight: 400; font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .cl-fold-h .n { margin-left: auto; flex: none; color: #555; font-weight: 600; font-size: 0.78rem; background: #fff;
             border: 1px solid #d5dbe2; border-radius: 10px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
@@ -590,14 +605,6 @@
                     <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʿ" title="Insert left half ring">ʿ</button>
                     <button type="button" class="cl-fmt" id="cl-rbold" title="Bold — the replacement text is bold"><b>B</b></button>
                     <button type="button" class="cl-fmt" id="cl-ritalic" title="Italic — the replacement text is italic"><i>I</i></button>
-                    <span class="cl-rep-actions">
-                        <button type="button" class="btn btn-secondary btn-sm" id="cl-rep-next" onclick="clReplaceNext()" disabled
-                                title="Replace the highlighted match, then move to the next one">Replace Next</button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="cl-skip" onclick="clSkip()" disabled
-                                title="Leave the highlighted match and move to the next one">Skip</button>
-                        <button type="button" class="btn btn-primary btn-sm" id="cl-rep-all" onclick="clReplaceAll()" disabled
-                                title="Replace every match of the last search">Replace All</button>
-                    </span>
                 </div>
 
                 <span class="cl-lbl">Books</span>
@@ -637,6 +644,11 @@
 
         <div class="cl-res-bar" id="cl-res-bar" hidden>
             <div id="cl-summary" class="cl-summary"></div>
+            <div class="cl-sel-bar">
+                <label class="cl-sel-all" title="Tick / untick every match"><input type="checkbox" id="cl-sel-all" disabled> All</label>
+                <button type="button" class="btn btn-primary btn-sm" id="cl-rep-run" onclick="clReplaceSelected()" disabled
+                        title="Replace every ticked match with the Replace text (DOCX changes are queued until you reprocess)">Replace 0 of 0 selected matches</button>
+            </div>
             <div class="cl-res-tools">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="clFoldAll(true)">Expand all</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="clFoldAll(false)">Collapse all</button>
@@ -3195,8 +3207,7 @@ document.addEventListener('keydown', function(e) {
 
 // ── Search: counts per book, matches loaded per book ──
 var clSeq = 0;
-var clLast = null;   // {q, bold, italic, matchCase, total, order: [vk], books: {vk: book}}
-var clCur = null;    // {vk, i} — the highlighted match
+var clLast = null;   // {q, bold, italic, matchCase, whole, total, order: [vk], books: {vk: book}}
 var clBusy = false;
 
 function clFilterParams(s) {
@@ -3209,7 +3220,7 @@ function clSearch() {
     var summary = document.getElementById('cl-summary');
     var out = document.getElementById('cl-results');
     document.getElementById('cl-res-bar').hidden = false;
-    if (!q.trim()) { summary.textContent = 'Enter something to find.'; out.innerHTML = ''; return Promise.resolve(); }
+    if (!q.trim()) { summary.textContent = 'Enter something to find.'; out.innerHTML = ''; clLast = null; clSyncSel(); return Promise.resolve(); }
     var s = {q: q, bold: clIsOn('cl-bold'), italic: clIsOn('cl-italic'), matchCase: clIsOn('cl-case'), whole: clIsOn('cl-word')};
     var vols = clSelectedVolumes();
     var seq = ++clSeq;
@@ -3222,20 +3233,26 @@ function clSearch() {
         .then(function(r) { return safeJson(r); })
         .then(function(d) {
             if (seq !== clSeq) return;
-            if (d.error) { summary.textContent = d.error; out.innerHTML = ''; clLast = null; clCur = null; clUpdateRepButtons(); return; }
+            if (d.error) { summary.textContent = d.error; out.innerHTML = ''; clLast = null; return; }
             s.total = d.total; s.formatRejected = d.format_rejected;
             s.order = []; s.books = {};
             (d.volumes || []).forEach(function(v) {
                 s.order.push(v.volume_key);
-                s.books[v.volume_key] = {v: v, items: [], after: -1, more: true, loaded: false, loading: null};
+                // Every match starts ticked: sel = "all except" / "none except".
+                s.books[v.volume_key] = {v: v, items: [], after: -1, more: true, loaded: false, loading: null,
+                                         sel: {mode: 'all', except: {}}};
             });
-            clLast = s; clCur = null;
+            clLast = s;
             clRenderAll();
-            // Highlight the first match (opens just its book).
-            if (s.order.length) return clGoFrom(s.order[0], 0);
+            // Open the first book so there is something to read straight away.
+            if (s.order.length) {
+                var f = document.querySelector('#cl-results .cl-book[data-vk="' + s.order[0] + '"]');
+                if (f) f.classList.add('open');
+                return clLoadBook(s.order[0]);
+            }
         })
         .catch(function(e) { if (seq === clSeq) { summary.textContent = 'Search failed: ' + (e && e.message || e); out.innerHTML = ''; } })
-        .then(function() { if (seq === clSeq) { btn.disabled = false; clUpdateRepButtons(); } });
+        .then(function() { if (seq === clSeq) { btn.disabled = false; clSyncSel(); } });
 }
 
 function clSummaryHtml() {
@@ -3255,24 +3272,30 @@ function clRenderAll() {
     s.order.forEach(function(vk) {
         var v = s.books[vk].v;
         var sk = v.series_key === null ? 'none' : v.series_key;
-        if (!bySeries[sk]) { bySeries[sk] = {label: v.series_label || 'No series', vks: [], n: 0}; series.push(bySeries[sk]); }
+        if (!bySeries[sk]) { bySeries[sk] = {key: sk, label: v.series_label || 'No series', vks: [], n: 0}; series.push(bySeries[sk]); }
         bySeries[sk].vks.push(vk); bySeries[sk].n += v.count;
     });
+    s.series = series;
     var cnt = function(n) { return '<span class="n">' + n + ' match' + (n === 1 ? '' : 'es') + '</span>'; };
     document.getElementById('cl-results').classList.toggle('replacing', clReplacement() !== null);
     document.getElementById('cl-results').innerHTML = series.map(function(g) {
-        return '<div class="cl-fold cl-series-f open">'
+        return '<div class="cl-fold cl-series-f open" data-sk="' + esc(String(g.key)) + '">'
+            + '<div class="cl-fold-hrow"><input type="checkbox" class="cl-sel" data-level="series" checked'
+            + ' title="Tick / untick every match in this series">'
             + '<button type="button" class="cl-fold-h" title="Show / hide this series\' matches"><span class="tw">&#9654;</span>' + esc(g.label)
-            + '<span class="code">' + g.vks.length + ' book' + (g.vks.length === 1 ? '' : 's') + '</span>' + cnt(g.n) + '</button>'
+            + '<span class="code">' + g.vks.length + ' book' + (g.vks.length === 1 ? '' : 's') + '</span>' + cnt(g.n) + '</button></div>'
             + '<div class="cl-fold-b">' + g.vks.map(function(vk) {
                 var v = s.books[vk].v;
                 return '<div class="cl-fold cl-book" data-vk="' + vk + '">'
+                    + '<div class="cl-fold-hrow"><input type="checkbox" class="cl-sel" data-level="book" checked'
+                    + ' title="Tick / untick every match in this book">'
                     + '<button type="button" class="cl-fold-h" title="Show / hide this book\'s matches"><span class="tw">&#9654;</span>'
                     + esc((v.volume_number ? v.volume_number + ' · ' : '') + (v.volume_label || v.volume_code))
-                    + '<span class="code">' + esc(v.volume_code || '') + '</span>' + cnt(v.count) + '</button>'
+                    + '<span class="code">' + esc(v.volume_code || '') + '</span>' + cnt(v.count) + '</button></div>'
                     + '<div class="cl-fold-b" id="cl-bk-' + vk + '"></div></div>';
             }).join('') + '</div></div>';
     }).join('') || '<div class="cl-loading">No matches.</div>';
+    clSyncSel();
 }
 
 // One book's loaded rows plus a "Show more" when there are more.
@@ -3282,7 +3305,8 @@ function clRenderBook(vk) {
     if (!body) return;
     var html = b.items.map(function(r, i) { return clHitHtml(r, vk, i); }).join('');
     if (b.loading) html += '<div class="cl-loading">Loading…</div>';
-    else if (b.more) html += '<button type="button" class="btn btn-secondary btn-sm cl-more" data-vk="' + vk + '">Show more'
+    else if (b.more) html += '<button type="button" class="btn btn-secondary btn-sm cl-more" data-vk="' + vk + '"'
+        + ' title="Load the next page of this book\'s matches">Show more'
         + (b.loaded ? ' (' + Math.max(0, b.v.count - b.items.length) + ' left)' : '') + '</button>';
     body.innerHTML = html;
 }
@@ -3301,7 +3325,6 @@ function clLoadBook(vk) {
             b.items = b.items.concat(d.items || []);
             b.after = d.after; b.more = !!d.more; b.loaded = true; b.loading = null;
             clRenderBook(vk);
-            clMarkCurrent(true);
         }, function(e) { b.loading = null; b.more = false; clRenderBook(vk); });
     clRenderBook(vk);
     return b.loading;
@@ -3327,7 +3350,7 @@ document.addEventListener('click', function(e) {
     if (more) { clLoadBook(+more.getAttribute('data-vk')); return; }
     var h = e.target.closest('#cl-results .cl-fold-h');
     if (h) {
-        var f = h.parentNode;
+        var f = h.closest('.cl-fold');
         f.classList.toggle('open');
         if (f.classList.contains('cl-book') && f.classList.contains('open')) {
             var vk = +f.getAttribute('data-vk');
@@ -3346,7 +3369,87 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Replace preview: each pending match struck through and followed by the
+// ── Which matches get replaced ──
+// Each book keeps {mode: 'all'|'none', except: {key: 1}} so a whole book (or
+// series, or everything) can be ticked without loading its matches; only
+// matches loaded on screen can be ticked/unticked one by one.
+function clItemKey(r) { return r.paragraph_key + ':' + r.start; }
+function clItemOn(b, r) { var x = !!b.sel.except[clItemKey(r)]; return b.sel.mode === 'all' ? !x : x; }
+function clSetItem(b, r, on) {
+    var k = clItemKey(r);
+    if (on === (b.sel.mode === 'all')) delete b.sel.except[k]; else b.sel.except[k] = 1;
+}
+function clBookOnCount(b) {
+    var n = Object.keys(b.sel.except).length;
+    return b.sel.mode === 'all' ? b.v.count - n : n;
+}
+function clSetBook(b, on) { b.sel = {mode: on ? 'all' : 'none', except: {}}; }
+
+function clSetBox(cb, on, total) {
+    cb.checked = on > 0 && on === total;
+    cb.indeterminate = on > 0 && on < total;
+}
+
+// Bring every checkbox, the row styling and the Replace button in line with the selection.
+function clSyncSel() {
+    var btn = document.getElementById('cl-rep-run');
+    var all = document.getElementById('cl-sel-all');
+    if (!clLast || !clLast.order) {
+        btn.textContent = 'Replace 0 of 0 selected matches'; btn.disabled = true;
+        all.checked = false; all.indeterminate = false; all.disabled = true;
+        return;
+    }
+    var s = clLast, x = 0;
+    s.order.forEach(function(vk) {
+        var b = s.books[vk], on = clBookOnCount(b);
+        x += on;
+        var fold = document.querySelector('#cl-results .cl-book[data-vk="' + vk + '"]');
+        if (!fold) return;
+        clSetBox(fold.querySelector(':scope > .cl-fold-hrow .cl-sel'), on, b.v.count);
+        fold.querySelectorAll('.cl-hit').forEach(function(row) {
+            var r = b.items[+row.getAttribute('data-i')];
+            var picked = clItemOn(b, r);
+            row.querySelector('.cl-sel').checked = picked;
+            row.classList.toggle('unpicked', !picked);
+        });
+    });
+    (s.series || []).forEach(function(g) {
+        var on = 0;
+        g.vks.forEach(function(vk) { on += clBookOnCount(s.books[vk]); });
+        var fold = document.querySelector('#cl-results .cl-series-f[data-sk="' + g.key + '"]');
+        if (fold) clSetBox(fold.querySelector(':scope > .cl-fold-hrow .cl-sel'), on, g.n);
+    });
+    all.disabled = !s.total;
+    clSetBox(all, x, s.total);
+    btn.textContent = 'Replace ' + x + ' of ' + s.total + ' selected match' + (s.total === 1 ? '' : 'es');
+    btn.disabled = clBusy || !x;
+}
+
+document.addEventListener('change', function(e) {
+    var cb = e.target;
+    if (!clLast) return;
+    if (cb.id === 'cl-sel-all') {
+        clLast.order.forEach(function(vk) { clSetBook(clLast.books[vk], cb.checked); });
+    } else if (cb.classList.contains('cl-sel') && cb.closest('#cl-results')) {
+        var lvl = cb.getAttribute('data-level');
+        if (lvl === 'series') {
+            var sk = cb.closest('.cl-series-f').getAttribute('data-sk');
+            clLast.series.filter(function(g) { return String(g.key) === sk; })[0].vks
+                .forEach(function(vk) { clSetBook(clLast.books[vk], cb.checked); });
+        } else if (lvl === 'book') {
+            clSetBook(clLast.books[+cb.closest('.cl-book').getAttribute('data-vk')], cb.checked);
+        } else {
+            var row = cb.closest('.cl-hit');
+            var b = clLast.books[+row.getAttribute('data-vk')];
+            clSetItem(b, b.items[+row.getAttribute('data-i')], cb.checked);
+        }
+    } else {
+        return;
+    }
+    clSyncSel();
+});
+
+// Replace preview: each ticked match struck through and followed by the
 // replacement, styled per the Replace field's B / I. Shown once the Replace
 // field has text or a format.
 function clReplacement() {
@@ -3366,10 +3469,11 @@ function clRefreshRows() {
     if (!clLast) return;
     document.getElementById('cl-results').classList.toggle('replacing', clReplacement() !== null);
     clLast.order.forEach(function(vk) { if (clLast.books[vk].loaded) clRenderBook(vk); });
-    clMarkCurrent(true);
 }
 
 function clHitHtml(r, vk, i) {
+    var b = clLast.books[vk];
+    var picked = clItemOn(b, r);
     var loc = (r.chapter !== null ? 'Ch ' + r.chapter + ' · ' : '')
         + (r.page !== null ? 'p. ' + r.page + ' · ' : '')
         + '¶ ' + (r.number === null ? '?' : r.number);
@@ -3381,57 +3485,15 @@ function clHitHtml(r, vk, i) {
         locHtml = '<a class="loc" href="' + url + '" target="_blank" rel="noopener" title="' + chap
             + 'Open this page in the flipbook">' + loc + '<span class="ext">&#8599;</span></a>';
     }
-    var cls = 'cl-hit' + (r.replaced ? ' replaced' : '') + (r.failReason ? ' failed' : '') + (r.flip ? ' flip' : '');
-    var pre = r.replaced ? function(h) { return h; } : clWithReplacement;
+    var cls = 'cl-hit' + (r.flip ? ' flip' : '') + (picked ? '' : ' unpicked');
     // excerpt/paragraph are server-built HTML: escaped text inside <b>/<i>/<mark> only.
-    return '<div class="' + cls + '" data-vk="' + vk + '" data-i="' + i + '"'
-        + (r.failReason ? ' data-fail="' + esc(r.failReason) + '"' : '') + '>' + locHtml
-        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + pre(r.excerpt) + '</span>'
-        + '<span class="ex-full">' + pre(r.paragraph || r.excerpt) + '</span></span></div>';
+    return '<div class="' + cls + '" data-vk="' + vk + '" data-i="' + i + '">'
+        + '<input type="checkbox" class="cl-sel" data-level="item"' + (picked ? ' checked' : '')
+        + ' title="Replace this match (untick to leave it as it is)">'
+        + locHtml
+        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt) + '</span>'
+        + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt) + '</span></span></div>';
 }
-
-// ── Current match + Replace Next / Skip / Replace All ──
-function clUpdateRepButtons() {
-    var has = !!(clLast && clLast.total);
-    document.getElementById('cl-rep-next').disabled = clBusy || !clCur;
-    document.getElementById('cl-skip').disabled = clBusy || !clCur;
-    document.getElementById('cl-rep-all').disabled = clBusy || !has;
-}
-
-// Move the highlight to the first pending match at or after (vk, i),
-// loading more of the book, or the next book, as needed.
-function clGoFrom(vk, i) {
-    var s = clLast;
-    var k = s.order.indexOf(vk);
-    var step = function() {
-        if (s !== clLast) return Promise.resolve();
-        if (k >= s.order.length) { clCur = null; clMarkCurrent(); return Promise.resolve(); }
-        var bk = s.order[k], b = s.books[bk];
-        var p = b.loaded ? Promise.resolve() : clLoadBook(bk);
-        return p.then(function() {
-            while (i < b.items.length && (b.items[i].replaced || b.items[i].failReason)) i++;
-            if (i < b.items.length) { clCur = {vk: bk, i: i}; clMarkCurrent(); return; }
-            if (b.more) return clLoadBook(bk).then(step);
-            k++; i = 0;
-            return step();
-        });
-    };
-    return step().then(clUpdateRepButtons);
-}
-
-function clMarkCurrent(noScroll) {
-    document.querySelectorAll('#cl-results .cl-hit.current').forEach(function(h) { h.classList.remove('current'); });
-    if (!clCur) { clUpdateRepButtons(); return; }
-    var row = document.querySelector('#cl-results .cl-hit[data-vk="' + clCur.vk + '"][data-i="' + clCur.i + '"]');
-    if (row) {
-        row.classList.add('current');
-        for (var f = row.closest('.cl-fold'); f; f = f.parentNode.closest('.cl-fold')) f.classList.add('open');
-        if (!noScroll) row.scrollIntoView({block: 'center', behavior: 'smooth'});
-    }
-    clUpdateRepButtons();
-}
-
-function clSkip() { if (clCur && !clBusy) clGoFrom(clCur.vk, clCur.i + 1); }
 
 function clReplaceArgs() {
     return {
@@ -3460,63 +3522,44 @@ function clFlash(html) {
     s.insertAdjacentHTML('beforeend', '<div class="cl-flash">' + html + '</div>');
 }
 
-function clReplaceNext() {
-    if (clBusy || !clCur) return;
-    var args = clReplaceArgs();
-    if (!clConfirmEmpty(args)) return;
-    var cur = clCur, b = clLast.books[cur.vk], r = b.items[cur.i];
-    clBusy = true; clUpdateRepButtons();
-    clFlash('Replacing in ' + esc(b.v.volume_code || b.v.volume_label) + '…');
-    clPost('replace', Object.assign({mode: 'next', volume_key: cur.vk,
-        target: {paragraph_key: r.paragraph_key, start: r.start, match: r.match}}, args))
-    .then(function(d) {
-        if (d.error) r.failReason = d.error;
-        else if (d.replaced) {
-            var it = d.items && d.items[0];
-            r.replaced = true;
-            if (it) {
-                r.excerpt = it.excerpt; r.paragraph = it.paragraph;
-                // Later matches in the same paragraph moved by the length change.
-                b.items.forEach(function(o) {
-                    if (o !== r && o.paragraph_key === r.paragraph_key && o.start > r.start) o.start += it.delta;
-                });
-            }
-        } else {
-            r.failReason = d.failed && d.failed.length ? 'Not replaced: ' + d.failed[0]
-                : 'Not replaced: could not find this spot in the Word DOCX';
-        }
-        clRenderBook(cur.vk);
-        clFlash(r.replaced
-            ? '<span class="ok">Replaced in ' + esc(b.v.volume_code || b.v.volume_label) + ' — queued until you reprocess the book.</span>'
-            : '<span class="bad">' + esc(r.failReason) + '</span>');
-        clLoadPending();
-        return clGoFrom(cur.vk, cur.i + 1);
-    }).catch(function(e) {
-        clFlash('<span class="bad">Replace failed: ' + esc(e && e.message || String(e)) + '</span>');
-    }).then(function() { clBusy = false; clUpdateRepButtons(); });
+// The request for one book: everything, everything but the unticked ones,
+// or just the ticked ones.
+function clBookRequest(b) {
+    var byKey = {};
+    b.items.forEach(function(r) { byKey[clItemKey(r)] = r; });
+    var list = Object.keys(b.sel.except).map(function(k) {
+        var r = byKey[k];
+        return r ? {paragraph_key: r.paragraph_key, start: r.start, match: r.match} : null;
+    }).filter(Boolean);
+    if (b.sel.mode === 'all') return list.length ? {mode: 'all', exclude: list} : {mode: 'all'};
+    return {mode: 'some', targets: list};
 }
 
-function clReplaceAll() {
-    if (clBusy || !clLast || !clLast.total) return;
+function clReplaceSelected() {
+    if (clBusy || !clLast) return;
     var s = clLast, args = clReplaceArgs();
-    var vks = s.order.slice();
+    var vks = s.order.filter(function(vk) { return clBookOnCount(s.books[vk]) > 0; });
+    var x = vks.reduce(function(n, vk) { return n + clBookOnCount(s.books[vk]); }, 0);
+    if (!x) return;
     var fmt = [args.rbold ? 'bold' : '', args.ritalic ? 'italic' : ''].filter(Boolean).join(' + ');
-    if (!confirm('Replace ' + s.total + ' match' + (s.total === 1 ? '' : 'es') + ' of “' + s.q + '” with “' + args.replace + '”'
+    if (!confirm('Replace ' + x + ' of ' + s.total + ' match' + (s.total === 1 ? '' : 'es') + ' of “' + s.q + '” with “' + args.replace + '”'
         + (fmt ? ' (' + fmt + ')' : '') + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
         + 'The parsed text changes now, and so does a staged copy of each book\'s Word DOCX. '
         + 'Nothing is rebuilt until you reprocess the books under Queued DOCX changes.')) return;
     if (!clConfirmEmpty(args)) return;
 
-    clBusy = true; clUpdateRepButtons();
+    clBusy = true; clSyncSel();
     var tot = {replaced: 0, books: 0}, problems = [];
     var name = function(vk) { var v = s.books[vk].v; return v.volume_code || v.volume_label; };
     var step = function(i) {
         if (i >= vks.length) return Promise.resolve();
         clFlash('Replacing… book ' + (i + 1) + ' of ' + vks.length + ' (' + esc(name(vks[i])) + ') — ' + tot.replaced + ' replaced so far');
-        return clPost('replace', Object.assign({mode: 'all', volume_key: vks[i]}, args)).then(function(r) {
+        var body = Object.assign({volume_key: vks[i]}, clBookRequest(s.books[vks[i]]), args);
+        return clPost('replace', body).then(function(r) {
             if (r.error) { problems.push(r.error); return; }
             if (r.replaced) { tot.replaced += r.replaced; tot.books++; }
             if (r.unmapped) problems.push(name(vks[i]) + ': ' + r.unmapped + ' not found in the DOCX — left unchanged');
+            if (r.missing) problems.push(name(vks[i]) + ': ' + r.missing + ' ticked match' + (r.missing === 1 ? ' was' : 'es were') + ' no longer in the text');
             (r.failed || []).forEach(function(f) { problems.push(name(vks[i]) + ': ' + f); });
         }, function(e) {
             problems.push(name(vks[i]) + ': ' + (e && e.message || e));
