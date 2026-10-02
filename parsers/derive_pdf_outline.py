@@ -23,6 +23,16 @@ style and located via case-insensitive title matching in the top lines of
 each PDF page. The TOC entries are emitted as unnumbered (no leading "N  ")
 so the bundle parser resolves them by chapter_name rather than chapter_number.
 
+For books that use no YY heading styles at all (authored before the style
+convention), chapters are detected from consecutive Normal-style paragraph
+pairs where a bare digit (the chapter number) is immediately followed by the
+chapter title.  The PDF scan also handles three layout variants:
+
+  * Chapter number and title on the same page anywhere (mid-page chapter
+    start after the previous chapter's text ends).
+  * Chapter number on the last line of page N, title on the first content
+    line of page N+1 (page break fell between them).
+
 Page numbers are found by scanning the RENDERED PDF rather than trusting
 the page numbers Word cached in the TOC field: a different renderer
 re-paginates, and those cached numbers drift (ONLYOFFICE put s04v05's
@@ -34,6 +44,7 @@ never preceded by the bare chapter number, so this does not false-match.
 Idempotent: exits 0 without touching a PDF that already has an outline
 unless --force is given.
 """
+import html as html_mod
 import io
 import re
 import sys
@@ -43,16 +54,21 @@ import fitz  # PyMuPDF
 
 
 def docx_paragraphs(docx_path):
-    """Yield (style, text) for each paragraph in the document body."""
+    """Yield (style, text) for each paragraph in the document body.
+
+    Paragraphs without an explicit style tag are yielded as ("Normal", text).
+    HTML entities (e.g. &amp;) are decoded so titles compare cleanly against
+    PDF-extracted text.
+    """
     with zipfile.ZipFile(docx_path) as z:
         xml = z.read("word/document.xml").decode("utf-8", "replace")
     for p in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S):
         m = re.search(r'w:pStyle w:val="([^"]+)"', p)
-        if not m:
-            continue
-        text = "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", p)).strip()
+        style = m.group(1) if m else "Normal"
+        text = html_mod.unescape(
+            "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", p))).strip()
         if text:
-            yield m.group(1), text
+            yield style, text
 
 
 def outline_targets(docx_path):
@@ -62,9 +78,15 @@ def outline_targets(docx_path):
     back_matter — TOC1 entries not already covered by chapters
     sections    — yyheadingsection-styled paragraphs (unnumbered sections
                   used in companion/reference books that lack yychapter)
+
+    Fallback: if neither yychapter nor yyheadingsection paragraphs are found,
+    chapters are detected from consecutive Normal-style paragraph pairs where
+    a bare digit immediately precedes a title text.  This handles books
+    authored before the heading-style convention (e.g. s04v06).
     """
     chapters, toc_entries, sections = [], [], []
-    for style, text in docx_paragraphs(docx_path):
+    all_paras = list(docx_paragraphs(docx_path))
+    for style, text in all_paras:
         if style == "yychapter":
             chapters.append(text)
         elif style == "yyheadingsection":
@@ -86,8 +108,24 @@ def outline_targets(docx_path):
         title = strip_page(entry)
         # Numbered chapters already come from yychapter; keep only extras
         # (RESOURCES and friends), which carry no leading chapter number.
-        if title not in seen and not re.match(r"^\d+", title):
+        if title not in seen and not re.match(r"^\d", title):
             back_matter.append(title)
+
+    # Fallback for books with no YY heading styles: detect chapters from
+    # consecutive Normal paragraphs where a bare digit is immediately
+    # followed by a title text (the chapter number and title live in
+    # separate paragraphs rather than one yychapter paragraph).
+    if not chapters and not sections:
+        for i in range(len(all_paras) - 1):
+            c_style, c_text = all_paras[i]
+            n_style, n_text = all_paras[i + 1]
+            if (c_style == "Normal" and n_style == "Normal"
+                    and re.match(r"^\d+$", c_text)
+                    and n_text and not re.match(r"^\d", n_text)):
+                # Combine into the same "NTitle" shape that numbered_chapters()
+                # expects (e.g. "1aOwth ~ Signs", "2Beryth ~ Covenant").
+                chapters.append(c_text + n_text)
+
     return chapters, back_matter, sections
 
 
@@ -121,10 +159,33 @@ def numbered_chapters(chapters):
 
 
 def find_chapter_pages(doc, numbered):
-    """Map chapter number -> physical page number (both 1-based)."""
-    found = {}
+    """Map chapter number -> physical page number (both 1-based).
+
+    Three passes to handle the layout variants produced by ONLYOFFICE:
+
+    Pass 1 (head lines, n=4): fast path for standard books where chapter
+      numbers appear near the top of the page.
+
+    Pass 2 (all lines, single page): mid-page chapter starts where the
+      previous chapter's text ends, then the divider + number + title all
+      appear on the same page but well past line 4.
+
+    Pass 3 (cross-page): the page break falls between the chapter number
+      and the title, so the number is the last non-empty line on page N
+      and the title is the second non-empty line on page N+1 (right after
+      the page number).
+    """
+    # Pre-compute all pages' line lists once (saves repeated get_text calls).
+    page_lines = []
     for pno in range(doc.page_count):
-        head, _ = head_lines(doc[pno])
+        lines = [l.strip() for l in doc[pno].get_text().split("\n") if l.strip()]
+        page_lines.append(lines)
+
+    found = {}
+
+    # Pass 1: head lines (n=4) — fast path, preserves original behaviour
+    for pno, lines in enumerate(page_lines):
+        head = lines[:4]
         if len(head) < 2:
             continue
         for number, title in numbered:
@@ -138,6 +199,45 @@ def find_chapter_pages(doc, numbered):
                         and norm(head[j + 1]).startswith(probe)):
                     found[number] = pno + 1
                     break
+
+    # Pass 2: all lines on a single page — mid-page chapter starts
+    if len(found) < len(numbered):
+        for pno, lines in enumerate(page_lines):
+            if len(lines) < 2:
+                continue
+            for number, title in numbered:
+                if number in found:
+                    continue
+                probe = title[:18]
+                if not probe:
+                    continue
+                for j in range(len(lines) - 1):
+                    if (lines[j] == str(number)
+                            and norm(lines[j + 1]).startswith(probe)):
+                        found[number] = pno + 1
+                        break
+
+    # Pass 3: cross-page — chapter number ends page N, title begins page N+1
+    if len(found) < len(numbered):
+        for pno in range(doc.page_count - 1):
+            lines_curr = page_lines[pno]
+            lines_next = page_lines[pno + 1]
+            if not lines_curr or len(lines_next) < 2:
+                continue
+            last_line = lines_curr[-1]
+            # lines_next[0] is the page number; real content starts at [1]
+            first_content = lines_next[1]
+            for number, title in numbered:
+                if number in found:
+                    continue
+                probe = title[:18]
+                if not probe:
+                    continue
+                if (last_line == str(number)
+                        and norm(first_content).startswith(probe)):
+                    found[number] = pno + 2  # title is on the next page
+                    break
+
     return found
 
 
