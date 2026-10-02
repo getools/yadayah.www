@@ -331,6 +331,10 @@
         .cl-wl-filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 0.82rem; color: #555; margin-bottom: 8px; }
         .cl-wl-filters label { display: inline-flex; align-items: center; gap: 5px; }
         .cl-wl-filters select, .cl-wl-filters input[type=text] { font-size: 0.82rem; padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; }
+        /* Half-ring / any-apostrophe keys in the Transliteration header. */
+        .cl-wl-rings { display: inline-flex; gap: 3px; margin-left: 8px; vertical-align: middle; }
+        .cl-ring.cl-ring-sm { min-width: 22px; padding: 1px 3px; font-size: 1rem; }
+        .cl-ring.cl-ring-sm.cl-apos { font-size: 1.1rem; }
         .cl-wl-table input#cl-wl-q {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         .cl-wl-srcs { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; padding: 2px 8px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
@@ -559,7 +563,7 @@
                         <div class="cl-wl-table">
                             <table>
                                 <thead><tr>
-                                    <th data-sort="translit" title="Sort by transliteration (half-rings ignored); click again to reverse">Transliteration</th>
+                                    <th data-sort="translit" title="Sort by transliteration (half-rings ignored); click again to reverse">Transliteration<span class="cl-wl-rings"><button type="button" class="cl-ring cl-ring-sm" data-for="cl-wl-q" data-ch="ʾ" title="Add a right half ring to the Transliteration filter">ʾ</button><button type="button" class="cl-ring cl-ring-sm" data-for="cl-wl-q" data-ch="ʿ" title="Add a left half ring to the Transliteration filter">ʿ</button><button type="button" class="cl-ring cl-ring-sm cl-apos" data-for="cl-wl-q" data-ch="❜" title="Any apostrophe: inserts ❜, which matches any ONE of ʿ ʾ ' ` ‘ ’ ‚ ‛ ´ ʼ ʻ ʹ ′ (left/right half ring, straight/curly single quote, backtick and similar)">❜</button></span></th>
                                     <th data-sort="base" class="rtl" title="Native spelling (Base, else the Hebrew) — click to sort">Base</th>
                                     <th data-sort="yt" class="rtl" title="The Hebrew in Yada Towrah letters — click to sort">YT</th>
                                     <th data-sort="language" title="Language — click to sort">Lng</th>
@@ -568,7 +572,7 @@
                                 </tr>
                                 <!-- One filter per column; all "contains" except Lng (pick) and Count. -->
                                 <tr class="cl-wl-frow">
-                                    <th><input type="text" id="cl-wl-q" autocomplete="off" spellcheck="false" placeholder="contains…" title="Any spelling contains (half-rings ignored)"></th>
+                                    <th><input type="text" id="cl-wl-q" autocomplete="off" spellcheck="false" placeholder="contains…" title="Any spelling contains. Half-rings and apostrophes are ignored unless you type one — then it must match exactly; ❜ matches any one of them"></th>
                                     <th><input type="text" id="cl-wl-f-base" autocomplete="off" spellcheck="false" placeholder="…" title="Base contains"></th>
                                     <th><input type="text" id="cl-wl-f-yt" autocomplete="off" spellcheck="false" placeholder="…" title="YT contains"></th>
                                     <th><select id="cl-wl-lang" title="Language"><option value="">All</option></select></th>
@@ -3040,10 +3044,12 @@ function clInit() {
     document.querySelectorAll('#tab-cleanup .cl-ring').forEach(function(btn) {
         // Swallow the mousedown so the input keeps its caret.
         btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();   // the Transliteration keys sit in a sortable header
             var target = document.getElementById(btn.getAttribute('data-for'));
             clInsertAtCaret(target, btn.getAttribute('data-ch'));
             if (target === repl) clRefreshRows();
+            if (target.id === 'cl-wl-q') target.dispatchEvent(new Event('input'));
             clSaveState();
         });
     });

@@ -957,8 +957,20 @@ function cleanupWords(): void {
         $where[] = "COALESCE(trim(w.word_source_code), '') IN (" . implode(',', $in) . ')';
     }
     // Half-rings and apostrophes are ignored on both sides, so "anaw" finds
-    // ʿanaw and Strong's 'anaw alike.
-    $q = trim(preg_replace("/[\x{02BE}\x{02BF}\x{02BC}'\x{2018}\x{2019}]/u", '', (string)($_GET['q'] ?? '')));
+    // ʿanaw and Strong's 'anaw alike — unless the filter itself contains one
+    // (typed or from the header keys): then it must match exactly, and ❜
+    // matches any one apostrophe-like mark, as in Find.
+    $qRaw = trim((string)($_GET['q'] ?? ''));
+    $q = trim(preg_replace("/[\x{02BE}\x{02BF}\x{02BC}'\x{2018}\x{2019}]/u", '', $qRaw));
+    if ($qRaw !== '' && preg_match("/[\x{02BE}\x{02BF}\x{02BC}'`\x{2018}\x{2019}\x{275C}]/u", $qRaw)) {
+        $re = implode(CLEANUP_APOS_CLASS, array_map(function ($part) {
+            return preg_replace('/[\\\\.^$|?*+()\[\]{}]/', '\\\\$0', $part);   // POSIX ARE literal
+        }, explode(CLEANUP_APOS_WILDCARD, $qRaw)));
+        $where[] = '(w.word_translit ~* :qre OR EXISTS (SELECT 1 FROM yy_word_translit t
+                      WHERE t.word_key = w.word_key AND t.word_translit_text ~* :qre))';
+        $p[':qre'] = $re;
+        $q = '';
+    }
     if ($q !== '') {
         $like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
         $strip = function ($col) { return "regexp_replace($col, '[\\u02BE\\u02BF\\u02BC''\\u2018\\u2019]', '', 'g')"; };
