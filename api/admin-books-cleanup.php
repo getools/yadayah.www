@@ -1,36 +1,39 @@
 <?php
 /**
- * Admin Books → Cleanup tab.
+ * Admin Books → Cleanup tab: Search/Replace across the parsed book text, with
+ * replacements made in the Word DOCX too and queued until an admin reprocesses.
  *
- * GET ?action=search&q=…[&bold=1][&italic=1][&case=1][&volumes=N,N,…]
- *   Every place the Find text occurs in the parsed book text (yy_paragraph),
- *   as excerpts with the surrounding words. bold / italic narrow the hits to
- *   text that carries that formatting in the source: every character of the
- *   match must sit inside a <b>/<strong> (or <i>/<em>) run. Spaces and the
- *   half-rings ʾ ʿ are exempt from that check, because the parser often emits
- *   them outside the formatted run (a ring is drawn in Yada Towrah, a separate
- *   run in the DOCX).
- *
- * Unset bold/italic means "any formatting", not "must be plain".
+ * GET  ?action=search&q=…[&bold=1][&italic=1][&case=1][&volumes=N,N,…]
+ *        Match counts per book — every match, no cap. bold / italic narrow the
+ *        hits to text carrying that formatting: every character of the match
+ *        must sit inside a <b>/<strong> (or <i>/<em>) run. Spaces and the
+ *        half-rings ʾ ʿ are exempt (the parser emits them outside the run).
+ *        Unset bold/italic means "any formatting", not "must be plain".
+ * GET  ?action=matches&volume=N&…same filters…[&after=PN][&limit=300]
+ *        One book's matches with excerpts, a page at a time, paged by
+ *        paragraph number so replacements made meanwhile can't shift the page.
+ * POST ?action=replace  — see cleanupReplace().
+ * GET  ?action=pending[&volume=N]   — queued (not yet reprocessed) changes.
+ * POST ?action=reprocess {volume_keys}  /  ?action=discard {volume_keys}
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
  * and formatting test then run against paragraph_text_html, which is what
  * carries the <b>/<i> runs.
- *
- * POST ?action=replace — see cleanupReplace() below.
  */
 require_once __DIR__ . '/config.php';
 $authUser = requireAuth();
 
-const CLEANUP_MAX_CANDIDATES = 4000;  // paragraphs scanned per search
-const CLEANUP_MAX_RESULTS    = 1000;  // excerpts returned per search
+const CLEANUP_PAGE_MATCHES   = 300;   // matches per page when a book is expanded
 const CLEANUP_CONTEXT_CHARS  = 90;    // characters either side of a match
 // Fonts whose letters are glyph art (YT, Paleo…): never wrap replacement letters in them.
 const CLEANUP_GLYPH_FONTS = ['Yada Towrah', 'PictoHeb', 'Isaiah Scroll', 'Moabite Stone', 'Semitic Early', 'Hebrew Script'];
 
 $action = $_GET['action'] ?? '';
-if ($action === 'replace') cleanupReplace($authUser);   // responds and exits
-if ($action !== 'search') errorResponse('Unknown action');
+if ($action === 'replace')   cleanupReplace($authUser);      // each responds and exits
+if ($action === 'pending')   cleanupPending();
+if ($action === 'reprocess') cleanupReprocess($authUser);
+if ($action === 'discard')   cleanupDiscard($authUser);
+if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
 
 $q = (string)($_GET['q'] ?? '');
 if (trim($q) === '') errorResponse('Enter something to find');
@@ -38,85 +41,114 @@ if (mb_strlen($q) > 500) errorResponse('Find text is too long');
 $wantBold   = !empty($_GET['bold']);
 $wantItalic = !empty($_GET['italic']);
 $matchCase  = !empty($_GET['case']);
-// Books to search (omitted = all). `volume` is the older single-book form.
-$volumeKeys = array_values(array_unique(array_filter(array_map('intval',
-    explode(',', (string)($_GET['volumes'] ?? $_GET['volume'] ?? ''))))));
-
+$pattern = '/' . preg_quote($q, '/') . '/u' . ($matchCase ? '' : 'i');
+$like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+$op = $matchCase ? 'LIKE' : 'ILIKE';
 $db = getDb();
 
-$like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
-$sql = "SELECT p.paragraph_key, p.paragraph_number, p.paragraph_page, p.paragraph_text_html,
-               v.volume_key, v.volume_code, v.volume_label, v.volume_number,
-               s.series_key, s.series_label, c.chapter_number, c.chapter_name
-          FROM yy_paragraph p
-          JOIN yy_volume v ON v.volume_key = p.volume_key
-          LEFT JOIN yy_series s ON s.series_key = v.series_key
-          LEFT JOIN yy_chapter c ON c.chapter_key = p.chapter_key
-         WHERE p.paragraph_active_flag
-           AND p.paragraph_text_plain " . ($matchCase ? 'LIKE' : 'ILIKE') . " :like"
-     . ($volumeKeys ? ' AND p.volume_key IN (' . implode(',', $volumeKeys) . ')' : '') . "
-         ORDER BY s.series_sort, s.series_key, v.volume_sort, v.volume_number, v.volume_key, p.paragraph_number
-         LIMIT " . (CLEANUP_MAX_CANDIDATES + 1);
-$stmt = $db->prepare($sql);
-$stmt->bindValue(':like', $like);
-$stmt->execute();
-$rows = $stmt->fetchAll();
-
-$scanTruncated = count($rows) > CLEANUP_MAX_CANDIDATES;
-if ($scanTruncated) array_pop($rows);
-
-$pattern = '/' . preg_quote($q, '/') . '/u' . ($matchCase ? '' : 'i');
-$results = [];
-$total = 0;            // matches that passed the formatting test
-$formatRejected = 0;   // text matched but formatting did not
-$slugs = [];
-
-foreach ($rows as $r) {
-    $parsed = cleanupParseHtml((string)$r['paragraph_text_html']);
-    $text = $parsed['text'];
-    if (!preg_match_all($pattern, $text, $m, PREG_OFFSET_CAPTURE)) continue;
-
-    foreach ($m[0] as [$hit, $start]) {
-        $end = $start + strlen($hit);
-        if (($wantBold || $wantItalic)
-            && !cleanupHasFormat($parsed['runs'], $text, $start, $end, $wantBold, $wantItalic)) {
-            $formatRejected++;
-            continue;
+if ($action === 'matches') {
+    $vk = (int)($_GET['volume'] ?? 0);
+    if (!$vk) errorResponse('volume required');
+    $after = (int)($_GET['after'] ?? -1);
+    $limit = max(50, min(2000, (int)($_GET['limit'] ?? CLEANUP_PAGE_MATCHES)));
+    $st = $db->prepare("SELECT p.paragraph_key, p.paragraph_number, p.paragraph_page, p.paragraph_text_html,
+                               v.volume_code, c.chapter_number, c.chapter_name
+                          FROM yy_paragraph p
+                          JOIN yy_volume v ON v.volume_key = p.volume_key
+                          LEFT JOIN yy_chapter c ON c.chapter_key = p.chapter_key
+                         WHERE p.volume_key = ? AND p.paragraph_active_flag AND p.paragraph_number > ?
+                           AND p.paragraph_text_plain $op ?
+                         ORDER BY p.paragraph_number");
+    $st->execute([$vk, $after, $like]);
+    $items = [];
+    $lastPn = $after;
+    $more = false;
+    $slug = null; $slugDone = false;
+    while ($r = $st->fetch()) {
+        if (count($items) >= $limit) { $more = true; break; }   // stop on a paragraph boundary
+        $parsed = cleanupParseHtml((string)$r['paragraph_text_html']);
+        $text = $parsed['text'];
+        $lastPn = (int)$r['paragraph_number'];
+        if (!preg_match_all($pattern, $text, $m, PREG_OFFSET_CAPTURE)) continue;
+        if (!$slugDone) { $slug = cleanupBookSlug($r['volume_code']); $slugDone = true; }
+        foreach ($m[0] as [$hit, $start]) {
+            $end = $start + strlen($hit);
+            if (($wantBold || $wantItalic) && !cleanupHasFormat($parsed['runs'], $text, $start, $end, $wantBold, $wantItalic)) continue;
+            $items[] = [
+                'paragraph_key' => (int)$r['paragraph_key'],
+                'number'        => (int)$r['paragraph_number'],
+                'page'          => $r['paragraph_page'] === null ? null : (int)$r['paragraph_page'],
+                'volume_key'    => $vk,
+                'book_slug'     => $slug,
+                'chapter'       => $r['chapter_number'] === null ? null : (int)$r['chapter_number'],
+                'chapter_name'  => $r['chapter_name'],
+                'match'         => $hit,
+                'start'         => $start,
+                'excerpt'       => cleanupExcerpt($parsed['runs'], $text, $start, $end),
+                'paragraph'     => cleanupExcerpt($parsed['runs'], $text, $start, $end, null),
+            ];
         }
-        $total++;
-        if (count($results) >= CLEANUP_MAX_RESULTS) continue;
+    }
+    jsonResponse(['items' => $items, 'after' => $lastPn, 'more' => $more]);
+}
 
-        $vk = (int)$r['volume_key'];
-        if (!array_key_exists($vk, $slugs)) $slugs[$vk] = cleanupBookSlug($r['volume_code']);
-        $results[] = [
-            'paragraph_key' => (int)$r['paragraph_key'],
-            'number'        => $r['paragraph_number'] === null ? null : (int)$r['paragraph_number'],
-            'page'          => $r['paragraph_page'] === null ? null : (int)$r['paragraph_page'],
-            'volume_key'    => $vk,
-            'volume_code'   => $r['volume_code'],
-            'volume_label'  => $r['volume_label'],
-            'volume_number' => $r['volume_number'] === null ? null : (int)$r['volume_number'],
-            'series_key'    => $r['series_key'] === null ? null : (int)$r['series_key'],
-            'series_label'  => $r['series_label'],
-            'book_slug'     => $slugs[$vk],
-            'chapter'       => $r['chapter_number'] === null ? null : (int)$r['chapter_number'],
-            'chapter_name'  => $r['chapter_name'],
-            'match'         => $hit,
-            'start'         => $start,
-            'excerpt'       => cleanupExcerpt($parsed['runs'], $text, $start, $end),
-            'paragraph'     => cleanupExcerpt($parsed['runs'], $text, $start, $end, null),
+// action=search: counts per book over every candidate paragraph. A cursor
+// keeps memory flat however common the term is.
+$volumeKeys = array_values(array_unique(array_filter(array_map('intval',
+    explode(',', (string)($_GET['volumes'] ?? $_GET['volume'] ?? ''))))));
+$db->beginTransaction();
+$db->prepare("DECLARE cl_cur NO SCROLL CURSOR FOR
+              SELECT p.volume_key, p.paragraph_text_html
+                FROM yy_paragraph p
+               WHERE p.paragraph_active_flag AND p.paragraph_text_plain $op " . $db->quote($like)
+           . ($volumeKeys ? ' AND p.volume_key IN (' . implode(',', $volumeKeys) . ')' : ''))->execute();
+$counts = [];
+$total = 0;
+$formatRejected = 0;
+$scanned = 0;
+while (true) {
+    $rows = $db->query('FETCH 2000 FROM cl_cur')->fetchAll();
+    if (!$rows) break;
+    foreach ($rows as $r) {
+        $scanned++;
+        $parsed = cleanupParseHtml((string)$r['paragraph_text_html']);
+        $text = $parsed['text'];
+        if (!preg_match_all($pattern, $text, $m, PREG_OFFSET_CAPTURE)) continue;
+        foreach ($m[0] as [$hit, $start]) {
+            if (($wantBold || $wantItalic)
+                && !cleanupHasFormat($parsed['runs'], $text, $start, $start + strlen($hit), $wantBold, $wantItalic)) {
+                $formatRejected++;
+                continue;
+            }
+            $total++;
+            $vk = (int)$r['volume_key'];
+            $counts[$vk] = ($counts[$vk] ?? 0) + 1;
+        }
+    }
+}
+$db->exec('CLOSE cl_cur');
+$db->commit();
+
+$volumes = [];
+if ($counts) {
+    $st = $db->query('SELECT v.volume_key, v.volume_code, v.volume_label, v.volume_number,
+                             s.series_key, s.series_label
+                        FROM yy_volume v LEFT JOIN yy_series s ON s.series_key = v.series_key
+                       WHERE v.volume_key IN (' . implode(',', array_keys($counts)) . ')
+                       ORDER BY s.series_sort, s.series_key, v.volume_sort, v.volume_number, v.volume_key');
+    foreach ($st->fetchAll() as $v) {
+        $volumes[] = [
+            'volume_key'    => (int)$v['volume_key'],
+            'volume_code'   => $v['volume_code'],
+            'volume_label'  => $v['volume_label'],
+            'volume_number' => $v['volume_number'] === null ? null : (int)$v['volume_number'],
+            'series_key'    => $v['series_key'] === null ? null : (int)$v['series_key'],
+            'series_label'  => $v['series_label'],
+            'count'         => $counts[(int)$v['volume_key']],
         ];
     }
 }
-
-jsonResponse([
-    'results'         => $results,
-    'total'           => $total,
-    'shown'           => count($results),
-    'format_rejected' => $formatRejected,
-    'scanned'         => count($rows),
-    'scan_truncated'  => $scanTruncated,
-]);
+jsonResponse(['total' => $total, 'format_rejected' => $formatRejected, 'scanned' => $scanned, 'volumes' => $volumes]);
 
 /**
  * Flatten paragraph HTML into its text plus formatting runs:
@@ -223,27 +255,72 @@ function cleanupBookSlug(?string $volumeCode): ?string {
     return is_dir($root . '/' . $slug . '/text') ? $slug : null;
 }
 
-/* ── Replace ─────────────────────────────────────────────────────────────
+/* ── Replace + the queue ─────────────────────────────────────────────────
  *
  * POST ?action=replace  JSON body:
  *   {mode: 'next'|'all', volume_key, q, bold, italic, case,
  *    replace, rbold, ritalic, target: {paragraph_key, start, match}}
  *
- * One volume per request (Cloudflare cuts a request off at ~100s, and one
- * book's DOCX round trip is a few seconds), so the page walks Replace All
- * book by book.
+ * One volume per request (Cloudflare cuts a request off at ~100s), so the
+ * page walks Replace All book by book.
  *
  * Every edit lands in BOTH places, or in neither:
- *   1. the Word DOCX (u/books-word/<volume_docx>), via _docx_replace.py, which
- *      lines each parsed match up with its spot in the DOCX by the text
- *      around it. The previous DOCX is copied to u/books-word-backup/ first.
- *   2. yy_paragraph — html, plain and raw — so search and the reader show the
- *      change at once. yy_paragraph_rev keeps the old text.
+ *   1. a STAGED copy of the book's Word DOCX, u/books-word-staged/<docx>,
+ *      made from the live DOCX on the first change. _docx_replace.py lines
+ *      each parsed match up with its spot in the DOCX by the text around it.
+ *      The live DOCX is not touched, so nothing rebuilds yet.
+ *   2. yy_paragraph (html, plain, raw), so search and the reader show the
+ *      change at once. yy_cleanup_change logs each change with the paragraph
+ *      before and after, which is what Discard puts back.
  * A match the DOCX side cannot place is reported and left alone in both.
  *
- * The volume is then queued exactly like a DOCX upload, so the pipeline
- * re-renders the PDF and flipbook and re-parses the paragraphs from it.
+ * Reprocess (per book, when the admin says so) backs up the live DOCX, moves
+ * the staged one into place and queues the book exactly like a DOCX upload:
+ * PDF, flipbook, re-parse. Discard drops the staged DOCX and restores the
+ * paragraphs.
+ *
+ * <docx>.json beside the staged file records the live DOCX's md5 when staging
+ * began. If the live DOCX changes after that (a new upload), the staged copy
+ * is stale: replace and reprocess refuse until it is discarded.
  */
+function cleanupPaths(array $vol): array {
+    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : dirname(__DIR__) . '/public';
+    $docxName = $vol['volume_docx'] ?: ($vol['volume_code'] ? $vol['volume_code'] . '.docx' : '');
+    return [
+        'root'    => $publicRoot,
+        'name'    => $docxName,
+        'live'    => $publicRoot . '/u/books-word/' . $docxName,
+        'staged'  => $publicRoot . '/u/books-word-staged/' . $docxName,
+        'sidecar' => $publicRoot . '/u/books-word-staged/' . $docxName . '.json',
+        'lock'    => $publicRoot . '/u/books-word/.cleanup-' . (int)$vol['volume_key'] . '.lock',
+    ];
+}
+
+function cleanupVolume(PDO $db, int $vk): array {
+    $st = $db->prepare('SELECT v.volume_key, v.volume_code, v.volume_docx, v.volume_pdf, v.volume_label,
+                               v.volume_locked_flag, v.volume_locked_by_key, v.volume_locked_by_name
+                          FROM yy_volume v WHERE v.volume_key = ?');
+    $st->execute([$vk]);
+    $vol = $st->fetch();
+    if (!$vol) errorResponse('Volume not found', 404);
+    $vol['label'] = $vol['volume_code'] ?: $vol['volume_label'];
+    return $vol;
+}
+
+function cleanupCheckLock(array $vol, array $authUser): void {
+    if ($vol['volume_locked_flag'] && (int)$vol['volume_locked_by_key'] !== (int)($authUser['user_key'] ?? 0)) {
+        errorResponse($vol['label'] . ' is checked out by ' . ($vol['volume_locked_by_name'] ?: 'another admin')
+            . ' — ask them to release the lock first.', 423);
+    }
+}
+
+/** 'none' | 'ok' | 'stale' — is there a staged DOCX, and is it built on the current live one? */
+function cleanupStageState(array $paths): string {
+    if (!is_file($paths['staged'])) return 'none';
+    $meta = json_decode((string)@file_get_contents($paths['sidecar']), true) ?: [];
+    return (($meta['base_md5'] ?? '') === md5_file($paths['live'])) ? 'ok' : 'stale';
+}
+
 function cleanupReplace(array $authUser): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
@@ -260,32 +337,31 @@ function cleanupReplace(array $authUser): void {
     if (!$vk) errorResponse('volume_key required');
 
     $db = getDb();
-    $st = $db->prepare('SELECT volume_key, volume_code, volume_docx, volume_pdf, volume_label,
-                               volume_locked_flag, volume_locked_by_key, volume_locked_by_name
-                          FROM yy_volume WHERE volume_key = ?');
-    $st->execute([$vk]);
-    $vol = $st->fetch();
-    if (!$vol) errorResponse('Volume not found', 404);
-    $label = $vol['volume_code'] ?: $vol['volume_label'];
-    if ($vol['volume_locked_flag'] && (int)$vol['volume_locked_by_key'] !== (int)($authUser['user_key'] ?? 0)) {
-        errorResponse($label . ' is checked out by ' . ($vol['volume_locked_by_name'] ?: 'another admin')
-            . ' — ask them to release the lock first.', 423);
+    $vol = cleanupVolume($db, $vk);
+    $label = $vol['label'];
+    cleanupCheckLock($vol, $authUser);
+    $paths = cleanupPaths($vol);
+    if (!$paths['name'] || !is_file($paths['live'])) errorResponse($label . ': no DOCX on the server to edit');
+
+    // One replace per book at a time (Replace Next clicked quickly, two admins).
+    $lock = fopen($paths['lock'], 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) errorResponse('Could not lock ' . $label);
+    $stage = cleanupStageState($paths);
+    if ($stage === 'stale') {
+        errorResponse($label . ': a new DOCX was uploaded after the queued changes were made. '
+            . 'Discard this book\'s queued changes first.', 409);
     }
-    $publicRoot = is_dir('/var/www/html') ? '/var/www/html' : dirname(__DIR__) . '/public';
-    $docxName = $vol['volume_docx'] ?: ($vol['volume_code'] ? $vol['volume_code'] . '.docx' : '');
-    $docxPath = $publicRoot . '/u/books-word/' . $docxName;
-    if (!$docxName || !is_file($docxPath)) errorResponse($label . ': no DOCX on the server to edit');
 
     // The whole volume's parsed text, in reading order: the stream gives each
     // match its surrounding text for lining it up with the DOCX.
-    $st = $db->prepare('SELECT paragraph_key, paragraph_text_html FROM yy_paragraph
-                         WHERE volume_key = ? AND paragraph_active_flag ORDER BY paragraph_number');
+    $st = $db->prepare('SELECT paragraph_key, paragraph_number, paragraph_text_html, paragraph_text_plain, paragraph_text_raw
+                          FROM yy_paragraph WHERE volume_key = ? AND paragraph_active_flag ORDER BY paragraph_number');
     $st->execute([$vk]);
     $pattern = '/' . preg_quote($q, '/') . '/u' . ($matchCase ? '' : 'i');
     $stream = '';
     $dbList = [];      // every text match, for alignment
     $meta = [];        // id → [paragraph_key, start, hit]
-    $htmlByKey = [];
+    $paraRow = [];
     $target = $in['target'] ?? null;
     $targetFound = false;
     while ($r = $st->fetch()) {
@@ -295,7 +371,7 @@ function cleanupReplace(array $authUser): void {
         $base = strlen($stream);
         $stream .= $text . ' ';
         if (!preg_match_all($pattern, $text, $m, PREG_OFFSET_CAPTURE)) continue;
-        $htmlByKey[$pk] = (string)$r['paragraph_text_html'];
+        $paraRow[$pk] = $r;
         foreach ($m[0] as [$hit, $start]) {
             $end = $start + strlen($hit);
             if ($mode === 'next') {
@@ -324,13 +400,11 @@ function cleanupReplace(array $authUser): void {
     unset($d);
     $stream = '';
 
-    // One replace per book at a time (Replace Next clicked quickly, two admins).
-    $lock = fopen($publicRoot . '/u/books-word/.cleanup-' . $vk . '.lock', 'c');
-    if (!$lock || !flock($lock, LOCK_EX)) errorResponse('Could not lock ' . $label);
-
-    $tmpOut = dirname($docxPath) . '/.' . basename($docxPath) . '.cleanup-' . getmypid() . '.tmp';
+    $stageDir = dirname($paths['staged']);
+    if (!is_dir($stageDir)) @mkdir($stageDir, 0775, true);
+    $tmpOut = $stageDir . '/.' . $paths['name'] . '.cleanup-' . getmypid() . '.tmp';
     $res = cleanupRunDocxScript([
-        'docx_in' => $docxPath, 'docx_out' => $tmpOut,
+        'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'], 'docx_out' => $tmpOut,
         'find' => $q, 'case' => $matchCase,
         'replace' => $replace, 'bold' => $rBold, 'italic' => $rItalic,
         'db' => $dbList,
@@ -342,30 +416,43 @@ function cleanupReplace(array $authUser): void {
     $applied = $res['applied'] ?? [];
     $items = [];
     if ($applied) {
-        // 1. Work out every paragraph's new text before touching anything.
+        // 1. Every paragraph's new text, before touching anything.
         $byPara = [];
         foreach ($applied as $id) {
             if (isset($meta[$id])) $byPara[$meta[$id][0]][] = $meta[$id];
         }
         $repl = cleanupReplacementSegments($replace, $rBold, $rItalic);
-        $rows = [];
+        $rows = [];       // pk → [html, plain, raw]
+        $logs = [];       // change rows
         try {
             foreach ($byPara as $pk => $list) {
+                $old = $paraRow[$pk];
+                $oldParsed = cleanupParseHtml((string)$old['paragraph_text_html']);
                 usort($list, function ($a, $b) { return $b[1] - $a[1]; });   // last match first
-                $html = $htmlByKey[$pk];
+                $html = (string)$old['paragraph_text_html'];
                 foreach ($list as [, $start, $hit]) {
                     $html = cleanupHtmlReplace($html, $start, $start + strlen($hit), $repl);
                 }
                 $parsed = cleanupParseHtml($html);
                 $rows[$pk] = [$html, trim(preg_replace('/\s+/u', ' ', $parsed['text'])), cleanupRawJson($html)];
-                if ($mode === 'next') {
-                    [, $start] = $list[0];
-                    $e = $start + strlen($replace);
-                    $items[] = [
-                        'paragraph_key' => $pk, 'start' => $start, 'delta' => strlen($replace) - strlen($list[0][2]),
-                        'excerpt'   => cleanupExcerpt($parsed['runs'], $parsed['text'], $start, $e),
-                        'paragraph' => cleanupExcerpt($parsed['runs'], $parsed['text'], $start, $e, null),
-                    ];
+                // Where each replacement sits in the new text: earlier ones
+                // shift the later ones by their length change.
+                $list = array_reverse($list);
+                $shift = 0;
+                foreach ($list as [, $start, $hit]) {
+                    $ns = $start + $shift;
+                    $ne = $ns + strlen($replace);
+                    $shift += strlen($replace) - strlen($hit);
+                    $logs[] = [$pk, (int)$old['paragraph_number'], $hit, $old, $html,
+                        cleanupExcerpt($oldParsed['runs'], $oldParsed['text'], $start, $start + strlen($hit)),
+                        cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne)];
+                    if ($mode === 'next') {
+                        $items[] = [
+                            'paragraph_key' => $pk, 'start' => $start, 'delta' => strlen($replace) - strlen($hit),
+                            'excerpt'   => cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne),
+                            'paragraph' => cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne, null),
+                        ];
+                    }
                 }
             }
         } catch (\Throwable $ex) {
@@ -373,27 +460,29 @@ function cleanupReplace(array $authUser): void {
             errorResponse($label . ': could not edit the paragraph text (' . $ex->getMessage() . ') — nothing was changed', 500);
         }
 
-        // 2. Keep the previous DOCX (last 10 per book), then swap the new one in.
-        $bakDir = $publicRoot . '/u/books-word-backup';
-        if (!is_dir($bakDir)) @mkdir($bakDir, 0775, true);
-        $stem = pathinfo($docxName, PATHINFO_FILENAME);
-        $bakPath = $bakDir . '/' . $stem . '.' . date('Ymd-His') . '.docx';
-        if (!@copy($docxPath, $bakPath)) {
-            @unlink($tmpOut);
-            errorResponse($label . ': could not back up the DOCX — nothing was changed', 500);
+        // 2. The new DOCX becomes the staged copy (the previous staged copy is
+        //    kept aside until the DB has committed).
+        $prev = null;
+        if ($stage === 'ok') {
+            $prev = $paths['staged'] . '.prev';
+            @rename($paths['staged'], $prev);
+        } else {
+            @file_put_contents($paths['sidecar'], json_encode([
+                'base_md5' => md5_file($paths['live']), 'staged_at' => date('c'), 'volume_key' => $vk,
+            ]));
         }
-        $old = glob($bakDir . '/' . $stem . '.*.docx') ?: [];
-        rsort($old);
-        foreach (array_slice($old, 10) as $f) @unlink($f);
         @chmod($tmpOut, 0644);
-        if (!@rename($tmpOut, $docxPath)) {
+        if (!@rename($tmpOut, $paths['staged'])) {
             @unlink($tmpOut);
-            errorResponse($label . ': could not write the DOCX — nothing was changed', 500);
+            if ($prev) @rename($prev, $paths['staged']); else @unlink($paths['sidecar']);
+            errorResponse($label . ': could not write the staged DOCX — nothing was changed', 500);
         }
 
-        // 3. The parsed paragraphs + queue the book exactly as a DOCX upload
-        //    does. If any of it fails, put the old DOCX back so the two agree.
+        // 3. Paragraphs + change log in one transaction; on failure undo step 2.
         try {
+            $batch = bin2hex(random_bytes(8));
+            $opts = json_encode(['mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase,
+                                 'rbold' => $rBold, 'ritalic' => $rItalic]);
             $db->beginTransaction();
             $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
                                        paragraph_text_raw = ?, paragraph_revision_user_key = ?
@@ -401,50 +490,222 @@ function cleanupReplace(array $authUser): void {
             foreach ($rows as $pk => [$html, $plain, $raw]) {
                 $up->execute([$html, $plain, $raw, (int)($authUser['user_key'] ?? 0), $pk]);
             }
-            $db->prepare("UPDATE yy_volume
-                             SET volume_pipeline_status = 'queued',
-                                 volume_pipeline_message = 'Cleanup replace edited the DOCX — awaiting PDF + flipbook rebuild',
-                                 volume_pipeline_retry_count = 0,
-                                 volume_parse_status = 'queued',
-                                 volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
-                                 volume_revision_dtime = NOW()
-                           WHERE volume_key = ?")->execute([$vk]);
+            $ins = $db->prepare('INSERT INTO yy_cleanup_change
+                (cleanup_change_batch, volume_key, paragraph_key, paragraph_number, cleanup_change_find,
+                 cleanup_change_replace, cleanup_change_options, cleanup_change_match,
+                 cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_before_raw,
+                 cleanup_change_after_html, cleanup_change_excerpt_before, cleanup_change_excerpt_after,
+                 cleanup_change_user_key, cleanup_change_user_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            foreach ($logs as [$pk, $pn, $hit, $old, $newHtml, $exBefore, $exAfter]) {
+                $ins->execute([$batch, $vk, $pk, $pn, $q, $replace, $opts, $hit,
+                    $old['paragraph_text_html'], $old['paragraph_text_plain'], $old['paragraph_text_raw'],
+                    $newHtml, $exBefore, $exAfter,
+                    (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
+            }
             $db->commit();
         } catch (\Throwable $ex) {
             if ($db->inTransaction()) $db->rollBack();
-            $restored = @copy($bakPath, $docxPath);
-            if ($restored) @unlink($bakPath);
+            if ($prev) { @rename($prev, $paths['staged']); }
+            else { @unlink($paths['staged']); @unlink($paths['sidecar']); }
             logMonitorEvent('cleanup_replace', 'error', $label . ': DB update failed — ' . $ex->getMessage(),
-                $ex->getFile() . ':' . $ex->getLine() . ($restored ? "\nDOCX restored" : "\nDOCX NOT restored — backup at $bakPath"));
-            errorResponse($label . ': saving the paragraph text failed (' . $ex->getMessage() . ')'
-                . ($restored ? ' — the DOCX was put back, nothing was changed' : ' — ⚠ the DOCX could not be put back; backup: ' . basename($bakPath)), 500);
+                $ex->getFile() . ':' . $ex->getLine());
+            errorResponse($label . ': saving the paragraph text failed (' . $ex->getMessage() . ') — nothing was changed', 500);
         }
-        $jobsDir = $publicRoot . '/jobs/book-pipeline';
-        if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
-        @file_put_contents($jobsDir . '/' . sprintf('%010d', $vk) . '_' . time() . '.json', json_encode([
-            'volume_key' => $vk,
-            'docx_name'  => $docxName,
-            'pdf_name'   => $vol['volume_pdf'] ?: pathinfo($docxName, PATHINFO_FILENAME) . '.pdf',
-            'flip_code'  => null,
-            'queued_at'  => date('c'),
-            'source'     => 'cleanup-replace',
-        ], JSON_PRETTY_PRINT));
+        if ($prev) @unlink($prev);
     } else {
         @unlink($tmpOut);
     }
     flock($lock, LOCK_UN);
     fclose($lock);
 
-    $failed = [];
-    foreach (($res['failed'] ?? []) as $id => $why) $failed[] = $why;
     jsonResponse([
         'volume_key'   => $vk,
         'replaced'     => count($applied),
         'unmapped'     => count($res['unmapped'] ?? []),
-        'failed'       => $failed,
+        'failed'       => array_values($res['failed'] ?? []),
         'docx_matches' => $res['docx_matches'] ?? null,
         'items'        => $items,
     ]);
+}
+
+/** Queued changes: per-book summary, or one book's change list (?volume=N). */
+function cleanupPending(): void {
+    $db = getDb();
+    $vk = (int)($_GET['volume'] ?? 0);
+    if ($vk) {
+        $st = $db->prepare("SELECT cleanup_change_key, paragraph_number, cleanup_change_find, cleanup_change_replace,
+                                   cleanup_change_options, cleanup_change_match, cleanup_change_excerpt_before,
+                                   cleanup_change_excerpt_after, cleanup_change_user_name, cleanup_change_dtime
+                              FROM yy_cleanup_change
+                             WHERE volume_key = ? AND cleanup_change_status = 'pending'
+                             ORDER BY cleanup_change_key");
+        $st->execute([$vk]);
+        $rows = $st->fetchAll();
+        foreach ($rows as &$r) $r['cleanup_change_options'] = json_decode($r['cleanup_change_options'], true);
+        jsonResponse(['changes' => $rows]);
+    }
+    $rows = $db->query("SELECT c.volume_key, count(*) AS n, min(c.cleanup_change_dtime) AS first_dtime,
+                               max(c.cleanup_change_dtime) AS last_dtime,
+                               v.volume_code, v.volume_label, v.volume_number, v.volume_docx,
+                               s.series_key, s.series_label
+                          FROM yy_cleanup_change c
+                          JOIN yy_volume v ON v.volume_key = c.volume_key
+                          LEFT JOIN yy_series s ON s.series_key = v.series_key
+                         WHERE c.cleanup_change_status = 'pending'
+                         GROUP BY c.volume_key, v.volume_code, v.volume_label, v.volume_number, v.volume_docx,
+                                  s.series_key, s.series_label, s.series_sort, v.volume_sort
+                         ORDER BY s.series_sort, s.series_key, v.volume_sort, v.volume_number, c.volume_key")->fetchAll();
+    $out = [];
+    foreach ($rows as $r) {
+        $paths = cleanupPaths($r + ['volume_key' => $r['volume_key']]);
+        $out[] = [
+            'volume_key' => (int)$r['volume_key'], 'count' => (int)$r['n'],
+            'volume_code' => $r['volume_code'], 'volume_label' => $r['volume_label'],
+            'volume_number' => $r['volume_number'] === null ? null : (int)$r['volume_number'],
+            'series_key' => $r['series_key'] === null ? null : (int)$r['series_key'], 'series_label' => $r['series_label'],
+            'first_dtime' => $r['first_dtime'], 'last_dtime' => $r['last_dtime'],
+            'stage' => cleanupStageState($paths),
+        ];
+    }
+    jsonResponse(['volumes' => $out]);
+}
+
+function cleanupVolumeKeysFromBody(): array {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $keys = array_values(array_unique(array_filter(array_map('intval', (array)($in['volume_keys'] ?? [])))));
+    if (!$keys) errorResponse('volume_keys required');
+    return $keys;
+}
+
+/** Put the staged DOCX live and queue the book's rebuild, book by book. */
+function cleanupReprocess(array $authUser): void {
+    $db = getDb();
+    $results = [];
+    foreach (cleanupVolumeKeysFromBody() as $vk) {
+        $vol = cleanupVolume($db, $vk);
+        $paths = cleanupPaths($vol);
+        $r = ['volume_key' => $vk, 'label' => $vol['label'], 'ok' => false];
+        if ($vol['volume_locked_flag'] && (int)$vol['volume_locked_by_key'] !== (int)($authUser['user_key'] ?? 0)) {
+            $results[] = $r + ['error' => 'checked out by ' . ($vol['volume_locked_by_name'] ?: 'another admin')];
+            continue;
+        }
+        $lock = fopen($paths['lock'], 'c');
+        flock($lock, LOCK_EX);
+        $stage = cleanupStageState($paths);
+        if ($stage === 'none') {
+            $results[] = $r + ['error' => 'no staged DOCX — nothing to reprocess'];
+        } elseif ($stage === 'stale') {
+            $results[] = $r + ['error' => 'a new DOCX was uploaded after these changes — discard them'];
+        } else {
+            $bakDir = $paths['root'] . '/u/books-word-backup';
+            if (!is_dir($bakDir)) @mkdir($bakDir, 0775, true);
+            $stem = pathinfo($paths['name'], PATHINFO_FILENAME);
+            if (!@copy($paths['live'], $bakDir . '/' . $stem . '.' . date('Ymd-His') . '.docx')) {
+                $results[] = $r + ['error' => 'could not back up the live DOCX — nothing changed'];
+            } elseif (!@rename($paths['staged'], $paths['live'])) {
+                $results[] = $r + ['error' => 'could not move the staged DOCX into place — nothing changed'];
+            } else {
+                @unlink($paths['sidecar']);
+                $old = glob($bakDir . '/' . $stem . '.*.docx') ?: [];
+                rsort($old);
+                foreach (array_slice($old, 10) as $f) @unlink($f);
+                $n = $db->prepare("UPDATE yy_cleanup_change SET cleanup_change_status = 'processed', cleanup_change_done_dtime = now()
+                                    WHERE volume_key = ? AND cleanup_change_status = 'pending'");
+                $n->execute([$vk]);
+                cleanupQueueRebuild($db, $vol, $paths);
+                $results[] = ['volume_key' => $vk, 'label' => $vol['label'], 'ok' => true, 'changes' => $n->rowCount()];
+            }
+        }
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+    jsonResponse(['results' => $results]);
+}
+
+/** Queue the book exactly as a DOCX upload does (admin-books.php upload_docx). */
+function cleanupQueueRebuild(PDO $db, array $vol, array $paths): void {
+    $vk = (int)$vol['volume_key'];
+    $db->prepare("UPDATE yy_volume
+                     SET volume_pipeline_status = 'queued',
+                         volume_pipeline_message = 'Cleanup changes reprocessed — awaiting PDF + flipbook rebuild',
+                         volume_pipeline_retry_count = 0,
+                         volume_parse_status = 'queued',
+                         volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
+                         volume_revision_dtime = NOW()
+                   WHERE volume_key = ?")->execute([$vk]);
+    $jobsDir = $paths['root'] . '/jobs/book-pipeline';
+    if (!is_dir($jobsDir)) @mkdir($jobsDir, 0775, true);
+    @file_put_contents($jobsDir . '/' . sprintf('%010d', $vk) . '_' . time() . '.json', json_encode([
+        'volume_key' => $vk,
+        'docx_name'  => $paths['name'],
+        'pdf_name'   => $vol['volume_pdf'] ?: pathinfo($paths['name'], PATHINFO_FILENAME) . '.pdf',
+        'flip_code'  => null,
+        'queued_at'  => date('c'),
+        'source'     => 'cleanup-reprocess',
+    ], JSON_PRETTY_PRINT));
+}
+
+/**
+ * Drop a book's queued changes: delete the staged DOCX and put each touched
+ * paragraph back the way it was — newest batch first, and only while the
+ * paragraph still holds exactly what that batch wrote (a re-parse since
+ * then has already replaced it from the live DOCX, which never had them).
+ */
+function cleanupDiscard(array $authUser): void {
+    $db = getDb();
+    $results = [];
+    foreach (cleanupVolumeKeysFromBody() as $vk) {
+        $vol = cleanupVolume($db, $vk);
+        $paths = cleanupPaths($vol);
+        $lock = fopen($paths['lock'], 'c');
+        flock($lock, LOCK_EX);
+        $st = $db->prepare("SELECT DISTINCT ON (cleanup_change_batch, paragraph_key)
+                                   cleanup_change_key, cleanup_change_batch, paragraph_key,
+                                   cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_before_raw,
+                                   cleanup_change_after_html
+                              FROM yy_cleanup_change
+                             WHERE volume_key = ? AND cleanup_change_status = 'pending'
+                             ORDER BY cleanup_change_batch, paragraph_key, cleanup_change_key");
+        $st->execute([$vk]);
+        $byPara = [];
+        foreach ($st->fetchAll() as $row) $byPara[(int)$row['paragraph_key']][] = $row;
+        $restored = 0; $skipped = 0;
+        $db->beginTransaction();
+        $get = $db->prepare('SELECT paragraph_text_html FROM yy_paragraph WHERE paragraph_key = ?');
+        $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
+                                   paragraph_text_raw = ?, paragraph_revision_user_key = ? WHERE paragraph_key = ?');
+        foreach ($byPara as $pk => $batches) {
+            usort($batches, function ($a, $b) { return (int)$b['cleanup_change_key'] - (int)$a['cleanup_change_key']; });
+            $get->execute([$pk]);
+            $cur = $get->fetchColumn();
+            $target = null;
+            foreach ($batches as $b) {
+                if ($cur === false || $cur !== $b['cleanup_change_after_html']) break;
+                $target = $b;
+                $cur = $b['cleanup_change_before_html'];
+            }
+            if ($target) {
+                $up->execute([$target['cleanup_change_before_html'], $target['cleanup_change_before_plain'],
+                              $target['cleanup_change_before_raw'], (int)($authUser['user_key'] ?? 0), $pk]);
+                $restored++;
+            } else {
+                $skipped++;
+            }
+        }
+        $n = $db->prepare("UPDATE yy_cleanup_change SET cleanup_change_status = 'discarded', cleanup_change_done_dtime = now()
+                            WHERE volume_key = ? AND cleanup_change_status = 'pending'");
+        $n->execute([$vk]);
+        $db->commit();
+        @unlink($paths['staged']);
+        @unlink($paths['sidecar']);
+        flock($lock, LOCK_UN);
+        fclose($lock);
+        $results[] = ['volume_key' => $vk, 'label' => $vol['label'], 'ok' => true, 'changes' => $n->rowCount(),
+                      'paragraphs_restored' => $restored, 'paragraphs_skipped' => $skipped];
+    }
+    jsonResponse(['results' => $results]);
 }
 
 /** Drop a partial UTF-8 sequence left at either end of a byte slice. */

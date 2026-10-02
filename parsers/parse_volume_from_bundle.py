@@ -218,6 +218,19 @@ def reparse_volume(vol_key, dry_run=False, verbose=False):
     yy_chapter_by_name = {_norm_chapter_name(nm): ck
                           for ck, _cn, nm in _chapter_rows if nm}
 
+    # Page-range fallback for books whose PDF carries no embedded TOC (e.g.
+    # books without yychapter heading styles). When both chapter_number and
+    # chapter_name are None for a paragraph, assign it to the last chapter
+    # whose chapter_page is <= the paragraph's page — same semantics as
+    # chapter_for_page() in bundle_paragraphs.py.
+    cur.execute("""
+        SELECT chapter_key, chapter_page
+          FROM yy_chapter
+         WHERE volume_key = %s AND chapter_page IS NOT NULL
+         ORDER BY chapter_page
+    """, (vol_key,))
+    _ch_page_rows = cur.fetchall()   # [(chapter_key, chapter_page), ...]
+
     # ── Cite resolution lookups ────────────────────────────────────────
     cur.execute("""
         SELECT cbm.cite_book_map_hebrew, cbm.cite_book_key
@@ -280,6 +293,14 @@ def reparse_volume(vol_key, dry_run=False, verbose=False):
         else:
             ch_name = p.get("chapter_name")
             chapter_key = yy_chapter_by_name.get(_norm_chapter_name(ch_name)) if ch_name else None
+            if chapter_key is None and _ch_page_rows:
+                # PDF has no TOC — use chapter_page ranges from yy_chapter.
+                para_page = p.get("page", 0)
+                for ck, cp in _ch_page_rows:
+                    if cp <= para_page:
+                        chapter_key = ck
+                    else:
+                        break
         text_html = p.get("text_html", "")
         text_plain = p.get("text_plain") or html_to_plain(text_html)
         # text_raw: a compact JSON of run breakdown so a future re-render
