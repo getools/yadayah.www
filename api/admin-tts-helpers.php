@@ -3,6 +3,21 @@
 // NOT the per-provider policy: ttsProviderChunkSizes() caps ordinary providers
 // at 600 and only lets provider_settings->'long_form' engines go higher.
 if (!defined('TTS_CHUNK_ABS_MAX')) define('TTS_CHUNK_ABS_MAX', 20000);
+
+/**
+ * A unique temp path ending in $ext. tempnam() creates its own empty file, so
+ * `tempnam(...) . '.mp3'` leaves that file behind forever (callers only unlink
+ * the .mp3) — ~1.5M of them had piled up in /tmp. Rename it to the real name.
+ */
+if (!function_exists('ttsTempFile')) {
+    function ttsTempFile(string $dir, string $prefix, string $ext): string {
+        $base = tempnam($dir, $prefix);
+        if ($base === false) return $dir . '/' . $prefix . bin2hex(random_bytes(6)) . $ext;
+        $path = $base . $ext;
+        if (!@rename($base, $path)) { @unlink($base); }
+        return $path;
+    }
+}
 /**
  * Shared helpers for the TTS admin area.
  *
@@ -3673,7 +3688,7 @@ function ttsBuildChunkOk(string $audioBytes, string $chunkText): bool {
     if ($ff === null) { $ff = trim((string)shell_exec('which ffmpeg 2>/dev/null'));  if ($ff === '') $ff = false; }
     if ($fp === null) { $fp = trim((string)shell_exec('which ffprobe 2>/dev/null')); if ($fp === '') $fp = false; }
     if ($ff === false || $fp === false) return true;
-    $f = tempnam(sys_get_temp_dir(), 'bchk') . '.wav';
+    $f = ttsTempFile(sys_get_temp_dir(), 'bchk', '.wav');
     @file_put_contents($f, $audioBytes);
     $probe = function ($file) use ($fp) {
         return (float)trim((string)shell_exec(escapeshellarg($fp)
@@ -4177,7 +4192,7 @@ function pvChunkPauseMs(string $chunk): int {
 function pvVerifyChunk(string $mp3, array $contentWords, string $endWord = ''): bool {
     if ($mp3 === '' || (!$contentWords && $endWord === '')) return true;
     require_once __DIR__ . '/gpu-client.php';
-    $f = tempnam(sys_get_temp_dir(), 'pvv') . '.mp3';
+    $f = ttsTempFile(sys_get_temp_dir(), 'pvv', '.mp3');
     if ($f === false) return true;
     @file_put_contents($f, $mp3);
     $r = gpuTranscribe($f, ['word_timestamps' => false, 'vad_filter' => false, 'timeout' => 60]);
@@ -4223,7 +4238,7 @@ function pvConcatMp3sWithPauses(array $items, ?string &$err = null, string $outF
     $wav = ($outFmt === 'wav');
     $tmp = []; $inputs = ''; $filter = ''; $n = count($items);
     for ($i = 0; $i < $n; $i++) {
-        $f = tempnam(sys_get_temp_dir(), 'pvc_') . ($wav ? '.wav' : '.mp3');
+        $f = ttsTempFile(sys_get_temp_dir(), 'pvc_', $wav ? '.wav' : '.mp3');
         @file_put_contents($f, $items[$i]['mp3']);   // 'mp3' key holds the raw bytes (wav or mp3)
         $tmp[] = $f;
         $inputs .= ' -i ' . escapeshellarg($f);
@@ -4238,7 +4253,7 @@ function pvConcatMp3sWithPauses(array $items, ?string &$err = null, string $outF
     }
     for ($i = 0; $i < $n; $i++) $filter .= '[a' . $i . ']';
     $filter .= 'concat=n=' . $n . ':v=0:a=1[out]';
-    $out = tempnam(sys_get_temp_dir(), 'pvo_') . ($wav ? '.wav' : '.mp3');
+    $out = ttsTempFile(sys_get_temp_dir(), 'pvo_', $wav ? '.wav' : '.mp3');
     $codec = $wav ? '-c:a pcm_s16le' : '-c:a libmp3lame -b:a 128k';
     $cmd = escapeshellarg($ff) . ' -loglevel error -y' . $inputs
          . ' -filter_complex ' . escapeshellarg($filter)

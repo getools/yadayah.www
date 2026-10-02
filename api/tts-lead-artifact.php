@@ -1,4 +1,19 @@
 <?php
+
+/**
+ * A unique temp path ending in $ext. tempnam() creates its own empty file, so
+ * `tempnam(...) . '.mp3'` leaves that file behind forever (callers only unlink
+ * the .mp3) — ~1.5M of them had piled up in /tmp. Rename it to the real name.
+ */
+if (!function_exists('ttsTempFile')) {
+    function ttsTempFile(string $dir, string $prefix, string $ext): string {
+        $base = tempnam($dir, $prefix);
+        if ($base === false) return $dir . '/' . $prefix . bin2hex(random_bytes(6)) . $ext;
+        $path = $base . $ext;
+        if (!@rename($base, $path)) { @unlink($base); }
+        return $path;
+    }
+}
 /**
  * tts-lead-artifact.php — leading autoregressive-filler guard for short headings.
  *
@@ -98,7 +113,7 @@ function ttsLAHasEarlyGap(string $path, string $ffmpegBin = 'ffmpeg'): bool {
 function ttsLATailSurvivesExpected(string $path, string $expectedWord, string $tmpDir,
                                    float $cutS = 0.20, string $ffmpegBin = 'ffmpeg'): bool {
     if ($expectedWord === '' || !function_exists('gpuTranscribe')) return false;
-    $wav = tempnam($tmpDir, 'la-tail-') . '.wav';
+    $wav = ttsTempFile($tmpDir, 'la-tail-', '.wav');
     $cmd = escapeshellarg($ffmpegBin) . ' -hide_banner -loglevel error -y -ss '
          . sprintf('%.3f', $cutS) . ' -i ' . escapeshellarg($path) . ' ' . escapeshellarg($wav) . ' 2>/dev/null';
     @shell_exec($cmd);
@@ -120,7 +135,7 @@ function ttsLATailSurvivesExpected(string $path, string $expectedWord, string $t
  */
 function ttsLAHeadToken(string $path, string $tmpDir, float $cutS = 0.20, string $ffmpegBin = 'ffmpeg'): string {
     if (!function_exists('gpuTranscribe')) return '';
-    $wav = tempnam($tmpDir, 'la-head-') . '.wav';
+    $wav = ttsTempFile($tmpDir, 'la-head-', '.wav');
     $cmd = escapeshellarg($ffmpegBin) . ' -hide_banner -loglevel error -y -t '
          . sprintf('%.3f', $cutS) . ' -i ' . escapeshellarg($path) . ' ' . escapeshellarg($wav) . ' 2>/dev/null';
     @shell_exec($cmd);
@@ -165,7 +180,7 @@ function ttsLAFullText(string $path): string {
  */
 function ttsLADetect(string $bytes, string $expectedWord, string $tmpDir,
                      string $ffmpegBin = 'ffmpeg', string $ffprobeBin = 'ffprobe'): array {
-    $mp3 = tempnam($tmpDir, 'la-det-') . '.mp3';
+    $mp3 = ttsTempFile($tmpDir, 'la-det-', '.mp3');
     @file_put_contents($mp3, $bytes);
     $dur = ttsLADurationMs($mp3, $ffprobeBin);
     $tail = false; $art = false; $ff = '-'; $hw = '-'; $branch = '';
