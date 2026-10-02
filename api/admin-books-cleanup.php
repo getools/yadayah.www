@@ -905,7 +905,8 @@ function cleanupRawJson(string $html): string {
  * GET ?action=word_meta — filter options with counts: languages, base-letter
  *     scripts, sources.
  * GET ?action=words&language=&script=&sources=a,b&q=&phrases=0|1
- *                  &sort=translit|base|language|source|count&dir=asc|desc
+ *                  &f_base=&f_yt=&f_strongs=&f_source=&f_count=
+ *                  &sort=translit|base|yt|strongs|language|source|count&dir=asc|desc
  *                  &offset=&limit=
  *     yy_word rows (not-a-word excluded). q matches the preferred spelling or
  *     any yy_word_translit spelling. phrases=0 (default) drops entries whose
@@ -992,6 +993,30 @@ function cleanupWords(): void {
                       WHERE fs.word_source_code = trim(w.word_source_code) AND fs.word_source_label ILIKE :f_src))";
         $p[':f_src'] = $esc($fSrc);
     }
+    // Strong's: a number (H/G and a suffix letter optional) = that entry, any
+    // suffix unless one is given — "430" finds H0430, H0430a, H0430b. Also
+    // "none" (established: has none), "?" (not yet determined), "*" (has
+    // one); anything else = some code contains it.
+    $fStrongs = trim((string)($_GET['f_strongs'] ?? ''));
+    if ($fStrongs !== '') {
+        $fsLow = strtolower($fStrongs);
+        if (in_array($fsLow, ['none', '-', '–', '––', '--'], true)) {
+            $where[] = "trim(w.word_strongs) = '' AND NOT EXISTS (SELECT 1 FROM yy_word_strongs ws WHERE ws.word_key = w.word_key)";
+        } elseif (in_array($fsLow, ['?', 'unknown'], true)) {
+            $where[] = 'w.word_strongs IS NULL AND NOT EXISTS (SELECT 1 FROM yy_word_strongs ws WHERE ws.word_key = w.word_key)';
+        } elseif (in_array($fsLow, ['*', 'any'], true)) {
+            $where[] = 'EXISTS (SELECT 1 FROM yy_word_strongs ws WHERE ws.word_key = w.word_key)';
+        } elseif (preg_match('/^([hg])?\s*0*(\d{1,4})([a-z])?$/i', $fStrongs, $m) && (int)$m[2] > 0) {
+            $c = 'ws.word_strongs_number = :fs_num';
+            $p[':fs_num'] = (int)$m[2];
+            if ($m[1] !== '') { $c .= ' AND ws.word_strongs_language = :fs_lang'; $p[':fs_lang'] = strtoupper($m[1]); }
+            if (($m[3] ?? '') !== '') { $c .= ' AND ws.word_strongs_suffix = :fs_suf'; $p[':fs_suf'] = strtolower($m[3]); }
+            $where[] = "EXISTS (SELECT 1 FROM yy_word_strongs ws WHERE ws.word_key = w.word_key AND $c)";
+        } else {
+            $where[] = 'EXISTS (SELECT 1 FROM yy_word_strongs ws WHERE ws.word_key = w.word_key AND ws.word_strongs_code ILIKE :f_strongs)';
+            $p[':f_strongs'] = $esc($fStrongs);
+        }
+    }
     // Count: "5" or ">=5" = at least 5; also >5, <5, <=5, =5, and a range "5-10".
     $fCount = preg_replace('/\s+/', '', (string)($_GET['f_count'] ?? ''));
     if ($fCount !== '') {
@@ -1012,6 +1037,7 @@ function cleanupWords(): void {
         'translit' => "$translitKey $dir",
         'base'     => CLEANUP_WORD_BASE_SQL . " $dir NULLS LAST, $translitKey",
         'yt'       => "nullif(trim(w.word_yt), '') $dir NULLS LAST, $translitKey",
+        'strongs'  => "nullif(trim(w.word_strongs), '') $dir NULLS LAST, $translitKey",
         'language' => "w.word_language $dir NULLS LAST, $translitKey",
         'source'   => "s.word_source_label $dir NULLS LAST, $translitKey",
         'count'    => "coalesce(w.word_count_yy, 0) $dir, $translitKey",
@@ -1028,6 +1054,10 @@ function cleanupWords(): void {
                                (" . CLEANUP_WORD_SCRIPT_SQL . ") AS script, w.word_language,
                                trim(w.word_source_code) AS source, s.word_source_label AS source_label,
                                coalesce(w.word_count_yy, 0) AS count,
+                               trim(w.word_strongs) AS strongs_state,
+                               (SELECT string_agg(ws.word_strongs_code, ' · '
+                                         ORDER BY (ws.word_strongs_key = w.word_strongs_key) IS TRUE DESC, ws.word_strongs_code)
+                                  FROM yy_word_strongs ws WHERE ws.word_key = w.word_key) AS strongs,
                                (SELECT string_agg(DISTINCT t.word_translit_text, ' · ')
                                   FROM yy_word_translit t
                                  WHERE t.word_key = w.word_key AND t.word_translit_text IS DISTINCT FROM w.word_translit) AS alts

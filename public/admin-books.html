@@ -373,6 +373,7 @@
         .cl-wl-table td.yt { font-family: 'YadaTowrah', serif; font-size: 1rem; color: #1a5276;
             direction: rtl; unicode-bidi: bidi-override; text-align: right; }
         .cl-wl-table td.dim { color: #bbb; }
+        .cl-wl-table td.sg { font-variant-numeric: tabular-nums; white-space: nowrap; }
         .cl-wl-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 0.78rem; color: #888; }
         @media (max-width: 640px) { .cl-hit { flex-direction: column; gap: 2px; } .cl-hit .loc { width: auto; } .cl-grid { grid-template-columns: 1fr; row-gap: 4px; } }
         /* Series tab */
@@ -566,6 +567,7 @@
                                     <th data-sort="translit" title="Sort by transliteration (half-rings ignored); click again to reverse">Transliteration<span class="cl-wl-rings"><button type="button" class="cl-ring cl-ring-sm" data-for="cl-wl-q" data-ch="ʾ" title="Add a right half ring to the Transliteration filter">ʾ</button><button type="button" class="cl-ring cl-ring-sm" data-for="cl-wl-q" data-ch="ʿ" title="Add a left half ring to the Transliteration filter">ʿ</button><button type="button" class="cl-ring cl-ring-sm cl-apos" data-for="cl-wl-q" data-ch="❜" title="Any apostrophe: inserts ❜, which matches any ONE of ʿ ʾ ' ` ‘ ’ ‚ ‛ ´ ʼ ʻ ʹ ′ (left/right half ring, straight/curly single quote, backtick and similar)">❜</button></span></th>
                                     <th data-sort="base" class="rtl" title="Native spelling (Base, else the Hebrew) — click to sort">Base</th>
                                     <th data-sort="yt" class="rtl" title="The Hebrew in Yada Towrah letters — click to sort">YT</th>
+                                    <th data-sort="strongs" title="Strong's number(s), preferred first — click to sort">Strong's</th>
                                     <th data-sort="language" title="Language — click to sort">Lng</th>
                                     <th data-sort="source" title="Where the word came from — click to sort">Source</th>
                                     <th data-sort="count" class="num" title="Times the word appears in the books — click to sort">Count</th>
@@ -575,6 +577,7 @@
                                     <th><input type="text" id="cl-wl-q" autocomplete="off" spellcheck="false" placeholder="contains…" title="Any spelling contains. Half-rings and apostrophes are ignored unless you type one — then it must match exactly; ❜ matches any one of them"></th>
                                     <th><input type="text" id="cl-wl-f-base" autocomplete="off" spellcheck="false" placeholder="…" title="Base contains"></th>
                                     <th><input type="text" id="cl-wl-f-yt" autocomplete="off" spellcheck="false" placeholder="…" title="YT contains"></th>
+                                    <th><input type="text" id="cl-wl-f-strongs" autocomplete="off" spellcheck="false" placeholder="…" title="A number = that Strong's entry (430 finds H0430, H0430a…; H/G and a suffix letter optional). Also: none = has no Strong's, ? = not yet determined, * = has one. Anything else = code contains"></th>
                                     <th><select id="cl-wl-lang" title="Language"><option value="">All</option></select></th>
                                     <th><input type="text" id="cl-wl-f-src" autocomplete="off" spellcheck="false" placeholder="…" title="Source contains"></th>
                                     <th><input type="text" id="cl-wl-f-count" autocomplete="off" spellcheck="false" placeholder="≥ n" title="A number = at least that many; also &gt;n, &lt;n, =n, or a range like 5-10"></th>
@@ -2821,6 +2824,7 @@ function clWlState() {
         q: document.getElementById('cl-wl-q').value,
         fbase: document.getElementById('cl-wl-f-base').value,
         fyt: document.getElementById('cl-wl-f-yt').value,
+        fstrongs: document.getElementById('cl-wl-f-strongs').value,
         fsrc: document.getElementById('cl-wl-f-src').value,
         fcount: document.getElementById('cl-wl-f-count').value,
         phrases: document.getElementById('cl-wl-phrases').checked,
@@ -2837,6 +2841,7 @@ function clWlApply(saved) {
     document.getElementById('cl-wl-q').value = saved.q || '';
     document.getElementById('cl-wl-f-base').value = saved.fbase || '';
     document.getElementById('cl-wl-f-yt').value = saved.fyt || '';
+    document.getElementById('cl-wl-f-strongs').value = saved.fstrongs || '';
     document.getElementById('cl-wl-f-src').value = saved.fsrc || '';
     document.getElementById('cl-wl-f-count').value = saved.fcount || '';
     document.getElementById('cl-wl-phrases').checked = !!saved.phrases;
@@ -2860,7 +2865,7 @@ function clWlInit(saved) {
         document.getElementById(id).addEventListener('change', function() { clWlReload(); clSaveState(); });
     });
     document.getElementById('cl-wl-srcs').addEventListener('change', function() { clWlReload(); clSaveState(); });
-    ['cl-wl-q', 'cl-wl-f-base', 'cl-wl-f-yt', 'cl-wl-f-src', 'cl-wl-f-count'].forEach(function(id) {
+    ['cl-wl-q', 'cl-wl-f-base', 'cl-wl-f-yt', 'cl-wl-f-strongs', 'cl-wl-f-src', 'cl-wl-f-count'].forEach(function(id) {
         document.getElementById(id).addEventListener('input', function() {
             clearTimeout(clWl.timer);
             clWl.timer = setTimeout(function() { clWlReload(); clSaveState(); }, 250);
@@ -2931,6 +2936,7 @@ function clWlLoad(append) {
         + (st.q.trim() ? '&q=' + encodeURIComponent(st.q.trim()) : '')
         + (st.fbase.trim() ? '&f_base=' + encodeURIComponent(st.fbase.trim()) : '')
         + (st.fyt.trim() ? '&f_yt=' + encodeURIComponent(st.fyt.trim()) : '')
+        + ((st.fstrongs || '').trim() ? '&f_strongs=' + encodeURIComponent(st.fstrongs.trim()) : '')
         + (st.fsrc.trim() ? '&f_source=' + encodeURIComponent(st.fsrc.trim()) : '')
         + (st.fcount.trim() ? '&f_count=' + encodeURIComponent(st.fcount.trim()) : '')
         + (st.phrases ? '&phrases=1' : '');
@@ -2957,6 +2963,9 @@ function clWlLoad(append) {
                         + '</span>' : '') + '</td>'
                     + '<td class="base' + (w.base ? '' : ' dim') + '">' + (w.base ? esc(w.base) : '–') + '</td>'
                     + '<td class="yt' + (w.yt ? '' : ' dim') + '">' + (w.yt ? esc(w.yt) : '–') + '</td>'
+                    + (w.strongs ? '<td class="sg">' + esc(w.strongs) + '</td>'
+                        : w.strongs_state === '' ? '<td class="sg dim" title="Has no Strong&#39;s entry">––</td>'
+                        : '<td class="sg dim" title="Strong&#39;s not yet determined"></td>')
                     + '<td' + (w.word_language ? ' title="' + esc(langs[w.word_language] || '') + '"' : ' class="dim"') + '>'
                         + esc(w.word_language || '–') + '</td>'
                     + '<td>' + esc(w.source_label || w.source || '') + '</td>'
