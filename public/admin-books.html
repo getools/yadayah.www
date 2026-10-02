@@ -312,6 +312,14 @@
         #cl-results.full .cl-hit.flip .ex-full { display: none; }
         #cl-results.replacing .cl-hit .ex mark { background: #fde2e2; text-decoration: line-through; text-decoration-color: #c0392b; }
         .cl-hit .ex ins.cl-new { background: #d5f5e3; text-decoration: none; margin-left: 2px; }
+        /* ❜ in Replace: one left/right half-ring toggle pair per ❜, per match. */
+        .cl-hit .cl-lrs { flex: none; display: flex; gap: 6px; align-self: flex-start; }
+        .cl-lr { display: inline-flex; border: 1px solid #c9b3d6; border-radius: 4px; overflow: hidden; }
+        .cl-lr button { min-width: 24px; padding: 1px 4px; line-height: 1.1; border: none; background: #fff; cursor: pointer;
+                        font-family: 'YadaTowrah', serif; font-size: 1.1rem; color: #8e44ad; }
+        .cl-lr button + button { border-left: 1px solid #c9b3d6; }
+        .cl-lr button:hover { background: #f5eefa; }
+        .cl-lr button.on { background: #8e44ad; color: #fff; }
         .cl-hit.current { box-shadow: inset 4px 0 0 #3498db; background: #eef5fc; }
         #cl-results .cl-hit.replaced .ex mark { background: #d5f5e3; text-decoration: none; }
         .cl-hit.replaced .loc::after { content: '✓ replaced (queued)'; display: block; color: #1e8449; font-weight: 600; }
@@ -610,6 +618,7 @@
                            placeholder="Replacement text (preview shown in the results)">
                     <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʾ" title="Insert right half ring">ʾ</button>
                     <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʿ" title="Insert left half ring">ʿ</button>
+                    <button type="button" class="cl-ring cl-apos" data-for="cl-replace" data-ch="❜" title="Half ring chosen per match: inserts ❜, and every match row gets a ʿ / ʾ toggle for it (one pair per ❜) — the one you pick goes where the ❜ is. Matches you have not loaded get the default: the half ring that matches the apostrophe in the found text (ʿ ‘ ` ‛ ʻ → ʿ, anything else → ʾ)">❜</button>
                     <button type="button" class="cl-fmt" id="cl-rbold" title="Bold — the replacement text is bold"><b>B</b></button>
                     <button type="button" class="cl-fmt" id="cl-ritalic" title="Italic — the replacement text is italic"><i>I</i></button>
                 </div>
@@ -3467,8 +3476,31 @@ document.addEventListener('change', function(e) {
 // Replace preview: each ticked match struck through and followed by the
 // replacement, styled per the Replace field's B / I. Shown once the Replace
 // field has text or a format.
-function clReplacement() {
-    var text = document.getElementById('cl-replace').value;
+// Each ❜ in Replace becomes a left (ʿ) or right (ʾ) half ring, chosen per
+// match with the row's toggles (r.apos[k]). Unchosen = the default: the k-th
+// apostrophe in the found text, ʿ for a left-leaning one, ʾ otherwise.
+// Keep in step with cleanupAposDefault() in admin-books-cleanup.php, which
+// applies it to matches the page never loaded.
+var CL_APOS = '❜', CL_APOS_ANY = 'ʿʾ\'`‘’‚‛´ʼʻʹ′', CL_APOS_LEFT = 'ʿ‘`‛ʻ';
+function clAposCount() { return document.getElementById('cl-replace').value.split(CL_APOS).length - 1; }
+function clAposFor(r) {
+    var n = clAposCount(), out = [], seen = [];
+    Array.from(r.match || '').forEach(function(ch) { if (CL_APOS_ANY.indexOf(ch) >= 0) seen.push(ch); });
+    for (var k = 0; k < n; k++) {
+        var pick = r.apos && r.apos[k];
+        out.push(pick === 'ʿ' || pick === 'ʾ' ? pick : (seen[k] && CL_APOS_LEFT.indexOf(seen[k]) >= 0 ? 'ʿ' : 'ʾ'));
+    }
+    return out;
+}
+function clReplaceText(r) {
+    var parts = document.getElementById('cl-replace').value.split(CL_APOS);
+    if (parts.length === 1 || !r) return parts[0];
+    var ch = clAposFor(r);
+    return parts.reduce(function(s, p, k) { return s + ch[k - 1] + p; });
+}
+
+function clReplacement(r) {
+    var text = clReplaceText(r);
     var b = clIsOn('cl-rbold'), i = clIsOn('cl-ritalic');
     if (text === '' && !b && !i) return null;
     var h = esc(text);
@@ -3476,8 +3508,8 @@ function clReplacement() {
     if (b) h = '<b>' + h + '</b>';
     return h === '' ? '' : '<ins class="cl-new">' + h + '</ins>';
 }
-function clWithReplacement(html) {
-    var rep = clReplacement();
+function clWithReplacement(html, r) {
+    var rep = clReplacement(r);
     return rep === null ? html : html.replace('</mark>', '</mark>' + rep);
 }
 function clRefreshRows() {
@@ -3501,14 +3533,32 @@ function clHitHtml(r, vk, i) {
             + 'Open this page in the flipbook">' + loc + '<span class="ext">&#8599;</span></a>';
     }
     var cls = 'cl-hit' + (r.flip ? ' flip' : '') + (picked ? '' : ' unpicked');
+    var lrs = clAposFor(r).map(function(ch, k) {
+        var n = ' for ❜ #' + (k + 1) + ' in Replace';
+        return '<span class="cl-lr" data-k="' + k + '">'
+            + '<button type="button" data-ch="ʿ"' + (ch === 'ʿ' ? ' class="on"' : '') + ' title="Left half ring ʿ' + n + '">ʿ</button>'
+            + '<button type="button" data-ch="ʾ"' + (ch === 'ʾ' ? ' class="on"' : '') + ' title="Right half ring ʾ' + n + '">ʾ</button></span>';
+    }).join('');
     // excerpt/paragraph are server-built HTML: escaped text inside <b>/<i>/<mark> only.
     return '<div class="' + cls + '" data-vk="' + vk + '" data-i="' + i + '">'
         + '<input type="checkbox" class="cl-sel" data-level="item"' + (picked ? ' checked' : '')
         + ' title="Replace this match (untick to leave it as it is)">'
         + locHtml
-        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt) + '</span>'
-        + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt) + '</span></span></div>';
+        + (lrs ? '<span class="cl-lrs">' + lrs + '</span>' : '')
+        + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt, r) + '</span>'
+        + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt, r) + '</span></span></div>';
 }
+
+// A row's ʿ / ʾ toggle: remember the pick and redraw just that row.
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('#cl-results .cl-lr button');
+    if (!btn || !clLast) return;
+    var row = btn.closest('.cl-hit'), vk = +row.getAttribute('data-vk'), i = +row.getAttribute('data-i');
+    var r = clLast.books[vk].items[i];
+    r.apos = clAposFor(r);
+    r.apos[+btn.parentNode.getAttribute('data-k')] = btn.getAttribute('data-ch');
+    row.outerHTML = clHitHtml(r, vk, i);
+});
 
 function clReplaceArgs() {
     return {
@@ -3546,8 +3596,14 @@ function clBookRequest(b) {
         var r = byKey[k];
         return r ? {paragraph_key: r.paragraph_key, start: r.start, match: r.match} : null;
     }).filter(Boolean);
-    if (b.sel.mode === 'all') return list.length ? {mode: 'all', exclude: list} : {mode: 'all'};
-    return {mode: 'some', targets: list};
+    var req = b.sel.mode === 'all' ? (list.length ? {mode: 'all', exclude: list} : {mode: 'all'}) : {mode: 'some', targets: list};
+    // The half ring for each ❜, per loaded match (the server defaults the rest).
+    if (clAposCount()) {
+        req.apos = b.items.filter(function(r) { return clItemOn(b, r); }).map(function(r) {
+            return {paragraph_key: r.paragraph_key, start: r.start, match: r.match, apos: clAposFor(r).join('')};
+        });
+    }
+    return req;
 }
 
 function clReplaceSelected() {
@@ -3558,7 +3614,9 @@ function clReplaceSelected() {
     if (!x) return;
     var fmt = [args.rbold ? 'bold' : '', args.ritalic ? 'italic' : ''].filter(Boolean).join(' + ');
     if (!confirm('Replace ' + x + ' of ' + s.total + ' match' + (s.total === 1 ? '' : 'es') + ' of “' + s.q + '” with “' + args.replace + '”'
-        + (fmt ? ' (' + fmt + ')' : '') + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
+        + (fmt ? ' (' + fmt + ')' : '')
+        + (clAposCount() ? ' — each ❜ becomes the half ring picked on its row (rows not loaded get the default)' : '')
+        + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
         + 'The parsed text changes now, and so does a staged copy of each book\'s Word DOCX. '
         + 'Nothing is rebuilt until you reprocess the books under Queued DOCX changes.')) return;
     if (!clConfirmEmpty(args)) return;

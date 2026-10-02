@@ -286,7 +286,9 @@ function cleanupBookSlug(?string $volumeCode): ?string {
  *    replace, rbold, ritalic,
  *    target: {paragraph_key, start, match}        — next: that one match
  *    targets: [{paragraph_key, start, match}, …]  — some: just these
- *    exclude: [{paragraph_key, start, match}, …]} — all: every match but these
+ *    exclude: [{paragraph_key, start, match}, …]  — all: every match but these
+ *    apos: [{paragraph_key, start, match, apos}, …]} — the ʿ/ʾ picked per ❜ in
+ *          replace, per loaded match; others get cleanupAposDefault()
  * The page sends 'all' (optionally with exclude) or 'some', per its checkboxes.
  *
  * One volume per request (Cloudflare cuts a request off at ~100s), so the
@@ -404,6 +406,17 @@ function cleanupReplace(array $authUser): void {
     };
     $targets = $keyed($in['targets'] ?? []);
     $exclude = $keyed($in['exclude'] ?? []);
+    // ❜ in Replace: the half ring picked on each loaded row, {.., apos: 'ʿʾ'}.
+    // Matches without a pick get cleanupAposDefault().
+    $aposPick = [];
+    foreach ((array)($in['apos'] ?? []) as $t) {
+        if (is_array($t)) $aposPick[(int)($t['paragraph_key'] ?? 0) . ':' . (int)($t['start'] ?? -1)]
+            = [(string)($t['match'] ?? ''), (string)($t['apos'] ?? '')];
+    }
+    $replFor = function (string $id, string $hit) use ($replace, $aposPick): string {
+        $pick = isset($aposPick[$id]) && $aposPick[$id][0] === $hit ? $aposPick[$id][1] : '';
+        return cleanupAposResolve($replace, $hit, $pick);
+    };
     $targetsFound = 0;
     while ($r = $st->fetch()) {
         $pk = (int)$r['paragraph_key'];
@@ -428,8 +441,11 @@ function cleanupReplace(array $authUser): void {
                         || cleanupHasFormat($parsed['runs'], $text, $start, $end, $wantBold, $wantItalic))
                     && !(isset($exclude[$id]) && $exclude[$id] === $hit);
             }
-            $meta[$id] = [$pk, $start, $hit];
-            $dbList[] = ['id' => $id, 'apply' => $apply, 'pos' => $base + $start, 'end' => $base + $end];
+            $rep = $apply ? $replFor($id, $hit) : $replace;
+            $meta[$id] = [$pk, $start, $hit, $rep];
+            $d = ['id' => $id, 'apply' => $apply, 'pos' => $base + $start, 'end' => $base + $end];
+            if ($rep !== $replace) $d['replace'] = $rep;
+            $dbList[] = $d;
         }
     }
     if ($mode === 'next' && !$targetFound) {
@@ -468,7 +484,6 @@ function cleanupReplace(array $authUser): void {
         foreach ($applied as $id) {
             if (isset($meta[$id])) $byPara[$meta[$id][0]][] = $meta[$id];
         }
-        $repl = cleanupReplacementSegments($replace, $rBold, $rItalic);
         $rows = [];       // pk → [html, plain, raw]
         $logs = [];       // change rows
         try {
@@ -477,8 +492,9 @@ function cleanupReplace(array $authUser): void {
                 $oldParsed = cleanupParseHtml((string)$old['paragraph_text_html']);
                 usort($list, function ($a, $b) { return $b[1] - $a[1]; });   // last match first
                 $html = (string)$old['paragraph_text_html'];
-                foreach ($list as [, $start, $hit]) {
-                    $html = cleanupHtmlReplace($html, $start, $start + strlen($hit), $repl);
+                foreach ($list as [, $start, $hit, $rep]) {
+                    $html = cleanupHtmlReplace($html, $start, $start + strlen($hit),
+                        cleanupReplacementSegments($rep, $rBold, $rItalic));
                 }
                 $parsed = cleanupParseHtml($html);
                 $rows[$pk] = [$html, trim(preg_replace('/\s+/u', ' ', $parsed['text'])), cleanupRawJson($html)];
@@ -486,16 +502,16 @@ function cleanupReplace(array $authUser): void {
                 // shift the later ones by their length change.
                 $list = array_reverse($list);
                 $shift = 0;
-                foreach ($list as [, $start, $hit]) {
+                foreach ($list as [, $start, $hit, $rep]) {
                     $ns = $start + $shift;
-                    $ne = $ns + strlen($replace);
-                    $shift += strlen($replace) - strlen($hit);
-                    $logs[] = [$pk, (int)$old['paragraph_number'], $hit, $old, $html,
+                    $ne = $ns + strlen($rep);
+                    $shift += strlen($rep) - strlen($hit);
+                    $logs[] = [$pk, (int)$old['paragraph_number'], $hit, $rep, $old, $html,
                         cleanupExcerpt($oldParsed['runs'], $oldParsed['text'], $start, $start + strlen($hit)),
                         cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne)];
                     if ($mode === 'next') {
                         $items[] = [
-                            'paragraph_key' => $pk, 'start' => $start, 'delta' => strlen($replace) - strlen($hit),
+                            'paragraph_key' => $pk, 'start' => $start, 'delta' => strlen($rep) - strlen($hit),
                             'excerpt'   => cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne),
                             'paragraph' => cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne, null),
                         ];
@@ -544,8 +560,8 @@ function cleanupReplace(array $authUser): void {
                  cleanup_change_after_html, cleanup_change_excerpt_before, cleanup_change_excerpt_after,
                  cleanup_change_user_key, cleanup_change_user_name)
                 VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            foreach ($logs as [$pk, $pn, $hit, $old, $newHtml, $exBefore, $exAfter]) {
-                $ins->execute([$batch, $vk, $pk, $pn, $q, $replace, $opts, $hit,
+            foreach ($logs as [$pk, $pn, $hit, $rep, $old, $newHtml, $exBefore, $exAfter]) {
+                $ins->execute([$batch, $vk, $pk, $pn, $q, $rep, $opts, $hit,
                     $old['paragraph_text_html'], $old['paragraph_text_plain'], $old['paragraph_text_raw'],
                     $newHtml, $exBefore, $exAfter,
                     (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
@@ -780,6 +796,32 @@ function cleanupRunDocxScript(array $req): array {
     return $res;
 }
 
+
+/**
+ * Replace with each ❜ turned into a half ring: $pick's k-th char (ʿ or ʾ) when
+ * the admin chose one on the match's row, else the default — the k-th
+ * apostrophe in the found text, ʿ if it leans left (ʿ ‘ ` ‛ ʻ), else ʾ.
+ * Keep in step with clAposFor() in admin-books.html.
+ */
+function cleanupAposDefault(string $hit): array {
+    preg_match_all('/' . CLEANUP_APOS_CLASS . '/u', $hit, $m);
+    return array_map(function ($ch) {
+        return in_array($ch, ["\u{02BF}", "\u{2018}", '`', "\u{201B}", "\u{02BB}"], true) ? "\u{02BF}" : "\u{02BE}";
+    }, $m[0]);
+}
+function cleanupAposResolve(string $replace, string $hit, string $pick): string {
+    $parts = explode(CLEANUP_APOS_WILDCARD, $replace);
+    if (count($parts) === 1) return $replace;
+    $def = cleanupAposDefault($hit);
+    $pick = preg_split('//u', $pick, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $out = $parts[0];
+    for ($k = 1; $k < count($parts); $k++) {
+        $ch = $pick[$k - 1] ?? '';
+        if ($ch !== "\u{02BF}" && $ch !== "\u{02BE}") $ch = $def[$k - 1] ?? "\u{02BE}";
+        $out .= $ch . $parts[$k];
+    }
+    return $out;
+}
 
 /** The replacement as [text, isRing] pieces plus its B / I. */
 function cleanupReplacementSegments(string $replace, bool $b, bool $i): array {
