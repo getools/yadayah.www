@@ -316,18 +316,30 @@
         .cl-wl-filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 0.82rem; color: #555; margin-bottom: 8px; }
         .cl-wl-filters label { display: inline-flex; align-items: center; gap: 5px; }
         .cl-wl-filters select, .cl-wl-filters input[type=text] { font-size: 0.82rem; padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; }
-        .cl-wl-filters input#cl-wl-q { width: 150px;
+        .cl-wl-table input#cl-wl-q {
             font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         .cl-wl-srcs { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; padding: 2px 8px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
         .cl-wl-srcs label { gap: 3px; cursor: pointer; }
         .cl-wl-srcs .n { color: #aaa; font-size: 0.75rem; }
         .cl-wl-table { max-height: 300px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
         .cl-wl-table table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
-        .cl-wl-table th { position: sticky; top: 0; background: #f5f5f5; text-align: left; font-size: 0.78rem; font-weight: 600;
+        /* The whole head sticks (two rows: headings + filters). */
+        .cl-wl-table thead { position: sticky; top: 0; z-index: 1; }
+        .cl-wl-table th { background: #f5f5f5; text-align: left; font-size: 0.78rem; font-weight: 600;
             padding: 5px 8px; border-bottom: 1px solid #e0e0e0; cursor: pointer; user-select: none; white-space: nowrap; z-index: 1; }
         .cl-wl-table th:hover { background: #eaeef3; }
         .cl-wl-table th.asc::after { content: ' ▲'; font-size: 0.65rem; color: #3498db; }
         .cl-wl-table th.desc::after { content: ' ▼'; font-size: 0.65rem; color: #3498db; }
+        .cl-wl-table tr.cl-wl-frow th { cursor: default; padding: 3px 4px 5px; font-weight: 400; }
+        .cl-wl-table tr.cl-wl-frow th:hover { background: #f5f5f5; }
+        .cl-wl-table tr.cl-wl-frow input, .cl-wl-table tr.cl-wl-frow select { width: 100%; box-sizing: border-box; min-width: 0;
+            font-size: 0.8rem; padding: 2px 5px; border: 1px solid #ccc; border-radius: 3px; background: #fff; font-weight: 400; }
+        .cl-wl-table tr.cl-wl-frow input:focus, .cl-wl-table tr.cl-wl-frow select:focus { outline: none; border-color: #3498db; }
+        .cl-wl-table th.rtl { text-align: right; }
+        .cl-wl-table input#cl-wl-f-base { direction: rtl; text-align: right; font-size: 0.9rem; }
+        /* Same display as the YT cells: glyphs reversed on screen only. */
+        .cl-wl-table input#cl-wl-f-yt { font-family: 'YadaTowrah', serif; color: #1a5276;
+            direction: rtl; unicode-bidi: bidi-override; text-align: right; }
         .cl-wl-table td { padding: 4px 8px; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
         .cl-wl-table tbody tr { cursor: pointer; }
         .cl-wl-table tbody tr:hover { background: #f0f4ff; }
@@ -336,7 +348,11 @@
         .cl-wl-table td.tr .alt { display: block; font-weight: 400; font-size: 0.75rem; color: #999; }
         .cl-wl-table td.tr .alt span { cursor: pointer; }
         .cl-wl-table td.tr .alt span:hover { color: #2980b9; text-decoration: underline; }
-        .cl-wl-table td.base { direction: rtl; text-align: left; font-family: 'SBL Hebrew', 'Times New Roman', serif; font-size: 1rem; }
+        .cl-wl-table td.base { direction: rtl; text-align: right; font-family: 'SBL Hebrew', 'Times New Roman', serif; font-size: 1rem; }
+        /* Yada Towrah draws left-to-right, so word_yt (logical order) is
+           reversed on screen with bidi-override, as on /admin-glossary. */
+        .cl-wl-table td.yt { font-family: 'YadaTowrah', serif; font-size: 1rem; color: #1a5276;
+            direction: rtl; unicode-bidi: bidi-override; text-align: right; }
         .cl-wl-table td.dim { color: #bbb; }
         .cl-wl-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 0.78rem; color: #888; }
         @media (max-width: 640px) { .cl-hit { flex-direction: column; gap: 2px; } .cl-hit .loc { width: auto; } .cl-grid { grid-template-columns: 1fr; row-gap: 4px; } }
@@ -521,20 +537,28 @@
                     </button>
                     <div class="cl-wl" id="cl-wl" hidden>
                         <div class="cl-wl-filters">
-                            <label>Language <select id="cl-wl-lang"><option value="">All</option></select></label>
                             <label>Base letters <select id="cl-wl-script"><option value="">All</option></select></label>
                             <span class="cl-wl-srcs" id="cl-wl-srcs" title="Sources — none ticked = all"></span>
-                            <label>Transliteration <input type="text" id="cl-wl-q" autocomplete="off" spellcheck="false" placeholder="contains…"></label>
                             <label class="cl-wl-chk"><input type="checkbox" id="cl-wl-phrases"> Include Phrases</label>
                         </div>
                         <div class="cl-wl-table">
                             <table>
                                 <thead><tr>
                                     <th data-sort="translit" title="Sort by transliteration (half-rings ignored); click again to reverse">Transliteration</th>
-                                    <th data-sort="base" title="Native spelling (Base, else the Hebrew) — click to sort">Base</th>
+                                    <th data-sort="base" class="rtl" title="Native spelling (Base, else the Hebrew) — click to sort">Base</th>
+                                    <th data-sort="yt" class="rtl" title="The Hebrew in Yada Towrah letters — click to sort">YT</th>
                                     <th data-sort="language" title="Language — click to sort">Lng</th>
                                     <th data-sort="source" title="Where the word came from — click to sort">Source</th>
                                     <th data-sort="count" class="num" title="Times the word appears in the books — click to sort">Count</th>
+                                </tr>
+                                <!-- One filter per column; all "contains" except Lng (pick) and Count. -->
+                                <tr class="cl-wl-frow">
+                                    <th><input type="text" id="cl-wl-q" autocomplete="off" spellcheck="false" placeholder="contains…" title="Any spelling contains (half-rings ignored)"></th>
+                                    <th><input type="text" id="cl-wl-f-base" autocomplete="off" spellcheck="false" placeholder="…" title="Base contains"></th>
+                                    <th><input type="text" id="cl-wl-f-yt" autocomplete="off" spellcheck="false" placeholder="…" title="YT contains"></th>
+                                    <th><select id="cl-wl-lang" title="Language"><option value="">All</option></select></th>
+                                    <th><input type="text" id="cl-wl-f-src" autocomplete="off" spellcheck="false" placeholder="…" title="Source contains"></th>
+                                    <th><input type="text" id="cl-wl-f-count" autocomplete="off" spellcheck="false" placeholder="≥ n" title="A number = at least that many; also &gt;n, &lt;n, =n, or a range like 5-10"></th>
                                 </tr></thead>
                                 <tbody id="cl-wl-body"></tbody>
                             </table>
@@ -2779,6 +2803,10 @@ function clWlState() {
         script: p ? (p.script || '') : document.getElementById('cl-wl-script').value,
         sources: p ? (p.sources || []) : srcs,
         q: document.getElementById('cl-wl-q').value,
+        fbase: document.getElementById('cl-wl-f-base').value,
+        fyt: document.getElementById('cl-wl-f-yt').value,
+        fsrc: document.getElementById('cl-wl-f-src').value,
+        fcount: document.getElementById('cl-wl-f-count').value,
         phrases: document.getElementById('cl-wl-phrases').checked,
         sort: clWl.sort, dir: clWl.dir
     };
@@ -2791,6 +2819,10 @@ function clWlApply(saved) {
     clWl.sort = saved.sort || 'translit';
     clWl.dir = saved.dir === 'desc' ? 'desc' : 'asc';
     document.getElementById('cl-wl-q').value = saved.q || '';
+    document.getElementById('cl-wl-f-base').value = saved.fbase || '';
+    document.getElementById('cl-wl-f-yt').value = saved.fyt || '';
+    document.getElementById('cl-wl-f-src').value = saved.fsrc || '';
+    document.getElementById('cl-wl-f-count').value = saved.fcount || '';
     document.getElementById('cl-wl-phrases').checked = !!saved.phrases;
     clWl.pending = saved;   // applied once the select/checkbox options exist
     if (clWl.meta) {
@@ -2812,9 +2844,11 @@ function clWlInit(saved) {
         document.getElementById(id).addEventListener('change', function() { clWlReload(); clSaveState(); });
     });
     document.getElementById('cl-wl-srcs').addEventListener('change', function() { clWlReload(); clSaveState(); });
-    document.getElementById('cl-wl-q').addEventListener('input', function() {
-        clearTimeout(clWl.timer);
-        clWl.timer = setTimeout(function() { clWlReload(); clSaveState(); }, 250);
+    ['cl-wl-q', 'cl-wl-f-base', 'cl-wl-f-yt', 'cl-wl-f-src', 'cl-wl-f-count'].forEach(function(id) {
+        document.getElementById(id).addEventListener('input', function() {
+            clearTimeout(clWl.timer);
+            clWl.timer = setTimeout(function() { clWlReload(); clSaveState(); }, 250);
+        });
     });
     document.querySelectorAll('#cl-wl th[data-sort]').forEach(function(th) {
         th.addEventListener('click', function() {
@@ -2879,6 +2913,10 @@ function clWlLoad(append) {
         + (st.script ? '&script=' + encodeURIComponent(st.script) : '')
         + (st.sources.length ? '&sources=' + encodeURIComponent(st.sources.join(',')) : '')
         + (st.q.trim() ? '&q=' + encodeURIComponent(st.q.trim()) : '')
+        + (st.fbase.trim() ? '&f_base=' + encodeURIComponent(st.fbase.trim()) : '')
+        + (st.fyt.trim() ? '&f_yt=' + encodeURIComponent(st.fyt.trim()) : '')
+        + (st.fsrc.trim() ? '&f_source=' + encodeURIComponent(st.fsrc.trim()) : '')
+        + (st.fcount.trim() ? '&f_count=' + encodeURIComponent(st.fcount.trim()) : '')
         + (st.phrases ? '&phrases=1' : '');
     var seq = ++clWl.seq;
     document.querySelectorAll('#cl-wl th[data-sort]').forEach(function(th) {
@@ -2902,6 +2940,7 @@ function clWlLoad(append) {
                         + alts.map(function(a) { return '<span data-t="' + esc(a) + '" title="Search for this spelling">' + esc(a) + '</span>'; }).join(' · ')
                         + '</span>' : '') + '</td>'
                     + '<td class="base' + (w.base ? '' : ' dim') + '">' + (w.base ? esc(w.base) : '–') + '</td>'
+                    + '<td class="yt' + (w.yt ? '' : ' dim') + '">' + (w.yt ? esc(w.yt) : '–') + '</td>'
                     + '<td' + (w.word_language ? ' title="' + esc(langs[w.word_language] || '') + '"' : ' class="dim"') + '>'
                         + esc(w.word_language || '–') + '</td>'
                     + '<td>' + esc(w.source_label || w.source || '') + '</td>'

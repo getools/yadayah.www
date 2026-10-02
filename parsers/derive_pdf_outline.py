@@ -17,6 +17,12 @@ This rebuilds the outline from two sources that do survive conversion:
   * the DOCX's `TOC1` entries, which additionally cover unnumbered back
     matter such as RESOURCES.
 
+For books without `yychapter` headings (e.g. companion/reference books that
+use `yyheadingsection` for all sections), sections are detected by the same
+style and located via case-insensitive title matching in the top lines of
+each PDF page. The TOC entries are emitted as unnumbered (no leading "N  ")
+so the bundle parser resolves them by chapter_name rather than chapter_number.
+
 Page numbers are found by scanning the RENDERED PDF rather than trusting
 the page numbers Word cached in the TOC field: a different renderer
 re-paginates, and those cached numbers drift (ONLYOFFICE put s04v05's
@@ -50,11 +56,19 @@ def docx_paragraphs(docx_path):
 
 
 def outline_targets(docx_path):
-    """Return ([chapter titles in order], [back-matter titles])."""
-    chapters, toc_entries = [], []
+    """Return ([chapter titles], [back-matter titles], [section titles]).
+
+    chapters    — yychapter-styled paragraphs (numbered YY chapters)
+    back_matter — TOC1 entries not already covered by chapters
+    sections    — yyheadingsection-styled paragraphs (unnumbered sections
+                  used in companion/reference books that lack yychapter)
+    """
+    chapters, toc_entries, sections = [], [], []
     for style, text in docx_paragraphs(docx_path):
         if style == "yychapter":
             chapters.append(text)
+        elif style == "yyheadingsection":
+            sections.append(text)
         elif style == "TOC1":
             toc_entries.append(text)
 
@@ -74,7 +88,7 @@ def outline_targets(docx_path):
         # (RESOURCES and friends), which carry no leading chapter number.
         if title not in seen and not re.match(r"^\d+", title):
             back_matter.append(title)
-    return chapters, back_matter
+    return chapters, back_matter, sections
 
 
 def norm(s):
@@ -142,6 +156,32 @@ def find_back_matter_pages(doc, back_matter, after_page):
     return found
 
 
+def find_section_pages(doc, sections, n=12):
+    """Find pages for yyheadingsection entries.
+
+    These render in ALL CAPS at the top of their opening page (but may follow
+    a book title/subtitle on the first section's page). Matches case-insensitively
+    by checking the first n non-empty lines of each page so the first section
+    (which appears after a cover title/subtitle) is still found.
+    n=12 to tolerate ONLYOFFICE PDFs that put running headers/footers before
+    the section title in the extracted text stream.
+    """
+    found = {}
+    for pno in range(doc.page_count):
+        lines = [l.strip() for l in doc[pno].get_text().split("\n") if l.strip()]
+        for title in sections:
+            if title in found:
+                continue
+            probe = norm(title)[:16].upper()
+            if not probe:
+                continue
+            for line in lines[:n]:
+                if norm(line).upper().startswith(probe):
+                    found[title] = pno + 1
+                    break
+    return found
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
@@ -160,47 +200,64 @@ def main():
               % len(existing))
         return 0
 
-    chapters, back_matter = outline_targets(docx_path)
-    if not chapters:
-        sys.stderr.write("[outline] no yychapter paragraphs in %s - "
+    chapters, back_matter, sections = outline_targets(docx_path)
+    if not chapters and not sections:
+        sys.stderr.write("[outline] no yychapter or yyheadingsection paragraphs in %s - "
                          "cannot derive an outline\n" % docx_path)
         return 1
 
-    numbered = numbered_chapters(chapters)
-    ch_pages = find_chapter_pages(doc, numbered)
-    last = max(ch_pages.values()) if ch_pages else 0
-    bm_pages = find_back_matter_pages(doc, back_matter, last)
-
-    # Word writes chapter bookmarks as "N  Title" (number, two spaces), and
-    # the bundle parser splits chapter_number from chapter_name on exactly
-    # that shape. The DOCX run text runs them together ("1Gibowr ~ ..."),
-    # so re-insert the separator rather than leaving a title the parser
-    # would read as one unnumbered blob.
     toc = []
-    for number, bare in numbered:
-        if number in ch_pages:
-            toc.append([1, "%d  %s" % (number, bare), ch_pages[number]])
-        else:
-            sys.stderr.write("[outline] WARNING chapter %d not located: %s\n"
-                             % (number, bare[:60]))
-    for title in back_matter:
-        if title in bm_pages:
-            toc.append([1, norm(title), bm_pages[title]])
+
+    if chapters:
+        numbered = numbered_chapters(chapters)
+        ch_pages = find_chapter_pages(doc, numbered)
+        last = max(ch_pages.values()) if ch_pages else 0
+        bm_pages = find_back_matter_pages(doc, back_matter, last)
+
+        # Word writes chapter bookmarks as "N  Title" (number, two spaces), and
+        # the bundle parser splits chapter_number from chapter_name on exactly
+        # that shape. The DOCX run text runs them together ("1Gibowr ~ ..."),
+        # so re-insert the separator rather than leaving a title the parser
+        # would read as one unnumbered blob.
+        for number, bare in numbered:
+            if number in ch_pages:
+                toc.append([1, "%d  %s" % (number, bare), ch_pages[number]])
+            else:
+                sys.stderr.write("[outline] WARNING chapter %d not located: %s\n"
+                                 % (number, bare[:60]))
+        for title in back_matter:
+            if title in bm_pages:
+                toc.append([1, norm(title), bm_pages[title]])
+
+        missing_ch = len(chapters) - len(ch_pages)
+        print("[outline] %s: %d/%d chapters located, %d back-matter entries"
+              % (pdf_path.rsplit("/", 1)[-1], len(ch_pages), len(chapters),
+                 len(bm_pages)))
+        if missing_ch:
+            sys.stderr.write("[outline] %d chapter(s) could not be located\n"
+                             % missing_ch)
+
+    if sections:
+        sec_pages = find_section_pages(doc, sections)
+        missing_sec = 0
+        for title in sections:
+            if title in sec_pages:
+                toc.append([1, norm(title), sec_pages[title]])
+            else:
+                sys.stderr.write("[outline] WARNING section not located: %s\n"
+                                 % title[:60])
+                missing_sec += 1
+        print("[outline] %s: %d/%d yyheadingsection entries located"
+              % (pdf_path.rsplit("/", 1)[-1], len(sec_pages), len(sections)))
+        if missing_sec:
+            sys.stderr.write("[outline] %d section(s) could not be located\n"
+                             % missing_sec)
 
     toc.sort(key=lambda e: e[2])
 
-    missing = len(chapters) - len(ch_pages)
-    print("[outline] %s: %d/%d chapters located, %d back-matter entries"
-          % (pdf_path.rsplit("/", 1)[-1], len(ch_pages), len(chapters),
-             len(bm_pages)))
     for level, title, page in toc:
         print("   p%-5d %s" % (page, title[:60]))
 
-    if missing:
-        # A partial outline is still better than none, but say so loudly:
-        # a chapter the parser can't see is a chapter that won't narrate.
-        sys.stderr.write("[outline] %d chapter(s) could not be located\n"
-                         % missing)
     if dry:
         print("[outline] --dry-run, not writing")
         return 0

@@ -945,12 +945,38 @@ function cleanupWords(): void {
     }
     if (empty($_GET['phrases'])) $where[] = "position(' ' in trim(coalesce(w.word_translit, ''))) = 0";
 
+    // Column filters from the list's filter row ("contains", case-insensitive).
+    $esc = function ($s) { return '%' . strtr($s, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%'; };
+    $fBase = trim((string)($_GET['f_base'] ?? ''));
+    if ($fBase !== '') { $where[] = CLEANUP_WORD_BASE_SQL . ' ILIKE :f_base'; $p[':f_base'] = $esc($fBase); }
+    $fYt = trim((string)($_GET['f_yt'] ?? ''));
+    if ($fYt !== '') { $where[] = 'w.word_yt ILIKE :f_yt'; $p[':f_yt'] = $esc($fYt); }
+    $fSrc = trim((string)($_GET['f_source'] ?? ''));
+    if ($fSrc !== '') {
+        $where[] = "(trim(w.word_source_code) ILIKE :f_src OR EXISTS (SELECT 1 FROM yy_word_source fs
+                      WHERE fs.word_source_code = trim(w.word_source_code) AND fs.word_source_label ILIKE :f_src))";
+        $p[':f_src'] = $esc($fSrc);
+    }
+    // Count: "5" or ">=5" = at least 5; also >5, <5, <=5, =5, and a range "5-10".
+    $fCount = preg_replace('/\s+/', '', (string)($_GET['f_count'] ?? ''));
+    if ($fCount !== '') {
+        $cnt = 'coalesce(w.word_count_yy, 0)';
+        if (preg_match('/^(\d+)-(\d+)$/', $fCount, $m)) {
+            $where[] = "$cnt BETWEEN " . (int)$m[1] . ' AND ' . (int)$m[2];
+        } elseif (preg_match('/^(>=|<=|>|<|=)?(\d+)$/', $fCount, $m)) {
+            $where[] = "$cnt " . ($m[1] !== '' ? $m[1] : '>=') . ' ' . (int)$m[2];
+        } else {
+            errorResponse('Count filter: use a number (at least), or >n, <n, =n, or a range like 5-10.');
+        }
+    }
+
     $dir = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'DESC' : 'ASC';
     // Spelling order ignores the half-rings and case, so ʿanaw files under a.
     $translitKey = "lower(regexp_replace(coalesce(w.word_translit, ''), '[\\u02BE\\u02BF\\u02BC]', '', 'g'))";
     $sorts = [
         'translit' => "$translitKey $dir",
         'base'     => CLEANUP_WORD_BASE_SQL . " $dir NULLS LAST, $translitKey",
+        'yt'       => "nullif(trim(w.word_yt), '') $dir NULLS LAST, $translitKey",
         'language' => "w.word_language $dir NULLS LAST, $translitKey",
         'source'   => "s.word_source_label $dir NULLS LAST, $translitKey",
         'count'    => "coalesce(w.word_count_yy, 0) $dir, $translitKey",
@@ -963,7 +989,7 @@ function cleanupWords(): void {
     $st = $db->prepare("SELECT count(*) FROM yy_word w WHERE $whereSql");
     $st->execute($p);
     $total = (int)$st->fetchColumn();
-    $st = $db->prepare("SELECT w.word_key, w.word_translit, " . CLEANUP_WORD_BASE_SQL . " AS base,
+    $st = $db->prepare("SELECT w.word_key, w.word_translit, " . CLEANUP_WORD_BASE_SQL . " AS base, w.word_yt AS yt,
                                (" . CLEANUP_WORD_SCRIPT_SQL . ") AS script, w.word_language,
                                trim(w.word_source_code) AS source, s.word_source_label AS source_label,
                                coalesce(w.word_count_yy, 0) AS count,
