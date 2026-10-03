@@ -20,6 +20,7 @@
  *        discarded); &batch=ID lists one batch's changes. See cleanupHistory().
  * GET  ?action=direct_books | direct_chapters&volume=N | direct_page&volume=N&page=P | direct_para&key=K
  * POST ?action=direct_save — Edit → Direct: edit one paragraph in place; see cleanupDirectSave().
+ * POST ?action=direct_divider — the book's divider after a paragraph; see cleanupDirectDivider().
  * GET  ?action=word_meta / ?action=words — the glossary word picker; see cleanupWords().
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
@@ -70,6 +71,7 @@ if ($action === 'direct_chapters') cleanupDirectChapters();
 if ($action === 'direct_page')     cleanupDirectPage();
 if ($action === 'direct_para')     cleanupDirectPara();
 if ($action === 'direct_save')     cleanupDirectSave($authUser);
+if ($action === 'direct_divider')  cleanupDirectDivider($authUser);
 if ($action === 'word_meta') cleanupWordMeta();
 if ($action === 'words')     cleanupWords();
 if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
@@ -816,6 +818,7 @@ function cleanupDirectChapters(): void {
                     'name' => $r['chapter_name'], 'pages' => json_decode((string)$r['pages'], true) ?: []];
         }, $st->fetchAll()),
         'book_slug' => cleanupBookSlug($vol['volume_code']),
+        'divider' => cleanupDividerKind($vol['volume_code']),
         'stage' => $paths['name'] && is_file($paths['live']) ? cleanupStageState($paths) : 'nodocx',
         'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null,
     ]);
@@ -836,17 +839,20 @@ function cleanupDirectRow(array $r, array $queued): array {
             'page' => $r['paragraph_page'] === null ? null : (int)$r['paragraph_page'],
             'chapter_key' => $r['chapter_key'] === null ? null : (int)$r['chapter_key'],
             'html' => (string)$r['paragraph_text_html'], 'is_table' => (bool)$r['paragraph_is_table'],
-            'queued' => (int)($queued[(int)$r['paragraph_key']] ?? 0)];
+            'queued' => (int)($queued[(int)$r['paragraph_key']]['n'] ?? 0),
+            'dividers' => (int)($queued[(int)$r['paragraph_key']]['div'] ?? 0)];
 }
 
 /** paragraph_key → how many of its changes are queued. */
 function cleanupQueuedFor(PDO $db, array $keys): array {
     if (!$keys) return [];
-    $st = $db->query('SELECT paragraph_key, count(*) AS n FROM yy_cleanup_change
+    $st = $db->query('SELECT paragraph_key, count(*) AS n,
+                             count(*) FILTER (WHERE cleanup_change_options->>\'mode\' = \'divider\') AS div
+                        FROM yy_cleanup_change
                        WHERE cleanup_change_status = \'pending\' AND paragraph_key IN (' . implode(',', array_map('intval', $keys)) . ')
                        GROUP BY paragraph_key');
     $out = [];
-    foreach ($st->fetchAll() as $r) $out[(int)$r['paragraph_key']] = (int)$r['n'];
+    foreach ($st->fetchAll() as $r) $out[(int)$r['paragraph_key']] = ['n' => (int)$r['n'], 'div' => (int)$r['div']];
     return $out;
 }
 
@@ -977,6 +983,57 @@ function cleanupDirectSave(array $authUser): void {
     $strip = function ($runs) { return array_map(function ($r) { unset($r['st']); return $r; }, cleanupCleanRuns($runs)); };
     if ($strip($oldRuns) == $strip($newRuns)) jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]);
 
+    $pyRuns = function ($runs) {
+        return array_map(function ($r) { return ['t' => $r['t'], 'b' => $r['b'], 'i' => $r['i'], 'u' => $r['u'], 'f' => $r['f'], 'sz' => $r['sz']]; }, $runs);
+    };
+    $res = cleanupDirectApply($authUser, $db, $row, $oldText, ['old' => $pyRuns($oldRuns), 'new' => $pyRuns($newRuns)],
+        function (PDO $db, int $vk, int $pn) use ($authUser, $row, $pk, $oldHtml, $oldText, $newHtml, $newText, $newParsed, $source) {
+            [$ds, $de, $dn] = cleanupDiffSpan($oldText, $newText);
+            $oldParsed = cleanupParseHtml($oldHtml);
+            $snip = function ($s) { return mb_strlen($s) > 120 ? mb_substr($s, 0, 117) . '…' : $s; };
+            $oldSnip = substr($oldText, $ds, $de - $ds);
+            $newSnip = substr($newText, $ds, $dn - $ds);
+            // What changed, with a little of the (shared) text either side for the Changes list.
+            $pre = mb_substr(substr($oldText, 0, $ds), -18);
+            $post = mb_substr(substr($oldText, $de), 0, 18);
+            $opts = json_encode(['type' => 'direct', 'mode' => 'direct', 'source' => $source,
+                                 'run' => bin2hex(random_bytes(6)), 'old' => $snip($oldSnip), 'new' => $snip($newSnip),
+                                 'pre' => $pre, 'post' => $post,
+                                 'format_only' => $oldText === $newText], JSON_UNESCAPED_UNICODE);
+            $plain = trim(preg_replace('/\s+/u', ' ', $newText));
+            $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?, paragraph_text_raw = ?,
+                                 paragraph_revision_user_key = ? WHERE paragraph_key = ?')
+               ->execute([$newHtml, $plain, cleanupRawJson($newHtml), (int)($authUser['user_key'] ?? 0), $pk]);
+            cleanupLogDirect($db, $authUser, $vk, $pk, $pn, '(direct edit)', $newSnip, $opts, $oldSnip, $row, $newHtml,
+                cleanupExcerpt($oldParsed['runs'], $oldText, $ds, max($de, min($ds + 1, strlen($oldText)))),
+                cleanupExcerpt($newParsed['runs'], $newText, $ds, max($dn, min($ds + 1, strlen($newText)))));
+        });
+    if (!empty($res['unchanged'])) jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]);
+    jsonResponse(['ok' => true, 'html' => $newHtml, 'hunks' => (int)$res['hunks']]);
+}
+
+function cleanupLogDirect(PDO $db, array $authUser, int $vk, int $pk, int $pn, string $find, string $replace, string $opts,
+                          string $match, array $row, string $afterHtml, string $exBefore, string $exAfter): void {
+    $db->prepare('INSERT INTO yy_cleanup_change
+            (cleanup_change_batch, volume_key, paragraph_key, paragraph_number, cleanup_change_find,
+             cleanup_change_replace, cleanup_change_options, cleanup_change_match,
+             cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_before_raw,
+             cleanup_change_after_html, cleanup_change_excerpt_before, cleanup_change_excerpt_after,
+             cleanup_change_user_key, cleanup_change_user_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+       ->execute([bin2hex(random_bytes(8)), $vk, $pk, $pn, $find, $replace, $opts, $match,
+                  $row['paragraph_text_html'], $row['paragraph_text_plain'], $row['paragraph_text_raw'], $afterHtml,
+                  $exBefore, $exAfter, (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
+}
+
+/**
+ * The shared half of a direct change (an edit or a divider): lock the book,
+ * have _docx_direct.py write the staged DOCX ($py adds old/new runs, or
+ * mode/kind), swap it in, then run $dbWork in one transaction — rolling the
+ * staged DOCX back if that fails. Returns the script's result; ['unchanged']
+ * when it changed nothing. Errors respond and exit.
+ */
+function cleanupDirectApply(array $authUser, PDO $db, array $row, string $oldText, array $py, callable $dbWork): array {
     $vk = (int)$row['volume_key'];
     $vol = cleanupVolume($db, $vk);
     $label = $vol['label'];
@@ -1007,14 +1064,10 @@ function cleanupDirectSave(array $authUser): void {
     $proc = proc_open(['python3', '-I', __DIR__ . '/_docx_direct.py'],
         [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, '/');
     if (!is_resource($proc)) errorResponse('could not start python3', 500);
-    $pyRuns = function ($runs) {
-        return array_map(function ($r) { return ['t' => $r['t'], 'b' => $r['b'], 'i' => $r['i'], 'u' => $r['u'], 'f' => $r['f'], 'sz' => $r['sz']]; }, $runs);
-    };
     fwrite($pipes[0], json_encode([
         'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'], 'docx_out' => $tmpOut,
         'text' => $oldText, 'before' => $before, 'after' => $after,
-        'old' => $pyRuns($oldRuns), 'new' => $pyRuns($newRuns),
-    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+    ] + $py, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
     fclose($pipes[0]);
     $out = stream_get_contents($pipes[1]);
     $err = stream_get_contents($pipes[2]);
@@ -1024,11 +1077,11 @@ function cleanupDirectSave(array $authUser): void {
     if (!is_array($res) || empty($res['ok'])) {
         @unlink($tmpOut);
         $msg = is_array($res) ? ($res['error'] ?? 'no output') : (trim($err) ?: 'no output');
-        errorResponse($label . ': the Word document could not take this edit — ' . $msg . '. Nothing was changed.', 422);
+        errorResponse($label . ': the Word document could not take this change — ' . $msg . '. Nothing was changed.', 422);
     }
-    if (empty($res['hunks'])) { @unlink($tmpOut); jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]); }
+    if (empty($res['hunks'])) { @unlink($tmpOut); return ['unchanged' => true]; }
 
-    // The staged DOCX swap, then the paragraph + change log (as cleanupReplace).
+    // The staged DOCX swap, then the database (as cleanupReplace).
     $prev = null;
     if ($stage === 'ok') {
         $prev = $paths['staged'] . '.prev';
@@ -1045,47 +1098,64 @@ function cleanupDirectSave(array $authUser): void {
         errorResponse($label . ': could not write the staged DOCX — nothing was changed', 500);
     }
     try {
-        [$ds, $de, $dn] = cleanupDiffSpan($oldText, $newText);
-        $oldParsed = cleanupParseHtml($oldHtml);
-        $snip = function ($s) { return mb_strlen($s) > 120 ? mb_substr($s, 0, 117) . '…' : $s; };
-        $oldSnip = substr($oldText, $ds, $de - $ds);
-        $newSnip = substr($newText, $ds, $dn - $ds);
-        // What changed, with a little of the (shared) text either side for the Changes list.
-        $pre = mb_substr(substr($oldText, 0, $ds), -18);
-        $post = mb_substr(substr($oldText, $de), 0, 18);
-        $opts = json_encode(['type' => 'direct', 'mode' => 'direct', 'source' => $source,
-                             'run' => bin2hex(random_bytes(6)), 'old' => $snip($oldSnip), 'new' => $snip($newSnip),
-                             'pre' => $pre, 'post' => $post,
-                             'format_only' => $oldText === $newText], JSON_UNESCAPED_UNICODE);
-        $plain = trim(preg_replace('/\s+/u', ' ', $newText));
         $db->beginTransaction();
-        $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?, paragraph_text_raw = ?,
-                             paragraph_revision_user_key = ? WHERE paragraph_key = ?')
-           ->execute([$newHtml, $plain, cleanupRawJson($newHtml), (int)($authUser['user_key'] ?? 0), $pk]);
-        $db->prepare('INSERT INTO yy_cleanup_change
-                (cleanup_change_batch, volume_key, paragraph_key, paragraph_number, cleanup_change_find,
-                 cleanup_change_replace, cleanup_change_options, cleanup_change_match,
-                 cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_before_raw,
-                 cleanup_change_after_html, cleanup_change_excerpt_before, cleanup_change_excerpt_after,
-                 cleanup_change_user_key, cleanup_change_user_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-           ->execute([bin2hex(random_bytes(8)), $vk, $pk, $pn, '(direct edit)', $newSnip, $opts, $oldSnip,
-                      $oldHtml, $row['paragraph_text_plain'], $row['paragraph_text_raw'], $newHtml,
-                      cleanupExcerpt($oldParsed['runs'], $oldText, $ds, max($de, min($ds + 1, strlen($oldText)))),
-                      cleanupExcerpt($newParsed['runs'], $newText, $ds, max($dn, min($ds + 1, strlen($newText)))),
-                      (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
+        $dbWork($db, $vk, $pn);
         $db->commit();
     } catch (\Throwable $ex) {
         if ($db->inTransaction()) $db->rollBack();
         if ($prev) { @rename($prev, $paths['staged']); }
         else { @unlink($paths['staged']); @unlink($paths['sidecar']); }
         logMonitorEvent('cleanup_direct', 'error', $label . ': DB update failed — ' . $ex->getMessage(), $ex->getFile() . ':' . $ex->getLine());
-        errorResponse($label . ': saving the paragraph failed (' . $ex->getMessage() . ') — nothing was changed', 500);
+        errorResponse($label . ': saving failed (' . $ex->getMessage() . ') — nothing was changed', 500);
     }
     if ($prev) @unlink($prev);
     flock($lock, LOCK_UN);
     fclose($lock);
-    jsonResponse(['ok' => true, 'html' => $newHtml, 'hunks' => (int)$res['hunks']]);
+    return $res;
+}
+
+/** Which divider a book uses: Series 1–6 hwhy (Yada Towrah), Series 7 the Wingdings ornament,
+ *  In the Company ***; null = none (the Little Green Book and anything else). */
+function cleanupDividerKind(?string $volumeCode): ?string {
+    $c = (string)$volumeCode;
+    if (preg_match('/^YY-s0[1-6]v/', $c)) return 'hwhy';
+    if (preg_match('/^YY-s07v/', $c)) return 'wing';
+    if (stripos($c, 'In-the-Company') === 0) return 'stars';
+    return null;
+}
+
+/** POST ?action=direct_divider {paragraph_key, source} — the book's divider after this paragraph (DOCX only). */
+function cleanupDirectDivider(array $authUser): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pk = (int)($in['paragraph_key'] ?? 0);
+    $source = ($in['source'] ?? '') === 'search' ? 'search' : 'direct';
+    $db = getDb();
+    $st = $db->prepare('SELECT p.paragraph_key, p.volume_key, p.paragraph_number, p.paragraph_text_html, p.paragraph_text_plain,
+                               p.paragraph_text_raw, v.volume_code
+                          FROM yy_paragraph p JOIN yy_volume v ON v.volume_key = p.volume_key
+                         WHERE p.paragraph_key = ? AND p.paragraph_active_flag');
+    $st->execute([$pk]);
+    $row = $st->fetch();
+    if (!$row) errorResponse('Paragraph not found', 404);
+    $kind = cleanupDividerKind($row['volume_code']);
+    if (!$kind) errorResponse('This book doesn’t use dividers.', 422);
+    $html = (string)$row['paragraph_text_html'];
+    $parsed = cleanupParseHtml($html);
+    $text = $parsed['text'];
+    $glyph = ['hwhy' => 'hwhy', 'wing' => "\u{F059}\u{F056}\u{F05A}\u{F04D}\u{F05C}", 'stars' => '***'][$kind];
+    cleanupDirectApply($authUser, $db, $row, $text, ['mode' => 'divider', 'kind' => $kind],
+        function (PDO $db, int $vk, int $pn) use ($authUser, $row, $pk, $html, $text, $parsed, $kind, $glyph, $source) {
+            // The paragraph itself doesn't change; Discard has nothing to put back.
+            $end = strlen($text);
+            $start = cleanupCharBoundary($text, max(0, $end - 1), -1);
+            $opts = json_encode(['type' => 'direct', 'mode' => 'divider', 'kind' => $kind, 'source' => $source,
+                                 'run' => bin2hex(random_bytes(6)), 'old' => '', 'new' => $glyph,
+                                 'pre' => mb_substr($text, -18), 'post' => ''], JSON_UNESCAPED_UNICODE);
+            cleanupLogDirect($db, $authUser, $vk, $pk, $pn, '(divider)', $glyph, $opts, '', $row, $html,
+                cleanupExcerpt($parsed['runs'], $text, $start, $end), cleanupExcerpt($parsed['runs'], $text, $start, $end));
+        });
+    jsonResponse(['ok' => true, 'kind' => $kind]);
 }
 
 /** Queued changes: per-book summary, or one book's change list (?volume=N). */

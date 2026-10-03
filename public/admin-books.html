@@ -280,6 +280,15 @@
         .de-pmeta .de-pen { color: #2980b9; visibility: hidden; margin-left: 6px; }
         .de-para:hover .de-pen { visibility: visible; }
         .de-para.de-editing .de-pen { display: none; }
+        .de-div { border: 1px solid #d5dbe2; background: #fff; border-radius: 4px; cursor: pointer; font-size: 0.7rem; color: #7d3c98;
+                  padding: 0 6px; margin-left: 6px; visibility: hidden; }
+        .de-div:hover { border-color: #8e44ad; background: #f5eefa; }
+        .de-para:hover .de-div { visibility: visible; }
+        .de-divq { display: flex; align-items: center; gap: 10px; justify-content: center; margin: 6px 0 2px; padding: 4px;
+                   border: 1px dashed #c9b3d6; border-radius: 4px; color: #7d3c98; font-size: 0.75rem; background: #fbf7fd; }
+        .de-dv { font-family: 'Times New Roman', serif; font-size: 1.05rem; color: #333; letter-spacing: 0.1em; }
+        .de-dv-yt { font-family: 'YadaTowrah', serif; font-size: 1.3rem; }
+        .de-dv-wing { font-family: Wingdings, 'Segoe UI Symbol', serif; font-size: 1.2rem; }
         .de-q { background: #fdf3d7; color: #9a6b00; border-radius: 8px; padding: 0 6px; font-weight: 600; }
         /* Book text, as the parser marks it up */
         .de-text { font-family: 'YadaTowrahRings', 'Times New Roman', Georgia, serif; font-size: 1.02rem; line-height: 1.55; color: #222; white-space: pre-wrap; }
@@ -3235,6 +3244,7 @@ function hiWhen(t) { var x = new Date(t); return t && !isNaN(x) ? x.toLocaleStri
 function hiFlags(list) { list = list.filter(Boolean); return list.length ? ' <span class="flags">' + list.join(' ') + '</span>' : ''; }
 function hiFindHtml(b) {
     var o = b.options || {};
+    if (o.mode === 'divider') return '<span class="hi-dlbl">&#65291; Divider after ¶ ' + esc(String(b.paragraph_number || '')) + '</span>';
     if (hiTypeOf(b) === 'direct') {
         return '<span class="hi-dlbl">&#9998; ¶ ' + esc(String(b.paragraph_number || '')) + (o.source === 'search' ? ' (from Search/Replace)' : '') + '</span> '
             + (o.format_only ? '<span class="meta">formatting</span>' : hiDirectSnip(o, o.old));
@@ -3244,6 +3254,7 @@ function hiFindHtml(b) {
 }
 function hiRepHtml(b) {
     var o = b.options || {};
+    if (o.mode === 'divider') return deDividerHtml(o.kind);
     if (hiTypeOf(b) === 'direct') return o.format_only ? '<span class="meta">(same text, new formatting)</span>' : hiDirectSnip(o, o.new);
     return hiRepList(b).map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
         + hiFlags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : '']);
@@ -4708,6 +4719,8 @@ function deInit() {
     document.getElementById('de-prev').addEventListener('click', function() { deStep(-1); });
     document.getElementById('de-next').addEventListener('click', function() { deStep(1); });
     document.getElementById('de-paras').addEventListener('click', function(e) {
+        var dv = e.target.closest('.de-div');
+        if (dv) { e.stopPropagation(); deAddDivider(+dv.closest('.de-para').getAttribute('data-i')); return; }
         var p = e.target.closest('.de-para');
         if (!p || p.classList.contains('de-editing') || p.classList.contains('de-table')) return;
         if (e.target.closest('a')) return;
@@ -4734,6 +4747,7 @@ function deLoadBook(vk, page) {
             if (seq !== deSeq) return;
             deChapters = d.chapters || [];
             deCur.slug = d.book_slug;
+            deCur.divider = d.divider || null;
             var warn = d.locked_by ? 'Checked out by ' + d.locked_by + ' — saving will be refused.'
                 : d.stage === 'stale' ? 'A new DOCX was uploaded after this book’s queued changes — discard them on the Changes tab before editing.'
                 : d.stage === 'nodocx' ? 'No DOCX on the server for this book — it can be viewed but not edited.' : '';
@@ -4796,8 +4810,35 @@ function deParaHtml(p, i) {
         + (p.is_table ? ' title="A table — edit it in the Word document"' : ' title="Click to edit this paragraph"') + '>'
         + '<div class="de-pmeta">¶ ' + p.number + (p.is_table ? ' · table' : '')
         + (p.queued ? ' <span class="de-q" title="Changes to this paragraph are queued — commit them on the Changes tab">' + p.queued + ' queued</span>' : '')
-        + (p.is_table ? '' : ' <span class="de-pen">&#9998; Edit</span>') + '</div>'
-        + '<div class="de-text">' + p.html + '</div></div>';
+        + (p.is_table ? '' : ' <span class="de-pen">&#9998; Edit</span>')
+        + (deCur.divider && !p.is_table ? ' <button type="button" class="de-div" title="Insert this book’s divider (' + esc(DE_DIVIDER_NAME[deCur.divider])
+            + ') after this paragraph — goes into the staged DOCX, queued on the Changes tab">&#65291; Divider after</button>' : '')
+        + '</div>'
+        + '<div class="de-text">' + p.html + '</div>'
+        + (p.dividers ? '<div class="de-divq" title="Queued: appears in the book when you commit its changes">'
+            + deDividerHtml(deCur.divider) + '<span>' + (p.dividers > 1 ? p.dividers + ' dividers' : 'divider') + ' queued after this paragraph</span></div>' : '')
+        + '</div>';
+}
+
+// The dividers: Series 1–6 hwhy in Yada Towrah, Series 7 a Wingdings
+// ornament, In the Company ***; the Little Green Book has none.
+var DE_DIVIDER_NAME = {hwhy: 'hwhy in Yada Towrah', wing: 'the Wingdings ornament', stars: '***'};
+function deDividerHtml(kind) {
+    if (kind === 'hwhy') return '<span class="de-dv de-dv-yt">hwhy</span>';
+    if (kind === 'wing') return '<span class="de-dv de-dv-wing"></span>';
+    return '<span class="de-dv">***</span>';
+}
+function deAddDivider(i) {
+    if (deEd && !deClose()) return;
+    var p = dePage.paragraphs[i];
+    clPost('direct_divider', {paragraph_key: p.paragraph_key, source: 'direct'}).then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        p.dividers = (p.dividers || 0) + 1;
+        p.queued = (p.queued || 0) + 1;
+        deRenderParas();
+        clLoadPending();
+        if (hiBound) hiLoad();
+    }, function(e) { alert(String(e && e.message || e)); });
 }
 function deRenderParas() {
     var box = document.getElementById('de-paras');
@@ -4889,7 +4930,7 @@ function clRenderQueue() {
     var MAX = 4;
     var line = function(r) {
         var nb = Object.keys(r.books).length;
-        if (r.direct) return '<li>&#9998; Direct edits <span class="meta">· ' + r.n + ' paragraph' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
+        if (r.direct) return '<li>&#9998; Direct edits <span class="meta">· ' + r.n + ' change' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
         return '<li><span class="q">“' + esc(r.find) + '”</span> <span class="arrow">→</span> '
             + r.rep.map(function(x) { return '<span class="q">“' + esc(x) + '”</span>'; }).join(' / ')
             + ' <span class="meta">· ' + r.n + ' change' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
