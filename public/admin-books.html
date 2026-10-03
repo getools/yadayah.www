@@ -134,8 +134,10 @@
         @keyframes coverSpin { to { transform: rotate(360deg); } }
         @keyframes coverSlide { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
-        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .form-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 16px 20px; overflow-y: auto; }
         .form-overlay.open { display: flex; }
+        /* Volume Save is held off while a DOCX upload is in flight; !important beats admin-dirty.js's inline styles. */
+        .btn.save-uploading { opacity: 0.5 !important; pointer-events: none !important; }
         .form-panel { background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); width: 100%; max-width: 650px; }
         .form-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #f8f8f8; border-radius: 10px 10px 0 0; border-bottom: 1px solid #ddd; }
         .form-header h3 { margin: 0; font-size: 1rem; }
@@ -982,7 +984,7 @@
             </div>
             <div class="field"><label>Amazon ASIN <span style="font-weight:400;color:#888;font-size:0.78rem;">(optional — the Amazon icon on the Books page)</span></label>
                 <input type="text" id="f-asin" placeholder="e.g. B09KFCQKCY — or paste the Amazon product URL">
-                <div style="font-size:0.74rem;color:#888;margin-top:3px;">Leave blank and the Books page shows no Amazon link for this book. A pasted /dp/ URL is reduced to the ASIN on save.</div>
+                <div style="font-size:0.74rem;color:#888;margin-top:3px;">A full Amazon /dp/ URL is reduced to the ASIN on save. Amazon link will appear when ASIN is present.</div>
             </div>
             <input type="hidden" id="f-pdf">
             <div class="field">
@@ -1047,7 +1049,7 @@
                 </div>
             </div>
             <div class="form-actions">
-                <button class="btn btn-primary btn-sm" onclick="saveVolume()">Save</button>
+                <button class="btn btn-primary btn-sm" id="f-save" onclick="saveVolume()">Save</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
             </div>
         </div>
@@ -2466,6 +2468,7 @@ function toggleLockFromForm(btn) {
 }
 
 function saveVolume() {
+    if (docxUploading) { alert('Wait for the DOCX upload to finish before saving.'); return; }
     var key = document.getElementById('f-key').value;
     var label = document.getElementById('f-label').value.trim();
     if (!label) { alert('Label is required'); return; }
@@ -2751,12 +2754,14 @@ function uploadDocx() {
     if (!fileInput || !fileInput.files[0]) { alert('Choose a .docx file first'); return; }
     var statusEl = document.getElementById('f-docx-status');
     statusEl.innerHTML = '<span style="color:#888">Uploading…</span>';
+    setDocxUploading(true);
 
     var fd = new FormData();
     fd.append('docx', fileInput.files[0]);
     fetch(API + '/admin-books.php?action=upload_docx&key=' + key, {
         method: 'POST', credentials: 'include', body: fd
     }).then(function(r){return safeJson(r);}).then(function(d) {
+        setDocxUploading(false);
         if (d.error) {
             statusEl.innerHTML = '<span style="color:#c0392b">' + esc(d.error) + '</span>';
             return;
@@ -2785,8 +2790,24 @@ function uploadDocx() {
             if (v) showVolumeForm(v);
         });
     }).catch(function() {
+        setDocxUploading(false);
         statusEl.innerHTML = '<span style="color:#c0392b">Upload failed (network)</span>';
     });
+}
+
+// Hold the volume Save off while a DOCX upload is in flight. admin-dirty.js
+// re-enables Save on any input change, so the class (with !important) plus the
+// saveVolume() guard keep it off; on release admin-dirty re-evaluates as usual.
+var docxUploading = false;
+function setDocxUploading(on) {
+    docxUploading = on;
+    var btn = document.getElementById('f-save');
+    if (!btn) return;
+    btn.classList.toggle('save-uploading', on);
+    btn.title = on ? 'Wait for the DOCX upload to finish' : '';
+    if (on) btn.disabled = true;
+    else if (btn._dirtyEntry && window.AdminDirty) AdminDirty.check(btn);
+    else btn.disabled = false;
 }
 
 // ── Series Form ──
