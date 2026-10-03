@@ -872,15 +872,17 @@ function cleanupRunDocxScript(array $req): array {
 
 
 /**
- * Replace with each ❜ turned into a half ring: $pick's k-th char (ʿ or ʾ) when
- * the admin chose one on the match's row, else the default — the k-th
- * apostrophe in the found text, ʿ if it leans left (ʿ ‘ ` ‛ ʻ), else ʾ.
+ * Replace with each ❜ turned into a half ring or backtick: $pick's k-th char
+ * (ʿ, ʾ or `) when the admin chose one on the match's row, else the default
+ * from the k-th apostrophe in the found text — ` stays `, ʿ if it leans left
+ * (ʿ ‘ ‛ ʻ), else ʾ.
  * Keep in step with clAposFor() in admin-books.html.
  */
 function cleanupAposDefault(string $hit): array {
     preg_match_all('/' . CLEANUP_APOS_CLASS . '/u', $hit, $m);
     return array_map(function ($ch) {
-        return in_array($ch, ["\u{02BF}", "\u{2018}", '`', "\u{201B}", "\u{02BB}"], true) ? "\u{02BF}" : "\u{02BE}";
+        if ($ch === '`') return '`';
+        return in_array($ch, ["\u{02BF}", "\u{2018}", "\u{201B}", "\u{02BB}"], true) ? "\u{02BF}" : "\u{02BE}";
     }, $m[0]);
 }
 function cleanupAposResolve(string $replace, string $hit, string $pick): string {
@@ -891,7 +893,7 @@ function cleanupAposResolve(string $replace, string $hit, string $pick): string 
     $out = $parts[0];
     for ($k = 1; $k < count($parts); $k++) {
         $ch = $pick[$k - 1] ?? '';
-        if ($ch !== "\u{02BF}" && $ch !== "\u{02BE}") $ch = $def[$k - 1] ?? "\u{02BE}";
+        if ($ch !== "\u{02BF}" && $ch !== "\u{02BE}" && $ch !== '`') $ch = $def[$k - 1] ?? "\u{02BE}";
         $out .= $ch . $parts[$k];
     }
     return $out;
