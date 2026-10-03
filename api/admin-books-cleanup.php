@@ -714,6 +714,7 @@ function cleanupHistory(): void {
                                min(c.cleanup_change_options::text) AS options, count(*) AS n,
                                min(c.cleanup_change_status) AS status, min(c.cleanup_change_dtime) AS dtime,
                                max(c.cleanup_change_done_dtime) AS done_dtime, min(c.cleanup_change_user_name) AS user_name,
+                               min(c.paragraph_number) AS paragraph_number,
                                array_to_json(array_agg(DISTINCT c.cleanup_change_replace)) AS replaced,
                                v.volume_code, v.volume_label, v.volume_number, s.series_label,
                                count(*) OVER () AS total
@@ -739,6 +740,7 @@ function cleanupHistory(): void {
             'replaced' => json_decode((string)$b['replaced'], true) ?: [], 'options' => $o,
             'count' => (int)$b['n'], 'status' => $b['status'],
             'dtime' => $b['dtime'], 'done_dtime' => $b['done_dtime'], 'user_name' => $b['user_name'],
+            'paragraph_number' => $b['paragraph_number'] === null ? null : (int)$b['paragraph_number'],
         ];
     }
     // Books with any history, for the filter.
@@ -1048,8 +1050,12 @@ function cleanupDirectSave(array $authUser): void {
         $snip = function ($s) { return mb_strlen($s) > 120 ? mb_substr($s, 0, 117) . '…' : $s; };
         $oldSnip = substr($oldText, $ds, $de - $ds);
         $newSnip = substr($newText, $ds, $dn - $ds);
+        // What changed, with a little of the (shared) text either side for the Changes list.
+        $pre = mb_substr(substr($oldText, 0, $ds), -18);
+        $post = mb_substr(substr($oldText, $de), 0, 18);
         $opts = json_encode(['type' => 'direct', 'mode' => 'direct', 'source' => $source,
                              'run' => bin2hex(random_bytes(6)), 'old' => $snip($oldSnip), 'new' => $snip($newSnip),
+                             'pre' => $pre, 'post' => $post,
                              'format_only' => $oldText === $newText], JSON_UNESCAPED_UNICODE);
         $plain = trim(preg_replace('/\s+/u', ' ', $newText));
         $db->beginTransaction();

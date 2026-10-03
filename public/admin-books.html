@@ -169,6 +169,9 @@
                  url('/fonts/YadaTowrah-Times.ttf') format('truetype');
             font-weight: normal; font-style: normal; font-display: swap;
         }
+        @font-face { font-family: 'JupiterYada'; src: url('/fonts/JupiterYada-Regular.woff2') format('woff2'), url('/fonts/JupiterYada-Regular.ttf') format('truetype'); }
+        @font-face { font-family: 'SemiticEarly'; src: url('/fonts/SemiticEarly.ttf') format('truetype'); }
+        @font-face { font-family: 'MoabiteStone'; src: url('/fonts/MoabiteStone.ttf') format('truetype'); }
         @font-face {
             font-family: 'YadaTowrahRings';
             src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
@@ -255,6 +258,91 @@
         .cl-subtab-n[hidden] { display: none; }
         .cl-pane { display: none; }
         .cl-pane.active { display: block; }
+        /* Edit → Direct: the page and its paragraphs */
+        .de-nav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 0.85rem; }
+        .de-nav label { display: inline-flex; align-items: center; gap: 6px; color: #666; font-weight: 600; }
+        .de-nav select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; max-width: 320px; }
+        .de-pg { display: inline-flex; align-items: center; gap: 6px; color: #666; font-weight: 600; }
+        .de-pg .btn { padding: 2px 8px; }
+        .de-warn { margin: 6px 0; padding: 6px 10px; border-left: 4px solid #c0392b; background: #fdecea; color: #922; font-size: 0.85rem; border-radius: 4px; }
+        .de-warn[hidden] { display: none; }
+        .de-body { display: grid; grid-template-columns: minmax(260px, 38%) 1fr; gap: 18px; align-items: start; margin-top: 10px; }
+        @media (max-width: 900px) { .de-body { grid-template-columns: 1fr; } }
+        .de-img { position: sticky; top: 10px; }
+        .de-img img { width: 100%; border: 1px solid #d5dbe2; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); background: #fff; }
+        .de-noimg { padding: 40px 10px; text-align: center; color: #999; border: 1px dashed #ccc; border-radius: 4px; }
+        .de-paras { background: #fff; border: 1px solid #d5dbe2; border-radius: 6px; padding: 10px 14px; }
+        .de-para { padding: 8px 10px; border-radius: 4px; border: 1px solid transparent; cursor: pointer; margin-bottom: 4px; }
+        .de-para:hover { background: #f7f9fc; border-color: #e3e7ec; }
+        .de-para.de-table { cursor: default; opacity: 0.75; }
+        .de-para.de-editing { cursor: default; background: #fffdf5; border-color: #f0d58c; }
+        .de-pmeta { font-size: 0.72rem; color: #999; margin-bottom: 2px; }
+        .de-pmeta .de-pen { color: #2980b9; visibility: hidden; margin-left: 6px; }
+        .de-para:hover .de-pen { visibility: visible; }
+        .de-para.de-editing .de-pen { display: none; }
+        .de-q { background: #fdf3d7; color: #9a6b00; border-radius: 8px; padding: 0 6px; font-weight: 600; }
+        /* Book text, as the parser marks it up */
+        .de-text { font-family: 'YadaTowrahRings', 'Times New Roman', Georgia, serif; font-size: 1.02rem; line-height: 1.55; color: #222; white-space: pre-wrap; }
+        .de-text [data-font="Yada Towrah"] { font-family: 'YadaTowrah', serif; }
+        .de-text [data-font="Jupiter-Yada"], .de-text [data-font="Hebrew Script"] { font-family: 'JupiterYada', 'YadaTowrahRings', serif; }
+        .de-text [data-font="Semitic Early"] { font-family: 'SemiticEarly', serif; }
+        .de-text [data-font="Moabite Stone"] { font-family: 'MoabiteStone', serif; }
+        .de-text [data-font="Arial"], .de-text [data-font="Liberation Sans"] { font-family: Arial, 'Liberation Sans', sans-serif; }
+        .de-text [data-font="Calibri"], .de-text [data-font="Carlito"] { font-family: Calibri, Carlito, sans-serif; }
+        .de-text [data-font="Tahoma"] { font-family: Tahoma, sans-serif; }
+        /* The editor */
+        .de-ed { border: 1px solid #c5cdd6; border-radius: 6px; background: #fff; }
+        .de-tb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px 8px; background: #f5f7fa; border-bottom: 1px solid #e3e7ec; border-radius: 6px 6px 0 0; }
+        .de-tb .de-b { min-width: 28px; height: 28px; padding: 0 6px; border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.95rem; color: #333; }
+        .de-tb .de-b:hover { border-color: #3498db; background: #f2f8fd; }
+        .de-tb .de-b.cl-ring { font-family: 'YadaTowrah', serif; font-size: 1.15rem; color: #1a5276; }
+        .de-tb .de-tick { font-family: Georgia, serif; font-weight: 700; font-size: 1.1rem; color: #8e44ad; }
+        .de-tb .de-wide { font-size: 0.8rem; }
+        .de-tb .de-ytb { font-family: inherit; }
+        .de-tb select { height: 28px; border: 1px solid #d5dbe2; border-radius: 4px; font-size: 0.8rem; padding: 0 4px; background: #fff; }
+        .de-sep { width: 1px; height: 22px; background: #d5dbe2; margin: 0 4px; }
+        .de-area { min-height: 3em; padding: 10px 12px; outline: none; }
+        .de-area:focus { box-shadow: inset 0 0 0 2px #cfe3f5; }
+        .de-foot { display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding: 6px 8px; border-top: 1px solid #e3e7ec; }
+        .de-msg { flex: 1; font-size: 0.8rem; color: #888; }
+        .de-msg.bad { color: #c0392b; }
+        .de-popwrap { position: relative; }
+        .de-pop { position: absolute; z-index: 50; top: 32px; left: 0; width: 360px; max-height: 420px; overflow: auto; background: #fff;
+                  border: 1px solid #c5cdd6; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); padding: 8px; }
+        .de-pop-h { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
+        .de-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+        .de-keys button { min-width: 30px; height: 30px; border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer;
+                          font-family: 'YadaTowrahRings', 'Times New Roman', serif; font-size: 1.05rem; }
+        .de-keys button:hover { border-color: #3498db; background: #f2f8fd; }
+        .de-keys button.wide { padding: 0 8px; font-family: inherit; font-size: 0.75rem; }
+        .de-heb button { font-family: 'Times New Roman', 'Arial Hebrew', serif; font-size: 1.25rem; }
+        .de-yt button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; height: 44px; width: 40px; }
+        .de-yt .g { font-family: 'YadaTowrah', serif; font-size: 1.3rem; line-height: 1; }
+        .de-yt .h { font-family: 'Times New Roman', serif; font-size: 0.75rem; color: #888; }
+        .de-yt-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+        .de-yt-row button:not(.btn) { height: 28px; border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer; padding: 0 8px; }
+        .de-yt-word { flex: 1; min-height: 30px; border: 1px solid #d5dbe2; border-radius: 4px; padding: 2px 8px; font-family: 'YadaTowrah', serif;
+                      font-size: 1.4rem; direction: rtl; unicode-bidi: bidi-override; text-align: right; }
+        .de-sgrp + .de-sgrp { margin-top: 8px; }
+        .de-sgrp-h { font-size: 0.72rem; color: #666; font-weight: 600; margin-bottom: 3px; }
+        /* ✎ in Search/Replace */
+        .cl-hit .cl-edit { flex: none; align-self: flex-start; border: 1px solid #d5dbe2; background: #fff; border-radius: 4px; cursor: pointer;
+                           color: #2980b9; font-size: 0.9rem; padding: 0 6px; line-height: 1.5; visibility: hidden; }
+        .cl-hit:hover .cl-edit { visibility: visible; }
+        .cl-hit-edit { padding: 6px 12px 10px 30px; background: #fffdf5; border-bottom: 1px solid #f0d58c; }
+        .cl-hit-edit-h { font-size: 0.78rem; color: #9a6b00; font-weight: 600; margin-bottom: 4px; }
+        /* Changes: types and sorting */
+        .hi-type { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+        .hi-type.ty-r { background: #e8f1fb; color: #1f5f9e; }
+        .hi-type.ty-d { background: #f3e8fb; color: #7d3c98; }
+        .hi-type.ty-a { background: #e8f8f0; color: #1e8449; }
+        .hi-table th.hi-sortable { cursor: pointer; user-select: none; }
+        .hi-table th.hi-sortable:hover { color: #2980b9; }
+        .hi-table th.sorted { color: #2c3e50; }
+        .hi-dlbl { color: #7d3c98; font-size: 0.78rem; white-space: nowrap; }
+        .hi-dsnip { color: #777; }
+        .hi-dsnip mark { background: #f8edc8; color: #1a5276; padding: 0 1px; }
+        .hi-row .meta, .hi-brow .meta { color: #999; font-size: 0.78rem; }
         /* Queued-changes banner atop Search/Replace */
         .cl-qbanner { margin-bottom: 14px; padding: 10px 14px; border: 1px solid #f0d58c; border-left: 4px solid #f0b429; border-radius: 6px; background: #fffbea; font-size: 0.85rem; }
         .cl-qbanner[hidden] { display: none; }
@@ -659,6 +747,7 @@
     <div id="tab-cleanup" class="tab-panel">
         <div class="cl-subtabs">
             <button type="button" class="cl-subtab active" data-pane="search" onclick="clSubTab('search')" title="Search the book text and replace matches">Search/Replace</button>
+            <button type="button" class="cl-subtab" data-pane="direct" onclick="clSubTab('direct')" title="Browse a book page by page and edit any paragraph directly">Direct</button>
             <button type="button" class="cl-subtab" data-pane="changes" onclick="clSubTab('changes')" title="Every search/replace change, queued or committed — commit or discard queued ones here">Changes<span class="cl-subtab-n" id="cl-subtab-n" hidden></span></button>
         </div>
         <div class="cl-pane active" id="cl-pane-search">
@@ -778,6 +867,28 @@
         </div>
         </div><!-- /cl-pane-search -->
 
+        <!-- Direct: Series → Book → Chapter → Page; click a paragraph to edit it. -->
+        <div class="cl-pane" id="cl-pane-direct">
+            <div class="de-nav">
+                <label>Series <select id="de-series" title="Series"></select></label>
+                <label>Book <select id="de-book" title="Book"></select></label>
+                <label>Chapter <select id="de-chap" title="Chapter (the pages it covers)"></select></label>
+                <span class="de-pg">
+                    <button type="button" class="btn btn-secondary btn-sm" id="de-prev" title="Previous page">&#9664;</button>
+                    Page <select id="de-page" title="Page (the PDF page number)"></select> <span id="de-pgof"></span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="de-next" title="Next page">&#9654;</button>
+                </span>
+                <a id="de-fb" target="_blank" rel="noopener" hidden title="Open this page in the flipbook">Flipbook &#8599;</a>
+            </div>
+            <div class="de-warn" id="de-warn" hidden></div>
+            <p class="cl-note">Click a paragraph to edit it. Saving changes the paragraph at once and the book's staged Word DOCX;
+               it is queued on the <i>Changes</i> tab as a <b>Direct</b> change until you commit it.</p>
+            <div class="de-body">
+                <div class="de-img"><img id="de-pageimg" alt="The printed page" hidden><div id="de-noimg" class="de-noimg" hidden>No page image</div></div>
+                <div class="de-paras" id="de-paras"></div>
+            </div>
+        </div>
+
         <!-- Changes: every Cleanup Replace batch, queued or committed; queued ones are committed / discarded here. -->
         <div class="cl-pane" id="cl-pane-changes">
         <div class="hi-bar">
@@ -802,6 +913,12 @@
                 <label title="Changes not yet committed (staged in each book's DOCX)"><input type="checkbox" class="hi-st" value="pending" checked> Queued</label>
                 <label title="Changes whose staged DOCX was committed (made live and rebuilt)"><input type="checkbox" class="hi-st" value="processed" checked> Committed</label>
                 <label title="Changes that were discarded (the paragraphs were put back)"><input type="checkbox" class="hi-st" value="discarded"> Discarded</label>
+            </span>
+            <span class="hi-fgrp" title="Which kinds of change to show">
+                <span class="hi-flbl">Type</span>
+                <label title="Made with Search/Replace (includes every change from before types were recorded)"><input type="checkbox" class="hi-ty" value="replace" checked> Search/Replace</label>
+                <label title="Edited by hand, on the Direct tab or with ✎ in Search/Replace"><input type="checkbox" class="hi-ty" value="direct" checked> Direct</label>
+                <label title="Made by AI"><input type="checkbox" class="hi-ty" value="ai" checked> AI</label>
             </span>
             <span class="hi-fgrp">
                 <span class="hi-flbl">By</span>
@@ -2713,8 +2830,9 @@ function switchTab(name) {
 function clSubTab(name) {
     document.querySelectorAll('#tab-cleanup .cl-subtab').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-pane') === name); });
     document.querySelectorAll('#tab-cleanup .cl-pane').forEach(function(p) { p.classList.toggle('active', p.id === 'cl-pane-' + name); });
-    if (history.replaceState) history.replaceState(null, '', name === 'changes' ? '#cleanup-changes' : '#cleanup');
+    if (history.replaceState) history.replaceState(null, '', name === 'changes' ? '#cleanup-changes' : name === 'direct' ? '#cleanup-direct' : '#cleanup');
     if (name === 'changes') hiInit();
+    if (name === 'direct') deInit();
 }
 
 // Series keeps its own page permission ('series' in PAGE_SETTING_MAP)
@@ -2969,6 +3087,7 @@ function initFlipbookTab() {
     if (location.hash === '#cleanup' || location.hash === '#edit') switchTab('cleanup');   // the tab is labelled Edit
     // #history = the old Replace History tab, now Cleanup → Changes.
     if (location.hash === '#cleanup-changes' || location.hash === '#history') { switchTab('cleanup'); clSubTab('changes'); }
+    if (location.hash === '#cleanup-direct' || location.hash === '#edit-direct') { switchTab('cleanup'); clSubTab('direct'); }
 }
 
 // ── Cleanup → Changes tab (was Replace History) ──
@@ -3010,6 +3129,14 @@ function hiInit() {
         var vks = act.getAttribute('data-vks');
         clQueueRun(act.getAttribute('data-hact'), vks === 'all' ? 'all' : vks.split(',').map(Number));
     }, true);
+    document.getElementById('hi-head').addEventListener('click', function(e) {
+        var th = e.target.closest('th[data-sort]');
+        if (!th) return;
+        var k = th.getAttribute('data-sort');
+        hiSort = hiSort.key === k ? {key: k, dir: -hiSort.dir} : {key: k, dir: k === 'when' || k === 'changes' || k === 'books' || k === 'batches' ? -1 : 1};
+        hiRender();
+    });
+    document.querySelectorAll('#cl-pane-changes .hi-ty').forEach(function(c) { c.addEventListener('change', function() { hiLoad(); }); });
     document.getElementById('hi-body').addEventListener('click', function(e) {
         var xp = e.target.closest('button.hi-xp');
         if (xp) { hiExpand(xp.closest('tr.hi-row'), xp.getAttribute('data-xp') === 'open'); return; }
@@ -3031,11 +3158,15 @@ function hiLoad() {
     var from = document.getElementById('hi-from').value, to = document.getElementById('hi-to').value;
     document.getElementById('hi-dates-clr').hidden = !from && !to;
     if (from && to && from > to) { hiBatches = []; hiRender('“From” is after “To”.'); return; }
+    var ty = [];
+    document.querySelectorAll('#cl-pane-changes .hi-ty:checked').forEach(function(c) { ty.push(c.value); });
+    if (!ty.length) { hiBatches = []; hiRender('Tick a type to see changes.'); return; }
     var day = function(v, plus) { var p = v.split('-'); return new Date(+p[0], +p[1] - 1, +p[2] + plus).toISOString(); };
     var seq = ++hiSeq;
     var url = API + '/admin-books-cleanup.php?action=history&status=' + st.join(',')
         + '&volume=' + encodeURIComponent(document.getElementById('hi-vol').value)
         + '&user=' + encodeURIComponent(document.getElementById('hi-user').value)
+        + '&type=' + ty.join(',')
         + (from ? '&from=' + encodeURIComponent(day(from, 0)) : '')
         + (to ? '&to=' + encodeURIComponent(day(to, 1)) : '')
         + '&q=' + encodeURIComponent(document.getElementById('hi-q').value.trim());
@@ -3104,13 +3235,24 @@ function hiWhen(t) { var x = new Date(t); return t && !isNaN(x) ? x.toLocaleStri
 function hiFlags(list) { list = list.filter(Boolean); return list.length ? ' <span class="flags">' + list.join(' ') + '</span>' : ''; }
 function hiFindHtml(b) {
     var o = b.options || {};
+    if (hiTypeOf(b) === 'direct') {
+        return '<span class="hi-dlbl">&#9998; ¶ ' + esc(String(b.paragraph_number || '')) + (o.source === 'search' ? ' (from Search/Replace)' : '') + '</span> '
+            + (o.format_only ? '<span class="meta">formatting</span>' : hiDirectSnip(o, o.old));
+    }
     return '<span class="q">“' + esc(b.find || '') + '”</span>'
         + hiFlags([o.bold ? '<b>B</b>' : '', o.italic ? '<i>I</i>' : '', o['case'] ? 'Aa' : '', o.word ? 'whole words' : '']);
 }
 function hiRepHtml(b) {
     var o = b.options || {};
+    if (hiTypeOf(b) === 'direct') return o.format_only ? '<span class="meta">(same text, new formatting)</span>' : hiDirectSnip(o, o.new);
     return hiRepList(b).map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
         + hiFlags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : '']);
+}
+// A direct edit's before or after: the changed text marked, a little of the
+// unchanged text either side (older edits have no context saved).
+function hiDirectSnip(o, part) {
+    var mid = part ? '<mark>' + esc(part) + '</mark>' : '<span class="meta">(nothing)</span>';
+    return '<span class="q hi-dsnip">“' + (o.pre ? '…' + esc(o.pre) : '') + mid + (o.post ? esc(o.post) + '…' : '') + '”</span>';
 }
 function hiBookHtml(b) {
     return '<span title="' + esc(b.volume_code || '') + '">' + esc((b.volume_number ? b.volume_number + ' · ' : '') + (b.volume_label || b.volume_code || ''))
@@ -3142,25 +3284,67 @@ function hiUsers(g) {
     return esc(Object.keys(seen).join(', '));
 }
 
+// ── change types: search/replace, direct (edited by hand), ai ──
+var HI_TYPES = {replace: ['Search/Replace', 'ty-r'], direct: ['Direct', 'ty-d'], ai: ['AI', 'ty-a']};
+function hiTypeOf(b) { var t = (b.options || {}).type; return HI_TYPES[t] ? t : 'replace'; }
+function hiTypeHtml(batches) {
+    var seen = {};
+    batches.forEach(function(b) { seen[hiTypeOf(b)] = 1; });
+    return Object.keys(HI_TYPES).filter(function(t) { return seen[t]; }).map(function(t) {
+        return '<span class="hi-type ' + HI_TYPES[t][1] + '">' + HI_TYPES[t][0] + '</span>';
+    }).join(' ');
+}
+
+// Columns: label, sort key (null = not sortable). Click a sortable header to
+// sort by it; click again to reverse.
 var HI_HEAD = {
-    run:  ['When', 'Find', 'Replace', 'Books', 'Changes', 'Status', 'By', ''],
-    book: ['Book', 'Last change', 'Batches', 'Changes', 'Status', 'By', '']
+    run:  [['When', 'when'], ['Type', 'type'], ['Find', 'find'], ['Replace', 'replace'], ['Books', 'books'], ['Changes', 'changes'],
+           ['Status', 'status'], ['By', 'by'], ['', null]],
+    book: [['Book', 'book'], ['Type', 'type'], ['Last change', 'when'], ['Batches', 'batches'], ['Changes', 'changes'],
+           ['Status', 'status'], ['By', 'by'], ['', null]]
 };
+var hiSort = {key: 'when', dir: -1};
+function hiSortVal(g, key) {
+    var b0 = g.batches[0];
+    switch (key) {
+        case 'when': return hiGroup === 'book' ? g.last : g.first;
+        case 'type': return Object.keys(HI_TYPES).indexOf(hiTypeOf(b0));
+        case 'find': return (hiTypeOf(b0) === 'direct' ? ((b0.options || {}).old || '') : (b0.find || '')).toLowerCase();
+        case 'replace': return (hiTypeOf(b0) === 'direct' ? ((b0.options || {}).new || '') : hiRepList(b0).join(' / ')).toLowerCase();
+        case 'books': var s = {}; g.batches.forEach(function(b) { s[b.volume_key] = 1; }); return Object.keys(s).length;
+        case 'batches': return g.batches.length;
+        case 'changes': return g.count;
+        case 'status': return ['pending', 'processed', 'discarded'].indexOf(b0.status);
+        case 'by': return hiUsers(g).toLowerCase();
+        case 'book': return (b0.series_label || '') + '|' + String(b0.volume_number || 0).padStart(4, '0') + (b0.volume_label || '');
+    }
+    return 0;
+}
 function hiRender(msg) {
     var head = HI_HEAD[hiGroup];
+    if (!head.some(function(h) { return h[1] === hiSort.key; })) hiSort = {key: 'when', dir: -1};
     document.getElementById('hi-head').innerHTML = '<tr>' + head.map(function(h) {
-        return '<th' + (h === 'Changes' || h === 'Batches' ? ' class="num"' : '') + '>' + h + '</th>';
+        var cls = (h[0] === 'Changes' || h[0] === 'Batches' ? 'num' : '') + (h[1] ? ' hi-sortable' : '') + (h[1] === hiSort.key ? ' sorted' : '');
+        var arrow = h[1] === hiSort.key ? (hiSort.dir < 0 ? ' &#9660;' : ' &#9650;') : '';
+        return '<th class="' + cls + '"' + (h[1] ? ' data-sort="' + h[1] + '" title="Sort by ' + h[0] + ' (click again to reverse)"' : '') + '>' + h[0] + arrow + '</th>';
     }).join('') + '</tr>';
     var body = document.getElementById('hi-body'), cols = head.length;
     if (msg) { body.innerHTML = '<tr><td colspan="' + cols + '" class="hi-empty">' + esc(msg) + '</td></tr>'; document.getElementById('hi-sum').textContent = ''; return; }
     var groups = hiGroups();
+    groups.sort(function(a, b) {
+        var x = hiSortVal(a, hiSort.key), y = hiSortVal(b, hiSort.key);
+        if (x < y) return -hiSort.dir;
+        if (x > y) return hiSort.dir;
+        return b.last - a.last;
+    });
     hiRender.groups = groups;
     body.innerHTML = groups.map(function(g, i) {
         var b0 = g.batches[0], tw = '<span class="tw">&#9654;</span>';
-        var tip = ' title="Click to show / hide its ' + (hiGroup === 'book' ? 'search/replace batches' : 'books') + '"';
+        var tip = ' title="Click to show / hide its ' + (hiGroup === 'book' ? 'batches' : 'books') + '"';
         if (hiGroup === 'book') {
             return '<tr class="hi-row" data-g="' + i + '"' + tip + '>'
                 + '<td class="book">' + tw + hiBookHtml(b0) + '</td>'
+                + '<td>' + hiTypeHtml(g.batches) + '</td>'
                 + '<td class="when">' + esc(hiWhen(g.last)) + '</td>'
                 + '<td class="num">' + g.batches.length + '</td>'
                 + '<td class="num">' + g.count + '</td>'
@@ -3169,15 +3353,16 @@ function hiRender(msg) {
         }
         return '<tr class="hi-row" data-g="' + i + '"' + tip + '>'
             + '<td class="when">' + tw + esc(hiWhen(g.first)) + '</td>'
+            + '<td>' + hiTypeHtml(g.batches) + '</td>'
             + '<td>' + hiFindHtml(b0) + '</td><td>' + hiRepHtml(b0) + '</td>'
             + '<td class="num">' + hiBooksHtml(g) + '</td>'
             + '<td class="num">' + g.count + '</td>'
             + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
-            + '<td class="act">' + HI_XP_HTML + hiActHtml(g.batches, 'search/replace') + '</td></tr>';
+            + '<td class="act">' + HI_XP_HTML + hiActHtml(g.batches, hiTypeOf(b0) === 'direct' ? 'edit' : 'search/replace') + '</td></tr>';
     }).join('') || '<tr><td colspan="' + cols + '" class="hi-empty">No changes.</td></tr>';
     var changes = hiBatches.reduce(function(n, b) { return n + b.count; }, 0);
     document.getElementById('hi-sum').textContent = groups.length
-        ? groups.length + (hiGroup === 'book' ? ' book' + (groups.length === 1 ? '' : 's') : ' search/replace' + (groups.length === 1 ? '' : 's'))
+        ? groups.length + (hiGroup === 'book' ? ' book' + (groups.length === 1 ? '' : 's') : ' change set' + (groups.length === 1 ? '' : 's'))
           + ' · ' + hiBatches.length + ' batch' + (hiBatches.length === 1 ? '' : 'es') + ' · ' + changes + ' change' + (changes === 1 ? '' : 's')
         : '';
 }
@@ -3220,12 +3405,12 @@ function hiToggleGroup(tr) {
     tr.classList.add('open');
     var g = hiRender.groups[+tr.getAttribute('data-g')];
     var byBook = hiGroup === 'book';
-    var head = byBook ? ['When', 'Find', 'Replace', 'Changes', 'Status', 'By', ''] : ['Book', 'When', 'Changes', 'Status', 'By', ''];
+    var head = byBook ? ['When', 'Type', 'Find', 'Replace', 'Changes', 'Status', 'By', ''] : ['Book', 'When', 'Changes', 'Status', 'By', ''];
     var rows = g.batches.map(function(b) {
         var tw = '<span class="tw">&#9654;</span>';
         return '<tr class="hi-brow" data-b="' + b._i + '" title="Click to show / hide this batch\'s changes">'
             + (byBook
-                ? '<td class="when">' + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
+                ? '<td class="when">' + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiTypeHtml([b]) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
                 : '<td class="book">' + tw + hiBookHtml(b) + '</td><td class="when">' + esc(hiWhen(b.dtime)) + '</td>')
             + '<td class="num">' + b.count + '</td><td>' + hiStatusHtml([b]) + '</td><td>' + esc(b.user_name || '') + '</td>'
             + '<td class="act">' + hiActHtml([b], 'batch') + '</td></tr>';
@@ -3779,6 +3964,7 @@ function clRenderBook(vk) {
     var b = clLast.books[vk];
     var body = document.getElementById('cl-bk-' + vk);
     if (!body) return;
+    if (deEd && body.contains(deEd.host)) return;   // an open ✎ editor: leave the rows until it closes
     var html = b.items.map(function(r, i) { return clHitHtml(r, vk, i); }).join('');
     if (b.loading) html += '<div class="cl-loading">Loading…</div>';
     else if (b.more) html += '<button type="button" class="btn btn-secondary btn-sm cl-more" data-vk="' + vk + '"'
@@ -4058,9 +4244,16 @@ function clHitHtml(r, vk, i) {
         + ' title="Replace this match (untick to leave it as it is)">'
         + locHtml
         + (lrs ? '<span class="cl-lrs">' + lrs + '</span>' : '')
+        + '<button type="button" class="cl-edit" title="Edit this paragraph directly (saved as a “direct” change)">&#9998;</button>' 
         + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt, r) + '</span>'
         + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt, r) + '</span></span></div>';
 }
+
+// A row's ✎: edit its paragraph directly.
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('#cl-results .cl-hit .cl-edit');
+    if (btn && clLast) { e.stopPropagation(); clEditFromRow(btn.closest('.cl-hit')); }
+});
 
 // A row's ʿ / ʾ / ` toggle: remember the pick and redraw just that row.
 document.addEventListener('click', function(e) {
@@ -4168,6 +4361,495 @@ function clReplaceSelected() {
     });
 }
 
+// ── Edit → Direct, and the paragraph editor it shares with Search/Replace ──
+// The editor works on one paragraph's HTML (the parser's <b>, <i>,
+// <span data-font / data-style>, plus <u> and data-size from earlier edits)
+// and saves it as runs [{t, b, i, u, f, sz, st}]; the server rewrites the
+// paragraph and its place in the book's staged DOCX (see cleanupDirectSave).
+
+var DE_SPECIAL = [["Punctuation & spaces", [["–", "En Dash", 103940, 39], ["—", "Em Dash", 979, 25], ["‘", "Left Single Quotation Mark", 11499, 38], ["’", "Right Single Quotation Mark", 97138, 39], ["“", "Left Double Quotation Mark", 58333, 39], ["”", "Right Double Quotation Mark", 58225, 39], ["…", "Horizontal Ellipsis", 7636, 39], ["·", "Middle Dot", 36, 11], ["•", "Bullet", 1, 1], ["‑", "Non-Breaking Hyphen", 3, 2], [" ", "No-Break Space", 496, 15], ["˹", "Modifier Letter Begin High Tone", 10, 3], ["˺", "Modifier Letter End High Tone", 10, 3], ["ʻ", "Modifier Letter Turned Comma", 5, 1]]], ["Symbols", [["°", "Degree Sign", 68, 2], ["©", "Copyright Sign", 42, 37], ["×", "Multiplication Sign", 1, 1], ["½", "Vulgar Fraction One Half", 73, 21], ["¼", "Vulgar Fraction One Quarter", 2, 2], ["∞", "Infinity", 3, 3]]], ["Accented letters", [["é", "Latin Small Letter E With Acute", 255, 35], ["è", "Latin Small Letter E With Grave", 4, 1], ["ê", "Latin Small Letter E With Circumflex", 10, 5], ["á", "Latin Small Letter A With Acute", 1, 1], ["à", "Latin Small Letter A With Grave", 24, 13], ["â", "Latin Small Letter A With Circumflex", 3, 2], ["ä", "Latin Small Letter A With Diaeresis", 1, 1], ["ă", "Latin Small Letter A With Breve", 1, 1], ["ā", "Latin Small Letter A With Macron", 15, 3], ["æ", "Latin Small Letter Ae", 16, 4], ["Æ", "Latin Capital Letter Ae", 2, 2], ["ç", "Latin Small Letter C With Cedilla", 33, 17], ["í", "Latin Small Letter I With Acute", 0, 0], ["ï", "Latin Small Letter I With Diaeresis", 53, 18], ["î", "Latin Small Letter I With Circumflex", 1, 1], ["ī", "Latin Small Letter I With Macron", 19, 2], ["ü", "Latin Small Letter U With Diaeresis", 86, 14], ["ú", "Latin Small Letter U With Acute", 1, 1], ["ū", "Latin Small Letter U With Macron", 1, 1], ["ö", "Latin Small Letter O With Diaeresis", 1, 1], ["ō", "Latin Small Letter O With Macron", 1, 1], ["ñ", "Latin Small Letter N With Tilde", 2, 1], ["ē", "Latin Small Letter E With Macron", 1, 1], ["ḥ", "Latin Small Letter H With Dot Below", 14, 2], ["Ḥ", "Latin Capital Letter H With Dot Below", 2, 2], ["ḍ", "Latin Small Letter D With Dot Below", 4, 1], ["ḏ", "Latin Small Letter D With Line Below", 1, 1], ["ṭ", "Latin Small Letter T With Dot Below", 2, 2], ["ḳ", "Latin Small Letter K With Dot Below", 1, 1], ["ṣ", "Latin Small Letter S With Dot Below", 1, 1], ["Ṣ", "Latin Capital Letter S With Dot Below", 1, 1], ["ẓ", "Latin Small Letter Z With Dot Below", 1, 1], ["Š", "Latin Capital Letter S With Caron", 1, 1]]], ["Greek capitals", [["Α", "Greek Capital Letter Alpha", 29, 5], ["Β", "Greek Capital Letter Beta", 0, 0], ["Γ", "Greek Capital Letter Gamma", 0, 0], ["Δ", "Greek Capital Letter Delta", 42, 4], ["Ε", "Greek Capital Letter Epsilon", 16, 7], ["Ζ", "Greek Capital Letter Zeta", 0, 0], ["Η", "Greek Capital Letter Eta", 22, 5], ["Θ", "Greek Capital Letter Theta", 122, 6], ["Ι", "Greek Capital Letter Iota", 71, 7], ["Κ", "Greek Capital Letter Kappa", 60, 6], ["Λ", "Greek Capital Letter Lamda", 0, 0], ["Μ", "Greek Capital Letter Mu", 2, 1], ["Ν", "Greek Capital Letter Nu", 104, 8], ["Ξ", "Greek Capital Letter Xi", 0, 0], ["Ο", "Greek Capital Letter Omicron", 2, 1], ["Π", "Greek Capital Letter Pi", 57, 7], ["Ρ", "Greek Capital Letter Rho", 100, 7], ["Σ", "Greek Capital Letter Sigma", 140, 7], ["Τ", "Greek Capital Letter Tau", 12, 6], ["Υ", "Greek Capital Letter Upsilon", 150, 7], ["Φ", "Greek Capital Letter Phi", 0, 0], ["Χ", "Greek Capital Letter Chi", 115, 6], ["Ψ", "Greek Capital Letter Psi", 0, 0], ["Ω", "Greek Capital Letter Omega", 58, 6]]], ["Greek small", [["α", "Greek Small Letter Alpha", 57, 5], ["β", "Greek Small Letter Beta", 0, 0], ["γ", "Greek Small Letter Gamma", 0, 0], ["δ", "Greek Small Letter Delta", 8, 2], ["ε", "Greek Small Letter Epsilon", 21, 3], ["ζ", "Greek Small Letter Zeta", 0, 0], ["η", "Greek Small Letter Eta", 29, 5], ["θ", "Greek Small Letter Theta", 2, 1], ["ι", "Greek Small Letter Iota", 22, 3], ["κ", "Greek Small Letter Kappa", 34, 4], ["λ", "Greek Small Letter Lamda", 7, 3], ["μ", "Greek Small Letter Mu", 17, 4], ["ν", "Greek Small Letter Nu", 36, 5], ["ξ", "Greek Small Letter Xi", 0, 0], ["ο", "Greek Small Letter Omicron", 32, 5], ["π", "Greek Small Letter Pi", 10, 2], ["ρ", "Greek Small Letter Rho", 20, 5], ["σ", "Greek Small Letter Sigma", 35, 5], ["ς", "Greek Small Letter Final Sigma", 13, 7], ["τ", "Greek Small Letter Tau", 55, 7], ["υ", "Greek Small Letter Upsilon", 15, 4], ["φ", "Greek Small Letter Phi", 0, 0], ["χ", "Greek Small Letter Chi", 4, 4], ["ψ", "Greek Small Letter Psi", 1, 1], ["ω", "Greek Small Letter Omega", 28, 5]]], ["Greek with accents", [["ά", "Greek Small Letter Alpha With Tonos", 2, 2], ["έ", "Greek Small Letter Epsilon With Tonos", 4, 1], ["ή", "Greek Small Letter Eta With Tonos", 2, 1], ["ί", "Greek Small Letter Iota With Tonos", 5, 3], ["ύ", "Greek Small Letter Upsilon With Tonos", 5, 4], ["ό", "Greek Small Letter Omicron With Tonos", 0, 0], ["ώ", "Greek Small Letter Omega With Tonos", 0, 0], ["ὶ", "Greek Small Letter Iota With Varia", 6, 2], ["ἐ", "Greek Small Letter Epsilon With Psili", 6, 2], ["ἰ", "Greek Small Letter Iota With Psili", 2, 1], ["ὸ", "Greek Small Letter Omicron With Varia", 2, 2], ["ὴ", "Greek Small Letter Eta With Varia", 2, 1], ["ὺ", "Greek Small Letter Upsilon With Varia", 2, 1], ["ῦ", "Greek Small Letter Upsilon With Perispomeni", 2, 1], ["ὅ", "Greek Small Letter Omicron With Dasia And Oxia", 2, 1], ["ἶ", "Greek Small Letter Iota With Psili And Perispomeni", 2, 1], ["ῃ", "Greek Small Letter Eta With Ypogegrammeni", 2, 1], ["ῇ", "Greek Small Letter Eta With Perispomeni And Ypogegrammeni", 2, 1], ["ᾳ", "Greek Small Letter Alpha With Ypogegrammeni", 2, 1], ["ῳ", "Greek Small Letter Omega With Ypogegrammeni", 2, 2], ["Ἑ", "Greek Capital Letter Epsilon With Dasia", 2, 2], ["Ὠ", "Greek Capital Letter Omega With Psili", 3, 3], ["Ἰ", "Greek Capital Letter Iota With Psili", 1, 1]]]];
+// Modern Hebrew keys: the 22 letters with their final forms, shin / sin dots, maqaf, geresh, gershayim.
+var DE_HEBREW = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ', 'ך', 'ל', 'מ', 'ם', 'נ', 'ן', 'ס', 'ע', 'פ', 'ף', 'צ', 'ץ',
+                 'ק', 'ר', 'ש', 'ת', 'שׁ', 'שׂ', '־', '׳', '״'];
+// Yada Towrah: the letter key the font draws each paleo-Hebrew letter from
+// (checked against yy_word: a → א … t → ת), in alphabet order.
+var DE_YT = [['a', 'א', 'Aleph'], ['b', 'ב', 'Beyth'], ['g', 'ג', 'Gimal'], ['d', 'ד', 'Dalet'], ['h', 'ה', 'Hey'],
+             ['w', 'ו', 'Wah'], ['z', 'ז', 'Zayin'], ['c', 'ח', 'Chet'], ['x', 'ט', 'Tet'], ['y', 'י', 'Yad'],
+             ['k', 'כ', 'Kaph'], ['l', 'ל', 'Lamed'], ['m', 'מ', 'Mem'], ['n', 'נ', 'Nun'], ['f', 'ס', 'Samech'],
+             ['i', 'ע', 'ʿAyin'], ['p', 'פ', 'Pe'], ['e', 'צ', 'Tsade'], ['q', 'ק', 'Qoph'], ['r', 'ר', 'Resh'],
+             ['s', 'ש', 'Shin'], ['t', 'ת', 'Taw']];
+var DE_FONTS = ['Times New Roman', 'Yada Towrah', 'Arial', 'Calibri', 'Tahoma', 'Jupiter-Yada', 'Semitic Early', 'Moabite Stone', 'Isaiah Scroll'];
+var DE_SIZES = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32];
+var DE_BODY_PT = 11;   // the books' body size: data-size N shows at N/11 of the editor text
+
+var deEd = null;       // the open editor: {host, para, area, range, opts, start}
+
+// Show data-size as a relative size (the parser never writes it; edits do).
+function deSizeStyles(root) {
+    root.querySelectorAll('[data-size]').forEach(function(el) {
+        var sz = parseFloat(el.getAttribute('data-size'));
+        if (sz) el.style.fontSize = (sz / DE_BODY_PT) + 'em';
+    });
+}
+
+// The editor's DOM → runs. Attributes come from the elements around each text
+// node: B/STRONG, I/EM, U (or the equivalent inline styles), and the nearest
+// data-font / data-size / data-style.
+function deRuns(area) {
+    var runs = [];
+    var push = function(t, a) {
+        if (!t) return;
+        var last = runs[runs.length - 1];
+        if (last && last.b === a.b && last.i === a.i && last.u === a.u && last.f === a.f && last.sz === a.sz && last.st === a.st) last.t += t;
+        else runs.push({t: t, b: a.b, i: a.i, u: a.u, f: a.f, sz: a.sz, st: a.st});
+    };
+    var walk = function(node, a) {
+        if (node.nodeType === 3) { push(node.nodeValue.replace(/[\r\n]+/g, ' ').replace(/​/g, ''), a); return; }
+        if (node.nodeType !== 1) return;
+        var tag = node.tagName, n = {b: a.b, i: a.i, u: a.u, f: a.f, sz: a.sz, st: a.st};
+        if (tag === 'BR') { if (node.nextSibling || node.parentNode !== area) push(' ', a); return; }
+        if (tag === 'B' || tag === 'STRONG') n.b = true;
+        if (tag === 'I' || tag === 'EM') n.i = true;
+        if (tag === 'U') n.u = true;
+        var fw = node.style && node.style.fontWeight;
+        if (fw === 'bold' || parseInt(fw, 10) >= 600) n.b = true;
+        if (fw === 'normal' || fw === '400') n.b = false;
+        if (node.style && node.style.fontStyle === 'italic') n.i = true;
+        if (node.style && /underline/.test(node.style.textDecoration || node.style.textDecorationLine || '')) n.u = true;
+        if (node.hasAttribute('data-font')) n.f = node.getAttribute('data-font');
+        if (node.hasAttribute('data-size')) n.sz = parseFloat(node.getAttribute('data-size')) || 0;
+        if (node.hasAttribute('data-style')) n.st = node.getAttribute('data-style');
+        for (var c = node.firstChild; c; c = c.nextSibling) walk(c, n);
+    };
+    for (var c = area.firstChild; c; c = c.nextSibling) walk(c, {b: false, i: false, u: false, f: '', sz: 0, st: ''});
+    return runs;
+}
+
+function deKeepRange() {
+    if (!deEd) return;
+    var sel = window.getSelection();
+    if (sel.rangeCount && deEd.area.contains(sel.getRangeAt(0).commonAncestorContainer)) deEd.range = sel.getRangeAt(0).cloneRange();
+}
+function deRestoreRange() {
+    if (!deEd) return false;
+    deEd.area.focus();
+    if (!deEd.range) return false;
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(deEd.range);
+    return true;
+}
+function deMsg(text, bad) {
+    if (!deEd) return;
+    var m = deEd.host.querySelector('.de-msg');
+    m.textContent = text || '';
+    m.classList.toggle('bad', !!bad);
+}
+
+// Wrap the selection in <span attr=value> (font or size). execCommand's
+// fontName marks the selection with <font face=marker>; each mark becomes the
+// span, and the same attribute inside it is dropped so the new one wins.
+function deWrap(attr, value) {
+    if (!deRestoreRange() || deEd.range.collapsed) { deMsg('Select some text first.', true); return; }
+    var marker = 'yy-mark-' + Date.now();
+    document.execCommand('styleWithCSS', false, false);
+    document.execCommand('fontName', false, marker);
+    deEd.area.querySelectorAll('font[face="' + marker + '"]').forEach(function(f) {
+        var span = document.createElement('span');
+        span.setAttribute(attr, value);
+        while (f.firstChild) span.appendChild(f.firstChild);
+        span.querySelectorAll('[' + attr + ']').forEach(function(el) {
+            el.removeAttribute(attr);
+            if (attr === 'data-size') el.style.fontSize = '';
+            if (el.tagName === 'SPAN' && !el.attributes.length) { while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el); el.remove(); }
+        });
+        f.parentNode.replaceChild(span, f);
+    });
+    deSizeStyles(deEd.area);
+    deKeepRange();
+    deDirty();
+}
+
+function deInsertText(t) {
+    deRestoreRange();
+    document.execCommand('insertText', false, t);
+    deKeepRange();
+    deDirty();
+}
+function deInsertYT(keys) {
+    deRestoreRange();
+    // The zero-width space after the span lets the caret (and further typing)
+    // leave the Yada Towrah font; deRuns() drops it.
+    document.execCommand('insertHTML', false, '<span data-font="Yada Towrah">' + esc(keys) + '</span>&#8203;');
+    deKeepRange();
+    deDirty();
+}
+
+function deDirty() {
+    if (!deEd) return;
+    var now = JSON.stringify(deRuns(deEd.area));
+    deEd.host.querySelector('.de-save').disabled = now === deEd.start;
+    deMsg(now === deEd.start ? '' : 'Unsaved changes');
+}
+
+// ── popovers: Hebrew, Yada Towrah, special characters ──
+function deClosePop() { document.querySelectorAll('.de-pop').forEach(function(p) { p.remove(); }); }
+function dePop(btn, html, onClick) {
+    var open = document.querySelector('.de-pop[data-for="' + btn.getAttribute('data-pop') + '"]');
+    deClosePop();
+    if (open) return null;
+    var pop = document.createElement('div');
+    pop.className = 'de-pop';
+    pop.setAttribute('data-for', btn.getAttribute('data-pop'));
+    pop.innerHTML = html;
+    btn.parentNode.appendChild(pop);
+    pop.addEventListener('mousedown', function(e) { if (e.target.tagName !== 'INPUT') e.preventDefault(); });
+    pop.addEventListener('click', function(e) { e.stopPropagation(); onClick(e, pop); });
+    return pop;
+}
+function deHebrewPop(btn) {
+    dePop(btn, '<div class="de-pop-h">Modern Hebrew — click to insert</div><div class="de-keys de-heb">'
+        + DE_HEBREW.map(function(c) { return '<button type="button" data-ch="' + c + '" title="' + c + '">' + c + '</button>'; }).join('')
+        + '<button type="button" data-ch=" " class="wide" title="Space">space</button></div>',
+        function(e) { var b = e.target.closest('[data-ch]'); if (b) deInsertText(b.getAttribute('data-ch')); });
+}
+function deYtPop(btn) {
+    var word = [];
+    var pop = dePop(btn, '<div class="de-pop-h">Yada Towrah — click letters in reading order, then Insert</div>'
+        + '<div class="de-keys de-yt">' + DE_YT.map(function(l) {
+            return '<button type="button" data-k="' + l[0] + '" title="' + l[2] + ' ' + l[1] + ' (key ' + l[0] + ')">'
+                + '<span class="g">' + l[0] + '</span><span class="h">' + l[1] + '</span></button>';
+        }).join('') + '</div>'
+        + '<div class="de-yt-row"><span class="de-yt-word" title="The word so far, right to left"></span>'
+        + '<button type="button" data-act="back" title="Remove the last letter">&#9003;</button>'
+        + '<button type="button" data-act="clear" title="Start again">Clear</button>'
+        + '<button type="button" data-act="ins" class="btn btn-primary btn-sm" title="Insert the word in the Yada Towrah font">Insert</button></div>',
+        function(e, p) {
+            var k = e.target.closest('[data-k]'), a = e.target.closest('[data-act]');
+            if (k) word.push(k.getAttribute('data-k'));
+            if (a && a.getAttribute('data-act') === 'back') word.pop();
+            if (a && a.getAttribute('data-act') === 'clear') word = [];
+            if (a && a.getAttribute('data-act') === 'ins' && word.length) {
+                // The books type Yada Towrah in visual order (hwhy reads יהוה right to left).
+                deInsertYT(word.slice().reverse().join(''));
+                word = [];
+                deClosePop();
+                return;
+            }
+            p.querySelector('.de-yt-word').textContent = word.join('');
+        });
+}
+function deSpecialPop(btn) {
+    dePop(btn, '<div class="de-pop-h">Special characters (from the books) — click to insert</div>'
+        + DE_SPECIAL.map(function(g) {
+            return '<div class="de-sgrp"><div class="de-sgrp-h">' + esc(g[0]) + '</div><div class="de-keys">'
+                + g[1].map(function(c) {
+                    var label = c[0] === ' ' ? 'nbsp' : c[0] === '‑' ? '‑' : c[0];
+                    return '<button type="button" data-ch="' + esc(c[0]) + '"' + (label.length > 1 ? ' class="wide"' : '')
+                        + ' title="' + esc(c[1]) + (c[2] ? ' — used ' + c[2].toLocaleString() + ' times in ' + c[3] + ' book' + (c[3] === 1 ? '' : 's') : '') + '">'
+                        + esc(label) + '</button>';
+                }).join('') + '</div></div>';
+        }).join(''),
+        function(e) { var b = e.target.closest('[data-ch]'); if (b) deInsertText(b.getAttribute('data-ch')); });
+}
+
+// ── the editor ──
+// host: the element to edit in; para: {paragraph_key, html, number};
+// opts: {source: 'direct'|'search', onSaved(html), onClose()}.
+function deOpen(host, para, opts) {
+    if (deEd && !deClose()) return;
+    var tb = '<div class="de-tb">'
+        + '<button type="button" class="de-b" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>'
+        + '<button type="button" class="de-b" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>'
+        + '<button type="button" class="de-b" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>'
+        + '<select class="de-font" title="Font for the selected text"><option value="">Font…</option>'
+        + DE_FONTS.map(function(f) { return '<option value="' + esc(f) + '">' + esc(f) + '</option>'; }).join('') + '</select>'
+        + '<select class="de-size" title="Size for the selected text, in points (the body text is 11)"><option value="">Size…</option>'
+        + DE_SIZES.map(function(s) { return '<option value="' + s + '">' + s + ' pt</option>'; }).join('') + '</select>'
+        + '<span class="de-sep"></span>'
+        + '<button type="button" class="de-b cl-ring" data-ins="ʾ" title="Right half ring ʾ">ʾ</button>'
+        + '<button type="button" class="de-b cl-ring" data-ins="ʿ" title="Left half ring ʿ">ʿ</button>'
+        + '<button type="button" class="de-b de-tick" data-ins="`" title="Backtick `">`</button>'
+        + '<span class="de-popwrap"><button type="button" class="de-b de-wide" data-pop="heb" title="Type modern Hebrew letters">Hebrew</button></span>'
+        + '<span class="de-popwrap"><button type="button" class="de-b de-wide de-ytb" data-pop="yt" title="Type Yada Towrah (paleo-Hebrew) letters">Yada Towrah</button></span>'
+        + '<span class="de-popwrap"><button type="button" class="de-b de-wide" data-pop="sp" title="Special characters used in the books: dashes, quotes, ellipsis, accented and Greek letters…">Ω Special</button></span>'
+        + '<span class="de-sep"></span>'
+        + '<button type="button" class="de-b" data-cmd="undo" title="Undo (Ctrl+Z)">&#8630;</button>'
+        + '<button type="button" class="de-b" data-cmd="redo" title="Redo (Ctrl+Y)">&#8631;</button>'
+        + '<button type="button" class="de-b de-wide" data-cmd="removeFormat" title="Remove bold / italic / underline from the selection">Clear format</button>'
+        + '</div>';
+    host.innerHTML = '<div class="de-ed">' + tb
+        + '<div class="de-area de-text" contenteditable="true" spellcheck="true"></div>'
+        + '<div class="de-foot"><span class="de-msg"></span>'
+        + '<button type="button" class="btn btn-secondary btn-sm de-cancel" title="Close without saving">Cancel</button>'
+        + '<button type="button" class="btn btn-primary btn-sm de-save" disabled title="Save: the paragraph changes now and the book\'s staged DOCX too — queued on the Changes tab until you commit">Save</button>'
+        + '</div></div>';
+    var area = host.querySelector('.de-area');
+    // admin-dirty.js disables any "Save" .btn-primary until a form field changes;
+    // the editor tracks its own changes (deDirty), so keep it out of that.
+    host.querySelector('.de-save')._dirtyEntry = {skip: true};
+    area.innerHTML = para.html;
+    deSizeStyles(area);
+    deEd = {host: host, para: para, area: area, range: null, opts: opts || {}, start: JSON.stringify(deRuns(area))};
+    host.classList.add('de-editing');
+
+    host.querySelectorAll('.de-tb button').forEach(function(b) { b.addEventListener('mousedown', function(e) { e.preventDefault(); }); });
+    host.querySelector('.de-tb').addEventListener('click', function(e) {
+        var b = e.target.closest('button');
+        if (!b) return;
+        e.stopPropagation();
+        if (b.hasAttribute('data-cmd')) {
+            deRestoreRange();
+            document.execCommand('styleWithCSS', false, false);
+            document.execCommand(b.getAttribute('data-cmd'), false, null);
+            deKeepRange(); deDirty();
+        } else if (b.hasAttribute('data-ins')) {
+            deInsertText(b.getAttribute('data-ins'));
+        } else if (b.getAttribute('data-pop') === 'heb') deHebrewPop(b);
+        else if (b.getAttribute('data-pop') === 'yt') deYtPop(b);
+        else if (b.getAttribute('data-pop') === 'sp') deSpecialPop(b);
+    });
+    host.querySelector('.de-font').addEventListener('change', function() {
+        if (this.value) deWrap('data-font', this.value);
+        this.value = '';
+    });
+    host.querySelector('.de-size').addEventListener('change', function() {
+        if (this.value) deWrap('data-size', this.value);
+        this.value = '';
+    });
+    ['keyup', 'mouseup', 'input'].forEach(function(ev) { area.addEventListener(ev, deKeepRange); });
+    area.addEventListener('input', deDirty);
+    area.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); deMsg('A paragraph can’t be split or joined here — do that in the Word document.', true); }
+        if (e.key === 'Escape') { e.preventDefault(); deClose(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); deSave(); }
+    });
+    area.addEventListener('paste', function(e) {
+        e.preventDefault();
+        var t = (e.clipboardData || window.clipboardData).getData('text/plain').replace(/\s*[\r\n]+\s*/g, ' ');
+        document.execCommand('insertText', false, t);
+    });
+    area.addEventListener('drop', function(e) { e.preventDefault(); });
+    host.querySelector('.de-cancel').addEventListener('click', function(e) { e.stopPropagation(); deClose(); });
+    host.querySelector('.de-save').addEventListener('click', function(e) { e.stopPropagation(); deSave(); });
+    area.focus();
+}
+
+// Close the editor (asks first when there are unsaved changes). True = closed.
+function deClose(force) {
+    if (!deEd) return true;
+    if (!force && JSON.stringify(deRuns(deEd.area)) !== deEd.start
+        && !confirm('Discard your unsaved changes to this paragraph?')) return false;
+    var ed = deEd;
+    deEd = null;
+    deClosePop();
+    ed.host.classList.remove('de-editing');
+    if (ed.opts.onClose) ed.opts.onClose();
+    return true;
+}
+
+function deSave() {
+    if (!deEd) return;
+    var ed = deEd, runs = deRuns(ed.area);
+    if (JSON.stringify(runs) === ed.start) { deClose(true); return; }
+    var btn = ed.host.querySelector('.de-save');
+    btn.disabled = true;
+    deMsg('Saving — editing the staged DOCX…');
+    clPost('direct_save', {paragraph_key: ed.para.paragraph_key, base_html: ed.para.html, runs: runs, source: ed.opts.source || 'direct'})
+        .then(function(d) {
+            if (deEd !== ed) return;
+            if (d.error) { btn.disabled = false; deMsg(d.error, true); return; }
+            ed.para.html = d.html;
+            deEd = null;
+            deClosePop();
+            ed.host.classList.remove('de-editing');
+            if (ed.opts.onSaved) ed.opts.onSaved(d.html, !!d.unchanged);
+            clLoadPending();
+            if (hiBound) hiLoad();
+        }, function(e) { btn.disabled = false; deMsg(String(e && e.message || e), true); });
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.de-pop') && !e.target.closest('[data-pop]')) deClosePop();
+});
+
+// ── the Direct tab: Series → Book → Chapter → Page ──
+var DE_STORE = 'yy.adminBooks.direct.v1';
+var deBound = false, deBooks = [], deChapters = [], deCur = {vk: null, ch: 0, page: null}, dePage = null, deSeq = 0;
+
+function deSaveNav() { try { localStorage.setItem(DE_STORE, JSON.stringify(deCur)); } catch (e) {} }
+function deInit() {
+    if (deBound) return;
+    deBound = true;
+    try { var s = JSON.parse(localStorage.getItem(DE_STORE) || 'null'); if (s && s.vk) deCur = s; } catch (e) {}
+    fetch(API + '/admin-books-cleanup.php?action=direct_books', {credentials: 'include'})
+        .then(function(r) { return safeJson(r); }).then(function(d) {
+            deBooks = d.books || [];
+            var seen = {}, series = [];
+            deBooks.forEach(function(b) {
+                var k = b.series_key === null ? 'none' : String(b.series_key);
+                if (!seen[k]) { seen[k] = 1; series.push([k, b.series_label || 'No series']); }
+            });
+            document.getElementById('de-series').innerHTML = series.map(function(s) { return '<option value="' + s[0] + '">' + esc(s[1]) + '</option>'; }).join('');
+            var b0 = deBooks.filter(function(b) { return b.volume_key === deCur.vk; })[0] || deBooks[0];
+            if (!b0) return;
+            document.getElementById('de-series').value = b0.series_key === null ? 'none' : String(b0.series_key);
+            deFillBooks(b0.volume_key);
+        });
+    document.getElementById('de-series').addEventListener('change', function() { if (deClose()) deFillBooks(null); });
+    document.getElementById('de-book').addEventListener('change', function() { if (deClose()) deLoadBook(+this.value, null); });
+    document.getElementById('de-chap').addEventListener('change', function() {
+        if (!deClose()) return;
+        var c = deChapters[+this.value];
+        deCur.ch = +this.value;
+        deLoadPage(c && c.pages.length ? c.pages[0] : null);
+    });
+    document.getElementById('de-page').addEventListener('change', function() { if (deClose()) deLoadPage(+this.value); });
+    document.getElementById('de-prev').addEventListener('click', function() { deStep(-1); });
+    document.getElementById('de-next').addEventListener('click', function() { deStep(1); });
+    document.getElementById('de-paras').addEventListener('click', function(e) {
+        var p = e.target.closest('.de-para');
+        if (!p || p.classList.contains('de-editing') || p.classList.contains('de-table')) return;
+        if (e.target.closest('a')) return;
+        deEditPara(p);
+    });
+}
+
+function deFillBooks(vk) {
+    var sk = document.getElementById('de-series').value;
+    var list = deBooks.filter(function(b) { return (b.series_key === null ? 'none' : String(b.series_key)) === sk; });
+    document.getElementById('de-book').innerHTML = list.map(function(b) {
+        return '<option value="' + b.volume_key + '">' + esc((b.volume_number ? b.volume_number + ' · ' : '') + (b.volume_label || b.volume_code)) + '</option>';
+    }).join('');
+    var pick = list.filter(function(b) { return b.volume_key === vk; })[0] || list[0];
+    if (pick) { document.getElementById('de-book').value = pick.volume_key; deLoadBook(pick.volume_key, vk === deCur.vk ? deCur.page : null); }
+}
+
+function deLoadBook(vk, page) {
+    deCur.vk = vk;
+    var seq = ++deSeq;
+    document.getElementById('de-paras').innerHTML = '<div class="cl-loading">Loading…</div>';
+    fetch(API + '/admin-books-cleanup.php?action=direct_chapters&volume=' + vk, {credentials: 'include'})
+        .then(function(r) { return safeJson(r); }).then(function(d) {
+            if (seq !== deSeq) return;
+            deChapters = d.chapters || [];
+            deCur.slug = d.book_slug;
+            var warn = d.locked_by ? 'Checked out by ' + d.locked_by + ' — saving will be refused.'
+                : d.stage === 'stale' ? 'A new DOCX was uploaded after this book’s queued changes — discard them on the Changes tab before editing.'
+                : d.stage === 'nodocx' ? 'No DOCX on the server for this book — it can be viewed but not edited.' : '';
+            var w = document.getElementById('de-warn');
+            w.textContent = warn; w.hidden = !warn;
+            document.getElementById('de-chap').innerHTML = deChapters.map(function(c, i) {
+                var name = c.number !== null ? 'Ch ' + c.number + (c.name ? ' · ' + c.name : '') : (c.name || 'Front / back matter');
+                var span = c.pages.length ? ' (p. ' + c.pages[0] + (c.pages.length > 1 ? '–' + c.pages[c.pages.length - 1] : '') + ')' : '';
+                return '<option value="' + i + '">' + esc(name + span) + '</option>';
+            }).join('');
+            var all = deAllPages();
+            if (page === null || all.indexOf(page) < 0) page = all.length ? all[0] : null;
+            deLoadPage(page);
+        });
+}
+
+function deAllPages() {
+    var seen = {}, out = [];
+    deChapters.forEach(function(c) { c.pages.forEach(function(p) { if (!seen[p]) { seen[p] = 1; out.push(p); } }); });
+    return out.sort(function(a, b) { return a - b; });
+}
+function deStep(dir) {
+    if (!deClose()) return;
+    var all = deAllPages(), k = all.indexOf(deCur.page);
+    if (k + dir >= 0 && k + dir < all.length) deLoadPage(all[k + dir]);
+}
+
+function deLoadPage(page) {
+    deCur.page = page;
+    // the chapter that holds this page (the first, when a page starts a new one)
+    var ci = deChapters.findIndex(function(c) { return c.pages.indexOf(page) >= 0; });
+    if (ci >= 0) { deCur.ch = ci; document.getElementById('de-chap').value = ci; }
+    var c = deChapters[deCur.ch];
+    document.getElementById('de-page').innerHTML = (c ? c.pages : []).map(function(p) { return '<option value="' + p + '">' + p + '</option>'; }).join('');
+    document.getElementById('de-page').value = page;
+    var all = deAllPages(), k = all.indexOf(page);
+    document.getElementById('de-pgof').textContent = all.length ? 'of ' + all[all.length - 1] : '';
+    document.getElementById('de-prev').disabled = k <= 0;
+    document.getElementById('de-next').disabled = k < 0 || k >= all.length - 1;
+    deSaveNav();
+    if (page === null) { document.getElementById('de-paras').innerHTML = '<div class="cl-loading">No pages.</div>'; return; }
+    var seq = ++deSeq;
+    fetch(API + '/admin-books-cleanup.php?action=direct_page&volume=' + deCur.vk + '&page=' + page, {credentials: 'include'})
+        .then(function(r) { return safeJson(r); }).then(function(d) {
+            if (seq !== deSeq) return;
+            dePage = d;
+            var img = document.getElementById('de-pageimg');
+            img.hidden = !d.image;
+            if (d.image) img.src = d.image;
+            document.getElementById('de-noimg').hidden = !!d.image;
+            var fb = document.getElementById('de-fb');
+            fb.hidden = !d.book_slug;
+            if (d.book_slug) fb.href = '/' + encodeURIComponent(d.book_slug) + '/#p=' + page;
+            deRenderParas();
+        });
+}
+
+function deParaHtml(p, i) {
+    return '<div class="de-para' + (p.is_table ? ' de-table' : '') + '" data-i="' + i + '"'
+        + (p.is_table ? ' title="A table — edit it in the Word document"' : ' title="Click to edit this paragraph"') + '>'
+        + '<div class="de-pmeta">¶ ' + p.number + (p.is_table ? ' · table' : '')
+        + (p.queued ? ' <span class="de-q" title="Changes to this paragraph are queued — commit them on the Changes tab">' + p.queued + ' queued</span>' : '')
+        + (p.is_table ? '' : ' <span class="de-pen">&#9998; Edit</span>') + '</div>'
+        + '<div class="de-text">' + p.html + '</div></div>';
+}
+function deRenderParas() {
+    var box = document.getElementById('de-paras');
+    box.innerHTML = (dePage.paragraphs || []).map(deParaHtml).join('') || '<div class="cl-loading">No paragraphs on this page.</div>';
+    box.querySelectorAll('.de-text').forEach(deSizeStyles);
+}
+function deEditPara(el) {
+    var i = +el.getAttribute('data-i'), p = dePage.paragraphs[i];
+    var host = el.querySelector('.de-text');
+    deOpen(host, p, {
+        source: 'direct',
+        onSaved: function(html, unchanged) { if (!unchanged) p.queued = (p.queued || 0) + 1; p.html = html; deRenderParas(); },
+        onClose: function() { deRenderParas(); }
+    });
+    el.classList.add('de-editing');
+}
+
+// Search/Replace's ✎: the same editor, on the whole paragraph, under the match row.
+function clEditFromRow(row) {
+    var vk = +row.getAttribute('data-vk'), r = clLast.books[vk].items[+row.getAttribute('data-i')];
+    if (deEd && !deClose()) return;
+    var box = document.createElement('div');
+    box.className = 'cl-hit-edit';
+    row.parentNode.insertBefore(box, row.nextSibling);
+    box.innerHTML = '<div class="cl-loading">Loading the paragraph…</div>';
+    fetch(API + '/admin-books-cleanup.php?action=direct_para&key=' + r.paragraph_key, {credentials: 'include'})
+        .then(function(x) { return safeJson(x); }).then(function(d) {
+            if (d.error || !d.paragraph) { box.innerHTML = '<div class="cl-loading">' + esc(d.error || 'Not found') + '</div>'; return; }
+            if (d.paragraph.is_table) { box.innerHTML = '<div class="cl-loading">This is a table — edit it in the Word document.</div>'; return; }
+            var head = document.createElement('div');
+            head.className = 'cl-hit-edit-h';
+            head.textContent = 'Edit ¶ ' + d.paragraph.number + ' directly (saved as a “direct” change)';
+            box.innerHTML = '';
+            box.appendChild(head);
+            var host = document.createElement('div');
+            box.appendChild(host);
+            deOpen(host, d.paragraph, {
+                source: 'search',
+                onSaved: function(html, unchanged) {
+                    box.remove();
+                    if (unchanged) return;
+                    // Its matches moved: reload this book's matches.
+                    var b = clLast.books[vk];
+                    b.items = []; b.after = -1; b.more = true; b.loaded = false; b.sel.except = {};
+                    clLoadBook(vk).then(function() { clSyncSel(); });
+                    clFlash('<span class="ok">Saved ¶ ' + d.paragraph.number + ' — queued on the Changes tab.</span>');
+                },
+                onClose: function() { box.remove(); }
+            });
+        });
+}
+
 // ── Queued changes ──
 // clQueue = the pending summary per book (action=pending). The Search/Replace
 // tab shows it as a banner; the Changes tab lists, commits and discards it.
@@ -4195,9 +4877,10 @@ function clRenderQueue() {
     clQueue.forEach(function(v) {
         (v.batches || []).forEach(function(bt) {
             var rep = bt.replace !== null && bt.replace !== undefined ? [bt.replace] : (bt.replaced || []);
-            var k = bt.find + '\u0000' + rep.join(' / ');
+            var direct = (bt.options || {}).type === 'direct';
+            var k = direct ? 'direct' : bt.find + '\u0000' + rep.join(' / ');
             var r = byKey[k];
-            if (!r) { r = byKey[k] = {find: bt.find, rep: rep, n: 0, books: {}, last: ''}; runs.push(r); }
+            if (!r) { r = byKey[k] = {find: bt.find, rep: rep, n: 0, books: {}, last: '', direct: direct}; runs.push(r); }
             r.n += bt.count; r.books[v.volume_key] = 1;
             if (bt.dtime > r.last) r.last = bt.dtime;
         });
@@ -4206,6 +4889,7 @@ function clRenderQueue() {
     var MAX = 4;
     var line = function(r) {
         var nb = Object.keys(r.books).length;
+        if (r.direct) return '<li>&#9998; Direct edits <span class="meta">· ' + r.n + ' paragraph' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
         return '<li><span class="q">“' + esc(r.find) + '”</span> <span class="arrow">→</span> '
             + r.rep.map(function(x) { return '<span class="q">“' + esc(x) + '”</span>'; }).join(' / ')
             + ' <span class="meta">· ' + r.n + ' change' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
@@ -4215,7 +4899,7 @@ function clRenderQueue() {
         + ' — not yet committed</span>'
         + '<button type="button" class="btn btn-primary btn-sm" onclick="clShowQueued()" title="Open the Changes tab, showing just the queued changes">Review &amp; commit in Changes &rarr;</button></div>'
         + '<ul class="cl-qb-list">' + runs.slice(0, MAX).map(line).join('')
-        + (runs.length > MAX ? '<li class="meta">… and ' + (runs.length - MAX) + ' more search/replace' + (runs.length - MAX === 1 ? '' : 's') + '</li>' : '')
+        + (runs.length > MAX ? '<li class="meta">… and ' + (runs.length - MAX) + ' more change set' + (runs.length - MAX === 1 ? '' : 's') + '</li>' : '')
         + '</ul>';
 }
 
