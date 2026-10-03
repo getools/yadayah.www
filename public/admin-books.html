@@ -596,7 +596,7 @@
         <span class="sub-tab active" onclick="switchTab('books')">Books</span>
         <span class="sub-tab" id="subtab-series" onclick="switchTab('series')">Series</span>
         <span class="sub-tab" id="subtab-flipbook" onclick="switchTab('flipbook')">Flipbook</span>
-        <span class="sub-tab" id="subtab-cleanup" onclick="switchTab('cleanup')">Cleanup</span>
+        <span class="sub-tab" id="subtab-cleanup" onclick="switchTab('cleanup')" title="Edit the book text: search/replace, and the log of changes">Edit</span>
     </div>
 
     <!-- Books tab -->
@@ -2966,7 +2966,7 @@ function serDoUpload(blob, filename) {
 var fbLoaded = false;
 function initFlipbookTab() {
     if (location.hash === '#flipbook') switchTab('flipbook');
-    if (location.hash === '#cleanup') switchTab('cleanup');
+    if (location.hash === '#cleanup' || location.hash === '#edit') switchTab('cleanup');   // the tab is labelled Edit
     // #history = the old Replace History tab, now Cleanup → Changes.
     if (location.hash === '#cleanup-changes' || location.hash === '#history') { switchTab('cleanup'); clSubTab('changes'); }
 }
@@ -4135,7 +4135,7 @@ function clReplaceSelected() {
         + (clAposCount() ? ' — each ❜ becomes the ʿ / ʾ / ` picked on its row (rows not loaded get the default)' : '')
         + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
         + 'The parsed text changes now, and so does a staged copy of each book\'s Word DOCX. '
-        + 'Nothing is rebuilt until you commit them on the Cleanup → Changes tab.')) return;
+        + 'Nothing is rebuilt until you commit them on the Edit → Changes tab.')) return;
     if (!clConfirmEmpty(args)) return;
 
     clBusy = true; clSyncSel();
