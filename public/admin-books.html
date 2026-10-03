@@ -266,6 +266,17 @@
         .cl-qb-list .arrow { color: #999; }
         .cl-qb-list .meta { color: #888; font-size: 0.78rem; }
         .hi-acts { display: inline-flex; gap: 4px; white-space: nowrap; }
+        .hi-filters { background: #f7f9fb; border: 1px solid #e3e7ec; border-radius: 6px; padding: 8px 12px; }
+        .hi-fgrp { display: inline-flex; align-items: center; gap: 6px; padding-right: 12px; border-right: 1px solid #e3e7ec; }
+        .hi-flbl { color: #666; font-weight: 600; font-size: 0.8rem; }
+        .hi-filters input[type=date] { padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82rem; }
+        .hi-dash { color: #999; }
+        .hi-clr { border: none; background: none; color: #999; font-size: 1.1rem; cursor: pointer; padding: 0 2px; }
+        .hi-clr:hover { color: #c0392b; }
+        .hi-clr[hidden] { display: none; }
+        .hi-xps { display: inline-flex; gap: 2px; margin-right: 8px; vertical-align: middle; }
+        .hi-xp { border: 1px solid #ccd3db; background: #fff; border-radius: 3px; padding: 0 5px; font-size: 0.95rem; line-height: 1.3; color: #555; cursor: pointer; }
+        .hi-xp:hover { border-color: #3498db; color: #2980b9; background: #f2f8fd; }
         .hi-acts .btn { padding: 2px 8px; font-size: 0.75rem; }
         .hi-allq { display: inline-flex; gap: 6px; }
         .hi-allq[hidden] { display: none; }
@@ -774,19 +785,41 @@
             <span class="hi-grps">
                 <button type="button" class="hi-grp" data-g="run" title="One row per search/replace (one Replace click, across all its books)">Search / Replace</button><button type="button" class="hi-grp" data-g="book" title="One row per book, with every search/replace made in it">Book</button>
             </span>
-            <span class="hi-lbl">Status</span>
-            <label title="Changes not yet committed (staged in each book's DOCX)"><input type="checkbox" class="hi-st" value="pending" checked> Queued</label>
-            <label title="Changes whose staged DOCX was committed (made live and rebuilt)"><input type="checkbox" class="hi-st" value="processed" checked> Committed</label>
-            <label title="Changes that were discarded (the paragraphs were put back)"><input type="checkbox" class="hi-st" value="discarded"> Discarded</label>
-            <select id="hi-vol" title="Only this book"><option value="">All books</option></select>
-            <input type="text" id="hi-q" placeholder="Find / Replace text contains…" autocomplete="off" spellcheck="false"
-                   title="Only batches whose Find or Replace text contains this">
             <button type="button" class="btn btn-secondary btn-sm" onclick="hiLoad(); clLoadPending();" title="Reload the changes">Refresh</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="hiExpand(null, true)" title="Expand every row, its batches and all their changes">Expand all</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="hiExpand(null, false)" title="Collapse every row">Collapse all</button>
             <span class="hi-allq" id="hi-allq" hidden>
                 <button type="button" class="btn btn-primary btn-sm" data-hact="reprocess" data-vks="all" title="Commit every queued change in every book">Commit all queued</button>
                 <button type="button" class="btn btn-secondary btn-sm" data-hact="discard" data-vks="all" title="Discard every queued change in every book">Discard all queued</button>
             </span>
             <span class="hi-sum" id="hi-sum"></span>
+        </div>
+        <!-- Filters: Status · By · When from–to · Book · text -->
+        <div class="hi-bar hi-filters">
+            <span class="hi-lbl">Filter</span>
+            <span class="hi-fgrp" title="Which statuses to show">
+                <span class="hi-flbl">Status</span>
+                <label title="Changes not yet committed (staged in each book's DOCX)"><input type="checkbox" class="hi-st" value="pending" checked> Queued</label>
+                <label title="Changes whose staged DOCX was committed (made live and rebuilt)"><input type="checkbox" class="hi-st" value="processed" checked> Committed</label>
+                <label title="Changes that were discarded (the paragraphs were put back)"><input type="checkbox" class="hi-st" value="discarded"> Discarded</label>
+            </span>
+            <span class="hi-fgrp">
+                <span class="hi-flbl">By</span>
+                <select id="hi-user" title="Only changes made by this person"><option value="">Anyone</option></select>
+            </span>
+            <span class="hi-fgrp" title="Only changes made in this date range (inclusive). A blank From means from the first change; a blank To means up to the latest.">
+                <span class="hi-flbl">When</span>
+                <input type="date" id="hi-from" title="From (blank = from the first change)">
+                <span class="hi-dash">–</span>
+                <input type="date" id="hi-to" title="To, inclusive (blank = up to the latest change)">
+                <button type="button" class="hi-clr" id="hi-dates-clr" title="Clear the date range" hidden>&times;</button>
+            </span>
+            <span class="hi-fgrp">
+                <span class="hi-flbl">Book</span>
+                <select id="hi-vol" title="Only this book"><option value="">All books</option></select>
+            </span>
+            <input type="text" id="hi-q" placeholder="Find / Replace text contains…" autocomplete="off" spellcheck="false"
+                   title="Only batches whose Find or Replace text contains this">
         </div>
         <div class="hi-wrap">
             <table class="hi-table">
@@ -2962,6 +2995,11 @@ function hiInit() {
     });
     document.querySelectorAll('#cl-pane-changes .hi-st').forEach(function(c) { c.addEventListener('change', function() { hiLoad(); }); });
     document.getElementById('hi-vol').addEventListener('change', function() { hiLoad(); });
+    document.getElementById('hi-user').addEventListener('change', function() { hiLoad(); });
+    ['hi-from', 'hi-to'].forEach(function(id) { document.getElementById(id).addEventListener('change', function() { hiLoad(); }); });
+    document.getElementById('hi-dates-clr').addEventListener('click', function() {
+        document.getElementById('hi-from').value = ''; document.getElementById('hi-to').value = ''; hiLoad();
+    });
     var t = null;
     document.getElementById('hi-q').addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { hiLoad(); }, 300); });
     // Commit / Discard buttons at every level (bar, group row, batch row).
@@ -2973,6 +3011,8 @@ function hiInit() {
         clQueueRun(act.getAttribute('data-hact'), vks === 'all' ? 'all' : vks.split(',').map(Number));
     }, true);
     document.getElementById('hi-body').addEventListener('click', function(e) {
+        var xp = e.target.closest('button.hi-xp');
+        if (xp) { hiExpand(xp.closest('tr.hi-row'), xp.getAttribute('data-xp') === 'open'); return; }
         var br = e.target.closest('tr.hi-brow');
         if (br) { hiToggleBatch(br); return; }
         var gr = e.target.closest('tr.hi-row');
@@ -2986,9 +3026,18 @@ function hiLoad() {
     document.querySelectorAll('#cl-pane-changes .hi-st:checked').forEach(function(c) { st.push(c.value); });
     var body = document.getElementById('hi-body');
     if (!st.length) { hiBatches = []; hiRender('Tick a status to see changes.'); return; }
+    // When: local calendar days, inclusive. Blank From = no lower bound (the
+    // first change), blank To = no upper bound (the latest).
+    var from = document.getElementById('hi-from').value, to = document.getElementById('hi-to').value;
+    document.getElementById('hi-dates-clr').hidden = !from && !to;
+    if (from && to && from > to) { hiBatches = []; hiRender('“From” is after “To”.'); return; }
+    var day = function(v, plus) { var p = v.split('-'); return new Date(+p[0], +p[1] - 1, +p[2] + plus).toISOString(); };
     var seq = ++hiSeq;
     var url = API + '/admin-books-cleanup.php?action=history&status=' + st.join(',')
         + '&volume=' + encodeURIComponent(document.getElementById('hi-vol').value)
+        + '&user=' + encodeURIComponent(document.getElementById('hi-user').value)
+        + (from ? '&from=' + encodeURIComponent(day(from, 0)) : '')
+        + (to ? '&to=' + encodeURIComponent(day(to, 1)) : '')
         + '&q=' + encodeURIComponent(document.getElementById('hi-q').value.trim());
     body.innerHTML = '<tr><td colspan="7" class="hi-empty">Loading…</td></tr>';
     fetch(url, {credentials: 'include'}).then(function(r) { return safeJson(r); }).then(function(d) {
@@ -2998,6 +3047,17 @@ function hiLoad() {
         sel.innerHTML = '<option value="">All books</option>' + (d.volumes || []).map(function(v) {
             return '<option value="' + v.volume_key + '"' + (String(v.volume_key) === cur ? ' selected' : '') + '>' + esc(v.label) + '</option>';
         }).join('');
+        var us = document.getElementById('hi-user'), ucur = us.value;
+        us.innerHTML = '<option value="">Anyone</option>' + (d.users || []).map(function(u) {
+            return '<option value="' + esc(u) + '"' + (u === ucur ? ' selected' : '') + '>' + esc(u) + '</option>';
+        }).join('');
+        // The date pickers offer only the days that have changes.
+        var ymd = function(t) { var x = new Date(t); if (!t || isNaN(x)) return '';
+            return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2); };
+        ['hi-from', 'hi-to'].forEach(function(id) {
+            var el = document.getElementById(id);
+            el.min = ymd(d.first_dtime); el.max = ymd(d.last_dtime);
+        });
         hiBatches = d.batches || [];
         hiBatches.forEach(function(b, i) { b._i = i; b._t = new Date(b.dtime).getTime() || 0; });
         hiRender();
@@ -3105,7 +3165,7 @@ function hiRender(msg) {
                 + '<td class="num">' + g.batches.length + '</td>'
                 + '<td class="num">' + g.count + '</td>'
                 + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
-                + '<td class="act">' + hiActHtml(g.batches, 'book') + '</td></tr>';
+                + '<td class="act">' + HI_XP_HTML + hiActHtml(g.batches, 'book') + '</td></tr>';
         }
         return '<tr class="hi-row" data-g="' + i + '"' + tip + '>'
             + '<td class="when">' + tw + esc(hiWhen(g.first)) + '</td>'
@@ -3113,7 +3173,7 @@ function hiRender(msg) {
             + '<td class="num">' + hiBooksHtml(g) + '</td>'
             + '<td class="num">' + g.count + '</td>'
             + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
-            + '<td class="act">' + hiActHtml(g.batches, 'search/replace') + '</td></tr>';
+            + '<td class="act">' + HI_XP_HTML + hiActHtml(g.batches, 'search/replace') + '</td></tr>';
     }).join('') || '<tr><td colspan="' + cols + '" class="hi-empty">No changes.</td></tr>';
     var changes = hiBatches.reduce(function(n, b) { return n + b.count; }, 0);
     document.getElementById('hi-sum').textContent = groups.length
@@ -3133,6 +3193,24 @@ function hiActHtml(batches, what) {
         + ' title="Commit the queued changes of this ' + what + ' (every queued change in ' + books + ')">Commit</button>'
         + '<button type="button" class="btn btn-secondary btn-sm" data-hact="discard" data-vks="' + vks.join(',') + '"'
         + ' title="Discard the queued changes of this ' + what + ' (every queued change in ' + books + ')">Discard</button></span>';
+}
+
+// Expand / collapse everything below a point: a group row (its batches and
+// each batch's changes), or with no row, every group in the table.
+var HI_XP_HTML = '<span class="hi-xps">'
+    + '<button type="button" class="hi-xp" data-xp="open" title="Expand everything below: its batches and all their changes">&#8862;</button>'
+    + '<button type="button" class="hi-xp" data-xp="close" title="Collapse everything below">&#8863;</button></span>';
+function hiExpand(tr, open) {
+    if (!tr) {
+        document.querySelectorAll('#hi-body > tr.hi-row').forEach(function(r) { hiExpand(r, open); });
+        return;
+    }
+    var isOpen = tr.classList.contains('open');
+    if (!open) { if (isOpen) hiToggleGroup(tr); return; }
+    if (!isOpen) hiToggleGroup(tr);
+    tr.nextElementSibling.querySelectorAll('tr.hi-brow').forEach(function(br) {
+        if (!br.classList.contains('open')) hiToggleBatch(br);
+    });
 }
 
 // A group's batches, as a nested table.

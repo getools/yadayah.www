@@ -676,6 +676,17 @@ function cleanupHistory(): void {
     $where = ['c.cleanup_change_status IN (' . implode(',', array_map([$db, 'quote'], $statuses)) . ')'];
     $args = [];
     if ((int)($_GET['volume'] ?? 0)) { $where[] = 'c.volume_key = ?'; $args[] = (int)$_GET['volume']; }
+    $user = (string)($_GET['user'] ?? '');
+    if ($user !== '') { $where[] = 'c.cleanup_change_user_name = ?'; $args[] = $user; }
+    // When: from (inclusive) / to (exclusive) instants; the page sends local
+    // midnights. Blank = unbounded.
+    foreach (['from' => '>=', 'to' => '<'] as $k => $op) {
+        $v = trim((string)($_GET[$k] ?? ''));
+        if ($v === '') continue;
+        if (strtotime($v) === false) errorResponse("Bad $k date");
+        $where[] = "c.cleanup_change_dtime $op ?::timestamptz";
+        $args[] = $v;
+    }
     $q = trim((string)($_GET['q'] ?? ''));
     if ($q !== '') {
         $where[] = "(c.cleanup_change_find ILIKE ? OR c.cleanup_change_replace ILIKE ? OR c.cleanup_change_options->>'replace' ILIKE ?)";
@@ -720,7 +731,13 @@ function cleanupHistory(): void {
                           FROM yy_cleanup_change c JOIN yy_volume v ON v.volume_key = c.volume_key
                           LEFT JOIN yy_series s ON s.series_key = v.series_key
                          ORDER BY s.series_sort, v.volume_sort, v.volume_number")->fetchAll();
+    // Everyone who has made changes, and the first / last change, for the
+    // By and When filters (over all history, not just this filter).
+    $users = $db->query("SELECT DISTINCT cleanup_change_user_name FROM yy_cleanup_change
+                          WHERE coalesce(cleanup_change_user_name, '') <> '' ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN);
+    $span = $db->query('SELECT min(cleanup_change_dtime) AS first, max(cleanup_change_dtime) AS last FROM yy_cleanup_change')->fetch();
     jsonResponse(['batches' => $out, 'total' => $total, 'offset' => $offset, 'limit' => $limit,
+                  'users' => $users, 'first_dtime' => $span['first'], 'last_dtime' => $span['last'],
                   'volumes' => array_map(function ($v) {
                       return ['volume_key' => (int)$v['volume_key'], 'label' => $v['volume_code'] ?: $v['volume_label']];
                   }, $vols)]);
