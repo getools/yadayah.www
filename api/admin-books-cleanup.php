@@ -15,6 +15,9 @@
  * POST ?action=replace  — see cleanupReplace().
  * GET  ?action=pending[&volume=N]   — queued (not yet reprocessed) changes.
  * POST ?action=reprocess {volume_keys}  /  ?action=discard {volume_keys}
+ * GET  ?action=history[&status=pending,processed,discarded][&volume=N][&q=…][&offset=N]
+ *        Every Replace batch ever made, newest first, queued or committed (or
+ *        discarded); &batch=ID lists one batch's changes. See cleanupHistory().
  * GET  ?action=word_meta / ?action=words — the glossary word picker; see cleanupWords().
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
@@ -56,6 +59,7 @@ if ($action === 'replace')   cleanupReplace($authUser);      // each responds an
 if ($action === 'pending')   cleanupPending();
 if ($action === 'reprocess') cleanupReprocess($authUser);
 if ($action === 'discard')   cleanupDiscard($authUser);
+if ($action === 'history')   cleanupHistory();
 if ($action === 'word_meta') cleanupWordMeta();
 if ($action === 'words')     cleanupWords();
 if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
@@ -598,7 +602,9 @@ function cleanupReplace(array $authUser): void {
         try {
             $batch = bin2hex(random_bytes(8));
             $opts = json_encode(['mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
-                                 'rbold' => $rBold, 'ritalic' => $rItalic, 'replace' => $replace]);
+                                 'rbold' => $rBold, 'ritalic' => $rItalic, 'replace' => $replace,
+                                 // the page's id for one Replace click across books (Replace History groups by it)
+                                 'run' => substr(preg_replace('/[^a-z0-9]/', '', (string)($in['run'] ?? '')), 0, 40) ?: null]);
             $db->beginTransaction();
             $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
                                        paragraph_text_raw = ?, paragraph_revision_user_key = ?
@@ -645,6 +651,79 @@ function cleanupReplace(array $authUser): void {
         'missing'      => $missing,
         'unchanged'    => $unchanged,
     ]);
+}
+
+/**
+ * Replace history: one row per batch (one Replace click in one book), newest
+ * first. status = pending (queued) | processed (committed) | discarded; every
+ * change in a batch shares it, since commit / discard act on a whole book.
+ * Filters: status (comma list, default pending,processed), volume, q (in the
+ * Find or Replace text). ?batch=ID returns that batch's changes instead.
+ */
+function cleanupHistory(): void {
+    $db = getDb();
+    $batch = (string)($_GET['batch'] ?? '');
+    if ($batch !== '') {
+        $st = $db->prepare("SELECT cleanup_change_key, paragraph_number, cleanup_change_match, cleanup_change_replace,
+                                   cleanup_change_excerpt_before, cleanup_change_excerpt_after, cleanup_change_status
+                              FROM yy_cleanup_change WHERE cleanup_change_batch = ? ORDER BY cleanup_change_key");
+        $st->execute([$batch]);
+        jsonResponse(['changes' => $st->fetchAll()]);
+    }
+    $statuses = array_values(array_intersect(['pending', 'processed', 'discarded'],
+        explode(',', (string)($_GET['status'] ?? 'pending,processed'))));
+    if (!$statuses) $statuses = ['pending', 'processed'];
+    $where = ['c.cleanup_change_status IN (' . implode(',', array_map([$db, 'quote'], $statuses)) . ')'];
+    $args = [];
+    if ((int)($_GET['volume'] ?? 0)) { $where[] = 'c.volume_key = ?'; $args[] = (int)$_GET['volume']; }
+    $q = trim((string)($_GET['q'] ?? ''));
+    if ($q !== '') {
+        $where[] = "(c.cleanup_change_find ILIKE ? OR c.cleanup_change_replace ILIKE ? OR c.cleanup_change_options->>'replace' ILIKE ?)";
+        $like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+        array_push($args, $like, $like, $like);
+    }
+    $offset = max(0, (int)($_GET['offset'] ?? 0));
+    $limit = 5000;   // the page groups the batches (by run or by book) itself
+    $st = $db->prepare("SELECT c.cleanup_change_batch AS batch, c.volume_key, min(c.cleanup_change_find) AS find,
+                               min(c.cleanup_change_options::text) AS options, count(*) AS n,
+                               min(c.cleanup_change_status) AS status, min(c.cleanup_change_dtime) AS dtime,
+                               max(c.cleanup_change_done_dtime) AS done_dtime, min(c.cleanup_change_user_name) AS user_name,
+                               array_to_json(array_agg(DISTINCT c.cleanup_change_replace)) AS replaced,
+                               v.volume_code, v.volume_label, v.volume_number, s.series_label,
+                               count(*) OVER () AS total
+                          FROM yy_cleanup_change c
+                          JOIN yy_volume v ON v.volume_key = c.volume_key
+                          LEFT JOIN yy_series s ON s.series_key = v.series_key
+                         WHERE " . implode(' AND ', $where) . "
+                         GROUP BY c.cleanup_change_batch, c.volume_key, v.volume_code, v.volume_label, v.volume_number, s.series_label
+                         ORDER BY min(c.cleanup_change_key) DESC
+                         LIMIT $limit OFFSET $offset");
+    $st->execute($args);
+    $out = [];
+    $total = 0;
+    foreach ($st->fetchAll() as $b) {
+        $total = (int)$b['total'];
+        $o = json_decode((string)$b['options'], true) ?: [];
+        $out[] = [
+            'batch' => $b['batch'], 'volume_key' => (int)$b['volume_key'],
+            'volume_code' => $b['volume_code'], 'volume_label' => $b['volume_label'],
+            'volume_number' => $b['volume_number'] === null ? null : (int)$b['volume_number'],
+            'series_label' => $b['series_label'],
+            'find' => $b['find'], 'replace' => $o['replace'] ?? null,
+            'replaced' => json_decode((string)$b['replaced'], true) ?: [], 'options' => $o,
+            'count' => (int)$b['n'], 'status' => $b['status'],
+            'dtime' => $b['dtime'], 'done_dtime' => $b['done_dtime'], 'user_name' => $b['user_name'],
+        ];
+    }
+    // Books with any history, for the filter.
+    $vols = $db->query("SELECT DISTINCT v.volume_key, v.volume_code, v.volume_label, v.volume_number, v.volume_sort, s.series_sort
+                          FROM yy_cleanup_change c JOIN yy_volume v ON v.volume_key = c.volume_key
+                          LEFT JOIN yy_series s ON s.series_key = v.series_key
+                         ORDER BY s.series_sort, v.volume_sort, v.volume_number")->fetchAll();
+    jsonResponse(['batches' => $out, 'total' => $total, 'offset' => $offset, 'limit' => $limit,
+                  'volumes' => array_map(function ($v) {
+                      return ['volume_key' => (int)$v['volume_key'], 'label' => $v['volume_code'] ?: $v['volume_label']];
+                  }, $vols)]);
 }
 
 /** Queued changes: per-book summary, or one book's change list (?volume=N). */

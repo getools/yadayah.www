@@ -232,7 +232,7 @@
         .cl-tree .cl-series.open > .cl-books, .cl-qtree .open > .cl-qkids { display: block; }
         .cl-n { color: #999; font-weight: 400; margin-left: auto; padding-left: 8px; flex: none; }
         .cl-pop-foot { display: flex; gap: 6px; justify-content: flex-end; padding: 8px; border-top: 1px solid #eee; }
-        /* Queued DOCX changes */
+        /* (old) Queued DOCX changes panel styles; the queue now lives on Cleanup → Changes */
         .cl-queue { margin-bottom: 16px; border: 1px solid #f0d58c; border-radius: 6px; background: #fffdf5; }
         .cl-queue[hidden] { display: none; }
         .cl-queue-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 10px; background: #fdf3d6; border-radius: 6px 6px 0 0; }
@@ -244,6 +244,79 @@
         .cl-qtree .cl-stale { color: #c0392b; font-size: 0.75rem; margin-left: 6px; flex: none; }
         .cl-qtree .cl-when { color: #999; font-size: 0.75rem; margin-left: 8px; flex: none; }
         .cl-qchanges { padding: 4px 0 8px 26px; }
+        /* Cleanup's own tabs: Search/Replace | Changes */
+        .cl-subtabs { display: flex; gap: 4px; margin: 0 0 14px; border-bottom: 1px solid #d5dbe2; }
+        .cl-subtab { border: 1px solid transparent; border-bottom: none; background: none; padding: 7px 14px; font-size: 0.9rem; color: #555;
+                     cursor: pointer; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+        .cl-subtab:hover { color: #2c3e50; background: #f5f7fa; }
+        .cl-subtab.active { background: #fff; border-color: #d5dbe2; color: #2c3e50; font-weight: 600; }
+        .cl-subtab-n { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #f0b429; color: #fff;
+                       font-size: 0.72rem; font-weight: 700; line-height: 18px; text-align: center; }
+        .cl-subtab-n[hidden] { display: none; }
+        .cl-pane { display: none; }
+        .cl-pane.active { display: block; }
+        /* Queued-changes banner atop Search/Replace */
+        .cl-qbanner { margin-bottom: 14px; padding: 10px 14px; border: 1px solid #f0d58c; border-left: 4px solid #f0b429; border-radius: 6px; background: #fffbea; font-size: 0.85rem; }
+        .cl-qbanner[hidden] { display: none; }
+        .cl-qb-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .cl-qb-title { font-weight: 600; color: #7a5a00; flex: 1; }
+        .cl-qb-list { margin: 6px 0 0; padding-left: 18px; color: #444; }
+        .cl-qb-list li { margin: 2px 0; }
+        .cl-qb-list .q { font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif; color: #1a5276; }
+        .cl-qb-list .arrow { color: #999; }
+        .cl-qb-list .meta { color: #888; font-size: 0.78rem; }
+        .hi-acts { display: inline-flex; gap: 4px; white-space: nowrap; }
+        .hi-acts .btn { padding: 2px 8px; font-size: 0.75rem; }
+        .hi-allq { display: inline-flex; gap: 6px; }
+        .hi-allq[hidden] { display: none; }
+        .hi-table td.act, .hi-sub td.act { text-align: right; width: 1%; }
+        [data-hact]:disabled { opacity: 0.45; cursor: default; }
+        /* Cleanup → Changes tab */
+        .hi-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: 0.85rem; }
+        .hi-bar label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+        .hi-bar .hi-lbl { color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .hi-bar select, .hi-bar input[type=text] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; }
+        .hi-bar input[type=text] { min-width: 220px; font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .hi-sum { color: #888; font-size: 0.8rem; margin-left: auto; }
+        .hi-wrap { background: #fff; border: 1px solid #d5dbe2; border-radius: 6px; overflow-x: auto; }
+        .hi-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+        .hi-table th { text-align: left; padding: 7px 10px; background: #f5f7fa; color: #555; font-weight: 600; border-bottom: 1px solid #d5dbe2; white-space: nowrap; }
+        .hi-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+        .hi-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .hi-row { cursor: pointer; }
+        .hi-row:hover { background: #f7f9fc; }
+        .hi-row td.when { white-space: nowrap; color: #666; }
+        .hi-row .tw { display: inline-block; font-size: 0.65rem; color: #999; margin-right: 6px; transition: transform 0.15s; }
+        .hi-row.open .tw { transform: rotate(90deg); }
+        .hi-row .book .ser { display: block; color: #999; font-size: 0.75rem; }
+        .hi-row .q { font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif; font-size: 0.92rem; color: #1a5276; }
+        .hi-row .flags { font-size: 0.72rem; color: #666; border: 1px solid #ddd; border-radius: 3px; padding: 0 4px; margin-left: 2px; white-space: nowrap; }
+        .hi-st-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .hi-st-badge.st-q { background: #fdf3d7; color: #9a6b00; }
+        .hi-st-badge.st-c { background: #d5f5e3; color: #1e8449; }
+        .hi-st-badge.st-d { background: #eceff1; color: #78909c; }
+        .hi-row .done { display: block; color: #999; font-size: 0.72rem; white-space: nowrap; }
+        .hi-detail > td { background: #fffdf5; padding: 4px 10px 8px 34px; }
+        .hi-empty { color: #888; font-style: italic; text-align: center; padding: 16px !important; }
+        .hi-grps { display: inline-flex; border: 1px solid #c5cdd6; border-radius: 4px; overflow: hidden; }
+        .hi-grp { border: none; background: #fff; padding: 4px 10px; font-size: 0.82rem; cursor: pointer; color: #444; }
+        .hi-grp + .hi-grp { border-left: 1px solid #c5cdd6; }
+        .hi-grp.active { background: #2c3e50; color: #fff; }
+        .hi-st-line { display: block; }
+        .hi-st-line + .hi-st-line { margin-top: 3px; }
+        .hi-gdetail > td { background: #fafbfc; padding: 4px 10px 10px 30px; }
+        .hi-sub { width: 100%; border-collapse: collapse; font-size: 0.82rem; background: #fff; border: 1px solid #e3e7ec; }
+        .hi-sub th { text-align: left; padding: 5px 8px; background: #f0f3f6; color: #666; font-weight: 600; font-size: 0.75rem; }
+        .hi-sub td { padding: 5px 8px; border-top: 1px solid #f0f0f0; vertical-align: top; }
+        .hi-brow { cursor: pointer; }
+        .hi-brow:hover { background: #f7f9fc; }
+        .hi-brow .tw, .hi-row .tw { display: inline-block; font-size: 0.65rem; color: #999; margin-right: 6px; transition: transform 0.15s; }
+        .hi-brow.open .tw { transform: rotate(90deg); }
+        .hi-brow .book .ser { display: block; color: #999; font-size: 0.75rem; }
+        .hi-brow .q { font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif; font-size: 0.9rem; color: #1a5276; }
+        .hi-brow .flags { font-size: 0.72rem; color: #666; border: 1px solid #ddd; border-radius: 3px; padding: 0 4px; margin-left: 2px; white-space: nowrap; }
+        .hi-brow .done { display: block; color: #999; font-size: 0.72rem; white-space: nowrap; }
+        .hi-brow td.when { white-space: nowrap; color: #666; }
         .cl-qbatches { padding: 0 0 4px 52px; }
         .cl-qbook.open > .cl-qbatches { display: none; }   /* shown as headers in the change list instead */
         .cl-qbatch { font-size: 0.8rem; color: #444; padding: 2px 0; line-height: 1.5; }
@@ -573,6 +646,13 @@
          (yy_paragraph). API: /api/admin-books-cleanup.php. ids/functions
          carry a cl prefix so they can't collide with the other tabs. -->
     <div id="tab-cleanup" class="tab-panel">
+        <div class="cl-subtabs">
+            <button type="button" class="cl-subtab active" data-pane="search" onclick="clSubTab('search')" title="Search the book text and replace matches">Search/Replace</button>
+            <button type="button" class="cl-subtab" data-pane="changes" onclick="clSubTab('changes')" title="Every search/replace change, queued or committed — commit or discard queued ones here">Changes<span class="cl-subtab-n" id="cl-subtab-n" hidden></span></button>
+        </div>
+        <div class="cl-pane active" id="cl-pane-search">
+        <!-- Queued changes waiting to be committed: an overview, details on the Changes tab. -->
+        <div class="cl-qbanner" id="cl-qbanner" hidden></div>
         <div class="cl-tool">
             <h3>Search/Replace</h3>
             <!-- Two columns: labels | fields and their buttons. -->
@@ -661,21 +741,7 @@
                 </div>
             </div>
             <p class="cl-note">Replacements change the parsed text at once and a staged copy of each book's Word DOCX.
-               Nothing is rebuilt until you <b>Commit Changes</b> for the book under <i>Queued DOCX changes</i>.</p>
-        </div>
-
-        <!-- Queued (staged, not yet committed) DOCX changes. -->
-        <div class="cl-queue cl-fold open" id="cl-queue" hidden>
-            <div class="cl-queue-h">
-                <button type="button" class="cl-fold-h cl-queue-toggle" title="Show / hide the queued changes"><span class="tw">&#9654;</span>Queued DOCX changes
-                    <span class="code" id="cl-queue-sum"></span></button>
-                <span class="cl-queue-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="clLoadPending()">Refresh</button>
-                    <button type="button" class="btn btn-secondary btn-sm" id="cl-q-discard" onclick="clQueueAction('discard')" disabled>Discard selected</button>
-                    <button type="button" class="btn btn-primary btn-sm" id="cl-q-reprocess" onclick="clQueueAction('reprocess')" disabled>Commit Changes (selected)</button>
-                </span>
-            </div>
-            <div class="cl-fold-b"><div class="cl-qtree" id="cl-qtree"></div></div>
+               Nothing is rebuilt until you <b>Commit</b> them on the <i>Changes</i> tab.</p>
         </div>
 
         <div class="cl-res-bar" id="cl-res-bar" hidden>
@@ -699,6 +765,36 @@
             <button type="button" class="btn btn-primary btn-sm cl-rep-btn" onclick="clReplaceSelected()" disabled
                     title="Replace every ticked match with the Replace text (DOCX changes are queued until you Commit Changes)">Replace 0 of 0 selected matches</button>
         </div>
+        </div><!-- /cl-pane-search -->
+
+        <!-- Changes: every Cleanup Replace batch, queued or committed; queued ones are committed / discarded here. -->
+        <div class="cl-pane" id="cl-pane-changes">
+        <div class="hi-bar">
+            <span class="hi-lbl">Group by</span>
+            <span class="hi-grps">
+                <button type="button" class="hi-grp" data-g="run" title="One row per search/replace (one Replace click, across all its books)">Search / Replace</button><button type="button" class="hi-grp" data-g="book" title="One row per book, with every search/replace made in it">Book</button>
+            </span>
+            <span class="hi-lbl">Status</span>
+            <label title="Changes not yet committed (staged in each book's DOCX)"><input type="checkbox" class="hi-st" value="pending" checked> Queued</label>
+            <label title="Changes whose staged DOCX was committed (made live and rebuilt)"><input type="checkbox" class="hi-st" value="processed" checked> Committed</label>
+            <label title="Changes that were discarded (the paragraphs were put back)"><input type="checkbox" class="hi-st" value="discarded"> Discarded</label>
+            <select id="hi-vol" title="Only this book"><option value="">All books</option></select>
+            <input type="text" id="hi-q" placeholder="Find / Replace text contains…" autocomplete="off" spellcheck="false"
+                   title="Only batches whose Find or Replace text contains this">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="hiLoad(); clLoadPending();" title="Reload the changes">Refresh</button>
+            <span class="hi-allq" id="hi-allq" hidden>
+                <button type="button" class="btn btn-primary btn-sm" data-hact="reprocess" data-vks="all" title="Commit every queued change in every book">Commit all queued</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-hact="discard" data-vks="all" title="Discard every queued change in every book">Discard all queued</button>
+            </span>
+            <span class="hi-sum" id="hi-sum"></span>
+        </div>
+        <div class="hi-wrap">
+            <table class="hi-table">
+                <thead id="hi-head"></thead>
+                <tbody id="hi-body"></tbody>
+            </table>
+        </div>
+        </div><!-- /cl-pane-changes -->
     </div>
 </div>
 
@@ -2580,6 +2676,14 @@ function switchTab(name) {
     if (name === 'cleanup') clInit();
 }
 
+// Cleanup's own tabs: Search/Replace and Changes (#cleanup / #cleanup-changes).
+function clSubTab(name) {
+    document.querySelectorAll('#tab-cleanup .cl-subtab').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-pane') === name); });
+    document.querySelectorAll('#tab-cleanup .cl-pane').forEach(function(p) { p.classList.toggle('active', p.id === 'cl-pane-' + name); });
+    if (history.replaceState) history.replaceState(null, '', name === 'changes' ? '#cleanup-changes' : '#cleanup');
+    if (name === 'changes') hiInit();
+}
+
 // Series keeps its own page permission ('series' in PAGE_SETTING_MAP)
 function initSeriesTab(pages) {
     var allowed = !(pages && pages.series === false);
@@ -2830,6 +2934,249 @@ var fbLoaded = false;
 function initFlipbookTab() {
     if (location.hash === '#flipbook') switchTab('flipbook');
     if (location.hash === '#cleanup') switchTab('cleanup');
+    // #history = the old Replace History tab, now Cleanup → Changes.
+    if (location.hash === '#cleanup-changes' || location.hash === '#history') { switchTab('cleanup'); clSubTab('changes'); }
+}
+
+// ── Cleanup → Changes tab (was Replace History) ──
+// Every Cleanup Replace batch (one Replace click in one book), grouped either
+// by search/replace run (one Replace click across all its books) or by book.
+// A group row expands to its batches; a batch row expands to its changes.
+var hiBound = false, hiBatches = [], hiSeq = 0, hiGroup = 'run';
+var HI_GROUP_STORE = 'yy.adminBooks.history.group';
+var HI_RUN_GAP_MS = 30 * 60 * 1000;   // older batches (no run id): same Find/Replace/options/user within 30 min = one run
+
+function hiInit() {
+    clLoadPending();
+    if (hiBound) { hiLoad(); return; }
+    hiBound = true;
+    try { hiGroup = localStorage.getItem(HI_GROUP_STORE) === 'book' ? 'book' : 'run'; } catch (e) {}
+    document.querySelectorAll('#cl-pane-changes .hi-grp').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-g') === hiGroup);
+        b.addEventListener('click', function() {
+            hiGroup = b.getAttribute('data-g');
+            try { localStorage.setItem(HI_GROUP_STORE, hiGroup); } catch (e) {}
+            document.querySelectorAll('#cl-pane-changes .hi-grp').forEach(function(x) { x.classList.toggle('active', x === b); });
+            hiRender();
+        });
+    });
+    document.querySelectorAll('#cl-pane-changes .hi-st').forEach(function(c) { c.addEventListener('change', function() { hiLoad(); }); });
+    document.getElementById('hi-vol').addEventListener('change', function() { hiLoad(); });
+    var t = null;
+    document.getElementById('hi-q').addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { hiLoad(); }, 300); });
+    // Commit / Discard buttons at every level (bar, group row, batch row).
+    document.getElementById('cl-pane-changes').addEventListener('click', function(e) {
+        var act = e.target.closest('button[data-hact]');
+        if (!act) return;
+        e.stopPropagation();
+        var vks = act.getAttribute('data-vks');
+        clQueueRun(act.getAttribute('data-hact'), vks === 'all' ? 'all' : vks.split(',').map(Number));
+    }, true);
+    document.getElementById('hi-body').addEventListener('click', function(e) {
+        var br = e.target.closest('tr.hi-brow');
+        if (br) { hiToggleBatch(br); return; }
+        var gr = e.target.closest('tr.hi-row');
+        if (gr) hiToggleGroup(gr);
+    });
+    hiLoad();
+}
+
+function hiLoad() {
+    var st = [];
+    document.querySelectorAll('#cl-pane-changes .hi-st:checked').forEach(function(c) { st.push(c.value); });
+    var body = document.getElementById('hi-body');
+    if (!st.length) { hiBatches = []; hiRender('Tick a status to see changes.'); return; }
+    var seq = ++hiSeq;
+    var url = API + '/admin-books-cleanup.php?action=history&status=' + st.join(',')
+        + '&volume=' + encodeURIComponent(document.getElementById('hi-vol').value)
+        + '&q=' + encodeURIComponent(document.getElementById('hi-q').value.trim());
+    body.innerHTML = '<tr><td colspan="7" class="hi-empty">Loading…</td></tr>';
+    fetch(url, {credentials: 'include'}).then(function(r) { return safeJson(r); }).then(function(d) {
+        if (seq !== hiSeq) return;
+        if (d.error) { hiBatches = []; hiRender(d.error); return; }
+        var sel = document.getElementById('hi-vol'), cur = sel.value;
+        sel.innerHTML = '<option value="">All books</option>' + (d.volumes || []).map(function(v) {
+            return '<option value="' + v.volume_key + '"' + (String(v.volume_key) === cur ? ' selected' : '') + '>' + esc(v.label) + '</option>';
+        }).join('');
+        hiBatches = d.batches || [];
+        hiBatches.forEach(function(b, i) { b._i = i; b._t = new Date(b.dtime).getTime() || 0; });
+        hiRender();
+    }, function(e) { hiBatches = []; hiRender(String(e && e.message || e)); });
+}
+
+// ── grouping ──
+function hiRepList(b) { return b.replace !== null && b.replace !== undefined ? [b.replace] : (b.replaced || []); }
+function hiRunKey(b) {
+    var o = b.options || {};
+    return [b.find, hiRepList(b).join(' / '), !!o.bold, !!o.italic, !!o['case'], !!o.word, !!o.rbold, !!o.ritalic, b.user_name || ''].join('|');
+}
+function hiGroups() {
+    var groups = [], byKey = {}, open = {};
+    var add = function(key, b) {
+        var g = byKey[key];
+        if (!g) { g = byKey[key] = {key: key, batches: [], first: b._t, last: b._t}; groups.push(g); }
+        g.batches.push(b);
+        g.first = Math.min(g.first, b._t); g.last = Math.max(g.last, b._t);
+        return g;
+    };
+    if (hiGroup === 'book') {
+        hiBatches.forEach(function(b) { add('v' + b.volume_key, b); });
+    } else {
+        // Oldest first, so a run without an id can pick up its next book.
+        hiBatches.slice().sort(function(a, b) { return a._t - b._t; }).forEach(function(b) {
+            var o = b.options || {};
+            if (o.run) { add('r' + o.run, b); return; }
+            var k = hiRunKey(b), g = open[k];
+            if (g && b._t - g.last <= HI_RUN_GAP_MS) { g.batches.push(b); g.last = Math.max(g.last, b._t); return; }
+            open[k] = add('c' + b._i, b);
+        });
+    }
+    groups.forEach(function(g) {
+        g.batches.sort(function(a, b) { return b._t - a._t; });
+        g.count = g.batches.reduce(function(n, b) { return n + b.count; }, 0);
+    });
+    return groups.sort(function(a, b) { return b.last - a.last; });
+}
+
+// ── rendering ──
+var HI_STATUS = {pending: ['Queued', 'st-q'], processed: ['Committed', 'st-c'], discarded: ['Discarded', 'st-d']};
+function hiWhen(t) { var x = new Date(t); return t && !isNaN(x) ? x.toLocaleString() : ''; }
+function hiFlags(list) { list = list.filter(Boolean); return list.length ? ' <span class="flags">' + list.join(' ') + '</span>' : ''; }
+function hiFindHtml(b) {
+    var o = b.options || {};
+    return '<span class="q">“' + esc(b.find || '') + '”</span>'
+        + hiFlags([o.bold ? '<b>B</b>' : '', o.italic ? '<i>I</i>' : '', o['case'] ? 'Aa' : '', o.word ? 'whole words' : '']);
+}
+function hiRepHtml(b) {
+    var o = b.options || {};
+    return hiRepList(b).map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
+        + hiFlags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : '']);
+}
+function hiBookHtml(b) {
+    return '<span title="' + esc(b.volume_code || '') + '">' + esc((b.volume_number ? b.volume_number + ' · ' : '') + (b.volume_label || b.volume_code || ''))
+        + '</span>' + (b.series_label ? '<span class="ser">' + esc(b.series_label) + '</span>' : '');
+}
+// One badge per status, with counts of changes when a group is mixed; the
+// commit / discard time when there is one.
+function hiStatusHtml(batches) {
+    var n = {}, done = {};
+    batches.forEach(function(b) {
+        n[b.status] = (n[b.status] || 0) + b.count;
+        if (b.done_dtime && (!done[b.status] || b.done_dtime > done[b.status])) done[b.status] = b.done_dtime;
+    });
+    var keys = ['pending', 'processed', 'discarded'].filter(function(k) { return n[k]; });
+    return keys.map(function(k) {
+        var st = HI_STATUS[k];
+        return '<span class="hi-st-line"><span class="hi-st-badge ' + st[1] + '">' + st[0] + (keys.length > 1 ? ' ' + n[k] : '') + '</span>'
+            + (done[k] ? '<span class="done">' + esc(hiWhen(done[k])) + '</span>' : '') + '</span>';
+    }).join('');
+}
+function hiBooksHtml(g) {
+    var seen = {}, names = [];
+    g.batches.forEach(function(b) { if (!seen[b.volume_key]) { seen[b.volume_key] = 1; names.push(b.volume_code || b.volume_label); } });
+    return '<span title="' + esc(names.join('\n')) + '">' + names.length + ' book' + (names.length === 1 ? '' : 's') + '</span>';
+}
+function hiUsers(g) {
+    var seen = {};
+    g.batches.forEach(function(b) { if (b.user_name) seen[b.user_name] = 1; });
+    return esc(Object.keys(seen).join(', '));
+}
+
+var HI_HEAD = {
+    run:  ['When', 'Find', 'Replace', 'Books', 'Changes', 'Status', 'By', ''],
+    book: ['Book', 'Last change', 'Batches', 'Changes', 'Status', 'By', '']
+};
+function hiRender(msg) {
+    var head = HI_HEAD[hiGroup];
+    document.getElementById('hi-head').innerHTML = '<tr>' + head.map(function(h) {
+        return '<th' + (h === 'Changes' || h === 'Batches' ? ' class="num"' : '') + '>' + h + '</th>';
+    }).join('') + '</tr>';
+    var body = document.getElementById('hi-body'), cols = head.length;
+    if (msg) { body.innerHTML = '<tr><td colspan="' + cols + '" class="hi-empty">' + esc(msg) + '</td></tr>'; document.getElementById('hi-sum').textContent = ''; return; }
+    var groups = hiGroups();
+    hiRender.groups = groups;
+    body.innerHTML = groups.map(function(g, i) {
+        var b0 = g.batches[0], tw = '<span class="tw">&#9654;</span>';
+        var tip = ' title="Click to show / hide its ' + (hiGroup === 'book' ? 'search/replace batches' : 'books') + '"';
+        if (hiGroup === 'book') {
+            return '<tr class="hi-row" data-g="' + i + '"' + tip + '>'
+                + '<td class="book">' + tw + hiBookHtml(b0) + '</td>'
+                + '<td class="when">' + esc(hiWhen(g.last)) + '</td>'
+                + '<td class="num">' + g.batches.length + '</td>'
+                + '<td class="num">' + g.count + '</td>'
+                + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
+                + '<td class="act">' + hiActHtml(g.batches, 'book') + '</td></tr>';
+        }
+        return '<tr class="hi-row" data-g="' + i + '"' + tip + '>'
+            + '<td class="when">' + tw + esc(hiWhen(g.first)) + '</td>'
+            + '<td>' + hiFindHtml(b0) + '</td><td>' + hiRepHtml(b0) + '</td>'
+            + '<td class="num">' + hiBooksHtml(g) + '</td>'
+            + '<td class="num">' + g.count + '</td>'
+            + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
+            + '<td class="act">' + hiActHtml(g.batches, 'search/replace') + '</td></tr>';
+    }).join('') || '<tr><td colspan="' + cols + '" class="hi-empty">No changes.</td></tr>';
+    var changes = hiBatches.reduce(function(n, b) { return n + b.count; }, 0);
+    document.getElementById('hi-sum').textContent = groups.length
+        ? groups.length + (hiGroup === 'book' ? ' book' + (groups.length === 1 ? '' : 's') : ' search/replace' + (groups.length === 1 ? '' : 's'))
+          + ' · ' + hiBatches.length + ' batch' + (hiBatches.length === 1 ? '' : 'es') + ' · ' + changes + ' change' + (changes === 1 ? '' : 's')
+        : '';
+}
+
+// Commit / Discard for the queued batches among these (whole books — see clQueueRun).
+function hiActHtml(batches, what) {
+    var vks = [], seen = {};
+    batches.forEach(function(b) { if (b.status === 'pending' && !seen[b.volume_key]) { seen[b.volume_key] = 1; vks.push(b.volume_key); } });
+    if (!vks.length) return '';
+    var books = vks.length === 1 ? 'its book' : 'its ' + vks.length + ' books';
+    return '<span class="hi-acts">'
+        + '<button type="button" class="btn btn-primary btn-sm" data-hact="reprocess" data-vks="' + vks.join(',') + '"'
+        + ' title="Commit the queued changes of this ' + what + ' (every queued change in ' + books + ')">Commit</button>'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-hact="discard" data-vks="' + vks.join(',') + '"'
+        + ' title="Discard the queued changes of this ' + what + ' (every queued change in ' + books + ')">Discard</button></span>';
+}
+
+// A group's batches, as a nested table.
+function hiToggleGroup(tr) {
+    var next = tr.nextElementSibling;
+    if (next && next.classList.contains('hi-gdetail')) { next.remove(); tr.classList.remove('open'); return; }
+    tr.classList.add('open');
+    var g = hiRender.groups[+tr.getAttribute('data-g')];
+    var byBook = hiGroup === 'book';
+    var head = byBook ? ['When', 'Find', 'Replace', 'Changes', 'Status', 'By', ''] : ['Book', 'When', 'Changes', 'Status', 'By', ''];
+    var rows = g.batches.map(function(b) {
+        var tw = '<span class="tw">&#9654;</span>';
+        return '<tr class="hi-brow" data-b="' + b._i + '" title="Click to show / hide this batch\'s changes">'
+            + (byBook
+                ? '<td class="when">' + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
+                : '<td class="book">' + tw + hiBookHtml(b) + '</td><td class="when">' + esc(hiWhen(b.dtime)) + '</td>')
+            + '<td class="num">' + b.count + '</td><td>' + hiStatusHtml([b]) + '</td><td>' + esc(b.user_name || '') + '</td>'
+            + '<td class="act">' + hiActHtml([b], 'batch') + '</td></tr>';
+    }).join('');
+    tr.insertAdjacentHTML('afterend', '<tr class="hi-gdetail"><td colspan="' + tr.children.length + '">'
+        + '<table class="hi-sub"><thead><tr>' + head.map(function(h) { return '<th' + (h === 'Changes' ? ' class="num"' : '') + '>' + h + '</th>'; }).join('')
+        + '</tr></thead><tbody>' + rows + '</tbody></table></td></tr>');
+}
+
+// A batch's changes: each paragraph before and after.
+function hiToggleBatch(tr) {
+    var next = tr.nextElementSibling;
+    if (next && next.classList.contains('hi-detail')) { next.remove(); tr.classList.remove('open'); return; }
+    tr.classList.add('open');
+    var b = hiBatches[+tr.getAttribute('data-b')];
+    tr.insertAdjacentHTML('afterend', '<tr class="hi-detail"><td colspan="' + tr.children.length + '"><div class="cl-loading">Loading…</div></td></tr>');
+    var cell = tr.nextElementSibling.firstChild;
+    fetch(API + '/admin-books-cleanup.php?action=history&batch=' + encodeURIComponent(b.batch), {credentials: 'include'})
+        .then(function(r) { return safeJson(r); })
+        .then(function(d) {
+            if (d.error) { cell.innerHTML = '<div class="cl-loading">' + esc(d.error) + '</div>'; return; }
+            // excerpts are server-built HTML: escaped text inside <b>/<i>/<mark> only.
+            cell.innerHTML = (d.changes || []).map(function(c) {
+                return '<div class="cl-qchange"><div class="meta">¶ ' + esc(String(c.paragraph_number)) + ' · “'
+                    + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
+                    + '<div class="ex old">' + (c.cleanup_change_excerpt_before || '') + '</div>'
+                    + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div></div>';
+            }).join('') || '<div class="cl-loading">No changes.</div>';
+        });
 }
 
 // ── Cleanup tab: Search/Replace ─────────────────────────────
@@ -3117,9 +3464,6 @@ function clInit() {
     var s = clLoadSaved();
     clApplyState(s);
 
-    document.querySelector('#cl-queue .cl-queue-toggle').addEventListener('click', function() {
-        document.getElementById('cl-queue').classList.toggle('open');
-    });
     clLoadPending();
     clWlInit(s.words);
     find.focus();
@@ -3701,6 +4045,9 @@ function clBookRequest(b) {
 function clReplaceSelected() {
     if (clBusy || !clLast) return;
     var s = clLast, args = clReplaceArgs();
+    // One id for this whole Replace click, across its per-book requests, so
+    // the Changes tab can show the run as one search/replace.
+    args.run = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     var vks = s.order.filter(function(vk) { return clBookDoCount(s.books[vk]) > 0; });
     var x = vks.reduce(function(n, vk) { return n + clBookDoCount(s.books[vk]); }, 0);
     if (!x) return;
@@ -3710,7 +4057,7 @@ function clReplaceSelected() {
         + (clAposCount() ? ' — each ❜ becomes the ʿ / ʾ / ` picked on its row (rows not loaded get the default)' : '')
         + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
         + 'The parsed text changes now, and so does a staged copy of each book\'s Word DOCX. '
-        + 'Nothing is rebuilt until you Commit Changes for the books under Queued DOCX changes.')) return;
+        + 'Nothing is rebuilt until you commit them on the Cleanup → Changes tab.')) return;
     if (!clConfirmEmpty(args)) return;
 
     clBusy = true; clSyncSel();
@@ -3743,7 +4090,9 @@ function clReplaceSelected() {
     });
 }
 
-// ── Queued DOCX changes ──
+// ── Queued changes ──
+// clQueue = the pending summary per book (action=pending). The Search/Replace
+// tab shows it as a banner; the Changes tab lists, commits and discards it.
 var clQueue = [];
 function clLoadPending() {
     return fetch(API + '/admin-books-cleanup.php?action=pending', {credentials: 'include'})
@@ -3752,171 +4101,89 @@ function clLoadPending() {
         .catch(function() {});
 }
 
+// The banner atop Search/Replace: how much is queued, per search/replace,
+// and a link to the Changes tab to review and commit it.
 function clRenderQueue() {
-    var box = document.getElementById('cl-queue');
-    box.hidden = !clQueue.length;
-    if (!clQueue.length) return;
+    var box = document.getElementById('cl-qbanner');
     var total = clQueue.reduce(function(n, v) { return n + v.count; }, 0);
-    document.getElementById('cl-queue-sum').textContent = total + ' change' + (total === 1 ? '' : 's') + ' in '
-        + clQueue.length + ' book' + (clQueue.length === 1 ? '' : 's') + ' — not yet committed';
-    var open = {};
-    document.querySelectorAll('#cl-qtree .open[data-key]').forEach(function(n) { open[n.getAttribute('data-key')] = 1; });
-    var series = [], bySeries = {};
+    var badge = document.getElementById('cl-subtab-n');
+    badge.hidden = !total;
+    badge.textContent = total;
+    badge.title = total + ' queued change' + (total === 1 ? '' : 's');
+    document.getElementById('hi-allq').hidden = !total;
+    box.hidden = !total;
+    if (!total) { box.innerHTML = ''; return; }
+    var runs = [], byKey = {};
     clQueue.forEach(function(v) {
-        var sk = v.series_key === null ? 'none' : v.series_key;
-        if (!bySeries[sk]) { bySeries[sk] = {key: sk, label: v.series_label || 'No series', vols: [], n: 0}; series.push(bySeries[sk]); }
-        bySeries[sk].vols.push(v); bySeries[sk].n += v.count;
-    });
-    var when = function(t) { var d = new Date(t); return isNaN(d) ? '' : d.toLocaleString(); };
-    document.getElementById('cl-qtree').innerHTML = series.map(function(g) {
-        var sk = 's' + g.key;
-        return '<div class="cl-qseries' + (open[sk] || open[sk] === undefined ? ' open' : '') + '" data-key="' + sk + '">'
-            + '<div class="cl-node cl-series-row"><button type="button" class="cl-twisty" title="Expand / collapse">&#9654;</button>'
-            + '<label><input type="checkbox" data-level="series"><span>' + esc(g.label) + '</span>'
-            + '<span class="cl-n">' + g.n + '</span></label></div><div class="cl-qkids">'
-            + g.vols.map(function(v) {
-                var bk = 'v' + v.volume_key;
-                return '<div class="cl-qbook' + (open[bk] ? ' open' : '') + '" data-key="' + bk + '" data-vk="' + v.volume_key + '">'
-                    + '<div class="cl-node cl-qbook-row"><button type="button" class="cl-twisty" title="Show the changes">&#9654;</button>'
-                    + '<label title="' + esc(v.volume_code || '') + '"><input type="checkbox" data-level="book" value="' + v.volume_key + '">'
-                    + '<span>' + esc((v.volume_number ? v.volume_number + ' · ' : '') + (v.volume_label || v.volume_code)) + '</span>'
-                    + '<span class="cl-n">' + v.count + '</span></label>'
-                    + (v.stage === 'stale' ? '<span class="cl-stale" title="A new DOCX was uploaded after these changes">⚠ DOCX re-uploaded — discard</span>' : '')
-                    + (v.stage === 'none' ? '<span class="cl-stale">⚠ staged DOCX missing</span>' : '')
-                    + '<span class="cl-when">' + esc(when(v.last_dtime)) + '</span>'
-                    + '<span class="cl-q-btns">'
-                    + '<button type="button" class="btn btn-primary btn-sm" data-qact="reprocess" data-vk="' + v.volume_key + '"'
-                    + (v.stage !== 'ok' ? ' disabled' : '') + ' title="Put this book\'s staged DOCX live and rebuild its PDF, flipbook and paragraphs">Commit Changes</button>'
-                    + '<button type="button" class="btn btn-secondary btn-sm" data-qact="discard" data-vk="' + v.volume_key + '">Discard</button>'
-                    + '</span></div>'
-                    + '<div class="cl-qbatches">' + (v.batches || []).map(function(bt) {
-                        return '<div class="cl-qbatch">' + clBatchLabel(bt) + '</div>';
-                    }).join('') + '</div>'
-                    + '<div class="cl-qkids cl-qchanges" id="cl-qch-' + v.volume_key + '"></div></div>';
-            }).join('') + '</div></div>';
-    }).join('');
-    document.querySelectorAll('#cl-qtree .cl-qbook.open').forEach(function(n) { clLoadQueueBook(+n.getAttribute('data-vk')); });
-    clQueueSync();
-}
-
-// One Replace click's batch: Find → Replace, the options, how many, when, who.
-function clBatchLabel(bt) {
-    var o = bt.options || {};
-    var flags = function(list) {
-        list = list.filter(Boolean);
-        return list.length ? ' <span class="flags">' + list.join(' ') + '</span>' : '';
-    };
-    var rep = bt.replace !== null && bt.replace !== undefined ? [bt.replace] : (bt.replaced || []);
-    return '<span class="lbl">Find</span> <span class="q">“' + esc(bt.find || '') + '”</span>'
-        + flags([o.bold ? '<b>B</b>' : '', o.italic ? '<i>I</i>' : '', o['case'] ? 'Aa' : '', o.word ? 'whole words' : ''])
-        + ' <span class="arrow">→</span> <span class="lbl">Replace</span> '
-        + rep.map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
-        + flags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : ''])
-        + ' <span class="meta">· ' + bt.count + ' change' + (bt.count === 1 ? '' : 's')
-        + ' · ' + esc(new Date(bt.dtime).toLocaleString()) + (bt.user_name ? ' · ' + esc(bt.user_name) : '') + '</span>';
-}
-
-function clLoadQueueBook(vk) {
-    var box = document.getElementById('cl-qch-' + vk);
-    box.innerHTML = '<div class="cl-loading">Loading…</div>';
-    fetch(API + '/admin-books-cleanup.php?action=pending&volume=' + vk, {credentials: 'include'})
-        .then(function(r) { return safeJson(r); })
-        .then(function(d) {
-            if (d.error) { box.innerHTML = '<div class="cl-loading">' + esc(d.error) + '</div>'; return; }
-            var v = clQueue.filter(function(x) { return x.volume_key === vk; })[0] || {};
-            var byBatch = {};
-            (v.batches || []).forEach(function(bt) { byBatch[bt.batch] = bt; });
-            var lastBatch = null;
-            box.innerHTML = (d.changes || []).map(function(c) {
-                // A header above each batch's changes.
-                var head = '';
-                if (c.cleanup_change_batch !== lastBatch) {
-                    lastBatch = c.cleanup_change_batch;
-                    if (byBatch[lastBatch]) head = '<div class="cl-qbatch cl-qbatch-h">' + clBatchLabel(byBatch[lastBatch]) + '</div>';
-                }
-                var o = c.cleanup_change_options || {};
-                var fmt = [o.rbold ? 'B' : '', o.ritalic ? 'I' : ''].filter(Boolean).join('');
-                return head + '<div class="cl-qchange"><div class="meta">' + esc(new Date(c.cleanup_change_dtime).toLocaleString())
-                    + (c.cleanup_change_user_name ? ' · ' + esc(c.cleanup_change_user_name) : '')
-                    + ' · ¶ ' + esc(String(c.paragraph_number)) + ' · “' + esc(c.cleanup_change_match) + '” → “'
-                    + esc(c.cleanup_change_replace) + '”' + (fmt ? ' [' + fmt + ']' : '')
-                    + (o.mode === 'all' ? ' · Replace All' : '') + '</div>'
-                    + '<div class="ex old">' + (c.cleanup_change_excerpt_before || '') + '</div>'
-                    + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div></div>';
-            }).join('') || '<div class="cl-loading">No changes.</div>';
+        (v.batches || []).forEach(function(bt) {
+            var rep = bt.replace !== null && bt.replace !== undefined ? [bt.replace] : (bt.replaced || []);
+            var k = bt.find + '\u0000' + rep.join(' / ');
+            var r = byKey[k];
+            if (!r) { r = byKey[k] = {find: bt.find, rep: rep, n: 0, books: {}, last: ''}; runs.push(r); }
+            r.n += bt.count; r.books[v.volume_key] = 1;
+            if (bt.dtime > r.last) r.last = bt.dtime;
         });
-}
-
-// Roll book ticks up to series ticks; enable the selected-actions buttons.
-function clQueueSync() {
-    var any = false;
-    document.querySelectorAll('#cl-qtree .cl-qseries').forEach(function(s) {
-        var books = s.querySelectorAll('input[data-level=book]'), n = 0;
-        books.forEach(function(b) { if (b.checked) n++; });
-        var cb = s.querySelector('input[data-level=series]');
-        cb.checked = n === books.length && n > 0; cb.indeterminate = n > 0 && n < books.length;
-        if (n) any = true;
     });
-    document.getElementById('cl-q-reprocess').disabled = !any;
-    document.getElementById('cl-q-discard').disabled = !any;
+    runs.sort(function(a, b) { return a.last < b.last ? 1 : -1; });
+    var MAX = 4;
+    var line = function(r) {
+        var nb = Object.keys(r.books).length;
+        return '<li><span class="q">“' + esc(r.find) + '”</span> <span class="arrow">→</span> '
+            + r.rep.map(function(x) { return '<span class="q">“' + esc(x) + '”</span>'; }).join(' / ')
+            + ' <span class="meta">· ' + r.n + ' change' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
+    };
+    box.innerHTML = '<div class="cl-qb-head"><span class="cl-qb-title">'
+        + total + ' queued change' + (total === 1 ? '' : 's') + ' in ' + clQueue.length + ' book' + (clQueue.length === 1 ? '' : 's')
+        + ' — not yet committed</span>'
+        + '<button type="button" class="btn btn-primary btn-sm" onclick="clShowQueued()" title="Open the Changes tab, showing just the queued changes">Review &amp; commit in Changes &rarr;</button></div>'
+        + '<ul class="cl-qb-list">' + runs.slice(0, MAX).map(line).join('')
+        + (runs.length > MAX ? '<li class="meta">… and ' + (runs.length - MAX) + ' more search/replace' + (runs.length - MAX === 1 ? '' : 's') + '</li>' : '')
+        + '</ul>';
 }
 
-document.addEventListener('click', function(e) {
-    var tree = e.target.closest('#cl-qtree');
-    if (!tree) return;
-    var tw = e.target.closest('.cl-twisty');
-    if (tw) {
-        var node = tw.closest('[data-key]');
-        node.classList.toggle('open');
-        if (node.classList.contains('cl-qbook') && node.classList.contains('open')) clLoadQueueBook(+node.getAttribute('data-vk'));
-        return;
-    }
-    var act = e.target.closest('button[data-qact]');
-    if (act) clQueueRun(act.getAttribute('data-qact'), [+act.getAttribute('data-vk')]);
-});
-document.addEventListener('change', function(e) {
-    var cb = e.target.closest('#cl-qtree input[type=checkbox]');
-    if (!cb) return;
-    if (cb.getAttribute('data-level') === 'series') {
-        cb.closest('.cl-qseries').querySelectorAll('input[data-level=book]').forEach(function(b) { b.checked = cb.checked; });
-    }
-    clQueueSync();
-});
-
-function clQueueAction(kind) {
-    var vks = [];
-    document.querySelectorAll('#cl-qtree input[data-level=book]:checked').forEach(function(b) { vks.push(+b.value); });
-    if (vks.length) clQueueRun(kind, vks);
+// The banner's link: the Changes tab, filtered to what is still queued.
+function clShowQueued() {
+    document.querySelectorAll('#tab-cleanup .hi-st').forEach(function(c) { c.checked = c.value === 'pending'; });
+    clSubTab('changes');
 }
 
+// Commit ('reprocess') or discard the queued changes of these books.
+// vks = volume keys, or 'all'. Both act on a whole book: each book has ONE
+// staged DOCX, so every queued change in it goes together.
 function clQueueRun(kind, vks) {
+    if (vks === 'all') vks = clQueue.map(function(v) { return v.volume_key; });
     var vols = clQueue.filter(function(v) { return vks.indexOf(v.volume_key) >= 0; });
+    if (!vols.length) { alert('Nothing queued in ' + (vks.length === 1 ? 'that book' : 'those books') + ' any more.'); clLoadPending(); if (hiBound) hiLoad(); return; }
     var n = vols.reduce(function(t, v) { return t + v.count; }, 0);
     var names = vols.map(function(v) { return '• ' + (v.volume_code || v.volume_label) + ' (' + v.count + ')'; }).join('\n');
+    var whole = '\n\nEvery queued change in ' + (vols.length === 1 ? 'this book goes' : 'these books goes') + ' together '
+        + '(each book has one staged DOCX), including any from other search/replaces.';
     var msg = kind === 'reprocess'
-        ? 'Commit the changes in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + ' (' + n + ' change' + (n === 1 ? '' : 's') + ')?\n\n' + names
+        ? 'Commit ' + n + ' queued change' + (n === 1 ? '' : 's') + ' in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + '?\n\n' + names + whole
           + '\n\nEach book\'s staged Word DOCX replaces the live one (the old one is kept in u/books-word-backup), '
           + 'then the book is queued to rebuild its PDF, flipbook and paragraphs.'
-        : 'Discard ' + n + ' queued change' + (n === 1 ? '' : 's') + ' in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + '?\n\n' + names
+        : 'Discard ' + n + ' queued change' + (n === 1 ? '' : 's') + ' in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + '?\n\n' + names + whole
           + '\n\nThe staged DOCX is deleted and the paragraphs are put back as they were. This cannot be undone.';
     if (!confirm(msg)) return;
-    var btns = document.querySelectorAll('#cl-queue button');
+    var btns = document.querySelectorAll('#tab-cleanup [data-hact]');
     btns.forEach(function(b) { b.disabled = true; });
-    clPost(kind, {volume_keys: vks}).then(function(d) {
+    clPost(kind, {volume_keys: vols.map(function(v) { return v.volume_key; })}).then(function(d) {
         var res = d.results || [];
         var bad = res.filter(function(r) { return !r.ok; });
         var good = res.filter(function(r) { return r.ok; });
-        var text = (kind === 'reprocess' ? 'Committed the changes in ' : 'Discarded ') + good.length + ' book' + (good.length === 1 ? '' : 's')
+        var text = (kind === 'reprocess' ? 'Committed the changes in ' : 'Discarded the changes in ') + good.length + ' book' + (good.length === 1 ? '' : 's')
             + (kind === 'reprocess' ? ' — queued to rebuild.' : '.');
         if (d.error) text = d.error;
         if (bad.length) text += '\n\nProblems:\n' + bad.map(function(r) { return r.label + ': ' + r.error; }).join('\n');
         alert(text);
-        document.querySelectorAll('#cl-queue .cl-queue-actions button').forEach(function(b) { b.disabled = false; });
+    }).catch(function(e) { alert('Failed: ' + (e && e.message || e)); }).then(function() {
+        btns.forEach(function(b) { b.disabled = false; });
+        if (hiBound) hiLoad();
         return clLoadPending().then(function() {
             // Discard changed the paragraph text back; refresh the matches.
             if (kind === 'discard' && clLast) clSearch();
         });
-    }).catch(function(e) { alert('Failed: ' + (e && e.message || e)); clLoadPending(); });
+    });
 }
 
 // Section field definitions — drives both render and save payload.
