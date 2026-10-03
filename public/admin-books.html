@@ -310,6 +310,9 @@
         .de-tb .de-tick { font-family: Georgia, serif; font-weight: 700; font-size: 1.1rem; color: #8e44ad; }
         .de-tb .de-wide { font-size: 0.8rem; }
         .de-tb .de-ytb { font-family: inherit; }
+        .de-tb .de-b[lang="he"] { font-family: 'SBL Hebrew', 'Times New Roman', serif; font-size: 1.05rem; }
+        .de-tb .de-b .de-clr { width: 18px; height: 18px; vertical-align: middle; }
+        .de-tb .de-inf { font-size: 1.2rem; line-height: 1; }
         .de-tb select { height: 28px; border: 1px solid #d5dbe2; border-radius: 4px; font-size: 0.8rem; padding: 0 4px; background: #fff; }
         .de-sep { width: 1px; height: 22px; background: #d5dbe2; margin: 0 4px; }
         .de-area { min-height: 3em; padding: 10px 12px; outline: none; }
@@ -697,7 +700,7 @@
         <span class="sub-tab active" onclick="switchTab('books')">Books</span>
         <span class="sub-tab" id="subtab-series" onclick="switchTab('series')">Series</span>
         <span class="sub-tab" id="subtab-flipbook" onclick="switchTab('flipbook')">Flipbook</span>
-        <span class="sub-tab" id="subtab-cleanup" onclick="switchTab('cleanup')" title="Edit the book text: search/replace, and the log of changes">Edit</span>
+        <span class="sub-tab" id="subtab-edit" onclick="switchTab('edit')" title="Edit the book text: search/replace, and the log of changes">Edit</span>
     </div>
 
     <!-- Books tab -->
@@ -757,7 +760,7 @@
     <!-- Cleanup tab — text tools that work across the parsed book text
          (yy_paragraph). API: /api/admin-books-cleanup.php. ids/functions
          carry a cl prefix so they can't collide with the other tabs. -->
-    <div id="tab-cleanup" class="tab-panel">
+    <div id="tab-edit" class="tab-panel">
         <div class="cl-subtabs">
             <button type="button" class="cl-subtab active" data-pane="search" onclick="clSubTab('search')" title="Search the book text and replace matches">Search/Replace</button>
             <button type="button" class="cl-subtab" data-pane="direct" onclick="clSubTab('direct')" title="Browse a book page by page and edit any paragraph directly">Direct</button>
@@ -2855,14 +2858,14 @@ function switchTab(name) {
     if (history.replaceState) history.replaceState(null, '', name === 'books' ? location.pathname + location.search : '#' + name);
     if (name === 'series') serLoadSeries();
     if (name === 'flipbook' && !fbLoaded) { fbLoaded = true; fbLoad(); }
-    if (name === 'cleanup') clInit();
+    if (name === 'edit') clInit();
 }
 
-// Cleanup's own tabs: Search/Replace and Changes (#cleanup / #cleanup-changes).
+// Edit's own tabs: Search/Replace, Changes and Direct (#edit / #edit-changes / #edit-direct).
 function clSubTab(name) {
-    document.querySelectorAll('#tab-cleanup .cl-subtab').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-pane') === name); });
-    document.querySelectorAll('#tab-cleanup .cl-pane').forEach(function(p) { p.classList.toggle('active', p.id === 'cl-pane-' + name); });
-    if (history.replaceState) history.replaceState(null, '', name === 'changes' ? '#cleanup-changes' : name === 'direct' ? '#cleanup-direct' : '#cleanup');
+    document.querySelectorAll('#tab-edit .cl-subtab').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-pane') === name); });
+    document.querySelectorAll('#tab-edit .cl-pane').forEach(function(p) { p.classList.toggle('active', p.id === 'cl-pane-' + name); });
+    if (history.replaceState) history.replaceState(null, '', name === 'changes' ? '#edit-changes' : name === 'direct' ? '#edit-direct' : '#edit');
     if (name === 'changes') hiInit();
     if (name === 'direct') deInit();
 }
@@ -3116,10 +3119,10 @@ function serDoUpload(blob, filename) {
 var fbLoaded = false;
 function initFlipbookTab() {
     if (location.hash === '#flipbook') switchTab('flipbook');
-    if (location.hash === '#cleanup' || location.hash === '#edit') switchTab('cleanup');   // the tab is labelled Edit
-    // #history = the old Replace History tab, now Cleanup → Changes.
-    if (location.hash === '#cleanup-changes' || location.hash === '#history') { switchTab('cleanup'); clSubTab('changes'); }
-    if (location.hash === '#cleanup-direct' || location.hash === '#edit-direct') { switchTab('cleanup'); clSubTab('direct'); }
+    if (location.hash === '#edit') switchTab('edit');
+    // #history = the old Replace History tab, now Edit → Changes.
+    if (location.hash === '#edit-changes' || location.hash === '#history') { switchTab('edit'); clSubTab('changes'); }
+    if (location.hash === '#edit-direct') { switchTab('edit'); clSubTab('direct'); }
 }
 
 // ── Cleanup → Changes tab (was Replace History) ──
@@ -3735,7 +3738,7 @@ function clInit() {
     clBound = true;
     var find = document.getElementById('cl-find');
     var repl = document.getElementById('cl-replace');
-    document.querySelectorAll('#tab-cleanup .cl-ring').forEach(function(btn) {
+    document.querySelectorAll('#tab-edit .cl-ring').forEach(function(btn) {
         // Swallow the mousedown so the input keeps its caret.
         btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
         btn.addEventListener('click', function(e) {
@@ -3782,7 +3785,7 @@ function clInit() {
     }
 }
 
-// The Books tab loads allVolumes; #cleanup can open before it lands.
+// The Books tab loads allVolumes; #edit can open before it lands.
 function clWhenVolumes(fn, tries) {
     if (allVolumes.length) { fn(); return; }
     if ((tries || 0) > 100) return;
@@ -4127,7 +4130,7 @@ function clSetBox(cb, on, total) {
 
 // Bring every checkbox, the row styling and the Replace button in line with the selection.
 function clSyncSel() {
-    var btns = document.querySelectorAll('#tab-cleanup .cl-rep-btn');
+    var btns = document.querySelectorAll('#tab-edit .cl-rep-btn');
     var all = document.getElementById('cl-sel-all');
     var bot = document.getElementById('cl-res-bot');
     if (!clLast || !clLast.order) {
@@ -4621,13 +4624,15 @@ function deOpen(host, para, opts) {
         + '<button type="button" class="de-b cl-ring" data-ins="ʾ" title="Right half ring ʾ">ʾ</button>'
         + '<button type="button" class="de-b cl-ring" data-ins="ʿ" title="Left half ring ʿ">ʿ</button>'
         + '<button type="button" class="de-b de-tick" data-ins="`" title="Backtick `">`</button>'
-        + '<span class="de-popwrap"><button type="button" class="de-b de-wide" data-pop="heb" title="Type modern Hebrew letters">Hebrew</button></span>'
-        + '<span class="de-popwrap"><button type="button" class="de-b de-wide de-ytb" data-pop="yt" title="Type Yada Towrah (paleo-Hebrew) letters">Yada Towrah</button></span>'
-        + '<span class="de-popwrap"><button type="button" class="de-b de-wide" data-pop="sp" title="Special characters used in the books: dashes, quotes, ellipsis, accented and Greek letters…">Ω Special</button></span>'
+        + '<span class="de-popwrap"><button type="button" class="de-b de-wide" data-pop="heb" title="Type modern Hebrew letters" lang="he">עִבְרִי</button></span>'
+        + '<span class="de-popwrap"><button type="button" class="de-b de-wide de-ytb" data-pop="yt" title="Type Yada Towrah (paleo-Hebrew) letters">YT</button></span>'
+        + '<span class="de-popwrap"><button type="button" class="de-b de-inf" data-pop="sp" title="Special characters used in the books: dashes, quotes, ellipsis, accented and Greek letters…" aria-label="Special characters">∞</button></span>'
         + '<span class="de-sep"></span>'
         + '<button type="button" class="de-b" data-cmd="undo" title="Undo (Ctrl+Z)">&#8630;</button>'
         + '<button type="button" class="de-b" data-cmd="redo" title="Redo (Ctrl+Y)">&#8631;</button>'
-        + '<button type="button" class="de-b de-wide" data-cmd="removeFormat" title="Remove bold / italic / underline from the selection">Clear format</button>'
+        + '<button type="button" class="de-b de-wide" data-cmd="removeFormat" title="Clear format: remove bold / italic / underline from the selection" aria-label="Clear format">'
+        +   '<svg class="de-clr" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19 L8.5 4 L14 19 M5.2 13.5 H11.8" fill="none" stroke="#222" stroke-width="1.9" stroke-linejoin="round"/>'
+        +   '<g transform="rotate(-45 16 16)"><rect x="9.5" y="12.4" width="13" height="7.2" rx="1.8" fill="#fff" stroke="#8e3a8e" stroke-width="1.7"/><line x1="13.4" y1="12.4" x2="13.4" y2="19.6" stroke="#8e3a8e" stroke-width="1.7"/></g></svg></button>'
         + '</div>';
     host.innerHTML = '<div class="de-ed">' + tb
         + '<div class="de-area de-text" contenteditable="true" spellcheck="true"></div>'
@@ -4991,7 +4996,7 @@ function clRenderQueue() {
 
 // The banner's link: the Changes tab, filtered to what is still queued.
 function clShowQueued() {
-    document.querySelectorAll('#tab-cleanup .hi-st').forEach(function(c) { c.checked = c.value === 'pending'; });
+    document.querySelectorAll('#tab-edit .hi-st').forEach(function(c) { c.checked = c.value === 'pending'; });
     clSubTab('changes');
 }
 
@@ -5013,7 +5018,7 @@ function clQueueRun(kind, vks) {
         : 'Discard ' + n + ' queued change' + (n === 1 ? '' : 's') + ' in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + '?\n\n' + names + whole
           + '\n\nThe staged DOCX is deleted and the paragraphs are put back as they were. This cannot be undone.';
     if (!confirm(msg)) return;
-    var btns = document.querySelectorAll('#tab-cleanup [data-hact]');
+    var btns = document.querySelectorAll('#tab-edit [data-hact]');
     btns.forEach(function(b) { b.disabled = true; });
     clPost(kind, {volume_keys: vols.map(function(v) { return v.volume_key; })}).then(function(d) {
         var res = d.results || [];
