@@ -34,6 +34,9 @@
  *                         ?source= takes one code or a comma-separated list.
  *                         plus per-column filters: ?f_strongs= ?f_translit= ?f_hebrew=
  *                         ?f_yt= ?f_def= ?f_count= (&f_count_op=gt|lt)
+ *                         ?f_translit= containing ❜ matches any ONE apostrophe-like
+ *                         mark there (ʿ ʾ ' ` ‘ ’ …) — a ~* regex, else ILIKE.
+ *                         ?nophrases=1 hides words whose word_translit has a space.
  *                         ?copied=yes|no filters on the YY-copy link.
  *                         ?language=A|G|H|L|none filters on word_language.
  *                         ?excluded=only|all — "Not a word" entries are HIDDEN
@@ -812,8 +815,24 @@ if ($method === 'GET' && !$key) {
     foreach ($colFilters as $param => $clause) {
         $val = trim((string)($_GET[$param] ?? ''));
         if ($val === '') continue;
+        /* ❜ in the Translit box = any ONE apostrophe-like mark (same class as
+           /admin-books Edit's CLEANUP_APOS_CLASS). That needs a regex: the rest
+           of the text is escaped to match literally, as ILIKE's contains would. */
+        if ($param === 'f_translit' && strpos($val, '❜') !== false) {
+            $rx = str_replace('❜', "[\u{02BF}\u{02BE}'`\u{2018}\u{2019}\u{201A}\u{201B}\u{00B4}\u{02BC}\u{02BB}\u{02B9}\u{2032}]",
+                              preg_replace_callback('/[\\\\.^$|?*+()\[\]{}]/u',
+                                                    function ($m) { return '\\' . $m[0]; }, $val));
+            $where[] = str_replace('ILIKE', '~*', $clause);
+            $params[':' . $param] = $rx;
+            continue;
+        }
         $where[] = $clause;
         $params[':' . $param] = '%' . $val . '%';
+    }
+
+    // ?nophrases=1 hides phrases: a preferred spelling with more than one word.
+    if (!empty($_GET['nophrases'])) {
+        $where[] = "COALESCE(w.word_translit, '') !~ '\\s'";
     }
 
     // Count filter is numeric with a greater/less toggle, like the Word admin's.

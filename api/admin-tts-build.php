@@ -58,6 +58,7 @@ function ttsActiveBuilds(PDO $db): int {
 function ttsClaimBuildSlot(PDO $db, int $audioKey, array $extraArgs = [], int $maxConcurrent = 1): bool {
     $workerScript = __DIR__ . '/admin-tts-build-worker.php';
     if (!file_exists($workerScript)) return false;
+    if (ttsBuildsPaused()) return false;   // global pause: stay queued
     $db->query('SELECT pg_advisory_lock(' . TTS_BUILD_LOCK . ')');
     try {
         if (ttsActiveBuilds($db) >= $maxConcurrent) return false;

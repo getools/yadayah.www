@@ -163,6 +163,23 @@
             font-family: 'YadaTowrah', serif; font-size: 0.85rem; color: #1a5276;
             direction: rtl; unicode-bidi: bidi-override; text-align: right;
         }
+        /* Translit filter: typing keys for the marks a keyboard lacks, plus a
+           "No phrases" toggle. The keys swallow mousedown so the box keeps its
+           caret, and each inserts at the caret. ❜ is the any-apostrophe wildcard
+           (matches one of ʿ ʾ ' ` ‘ ’ … server-side, as on /admin-books Edit). */
+        table.gw-table input.col-filter#lx-f-translit {
+            font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .lx-f-tr-opts { display: flex; align-items: center; gap: 3px; margin-top: 3px; flex-wrap: wrap; }
+        .lx-f-key {
+            min-width: 20px; padding: 0 3px; line-height: 18px; font-size: 0.95rem;
+            font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif;
+            border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; color: #1a5276;
+        }
+        .lx-f-key:hover { border-color: #3498db; background: #f2f8fd; }
+        .lx-f-key.lx-f-apos { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; color: #8e44ad; }
+        .lx-f-nophr { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-size: 0.72rem; font-weight: 400; color: #666; cursor: pointer; }
+        .lx-f-nophr input { margin: 0; }
         .gw-count-filter { display: flex; gap: 3px; align-items: center; }
         .gw-count-filter button {
             flex: none; width: 20px; padding: 3px 0; font-size: 0.78rem; line-height: 1;
@@ -827,7 +844,14 @@
                         <!-- A select, not a text box: language is a fixed lookup,
                              so the options are filled from ?action=meta. -->
                         <th><select id="lx-f-language" class="col-filter" onchange="lxReload(true)"></select></th>
-                        <th><input type="text" id="lx-f-translit" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()"></th>
+                        <th><input type="text" id="lx-f-translit" class="col-filter" placeholder="…" autocomplete="off" oninput="lxFilterChanged()">
+                            <div class="lx-f-tr-opts">
+                                <button type="button" class="lx-f-key" data-ch="ʿ" title="Type a left half ring ʿ (modifier letter left half ring)">ʿ</button>
+                                <button type="button" class="lx-f-key" data-ch="ʾ" title="Type a right half ring ʾ (modifier letter right half ring)">ʾ</button>
+                                <button type="button" class="lx-f-key" data-ch="`" title="Type a backtick `">`</button>
+                                <button type="button" class="lx-f-key lx-f-apos" data-ch="❜" title="Any apostrophe: types ❜, which matches any ONE of ʿ ʾ ' ` ‘ ’ ‚ ‛ ´ ʼ ʻ ʹ ′ (left/right half ring, straight/curly single quote, backtick and similar)">❜</button>
+                                <label class="lx-f-nophr" title="Hide phrases: words whose transliteration has more than one word (contains a space)"><input type="checkbox" id="lx-f-nophrases" onchange="lxReload(true)"> No phrases</label>
+                            </div></th>
                         <th><div class="gw-count-filter">
                             <button type="button" id="lx-f-count-op" title="Toggle at-least / at-most" onclick="lxToggleCountOp()">&ge;</button>
                             <input type="text" id="lx-f-count" class="col-filter" placeholder="…" inputmode="numeric" autocomplete="off" oninput="lxFilterChanged()">
@@ -1406,6 +1430,18 @@ function lxFilterChanged() {
     lxFilterTimer = setTimeout(function() { lxReload(true); }, 250);
 }
 
+/* Translit filter keys: insert at the caret and re-query. mousedown is
+   swallowed so the box keeps focus and its caret until the click lands. */
+document.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.lx-f-key')) e.preventDefault();
+});
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.lx-f-key');
+    if (!btn) return;
+    lxInsertIntoInput(document.getElementById('lx-f-translit'), btn.getAttribute('data-ch'));
+    lxFilterChanged();
+});
+
 function lxToggleCountOp() {
     lxCountOp = (lxCountOp === 'gt') ? 'lt' : 'gt';
     document.getElementById('lx-f-count-op').innerHTML = (lxCountOp === 'gt') ? '&ge;' : '&le;';
@@ -1722,6 +1758,8 @@ function loadWords() {
             if (v) p += '&' + LX_FILTERS[id] + '=' + encodeURIComponent(v);
         });
         if (document.getElementById('lx-f-count').value.trim()) p += '&f_count_op=' + lxCountOp;
+        var noPhr = document.getElementById('lx-f-nophrases');
+        if (noPhr && noPhr.checked) p += '&nophrases=1';
 
         fetch(API + '/admin-glossary-lexicon.php?' + p, {credentials:'include'})
             .then(function(r){return safeJson(r);}).then(function(d) {

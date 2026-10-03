@@ -103,6 +103,22 @@ if ($action === 'matches') {
                          ORDER BY p.paragraph_number");
     $st->execute([$vk, $after, $like]);
     $items = [];
+    // The book's running headers / footers lead its first page of matches.
+    if ($after < 0) {
+        foreach (cleanupHeaderHits(cleanupHeaderParas(cleanupVolume($db, $vk)), $pattern) as [$hp, $parsed, $hit, $start]) {
+            $end = $start + strlen($hit);
+            if (($wantBold || $wantItalic) && !cleanupHasFormat($parsed['runs'], $parsed['text'], $start, $end, $wantBold, $wantItalic)) continue;
+            $items[] = [
+                'paragraph_key' => null, 'number' => null, 'page' => null, 'volume_key' => $vk, 'book_slug' => null,
+                'chapter' => null, 'chapter_name' => null,
+                'hdr' => $hp['hid'], 'hdr_kind' => $hp['kind'], 'hdr_part' => basename($hp['part'], '.xml'),
+                'match' => $hit, 'start' => $start,
+                'fmt' => cleanupMatchFormat($parsed['runs'], $parsed['text'], $start, $end),
+                'excerpt' => cleanupExcerpt($parsed['runs'], $parsed['text'], $start, $end),
+                'paragraph' => cleanupExcerpt($parsed['runs'], $parsed['text'], $start, $end, null),
+            ];
+        }
+    }
     $lastPn = $after;
     $more = false;
     $slug = null; $slugDone = false;
@@ -181,6 +197,28 @@ while (true) {
 }
 $db->exec('CLOSE cl_cur');
 $db->commit();
+
+// Running headers / footers: read from each book's DOCX (cached), counted with the body.
+$hdrVols = $db->query("SELECT volume_key, volume_code, volume_docx, volume_label FROM yy_volume
+                        WHERE coalesce(nullif(volume_docx, ''), nullif(volume_code, '')) IS NOT NULL"
+    . ($volumeKeys ? ' AND volume_key IN (' . implode(',', $volumeKeys) . ')' : ''))->fetchAll();
+foreach ($hdrVols as $hv) {
+    $vk = (int)$hv['volume_key'];
+    foreach (cleanupHeaderHits(cleanupHeaderParas($hv), $pattern) as [$hp, $parsed, $hit, $start]) {
+        $end = $start + strlen($hit);
+        if (($wantBold || $wantItalic) && !cleanupHasFormat($parsed['runs'], $parsed['text'], $start, $end, $wantBold, $wantItalic)) {
+            $formatRejected++;
+            continue;
+        }
+        $total++;
+        $counts[$vk] = ($counts[$vk] ?? 0) + 1;
+        if (isset($kinds[$vk]) && $kinds[$vk] === false) continue;
+        $fmt = cleanupMatchFormat($parsed['runs'], $parsed['text'], $start, $end);
+        $kk = $hit . "\x00" . ($fmt ?? '~');
+        if (!isset($kinds[$vk][$kk]) && count($kinds[$vk] ?? []) >= CLEANUP_KINDS_MAX) { $kinds[$vk] = false; continue; }
+        $kinds[$vk][$kk] = ($kinds[$vk][$kk] ?? 0) + 1;
+    }
+}
 
 $volumes = [];
 if ($counts) {
@@ -403,6 +441,135 @@ function cleanupStageState(array $paths): string {
     return (($meta['base_md5'] ?? '') === md5_file($paths['live'])) ? 'ok' : 'stale';
 }
 
+/**
+ * The book's running header / footer paragraphs, from the DOCX that Replace
+ * would edit (the staged copy when there is a current one, else the live one):
+ * [{hid: 'word/header8.xml#0', part, idx, kind: header|footer, text, html}].
+ * They have no yy_paragraph rows, so _docx_replace.py reads them; the result
+ * is cached per book under u/books-word-staged/.hdrcache, keyed by the
+ * source file's path, size, mtime and inode (a new staged copy is a new inode).
+ */
+function cleanupHeaderParas(array $vol): array {
+    $paths = cleanupPaths($vol);
+    if (!$paths['name'] || !is_file($paths['live'])) return [];
+    $src = cleanupStageState($paths) === 'ok' ? $paths['staged'] : $paths['live'];
+    clearstatcache(true, $src);
+    $sig = [$src, @filesize($src), @filemtime($src), @fileinode($src)];
+    $dir = $paths['root'] . '/u/books-word-staged/.hdrcache';
+    $file = $dir . '/' . (int)$vol['volume_key'] . '.json';
+    $cache = is_file($file) ? json_decode((string)@file_get_contents($file), true) : null;
+    if (!is_array($cache) || ($cache['sig'] ?? null) !== $sig) {
+        $res = cleanupRunDocxScript(['list_headers' => true, 'docx_in' => $src]);
+        if (empty($res['ok'])) {
+            logMonitorEvent('cleanup_headers', 'error', $vol['volume_code'] . ': reading headers failed — ' . ($res['error'] ?? 'no output'), __FILE__);
+            return [];
+        }
+        $cache = ['sig' => $sig, 'paras' => $res['paras'] ?? []];
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        @file_put_contents($file, json_encode($cache, JSON_UNESCAPED_UNICODE));
+    }
+    return array_map(function ($p) {
+        return $p + ['hid' => $p['part'] . '#' . (int)$p['idx']];
+    }, $cache['paras'] ?? []);
+}
+
+/** Every Find match in the header paragraphs: [[para, parsed, hit, byteStart], …]. */
+function cleanupHeaderHits(array $paras, string $pattern): array {
+    $out = [];
+    foreach ($paras as $hp) {
+        $parsed = cleanupParseHtml((string)$hp['html']);
+        if (!preg_match_all($pattern, $parsed['text'], $m, PREG_OFFSET_CAPTURE)) continue;
+        foreach ($m[0] as [$hit, $start]) $out[] = [$hp, $parsed, $hit, $start];
+    }
+    return $out;
+}
+
+/* ── Chapter names follow their heading ──────────────────────────────────
+ * yy_chapter.chapter_name is what the chapter lists, TTS and the Books links
+ * show, and a re-parse never overwrites it (and matches UNNUMBERED chapters to
+ * their heading by name, so a renamed heading would otherwise come back as a
+ * new chapter). So when a change rewrites a paragraph that IS a chapter's
+ * heading — its text, less a leading chapter number, equals the chapter name
+ * ignoring case, spacing and apostrophe / half-ring marks — the name follows.
+ */
+function cleanupChapterStrip(string $s): string {
+    $s = trim(preg_replace('/\s+/u', ' ', $s));
+    return trim(preg_replace('/^(?:chapter\s+)?\d+[.:)]?\s+/iu', '', $s));
+}
+function cleanupChapterNorm(string $s): string {
+    return mb_strtolower(trim(preg_replace('/\s+/u', ' ', preg_replace('/' . CLEANUP_APOS_CLASS . '/u', '', cleanupChapterStrip($s)))));
+}
+/** $rep cased like $sample when $rep is all capitals (an ALL-CAPS heading's edit, applied to a Title Case name). */
+function cleanupCaseLike(string $rep, string $sample): string {
+    if (preg_match('/\p{Ll}/u', $rep) || !preg_match('/\p{Ll}/u', $sample)) return $rep;
+    $one = function ($w, $like) {
+        if (!preg_match('/\p{Lu}/u', $like)) return mb_strtolower($w);
+        return mb_convert_case($w, MB_CASE_TITLE);
+    };
+    // Word for word when the counts agree ("a Revolutionary" → "an Evolutionary").
+    $rw = preg_split('/(\s+)/u', $rep, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $sw = preg_split('/\s+/u', trim($sample));
+    $words = array_values(array_filter($rw, function ($w) { return trim($w) !== ''; }));
+    if (count($words) !== count($sw)) return $one($rep, $sample);
+    $k = 0;
+    return implode('', array_map(function ($w) use (&$k, $sw, $one) {
+        return trim($w) === '' ? $w : $one($w, $sw[$k++]);
+    }, $rw));
+}
+
+/**
+ * $paras: paragraph_key → ['old' => text, 'new' => text, 'pairs' => [[oldFragment, newFragment], …]].
+ * Returns paragraph_key → ['key' => chapter_key, 'before' => name, 'after' => new name]
+ * for the paragraphs that are chapter headings whose name should change.
+ */
+function cleanupChapterRenames(PDO $db, int $vk, array $paras): array {
+    $paras = array_filter($paras, function ($p) {
+        return $p['old'] !== $p['new'] && mb_strlen($p['old']) <= 200;
+    });
+    if (!$paras) return [];
+    $st = $db->prepare("SELECT chapter_key, chapter_name FROM yy_chapter WHERE volume_key = ? AND coalesce(chapter_name, '') <> ''");
+    $st->execute([$vk]);
+    $byNorm = [];
+    foreach ($st->fetchAll() as $c) $byNorm[cleanupChapterNorm($c['chapter_name'])][] = $c;
+    $out = [];
+    foreach ($paras as $pk => $p) {
+        $n = cleanupChapterNorm($p['old']);
+        if ($n === '' || count($byNorm[$n] ?? []) !== 1) continue;   // not a heading, or ambiguous
+        $c = $byNorm[$n][0];
+        $name = (string)$c['chapter_name'];
+        $newText = cleanupChapterStrip($p['new']);
+        if ($newText === '') continue;
+        if (preg_match('/\p{Ll}/u', cleanupChapterStrip($p['old'])) || !preg_match('/\p{Ll}/u', $name)) {
+            // The heading reads like the name: the book's new text is the name.
+            $newName = $newText;
+        } else {
+            // An ALL-CAPS heading over a Title Case name: make the same edits in the name.
+            $newName = $name;
+            foreach ($p['pairs'] as [$a, $b]) {
+                if ($a === '') continue;
+                $re = '/' . implode('', array_map(function ($ch) {
+                    return preg_match('/^' . CLEANUP_APOS_CLASS . '$/u', $ch) ? CLEANUP_APOS_CLASS : preg_quote($ch, '/');
+                }, preg_split('//u', $a, -1, PREG_SPLIT_NO_EMPTY))) . '/iu';
+                $newName = preg_replace_callback($re, function ($m) use ($b) { return cleanupCaseLike($b, $m[0]); }, $newName, 1);
+            }
+            if (cleanupChapterNorm($newName) !== cleanupChapterNorm($newText)) continue;   // couldn't follow it
+        }
+        if ($newName !== $name) $out[$pk] = ['key' => (int)$c['chapter_key'], 'before' => $name, 'after' => $newName];
+    }
+    return $out;
+}
+
+/** Write the renames (inside the caller's transaction); returns the ones that took. */
+function cleanupApplyChapterRenames(PDO $db, array $renames, array $authUser): array {
+    $up = $db->prepare('UPDATE yy_chapter SET chapter_name = ?, chapter_revision_user_key = ? WHERE chapter_key = ? AND chapter_name = ?');
+    $done = [];
+    foreach ($renames as $pk => $r) {
+        $up->execute([$r['after'], (int)($authUser['user_key'] ?? 0), $r['key'], $r['before']]);
+        if ($up->rowCount()) $done[$pk] = $r;
+    }
+    return $done;
+}
+
 function cleanupReplace(array $authUser): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
@@ -452,11 +619,16 @@ function cleanupReplace(array $authUser): void {
     $target = $in['target'] ?? null;
     $targetFound = false;
     // mode 'some': only these matches; mode 'all' + exclude: all but these.
-    // Each is {paragraph_key, start, match}, as the search listed it.
-    $keyed = function ($list) {
+    // Each is {paragraph_key, start, match}, as the search listed it — or, for
+    // a running header / footer, {hdr: 'word/header8.xml#0', start, match}.
+    $matchId = function (array $t) {
+        return (isset($t['hdr']) && $t['hdr'] !== null ? 'h' . (string)$t['hdr'] : (int)($t['paragraph_key'] ?? 0))
+            . ':' . (int)($t['start'] ?? -1);
+    };
+    $keyed = function ($list) use ($matchId) {
         $out = [];
         foreach ((array)$list as $t) {
-            if (is_array($t)) $out[(int)($t['paragraph_key'] ?? 0) . ':' . (int)($t['start'] ?? -1)] = (string)($t['match'] ?? '');
+            if (is_array($t)) $out[$matchId($t)] = (string)($t['match'] ?? '');
         }
         return $out;
     };
@@ -466,8 +638,7 @@ function cleanupReplace(array $authUser): void {
     // Matches without a pick get cleanupAposDefault().
     $aposPick = [];
     foreach ((array)($in['apos'] ?? []) as $t) {
-        if (is_array($t)) $aposPick[(int)($t['paragraph_key'] ?? 0) . ':' . (int)($t['start'] ?? -1)]
-            = [(string)($t['match'] ?? ''), (string)($t['apos'] ?? '')];
+        if (is_array($t)) $aposPick[$matchId($t)] = [(string)($t['match'] ?? ''), (string)($t['apos'] ?? '')];
     }
     $replFor = function (string $id, string $hit) use ($replace, $aposPick): string {
         $pick = isset($aposPick[$id]) && $aposPick[$id][0] === $hit ? $aposPick[$id][1] : '';
@@ -516,10 +687,41 @@ function cleanupReplace(array $authUser): void {
             $dbList[] = $d;
         }
     }
+    // Running headers / footers: no paragraph rows, so no alignment — each
+    // chosen match goes to the script by part, paragraph and character offset.
+    $hdrList = [];
+    $hdrMeta = [];     // id → [header para, byte start, hit, rep, effB, effI]
+    if ($mode !== 'next') {
+        foreach (cleanupHeaderHits(cleanupHeaderParas($vol), $pattern) as [$hp, $parsed, $hit, $start]) {
+            $text = $parsed['text'];
+            $end = $start + strlen($hit);
+            $id = 'h' . $hp['hid'] . ':' . $start;
+            if ($mode === 'some') {
+                $apply = isset($targets[$id]) && $targets[$id] === $hit;
+                if ($apply) $targetsFound++;
+            } else {
+                $apply = (!($wantBold || $wantItalic)
+                        || cleanupHasFormat($parsed['runs'], $text, $start, $end, $wantBold, $wantItalic))
+                    && !(isset($exclude[$id]) && $exclude[$id] === $hit);
+            }
+            if (!$apply) continue;
+            $rep = $replFor($id, $hit);
+            $fmt = cleanupMatchFormat($parsed['runs'], $text, $start, $end);
+            $eff = $keepFmt ? ($fmt ?? cleanupMatchFormat($parsed['runs'], $text, $start, $end, true)) : $rFmt;
+            if ($rep === $hit && ($keepFmt || $fmt === $rFmt)) { $unchanged++; continue; }
+            $effB = strpos($eff, 'b') !== false; $effI = strpos($eff, 'i') !== false;
+            $hdrMeta[$id] = [$hp, $start, $hit, $rep, $effB, $effI];
+            $hdrList[] = ['id' => $id, 'part' => $hp['part'], 'idx' => (int)$hp['idx'],
+                          's' => mb_strlen(substr($text, 0, $start), 'UTF-8'), 'e' => mb_strlen(substr($text, 0, $end), 'UTF-8'),
+                          'match' => $hit, 'replace' => $rep,
+                          // Same B / I in Find and Replace: the header runs keep their own (and their styles').
+                          'bold' => $keepFmt ? null : $effB, 'italic' => $keepFmt ? null : $effI];
+        }
+    }
     if ($mode === 'next' && !$targetFound) {
         errorResponse('That match is no longer in the text — search again.', 409);
     }
-    $toApply = count(array_filter($dbList, function ($d) { return $d['apply']; }));
+    $toApply = count(array_filter($dbList, function ($d) { return $d['apply']; })) + count($hdrList);
     // Ticked matches the text no longer has (changed since the search).
     $missing = $mode === 'some' ? count($targets) - $targetsFound : 0;
     if (!$toApply) jsonResponse(['volume_key' => $vk, 'replaced' => 0, 'unmapped' => 0, 'missing' => $missing, 'failed' => [], 'items' => [],
@@ -539,7 +741,7 @@ function cleanupReplace(array $authUser): void {
         'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'], 'docx_out' => $tmpOut,
         'find' => $q, 'case' => $matchCase, 'whole' => $wholeWord,
         'replace' => $replace, 'bold' => $rBold, 'italic' => $rItalic,
-        'db' => $dbList,
+        'db' => $dbList, 'hdr' => $hdrList,
     ]);
     if (empty($res['ok'])) {
         @unlink($tmpOut);
@@ -547,15 +749,44 @@ function cleanupReplace(array $authUser): void {
     }
     $applied = $res['applied'] ?? [];
     $items = [];
+    $renamed = [];
+    $hdrDone = 0;
     if ($applied) {
         // 1. Every paragraph's new text, before touching anything.
         $byPara = [];
+        $byHdr = [];
         foreach ($applied as $id) {
             if (isset($meta[$id])) $byPara[$meta[$id][0]][] = $meta[$id];
+            elseif (isset($hdrMeta[$id])) $byHdr[$hdrMeta[$id][0]['hid']][] = $hdrMeta[$id];
         }
         $rows = [];       // pk → [html, plain, raw]
-        $logs = [];       // change rows
+        $logs = [];       // change rows: [pk, pn, hit, rep, old row, new html, excerpt before, excerpt after, extra options]
+        $chg = [];        // pk → old / new text and the edits, for cleanupChapterRenames()
         try {
+            // Headers: the log keeps each header paragraph before / after (no DB row to update).
+            foreach ($byHdr as $list) {
+                $hp = $list[0][0];
+                $oldHtml = (string)$hp['html'];
+                $oldParsed = cleanupParseHtml($oldHtml);
+                usort($list, function ($a, $b) { return $b[1] - $a[1]; });
+                $html = $oldHtml;
+                foreach ($list as [, $start, $hit, $rep, $effB, $effI]) {
+                    $html = cleanupHtmlReplace($html, $start, $start + strlen($hit), cleanupReplacementSegments($rep, $effB, $effI));
+                }
+                $parsed = cleanupParseHtml($html);
+                $shift = 0;
+                foreach (array_reverse($list) as [, $start, $hit, $rep]) {
+                    $ns = $start + $shift;
+                    $shift += strlen($rep) - strlen($hit);
+                    $logs[] = [null, null, $hit, $rep,
+                        ['paragraph_text_html' => $oldHtml, 'paragraph_text_plain' => $oldParsed['text'], 'paragraph_text_raw' => null],
+                        $html,
+                        cleanupExcerpt($oldParsed['runs'], $oldParsed['text'], $start, $start + strlen($hit)),
+                        cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ns + strlen($rep)),
+                        ['hdr' => $hp['part'], 'hdr_kind' => $hp['kind']]];
+                    $hdrDone++;
+                }
+            }
             foreach ($byPara as $pk => $list) {
                 $old = $paraRow[$pk];
                 $oldParsed = cleanupParseHtml((string)$old['paragraph_text_html']);
@@ -567,6 +798,8 @@ function cleanupReplace(array $authUser): void {
                 }
                 $parsed = cleanupParseHtml($html);
                 $rows[$pk] = [$html, trim(preg_replace('/\s+/u', ' ', $parsed['text'])), cleanupRawJson($html)];
+                $chg[$pk] = ['old' => $oldParsed['text'], 'new' => $parsed['text'],
+                             'pairs' => array_map(function ($x) { return [$x[2], $x[3]]; }, $list)];
                 // Where each replacement sits in the new text: earlier ones
                 // shift the later ones by their length change.
                 $list = array_reverse($list);
@@ -577,7 +810,7 @@ function cleanupReplace(array $authUser): void {
                     $shift += strlen($rep) - strlen($hit);
                     $logs[] = [$pk, (int)$old['paragraph_number'], $hit, $rep, $old, $html,
                         cleanupExcerpt($oldParsed['runs'], $oldParsed['text'], $start, $start + strlen($hit)),
-                        cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne)];
+                        cleanupExcerpt($parsed['runs'], $parsed['text'], $ns, $ne), []];
                     if ($mode === 'next') {
                         $items[] = [
                             'paragraph_key' => $pk, 'start' => $start, 'delta' => strlen($rep) - strlen($hit),
@@ -587,6 +820,8 @@ function cleanupReplace(array $authUser): void {
                     }
                 }
             }
+            // A rewritten chapter heading carries its chapter's name along.
+            $renames = cleanupChapterRenames($db, $vk, $chg);
         } catch (\Throwable $ex) {
             @unlink($tmpOut);
             errorResponse($label . ': could not edit the paragraph text (' . $ex->getMessage() . ') — nothing was changed', 500);
@@ -613,10 +848,10 @@ function cleanupReplace(array $authUser): void {
         // 3. Paragraphs + change log in one transaction; on failure undo step 2.
         try {
             $batch = bin2hex(random_bytes(8));
-            $opts = json_encode(['type' => 'replace', 'mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
-                                 'rbold' => $rBold, 'ritalic' => $rItalic, 'replace' => $replace,
-                                 // the page's id for one Replace click across books (Replace History groups by it)
-                                 'run' => substr(preg_replace('/[^a-z0-9]/', '', (string)($in['run'] ?? '')), 0, 40) ?: null]);
+            $optsBase = ['type' => 'replace', 'mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
+                         'rbold' => $rBold, 'ritalic' => $rItalic, 'replace' => $replace,
+                         // the page's id for one Replace click across books (Replace History groups by it)
+                         'run' => substr(preg_replace('/[^a-z0-9]/', '', (string)($in['run'] ?? '')), 0, 40) ?: null];
             $db->beginTransaction();
             $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
                                        paragraph_text_raw = ?, paragraph_revision_user_key = ?
@@ -624,6 +859,9 @@ function cleanupReplace(array $authUser): void {
             foreach ($rows as $pk => [$html, $plain, $raw]) {
                 $up->execute([$html, $plain, $raw, (int)($authUser['user_key'] ?? 0), $pk]);
             }
+            // Discard puts a renamed chapter back from its paragraph's change rows.
+            $renamed = cleanupApplyChapterRenames($db, $renames, $authUser);
+            $chapterLogged = [];
             $ins = $db->prepare('INSERT INTO yy_cleanup_change
                 (cleanup_change_batch, volume_key, paragraph_key, paragraph_number, cleanup_change_find,
                  cleanup_change_replace, cleanup_change_options, cleanup_change_match,
@@ -631,7 +869,12 @@ function cleanupReplace(array $authUser): void {
                  cleanup_change_after_html, cleanup_change_excerpt_before, cleanup_change_excerpt_after,
                  cleanup_change_user_key, cleanup_change_user_name)
                 VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            foreach ($logs as [$pk, $pn, $hit, $rep, $old, $newHtml, $exBefore, $exAfter]) {
+            foreach ($logs as [$pk, $pn, $hit, $rep, $old, $newHtml, $exBefore, $exAfter, $extra]) {
+                if ($pk !== null && isset($renamed[$pk]) && !isset($chapterLogged[$pk])) {
+                    $extra['chapter'] = $renamed[$pk];   // on the paragraph's first change row only
+                    $chapterLogged[$pk] = true;
+                }
+                $opts = json_encode($optsBase + $extra, JSON_UNESCAPED_UNICODE);
                 $ins->execute([$batch, $vk, $pk, $pn, $q, $rep, $opts, $hit,
                     $old['paragraph_text_html'], $old['paragraph_text_plain'], $old['paragraph_text_raw'],
                     $newHtml, $exBefore, $exAfter,
@@ -662,6 +905,8 @@ function cleanupReplace(array $authUser): void {
         'items'        => $items,
         'missing'      => $missing,
         'unchanged'    => $unchanged,
+        'headers'      => $hdrDone,
+        'chapters'     => array_values(array_map(function ($r) { return ['before' => $r['before'], 'after' => $r['after']]; }, $renamed)),
     ]);
 }
 
@@ -677,10 +922,15 @@ function cleanupHistory(): void {
     $batch = (string)($_GET['batch'] ?? '');
     if ($batch !== '') {
         $st = $db->prepare("SELECT cleanup_change_key, paragraph_number, cleanup_change_match, cleanup_change_replace,
-                                   cleanup_change_excerpt_before, cleanup_change_excerpt_after, cleanup_change_status
+                                   cleanup_change_excerpt_before, cleanup_change_excerpt_after, cleanup_change_status,
+                                   cleanup_change_options->>'hdr_kind' AS hdr_kind, cleanup_change_options->>'hdr' AS hdr,
+                                   cleanup_change_options->'chapter' AS chapter
                               FROM yy_cleanup_change WHERE cleanup_change_batch = ? ORDER BY cleanup_change_key");
         $st->execute([$batch]);
-        jsonResponse(['changes' => $st->fetchAll()]);
+        $rows = $st->fetchAll();
+        foreach ($rows as &$r) $r['chapter'] = $r['chapter'] === null ? null : json_decode($r['chapter'], true);
+        unset($r);
+        jsonResponse(['changes' => $rows]);
     }
     $statuses = array_values(array_intersect(['pending', 'processed', 'discarded'],
         explode(',', (string)($_GET['status'] ?? 'pending,processed'))));
@@ -986,8 +1236,9 @@ function cleanupDirectSave(array $authUser): void {
     $pyRuns = function ($runs) {
         return array_map(function ($r) { return ['t' => $r['t'], 'b' => $r['b'], 'i' => $r['i'], 'u' => $r['u'], 'f' => $r['f'], 'sz' => $r['sz']]; }, $runs);
     };
+    $dirRenamed = [];
     $res = cleanupDirectApply($authUser, $db, $row, $oldText, ['old' => $pyRuns($oldRuns), 'new' => $pyRuns($newRuns)],
-        function (PDO $db, int $vk, int $pn) use ($authUser, $row, $pk, $oldHtml, $oldText, $newHtml, $newText, $newParsed, $source) {
+        function (PDO $db, int $vk, int $pn) use ($authUser, $row, $pk, $oldHtml, $oldText, $newHtml, $newText, $newParsed, $source, &$dirRenamed) {
             [$ds, $de, $dn] = cleanupDiffSpan($oldText, $newText);
             $oldParsed = cleanupParseHtml($oldHtml);
             $snip = function ($s) { return mb_strlen($s) > 120 ? mb_substr($s, 0, 117) . '…' : $s; };
@@ -996,10 +1247,14 @@ function cleanupDirectSave(array $authUser): void {
             // What changed, with a little of the (shared) text either side for the Changes list.
             $pre = mb_substr(substr($oldText, 0, $ds), -18);
             $post = mb_substr(substr($oldText, $de), 0, 18);
+            // A rewritten chapter heading carries its chapter's name along (see cleanupChapterRenames).
+            $dirRenamed = cleanupApplyChapterRenames($db, cleanupChapterRenames($db, $vk,
+                [$pk => ['old' => $oldText, 'new' => $newText, 'pairs' => [[$oldSnip, $newSnip]]]]), $authUser);
             $opts = json_encode(['type' => 'direct', 'mode' => 'direct', 'source' => $source,
                                  'run' => bin2hex(random_bytes(6)), 'old' => $snip($oldSnip), 'new' => $snip($newSnip),
                                  'pre' => $pre, 'post' => $post,
-                                 'format_only' => $oldText === $newText], JSON_UNESCAPED_UNICODE);
+                                 'format_only' => $oldText === $newText]
+                                + ($dirRenamed ? ['chapter' => $dirRenamed[$pk]] : []), JSON_UNESCAPED_UNICODE);
             $plain = trim(preg_replace('/\s+/u', ' ', $newText));
             $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?, paragraph_text_raw = ?,
                                  paragraph_revision_user_key = ? WHERE paragraph_key = ?')
@@ -1009,7 +1264,8 @@ function cleanupDirectSave(array $authUser): void {
                 cleanupExcerpt($newParsed['runs'], $newText, $ds, max($dn, min($ds + 1, strlen($newText)))));
         });
     if (!empty($res['unchanged'])) jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]);
-    jsonResponse(['ok' => true, 'html' => $newHtml, 'hunks' => (int)$res['hunks']]);
+    jsonResponse(['ok' => true, 'html' => $newHtml, 'hunks' => (int)$res['hunks'],
+                  'chapters' => array_values(array_map(function ($r) { return ['before' => $r['before'], 'after' => $r['after']]; }, $dirRenamed))]);
 }
 
 function cleanupLogDirect(PDO $db, array $authUser, int $vk, int $pk, int $pn, string $find, string $replace, string $opts,
@@ -1315,13 +1571,27 @@ function cleanupDiscard(array $authUser): void {
                                    cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_before_raw,
                                    cleanup_change_after_html
                               FROM yy_cleanup_change
-                             WHERE volume_key = ? AND cleanup_change_status = 'pending'
+                             WHERE volume_key = ? AND cleanup_change_status = 'pending' AND paragraph_key IS NOT NULL
                              ORDER BY cleanup_change_batch, paragraph_key, cleanup_change_key");
         $st->execute([$vk]);
         $byPara = [];
         foreach ($st->fetchAll() as $row) $byPara[(int)$row['paragraph_key']][] = $row;
         $restored = 0; $skipped = 0;
         $db->beginTransaction();
+        // Chapter names a heading change carried along: back, newest first,
+        // while the name is still what that change made it.
+        $chs = $db->prepare("SELECT cleanup_change_options->'chapter' AS ch FROM yy_cleanup_change
+                              WHERE volume_key = ? AND cleanup_change_status = 'pending' AND cleanup_change_options->'chapter' IS NOT NULL
+                              ORDER BY cleanup_change_key DESC");
+        $chs->execute([$vk]);
+        $chUp = $db->prepare('UPDATE yy_chapter SET chapter_name = ?, chapter_revision_user_key = ? WHERE chapter_key = ? AND chapter_name = ?');
+        $chaptersRestored = 0;
+        foreach ($chs->fetchAll(PDO::FETCH_COLUMN) as $ch) {
+            $ch = json_decode((string)$ch, true);
+            if (!is_array($ch) || empty($ch['key'])) continue;
+            $chUp->execute([(string)$ch['before'], (int)($authUser['user_key'] ?? 0), (int)$ch['key'], (string)$ch['after']]);
+            $chaptersRestored += $chUp->rowCount();
+        }
         $get = $db->prepare('SELECT paragraph_text_html FROM yy_paragraph WHERE paragraph_key = ?');
         $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
                                    paragraph_text_raw = ?, paragraph_revision_user_key = ? WHERE paragraph_key = ?');
@@ -1352,7 +1622,7 @@ function cleanupDiscard(array $authUser): void {
         flock($lock, LOCK_UN);
         fclose($lock);
         $results[] = ['volume_key' => $vk, 'label' => $vol['label'], 'ok' => true, 'changes' => $n->rowCount(),
-                      'paragraphs_restored' => $restored, 'paragraphs_skipped' => $skipped];
+                      'paragraphs_restored' => $restored, 'paragraphs_skipped' => $skipped, 'chapters_restored' => $chaptersRestored];
     }
     jsonResponse(['results' => $results]);
 }

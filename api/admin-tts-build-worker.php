@@ -43,6 +43,15 @@ putenv('TTS_GPU_PRIORITY=batch');
 
 $db = getDb();
 
+// Global pause (see ttsBuildsPaused): release the claimed slot and leave the
+// row 'pending' so it builds once the pause is lifted.
+if (ttsBuildsPaused()) {
+    $db->prepare("UPDATE yy_tts_audio SET tts_audio_worker_pid = NULL
+                   WHERE tts_audio_key = ? AND tts_audio_status = 'pending'")->execute([$audioKey]);
+    fwrite(STDERR, "TTS builds globally paused — ak=$audioKey left pending\n");
+    exit(0);
+}
+
 // ── Queue promotion ────────────────────────────────────────────────────
 // Concurrency limit: 1 chapter build at a time. Chatterbox / CosyVoice /
 // Qwen3 all share a single GPU with one loaded model — two concurrent
@@ -61,6 +70,7 @@ register_shutdown_function(function() use (&$db, $MAX_CONCURRENT_BUILDS, $audioK
     // yet 'running') as occupying a slot — so a worker exit and a concurrent
     // build POST can't both spawn past the cap.
     $TTS_BUILD_LOCK = 742002;
+    if (ttsBuildsPaused()) return;   // global pause: don't advance the queue
     try {
         if (!$db) $db = getDb();
         // If THIS worker exited because the operator PAUSED the chapter, do

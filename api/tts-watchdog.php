@@ -35,6 +35,11 @@ $firstPending = function () use ($db) {
          LIMIT 1")->fetchColumn();
 };
 
+if (($mode === 'check' || $mode === 'spawn') && ttsBuildsPaused()) {
+    echo "OK paused (api/data/TTS_BUILD_PAUSED)\n";
+    exit;
+}
+
 if ($mode === 'check') {
     $run = $db->query("SELECT tts_audio_key ak, tts_audio_worker_pid pid, tts_audio_message msg,
         EXTRACT(EPOCH FROM (now() - GREATEST(tts_audio_revision_dtime, tts_audio_started_dtime)))::int stale

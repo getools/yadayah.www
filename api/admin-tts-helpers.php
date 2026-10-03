@@ -59,6 +59,16 @@ if (!function_exists('readEnv')) {
  * profile's key, or 0 if the tts_key has no profile rows yet (legacy
  * tenants before the migration ran).
  */
+// Global TTS build pause: while this flag file exists no chapter-build worker
+// is spawned or promoted (rows stay 'pending' and queue up), and a worker that
+// was already spawned exits before synthesizing. Remove the file to resume;
+// the 5-min build watchdog then restarts the queue in reading order.
+const TTS_BUILD_PAUSE_FLAG = __DIR__ . '/data/TTS_BUILD_PAUSED';
+function ttsBuildsPaused(): bool {
+    clearstatcache(true, TTS_BUILD_PAUSE_FLAG);
+    return file_exists(TTS_BUILD_PAUSE_FLAG);
+}
+
 function ttsResolveProfileKey(PDO $db, int $ttsKey, ?int $profileKey = null): int {
     if ($profileKey !== null && $profileKey > 0) {
         $st = $db->prepare("SELECT tts_profile_key FROM yy_tts_profile WHERE tts_profile_key = ? AND tts_key = ? AND tts_profile_active_flag = TRUE");

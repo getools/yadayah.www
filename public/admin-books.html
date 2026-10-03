@@ -500,6 +500,7 @@
         .cl-hit:last-child { border-bottom: none; }
         .cl-hit:hover { background: #f7f9fc; }
         .cl-hit .loc { flex: none; width: 150px; color: #888; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+        .cl-hit .loc.hdr { color: #1f6f8b; font-weight: 600; }
         .cl-hit a.loc { text-decoration: none; }
         .cl-hit a.loc:hover { color: #2980b9; text-decoration: underline; }
         .cl-hit a.loc .ext { font-size: 0.7rem; margin-left: 3px; }
@@ -3467,10 +3468,12 @@ function hiToggleBatch(tr) {
             if (d.error) { cell.innerHTML = '<div class="cl-loading">' + esc(d.error) + '</div>'; return; }
             // excerpts are server-built HTML: escaped text inside <b>/<i>/<mark> only.
             cell.innerHTML = (d.changes || []).map(function(c) {
-                return '<div class="cl-qchange"><div class="meta">¶ ' + esc(String(c.paragraph_number)) + ' · “'
+                var where = c.hdr_kind ? (c.hdr_kind === 'footer' ? 'Footer' : 'Running header') : '¶ ' + esc(String(c.paragraph_number));
+                var chap = c.chapter ? '<div class="meta">Chapter name: “' + esc(c.chapter.before) + '” → “' + esc(c.chapter.after) + '”</div>' : '';
+                return '<div class="cl-qchange"><div class="meta">' + where + ' · “'
                     + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
                     + '<div class="ex old">' + (c.cleanup_change_excerpt_before || '') + '</div>'
-                    + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div></div>';
+                    + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div>' + chap + '</div>';
             }).join('') || '<div class="cl-loading">No changes.</div>';
         });
 }
@@ -4072,7 +4075,9 @@ document.addEventListener('click', function(e) {
 // Each book keeps {mode: 'all'|'none', except: {key: 1}} so a whole book (or
 // series, or everything) can be ticked without loading its matches; only
 // matches loaded on screen can be ticked/unticked one by one.
-function clItemKey(r) { return r.paragraph_key + ':' + r.start; }
+// A match's paragraph: its yy_paragraph key, or 'h' + part#idx for a running header / footer.
+function clItemPara(r) { return r.hdr ? 'h' + r.hdr : r.paragraph_key; }
+function clItemKey(r) { return clItemPara(r) + ':' + r.start; }
 function clItemOn(b, r) { var x = !!b.sel.except[clItemKey(r)]; return b.sel.mode === 'all' ? !x : x; }
 function clSetItem(b, r, on) {
     var k = clItemKey(r);
@@ -4253,11 +4258,15 @@ function clHitHtml(r, vk, i) {
         + '¶ ' + (r.number === null ? '?' : r.number);
     // Several matches in one paragraph: say which one this row is (a page
     // of matches always holds a paragraph's matches whole).
-    var same = b.items.filter(function(x) { return x.paragraph_key === r.paragraph_key; });
+    var same = b.items.filter(function(x) { return clItemPara(x) === clItemPara(r); });
     var nth = same.length > 1 ? '<span class="nth">match ' + (same.indexOf(r) + 1) + ' of ' + same.length + ' in this ¶</span>' : '';
     var chap = r.chapter_name ? esc(r.chapter_name) + ' — ' : '';
     var locHtml = '<span class="loc"' + (r.chapter_name ? ' title="' + esc(r.chapter_name) + '"' : '') + '>' + loc + nth + '</span>';
-    if (r.book_slug && r.page !== null) {
+    if (r.hdr) {
+        // A running header / footer (in the DOCX only — the parsed text has no row for it).
+        locHtml = '<span class="loc hdr" title="Running ' + esc(r.hdr_kind) + ' — Word part ' + esc(r.hdr_part)
+            + ' (repeats on every page of its section)">' + (r.hdr_kind === 'footer' ? 'Footer' : 'Running header') + nth + '</span>';
+    } else if (r.book_slug && r.page !== null) {
         var url = '/' + encodeURIComponent(r.book_slug) + '/#p=' + r.page
             + (r.number !== null ? '&h=' + r.number : '') + '&q=' + encodeURIComponent(r.match);
         locHtml = '<a class="loc" href="' + url + '" target="_blank" rel="noopener" title="' + chap
@@ -4277,7 +4286,7 @@ function clHitHtml(r, vk, i) {
         + ' title="Replace this match (untick to leave it as it is)">'
         + locHtml
         + (lrs ? '<span class="cl-lrs">' + lrs + '</span>' : '')
-        + '<button type="button" class="cl-edit" title="Edit this paragraph directly (saved as a “direct” change)">&#9998;</button>' 
+        + (r.hdr ? '' : '<button type="button" class="cl-edit" title="Edit this paragraph directly (saved as a “direct” change)">&#9998;</button>')
         + '<span class="ex" title="Click to show / hide the entire paragraph"><span class="ex-short">' + clWithReplacement(r.excerpt, r) + '</span>'
         + '<span class="ex-full">' + clWithReplacement(r.paragraph || r.excerpt, r) + '</span></span></div>';
 }
@@ -4334,13 +4343,13 @@ function clBookRequest(b) {
     b.items.forEach(function(r) { byKey[clItemKey(r)] = r; });
     var list = Object.keys(b.sel.except).map(function(k) {
         var r = byKey[k];
-        return r ? {paragraph_key: r.paragraph_key, start: r.start, match: r.match} : null;
+        return r ? {paragraph_key: r.paragraph_key, hdr: r.hdr || null, start: r.start, match: r.match} : null;
     }).filter(Boolean);
     var req = b.sel.mode === 'all' ? (list.length ? {mode: 'all', exclude: list} : {mode: 'all'}) : {mode: 'some', targets: list};
     // The half ring for each ❜, per loaded match (the server defaults the rest).
     if (clAposCount()) {
         req.apos = b.items.filter(function(r) { return clItemOn(b, r); }).map(function(r) {
-            return {paragraph_key: r.paragraph_key, start: r.start, match: r.match, apos: clAposFor(r).join('')};
+            return {paragraph_key: r.paragraph_key, hdr: r.hdr || null, start: r.start, match: r.match, apos: clAposFor(r).join('')};
         });
     }
     return req;
@@ -4365,7 +4374,7 @@ function clReplaceSelected() {
     if (!clConfirmEmpty(args)) return;
 
     clBusy = true; clSyncSel();
-    var tot = {replaced: 0, books: 0, unchanged: 0}, problems = [];
+    var tot = {replaced: 0, books: 0, unchanged: 0, headers: 0}, problems = [], chapters = [];
     var name = function(vk) { var v = s.books[vk].v; return v.volume_code || v.volume_label; };
     var step = function(i) {
         if (i >= vks.length) return Promise.resolve();
@@ -4375,6 +4384,8 @@ function clReplaceSelected() {
             if (r.error) { problems.push(r.error); return; }
             if (r.replaced) { tot.replaced += r.replaced; tot.books++; }
             tot.unchanged += r.unchanged || 0;
+            tot.headers += r.headers || 0;
+            (r.chapters || []).forEach(function(c) { chapters.push(name(vks[i]) + ': “' + c.before + '” → “' + c.after + '”'); });
             if (r.unmapped) problems.push(name(vks[i]) + ': ' + r.unmapped + ' not found in the DOCX — left unchanged');
             if (r.missing) problems.push(name(vks[i]) + ': ' + r.missing + ' ticked match' + (r.missing === 1 ? ' was' : 'es were') + ' no longer in the text');
             (r.failed || []).forEach(function(f) { problems.push(name(vks[i]) + ': ' + f); });
@@ -4386,7 +4397,9 @@ function clReplaceSelected() {
         clBusy = false;
         var msg = '<span class="ok">Replaced ' + tot.replaced + ' in ' + tot.books + ' book' + (tot.books === 1 ? '' : 's')
             + ' — queued until you Commit Changes.</span>'
-            + (tot.unchanged ? ' <span class="code">' + tot.unchanged + ' already identical — skipped, nothing written</span>' : '');
+            + (tot.unchanged ? ' <span class="code">' + tot.unchanged + ' already identical — skipped, nothing written</span>' : '')
+            + (tot.headers ? ' <span class="code">' + tot.headers + ' in running headers / footers</span>' : '');
+        if (chapters.length) msg += '<br>Chapter name' + (chapters.length === 1 ? '' : 's') + ' updated to match the heading: ' + chapters.map(esc).join('; ');
         if (problems.length) msg += '<br><span class="bad">' + problems.map(esc).join('<br>') + '</span>';
         clLoadPending();
         // Re-run the search so the list shows what is left.
@@ -4702,6 +4715,11 @@ function deSave() {
             deClosePop();
             ed.host.classList.remove('de-editing');
             if (ed.opts.onSaved) ed.opts.onSaved(d.html, !!d.unchanged);
+            if (d.chapters && d.chapters.length) {
+                alert('This paragraph is a chapter heading, so the chapter name was updated to match:\n\n'
+                    + d.chapters.map(function(c) { return '“' + c.before + '” → “' + c.after + '”'; }).join('\n')
+                    + '\n\nDiscarding the change puts the old name back.');
+            }
             clLoadPending();
             if (hiBound) hiLoad();
         }, function(e) { btn.disabled = false; deMsg(String(e && e.message || e), true); });
