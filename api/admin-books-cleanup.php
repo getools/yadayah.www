@@ -42,6 +42,8 @@ const CLEANUP_WORD_SCRIPT_SQL = "CASE
 // Find wildcard: ❜ (U+275C, the page's "any apostrophe" key) matches any one
 // half-ring or apostrophe-like mark. Keep in step with APOS_CLASS in
 // _docx_replace.py so Replace finds exactly what Search found.
+// Per book, search reports up to this many distinct (match text, format) kinds.
+const CLEANUP_KINDS_MAX = 300;
 const CLEANUP_APOS_WILDCARD = "\u{275C}";
 const CLEANUP_APOS_CLASS = "[\u{02BF}\u{02BE}'`\u{2018}\u{2019}\u{201A}\u{201B}\u{00B4}\u{02BC}\u{02BB}\u{02B9}\u{2032}]";
 const CLEANUP_WORD_SCRIPTS = [
@@ -108,6 +110,9 @@ if ($action === 'matches') {
                 'chapter_name'  => $r['chapter_name'],
                 'match'         => $hit,
                 'start'         => $start,
+                // 'b' / 'i' / 'bi' / '' when the whole match has one format, null when mixed
+                // (the page uses it to spot replacements that would change nothing).
+                'fmt'           => cleanupMatchFormat($parsed['runs'], $text, $start, $end),
                 'excerpt'       => cleanupExcerpt($parsed['runs'], $text, $start, $end),
                 'paragraph'     => cleanupExcerpt($parsed['runs'], $text, $start, $end, null),
             ];
@@ -127,6 +132,7 @@ $db->prepare("DECLARE cl_cur NO SCROLL CURSOR FOR
                WHERE p.paragraph_active_flag AND p.paragraph_text_plain $op " . $db->quote($like)
            . ($volumeKeys ? ' AND p.volume_key IN (' . implode(',', $volumeKeys) . ')' : ''))->execute();
 $counts = [];
+$kinds = [];       // vk → [match \0 fmt → n], or false past CLEANUP_KINDS_MAX
 $total = 0;
 $formatRejected = 0;
 $scanned = 0;
@@ -147,6 +153,13 @@ while (true) {
             $total++;
             $vk = (int)$r['volume_key'];
             $counts[$vk] = ($counts[$vk] ?? 0) + 1;
+            // How many of each (exact text, format): lets the page tell which
+            // matches a Replace would leave unchanged without loading them.
+            if (isset($kinds[$vk]) && $kinds[$vk] === false) continue;
+            $fmt = cleanupMatchFormat($parsed['runs'], $text, $start, $start + strlen($hit));
+            $kk = $hit . "\x00" . ($fmt ?? '~');
+            if (!isset($kinds[$vk][$kk]) && count($kinds[$vk] ?? []) >= CLEANUP_KINDS_MAX) { $kinds[$vk] = false; continue; }
+            $kinds[$vk][$kk] = ($kinds[$vk][$kk] ?? 0) + 1;
         }
     }
 }
@@ -169,6 +182,11 @@ if ($counts) {
             'series_key'    => $v['series_key'] === null ? null : (int)$v['series_key'],
             'series_label'  => $v['series_label'],
             'count'         => $counts[(int)$v['volume_key']],
+            // [[match, fmt ('b'/'i'/'bi'/'' or null = mixed), n], …]; null when too varied
+            'kinds'         => empty($kinds[(int)$v['volume_key']]) ? null : array_map(function ($kk, $n) {
+                [$hit, $fmt] = explode("\x00", $kk, 2);
+                return [$hit, $fmt === '~' ? null : $fmt, $n];
+            }, array_keys($kinds[(int)$v['volume_key']]), $kinds[(int)$v['volume_key']]),
         ];
     }
 }
@@ -214,6 +232,24 @@ function cleanupHasFormat(array $runs, string $text, int $start, int $end, bool 
         if (preg_replace('/[\s\x{02BE}\x{02BF}\x{02BC}]+/u', '', $piece) !== '') return false;
     }
     return true;
+}
+
+/**
+ * The one format of [start,end) as 'b' / 'i' / 'bi' / '', or null when mixed.
+ * Whitespace and half-rings don't count, as in cleanupHasFormat().
+ */
+function cleanupMatchFormat(array $runs, string $text, int $start, int $end, bool $first = false): ?string {
+    $fmt = null;
+    foreach ($runs as [$rs, $re, $rb, $ri]) {
+        if ($re <= $start || $rs >= $end) continue;
+        $piece = substr($text, max($rs, $start), min($re, $end) - max($rs, $start));
+        if (preg_replace('/[\s\x{02BE}\x{02BF}\x{02BC}]+/u', '', $piece) === '') continue;
+        $f = ($rb ? 'b' : '') . ($ri ? 'i' : '');
+        if ($first) return $f;   // mixed: the first run's format
+        if ($fmt !== null && $fmt !== $f) return null;
+        $fmt = $f;
+    }
+    return $fmt ?? '';
 }
 
 /** Back up / forward to a UTF-8 character boundary. */
@@ -364,6 +400,10 @@ function cleanupReplace(array $authUser): void {
     $matchCase = !empty($in['case']);
     $wholeWord = !empty($in['word']);
     $rBold = !empty($in['rbold']); $rItalic = !empty($in['ritalic']);
+    // Find and Replace set the same B / I: only the text changes, each match
+    // keeps its formatting. Otherwise every replacement gets Replace's B / I.
+    $keepFmt = $wantBold === $rBold && $wantItalic === $rItalic;
+    $rFmt = ($rBold ? 'b' : '') . ($rItalic ? 'i' : '');
     $vk = (int)($in['volume_key'] ?? 0);
     if (!$vk) errorResponse('volume_key required');
 
@@ -418,6 +458,7 @@ function cleanupReplace(array $authUser): void {
         return cleanupAposResolve($replace, $hit, $pick);
     };
     $targetsFound = 0;
+    $unchanged = 0;    // chosen matches the replacement would leave exactly as they are
     while ($r = $st->fetch()) {
         $pk = (int)$r['paragraph_key'];
         $parsed = cleanupParseHtml((string)$r['paragraph_text_html']);
@@ -442,9 +483,20 @@ function cleanupReplace(array $authUser): void {
                     && !(isset($exclude[$id]) && $exclude[$id] === $hit);
             }
             $rep = $apply ? $replFor($id, $hit) : $replace;
-            $meta[$id] = [$pk, $start, $hit, $rep];
+            // The format the replacement gets: Replace's B / I when they differ
+            // from Find's, else the match keeps its own (first run's if mixed).
+            $fmt = cleanupMatchFormat($parsed['runs'], $text, $start, $end);
+            $eff = $keepFmt ? ($fmt ?? cleanupMatchFormat($parsed['runs'], $text, $start, $end, true)) : $rFmt;
+            // Same text, same format: nothing would change, so no DB or DOCX edit.
+            if ($apply && $rep === $hit && ($keepFmt || $fmt === $rFmt)) {
+                $apply = false;
+                $unchanged++;
+            }
+            $effB = strpos($eff, 'b') !== false; $effI = strpos($eff, 'i') !== false;
+            $meta[$id] = [$pk, $start, $hit, $rep, $effB, $effI];
             $d = ['id' => $id, 'apply' => $apply, 'pos' => $base + $start, 'end' => $base + $end];
             if ($rep !== $replace) $d['replace'] = $rep;
+            if ($effB !== $rBold || $effI !== $rItalic) { $d['bold'] = $effB; $d['italic'] = $effI; }
             $dbList[] = $d;
         }
     }
@@ -454,7 +506,8 @@ function cleanupReplace(array $authUser): void {
     $toApply = count(array_filter($dbList, function ($d) { return $d['apply']; }));
     // Ticked matches the text no longer has (changed since the search).
     $missing = $mode === 'some' ? count($targets) - $targetsFound : 0;
-    if (!$toApply) jsonResponse(['volume_key' => $vk, 'replaced' => 0, 'unmapped' => 0, 'missing' => $missing, 'failed' => [], 'items' => []]);
+    if (!$toApply) jsonResponse(['volume_key' => $vk, 'replaced' => 0, 'unmapped' => 0, 'missing' => $missing, 'failed' => [], 'items' => [],
+                                 'unchanged' => $unchanged]);
     foreach ($dbList as &$d) {
         $d['before'] = cleanupUtf8Clean(substr($stream, max(0, $d['pos'] - 600), $d['pos'] - max(0, $d['pos'] - 600)));
         $d['after']  = cleanupUtf8Clean(substr($stream, $d['end'], 600));
@@ -492,9 +545,9 @@ function cleanupReplace(array $authUser): void {
                 $oldParsed = cleanupParseHtml((string)$old['paragraph_text_html']);
                 usort($list, function ($a, $b) { return $b[1] - $a[1]; });   // last match first
                 $html = (string)$old['paragraph_text_html'];
-                foreach ($list as [, $start, $hit, $rep]) {
+                foreach ($list as [, $start, $hit, $rep, $effB, $effI]) {
                     $html = cleanupHtmlReplace($html, $start, $start + strlen($hit),
-                        cleanupReplacementSegments($rep, $rBold, $rItalic));
+                        cleanupReplacementSegments($rep, $effB, $effI));
                 }
                 $parsed = cleanupParseHtml($html);
                 $rows[$pk] = [$html, trim(preg_replace('/\s+/u', ' ', $parsed['text'])), cleanupRawJson($html)];
@@ -590,6 +643,7 @@ function cleanupReplace(array $authUser): void {
         'docx_matches' => $res['docx_matches'] ?? null,
         'items'        => $items,
         'missing'      => $missing,
+        'unchanged'    => $unchanged,
     ]);
 }
 

@@ -274,7 +274,13 @@
         .cl-sel-bar { flex-basis: 100%; display: flex; align-items: center; gap: 14px; padding: 6px 12px;
             background: #fff; border: 1px solid #d5dbe2; border-radius: 6px; order: 3; }
         .cl-sel-all { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #555; cursor: pointer; }
-        .cl-sel-bar #cl-rep-run:disabled { opacity: 0.45; cursor: default; }
+        .cl-sel-bar #cl-rep-run:disabled, .cl-sel-bot .cl-rep-btn:disabled { opacity: 0.45; cursor: default; }
+        .cl-sel-bot { display: flex; margin-top: 10px; padding: 6px 12px; background: #fff; border: 1px solid #d5dbe2; border-radius: 6px; }
+        .cl-sel-bot[hidden] { display: none; }
+        /* A ticked match the replacement would leave exactly as it is: not counted, not sent. */
+        .cl-hit.noop .ex mark { text-decoration: none !important; background: #e8eaed !important; }
+        .cl-hit.noop .ex ins.cl-new { display: none; }
+        .cl-hit.noop .loc::after { content: 'no change — skipped'; display: block; color: #888; font-style: italic; }
         /* Top-aligned with the row's first line of text, not centred on a long excerpt. */
         .cl-hit { align-items: flex-start; }
         .cl-hit > .cl-sel { flex: none; align-self: flex-start; margin: 4px 0 0; cursor: pointer; }
@@ -619,8 +625,8 @@
                     <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʾ" title="Insert right half ring">ʾ</button>
                     <button type="button" class="cl-ring" data-for="cl-replace" data-ch="ʿ" title="Insert left half ring">ʿ</button>
                     <button type="button" class="cl-ring cl-apos" data-for="cl-replace" data-ch="❜" title="Half ring chosen per match: inserts ❜, and every match row gets a ʿ / ʾ toggle for it (one pair per ❜) — the one you pick goes where the ❜ is. Matches you have not loaded get the default: the half ring that matches the apostrophe in the found text (ʿ ‘ ` ‛ ʻ → ʿ, anything else → ʾ)">❜</button>
-                    <button type="button" class="cl-fmt" id="cl-rbold" title="Bold — the replacement text is bold"><b>B</b></button>
-                    <button type="button" class="cl-fmt" id="cl-ritalic" title="Italic — the replacement text is italic"><i>I</i></button>
+                    <button type="button" class="cl-fmt" id="cl-rbold" title="Bold — the replacement text is bold. When Replace B / I match Find B / I, each match keeps its own formatting instead"><b>B</b></button>
+                    <button type="button" class="cl-fmt" id="cl-ritalic" title="Italic — the replacement text is italic. When Replace B / I match Find B / I, each match keeps its own formatting instead"><i>I</i></button>
                 </div>
 
                 <span class="cl-lbl">Books</span>
@@ -662,7 +668,7 @@
             <div id="cl-summary" class="cl-summary"></div>
             <div class="cl-sel-bar">
                 <label class="cl-sel-all" title="Tick / untick every match"><input type="checkbox" id="cl-sel-all" disabled> All</label>
-                <button type="button" class="btn btn-primary btn-sm" id="cl-rep-run" onclick="clReplaceSelected()" disabled
+                <button type="button" class="btn btn-primary btn-sm cl-rep-btn" id="cl-rep-run" onclick="clReplaceSelected()" disabled
                         title="Replace every ticked match with the Replace text (DOCX changes are queued until you reprocess)">Replace 0 of 0 selected matches</button>
             </div>
             <div class="cl-res-tools">
@@ -673,6 +679,10 @@
             </div>
         </div>
         <div id="cl-results"></div>
+        <div class="cl-sel-bot" id="cl-res-bot" hidden>
+            <button type="button" class="btn btn-primary btn-sm cl-rep-btn" onclick="clReplaceSelected()" disabled
+                    title="Replace every ticked match with the Replace text (DOCX changes are queued until you reprocess)">Replace 0 of 0 selected matches</button>
+        </div>
     </div>
 </div>
 
@@ -3408,6 +3418,33 @@ function clBookOnCount(b) {
     return b.sel.mode === 'all' ? b.v.count - n : n;
 }
 function clSetBook(b, on) { b.sel = {mode: on ? 'all' : 'none', except: {}}; }
+// Would replacing this match change nothing (same text, same format)? Only
+// known for loaded rows; the server skips such matches in unloaded ones too.
+// Find and Replace with the same B / I: each match keeps its own format, so
+// only the text matters. Otherwise Replace's B / I is applied, and a match
+// already in that format (and spelt the same) is the only no-op.
+// Keep in step with cleanupReplace() ($keepFmt).
+function clItemNoop(r) {
+    if (clReplaceText(r) !== r.match) return false;
+    var rb = clIsOn('cl-rbold'), ri = clIsOn('cl-ritalic');
+    if (clLast && !!clLast.bold === rb && !!clLast.italic === ri) return true;
+    return typeof r.fmt === 'string' && r.fmt === (rb ? 'b' : '') + (ri ? 'i' : '');
+}
+// Ticked matches that would actually change: what "Replace X" counts.
+// The search's per-book kinds ([match, fmt, n]) cover matches not loaded
+// yet, at their default ❜ picks; loaded rows then swap in their real state.
+function clBookDoCount(b) {
+    var kinds = b.sel.mode === 'all' && b.v.kinds;
+    if (!kinds) return clBookOnCount(b) - b.items.filter(function(r) { return clItemOn(b, r) && clItemNoop(r); }).length;
+    var x = 0;
+    kinds.forEach(function(k) { if (!clItemNoop({match: k[0], fmt: k[1]})) x += k[2]; });
+    b.items.forEach(function(r) {
+        var dflt = clItemNoop({match: r.match, fmt: r.fmt}) ? 0 : 1;
+        var real = clItemOn(b, r) && !clItemNoop(r) ? 1 : 0;
+        x += real - dflt;
+    });
+    return Math.max(0, x);
+}
 
 function clSetBox(cb, on, total) {
     cb.checked = on > 0 && on === total;
@@ -3416,17 +3453,19 @@ function clSetBox(cb, on, total) {
 
 // Bring every checkbox, the row styling and the Replace button in line with the selection.
 function clSyncSel() {
-    var btn = document.getElementById('cl-rep-run');
+    var btns = document.querySelectorAll('#tab-cleanup .cl-rep-btn');
     var all = document.getElementById('cl-sel-all');
+    var bot = document.getElementById('cl-res-bot');
     if (!clLast || !clLast.order) {
-        btn.textContent = 'Replace 0 of 0 selected matches'; btn.disabled = true;
+        btns.forEach(function(btn) { btn.textContent = 'Replace 0 of 0 selected matches'; btn.disabled = true; });
         all.checked = false; all.indeterminate = false; all.disabled = true;
+        bot.hidden = true;
         return;
     }
     var s = clLast, x = 0;
     s.order.forEach(function(vk) {
         var b = s.books[vk], on = clBookOnCount(b);
-        x += on;
+        x += clBookDoCount(b);
         var fold = document.querySelector('#cl-results .cl-book[data-vk="' + vk + '"]');
         if (!fold) return;
         clSetBox(fold.querySelector(':scope > .cl-fold-hrow .cl-sel'), on, b.v.count);
@@ -3435,6 +3474,7 @@ function clSyncSel() {
             var picked = clItemOn(b, r);
             row.querySelector('.cl-sel').checked = picked;
             row.classList.toggle('unpicked', !picked);
+            row.classList.toggle('noop', picked && clItemNoop(r));
         });
     });
     (s.series || []).forEach(function(g) {
@@ -3445,8 +3485,11 @@ function clSyncSel() {
     });
     all.disabled = !s.total;
     clSetBox(all, x, s.total);
-    btn.textContent = 'Replace ' + x + ' of ' + s.total + ' selected match' + (s.total === 1 ? '' : 'es');
-    btn.disabled = clBusy || !x;
+    btns.forEach(function(btn) {
+        btn.textContent = 'Replace ' + x + ' of ' + s.total + ' selected match' + (s.total === 1 ? '' : 'es');
+        btn.disabled = clBusy || !x;
+    });
+    bot.hidden = !s.total;
 }
 
 document.addEventListener('change', function(e) {
@@ -3503,6 +3546,10 @@ function clReplacement(r) {
     var text = clReplaceText(r);
     var b = clIsOn('cl-rbold'), i = clIsOn('cl-ritalic');
     if (text === '' && !b && !i) return null;
+    if (r && clLast && !!clLast.bold === b && !!clLast.italic === i) {   // the match keeps its own format
+        var f = r.fmt || '';
+        b = f.indexOf('b') >= 0; i = f.indexOf('i') >= 0;
+    }
     var h = esc(text);
     if (i) h = '<i>' + h + '</i>';
     if (b) h = '<b>' + h + '</b>';
@@ -3516,6 +3563,7 @@ function clRefreshRows() {
     if (!clLast) return;
     document.getElementById('cl-results').classList.toggle('replacing', clReplacement() !== null);
     clLast.order.forEach(function(vk) { if (clLast.books[vk].loaded) clRenderBook(vk); });
+    clSyncSel();   // the Replace count leaves out matches that would not change
 }
 
 function clHitHtml(r, vk, i) {
@@ -3532,7 +3580,7 @@ function clHitHtml(r, vk, i) {
         locHtml = '<a class="loc" href="' + url + '" target="_blank" rel="noopener" title="' + chap
             + 'Open this page in the flipbook">' + loc + '<span class="ext">&#8599;</span></a>';
     }
-    var cls = 'cl-hit' + (r.flip ? ' flip' : '') + (picked ? '' : ' unpicked');
+    var cls = 'cl-hit' + (r.flip ? ' flip' : '') + (picked ? '' : ' unpicked') + (picked && clItemNoop(r) ? ' noop' : '');
     var lrs = clAposFor(r).map(function(ch, k) {
         var n = ' for ❜ #' + (k + 1) + ' in Replace';
         return '<span class="cl-lr" data-k="' + k + '">'
@@ -3558,6 +3606,7 @@ document.addEventListener('click', function(e) {
     r.apos = clAposFor(r);
     r.apos[+btn.parentNode.getAttribute('data-k')] = btn.getAttribute('data-ch');
     row.outerHTML = clHitHtml(r, vk, i);
+    clSyncSel();
 });
 
 function clReplaceArgs() {
@@ -3609,8 +3658,8 @@ function clBookRequest(b) {
 function clReplaceSelected() {
     if (clBusy || !clLast) return;
     var s = clLast, args = clReplaceArgs();
-    var vks = s.order.filter(function(vk) { return clBookOnCount(s.books[vk]) > 0; });
-    var x = vks.reduce(function(n, vk) { return n + clBookOnCount(s.books[vk]); }, 0);
+    var vks = s.order.filter(function(vk) { return clBookDoCount(s.books[vk]) > 0; });
+    var x = vks.reduce(function(n, vk) { return n + clBookDoCount(s.books[vk]); }, 0);
     if (!x) return;
     var fmt = [args.rbold ? 'bold' : '', args.ritalic ? 'italic' : ''].filter(Boolean).join(' + ');
     if (!confirm('Replace ' + x + ' of ' + s.total + ' match' + (s.total === 1 ? '' : 'es') + ' of “' + s.q + '” with “' + args.replace + '”'
@@ -3622,7 +3671,7 @@ function clReplaceSelected() {
     if (!clConfirmEmpty(args)) return;
 
     clBusy = true; clSyncSel();
-    var tot = {replaced: 0, books: 0}, problems = [];
+    var tot = {replaced: 0, books: 0, unchanged: 0}, problems = [];
     var name = function(vk) { var v = s.books[vk].v; return v.volume_code || v.volume_label; };
     var step = function(i) {
         if (i >= vks.length) return Promise.resolve();
@@ -3631,6 +3680,7 @@ function clReplaceSelected() {
         return clPost('replace', body).then(function(r) {
             if (r.error) { problems.push(r.error); return; }
             if (r.replaced) { tot.replaced += r.replaced; tot.books++; }
+            tot.unchanged += r.unchanged || 0;
             if (r.unmapped) problems.push(name(vks[i]) + ': ' + r.unmapped + ' not found in the DOCX — left unchanged');
             if (r.missing) problems.push(name(vks[i]) + ': ' + r.missing + ' ticked match' + (r.missing === 1 ? ' was' : 'es were') + ' no longer in the text');
             (r.failed || []).forEach(function(f) { problems.push(name(vks[i]) + ': ' + f); });
@@ -3641,7 +3691,8 @@ function clReplaceSelected() {
     step(0).then(function() {
         clBusy = false;
         var msg = '<span class="ok">Replaced ' + tot.replaced + ' in ' + tot.books + ' book' + (tot.books === 1 ? '' : 's')
-            + ' — queued until you reprocess.</span>';
+            + ' — queued until you reprocess.</span>'
+            + (tot.unchanged ? ' <span class="code">' + tot.unchanged + ' already identical — skipped, nothing written</span>' : '');
         if (problems.length) msg += '<br><span class="bad">' + problems.map(esc).join('<br>') + '</span>';
         clLoadPending();
         // Re-run the search so the list shows what is left.
