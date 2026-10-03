@@ -18,6 +18,8 @@
  * GET  ?action=history[&status=pending,processed,discarded][&volume=N][&q=…][&offset=N]
  *        Every Replace batch ever made, newest first, queued or committed (or
  *        discarded); &batch=ID lists one batch's changes. See cleanupHistory().
+ * GET  ?action=direct_books | direct_chapters&volume=N | direct_page&volume=N&page=P | direct_para&key=K
+ * POST ?action=direct_save — Edit → Direct: edit one paragraph in place; see cleanupDirectSave().
  * GET  ?action=word_meta / ?action=words — the glossary word picker; see cleanupWords().
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
@@ -47,6 +49,9 @@ const CLEANUP_WORD_SCRIPT_SQL = "CASE
 // _docx_replace.py so Replace finds exactly what Search found.
 // Per book, search reports up to this many distinct (match text, format) kinds.
 const CLEANUP_KINDS_MAX = 300;
+// Edit → Direct: the fonts the editor offers (the DOCX fonts the books use).
+const CLEANUP_DIRECT_FONTS = ['Times New Roman', 'Yada Towrah', 'Arial', 'Calibri', 'Tahoma', 'Jupiter-Yada',
+                              'Semitic Early', 'Moabite Stone', 'Isaiah Scroll'];
 const CLEANUP_APOS_WILDCARD = "\u{275C}";
 const CLEANUP_APOS_CLASS = "[\u{02BF}\u{02BE}'`\u{2018}\u{2019}\u{201A}\u{201B}\u{00B4}\u{02BC}\u{02BB}\u{02B9}\u{2032}]";
 const CLEANUP_WORD_SCRIPTS = [
@@ -60,6 +65,11 @@ if ($action === 'pending')   cleanupPending();
 if ($action === 'reprocess') cleanupReprocess($authUser);
 if ($action === 'discard')   cleanupDiscard($authUser);
 if ($action === 'history')   cleanupHistory();
+if ($action === 'direct_books')    cleanupDirectBooks();
+if ($action === 'direct_chapters') cleanupDirectChapters();
+if ($action === 'direct_page')     cleanupDirectPage();
+if ($action === 'direct_para')     cleanupDirectPara();
+if ($action === 'direct_save')     cleanupDirectSave($authUser);
 if ($action === 'word_meta') cleanupWordMeta();
 if ($action === 'words')     cleanupWords();
 if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
@@ -601,7 +611,7 @@ function cleanupReplace(array $authUser): void {
         // 3. Paragraphs + change log in one transaction; on failure undo step 2.
         try {
             $batch = bin2hex(random_bytes(8));
-            $opts = json_encode(['mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
+            $opts = json_encode(['type' => 'replace', 'mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
                                  'rbold' => $rBold, 'ritalic' => $rItalic, 'replace' => $replace,
                                  // the page's id for one Replace click across books (Replace History groups by it)
                                  'run' => substr(preg_replace('/[^a-z0-9]/', '', (string)($in['run'] ?? '')), 0, 40) ?: null]);
@@ -676,6 +686,11 @@ function cleanupHistory(): void {
     $where = ['c.cleanup_change_status IN (' . implode(',', array_map([$db, 'quote'], $statuses)) . ')'];
     $args = [];
     if ((int)($_GET['volume'] ?? 0)) { $where[] = 'c.volume_key = ?'; $args[] = (int)$_GET['volume']; }
+    // Type: replace (search/replace — also every change from before types were recorded), direct, ai.
+    $types = array_values(array_intersect(['replace', 'direct', 'ai'], explode(',', (string)($_GET['type'] ?? ''))));
+    if ($types) {
+        $where[] = "coalesce(c.cleanup_change_options->>'type', 'replace') IN (" . implode(',', array_map([$db, 'quote'], $types)) . ')';
+    }
     $user = (string)($_GET['user'] ?? '');
     if ($user !== '') { $where[] = 'c.cleanup_change_user_name = ?'; $args[] = $user; }
     // When: from (inclusive) / to (exclusive) instants; the page sends local
@@ -741,6 +756,330 @@ function cleanupHistory(): void {
                   'volumes' => array_map(function ($v) {
                       return ['volume_key' => (int)$v['volume_key'], 'label' => $v['volume_code'] ?: $v['volume_label']];
                   }, $vols)]);
+}
+
+/* ── Edit → Direct: edit one paragraph in place ──────────────────────────
+ *
+ * GET  ?action=direct_books                    every book with paragraphs, by series
+ * GET  ?action=direct_chapters&volume=N        its chapters and the pages of each
+ * GET  ?action=direct_page&volume=N&page=P     the paragraphs on one page (+ page image)
+ * GET  ?action=direct_para&key=K               one paragraph (Search/Replace's ✎)
+ * POST ?action=direct_save {paragraph_key, base_html, runs, source}
+ *
+ * A direct edit goes through the same queue as Search/Replace: the paragraph
+ * changes at once, the book's DOCX is edited in its STAGED copy, and nothing
+ * rebuilds until the change is committed on the Changes tab. _docx_direct.py
+ * finds the paragraph in the DOCX and rewrites only the stretches that
+ * changed; if any stretch can't be placed, nothing changes anywhere.
+ *
+ * runs = [{t, b, i, u, f, sz, st}] — text, bold, italic, underline, font
+ * (data-font), size in points (data-size), and the parser's data-style.
+ */
+function cleanupDirectBooks(): void {
+    $db = getDb();
+    $rows = $db->query("SELECT v.volume_key, v.volume_code, v.volume_label, v.volume_number, v.series_key,
+                               s.series_label, count(p.paragraph_key) AS n, max(p.paragraph_page) AS pages
+                          FROM yy_volume v
+                          JOIN yy_paragraph p ON p.volume_key = v.volume_key AND p.paragraph_active_flag
+                          LEFT JOIN yy_series s ON s.series_key = v.series_key
+                         GROUP BY v.volume_key, v.volume_code, v.volume_label, v.volume_number, v.series_key,
+                                  s.series_key, s.series_label, s.series_sort, v.volume_sort
+                         ORDER BY s.series_sort, s.series_key, v.volume_sort, v.volume_number, v.volume_key")->fetchAll();
+    jsonResponse(['books' => array_map(function ($r) {
+        return ['volume_key' => (int)$r['volume_key'], 'volume_code' => $r['volume_code'], 'volume_label' => $r['volume_label'],
+                'volume_number' => $r['volume_number'] === null ? null : (int)$r['volume_number'],
+                'series_key' => $r['series_key'] === null ? null : (int)$r['series_key'], 'series_label' => $r['series_label'],
+                'paragraphs' => (int)$r['n'], 'pages' => (int)$r['pages']];
+    }, $rows), 'fonts' => CLEANUP_DIRECT_FONTS]);
+}
+
+function cleanupDirectChapters(): void {
+    $db = getDb();
+    $vk = (int)($_GET['volume'] ?? 0);
+    $st = $db->prepare("SELECT p.chapter_key, c.chapter_number, c.chapter_name,
+                               array_to_json(array_agg(DISTINCT p.paragraph_page ORDER BY p.paragraph_page)
+                                             FILTER (WHERE p.paragraph_page IS NOT NULL)) AS pages,
+                               min(p.paragraph_number) AS first_num
+                          FROM yy_paragraph p LEFT JOIN yy_chapter c ON c.chapter_key = p.chapter_key
+                         WHERE p.volume_key = ? AND p.paragraph_active_flag
+                         GROUP BY p.chapter_key, c.chapter_number, c.chapter_name
+                         ORDER BY min(p.paragraph_number)");
+    $st->execute([$vk]);
+    $vol = cleanupVolume($db, $vk);
+    $paths = cleanupPaths($vol);
+    jsonResponse([
+        'chapters' => array_map(function ($r) {
+            return ['chapter_key' => $r['chapter_key'] === null ? null : (int)$r['chapter_key'],
+                    'number' => $r['chapter_number'] === null ? null : (int)$r['chapter_number'],
+                    'name' => $r['chapter_name'], 'pages' => json_decode((string)$r['pages'], true) ?: []];
+        }, $st->fetchAll()),
+        'book_slug' => cleanupBookSlug($vol['volume_code']),
+        'stage' => $paths['name'] && is_file($paths['live']) ? cleanupStageState($paths) : 'nodocx',
+        'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null,
+    ]);
+}
+
+/** The page image the flipbook shows for PDF page $page, if there is one. */
+function cleanupPageImage(?string $slug, int $page): ?string {
+    if (!$slug || $page < 1) return null;
+    $root = is_dir('/var/www/html') ? '/var/www/html' : dirname(__DIR__) . '/public';
+    foreach ([sprintf('page-%03d.jpg', $page), sprintf('page-%04d.jpg', $page)] as $f) {
+        if (is_file("$root/$slug/pages/$f")) return "/$slug/pages/$f";
+    }
+    return null;
+}
+
+function cleanupDirectRow(array $r, array $queued): array {
+    return ['paragraph_key' => (int)$r['paragraph_key'], 'number' => (int)$r['paragraph_number'],
+            'page' => $r['paragraph_page'] === null ? null : (int)$r['paragraph_page'],
+            'chapter_key' => $r['chapter_key'] === null ? null : (int)$r['chapter_key'],
+            'html' => (string)$r['paragraph_text_html'], 'is_table' => (bool)$r['paragraph_is_table'],
+            'queued' => (int)($queued[(int)$r['paragraph_key']] ?? 0)];
+}
+
+/** paragraph_key → how many of its changes are queued. */
+function cleanupQueuedFor(PDO $db, array $keys): array {
+    if (!$keys) return [];
+    $st = $db->query('SELECT paragraph_key, count(*) AS n FROM yy_cleanup_change
+                       WHERE cleanup_change_status = \'pending\' AND paragraph_key IN (' . implode(',', array_map('intval', $keys)) . ')
+                       GROUP BY paragraph_key');
+    $out = [];
+    foreach ($st->fetchAll() as $r) $out[(int)$r['paragraph_key']] = (int)$r['n'];
+    return $out;
+}
+
+function cleanupDirectPage(): void {
+    $db = getDb();
+    $vk = (int)($_GET['volume'] ?? 0);
+    $page = (int)($_GET['page'] ?? 0);
+    $vol = cleanupVolume($db, $vk);
+    $st = $db->prepare('SELECT paragraph_key, paragraph_number, paragraph_page, chapter_key, paragraph_text_html, paragraph_is_table
+                          FROM yy_paragraph WHERE volume_key = ? AND paragraph_page = ? AND paragraph_active_flag
+                         ORDER BY paragraph_number');
+    $st->execute([$vk, $page]);
+    $rows = $st->fetchAll();
+    $queued = cleanupQueuedFor($db, array_column($rows, 'paragraph_key'));
+    $slug = cleanupBookSlug($vol['volume_code']);
+    jsonResponse(['page' => $page, 'image' => cleanupPageImage($slug, $page), 'book_slug' => $slug,
+                  'paragraphs' => array_map(function ($r) use ($queued) { return cleanupDirectRow($r, $queued); }, $rows)]);
+}
+
+function cleanupDirectPara(): void {
+    $db = getDb();
+    $st = $db->prepare('SELECT paragraph_key, paragraph_number, paragraph_page, chapter_key, paragraph_text_html, paragraph_is_table,
+                               volume_key FROM yy_paragraph WHERE paragraph_key = ? AND paragraph_active_flag');
+    $st->execute([(int)($_GET['key'] ?? 0)]);
+    $r = $st->fetch();
+    if (!$r) errorResponse('Paragraph not found', 404);
+    jsonResponse(['paragraph' => cleanupDirectRow($r, cleanupQueuedFor($db, [(int)$r['paragraph_key']])) + ['volume_key' => (int)$r['volume_key']]]);
+}
+
+/** Paragraph HTML → runs [{t, b, i, u, f, sz, st}], the text as cleanupParseHtml() reads it. */
+function cleanupHtmlRuns(string $html): array {
+    $runs = [];
+    foreach (cleanupHtmlTokens($html) as $t) {
+        if ($t['text'] === '') continue;
+        $names = array_column($t['stack'], 0);
+        $f = ''; $sz = 0; $style = '';
+        for ($k = count($t['stack']) - 1; $k >= 0; $k--) {
+            [$name, $tag] = $t['stack'][$k];
+            if ($name !== 'span') continue;
+            if ($f === '' && preg_match('/data-font="([^"]*)"/', $tag, $m)) $f = html_entity_decode($m[1]);
+            if (!$sz && preg_match('/data-size="([0-9.]+)"/', $tag, $m)) $sz = (float)$m[1];
+            if ($style === '' && preg_match('/data-style="([^"]*)"/', $tag, $m)) $style = html_entity_decode($m[1]);
+        }
+        $runs[] = ['t' => $t['text'],
+                   'b' => in_array('b', $names, true) || in_array('strong', $names, true),
+                   'i' => in_array('i', $names, true) || in_array('em', $names, true),
+                   'u' => in_array('u', $names, true),
+                   'f' => $f, 'sz' => $sz, 'st' => $style];
+    }
+    return $runs;
+}
+
+/** The editor's runs, cleaned: text only, sane attributes, neighbours merged. */
+function cleanupCleanRuns($runs): array {
+    $out = [];
+    foreach ((array)$runs as $r) {
+        if (!is_array($r)) continue;
+        $t = preg_replace('/[\x00-\x08\x0B-\x1F\x7F]/u', '', str_replace(["\r\n", "\r", "\n", "\t"], ' ', (string)($r['t'] ?? '')));
+        if ($t === '' || $t === null) continue;
+        $sz = (float)($r['sz'] ?? 0);
+        $run = ['t' => $t, 'b' => !empty($r['b']), 'i' => !empty($r['i']), 'u' => !empty($r['u']),
+                'f' => mb_substr(preg_replace('/["<>]/', '', (string)($r['f'] ?? '')), 0, 60),
+                'sz' => ($sz >= 4 && $sz <= 96) ? $sz : 0,
+                'st' => substr(preg_replace('/[^a-z0-9_-]/i', '', (string)($r['st'] ?? '')), 0, 30)];
+        $last = count($out) - 1;
+        if ($last >= 0 && array_diff_key($out[$last], ['t' => 1]) == array_diff_key($run, ['t' => 1])) {
+            $out[$last]['t'] .= $t;
+        } else {
+            $out[] = $run;
+        }
+    }
+    return $out;
+}
+
+/** Runs → paragraph HTML in the parser's shape: <span data-font data-style>, <b>, <i> (+ <u>, data-size). */
+function cleanupRunsToHtml(array $runs): string {
+    $html = '';
+    foreach ($runs as $r) {
+        $h = htmlspecialchars($r['t'], ENT_NOQUOTES, 'UTF-8');
+        if ($r['u']) $h = '<u>' . $h . '</u>';
+        if ($r['i']) $h = '<i>' . $h . '</i>';
+        if ($r['b']) $h = '<b>' . $h . '</b>';
+        $attrs = '';
+        if ($r['f'] !== '') $attrs .= ' data-font="' . htmlspecialchars($r['f'], ENT_QUOTES, 'UTF-8') . '"';
+        if ($r['st'] !== '') $attrs .= ' data-style="' . htmlspecialchars($r['st'], ENT_QUOTES, 'UTF-8') . '"';
+        if ($r['sz']) $attrs .= ' data-size="' . rtrim(rtrim(number_format($r['sz'], 1, '.', ''), '0'), '.') . '"';
+        if ($attrs !== '') $h = '<span' . $attrs . '>' . $h . '</span>';
+        $html .= $h;
+    }
+    return $html;
+}
+
+/** Byte range [s, e) of $a that differs from $b, after their common prefix / suffix (UTF-8 safe). */
+function cleanupDiffSpan(string $a, string $b): array {
+    $n = min(strlen($a), strlen($b));
+    $p = 0;
+    while ($p < $n && $a[$p] === $b[$p]) $p++;
+    while ($p > 0 && (ord($a[$p] ?? "\0") & 0xC0) === 0x80) $p--;
+    $s = 0;
+    while ($s < $n - $p && $a[strlen($a) - 1 - $s] === $b[strlen($b) - 1 - $s]) $s++;
+    while ($s > 0 && (ord($a[strlen($a) - $s]) & 0xC0) === 0x80) $s--;
+    return [$p, strlen($a) - $s, strlen($b) - $s];
+}
+
+function cleanupDirectSave(array $authUser): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $pk = (int)($in['paragraph_key'] ?? 0);
+    $source = ($in['source'] ?? '') === 'search' ? 'search' : 'direct';
+    $db = getDb();
+    $st = $db->prepare('SELECT paragraph_key, volume_key, paragraph_number, paragraph_text_html, paragraph_text_plain,
+                               paragraph_text_raw, paragraph_is_table FROM yy_paragraph WHERE paragraph_key = ? AND paragraph_active_flag');
+    $st->execute([$pk]);
+    $row = $st->fetch();
+    if (!$row) errorResponse('Paragraph not found', 404);
+    if ($row['paragraph_is_table']) errorResponse('Tables cannot be edited here — edit the Word document.', 422);
+    $oldHtml = (string)$row['paragraph_text_html'];
+    if ((string)($in['base_html'] ?? '') !== $oldHtml) {
+        errorResponse('This paragraph changed since you opened it (a replace, another admin, or a re-parse). Reload it and edit again.', 409);
+    }
+    $newRuns = cleanupCleanRuns($in['runs'] ?? []);
+    $oldRuns = cleanupHtmlRuns($oldHtml);
+    $oldText = cleanupParseHtml($oldHtml)['text'];
+    $newHtml = cleanupRunsToHtml($newRuns);
+    $newParsed = cleanupParseHtml($newHtml);
+    $newText = $newParsed['text'];
+    if (trim($newText) === '') errorResponse('The paragraph would be empty — to remove a paragraph, edit the Word document.', 422);
+    $strip = function ($runs) { return array_map(function ($r) { unset($r['st']); return $r; }, cleanupCleanRuns($runs)); };
+    if ($strip($oldRuns) == $strip($newRuns)) jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]);
+
+    $vk = (int)$row['volume_key'];
+    $vol = cleanupVolume($db, $vk);
+    $label = $vol['label'];
+    cleanupCheckLock($vol, $authUser);
+    $paths = cleanupPaths($vol);
+    if (!$paths['name'] || !is_file($paths['live'])) errorResponse($label . ': no DOCX on the server to edit');
+    $lock = fopen($paths['lock'], 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) errorResponse('Could not lock ' . $label);
+    $stage = cleanupStageState($paths);
+    if ($stage === 'stale') {
+        errorResponse($label . ': a new DOCX was uploaded after the queued changes were made. Discard this book\'s queued changes first.', 409);
+    }
+    // Context for finding the paragraph in the DOCX: the paragraphs either side.
+    $ctx = $db->prepare('SELECT paragraph_number, paragraph_text_html FROM yy_paragraph
+                          WHERE volume_key = ? AND paragraph_active_flag AND paragraph_number BETWEEN ? AND ?
+                          ORDER BY paragraph_number');
+    $pn = (int)$row['paragraph_number'];
+    $ctx->execute([$vk, $pn - 3, $pn + 3]);
+    $before = ''; $after = '';
+    foreach ($ctx->fetchAll() as $c) {
+        $t = cleanupParseHtml((string)$c['paragraph_text_html'])['text'];
+        if ((int)$c['paragraph_number'] < $pn) $before .= $t . ' ';
+        elseif ((int)$c['paragraph_number'] > $pn) $after .= ' ' . $t;
+    }
+    $stageDir = dirname($paths['staged']);
+    if (!is_dir($stageDir)) @mkdir($stageDir, 0775, true);
+    $tmpOut = $stageDir . '/.' . $paths['name'] . '.direct-' . getmypid() . '.tmp';
+    $proc = proc_open(['python3', '-I', __DIR__ . '/_docx_direct.py'],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, '/');
+    if (!is_resource($proc)) errorResponse('could not start python3', 500);
+    $pyRuns = function ($runs) {
+        return array_map(function ($r) { return ['t' => $r['t'], 'b' => $r['b'], 'i' => $r['i'], 'u' => $r['u'], 'f' => $r['f'], 'sz' => $r['sz']]; }, $runs);
+    };
+    fwrite($pipes[0], json_encode([
+        'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'], 'docx_out' => $tmpOut,
+        'text' => $oldText, 'before' => $before, 'after' => $after,
+        'old' => $pyRuns($oldRuns), 'new' => $pyRuns($newRuns),
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+    fclose($pipes[0]);
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]);
+    proc_close($proc);
+    $res = json_decode((string)$out, true);
+    if (!is_array($res) || empty($res['ok'])) {
+        @unlink($tmpOut);
+        $msg = is_array($res) ? ($res['error'] ?? 'no output') : (trim($err) ?: 'no output');
+        errorResponse($label . ': the Word document could not take this edit — ' . $msg . '. Nothing was changed.', 422);
+    }
+    if (empty($res['hunks'])) { @unlink($tmpOut); jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]); }
+
+    // The staged DOCX swap, then the paragraph + change log (as cleanupReplace).
+    $prev = null;
+    if ($stage === 'ok') {
+        $prev = $paths['staged'] . '.prev';
+        @rename($paths['staged'], $prev);
+    } else {
+        @file_put_contents($paths['sidecar'], json_encode([
+            'base_md5' => md5_file($paths['live']), 'staged_at' => date('c'), 'volume_key' => $vk,
+        ]));
+    }
+    @chmod($tmpOut, 0644);
+    if (!@rename($tmpOut, $paths['staged'])) {
+        @unlink($tmpOut);
+        if ($prev) @rename($prev, $paths['staged']); else @unlink($paths['sidecar']);
+        errorResponse($label . ': could not write the staged DOCX — nothing was changed', 500);
+    }
+    try {
+        [$ds, $de, $dn] = cleanupDiffSpan($oldText, $newText);
+        $oldParsed = cleanupParseHtml($oldHtml);
+        $snip = function ($s) { return mb_strlen($s) > 120 ? mb_substr($s, 0, 117) . '…' : $s; };
+        $oldSnip = substr($oldText, $ds, $de - $ds);
+        $newSnip = substr($newText, $ds, $dn - $ds);
+        $opts = json_encode(['type' => 'direct', 'mode' => 'direct', 'source' => $source,
+                             'run' => bin2hex(random_bytes(6)), 'old' => $snip($oldSnip), 'new' => $snip($newSnip),
+                             'format_only' => $oldText === $newText], JSON_UNESCAPED_UNICODE);
+        $plain = trim(preg_replace('/\s+/u', ' ', $newText));
+        $db->beginTransaction();
+        $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?, paragraph_text_raw = ?,
+                             paragraph_revision_user_key = ? WHERE paragraph_key = ?')
+           ->execute([$newHtml, $plain, cleanupRawJson($newHtml), (int)($authUser['user_key'] ?? 0), $pk]);
+        $db->prepare('INSERT INTO yy_cleanup_change
+                (cleanup_change_batch, volume_key, paragraph_key, paragraph_number, cleanup_change_find,
+                 cleanup_change_replace, cleanup_change_options, cleanup_change_match,
+                 cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_before_raw,
+                 cleanup_change_after_html, cleanup_change_excerpt_before, cleanup_change_excerpt_after,
+                 cleanup_change_user_key, cleanup_change_user_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+           ->execute([bin2hex(random_bytes(8)), $vk, $pk, $pn, '(direct edit)', $newSnip, $opts, $oldSnip,
+                      $oldHtml, $row['paragraph_text_plain'], $row['paragraph_text_raw'], $newHtml,
+                      cleanupExcerpt($oldParsed['runs'], $oldText, $ds, max($de, min($ds + 1, strlen($oldText)))),
+                      cleanupExcerpt($newParsed['runs'], $newText, $ds, max($dn, min($ds + 1, strlen($newText)))),
+                      (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
+        $db->commit();
+    } catch (\Throwable $ex) {
+        if ($db->inTransaction()) $db->rollBack();
+        if ($prev) { @rename($prev, $paths['staged']); }
+        else { @unlink($paths['staged']); @unlink($paths['sidecar']); }
+        logMonitorEvent('cleanup_direct', 'error', $label . ': DB update failed — ' . $ex->getMessage(), $ex->getFile() . ':' . $ex->getLine());
+        errorResponse($label . ': saving the paragraph failed (' . $ex->getMessage() . ') — nothing was changed', 500);
+    }
+    if ($prev) @unlink($prev);
+    flock($lock, LOCK_UN);
+    fclose($lock);
+    jsonResponse(['ok' => true, 'html' => $newHtml, 'hunks' => (int)$res['hunks']]);
 }
 
 /** Queued changes: per-book summary, or one book's change list (?volume=N). */
