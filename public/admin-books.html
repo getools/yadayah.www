@@ -328,6 +328,7 @@
         .de-yt button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; height: 44px; width: 40px; }
         .de-yt .g { font-family: 'YadaTowrah', serif; font-size: 1.3rem; line-height: 1; }
         .de-yt .h { font-family: 'Times New Roman', serif; font-size: 0.75rem; color: #888; }
+        .de-yt-marks { margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee; }
         .de-yt-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
         .de-yt-row button:not(.btn) { height: 28px; border: 1px solid #d5dbe2; border-radius: 4px; background: #fff; cursor: pointer; padding: 0 8px; }
         .de-yt-word { flex: 1; min-height: 30px; border: 1px solid #d5dbe2; border-radius: 4px; padding: 2px 8px; font-family: 'YadaTowrah', serif;
@@ -4386,7 +4387,7 @@ var DE_HEBREW = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ
 // (checked against yy_word: a → א … t → ת), in alphabet order.
 var DE_YT = [['a', 'א', 'Aleph'], ['b', 'ב', 'Beyth'], ['g', 'ג', 'Gimal'], ['d', 'ד', 'Dalet'], ['h', 'ה', 'Hey'],
              ['w', 'ו', 'Wah'], ['z', 'ז', 'Zayin'], ['c', 'ח', 'Chet'], ['x', 'ט', 'Tet'], ['y', 'י', 'Yad'],
-             ['k', 'כ', 'Kaph'], ['l', 'ל', 'Lamed'], ['m', 'מ', 'Mem'], ['n', 'נ', 'Nun'], ['f', 'ס', 'Samech'],
+             ['k', 'כ', 'Kaph'], ['l', 'ל', 'Lamed'], ['m', 'מ', 'Mem'], ['n', 'נ', 'Nun'], ['f', 'ס', 'Samech'], ['8', 'ס', 'Samech, 8 form'],
              ['i', 'ע', 'ʿAyin'], ['p', 'פ', 'Pe'], ['e', 'צ', 'Tsade'], ['q', 'ק', 'Qoph'], ['r', 'ר', 'Resh'],
              ['s', 'ש', 'Shin'], ['t', 'ת', 'Taw']];
 var DE_FONTS = ['Times New Roman', 'Yada Towrah', 'Arial', 'Calibri', 'Tahoma', 'Jupiter-Yada', 'Semitic Early', 'Moabite Stone', 'Isaiah Scroll'];
@@ -4531,6 +4532,11 @@ function deYtPop(btn) {
             return '<button type="button" data-k="' + l[0] + '" title="' + l[2] + ' ' + l[1] + ' (key ' + l[0] + ')">'
                 + '<span class="g">' + l[0] + '</span><span class="h">' + l[1] + '</span></button>';
         }).join('') + '</div>'
+        // the marks, typed into the word like a letter
+        + '<div class="de-keys de-yt de-yt-marks">'
+        + '<button type="button" data-k="ʾ" title="Right half ring ʾ"><span class="g">ʾ</span><span class="h">ʾ</span></button>'
+        + '<button type="button" data-k="ʿ" title="Left half ring ʿ"><span class="g">ʿ</span><span class="h">ʿ</span></button>'
+        + '<button type="button" data-k="`" title="Backtick `"><span class="g">`</span><span class="h">`</span></button></div>'
         + '<div class="de-yt-row"><span class="de-yt-word" title="The word so far, right to left"></span>'
         + '<button type="button" data-act="back" title="Remove the last letter">&#9003;</button>'
         + '<button type="button" data-act="clear" title="Start again">Clear</button>'
