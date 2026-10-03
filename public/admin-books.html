@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1790971869">
+    <meta name="page-version" content="1791005824">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
@@ -244,6 +244,15 @@
         .cl-qtree .cl-stale { color: #c0392b; font-size: 0.75rem; margin-left: 6px; flex: none; }
         .cl-qtree .cl-when { color: #999; font-size: 0.75rem; margin-left: 8px; flex: none; }
         .cl-qchanges { padding: 4px 0 8px 26px; }
+        .cl-qbatches { padding: 0 0 4px 52px; }
+        .cl-qbook.open > .cl-qbatches { display: none; }   /* shown as headers in the change list instead */
+        .cl-qbatch { font-size: 0.8rem; color: #444; padding: 2px 0; line-height: 1.5; }
+        .cl-qbatch .lbl { color: #999; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .cl-qbatch .q { font-family: 'YadaTowrahRings', Georgia, 'Times New Roman', serif; font-size: 0.9rem; color: #1a5276; }
+        .cl-qbatch .flags { font-size: 0.72rem; color: #666; border: 1px solid #ddd; border-radius: 3px; padding: 0 4px; margin-left: 2px; }
+        .cl-qbatch .arrow { color: #999; margin: 0 4px; }
+        .cl-qbatch .meta { color: #999; font-size: 0.75rem; }
+        .cl-qbatch-h { background: #f7f4ea; border-radius: 4px; padding: 4px 8px; margin-top: 6px; }
         .cl-qchange { padding: 6px 8px; border-bottom: 1px solid #f3ead0; line-height: 1.45; }
         .cl-qchange:last-child { border-bottom: none; }
         .cl-qchange .meta { font-size: 0.75rem; color: #888; }
@@ -280,6 +289,9 @@
         /* A ticked match the replacement would leave exactly as it is: not counted, not sent. */
         .cl-hit.noop .ex mark { text-decoration: none !important; background: #e8eaed !important; }
         .cl-hit.noop .ex ins.cl-new { display: none; }
+        #cl-results.changes-only .cl-hit.same, #cl-results.changes-only .cl-fold.nochg { display: none; }
+        #cl-results.changes-only.allsame::before { content: 'Nothing to change — every match is already identical to the replacement.';
+            display: block; padding: 14px; color: #888; font-style: italic; }
         .cl-hit.noop .loc::after { content: 'no change — skipped'; display: block; color: #888; font-style: italic; }
         /* Top-aligned with the row's first line of text, not centred on a long excerpt. */
         .cl-hit { align-items: flex-start; }
@@ -647,10 +659,10 @@
                 </div>
             </div>
             <p class="cl-note">Replacements change the parsed text at once and a staged copy of each book's Word DOCX.
-               Nothing is rebuilt until you <b>Reprocess</b> the book under <i>Queued DOCX changes</i>.</p>
+               Nothing is rebuilt until you <b>Commit Changes</b> for the book under <i>Queued DOCX changes</i>.</p>
         </div>
 
-        <!-- Queued (staged, not yet reprocessed) DOCX changes. -->
+        <!-- Queued (staged, not yet committed) DOCX changes. -->
         <div class="cl-queue cl-fold open" id="cl-queue" hidden>
             <div class="cl-queue-h">
                 <button type="button" class="cl-fold-h cl-queue-toggle" title="Show / hide the queued changes"><span class="tw">&#9654;</span>Queued DOCX changes
@@ -658,7 +670,7 @@
                 <span class="cl-queue-actions">
                     <button type="button" class="btn btn-secondary btn-sm" onclick="clLoadPending()">Refresh</button>
                     <button type="button" class="btn btn-secondary btn-sm" id="cl-q-discard" onclick="clQueueAction('discard')" disabled>Discard selected</button>
-                    <button type="button" class="btn btn-primary btn-sm" id="cl-q-reprocess" onclick="clQueueAction('reprocess')" disabled>Reprocess selected</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="cl-q-reprocess" onclick="clQueueAction('reprocess')" disabled>Commit Changes (selected)</button>
                 </span>
             </div>
             <div class="cl-fold-b"><div class="cl-qtree" id="cl-qtree"></div></div>
@@ -669,19 +681,21 @@
             <div class="cl-sel-bar">
                 <label class="cl-sel-all" title="Tick / untick every match"><input type="checkbox" id="cl-sel-all" disabled> All</label>
                 <button type="button" class="btn btn-primary btn-sm cl-rep-btn" id="cl-rep-run" onclick="clReplaceSelected()" disabled
-                        title="Replace every ticked match with the Replace text (DOCX changes are queued until you reprocess)">Replace 0 of 0 selected matches</button>
+                        title="Replace every ticked match with the Replace text (DOCX changes are queued until you Commit Changes)">Replace 0 of 0 selected matches</button>
             </div>
             <div class="cl-res-tools">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="clFoldAll(true)">Expand all</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="clFoldAll(false)">Collapse all</button>
                 <button type="button" class="cl-fmt cl-full-btn" id="cl-full" aria-pressed="false"
                         title="Show the whole paragraph around each match instead of a short excerpt">Show Entire Paragraph</button>
+                <button type="button" class="cl-fmt cl-full-btn" id="cl-chg" aria-pressed="false"
+                        title="Only show matches the Replace would actually change — hides matches that would come out identical, and books with none">Changes only</button>
             </div>
         </div>
         <div id="cl-results"></div>
         <div class="cl-sel-bot" id="cl-res-bot" hidden>
             <button type="button" class="btn btn-primary btn-sm cl-rep-btn" onclick="clReplaceSelected()" disabled
-                    title="Replace every ticked match with the Replace text (DOCX changes are queued until you reprocess)">Replace 0 of 0 selected matches</button>
+                    title="Replace every ticked match with the Replace text (DOCX changes are queued until you Commit Changes)">Replace 0 of 0 selected matches</button>
         </div>
     </div>
 </div>
@@ -3005,7 +3019,7 @@ var CL_TOGGLES = [   // [button id, input class, input id, state key]
     ['cl-bold', 'is-bold', 'cl-find', 'bold'], ['cl-italic', 'is-italic', 'cl-find', 'italic'],
     ['cl-case', '', null, 'case'], ['cl-word', '', null, 'word'],
     ['cl-rbold', 'is-bold', 'cl-replace', 'rbold'], ['cl-ritalic', 'is-italic', 'cl-replace', 'ritalic'],
-    ['cl-full', '', null, 'full']
+    ['cl-full', '', null, 'full'], ['cl-chg', '', null, 'changes']
 ];
 var clBound = false;
 var clSavedBooks = null;   // null = all books, else [volume_key strings]
@@ -3061,6 +3075,10 @@ function clSetToggle(id, on) {
         document.getElementById('cl-results').classList.toggle('full', on);
         clEachItem(function(r) { r.flip = false; });
         document.querySelectorAll('#cl-results .cl-hit.flip').forEach(function(h) { h.classList.remove('flip'); });
+    }
+    if (id === 'cl-chg') {
+        document.getElementById('cl-results').classList.toggle('changes-only', on);
+        clSyncSel();
     }
 }
 
@@ -3359,6 +3377,10 @@ function clLoadBook(vk) {
             b.items = b.items.concat(d.items || []);
             b.after = d.after; b.more = !!d.more; b.loaded = true; b.loading = null;
             clRenderBook(vk);
+            clSyncSel();
+            // Changes only: a page of nothing but identical matches shows
+            // nothing, so fetch on until a change turns up.
+            if (clIsOn('cl-chg') && b.more && (d.items || []).every(clItemNoop)) return clLoadBook(vk);
         }, function(e) { b.loading = null; b.more = false; clRenderBook(vk); });
     clRenderBook(vk);
     return b.loading;
@@ -3430,6 +3452,10 @@ function clItemNoop(r) {
     if (clLast && !!clLast.bold === rb && !!clLast.italic === ri) return true;
     return typeof r.fmt === 'string' && r.fmt === (rb ? 'b' : '') + (ri ? 'i' : '');
 }
+// Matches that would change whether ticked or not: the Changes-only filter.
+function clBookChangeable(b) {
+    return clBookDoCount({v: b.v, items: b.items, sel: {mode: 'all', except: {}}});
+}
 // Ticked matches that would actually change: what "Replace X" counts.
 // The search's per-book kinds ([match, fmt, n]) cover matches not loaded
 // yet, at their default ❜ picks; loaded rows then swap in their real state.
@@ -3462,27 +3488,34 @@ function clSyncSel() {
         bot.hidden = true;
         return;
     }
-    var s = clLast, x = 0;
+    var s = clLast, x = 0, chgAll = 0, chgBy = {};
     s.order.forEach(function(vk) {
         var b = s.books[vk], on = clBookOnCount(b);
         x += clBookDoCount(b);
+        chgBy[vk] = clBookChangeable(b);
+        chgAll += chgBy[vk];
         var fold = document.querySelector('#cl-results .cl-book[data-vk="' + vk + '"]');
         if (!fold) return;
+        fold.classList.toggle('nochg', !chgBy[vk]);
         clSetBox(fold.querySelector(':scope > .cl-fold-hrow .cl-sel'), on, b.v.count);
         fold.querySelectorAll('.cl-hit').forEach(function(row) {
             var r = b.items[+row.getAttribute('data-i')];
             var picked = clItemOn(b, r);
             row.querySelector('.cl-sel').checked = picked;
             row.classList.toggle('unpicked', !picked);
-            row.classList.toggle('noop', picked && clItemNoop(r));
+            var same = clItemNoop(r);
+            row.classList.toggle('same', same);
+            row.classList.toggle('noop', picked && same);
         });
     });
     (s.series || []).forEach(function(g) {
         var on = 0;
         g.vks.forEach(function(vk) { on += clBookOnCount(s.books[vk]); });
         var fold = document.querySelector('#cl-results .cl-series-f[data-sk="' + g.key + '"]');
+        if (fold) fold.classList.toggle('nochg', !g.vks.some(function(vk) { return chgBy[vk]; }));
         if (fold) clSetBox(fold.querySelector(':scope > .cl-fold-hrow .cl-sel'), on, g.n);
     });
+    document.getElementById('cl-results').classList.toggle('allsame', !!s.total && !chgAll);
     all.disabled = !s.total;
     clSetBox(all, x, s.total);
     btns.forEach(function(btn) {
@@ -3580,7 +3613,7 @@ function clHitHtml(r, vk, i) {
         locHtml = '<a class="loc" href="' + url + '" target="_blank" rel="noopener" title="' + chap
             + 'Open this page in the flipbook">' + loc + '<span class="ext">&#8599;</span></a>';
     }
-    var cls = 'cl-hit' + (r.flip ? ' flip' : '') + (picked ? '' : ' unpicked') + (picked && clItemNoop(r) ? ' noop' : '');
+    var cls = 'cl-hit' + (r.flip ? ' flip' : '') + (picked ? '' : ' unpicked') + (clItemNoop(r) ? ' same' + (picked ? ' noop' : '') : '');
     var lrs = clAposFor(r).map(function(ch, k) {
         var n = ' for ❜ #' + (k + 1) + ' in Replace';
         return '<span class="cl-lr" data-k="' + k + '">'
@@ -3667,7 +3700,7 @@ function clReplaceSelected() {
         + (clAposCount() ? ' — each ❜ becomes the half ring picked on its row (rows not loaded get the default)' : '')
         + ' in ' + vks.length + ' book' + (vks.length === 1 ? '' : 's') + '?\n\n'
         + 'The parsed text changes now, and so does a staged copy of each book\'s Word DOCX. '
-        + 'Nothing is rebuilt until you reprocess the books under Queued DOCX changes.')) return;
+        + 'Nothing is rebuilt until you Commit Changes for the books under Queued DOCX changes.')) return;
     if (!clConfirmEmpty(args)) return;
 
     clBusy = true; clSyncSel();
@@ -3691,7 +3724,7 @@ function clReplaceSelected() {
     step(0).then(function() {
         clBusy = false;
         var msg = '<span class="ok">Replaced ' + tot.replaced + ' in ' + tot.books + ' book' + (tot.books === 1 ? '' : 's')
-            + ' — queued until you reprocess.</span>'
+            + ' — queued until you Commit Changes.</span>'
             + (tot.unchanged ? ' <span class="code">' + tot.unchanged + ' already identical — skipped, nothing written</span>' : '');
         if (problems.length) msg += '<br><span class="bad">' + problems.map(esc).join('<br>') + '</span>';
         clLoadPending();
@@ -3715,7 +3748,7 @@ function clRenderQueue() {
     if (!clQueue.length) return;
     var total = clQueue.reduce(function(n, v) { return n + v.count; }, 0);
     document.getElementById('cl-queue-sum').textContent = total + ' change' + (total === 1 ? '' : 's') + ' in '
-        + clQueue.length + ' book' + (clQueue.length === 1 ? '' : 's') + ' — not yet reprocessed';
+        + clQueue.length + ' book' + (clQueue.length === 1 ? '' : 's') + ' — not yet committed';
     var open = {};
     document.querySelectorAll('#cl-qtree .open[data-key]').forEach(function(n) { open[n.getAttribute('data-key')] = 1; });
     var series = [], bySeries = {};
@@ -3743,13 +3776,34 @@ function clRenderQueue() {
                     + '<span class="cl-when">' + esc(when(v.last_dtime)) + '</span>'
                     + '<span class="cl-q-btns">'
                     + '<button type="button" class="btn btn-primary btn-sm" data-qact="reprocess" data-vk="' + v.volume_key + '"'
-                    + (v.stage !== 'ok' ? ' disabled' : '') + '>Reprocess</button>'
+                    + (v.stage !== 'ok' ? ' disabled' : '') + ' title="Put this book\'s staged DOCX live and rebuild its PDF, flipbook and paragraphs">Commit Changes</button>'
                     + '<button type="button" class="btn btn-secondary btn-sm" data-qact="discard" data-vk="' + v.volume_key + '">Discard</button>'
-                    + '</span></div><div class="cl-qkids cl-qchanges" id="cl-qch-' + v.volume_key + '"></div></div>';
+                    + '</span></div>'
+                    + '<div class="cl-qbatches">' + (v.batches || []).map(function(bt) {
+                        return '<div class="cl-qbatch">' + clBatchLabel(bt) + '</div>';
+                    }).join('') + '</div>'
+                    + '<div class="cl-qkids cl-qchanges" id="cl-qch-' + v.volume_key + '"></div></div>';
             }).join('') + '</div></div>';
     }).join('');
     document.querySelectorAll('#cl-qtree .cl-qbook.open').forEach(function(n) { clLoadQueueBook(+n.getAttribute('data-vk')); });
     clQueueSync();
+}
+
+// One Replace click's batch: Find → Replace, the options, how many, when, who.
+function clBatchLabel(bt) {
+    var o = bt.options || {};
+    var flags = function(list) {
+        list = list.filter(Boolean);
+        return list.length ? ' <span class="flags">' + list.join(' ') + '</span>' : '';
+    };
+    var rep = bt.replace !== null && bt.replace !== undefined ? [bt.replace] : (bt.replaced || []);
+    return '<span class="lbl">Find</span> <span class="q">“' + esc(bt.find || '') + '”</span>'
+        + flags([o.bold ? '<b>B</b>' : '', o.italic ? '<i>I</i>' : '', o['case'] ? 'Aa' : '', o.word ? 'whole words' : ''])
+        + ' <span class="arrow">→</span> <span class="lbl">Replace</span> '
+        + rep.map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
+        + flags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : ''])
+        + ' <span class="meta">· ' + bt.count + ' change' + (bt.count === 1 ? '' : 's')
+        + ' · ' + esc(new Date(bt.dtime).toLocaleString()) + (bt.user_name ? ' · ' + esc(bt.user_name) : '') + '</span>';
 }
 
 function clLoadQueueBook(vk) {
@@ -3759,10 +3813,20 @@ function clLoadQueueBook(vk) {
         .then(function(r) { return safeJson(r); })
         .then(function(d) {
             if (d.error) { box.innerHTML = '<div class="cl-loading">' + esc(d.error) + '</div>'; return; }
+            var v = clQueue.filter(function(x) { return x.volume_key === vk; })[0] || {};
+            var byBatch = {};
+            (v.batches || []).forEach(function(bt) { byBatch[bt.batch] = bt; });
+            var lastBatch = null;
             box.innerHTML = (d.changes || []).map(function(c) {
+                // A header above each batch's changes.
+                var head = '';
+                if (c.cleanup_change_batch !== lastBatch) {
+                    lastBatch = c.cleanup_change_batch;
+                    if (byBatch[lastBatch]) head = '<div class="cl-qbatch cl-qbatch-h">' + clBatchLabel(byBatch[lastBatch]) + '</div>';
+                }
                 var o = c.cleanup_change_options || {};
                 var fmt = [o.rbold ? 'B' : '', o.ritalic ? 'I' : ''].filter(Boolean).join('');
-                return '<div class="cl-qchange"><div class="meta">' + esc(new Date(c.cleanup_change_dtime).toLocaleString())
+                return head + '<div class="cl-qchange"><div class="meta">' + esc(new Date(c.cleanup_change_dtime).toLocaleString())
                     + (c.cleanup_change_user_name ? ' · ' + esc(c.cleanup_change_user_name) : '')
                     + ' · ¶ ' + esc(String(c.paragraph_number)) + ' · “' + esc(c.cleanup_change_match) + '” → “'
                     + esc(c.cleanup_change_replace) + '”' + (fmt ? ' [' + fmt + ']' : '')
@@ -3820,7 +3884,7 @@ function clQueueRun(kind, vks) {
     var n = vols.reduce(function(t, v) { return t + v.count; }, 0);
     var names = vols.map(function(v) { return '• ' + (v.volume_code || v.volume_label) + ' (' + v.count + ')'; }).join('\n');
     var msg = kind === 'reprocess'
-        ? 'Reprocess ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + ' (' + n + ' change' + (n === 1 ? '' : 's') + ')?\n\n' + names
+        ? 'Commit the changes in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + ' (' + n + ' change' + (n === 1 ? '' : 's') + ')?\n\n' + names
           + '\n\nEach book\'s staged Word DOCX replaces the live one (the old one is kept in u/books-word-backup), '
           + 'then the book is queued to rebuild its PDF, flipbook and paragraphs.'
         : 'Discard ' + n + ' queued change' + (n === 1 ? '' : 's') + ' in ' + vols.length + ' book' + (vols.length === 1 ? '' : 's') + '?\n\n' + names
@@ -3832,7 +3896,7 @@ function clQueueRun(kind, vks) {
         var res = d.results || [];
         var bad = res.filter(function(r) { return !r.ok; });
         var good = res.filter(function(r) { return r.ok; });
-        var text = (kind === 'reprocess' ? 'Reprocessing ' : 'Discarded ') + good.length + ' book' + (good.length === 1 ? '' : 's')
+        var text = (kind === 'reprocess' ? 'Committed the changes in ' : 'Discarded ') + good.length + ' book' + (good.length === 1 ? '' : 's')
             + (kind === 'reprocess' ? ' — queued to rebuild.' : '.');
         if (d.error) text = d.error;
         if (bad.length) text += '\n\nProblems:\n' + bad.map(function(r) { return r.label + ': ' + r.error; }).join('\n');

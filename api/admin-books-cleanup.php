@@ -598,7 +598,7 @@ function cleanupReplace(array $authUser): void {
         try {
             $batch = bin2hex(random_bytes(8));
             $opts = json_encode(['mode' => $mode, 'bold' => $wantBold, 'italic' => $wantItalic, 'case' => $matchCase, 'word' => $wholeWord,
-                                 'rbold' => $rBold, 'ritalic' => $rItalic]);
+                                 'rbold' => $rBold, 'ritalic' => $rItalic, 'replace' => $replace]);
             $db->beginTransaction();
             $up = $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?,
                                        paragraph_text_raw = ?, paragraph_revision_user_key = ?
@@ -652,7 +652,7 @@ function cleanupPending(): void {
     $db = getDb();
     $vk = (int)($_GET['volume'] ?? 0);
     if ($vk) {
-        $st = $db->prepare("SELECT cleanup_change_key, paragraph_number, cleanup_change_find, cleanup_change_replace,
+        $st = $db->prepare("SELECT cleanup_change_key, cleanup_change_batch, paragraph_number, cleanup_change_find, cleanup_change_replace,
                                    cleanup_change_options, cleanup_change_match, cleanup_change_excerpt_before,
                                    cleanup_change_excerpt_after, cleanup_change_user_name, cleanup_change_dtime
                               FROM yy_cleanup_change
@@ -674,6 +674,25 @@ function cleanupPending(): void {
                          GROUP BY c.volume_key, v.volume_code, v.volume_label, v.volume_number, v.volume_docx,
                                   s.series_key, s.series_label, s.series_sort, v.volume_sort
                          ORDER BY s.series_sort, s.series_key, v.volume_sort, v.volume_number, c.volume_key")->fetchAll();
+    // Each book's batches (one per Replace click): what was searched for and
+    // what it was replaced with. 'replace' is the Replace field as typed
+    // (recorded in the options since 2026-10-03); older batches only have the
+    // per-match results in 'replaced'.
+    $batches = [];
+    foreach ($db->query("SELECT volume_key, cleanup_change_batch AS batch, min(cleanup_change_find) AS find,
+                                min(cleanup_change_options::text) AS options, count(*) AS n,
+                                min(cleanup_change_dtime) AS dtime, min(cleanup_change_user_name) AS user_name,
+                                array_to_json(array_agg(DISTINCT cleanup_change_replace)) AS replaced
+                           FROM yy_cleanup_change WHERE cleanup_change_status = 'pending'
+                          GROUP BY volume_key, cleanup_change_batch
+                          ORDER BY min(cleanup_change_key)")->fetchAll() as $b) {
+        $o = json_decode((string)$b['options'], true) ?: [];
+        $batches[(int)$b['volume_key']][] = [
+            'batch' => $b['batch'], 'find' => $b['find'], 'replace' => $o['replace'] ?? null,
+            'replaced' => json_decode((string)$b['replaced'], true) ?: [], 'options' => $o,
+            'count' => (int)$b['n'], 'dtime' => $b['dtime'], 'user_name' => $b['user_name'],
+        ];
+    }
     $out = [];
     foreach ($rows as $r) {
         $paths = cleanupPaths($r + ['volume_key' => $r['volume_key']]);
@@ -684,6 +703,7 @@ function cleanupPending(): void {
             'series_key' => $r['series_key'] === null ? null : (int)$r['series_key'], 'series_label' => $r['series_label'],
             'first_dtime' => $r['first_dtime'], 'last_dtime' => $r['last_dtime'],
             'stage' => cleanupStageState($paths),
+            'batches' => $batches[(int)$r['volume_key']] ?? [],
         ];
     }
     jsonResponse(['volumes' => $out]);
@@ -713,7 +733,7 @@ function cleanupReprocess(array $authUser): void {
         flock($lock, LOCK_EX);
         $stage = cleanupStageState($paths);
         if ($stage === 'none') {
-            $results[] = $r + ['error' => 'no staged DOCX — nothing to reprocess'];
+            $results[] = $r + ['error' => 'no staged DOCX — nothing to commit'];
         } elseif ($stage === 'stale') {
             $results[] = $r + ['error' => 'a new DOCX was uploaded after these changes — discard them'];
         } else {
@@ -747,7 +767,7 @@ function cleanupQueueRebuild(PDO $db, array $vol, array $paths): void {
     $vk = (int)$vol['volume_key'];
     $db->prepare("UPDATE yy_volume
                      SET volume_pipeline_status = 'queued',
-                         volume_pipeline_message = 'Cleanup changes reprocessed — awaiting PDF + flipbook rebuild',
+                         volume_pipeline_message = 'Cleanup changes committed — awaiting PDF + flipbook rebuild',
                          volume_pipeline_retry_count = 0,
                          volume_parse_status = 'queued',
                          volume_parse_message = 'Awaiting host worker (paragraph + translation extraction)',
