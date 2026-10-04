@@ -123,9 +123,17 @@ def outline_targets(docx_path):
     back_matter = []
     for entry in toc_entries:
         title = strip_page(entry)
-        # Numbered chapters already come from yychapter; keep only extras
-        # (RESOURCES and friends), which carry no leading chapter number.
-        if title not in seen and not re.match(r"^\d", title):
+        if title in seen:
+            continue
+        if re.match(r"^\d", title):
+            # Numbered chapter present in TOC1 but missing from yychapter
+            # (e.g. the heading was not styled yychapter in the DOCX, so
+            # Word did not bookmark it). Recover it so find_chapter_pages()
+            # can locate it in the PDF.
+            chapters.append(title)
+            seen.add(title)
+        else:
+            # Unnumbered back matter (RESOURCES and friends).
             back_matter.append(title)
 
     # Fallback for books with no YY heading styles: detect chapters from
