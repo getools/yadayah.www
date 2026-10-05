@@ -130,10 +130,10 @@
     // is conventional. If a font isn't in this map it's assumed system or
     // already declared in app.css.
     var FONTFACE_FILES = {
-        'YadaTowrah-Times': { woff2: '/fonts/YadaTowrah-Times.woff2', ttf: '/fonts/YadaTowrah-Times.ttf' },
-        'Semitic Early'   : { ttf:   '/fonts/SemiticEarly.ttf' },
-        'Moabite Stone'   : { ttf:   '/fonts/MoabiteStone.ttf' },
-        'Jupiter-Yada'    : { woff2: '/fonts/JupiterYada-Regular.woff2', ttf: '/fonts/JupiterYada-Regular.ttf' }
+        'YadaTowrah-Times': { woff2: '/api/font.php?f=YadaTowrah-Times.woff2', ttf: '/api/font.php?f=YadaTowrah-Times.ttf' },
+        'Semitic Early'   : { ttf:   '/api/font.php?f=SemiticEarly.ttf' },
+        'Moabite Stone'   : { ttf:   '/api/font.php?f=MoabiteStone.ttf' },
+        'Jupiter-Yada'    : { woff2: '/api/font.php?f=JupiterYada-Regular.woff2', ttf: '/api/font.php?f=JupiterYada-Regular.ttf' }
     };
     function buildFontFaceCss(fonts) {
         var seen = {};

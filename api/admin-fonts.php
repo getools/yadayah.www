@@ -59,7 +59,7 @@ case 'GET':
     if (preg_match_all('/@font-face\s*\{([^}]*)\}/i', $css, $blocks)) {
         foreach ($blocks[1] as $b) {
             if (!preg_match('/font-family\s*:\s*[\'"]?([^\'";]+)/i', $b, $fm)) continue;
-            preg_match_all('#url\(\s*[\'"]?/?fonts/([A-Za-z0-9._-]+)#i', $b, $um);
+            preg_match_all('#url\(\s*[\'"]?(?:/?fonts/|/api/font\.php\?f=)([A-Za-z0-9._-]+)#i', $b, $um);
             $fam = strtolower(trim($fm[1]));
             foreach ($um[1] as $name) $faces[$fam][$name] = true;
         }

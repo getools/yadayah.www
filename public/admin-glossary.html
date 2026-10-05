@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1791180003">
+    <meta name="page-version" content="1791237439">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glossary Admin - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css?v=14">
+    <link rel="stylesheet" href="css/app.css?v=15">
     <link rel="stylesheet" href="css/login.css">
     <style>
         /* The only Yada Towrah files that exist are the -Times pair; the page used
@@ -13,8 +13,8 @@
            serif. Same source list the public glossary and Word admin use. */
         @font-face {
             font-family: 'YadaTowrah';
-            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
-                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            src: url('/api/font.php?f=YadaTowrah-Times.woff2') format('woff2'),
+                 url('/api/font.php?f=YadaTowrah-Times.ttf') format('truetype');
             font-weight: normal; font-style: normal; font-display: swap;
         }
         /* The same file, but restricted to the two half-rings. Put this family
@@ -26,8 +26,8 @@
            surrounding text size they otherwise read as bare dots. */
         @font-face {
             font-family: 'YadaTowrahRings';
-            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
-                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            src: url('/api/font.php?f=YadaTowrah-Times.woff2') format('woff2'),
+                 url('/api/font.php?f=YadaTowrah-Times.ttf') format('truetype');
             unicode-range: U+02BE-02BF;
             size-adjust: 140%;
             font-weight: normal; font-style: normal; font-display: swap;

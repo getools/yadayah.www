@@ -89,12 +89,14 @@ clearstatcache(true, $dest);
 
 // A replaced .ttf/.otf does nothing visible if a same-name .woff2/.woff exists:
 // css/app.css lists the woff2 first, so browsers never fetch the ttf.
+// Only warn when the sibling was not updated recently — uploading the woff2
+// a few seconds before the ttf is the normal order and must not warn.
 $warnings = [];
 if (in_array($ext, ['ttf', 'otf'], true)) {
     $base = pathinfo($name, PATHINFO_FILENAME);
     foreach (['woff2', 'woff'] as $sib) {
-        if (is_file("$realDir/$base.$sib") && filemtime("$realDir/$base.$sib") < filemtime($dest)) {
-            $warnings[] = "/" . ($relDir !== '' ? "$relDir/" : '') . "$base.$sib is older than this file and browsers load it first. Upload a matching .$sib too (Admin → Site → Fonts), or the new font will not show.";
+        if (is_file("$realDir/$base.$sib") && filemtime("$realDir/$base.$sib") < time() - 3600) {
+            $warnings[] = "/" . ($relDir !== '' ? "$relDir/" : '') . "$base.$sib was not updated in the last hour and browsers load it first. Upload a matching .$sib too (Admin → Site → Fonts), or the new font will not show.";
         }
     }
 }

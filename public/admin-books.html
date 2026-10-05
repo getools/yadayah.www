@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1791206268">
+    <meta name="page-version" content="1791237439">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css?v=14">
+    <link rel="stylesheet" href="css/app.css?v=15">
     <link rel="stylesheet" href="css/login.css">
     <style>
         /* Single table for the whole list — series rows span all columns so
@@ -168,17 +168,17 @@
            from the UI font (same trick as the Glossary word editor). */
         @font-face {
             font-family: 'YadaTowrah';
-            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
-                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            src: url('/api/font.php?f=YadaTowrah-Times.woff2') format('woff2'),
+                 url('/api/font.php?f=YadaTowrah-Times.ttf') format('truetype');
             font-weight: normal; font-style: normal; font-display: swap;
         }
-        @font-face { font-family: 'JupiterYada'; src: url('/fonts/JupiterYada-Regular.woff2') format('woff2'), url('/fonts/JupiterYada-Regular.ttf') format('truetype'); }
-        @font-face { font-family: 'SemiticEarly'; src: url('/fonts/SemiticEarly.ttf') format('truetype'); }
-        @font-face { font-family: 'MoabiteStone'; src: url('/fonts/MoabiteStone.ttf') format('truetype'); }
+        @font-face { font-family: 'JupiterYada'; src: url('/api/font.php?f=JupiterYada-Regular.woff2') format('woff2'), url('/api/font.php?f=JupiterYada-Regular.ttf') format('truetype'); }
+        @font-face { font-family: 'SemiticEarly'; src: url('/api/font.php?f=SemiticEarly.ttf') format('truetype'); }
+        @font-face { font-family: 'MoabiteStone'; src: url('/api/font.php?f=MoabiteStone.ttf') format('truetype'); }
         @font-face {
             font-family: 'YadaTowrahRings';
-            src: url('/fonts/YadaTowrah-Times.woff2') format('woff2'),
-                 url('/fonts/YadaTowrah-Times.ttf') format('truetype');
+            src: url('/api/font.php?f=YadaTowrah-Times.woff2') format('woff2'),
+                 url('/api/font.php?f=YadaTowrah-Times.ttf') format('truetype');
             unicode-range: U+02BE-02BF;
             size-adjust: 140%;
             font-weight: normal; font-style: normal; font-display: swap;

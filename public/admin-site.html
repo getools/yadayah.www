@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1791180003">
+    <meta name="page-version" content="1791237439">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Site - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css?v=14">
+    <link rel="stylesheet" href="css/app.css?v=15">
     <link rel="stylesheet" href="css/login.css">
     <style>
         .sub-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
@@ -69,7 +69,7 @@
         .fonts-table input[type=number] {
             width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-size:0.85rem; box-sizing:border-box;
         }
-        .fonts-table .col-display  { width:160px; }
+        .fonts-table .col-display  { width:180px; min-width:170px; }
         .fonts-table .col-stack    { min-width:240px; }
         .fonts-table .col-glyph    { width:100px; }
         .fonts-table .col-group    { width:80px; }
@@ -78,13 +78,26 @@
         .fonts-table .col-active   { width:80px; text-align:center; }
         .fonts-table .col-preview  { width:140px; }
         .fonts-table .col-actions  { width:90px; text-align:right; }
-        .fonts-table .col-files    { min-width:230px; }
-        .font-file { font-size:0.78rem; color:#555; white-space:nowrap; line-height:1.7; }
-        .font-file a { color:#1a5276; }
-        .font-file .ff-meta { color:#999; }
-        .font-file .ff-missing { color:#c0392b; }
-        .font-file .ff-up { margin-left:4px; }
-        .font-file .ff-msg { display:block; white-space:normal; }
+        .fonts-table .col-files    { width:56px; text-align:center; }
+        .ff-btn { display:inline-flex; align-items:center; gap:3px; padding:3px 7px; border:1px solid #c8d1d9; border-radius:4px; background:#fff; color:#1a5276; cursor:pointer; font-size:0.75rem; }
+        .ff-btn:hover { background:#eef6fc; border-color:#1a5276; }
+        .ff-btn.ff-warn { color:#c0392b; border-color:#e6b0aa; }
+        .ff-btn svg { width:14px; height:14px; }
+        .ff-none { color:#bbb; }
+        #font-files-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; justify-content:center; align-items:flex-start; padding:80px 20px; }
+        #font-files-modal.open { display:flex; }
+        #font-files-modal .ffm-panel { background:#fff; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.25); width:100%; max-width:620px; }
+        #font-files-modal .ffm-head { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#f8f8f8; border-bottom:1px solid #ddd; border-radius:10px 10px 0 0; }
+        #font-files-modal .ffm-head h3 { margin:0; font-size:1rem; }
+        #font-files-modal .ffm-head button { background:none; border:none; font-size:1.4rem; cursor:pointer; color:#666; }
+        #font-files-modal .ffm-body { padding:16px 20px; }
+        .font-file { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #eee; font-size:0.85rem; flex-wrap:wrap; }
+        .font-file:last-child { border-bottom:none; }
+        .font-file .ff-name { font-weight:600; color:#1a5276; min-width:200px; }
+        .font-file .ff-meta { color:#888; flex:1; }
+        .font-file .ff-missing { color:#c0392b; flex:1; }
+        .font-file .ff-msg { flex-basis:100%; font-size:0.8rem; }
+        .ffm-note { font-size:0.78rem; color:#888; margin-top:10px; line-height:1.5; }
         .fonts-table .preview { font-size:1.15rem; color:#1a5276; white-space:nowrap; }
         .fonts-table tr.unsaved { background:#fef9e7; }
         .fonts-table tr.unsaved:hover { background:#fbf3d8; }
@@ -104,10 +117,10 @@
         .font-help { font-size:0.82rem; color:#666; margin-bottom:14px; line-height:1.5; }
         .font-help code { background:#f0f2f5; padding:1px 5px; border-radius:3px; font-size:0.85em; }
         /* @font-face for the custom fonts so the Fonts tab preview column renders. */
-        @font-face { font-family: "YadaTowrah-Times"; src: url("/fonts/YadaTowrah-Times.woff2") format("woff2"), url("/fonts/YadaTowrah-Times.ttf") format("truetype"); font-display:swap; }
-        @font-face { font-family: "Semitic Early";    src: url("/fonts/SemiticEarly.ttf") format("truetype"); font-display:swap; }
-        @font-face { font-family: "Moabite Stone";    src: url("/fonts/MoabiteStone.ttf") format("truetype"); font-display:swap; }
-        @font-face { font-family: "Jupiter-Yada";     src: url("/fonts/JupiterYada-Regular.woff2") format("woff2"), url("/fonts/JupiterYada-Regular.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "YadaTowrah-Times"; src: url("/api/font.php?f=YadaTowrah-Times.woff2") format("woff2"), url("/api/font.php?f=YadaTowrah-Times.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "Semitic Early";    src: url("/api/font.php?f=SemiticEarly.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "Moabite Stone";    src: url("/api/font.php?f=MoabiteStone.ttf") format("truetype"); font-display:swap; }
+        @font-face { font-family: "Jupiter-Yada";     src: url("/api/font.php?f=JupiterYada-Regular.woff2") format("woff2"), url("/api/font.php?f=JupiterYada-Regular.ttf") format("truetype"); font-display:swap; }
         /* Backgrounds tab (moved in from admin-backgrounds.html) */
         .bg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
         .bg-table th, .bg-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
@@ -330,6 +343,15 @@
         </p>
         <span id="font-save-status"></span>
         <input type="file" id="font-file-input" accept=".woff2,.woff,.ttf,.otf" style="display:none" onchange="fontUploadPicked(this)">
+        <div id="font-files-modal" onclick="if(event.target===this)fontFilesClose()">
+            <div class="ffm-panel">
+                <div class="ffm-head"><h3 id="ffm-title">Font files</h3><button onclick="fontFilesClose()">&times;</button></div>
+                <div class="ffm-body">
+                    <div id="ffm-list"></div>
+                    <div class="ffm-note">Upload replaces the file on the server (you confirm first; the old copy is kept). Browsers load the .woff2 before the .ttf, so update both. Visitors get the new file within about 5 minutes.</div>
+                </div>
+            </div>
+        </div>
 
         <table class="fonts-table" id="font-grid">
             <thead>
@@ -342,7 +364,7 @@
                     <th class="col-note">Note</th>
                     <th class="col-active">Active</th>
                     <th class="col-preview">Preview</th>
-                    <th class="col-files">Font files</th>
+                    <th class="col-files">Files</th>
                     <th class="col-actions"></th>
                 </tr>
             </thead>
@@ -994,18 +1016,48 @@ function fontRender(){
 // via admin-resource-file.php (confirm + backup when it already exists).
 var fontUploadTarget = null;   // { idx, path }
 var fontFileMsg = {};          // path → { text, color } shown under the file
+var fontFilesIdx = null;       // fontRows index shown in the files popover
 
+function fontFileMeta(f){
+    return f.size == null ? 'missing'
+        : Math.round(f.size / 1024).toLocaleString() + ' KB · uploaded ' + new Date(f.mtime).toLocaleString();
+}
+
+// Grid cell: a small file button; hover lists the files, click opens the popover.
 function fontFilesHtml(r, idx){
-    if (!r.files || !r.files.length) return '<span class="font-file ff-meta">—</span>';
-    return r.files.map(function(f){
+    if (!r.files || !r.files.length) return '<span class="ff-none" title="System or web font — no files hosted on this server">—</span>';
+    var tip = r.files.map(function(f){ return f.path.split('/').pop() + ' — ' + fontFileMeta(f); }).join('\n');
+    var missing = r.files.some(function(f){ return f.size == null; });
+    return '<button type="button" class="ff-btn' + (missing ? ' ff-warn' : '') + '" title="' + fontEscAttr(tip + '\n\nClick to upload new files') + '" onclick="fontFilesOpen(' + idx + ')">'
+         + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>'
+         + r.files.length + '</button>';
+}
+
+function fontFilesOpen(idx){
+    fontFilesIdx = idx;
+    var r = fontRows[idx];
+    document.getElementById('ffm-title').textContent = (r.display || 'Font') + ' — font files';
+    fontFilesModalRender();
+    document.getElementById('font-files-modal').classList.add('open');
+}
+
+function fontFilesClose(){
+    document.getElementById('font-files-modal').classList.remove('open');
+    fontFilesIdx = null;
+    fontFileMsg = {};
+}
+
+function fontFilesModalRender(){
+    var r = fontRows[fontFilesIdx];
+    if (!r) return;
+    document.getElementById('ffm-list').innerHTML = r.files.map(function(f){
         var name = f.path.split('/').pop();
-        var meta = f.size == null
-            ? '<span class="ff-missing">missing</span>'
-            : '<span class="ff-meta">' + Math.round(f.size / 1024).toLocaleString() + ' KB · ' + new Date(f.mtime).toLocaleDateString() + '</span>';
         var msg = fontFileMsg[f.path];
-        return '<div class="font-file"><a href="' + fontEscAttr(f.path) + '?v=' + (f.mtime ? Date.parse(f.mtime) : 0) + '" target="_blank" title="' + fontEscAttr(f.path) + '">' + fontEsc(name) + '</a> ' + meta
-             + ' <a href="#" class="ff-up" onclick="fontUploadPick(' + idx + ', \'' + fontEscAttr(f.path) + '\'); return false;">Upload</a>'
-             + (msg ? '<span class="ff-msg" style="color:' + msg.color + '">' + fontEsc(msg.text) + '</span>' : '')
+        return '<div class="font-file">'
+             +   '<a class="ff-name" href="' + fontEscAttr(f.path) + '?v=' + (f.mtime ? Date.parse(f.mtime) : 0) + '" target="_blank" title="' + fontEscAttr(f.path) + '">' + fontEsc(name) + '</a>'
+             +   '<span class="' + (f.size == null ? 'ff-missing' : 'ff-meta') + '">' + fontEsc(fontFileMeta(f)) + '</span>'
+             +   '<button type="button" class="btn btn-secondary btn-sm" onclick="fontUploadPick(' + fontFilesIdx + ', \'' + fontEscAttr(f.path) + '\')">Upload…</button>'
+             +   (msg ? '<span class="ff-msg" style="color:' + msg.color + '">' + fontEsc(msg.text) + '</span>' : '')
              + '</div>';
     }).join('');
 }
@@ -1027,7 +1079,7 @@ function fontUploadPicked(input){
 
 function fontUploadSend(file, target, overwrite){
     var path = target.path;
-    function show(text, color){ fontFileMsg[path] = { text: text, color: color }; fontRender(); }
+    function show(text, color){ fontFileMsg[path] = { text: text, color: color }; fontFilesModalRender(); }
     show('Uploading…', '#2980b9');
     var fd = new FormData();
     fd.append('file', file);
@@ -1046,7 +1098,7 @@ function fontUploadSend(file, target, overwrite){
             if (confirm('Replace ' + d.path + ' (' + Math.round(d.size / 1024).toLocaleString() + ' KB, ' + new Date(d.mtime).toLocaleString() + ') with ' + file.name + '?\n\nThe old copy is kept as a backup.')) {
                 fontUploadSend(file, target, true);
             } else {
-                delete fontFileMsg[path]; fontRender();
+                delete fontFileMsg[path]; fontFilesModalRender();
             }
             return;
         }
@@ -1054,6 +1106,7 @@ function fontUploadSend(file, target, overwrite){
         var r = fontRows[target.idx];
         if (r) r.files.forEach(function(f){ if (f.path === path) { f.size = d.size; f.mtime = new Date().toISOString(); } });
         fontRefreshFace(r);
+        fontRender();   // refresh the grid button's hover list
         show((d.replaced ? 'Replaced' : 'Uploaded') + (d.warnings && d.warnings.length ? '. ⚠ ' + d.warnings.join(' ') : ''),
              d.warnings && d.warnings.length ? '#b9770e' : '#27ae60');
     };

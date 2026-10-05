@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1791180003">
+    <meta name="page-version" content="1791237503">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resources Admin - Yada Yah</title>
-    <link rel="stylesheet" href="css/app.css?v=14">
+    <link rel="stylesheet" href="css/app.css?v=15">
     <link rel="stylesheet" href="css/login.css">
     <style>
         .res-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -353,7 +353,10 @@ function pickServerFile(input) {
     document.getElementById('srv-upload-progress').style.display = 'none';
     if (!file) return;
     var pathEl = document.getElementById('f-srv-path');
-    var link = document.getElementById('f-link-url').value.trim().split(/[?#]/)[0];
+    var link = document.getElementById('f-link-url').value.trim();
+    // Font links go through the cache-busting redirect /api/font.php?f=<name>.
+    var fontLink = /^\/api\/font\.php\?f=([A-Za-z0-9._-]+)/.exec(link);
+    link = fontLink ? '/fonts/' + fontLink[1] : link.split(/[?#]/)[0];
     if (link.charAt(0) === '/' && link.charAt(1) !== '/' && extOf(link) === extOf(file.name)) {
         pathEl.value = link;
     } else if (!pathEl.value || extOf(pathEl.value) !== extOf(file.name)) {

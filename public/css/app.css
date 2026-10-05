@@ -366,24 +366,24 @@ select.col-filter {
    is added under /fonts/. */
 @font-face {
     font-family: "YadaTowrah-Times";
-    src: url("/fonts/YadaTowrah-Times.woff2") format("woff2"),
-         url("/fonts/YadaTowrah-Times.ttf")   format("truetype");
+    src: url("/api/font.php?f=YadaTowrah-Times.woff2") format("woff2"),
+         url("/api/font.php?f=YadaTowrah-Times.ttf")   format("truetype");
     font-display: swap;
 }
 @font-face {
     font-family: "Semitic Early";
-    src: url("/fonts/SemiticEarly.ttf") format("truetype");
+    src: url("/api/font.php?f=SemiticEarly.ttf") format("truetype");
     font-display: swap;
 }
 @font-face {
     font-family: "Moabite Stone";
-    src: url("/fonts/MoabiteStone.ttf") format("truetype");
+    src: url("/api/font.php?f=MoabiteStone.ttf") format("truetype");
     font-display: swap;
 }
 @font-face {
     font-family: "Jupiter-Yada";
-    src: url("/fonts/JupiterYada-Regular.woff2") format("woff2"),
-         url("/fonts/JupiterYada-Regular.ttf")   format("truetype");
+    src: url("/api/font.php?f=JupiterYada-Regular.woff2") format("woff2"),
+         url("/api/font.php?f=JupiterYada-Regular.ttf")   format("truetype");
     font-display: swap;
 }
 

@@ -28,10 +28,10 @@ $stmt = $db->query("
 // files" mapping. Anything not in this map is assumed to be a system font
 // (Arial, Helvetica, etc.) or supplied elsewhere.
 $fileMap = [
-    'YadaTowrah-Times' => ['woff2' => '/fonts/YadaTowrah-Times.woff2', 'ttf' => '/fonts/YadaTowrah-Times.ttf'],
-    'Semitic Early'    => ['ttf'   => '/fonts/SemiticEarly.ttf'],
-    'Moabite Stone'    => ['ttf'   => '/fonts/MoabiteStone.ttf'],
-    'Jupiter-Yada'     => ['woff2' => '/fonts/JupiterYada-Regular.woff2', 'ttf' => '/fonts/JupiterYada-Regular.ttf'],
+    'YadaTowrah-Times' => ['woff2' => '/api/font.php?f=YadaTowrah-Times.woff2', 'ttf' => '/api/font.php?f=YadaTowrah-Times.ttf'],
+    'Semitic Early'    => ['ttf'   => '/api/font.php?f=SemiticEarly.ttf'],
+    'Moabite Stone'    => ['ttf'   => '/api/font.php?f=MoabiteStone.ttf'],
+    'Jupiter-Yada'     => ['woff2' => '/api/font.php?f=JupiterYada-Regular.woff2', 'ttf' => '/api/font.php?f=JupiterYada-Regular.ttf'],
 ];
 
 $emitted = [];
