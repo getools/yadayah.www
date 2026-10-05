@@ -4364,7 +4364,7 @@ function ttsWordLocations(PDO $db, int $ttsKey, array $tune): array {
            JOIN yy_volume  v ON v.volume_key  = p.volume_key
            JOIN yy_chapter c ON c.chapter_key = p.chapter_key
           WHERE p.paragraph_text_html <> ''
-            AND v.volume_active_flag = TRUE
+            AND v.volume_status <> 'I'
             AND position(:core in lower(regexp_replace(p.paragraph_text_plain, '[' || :apos || ']', '', 'g'))) > 0"
     );
     $cand->execute([':core' => $core, ':apos' => TTS_APOS_CHARS]);

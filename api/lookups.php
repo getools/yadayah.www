@@ -154,12 +154,12 @@ $TABLES = [
             ['name' => 'volume_page_count',      'label' => 'Page Count',      'type' => 'int'],
             ['name' => 'volume_paragraph_count', 'label' => 'Paragraph Count', 'type' => 'int'],
             ['name' => 'volume_sort',            'label' => 'Sort',            'type' => 'int'],
-            ['name' => 'volume_active_flag',        'label' => 'Active',          'type' => 'bool'],
+            ['name' => 'volume_status',          'label' => 'Status (A/P/I)',  'type' => 'text'],
         ],
         'display' => 'volume_label',
         'edit_layout' => [
             ['volume_key'],
-            [['series_key', 'volume_number', 'volume_label', 'volume_pdf', 'volume_file'], ['volume_flip_code', 'volume_page_count', 'volume_paragraph_count', 'volume_sort', 'volume_active_flag']],
+            [['series_key', 'volume_number', 'volume_label', 'volume_pdf', 'volume_file'], ['volume_flip_code', 'volume_page_count', 'volume_paragraph_count', 'volume_sort', 'volume_status']],
         ],
     ],
     'yy_word_pos' => [

@@ -75,23 +75,24 @@ if ($mode === 'series') {
 if ($mode === 'volumes') {
     $seriesKey = (int)($_GET['series_key'] ?? 0);
     if (!$seriesKey) errorResponse('series_key required');
-    // Inactive volumes are included — the flag governs public visibility, not
-    // narratability — but are labelled so the picker still reads honestly.
+    // Inactive and Pending volumes are included — the status governs public
+    // visibility, not narratability — but are labelled so the picker still
+    // reads honestly.
     $stmt = $db->prepare("
         SELECT volume_key, volume_number, volume_label,
-               COALESCE(volume_active_flag, TRUE) AS volume_active_flag
+               volume_status
           FROM yy_volume
          WHERE series_key = ?
          ORDER BY volume_sort, volume_number
     ");
     $stmt->execute([$seriesKey]);
     jsonResponse(['rows' => array_map(function ($r) {
-        $inactive = !filter_var($r['volume_active_flag'], FILTER_VALIDATE_BOOLEAN);
+        $tag = ['P' => ' (pending)', 'I' => ' (inactive)'][$r['volume_status']] ?? '';
         return [
             'key'    => (int)$r['volume_key'],
             'number' => (int)$r['volume_number'],
             'label'  => 'v0' . $r['volume_number'] . ' — ' . ($r['volume_label'] ?: 'untitled')
-                      . ($inactive ? ' (inactive)' : ''),
+                      . $tag,
         ];
     }, $stmt->fetchAll())]);
 }

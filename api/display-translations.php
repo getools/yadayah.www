@@ -63,7 +63,7 @@ $stmt = $pdo->prepare("
     JOIN yy_cite_book cb ON cb.cite_book_key = t.cite_book_key
     JOIN yy_cite_chapter c ON c.cite_chapter_key = t.cite_chapter_key
     JOIN yy_cite_verse v ON v.cite_verse_key = t.cite_verse_key
-    JOIN yy_volume vol ON vol.volume_key = t.volume_key AND vol.volume_active_flag = TRUE
+    JOIN yy_volume vol ON vol.volume_key = t.volume_key AND " . volumeVisibleSql('vol') . "
     LEFT JOIN LATERAL (
         SELECT 'Chapter ' || ch.chapter_number || ':' || ch.chapter_name AS chapter_name
         FROM yy_chapter ch

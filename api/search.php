@@ -214,7 +214,7 @@ foreach ($queryWords as $w) {
 }
 
 // Build filter conditions (shared between all tiers)
-$filterConditions = ["p.paragraph_active_flag = true", "v.volume_active_flag = true"];
+$filterConditions = ["p.paragraph_active_flag = true", volumeVisibleSql('v')];
 $filterParams = [];
 if ($series !== null) {
     $filterConditions[] = "p.series_key = ?";

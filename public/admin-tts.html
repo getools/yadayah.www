@@ -6492,9 +6492,10 @@ async function loadVolumes() {
         var o = document.createElement('option');
         o.value = v.volume_key;
         o.textContent = 's' + String(v.series_number).padStart(2,'0') + 'v' + String(v.volume_number).padStart(2,'0') + ' — ' + (v.volume_label || '');
-        // Inactive books stay in the list — the flag only hides them from the
-        // public site, they are still narratable — but say so.
-        if (v.volume_active_flag === false) o.textContent += '  (inactive)';
+        // Inactive / Pending books stay in the list — the status only limits
+        // who sees them on the public site, they are still narratable — but say so.
+        if (v.volume_status === 'I') o.textContent += '  (inactive)';
+        else if (v.volume_status === 'P') o.textContent += '  (pending)';
         if (v.chapters_with_audio > 0) o.textContent += '  (' + v.chapters_with_audio + '/' + v.chapters_total + ' built)';
         sel.appendChild(o);
     });
@@ -8381,7 +8382,7 @@ async function qaLoadVolumes() {
         o.value = v.volume_key;
         o.textContent = 's' + String(v.series_number).padStart(2, '0') + 'v' + String(v.volume_number).padStart(2, '0')
             + ' — ' + (v.volume_label || '')
-            + (v.volume_active_flag === false ? '  (inactive)' : '')
+            + (v.volume_status === 'I' ? '  (inactive)' : v.volume_status === 'P' ? '  (pending)' : '')
             + '  (' + v.chapters_with_audio + ' built)';
         sel.appendChild(o);
     });

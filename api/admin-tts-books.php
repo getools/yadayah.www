@@ -23,14 +23,15 @@ $action = $_GET['action'] ?? 'volumes';
 
 if ($action === 'volumes') {
     $ttsKey = (int)($_GET['tts_key'] ?? 0);
-    // Inactive volumes are deliberately NOT filtered out. The active flag only
-    // hides a book from the public site (search / reader); it is still
-    // narratable, and filtering here made such a book impossible to select for
-    // a build. The flag rides along so the dropdown can label it.
+    // Inactive and Pending volumes are deliberately NOT filtered out. The
+    // status only governs who sees a book on the public site (search / reader);
+    // it is still narratable, and filtering here made such a book impossible to
+    // select for a build. The status rides along so the dropdown can label it.
     $sql = "
         SELECT v.volume_key, v.series_key, v.volume_number, v.volume_label,
                v.volume_paragraph_count_live AS paragraph_count,
                COALESCE(v.volume_active_flag, TRUE) AS volume_active_flag,
+               v.volume_status,
                s.series_number,
                (SELECT COUNT(*) FROM yy_chapter c WHERE c.volume_key = v.volume_key) AS chapters_total,
                COALESCE((

@@ -77,7 +77,7 @@ if ($docxStem !== $pdfStem) {
 $lookup = $db->prepare("
     SELECT volume_key, volume_code, volume_locked_flag, volume_locked_by_name
     FROM yy_volume
-    WHERE volume_active_flag = TRUE
+    WHERE volume_status <> 'I'
       AND (volume_docx = ? OR volume_code = ?)
     LIMIT 1
 ");

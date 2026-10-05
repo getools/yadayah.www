@@ -61,7 +61,7 @@ $stmt = $pdo->prepare("
               AND ch.chapter_page <= t.translation_page
             ORDER BY ch.chapter_page DESC LIMIT 1) AS chapter_name
     FROM yy_translation t
-    JOIN yy_volume vol ON vol.volume_key = t.volume_key AND vol.volume_active_flag = TRUE
+    JOIN yy_volume vol ON vol.volume_key = t.volume_key AND " . volumeVisibleSql('vol') . "
     JOIN yy_series ser ON ser.series_key = vol.series_key
     JOIN yy_cite_book cb ON cb.cite_book_key = t.cite_book_key
     JOIN yy_cite_chapter c ON c.cite_chapter_key = t.cite_chapter_key

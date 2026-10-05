@@ -206,6 +206,17 @@ function denyIfBanned(string $feature = 'this feature'): void {
     }
 }
 
+/**
+ * SQL predicate for the books the current visitor may see on the public site,
+ * from yy_volume.volume_status: A = Active (everyone), P = Pending (signed-in
+ * members only), I = Inactive (no one). $alias is the yy_volume alias in the
+ * caller's query, or '' for an unaliased yy_volume.
+ */
+function volumeVisibleSql(string $alias = 'v'): string {
+    $col = ($alias === '' ? '' : $alias . '.') . 'volume_status';
+    return empty($_SESSION['user_key']) ? "$col = 'A'" : "$col IN ('A', 'P')";
+}
+
 function requireAuth(): array {
     if (empty($_SESSION['user_key'])) {
         jsonResponse(['error' => 'Authentication required'], 401);

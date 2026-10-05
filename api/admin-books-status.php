@@ -61,7 +61,7 @@ $stmt = $db->query("
            volume_pipeline_message,
            volume_flip_code
     FROM yy_volume
-    WHERE volume_active_flag = TRUE
+    WHERE volume_status <> 'I'
       AND volume_code IS NOT NULL
       AND volume_code <> ''
     ORDER BY volume_sort, volume_key

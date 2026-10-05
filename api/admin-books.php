@@ -12,6 +12,23 @@
 require_once __DIR__ . '/config.php';
 $authUser = requireAuth();
 
+/**
+ * yy_volume.volume_status from a request body: A = Active, P = Pending
+ * (members only), I = Inactive. Still accepts the old boolean
+ * volume_active_flag from callers that predate the status. Defaults to A.
+ */
+function volumeStatusParam(array $data): string {
+    if (array_key_exists('volume_status', $data)) {
+        $s = strtoupper(trim((string)$data['volume_status']));
+        if (!in_array($s, ['A', 'P', 'I'], true)) errorResponse('volume_status must be A, P or I');
+        return $s;
+    }
+    if (array_key_exists('volume_active_flag', $data)) {
+        return filter_var($data['volume_active_flag'], FILTER_VALIDATE_BOOLEAN) ? 'A' : 'I';
+    }
+    return 'A';
+}
+
 $db = getDb();
 $method = $_SERVER['REQUEST_METHOD'];
 $key = (int)($_GET['key'] ?? 0);
@@ -534,7 +551,7 @@ if ($method === 'POST') {
 
     $stmt = $db->prepare("
         INSERT INTO yy_volume (series_key, volume_label, volume_number, volume_sort,
-                               volume_code, volume_pdf, volume_page_count, volume_active_flag, volume_ask_rating,
+                               volume_code, volume_pdf, volume_page_count, volume_status, volume_ask_rating,
                                volume_amazon_asin)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
@@ -546,7 +563,7 @@ if ($method === 'POST') {
         $code,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
-        (bool)($data['volume_active_flag'] ?? true) ? 'true' : 'false',
+        volumeStatusParam($data),
         $askRating,
         $newAsin !== '' ? strtoupper($newAsin) : null,
     ]);
@@ -746,7 +763,12 @@ if ($method === 'PUT') {
     // PDO_PGSQL coerces PHP bool false to '' which Postgres rejects as a
     // boolean. Explicit 'true'/'false' strings match what admin-basics /
     // admin-vlog / admin-test do.
-    foreach (['volume_active_flag', 'volume_search_flag', 'volume_parse_flag', 'volume_ask_yada_flag'] as $col) {
+    // Status: A = Active (public), P = Pending (members only), I = Inactive.
+    if (array_key_exists('volume_status', $data) || array_key_exists('volume_active_flag', $data)) {
+        $fields[] = "volume_status = ?";
+        $params[] = volumeStatusParam($data);
+    }
+    foreach (['volume_search_flag', 'volume_parse_flag', 'volume_ask_yada_flag'] as $col) {
         if (array_key_exists($col, $data)) {
             $fields[] = "$col = ?";
             $params[] = (bool)$data[$col] ? 'true' : 'false';

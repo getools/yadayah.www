@@ -22,7 +22,7 @@ $series = $pdo->query("
 $volumes = $pdo->query("
     SELECT volume_key, series_key, volume_number, volume_label, volume_sort
       FROM yy_volume
-     WHERE volume_active_flag = TRUE
+     WHERE " . volumeVisibleSql('') . "
      ORDER BY series_key, volume_sort, volume_number
 ")->fetchAll();
 

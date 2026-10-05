@@ -14,7 +14,8 @@
  *
  * Two flags decide what the Books page shows, and both are editable in admin:
  *   yy_series.series_books_display_flag — whether the series gets a section
- *   yy_volume.volume_active_flag        — whether the book gets a card
+ *   yy_volume.volume_status             — whether the book gets a card:
+ *       A = Active (everyone), P = Pending (signed-in members only), I = Inactive
  * Series are returned in display order and volumes are already filtered to
  * those series, so the page renders what it is given without second-guessing.
  */
@@ -24,7 +25,7 @@ require_once __DIR__ . '/image-helpers.php';
 /**
  * The one book that is not a YY volume: it lives on its own domain and its
  * cover is a different shape (300x264, hence the 'itc' class). Everything
- * else about it — PDF, Word, ASIN, active flag — is ordinary volume data.
+ * else about it — PDF, Word, ASIN, status — is ordinary volume data.
  */
 const BOOKS_OVERRIDES = [
     'In-the-Company-of-Good-and-Evil' => [
@@ -123,7 +124,7 @@ $rows = $pdo->query("
            v.volume_img_front_3d, v.volume_img_front_2d, v.volume_img_books
       FROM yy_volume v
       JOIN yy_series s ON s.series_key = v.series_key
-     WHERE v.volume_active_flag = TRUE
+     WHERE " . volumeVisibleSql('v') . "
        AND s.series_books_display_flag = TRUE
      ORDER BY s.series_sort, v.volume_sort, v.volume_number
 ")->fetchAll();

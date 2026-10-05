@@ -43,6 +43,7 @@
 
         .badge-active { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #d4edda; color: #155724; }
         .badge-inactive { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #f8d7da; color: #721c24; }
+        .badge-pending { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: #fff3cd; color: #856404; }
 
         /* Source-control checkout ("lock") controls. A locked book shows the
            holder; an unlocked book shows a subtle "check out" button. */
@@ -1032,7 +1033,13 @@
                 <div style="font-size:0.74rem;color:#888;margin-top:4px;">While checked out, other admins can't upload a new DOCX for this book.</div>
             </div>
             <div class="field">
-                <label style="display:block;margin-bottom:6px;"><input type="checkbox" id="f-active" checked> Active</label>
+                <label style="display:block;margin-bottom:6px;">Status
+                    <select id="f-status" style="margin-left:6px;">
+                        <option value="A">Active — everyone</option>
+                        <option value="P">Pending — members only</option>
+                        <option value="I">Inactive — hidden</option>
+                    </select>
+                </label>
                 <label style="display:block;margin-bottom:4px;"><input type="checkbox" id="f-search-flag" checked> Include in <strong>Book Search</strong></label>
                 <label style="display:block;margin-bottom:4px;"><input type="checkbox" id="f-parse-flag" checked> Parse for <strong>Translations / Glossary</strong></label>
                 <label style="display:block;"><input type="checkbox" id="f-ask-yada-flag" checked> Include in <strong>Ask Yada</strong> context</label>
@@ -2262,7 +2269,7 @@ function renderBooks() {
         + '<th class="status-cell" style="text-align:center;" title="Number of Translations (T) and Paragraphs (P) pulled from the document. Paragraphs are parsed for every book; translations only when the book is opted in.">Parsing</th>'
         + '<th class="status-cell" style="text-align:center;" title="Cover art — front, spine and back in 2D and 3D. The icon shown here (and in search results) is derived from the 2D front.">Art</th>'
         + '<th class="status-cell" style="text-align:center;" title="Open the chapter-level TTS narration studio for this book">TTS</th>'
-        + '<th>Active</th>'
+        + '<th>Status</th>'
         + '<th title="Check a book out to stop another admin uploading a new version">Lock</th>'
         + '<th>Actions</th>'
         + '</tr></thead><tbody>';
@@ -2299,7 +2306,7 @@ function renderBooks() {
                 + '<td>' + dataCell(v) + '</td>'
                 + '<td class="status-cell" onclick="event.stopPropagation()">' + coverCell(v) + '</td>'
                 + '<td class="status-cell" onclick="event.stopPropagation()">' + ttsCell(v) + '</td>'
-                + '<td>' + (v.volume_active_flag ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive">Inactive</span>') + '</td>'
+                + '<td>' + (v.volume_status === 'P' ? '<span class="badge-pending">Pending</span>' : v.volume_status === 'I' ? '<span class="badge-inactive">Inactive</span>' : '<span class="badge-active">Active</span>') + '</td>'
                 + '<td onclick="event.stopPropagation()">' + lockCell(v) + '</td>'
                 + '<td class="actions" onclick="event.stopPropagation()">'
                 + '<button onclick="editVolume(' + v.volume_key + ')" title="Edit this volume">Edit</button>'
@@ -2326,7 +2333,7 @@ function showVolumeForm(record) {
     document.getElementById('f-code').value = r.volume_code || '';
     document.getElementById('f-asin').value = r.volume_amazon_asin || '';
     document.getElementById('f-pdf').value = r.volume_pdf || '';
-    document.getElementById('f-active').checked = r.volume_active_flag !== false;
+    document.getElementById('f-status').value = r.volume_status || 'A';
     document.getElementById('f-search-flag').checked   = r.volume_search_flag    !== false;
     document.getElementById('f-parse-flag').checked    = r.volume_parse_flag     !== false;
     document.getElementById('f-ask-yada-flag').checked = r.volume_ask_yada_flag  !== false;
@@ -2499,7 +2506,7 @@ function saveVolume() {
         volume_code: code,
         volume_amazon_asin: document.getElementById('f-asin').value.trim(),
         volume_pdf: document.getElementById('f-pdf').value.trim(),
-        volume_active_flag: document.getElementById('f-active').checked,
+        volume_status: document.getElementById('f-status').value,
         volume_search_flag: document.getElementById('f-search-flag').checked,
         volume_parse_flag: document.getElementById('f-parse-flag').checked,
         volume_ask_yada_flag: document.getElementById('f-ask-yada-flag').checked,

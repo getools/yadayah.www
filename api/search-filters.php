@@ -15,7 +15,7 @@ $series = $pdo->query("
     WHERE EXISTS (
         SELECT 1 FROM yy_volume v
         WHERE v.series_key = s.series_key
-          AND v.volume_active_flag = TRUE
+          AND " . volumeVisibleSql('v') . "
           AND v.volume_search_flag = TRUE
     )
     ORDER BY s.series_sort
@@ -27,7 +27,7 @@ $series = $pdo->query("
 $volumes = $pdo->query("
     SELECT volume_key, series_key, volume_label
     FROM yy_volume
-    WHERE volume_active_flag = TRUE
+    WHERE " . volumeVisibleSql('') . "
       AND volume_search_flag = TRUE
     ORDER BY volume_sort
 ")->fetchAll();
