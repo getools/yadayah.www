@@ -134,6 +134,21 @@
                 <div class="field" style="max-width:150px"><label>Link Title</label><input type="text" id="f-link-title" placeholder="Download"></div>
             </div>
             <div class="field">
+                <label>Upload file to server</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="f-srv-file" style="font-size:0.85rem" onchange="pickServerFile(this)">
+                    <input type="text" id="f-srv-path" placeholder="/fonts/YadaTowrah-Times.ttf" style="flex:1;min-width:200px">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="uploadServerFile()">Upload</button>
+                </div>
+                <div style="font-size:0.78rem;color:#888;margin-top:3px">Saves the file at this path on yadayah.com. Uses the Link URL when it points to a file of the same type. An existing file is replaced only after you confirm, and the old copy is kept.</div>
+                <div id="srv-upload-progress" style="display:none;margin-top:6px">
+                    <div style="width:100%;height:20px;background:#e0e0e0;border-radius:4px;overflow:hidden">
+                        <div id="srv-upload-fill" style="height:100%;background:#3498db;border-radius:4px;transition:width 0.2s;width:0%"></div>
+                    </div>
+                    <div id="srv-upload-text" style="font-size:0.8rem;color:#555;margin-top:3px"></div>
+                </div>
+            </div>
+            <div class="field">
                 <label>Summary (HTML allowed)</label>
                 <textarea id="f-summary" rows="6"></textarea>
             </div>
@@ -243,6 +258,9 @@ function openForm(data) {
     document.getElementById('f-subtitle').value = data ? (data.resource_subtitle || '') : '';
     document.getElementById('f-image').value = data ? (data.resource_image || '') : '';
     document.getElementById('f-image-file').value = '';
+    document.getElementById('f-srv-file').value = '';
+    document.getElementById('f-srv-path').value = '';
+    document.getElementById('srv-upload-progress').style.display = 'none';
     document.getElementById('f-link-url').value = data ? (data.resource_link_url || '') : '';
     document.getElementById('f-link-title').value = data ? (data.resource_link_title || '') : '';
     document.getElementById('f-summary').value = data ? (data.resource_summary || '') : '';
@@ -320,6 +338,87 @@ function uploadImage(input) {
         input.value = '';
     };
 
+    xhr.send(fd);
+}
+
+function extOf(p) {
+    var m = /\.([A-Za-z0-9]+)$/.exec(p || '');
+    return m ? m[1].toLowerCase() : '';
+}
+
+// Default the target path: the Link URL if it is a local file of the same
+// type (replace the download), else /u/resources/<filename>.
+function pickServerFile(input) {
+    var file = input.files[0];
+    document.getElementById('srv-upload-progress').style.display = 'none';
+    if (!file) return;
+    var pathEl = document.getElementById('f-srv-path');
+    var link = document.getElementById('f-link-url').value.trim().split(/[?#]/)[0];
+    if (link.charAt(0) === '/' && link.charAt(1) !== '/' && extOf(link) === extOf(file.name)) {
+        pathEl.value = link;
+    } else if (!pathEl.value || extOf(pathEl.value) !== extOf(file.name)) {
+        pathEl.value = '/u/resources/' + file.name.replace(/[^A-Za-z0-9._()+-]/g, '_');
+    }
+}
+
+function uploadServerFile(overwrite) {
+    var input = document.getElementById('f-srv-file');
+    var file = input.files[0];
+    var path = document.getElementById('f-srv-path').value.trim();
+    var progressEl = document.getElementById('srv-upload-progress');
+    var fillEl = document.getElementById('srv-upload-fill');
+    var textEl = document.getElementById('srv-upload-text');
+    function fail(msg) { progressEl.style.display = ''; textEl.textContent = msg; textEl.style.color = '#c0392b'; }
+    if (!file) return fail('Choose a file first');
+    if (!path) return fail('Enter the target path, e.g. /fonts/YadaTowrah-Times.ttf');
+
+    progressEl.style.display = '';
+    fillEl.style.width = '0%';
+    textEl.textContent = 'Uploading...';
+    textEl.style.color = '#555';
+
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('path', path);
+    if (overwrite) fd.append('overwrite', '1');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/admin-resource-file.php', true);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var pct = Math.round((e.loaded / e.total) * 100);
+            fillEl.style.width = pct + '%';
+            textEl.textContent = 'Uploading ' + pct + '%';
+        }
+    };
+    xhr.onload = function() {
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch (e) { return fail('Upload failed (HTTP ' + xhr.status + ')'); }
+        if (xhr.status === 409 && d.exists) {
+            var kb = Math.round(d.size / 1024).toLocaleString();
+            if (confirm(d.path + ' already exists (' + kb + ' KB, ' + new Date(d.mtime).toLocaleString() + ').\n\nReplace it? The old copy is kept as a backup.')) {
+                uploadServerFile(true);
+            } else {
+                fail('Not uploaded: the file already exists');
+            }
+            return;
+        }
+        if (d.error) return fail(d.error);
+        fillEl.style.width = '100%';
+        var msg = (d.replaced ? 'Replaced ' : 'Uploaded ') + d.path + ' (' + Math.round(d.size / 1024).toLocaleString() + ' KB)';
+        if (d.warnings && d.warnings.length) {
+            textEl.textContent = msg + '. ⚠ ' + d.warnings.join(' ');
+            textEl.style.color = '#b9770e';
+        } else {
+            textEl.textContent = msg;
+            textEl.style.color = '#27ae60';
+        }
+        var linkEl = document.getElementById('f-link-url');
+        if (!linkEl.value.trim()) linkEl.value = d.path;
+        input.value = '';
+    };
+    xhr.onerror = function() { fail('Upload failed'); };
     xhr.send(fd);
 }
 

@@ -2,7 +2,8 @@
 /**
  * Admin CRUD for the central font registry (yy_font).
  *
- *   GET                → list all rows (active + inactive) for the admin grid
+ *   GET                → list all rows (active + inactive) for the admin grid,
+ *                        each with `files` = its hosted /fonts/* files (from css/app.css)
  *   POST               → create a row { display, stack, glyph, group, sort, note, active }
  *   PUT  ?key=N        → update a row
  *   DELETE ?key=N      → delete a row
@@ -50,7 +51,33 @@ case 'GET':
                   font_sort,
                   font_display_name
     ");
-    jsonResponse(['rows' => $stmt->fetchAll()]);
+    $rows = $stmt->fetchAll();
+    // Files hosted for each font, from the site-wide @font-face rules in
+    // css/app.css (family → /fonts/* urls), matched on the stack's first family.
+    $faces = [];
+    $css = @file_get_contents(__DIR__ . '/../css/app.css') ?: '';
+    if (preg_match_all('/@font-face\s*\{([^}]*)\}/i', $css, $blocks)) {
+        foreach ($blocks[1] as $b) {
+            if (!preg_match('/font-family\s*:\s*[\'"]?([^\'";]+)/i', $b, $fm)) continue;
+            preg_match_all('#url\(\s*[\'"]?/?fonts/([A-Za-z0-9._-]+)#i', $b, $um);
+            $fam = strtolower(trim($fm[1]));
+            foreach ($um[1] as $name) $faces[$fam][$name] = true;
+        }
+    }
+    foreach ($rows as &$row) {
+        $primary = strtolower(trim(trim(explode(',', $row['font_css_stack'])[0]), "'\" "));
+        $row['files'] = [];
+        foreach (array_keys($faces[$primary] ?? []) as $name) {
+            $p = __DIR__ . '/../fonts/' . $name;
+            $row['files'][] = [
+                'path'  => '/fonts/' . $name,
+                'size'  => is_file($p) ? filesize($p) : null,
+                'mtime' => is_file($p) ? date('c', filemtime($p)) : null,
+            ];
+        }
+    }
+    unset($row);
+    jsonResponse(['rows' => $rows]);
 
 case 'POST':
     $r = normalizeRow(readBody());
