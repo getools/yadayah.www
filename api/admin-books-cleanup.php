@@ -926,14 +926,29 @@ function cleanupHistory(): void {
     $db = getDb();
     $batch = (string)($_GET['batch'] ?? '');
     if ($batch !== '') {
-        $st = $db->prepare("SELECT cleanup_change_key, paragraph_number, cleanup_change_match, cleanup_change_replace,
-                                   cleanup_change_excerpt_before, cleanup_change_excerpt_after, cleanup_change_status,
-                                   cleanup_change_options->>'hdr_kind' AS hdr_kind, cleanup_change_options->>'hdr' AS hdr,
-                                   cleanup_change_options->'chapter' AS chapter
-                              FROM yy_cleanup_change WHERE cleanup_change_batch = ? ORDER BY cleanup_change_key");
+        // Series / book / chapter of each change. A re-parse (every commit)
+        // gives the paragraphs new keys, so fall back to the paragraph NUMBER
+        // in the book, which is unique (idx_paragraph_vol_num).
+        $st = $db->prepare("SELECT c.cleanup_change_key, c.paragraph_number, c.cleanup_change_match, c.cleanup_change_replace,
+                                   c.cleanup_change_excerpt_before, c.cleanup_change_excerpt_after, c.cleanup_change_status,
+                                   c.cleanup_change_options->>'hdr_kind' AS hdr_kind, c.cleanup_change_options->>'hdr' AS hdr,
+                                   c.cleanup_change_options->'chapter' AS chapter,
+                                   v.volume_code, v.volume_label, v.volume_number, s.series_label,
+                                   ch.chapter_number, ch.chapter_name
+                              FROM yy_cleanup_change c
+                              JOIN yy_volume v ON v.volume_key = c.volume_key
+                              LEFT JOIN yy_series s ON s.series_key = v.series_key
+                              LEFT JOIN yy_paragraph pk ON pk.paragraph_key = c.paragraph_key
+                              LEFT JOIN yy_paragraph pn ON pk.paragraph_key IS NULL AND c.paragraph_number IS NOT NULL
+                                    AND pn.volume_key = c.volume_key AND pn.paragraph_number = c.paragraph_number
+                              LEFT JOIN yy_chapter ch ON ch.chapter_key = coalesce(pk.chapter_key, pn.chapter_key)
+                             WHERE c.cleanup_change_batch = ? ORDER BY c.cleanup_change_key");
         $st->execute([$batch]);
         $rows = $st->fetchAll();
-        foreach ($rows as &$r) $r['chapter'] = $r['chapter'] === null ? null : json_decode($r['chapter'], true);
+        foreach ($rows as &$r) {
+            $r['chapter'] = $r['chapter'] === null ? null : json_decode($r['chapter'], true);
+            foreach (['volume_number', 'chapter_number'] as $k) $r[$k] = $r[$k] === null ? null : (int)$r[$k];
+        }
         unset($r);
         jsonResponse(['changes' => $rows]);
     }

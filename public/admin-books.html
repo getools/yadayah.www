@@ -437,6 +437,16 @@
         .hi-st-badge.st-d { background: #eceff1; color: #78909c; }
         .hi-row .done { display: block; color: #999; font-size: 0.72rem; white-space: nowrap; }
         .hi-detail > td { background: #fffdf5; padding: 4px 10px 8px 34px; }
+        .hi-table td.ser, .hi-sub td.ser { color: #666; max-width: 180px; }
+        /* A batch's changes: Series · Book · Chapter · ¶ · the change. */
+        .hi-chg { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .hi-chg th { text-align: left; padding: 4px 8px; color: #8a7a4a; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid #f3ead0; white-space: nowrap; }
+        .hi-chg td { padding: 6px 8px; border-bottom: 1px solid #f3ead0; vertical-align: top; }
+        .hi-chg tr:last-child td { border-bottom: none; }
+        .hi-chg td.ser, .hi-chg td.book { color: #555; max-width: 160px; }
+        .hi-chg td.chap { color: #555; max-width: 200px; }
+        .hi-chg td.para { white-space: nowrap; color: #555; font-variant-numeric: tabular-nums; }
+        .hi-chg td.cl-qchange { padding: 6px 8px; width: 55%; }
         .hi-empty { color: #888; font-style: italic; text-align: center; padding: 16px !important; }
         .hi-grps { display: inline-flex; border: 1px solid #c5cdd6; border-radius: 4px; overflow: hidden; }
         .hi-grp { border: none; background: #fff; padding: 4px 10px; font-size: 0.82rem; cursor: pointer; color: #444; }
@@ -3258,7 +3268,7 @@ function hiLoad() {
         + (from ? '&from=' + encodeURIComponent(day(from, 0)) : '')
         + (to ? '&to=' + encodeURIComponent(day(to, 1)) : '')
         + '&q=' + encodeURIComponent(document.getElementById('hi-q').value.trim());
-    body.innerHTML = '<tr><td colspan="7" class="hi-empty">Loading…</td></tr>';
+    body.innerHTML = '<tr><td colspan="' + HI_HEAD[hiGroup].length + '" class="hi-empty">Loading…</td></tr>';
     fetch(url, {credentials: 'include'}).then(function(r) { return safeJson(r); }).then(function(d) {
         if (seq !== hiSeq) return;
         if (d.error) { hiBatches = []; hiRender(d.error); return; }
@@ -3349,7 +3359,19 @@ function hiDirectSnip(o, part) {
 }
 function hiBookHtml(b) {
     return '<span title="' + esc(b.volume_code || '') + '">' + esc((b.volume_number ? b.volume_number + ' · ' : '') + (b.volume_label || b.volume_code || ''))
-        + '</span>' + (b.series_label ? '<span class="ser">' + esc(b.series_label) + '</span>' : '');
+        + '</span>';
+}
+// The series of these batches' books, each once.
+function hiSeriesList(batches) {
+    var seen = {}, out = [];
+    batches.forEach(function(b) { var s = b.series_label || ''; if (s && !seen[s]) { seen[s] = 1; out.push(s); } });
+    return out;
+}
+function hiSeriesHtml(batches) {
+    var s = hiSeriesList(batches);
+    if (!s.length) return '<span class="meta">—</span>';
+    if (s.length > 2) return '<span title="' + esc(s.join('\n')) + '">' + s.length + ' series</span>';
+    return s.map(esc).join('<br>');
 }
 // One badge per status, with counts of changes when a group is mixed; the
 // commit / discard time when there is one.
@@ -3391,9 +3413,9 @@ function hiTypeHtml(batches) {
 // Columns: label, sort key (null = not sortable). Click a sortable header to
 // sort by it; click again to reverse.
 var HI_HEAD = {
-    run:  [['When', 'when'], ['Type', 'type'], ['Find', 'find'], ['Replace', 'replace'], ['Books', 'books'], ['Changes', 'changes'],
+    run:  [['When', 'when'], ['Type', 'type'], ['Find', 'find'], ['Replace', 'replace'], ['Series', 'series'], ['Books', 'books'], ['Changes', 'changes'],
            ['Status', 'status'], ['By', 'by'], ['', null]],
-    book: [['Book', 'book'], ['Type', 'type'], ['Last change', 'when'], ['Batches', 'batches'], ['Changes', 'changes'],
+    book: [['Series', 'series'], ['Book', 'book'], ['Type', 'type'], ['Last change', 'when'], ['Batches', 'batches'], ['Changes', 'changes'],
            ['Status', 'status'], ['By', 'by'], ['', null]]
 };
 var hiSort = {key: 'when', dir: -1};
@@ -3402,7 +3424,7 @@ var hiSort = {key: 'when', dir: -1};
 var hiColF = {};
 var HI_NUM_COLS = {books: 1, changes: 1, batches: 1};
 var HI_FHINT = {when: 'e.g. 10/5/2026', find: 'contains…', replace: 'contains… (or note)', books: 'name, or >2, <5, 3',
-                changes: '>10, <5, 3', batches: '>1, <5, 2', by: 'contains…', book: 'contains…'};
+                changes: '>10, <5, 3', batches: '>1, <5, 2', by: 'contains…', book: 'contains…', series: 'contains…'};
 function hiFilterRow(head) {
     return '<tr class="hi-frow" data-mode="' + hiGroup + '">' + head.map(function(h) {
         var k = h[1], v = hiColF[k] || '';
@@ -3433,6 +3455,7 @@ function hiFiltText(g, key) {
         case 'books': case 'book':
             return g.batches.map(function(b) { return [b.volume_code, b.volume_label, b.series_label, b.volume_number].join(' '); }).join(' ').toLowerCase();
         case 'by': return g.batches.map(function(b) { return b.user_name || ''; }).join(', ').toLowerCase();
+        case 'series': return hiSeriesList(g.batches).join(' ').toLowerCase();
     }
     return '';
 }
@@ -3465,6 +3488,8 @@ function hiSortVal(g, key) {
         case 'status': return ['pending', 'processed', 'discarded'].indexOf(b0.status);
         case 'by': return hiUsers(g).toLowerCase();
         case 'book': return (b0.series_label || '') + '|' + String(b0.volume_number || 0).padStart(4, '0') + (b0.volume_label || '');
+        case 'series': return hiSeriesList(g.batches).join(' / ').toLowerCase()
+            + '|' + String(b0.volume_number || 0).padStart(4, '0') + (b0.volume_label || '');
     }
     return 0;
 }
@@ -3498,7 +3523,8 @@ function hiRender(msg) {
         var tip = ' title="Click to show / hide its ' + (hiGroup === 'book' ? 'batches' : 'books') + '"';
         if (hiGroup === 'book') {
             return '<tr class="hi-row" data-g="' + i + '"' + tip + '>'
-                + '<td class="book">' + tw + hiBookHtml(b0) + '</td>'
+                + '<td class="ser">' + tw + hiSeriesHtml(g.batches) + '</td>'
+                + '<td class="book">' + hiBookHtml(b0) + '</td>'
                 + '<td>' + hiTypeHtml(g.batches) + '</td>'
                 + '<td class="when">' + esc(hiWhen(g.last)) + '</td>'
                 + '<td class="num">' + g.batches.length + '</td>'
@@ -3510,6 +3536,7 @@ function hiRender(msg) {
             + '<td class="when">' + tw + esc(hiWhen(g.first)) + '</td>'
             + '<td>' + hiTypeHtml(g.batches) + '</td>'
             + '<td>' + hiFindHtml(b0) + '</td><td>' + hiRepHtml(b0) + '</td>'
+            + '<td class="ser">' + hiSeriesHtml(g.batches) + '</td>'
             + '<td class="num">' + hiBooksHtml(g) + '</td>'
             + '<td class="num">' + g.count + '</td>'
             + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
@@ -3563,13 +3590,13 @@ function hiToggleGroup(tr) {
     tr.classList.add('open');
     var g = hiRender.groups[+tr.getAttribute('data-g')];
     var byBook = hiGroup === 'book';
-    var head = byBook ? ['When', 'Type', 'Find', 'Replace', 'Changes', 'Status', 'By', ''] : ['Book', 'When', 'Changes', 'Status', 'By', ''];
+    var head = byBook ? ['When', 'Type', 'Find', 'Replace', 'Changes', 'Status', 'By', ''] : ['Series', 'Book', 'When', 'Changes', 'Status', 'By', ''];
     var rows = g.batches.map(function(b) {
         var tw = '<span class="tw">&#9654;</span>';
         return '<tr class="hi-brow" data-b="' + b._i + '" title="Click to show / hide this batch\'s changes">'
             + (byBook
                 ? '<td class="when">' + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiTypeHtml([b]) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
-                : '<td class="book">' + tw + hiBookHtml(b) + '</td><td class="when">' + esc(hiWhen(b.dtime)) + '</td>')
+                : '<td class="ser">' + tw + hiSeriesHtml([b]) + '</td><td class="book">' + hiBookHtml(b) + '</td><td class="when">' + esc(hiWhen(b.dtime)) + '</td>')
             + '<td class="num">' + b.count + '</td><td>' + hiStatusHtml([b]) + '</td><td>' + esc(b.user_name || '') + '</td>'
             + '<td class="act">' + hiActHtml([b], 'batch') + '</td></tr>';
     }).join('');
@@ -3591,14 +3618,26 @@ function hiToggleBatch(tr) {
         .then(function(d) {
             if (d.error) { cell.innerHTML = '<div class="cl-loading">' + esc(d.error) + '</div>'; return; }
             // excerpts are server-built HTML: escaped text inside <b>/<i>/<mark> only.
-            cell.innerHTML = (d.changes || []).map(function(c) {
-                var where = c.hdr_kind ? (c.hdr_kind === 'footer' ? 'Footer' : 'Running header') : '¶ ' + esc(String(c.paragraph_number));
-                var chap = c.chapter ? '<div class="meta">Chapter name: “' + esc(c.chapter.before) + '” → “' + esc(c.chapter.after) + '”</div>' : '';
-                return '<div class="cl-qchange"><div class="meta">' + where + ' · “'
-                    + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
+            // One row per change: Series · Book · Chapter · ¶ · the change.
+            var rows = (d.changes || []).map(function(c) {
+                var para = c.hdr_kind ? (c.hdr_kind === 'footer' ? 'Footer' : 'Running header') : '¶ ' + esc(String(c.paragraph_number == null ? '' : c.paragraph_number));
+                var chName = c.chapter_name || '';
+                var chap = c.chapter_number != null || chName
+                    ? '<span title="' + esc(chName) + '">' + (c.chapter_number != null ? esc(String(c.chapter_number)) + (chName ? ' · ' : '') : '') + esc(chName) + '</span>'
+                    : '<span class="meta">—</span>';
+                var rename = c.chapter ? '<div class="meta">Chapter name: “' + esc(c.chapter.before) + '” → “' + esc(c.chapter.after) + '”</div>' : '';
+                return '<tr>'
+                    + '<td class="ser">' + (c.series_label ? esc(c.series_label) : '<span class="meta">—</span>') + '</td>'
+                    + '<td class="book">' + hiBookHtml(c) + '</td>'
+                    + '<td class="chap">' + chap + '</td>'
+                    + '<td class="para">' + para + '</td>'
+                    + '<td class="cl-qchange"><div class="meta">“' + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
                     + '<div class="ex old">' + (c.cleanup_change_excerpt_before || '') + '</div>'
-                    + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div>' + chap + '</div>';
-            }).join('') || '<div class="cl-loading">No changes.</div>';
+                    + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div>' + rename + '</td></tr>';
+            }).join('');
+            cell.innerHTML = rows
+                ? '<table class="hi-chg"><thead><tr><th>Series</th><th>Book</th><th>Chapter</th><th>Paragraph</th><th>Change</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                : '<div class="cl-loading">No changes.</div>';
         });
 }
 
