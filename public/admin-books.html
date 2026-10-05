@@ -362,6 +362,12 @@
         .hi-table th.hi-sortable { cursor: pointer; user-select: none; }
         .hi-table th.hi-sortable:hover { color: #2980b9; }
         .hi-table th.sorted { color: #2c3e50; }
+        .hi-table tr.hi-frow th { padding: 4px 6px 6px; background: #f5f7fa; font-weight: 400; }
+        .hi-table tr.hi-frow input, .hi-table tr.hi-frow select { width: 100%; min-width: 56px; box-sizing: border-box; height: 26px; padding: 2px 6px;
+            border: 1px solid #d5dbe2; border-radius: 4px; font-size: 0.78rem; background: #fff; color: #333; }
+        .hi-table tr.hi-frow .on { border-color: #3498db; background: #f2f8fd; }
+        .hi-table tr.hi-frow .hi-fclr { width: auto; height: 26px; padding: 0 8px; border: 1px solid #d5dbe2; border-radius: 4px; background: #fff;
+            cursor: pointer; color: #c0392b; font-size: 0.78rem; white-space: nowrap; }
         .hi-dlbl { color: #7d3c98; font-size: 0.78rem; white-space: nowrap; }
         .hi-dsnip { color: #777; }
         .hi-dsnip mark { background: #f8edc8; color: #1a5276; padding: 0 1px; }
@@ -3202,6 +3208,23 @@ function hiInit() {
         hiRender();
     });
     document.querySelectorAll('#cl-pane-changes .hi-ty').forEach(function(c) { c.addEventListener('change', function() { hiLoad(); }); });
+    var ft = null;
+    var onF = function(e) {
+        var el = e.target.closest('[data-f]');
+        if (!el) return;
+        hiColF[el.getAttribute('data-f')] = el.value;
+        el.classList.toggle('on', !!el.value);
+        clearTimeout(ft);
+        ft = setTimeout(function() { hiRender(); }, el.tagName === 'SELECT' ? 0 : 200);
+    };
+    document.getElementById('hi-head').addEventListener('input', onF);
+    document.getElementById('hi-head').addEventListener('change', onF);
+    document.getElementById('hi-head').addEventListener('click', function(e) {
+        if (!e.target.closest('#hi-fclr')) return;
+        hiColF = {};
+        document.querySelectorAll('#hi-head [data-f]').forEach(function(el) { el.value = ''; el.classList.remove('on'); });
+        hiRender();
+    });
     document.getElementById('hi-body').addEventListener('click', function(e) {
         var xp = e.target.closest('button.hi-xp');
         if (xp) { hiExpand(xp.closest('tr.hi-row'), xp.getAttribute('data-xp') === 'open'); return; }
@@ -3374,6 +3397,61 @@ var HI_HEAD = {
            ['Status', 'status'], ['By', 'by'], ['', null]]
 };
 var hiSort = {key: 'when', dir: -1};
+// Column filters (the row under the headers), by column key. They narrow the
+// rows already loaded — the bar above decides what is loaded.
+var hiColF = {};
+var HI_NUM_COLS = {books: 1, changes: 1, batches: 1};
+var HI_FHINT = {when: 'e.g. 10/5/2026', find: 'contains…', replace: 'contains… (or note)', books: 'name, or >2, <5, 3',
+                changes: '>10, <5, 3', batches: '>1, <5, 2', by: 'contains…', book: 'contains…'};
+function hiFilterRow(head) {
+    return '<tr class="hi-frow" data-mode="' + hiGroup + '">' + head.map(function(h) {
+        var k = h[1], v = hiColF[k] || '';
+        if (!k) return '<th><button type="button" class="hi-fclr" id="hi-fclr" title="Clear the column filters" hidden>&times; Clear</button></th>';
+        if (k === 'type' || k === 'status') {
+            var opts = k === 'type' ? Object.keys(HI_TYPES).map(function(t) { return [t, HI_TYPES[t][0]]; })
+                : Object.keys(HI_STATUS).map(function(t) { return [t, HI_STATUS[t][0]]; });
+            return '<th><select data-f="' + k + '" class="' + (v ? 'on' : '') + '" title="Only rows with this ' + h[0].toLowerCase() + '"><option value="">All</option>'
+                + opts.map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
+                + '</select></th>';
+        }
+        return '<th><input type="search" data-f="' + k + '" class="' + (v ? 'on' : '') + '" value="' + esc(v) + '" placeholder="' + esc(HI_FHINT[k] || 'contains…') + '"'
+            + ' autocomplete="off" spellcheck="false" title="Filter the ' + esc(h[0]) + ' column'
+            + (HI_NUM_COLS[k] ? ' — a number, or >N, <N, >=N, <=N' : ' — text it contains') + '"></th>';
+    }).join('') + '</tr>';
+}
+// The text a column filter matches against (lower case).
+function hiFiltText(g, key) {
+    var b0 = g.batches[0], o = b0.options || {};
+    switch (key) {
+        case 'when': return hiWhen(hiGroup === 'book' ? g.last : g.first).toLowerCase();
+        case 'find':
+            return (hiTypeOf(b0) === 'direct' || o.mode === 'divider'
+                ? '¶ ' + (b0.paragraph_number || '') + ' ' + (o.pre || '') + (o.old || '') + (o.post || '') + (o.mode === 'divider' ? ' divider' : '')
+                : (b0.find || '')).toLowerCase();
+        case 'replace':
+            return ((hiTypeOf(b0) === 'direct' ? (o.pre || '') + (o.new || '') + (o.post || '') : hiRepList(b0).join(' / ')) + ' ' + (o.note || '')).toLowerCase();
+        case 'books': case 'book':
+            return g.batches.map(function(b) { return [b.volume_code, b.volume_label, b.series_label, b.volume_number].join(' '); }).join(' ').toLowerCase();
+        case 'by': return g.batches.map(function(b) { return b.user_name || ''; }).join(', ').toLowerCase();
+    }
+    return '';
+}
+function hiColMatch(g) {
+    return Object.keys(hiColF).every(function(k) {
+        var v = (hiColF[k] || '').trim();
+        if (!v) return true;
+        if (k === 'type') return g.batches.some(function(b) { return hiTypeOf(b) === v; });
+        if (k === 'status') return g.batches.some(function(b) { return b.status === v; });
+        var m = HI_NUM_COLS[k] && v.match(/^(<=|>=|<|>|=)?\s*(\d+)$/);
+        if (m) {
+            var n = hiSortVal(g, k), x = +m[2];
+            switch (m[1] || '=') { case '<': return n < x; case '>': return n > x; case '<=': return n <= x; case '>=': return n >= x; }
+            return n === x;
+        }
+        if (k === 'changes' || k === 'batches') return true;   // not a number yet (still typing)
+        return v.toLowerCase().split(/\s+/).every(function(w) { return hiFiltText(g, k).indexOf(w) >= 0; });
+    });
+}
 function hiSortVal(g, key) {
     var b0 = g.batches[0];
     switch (key) {
@@ -3393,14 +3471,21 @@ function hiSortVal(g, key) {
 function hiRender(msg) {
     var head = HI_HEAD[hiGroup];
     if (!head.some(function(h) { return h[1] === hiSort.key; })) hiSort = {key: 'when', dir: -1};
-    document.getElementById('hi-head').innerHTML = '<tr>' + head.map(function(h) {
+    var sortRow = '<tr class="hi-srow">' + head.map(function(h) {
         var cls = (h[0] === 'Changes' || h[0] === 'Batches' ? 'num' : '') + (h[1] ? ' hi-sortable' : '') + (h[1] === hiSort.key ? ' sorted' : '');
         var arrow = h[1] === hiSort.key ? (hiSort.dir < 0 ? ' &#9660;' : ' &#9650;') : '';
         return '<th class="' + cls + '"' + (h[1] ? ' data-sort="' + h[1] + '" title="Sort by ' + h[0] + ' (click again to reverse)"' : '') + '>' + h[0] + arrow + '</th>';
     }).join('') + '</tr>';
+    var thead = document.getElementById('hi-head'), frow = thead.querySelector('tr.hi-frow');
+    if (frow && frow.getAttribute('data-mode') === hiGroup) thead.querySelector('tr.hi-srow').outerHTML = sortRow;
+    else thead.innerHTML = sortRow + hiFilterRow(head);
+    var colKeys = head.map(function(h) { return h[1]; });
+    var activeF = Object.keys(hiColF).filter(function(k) { return hiColF[k] && colKeys.indexOf(k) >= 0; });
+    document.getElementById('hi-fclr').hidden = !activeF.length;
     var body = document.getElementById('hi-body'), cols = head.length;
     if (msg) { body.innerHTML = '<tr><td colspan="' + cols + '" class="hi-empty">' + esc(msg) + '</td></tr>'; document.getElementById('hi-sum').textContent = ''; return; }
-    var groups = hiGroups();
+    var allGroups = hiGroups();
+    var groups = activeF.length ? allGroups.filter(hiColMatch) : allGroups;
     groups.sort(function(a, b) {
         var x = hiSortVal(a, hiSort.key), y = hiSortVal(b, hiSort.key);
         if (x < y) return -hiSort.dir;
@@ -3429,11 +3514,14 @@ function hiRender(msg) {
             + '<td class="num">' + g.count + '</td>'
             + '<td>' + hiStatusHtml(g.batches) + '</td><td>' + hiUsers(g) + '</td>'
             + '<td class="act">' + HI_XP_HTML + hiActHtml(g.batches, hiTypeOf(b0) === 'direct' ? 'edit' : 'search/replace') + '</td></tr>';
-    }).join('') || '<tr><td colspan="' + cols + '" class="hi-empty">No changes.</td></tr>';
-    var changes = hiBatches.reduce(function(n, b) { return n + b.count; }, 0);
+    }).join('') || '<tr><td colspan="' + cols + '" class="hi-empty">'
+        + (activeF.length && allGroups.length ? 'No changes match the column filters.' : 'No changes.') + '</td></tr>';
+    var nb = groups.reduce(function(n, g) { return n + g.batches.length; }, 0);
+    var changes = groups.reduce(function(n, g) { return n + g.count; }, 0);
     document.getElementById('hi-sum').textContent = groups.length
         ? groups.length + (hiGroup === 'book' ? ' book' + (groups.length === 1 ? '' : 's') : ' change set' + (groups.length === 1 ? '' : 's'))
-          + ' · ' + hiBatches.length + ' batch' + (hiBatches.length === 1 ? '' : 'es') + ' · ' + changes + ' change' + (changes === 1 ? '' : 's')
+          + (activeF.length ? ' (of ' + allGroups.length + ')' : '')
+          + ' · ' + nb + ' batch' + (nb === 1 ? '' : 'es') + ' · ' + changes + ' change' + (changes === 1 ? '' : 's')
         : '';
 }
 
