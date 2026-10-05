@@ -318,6 +318,13 @@
         .de-sep { width: 1px; height: 22px; background: #d5dbe2; margin: 0 4px; }
         .de-area { min-height: 3em; padding: 10px 12px; outline: none; }
         .de-area:focus { box-shadow: inset 0 0 0 2px #cfe3f5; }
+        .de-note { display: block; width: 100%; box-sizing: border-box; min-height: 3.2em; resize: vertical; margin: 0; padding: 8px 12px;
+                   border: 0; border-top: 1px dashed #e3e7ec; background: #fffef8; font: 0.85rem/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; color: #444; outline: none; }
+        .de-note:focus { box-shadow: inset 0 0 0 2px #f0d58c; }
+        .de-pnote, .hi-note { margin-top: 4px; padding: 3px 8px; border-left: 3px solid #f0d58c; background: #fffbea; color: #6b5a1e;
+                              font-size: 0.8rem; white-space: pre-wrap; border-radius: 0 4px 4px 0; }
+        .de-para.de-editing .de-pnote { display: none; }
+        .hi-note { display: block; max-width: 520px; }
         .de-foot { display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding: 6px 8px; border-top: 1px solid #e3e7ec; }
         .de-msg { flex: 1; font-size: 0.8rem; color: #888; }
         .de-msg.bad { color: #c0392b; }
@@ -3304,7 +3311,10 @@ function hiFindHtml(b) {
 function hiRepHtml(b) {
     var o = b.options || {};
     if (o.mode === 'divider') return deDividerHtml(o.kind);
-    if (hiTypeOf(b) === 'direct') return o.format_only ? '<span class="meta">(same text, new formatting)</span>' : hiDirectSnip(o, o.new);
+    if (hiTypeOf(b) === 'direct') {
+        return (o.format_only ? '<span class="meta">(same text, new formatting)</span>' : hiDirectSnip(o, o.new))
+            + (o.note ? '<span class="hi-note" title="The editor’s note on this change">&#128221; ' + esc(o.note) + '</span>' : '');
+    }
     return hiRepList(b).map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
         + hiFlags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : '']);
 }
@@ -4559,9 +4569,9 @@ function deInsertYT(keys) {
 
 function deDirty() {
     if (!deEd) return;
-    var now = JSON.stringify(deRuns(deEd.area));
-    deEd.host.querySelector('.de-save').disabled = now === deEd.start;
-    deMsg(now === deEd.start ? '' : 'Unsaved changes');
+    var same = JSON.stringify(deRuns(deEd.area)) === deEd.start && deEd.note.value.trim() === deEd.noteStart.trim();
+    deEd.host.querySelector('.de-save').disabled = same;
+    deMsg(same ? '' : 'Unsaved changes');
 }
 
 // ── popovers: Hebrew, Yada Towrah, special characters ──
@@ -4659,6 +4669,8 @@ function deOpen(host, para, opts) {
         + '</div>';
     host.innerHTML = '<div class="de-ed">' + tb
         + '<div class="de-area de-text" contenteditable="true" spellcheck="true"></div>'
+        + '<textarea class="de-note" rows="2" maxlength="2000" spellcheck="true" placeholder="Note (optional) — why this change; shown with it in the Changes queue"'
+        + ' title="A note for this edit. It is saved with the queued change and shown on the Changes tab. Not part of the book."></textarea>'
         + '<div class="de-foot"><span class="de-msg"></span>'
         + '<button type="button" class="btn btn-secondary btn-sm de-cancel" title="Close without saving">Cancel</button>'
         + '<button type="button" class="btn btn-primary btn-sm de-save" disabled title="Save: the paragraph changes now and the book\'s staged DOCX too — queued on the Changes tab until you commit">Save</button>'
@@ -4669,7 +4681,9 @@ function deOpen(host, para, opts) {
     host.querySelector('.de-save')._dirtyEntry = {skip: true};
     area.innerHTML = para.html;
     deSizeStyles(area);
-    deEd = {host: host, para: para, area: area, range: null, opts: opts || {}, start: JSON.stringify(deRuns(area))};
+    var note = host.querySelector('.de-note');
+    note.value = para.note || '';
+    deEd = {host: host, para: para, area: area, note: note, noteStart: note.value, range: null, opts: opts || {}, start: JSON.stringify(deRuns(area))};
     host.classList.add('de-editing');
 
     host.querySelectorAll('.de-tb button').forEach(function(b) { b.addEventListener('mousedown', function(e) { e.preventDefault(); }); });
@@ -4709,6 +4723,12 @@ function deOpen(host, para, opts) {
         document.execCommand('insertText', false, t);
     });
     area.addEventListener('drop', function(e) { e.preventDefault(); });
+    note.addEventListener('input', deDirty);
+    note.addEventListener('click', function(e) { e.stopPropagation(); });
+    note.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { e.preventDefault(); deClose(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); deSave(); }
+    });
     host.querySelector('.de-cancel').addEventListener('click', function(e) { e.stopPropagation(); deClose(); });
     host.querySelector('.de-save').addEventListener('click', function(e) { e.stopPropagation(); deSave(); });
     area.focus();
@@ -4717,7 +4737,7 @@ function deOpen(host, para, opts) {
 // Close the editor (asks first when there are unsaved changes). True = closed.
 function deClose(force) {
     if (!deEd) return true;
-    if (!force && JSON.stringify(deRuns(deEd.area)) !== deEd.start
+    if (!force && (JSON.stringify(deRuns(deEd.area)) !== deEd.start || deEd.note.value.trim() !== deEd.noteStart.trim())
         && !confirm('Discard your unsaved changes to this paragraph?')) return false;
     var ed = deEd;
     deEd = null;
@@ -4730,14 +4750,40 @@ function deClose(force) {
 function deSave() {
     if (!deEd) return;
     var ed = deEd, runs = deRuns(ed.area);
-    if (JSON.stringify(runs) === ed.start) { deClose(true); return; }
+    var note = ed.note.value.trim(), noteChanged = note !== ed.noteStart.trim();
     var btn = ed.host.querySelector('.de-save');
+    if (JSON.stringify(runs) === ed.start) {
+        if (!noteChanged) { deClose(true); return; }
+        // Only the note: it belongs to the paragraph's latest queued edit.
+        btn.disabled = true;
+        deMsg('Saving the note…');
+        clPost('direct_note', {paragraph_key: ed.para.paragraph_key, note: note}).then(function(d) {
+            if (deEd !== ed) return;
+            if (d.error) { btn.disabled = false; deMsg(d.error, true); return; }
+            ed.para.note = d.note;
+            deEd = null;
+            deClosePop();
+            ed.host.classList.remove('de-editing');
+            if (ed.opts.onSaved) ed.opts.onSaved(ed.para.html, true);
+            if (hiBound) hiLoad();
+        }, function(e) { btn.disabled = false; deMsg(String(e && e.message || e), true); });
+        return;
+    }
     btn.disabled = true;
     deMsg('Saving — editing the staged DOCX…');
-    clPost('direct_save', {paragraph_key: ed.para.paragraph_key, base_html: ed.para.html, runs: runs, source: ed.opts.source || 'direct'})
+    // An unchanged note stays on the earlier edit it was written for.
+    var body = {paragraph_key: ed.para.paragraph_key, base_html: ed.para.html, runs: runs, source: ed.opts.source || 'direct'};
+    if (noteChanged) body.note = note;
+    clPost('direct_save', body)
         .then(function(d) {
             if (deEd !== ed) return;
             if (d.error) { btn.disabled = false; deMsg(d.error, true); return; }
+            if (d.unchanged && noteChanged && !d.note_saved) {
+                btn.disabled = false;
+                deMsg('That made no change to the text, and a note goes with a queued edit — change the paragraph too, then save.', true);
+                return;
+            }
+            if (noteChanged && (note || d.unchanged)) ed.para.note = note;
             ed.para.html = d.html;
             deEd = null;
             deClosePop();
@@ -4888,6 +4934,7 @@ function deParaHtml(p, i) {
             + ') after this paragraph — goes into the staged DOCX, queued on the Changes tab">&#65291; Divider after</button>' : '')
         + '</div>'
         + '<div class="de-text">' + p.html + '</div>'
+        + (p.note ? '<div class="de-pnote" title="Note on this paragraph’s queued edit — click the paragraph to change it">&#128221; ' + esc(p.note) + '</div>' : '')
         + (p.dividers ? '<div class="de-divq" title="Queued: appears in the book when you commit its changes">'
             + deDividerHtml(deCur.divider) + '<span>' + (p.dividers > 1 ? p.dividers + ' dividers' : 'divider') + ' queued after this paragraph</span></div>' : '')
         + '</div>';

@@ -21,6 +21,7 @@
  * GET  ?action=direct_books | direct_chapters&volume=N | direct_page&volume=N&page=P | direct_para&key=K
  * POST ?action=direct_save — Edit → Direct: edit one paragraph in place; see cleanupDirectSave().
  * POST ?action=direct_divider — the book's divider after a paragraph; see cleanupDirectDivider().
+ * POST ?action=direct_note {paragraph_key, note} — re-word the note on a paragraph's latest queued edit.
  * GET  ?action=word_meta / ?action=words — the glossary word picker; see cleanupWords().
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
@@ -53,6 +54,9 @@ const CLEANUP_KINDS_MAX = 300;
 // Edit → Direct: the fonts the editor offers (the DOCX fonts the books use).
 const CLEANUP_DIRECT_FONTS = ['Times New Roman', 'Yada Towrah', 'Arial', 'Calibri', 'Tahoma', 'Jupiter-Yada',
                               'Semitic Early', 'Moabite Stone', 'Isaiah Scroll'];
+// Edit → Direct: the note an admin can leave on an edit (options.note), shown on the Changes tab.
+const CLEANUP_NOTE_MAX = 2000;
+const CLEANUP_NOTE_ROW_SQL = "cleanup_change_options->>'type' = 'direct' AND coalesce(cleanup_change_options->>'mode', '') <> 'divider'";
 const CLEANUP_APOS_WILDCARD = "\u{275C}";
 const CLEANUP_APOS_CLASS = "[\u{02BF}\u{02BE}'`\u{2018}\u{2019}\u{201A}\u{201B}\u{00B4}\u{02BC}\u{02BB}\u{02B9}\u{2032}]";
 const CLEANUP_WORD_SCRIPTS = [
@@ -72,6 +76,7 @@ if ($action === 'direct_page')     cleanupDirectPage();
 if ($action === 'direct_para')     cleanupDirectPara();
 if ($action === 'direct_save')     cleanupDirectSave($authUser);
 if ($action === 'direct_divider')  cleanupDirectDivider($authUser);
+if ($action === 'direct_note')     cleanupDirectNote();
 if ($action === 'word_meta') cleanupWordMeta();
 if ($action === 'words')     cleanupWords();
 if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
@@ -956,9 +961,10 @@ function cleanupHistory(): void {
     }
     $q = trim((string)($_GET['q'] ?? ''));
     if ($q !== '') {
-        $where[] = "(c.cleanup_change_find ILIKE ? OR c.cleanup_change_replace ILIKE ? OR c.cleanup_change_options->>'replace' ILIKE ?)";
+        $where[] = "(c.cleanup_change_find ILIKE ? OR c.cleanup_change_replace ILIKE ? OR c.cleanup_change_options->>'replace' ILIKE ?
+                     OR c.cleanup_change_options->>'note' ILIKE ?)";
         $like = '%' . strtr($q, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
-        array_push($args, $like, $like, $like);
+        array_push($args, $like, $like, $like, $like);
     }
     $offset = max(0, (int)($_GET['offset'] ?? 0));
     $limit = 5000;   // the page groups the batches (by run or by book) itself
@@ -1090,20 +1096,56 @@ function cleanupDirectRow(array $r, array $queued): array {
             'chapter_key' => $r['chapter_key'] === null ? null : (int)$r['chapter_key'],
             'html' => (string)$r['paragraph_text_html'], 'is_table' => (bool)$r['paragraph_is_table'],
             'queued' => (int)($queued[(int)$r['paragraph_key']]['n'] ?? 0),
-            'dividers' => (int)($queued[(int)$r['paragraph_key']]['div'] ?? 0)];
+            'dividers' => (int)($queued[(int)$r['paragraph_key']]['div'] ?? 0),
+            'edits' => (int)($queued[(int)$r['paragraph_key']]['edits'] ?? 0),
+            'note' => (string)($queued[(int)$r['paragraph_key']]['note'] ?? '')];
 }
 
 /** paragraph_key → how many of its changes are queued. */
 function cleanupQueuedFor(PDO $db, array $keys): array {
     if (!$keys) return [];
     $st = $db->query('SELECT paragraph_key, count(*) AS n,
-                             count(*) FILTER (WHERE cleanup_change_options->>\'mode\' = \'divider\') AS div
+                             count(*) FILTER (WHERE cleanup_change_options->>\'mode\' = \'divider\') AS div,
+                             count(*) FILTER (WHERE ' . CLEANUP_NOTE_ROW_SQL . ') AS edits,
+                             (array_agg(cleanup_change_options->>\'note\' ORDER BY cleanup_change_key DESC)
+                                FILTER (WHERE ' . CLEANUP_NOTE_ROW_SQL . '))[1] AS note
                         FROM yy_cleanup_change
                        WHERE cleanup_change_status = \'pending\' AND paragraph_key IN (' . implode(',', array_map('intval', $keys)) . ')
                        GROUP BY paragraph_key');
     $out = [];
-    foreach ($st->fetchAll() as $r) $out[(int)$r['paragraph_key']] = ['n' => (int)$r['n'], 'div' => (int)$r['div']];
+    foreach ($st->fetchAll() as $r) {
+        $out[(int)$r['paragraph_key']] = ['n' => (int)$r['n'], 'div' => (int)$r['div'], 'edits' => (int)$r['edits'], 'note' => $r['note']];
+    }
     return $out;
+}
+
+/** The admin's note on a direct edit: plain text (line breaks kept), at most CLEANUP_NOTE_MAX characters. */
+function cleanupNoteText($v): string {
+    $t = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', str_replace(["\r\n", "\r"], "\n", (string)$v));
+    return mb_substr(trim((string)$t), 0, CLEANUP_NOTE_MAX);
+}
+
+/** Set (or, with '', clear) the note on a paragraph's latest queued edit. False when it has none. */
+function cleanupSetNote(PDO $db, int $pk, string $note): bool {
+    $st = $db->prepare('UPDATE yy_cleanup_change
+                           SET cleanup_change_options = CASE WHEN ?::text = \'\' THEN cleanup_change_options - \'note\'
+                                                             ELSE cleanup_change_options || jsonb_build_object(\'note\', ?::text) END
+                         WHERE cleanup_change_key = (SELECT max(cleanup_change_key) FROM yy_cleanup_change
+                                                      WHERE paragraph_key = ? AND cleanup_change_status = \'pending\'
+                                                        AND ' . CLEANUP_NOTE_ROW_SQL . ')');
+    $st->execute([$note, $note, $pk]);
+    return $st->rowCount() > 0;
+}
+
+/** POST {paragraph_key, note}: re-word (or clear) the note on the paragraph's latest queued edit. */
+function cleanupDirectNote(): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $note = cleanupNoteText($in['note'] ?? '');
+    if (!cleanupSetNote(getDb(), (int)($in['paragraph_key'] ?? 0), $note)) {
+        errorResponse('A note goes with a queued edit — change the paragraph too, then save.', 422);
+    }
+    jsonResponse(['ok' => true, 'note' => $note]);
 }
 
 function cleanupDirectPage(): void {
@@ -1212,6 +1254,7 @@ function cleanupDirectSave(array $authUser): void {
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
     $pk = (int)($in['paragraph_key'] ?? 0);
     $source = ($in['source'] ?? '') === 'search' ? 'search' : 'direct';
+    $note = cleanupNoteText($in['note'] ?? '');
     $db = getDb();
     $st = $db->prepare('SELECT paragraph_key, volume_key, paragraph_number, paragraph_text_html, paragraph_text_plain,
                                paragraph_text_raw, paragraph_is_table FROM yy_paragraph WHERE paragraph_key = ? AND paragraph_active_flag');
@@ -1231,14 +1274,20 @@ function cleanupDirectSave(array $authUser): void {
     $newText = $newParsed['text'];
     if (trim($newText) === '') errorResponse('The paragraph would be empty — to remove a paragraph, edit the Word document.', 422);
     $strip = function ($runs) { return array_map(function ($r) { unset($r['st']); return $r; }, cleanupCleanRuns($runs)); };
-    if ($strip($oldRuns) == $strip($newRuns)) jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]);
+    // The text is unchanged: a note sent along goes onto the paragraph's latest queued edit.
+    $noteOnly = function () use ($db, $pk, $in, $note, $oldHtml) {
+        $r = ['ok' => true, 'unchanged' => true, 'html' => $oldHtml];
+        if (array_key_exists('note', $in)) $r['note_saved'] = cleanupSetNote($db, $pk, $note);
+        jsonResponse($r);
+    };
+    if ($strip($oldRuns) == $strip($newRuns)) $noteOnly();
 
     $pyRuns = function ($runs) {
         return array_map(function ($r) { return ['t' => $r['t'], 'b' => $r['b'], 'i' => $r['i'], 'u' => $r['u'], 'f' => $r['f'], 'sz' => $r['sz']]; }, $runs);
     };
     $dirRenamed = [];
     $res = cleanupDirectApply($authUser, $db, $row, $oldText, ['old' => $pyRuns($oldRuns), 'new' => $pyRuns($newRuns)],
-        function (PDO $db, int $vk, int $pn) use ($authUser, $row, $pk, $oldHtml, $oldText, $newHtml, $newText, $newParsed, $source, &$dirRenamed) {
+        function (PDO $db, int $vk, int $pn) use ($authUser, $row, $pk, $oldHtml, $oldText, $newHtml, $newText, $newParsed, $source, $note, &$dirRenamed) {
             [$ds, $de, $dn] = cleanupDiffSpan($oldText, $newText);
             $oldParsed = cleanupParseHtml($oldHtml);
             $snip = function ($s) { return mb_strlen($s) > 120 ? mb_substr($s, 0, 117) . '…' : $s; };
@@ -1254,6 +1303,7 @@ function cleanupDirectSave(array $authUser): void {
                                  'run' => bin2hex(random_bytes(6)), 'old' => $snip($oldSnip), 'new' => $snip($newSnip),
                                  'pre' => $pre, 'post' => $post,
                                  'format_only' => $oldText === $newText]
+                                + ($note !== '' ? ['note' => $note] : [])
                                 + ($dirRenamed ? ['chapter' => $dirRenamed[$pk]] : []), JSON_UNESCAPED_UNICODE);
             $plain = trim(preg_replace('/\s+/u', ' ', $newText));
             $db->prepare('UPDATE yy_paragraph SET paragraph_text_html = ?, paragraph_text_plain = ?, paragraph_text_raw = ?,
@@ -1263,7 +1313,7 @@ function cleanupDirectSave(array $authUser): void {
                 cleanupExcerpt($oldParsed['runs'], $oldText, $ds, max($de, min($ds + 1, strlen($oldText)))),
                 cleanupExcerpt($newParsed['runs'], $newText, $ds, max($dn, min($ds + 1, strlen($newText)))));
         });
-    if (!empty($res['unchanged'])) jsonResponse(['ok' => true, 'unchanged' => true, 'html' => $oldHtml]);
+    if (!empty($res['unchanged'])) $noteOnly();
     jsonResponse(['ok' => true, 'html' => $newHtml, 'hunks' => (int)$res['hunks'],
                   'chapters' => array_values(array_map(function ($r) { return ['before' => $r['before'], 'after' => $r['after']]; }, $dirRenamed))]);
 }
