@@ -3236,6 +3236,8 @@ function hiInit() {
         hiRender();
     });
     document.getElementById('hi-body').addEventListener('click', function(e) {
+        var nth = e.target.closest('th[data-nsort]');
+        if (nth) { hiNestClick(nth); return; }
         var xp = e.target.closest('button.hi-xp');
         if (xp) { hiExpand(xp.closest('tr.hi-row'), xp.getAttribute('data-xp') === 'open'); return; }
         var br = e.target.closest('tr.hi-brow');
@@ -3593,16 +3595,74 @@ function hiToggleGroup(tr) {
     var head = byBook ? ['When', 'Type', 'Find', 'Replace', 'Changes', 'Status', 'By', ''] : ['Series', 'Book', 'When', 'Changes', 'Status', 'By', ''];
     var rows = g.batches.map(function(b) {
         var tw = '<span class="tw">&#9654;</span>';
+        var when = '<td class="when" data-v="' + b._t + '">';
+        var book = '<td class="book" data-v="' + esc((b.series_label || '') + '|' + String(b.volume_number || 0).padStart(4, '0') + (b.volume_label || '')) + '">';
         return '<tr class="hi-brow" data-b="' + b._i + '" title="Click to show / hide this batch\'s changes">'
             + (byBook
-                ? '<td class="when">' + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiTypeHtml([b]) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
-                : '<td class="ser">' + tw + hiSeriesHtml([b]) + '</td><td class="book">' + hiBookHtml(b) + '</td><td class="when">' + esc(hiWhen(b.dtime)) + '</td>')
+                ? when + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiTypeHtml([b]) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
+                : '<td class="ser">' + tw + hiSeriesHtml([b]) + '</td>' + book + hiBookHtml(b) + '</td>' + when + esc(hiWhen(b.dtime)) + '</td>')
             + '<td class="num">' + b.count + '</td><td>' + hiStatusHtml([b]) + '</td><td>' + esc(b.user_name || '') + '</td>'
             + '<td class="act">' + hiActHtml([b], 'batch') + '</td></tr>';
     }).join('');
     tr.insertAdjacentHTML('afterend', '<tr class="hi-gdetail"><td colspan="' + tr.children.length + '">'
-        + '<table class="hi-sub"><thead><tr>' + head.map(function(h) { return '<th' + (h === 'Changes' ? ' class="num"' : '') + '>' + h + '</th>'; }).join('')
-        + '</tr></thead><tbody>' + rows + '</tbody></table></td></tr>');
+        + '<table class="hi-sub" data-kind="sub-' + hiGroup + '"><thead><tr>' + hiNestHead(head) + '</tr></thead><tbody>' + rows + '</tbody></table></td></tr>');
+    hiNestApply(tr.nextElementSibling.querySelector('table'));
+}
+
+// ── sorting the nested tables (a group's batches, a batch's changes) ──
+// Click a header to sort that table; click again to reverse. The choice is
+// kept per kind of table, so the next one opened sorts the same way. A cell's
+// data-v, when set, is what it sorts by (times, book order); else its text.
+var hiNestSorts = {};
+var HI_NEST_DESC = {When: 1, Changes: 1};   // these start newest / biggest first
+function hiNestHead(head) {
+    return head.map(function(h) {
+        var cls = (h === 'Changes' ? 'num' : '') + (h ? ' hi-sortable' : '');
+        return '<th class="' + cls + '"' + (h ? ' data-nsort="' + esc(h) + '" title="Sort by ' + esc(h) + ' (click again to reverse)"' : '') + '>' + h + '</th>';
+    }).join('');
+}
+function hiNestVal(td) {
+    if (!td) return '';
+    if (td.hasAttribute('data-v')) return td.getAttribute('data-v');
+    return td.textContent.replace(/^▶\s*/, '').trim();
+}
+function hiNestSort(table, label, dir) {
+    var ths = table.tHead.rows[0].cells, col = -1;
+    for (var i = 0; i < ths.length; i++) {
+        var on = ths[i].getAttribute('data-nsort') === label;
+        if (on) col = i;
+        ths[i].classList.toggle('sorted', on);
+        var a = ths[i].querySelector('.hi-arr');
+        if (a) a.remove();
+        if (on) ths[i].insertAdjacentHTML('beforeend', '<span class="hi-arr">' + (dir < 0 ? ' &#9660;' : ' &#9650;') + '</span>');
+    }
+    if (col < 0) return;
+    // A batch row and its open list of changes move together.
+    var tb = table.tBodies[0], units = [];
+    Array.prototype.forEach.call(tb.rows, function(r) {
+        if (r.classList.contains('hi-detail') && units.length) units[units.length - 1].push(r);
+        else units.push([r]);
+    });
+    units.forEach(function(u, i) { u.i = i; u.v = hiNestVal(u[0].cells[col]); });
+    units.sort(function(a, b) {
+        var x = a.v, y = b.v, nx = +x, ny = +y;
+        var c = x !== '' && y !== '' && !isNaN(nx) && !isNaN(ny) ? nx - ny
+            : x === '' || y === '' ? (x === '' ? 1 : 0) - (y === '' ? 1 : 0)   // blanks last either way
+            : x.localeCompare(y, undefined, {numeric: true, sensitivity: 'base'});
+        if (c && !(x === '' || y === '')) c *= dir;
+        return c || a.i - b.i;
+    });
+    units.forEach(function(u) { u.forEach(function(r) { tb.appendChild(r); }); });
+}
+function hiNestApply(table) {
+    var s = hiNestSorts[table.getAttribute('data-kind')];
+    if (s) hiNestSort(table, s.label, s.dir);
+}
+function hiNestClick(th) {
+    var table = th.closest('table'), kind = table.getAttribute('data-kind'), label = th.getAttribute('data-nsort');
+    var s = hiNestSorts[kind];
+    s = hiNestSorts[kind] = s && s.label === label ? {label: label, dir: -s.dir} : {label: label, dir: HI_NEST_DESC[label] ? -1 : 1};
+    hiNestSort(table, label, s.dir);
 }
 
 // A batch's changes: each paragraph before and after.
@@ -3626,18 +3686,21 @@ function hiToggleBatch(tr) {
                     ? '<span title="' + esc(chName) + '">' + (c.chapter_number != null ? esc(String(c.chapter_number)) + (chName ? ' · ' : '') : '') + esc(chName) + '</span>'
                     : '<span class="meta">—</span>';
                 var rename = c.chapter ? '<div class="meta">Chapter name: “' + esc(c.chapter.before) + '” → “' + esc(c.chapter.after) + '”</div>' : '';
+                var v = function(x) { return ' data-v="' + esc(x == null ? '' : String(x)) + '"'; };
                 return '<tr>'
-                    + '<td class="ser">' + (c.series_label ? esc(c.series_label) : '<span class="meta">—</span>') + '</td>'
-                    + '<td class="book">' + hiBookHtml(c) + '</td>'
-                    + '<td class="chap">' + chap + '</td>'
-                    + '<td class="para">' + para + '</td>'
-                    + '<td class="cl-qchange"><div class="meta">“' + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
+                    + '<td class="ser"' + v(c.series_label) + '>' + (c.series_label ? esc(c.series_label) : '<span class="meta">—</span>') + '</td>'
+                    + '<td class="book"' + v(String(c.volume_number || 0).padStart(4, '0') + (c.volume_label || '')) + '>' + hiBookHtml(c) + '</td>'
+                    + '<td class="chap"' + v(c.chapter_number != null ? c.chapter_number : chName) + '>' + chap + '</td>'
+                    + '<td class="para"' + v(c.hdr_kind ? '' : c.paragraph_number) + '>' + para + '</td>'
+                    + '<td class="cl-qchange"' + v((c.cleanup_change_match || '') + ' → ' + (c.cleanup_change_replace || '')) + '><div class="meta">“' + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
                     + '<div class="ex old">' + (c.cleanup_change_excerpt_before || '') + '</div>'
                     + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div>' + rename + '</td></tr>';
             }).join('');
             cell.innerHTML = rows
-                ? '<table class="hi-chg"><thead><tr><th>Series</th><th>Book</th><th>Chapter</th><th>Paragraph</th><th>Change</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                ? '<table class="hi-chg" data-kind="chg"><thead><tr>' + hiNestHead(['Series', 'Book', 'Chapter', 'Paragraph', 'Change'])
+                  + '</tr></thead><tbody>' + rows + '</tbody></table>'
                 : '<div class="cl-loading">No changes.</div>';
+            if (rows) hiNestApply(cell.querySelector('table'));
         });
 }
 
