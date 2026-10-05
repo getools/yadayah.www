@@ -393,6 +393,18 @@
         .hi-bar select, .hi-bar input[type=text] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; }
         .hi-bar input[type=text] { min-width: 220px; font-family: 'YadaTowrahRings', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         .hi-sum { color: #888; font-size: 0.8rem; margin-left: auto; }
+        /* Commit/Discard progress: one step per book (clQueueRun posts them one at a time). */
+        .hi-prog { margin: -4px 0 12px; padding: 8px 12px; background: #f4f5fc; border: 1px solid #dfe2f3; border-radius: 6px; font-size: 0.82rem; }
+        .hi-prog[hidden] { display: none; }
+        .hi-prog-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; color: #31345A; }
+        .hi-prog-lbl { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .hi-prog-n { color: #666; white-space: nowrap; }
+        .hi-prog-bar { position: relative; height: 8px; background: #e6e8f5; border-radius: 4px; overflow: hidden; }
+        .hi-prog-bar > i { display: block; height: 100%; width: 0; background: #4a53a8; border-radius: 4px; transition: width 0.25s ease; }
+        /* The book in flight: a moving sheen over the part of the bar it will fill. */
+        .hi-prog-bar > b { position: absolute; top: 0; bottom: 0; background: linear-gradient(90deg, #e6e8f5 0%, #8d94d6 50%, #e6e8f5 100%); background-size: 200% 100%; animation: coverSlide 1.1s linear infinite; }
+        .hi-prog.done .hi-prog-bar > i { background: #2e8b57; }
+        .hi-prog.bad .hi-prog-bar > i { background: #c0392b; }
         .hi-wrap { background: #fff; border: 1px solid #d5dbe2; border-radius: 6px; overflow-x: auto; }
         .hi-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
         .hi-table th { text-align: left; padding: 7px 10px; background: #f5f7fa; color: #555; font-weight: 600; border-bottom: 1px solid #d5dbe2; white-space: nowrap; }
@@ -921,6 +933,10 @@
                 <button type="button" class="btn btn-secondary btn-sm" data-hact="discard" data-vks="all" title="Discard every queued change in every book">Discard all queued</button>
             </span>
             <span class="hi-sum" id="hi-sum"></span>
+        </div>
+        <div class="hi-prog" id="hi-prog" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="hi-prog-top"><span class="hi-prog-lbl" id="hi-prog-lbl"></span><span class="hi-prog-n" id="hi-prog-n"></span></div>
+            <div class="hi-prog-bar"><i id="hi-prog-fill"></i><b id="hi-prog-cur" hidden></b></div>
         </div>
         <!-- Filters: Status · By · When from–to · Book · text -->
         <div class="hi-bar hi-filters">
@@ -5027,16 +5043,36 @@ function clQueueRun(kind, vks) {
     if (!confirm(msg)) return;
     var btns = document.querySelectorAll('#tab-edit [data-hact]');
     btns.forEach(function(b) { b.disabled = true; });
-    clPost(kind, {volume_keys: vols.map(function(v) { return v.volume_key; })}).then(function(d) {
-        var res = d.results || [];
+    // One request per book, so the bar can show real progress.
+    var res = [];
+    var verb = kind === 'reprocess' ? 'Committing' : 'Discarding';
+    hiProg(verb, vols, 0, res);
+    var chain = Promise.resolve();
+    vols.forEach(function(v, i) {
+        chain = chain.then(function() {
+            hiProg(verb, vols, i, res);
+            var label = v.volume_code || v.volume_label;
+            return clPost(kind, {volume_keys: [v.volume_key]}).then(function(d) {
+                if (d.error || !(d.results || []).length) res.push({ok: false, label: label, error: d.error || 'no result'});
+                else res.push.apply(res, d.results);
+            }, function(e) {
+                res.push({ok: false, label: label, error: (e && e.message) || String(e)});
+            });
+        });
+    });
+    chain.then(function() {
+        hiProg(verb, vols, vols.length, res);
+        // Let the full bar paint before alert() blocks the page.
+        return new Promise(function(ok) { setTimeout(ok, 350); });
+    }).then(function() {
         var bad = res.filter(function(r) { return !r.ok; });
         var good = res.filter(function(r) { return r.ok; });
         var text = (kind === 'reprocess' ? 'Committed the changes in ' : 'Discarded the changes in ') + good.length + ' book' + (good.length === 1 ? '' : 's')
             + (kind === 'reprocess' ? ' — queued to rebuild.' : '.');
-        if (d.error) text = d.error;
         if (bad.length) text += '\n\nProblems:\n' + bad.map(function(r) { return r.label + ': ' + r.error; }).join('\n');
         alert(text);
-    }).catch(function(e) { alert('Failed: ' + (e && e.message || e)); }).then(function() {
+    }).then(function() {
+        hiProgHide();
         btns.forEach(function(b) { b.disabled = false; });
         if (hiBound) hiLoad();
         return clLoadPending().then(function() {
@@ -5044,6 +5080,37 @@ function clQueueRun(kind, vks) {
             if (kind === 'discard' && clLast) clSearch();
         });
     });
+}
+
+// Draw the Commit/Discard progress bar: `done` of vols finished, res = their results.
+function hiProg(verb, vols, done, res) {
+    var box = document.getElementById('hi-prog');
+    var total = vols.length;
+    var finished = done >= total;
+    var bad = res.filter(function(r) { return !r.ok; }).length;
+    var pct = total ? Math.round(done / total * 100) : 100;
+    var wasHidden = box.hidden;
+    box.hidden = false;
+    box.classList.toggle('done', finished && !bad);
+    box.classList.toggle('bad', finished && !!bad);
+    box.setAttribute('aria-valuenow', pct);
+    document.getElementById('hi-prog-fill').style.width = pct + '%';
+    var cur = document.getElementById('hi-prog-cur');
+    cur.hidden = finished;
+    if (!finished) { cur.style.left = pct + '%'; cur.style.width = (100 / total) + '%'; }
+    var v = vols[Math.min(done, total - 1)];
+    document.getElementById('hi-prog-lbl').textContent = finished
+        ? (verb === 'Committing' ? 'Committed' : 'Discarded') + (bad ? ' — ' + bad + ' book' + (bad === 1 ? '' : 's') + ' had problems' : '')
+        : verb + ' ' + (v.volume_code || v.volume_label) + ' (' + v.count + ' change' + (v.count === 1 ? '' : 's') + ')…';
+    document.getElementById('hi-prog-n').textContent = done + ' of ' + total + ' book' + (total === 1 ? '' : 's') + ' · ' + pct + '%';
+    if (wasHidden) box.scrollIntoView({block: 'nearest'});
+}
+
+function hiProgHide() {
+    var box = document.getElementById('hi-prog');
+    box.hidden = true;
+    box.classList.remove('done', 'bad');
+    document.getElementById('hi-prog-fill').style.width = '0';
 }
 
 // Section field definitions — drives both render and save payload.
