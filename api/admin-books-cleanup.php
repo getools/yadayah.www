@@ -933,7 +933,7 @@ function cleanupHistory(): void {
                                    c.cleanup_change_excerpt_before, c.cleanup_change_excerpt_after, c.cleanup_change_status,
                                    c.cleanup_change_options->>'hdr_kind' AS hdr_kind, c.cleanup_change_options->>'hdr' AS hdr,
                                    c.cleanup_change_options->'chapter' AS chapter,
-                                   v.volume_code, v.volume_label, v.volume_number, s.series_label,
+                                   v.volume_code, v.volume_label, v.volume_number, v.volume_sort, s.series_label, s.series_sort,
                                    ch.chapter_number, ch.chapter_name
                               FROM yy_cleanup_change c
                               JOIN yy_volume v ON v.volume_key = c.volume_key
@@ -947,7 +947,7 @@ function cleanupHistory(): void {
         $rows = $st->fetchAll();
         foreach ($rows as &$r) {
             $r['chapter'] = $r['chapter'] === null ? null : json_decode($r['chapter'], true);
-            foreach (['volume_number', 'chapter_number'] as $k) $r[$k] = $r[$k] === null ? null : (int)$r[$k];
+            foreach (['volume_number', 'volume_sort', 'series_sort', 'chapter_number'] as $k) $r[$k] = $r[$k] === null ? null : (int)$r[$k];
         }
         unset($r);
         jsonResponse(['changes' => $rows]);
@@ -989,13 +989,14 @@ function cleanupHistory(): void {
                                max(c.cleanup_change_done_dtime) AS done_dtime, min(c.cleanup_change_user_name) AS user_name,
                                min(c.paragraph_number) AS paragraph_number,
                                array_to_json(array_agg(DISTINCT c.cleanup_change_replace)) AS replaced,
-                               v.volume_code, v.volume_label, v.volume_number, s.series_label,
+                               v.volume_code, v.volume_label, v.volume_number, v.volume_sort, s.series_label, s.series_sort,
                                count(*) OVER () AS total
                           FROM yy_cleanup_change c
                           JOIN yy_volume v ON v.volume_key = c.volume_key
                           LEFT JOIN yy_series s ON s.series_key = v.series_key
                          WHERE " . implode(' AND ', $where) . "
-                         GROUP BY c.cleanup_change_batch, c.volume_key, v.volume_code, v.volume_label, v.volume_number, s.series_label
+                         GROUP BY c.cleanup_change_batch, c.volume_key, v.volume_code, v.volume_label, v.volume_number, v.volume_sort,
+                                  s.series_label, s.series_sort
                          ORDER BY min(c.cleanup_change_key) DESC
                          LIMIT $limit OFFSET $offset");
     $st->execute($args);
@@ -1009,6 +1010,8 @@ function cleanupHistory(): void {
             'volume_code' => $b['volume_code'], 'volume_label' => $b['volume_label'],
             'volume_number' => $b['volume_number'] === null ? null : (int)$b['volume_number'],
             'series_label' => $b['series_label'],
+            'volume_sort' => $b['volume_sort'] === null ? null : (int)$b['volume_sort'],
+            'series_sort' => $b['series_sort'] === null ? null : (int)$b['series_sort'],
             'find' => $b['find'], 'replace' => $o['replace'] ?? null,
             'replaced' => json_decode((string)$b['replaced'], true) ?: [], 'options' => $o,
             'count' => (int)$b['n'], 'status' => $b['status'],

@@ -3363,11 +3363,21 @@ function hiBookHtml(b) {
     return '<span title="' + esc(b.volume_code || '') + '">' + esc((b.volume_number ? b.volume_number + ' · ' : '') + (b.volume_label || b.volume_code || ''))
         + '</span>';
 }
-// The series of these batches' books, each once.
+// Sort keys from the series' and books' own sort orders (series_sort,
+// volume_sort), not their labels. Fixed-width so they compare as strings;
+// smallint can be negative, hence the offset; no sort order = last.
+function hiOrd(n) { return String(n == null ? 99999 : n + 40000).padStart(6, '0'); }
+function hiSerKey(b) { return hiOrd(b.series_sort) + '|' + (b.series_label || ''); }
+function hiBookKey(b) { return hiSerKey(b) + '|' + hiOrd(b.volume_sort) + '|' + hiOrd(b.volume_number) + '|' + (b.volume_label || ''); }
+// The series of these batches' books, each once, in series order.
 function hiSeriesList(batches) {
     var seen = {}, out = [];
-    batches.forEach(function(b) { var s = b.series_label || ''; if (s && !seen[s]) { seen[s] = 1; out.push(s); } });
-    return out;
+    batches.forEach(function(b) { var s = b.series_label || ''; if (s && !seen[s]) { seen[s] = 1; out.push({s: s, k: hiSerKey(b)}); } });
+    return out.sort(function(a, b) { return a.k < b.k ? -1 : a.k > b.k ? 1 : 0; }).map(function(x) { return x.s; });
+}
+// A group's first series and book in sort order.
+function hiMinKey(batches, keyFn) {
+    return batches.reduce(function(m, b) { var k = keyFn(b); return m === null || k < m ? k : m; }, null) || '';
 }
 function hiSeriesHtml(batches) {
     var s = hiSeriesList(batches);
@@ -3489,9 +3499,9 @@ function hiSortVal(g, key) {
         case 'changes': return g.count;
         case 'status': return ['pending', 'processed', 'discarded'].indexOf(b0.status);
         case 'by': return hiUsers(g).toLowerCase();
-        case 'book': return (b0.series_label || '') + '|' + String(b0.volume_number || 0).padStart(4, '0') + (b0.volume_label || '');
-        case 'series': return hiSeriesList(g.batches).join(' / ').toLowerCase()
-            + '|' + String(b0.volume_number || 0).padStart(4, '0') + (b0.volume_label || '');
+        case 'book': return hiBookKey(b0);
+        // First series in order, then how many series, then first book.
+        case 'series': return hiMinKey(g.batches, hiSerKey) + '#' + hiSeriesList(g.batches).length + '#' + hiMinKey(g.batches, hiBookKey);
     }
     return 0;
 }
@@ -3596,11 +3606,11 @@ function hiToggleGroup(tr) {
     var rows = g.batches.map(function(b) {
         var tw = '<span class="tw">&#9654;</span>';
         var when = '<td class="when" data-v="' + b._t + '">';
-        var book = '<td class="book" data-v="' + esc((b.series_label || '') + '|' + String(b.volume_number || 0).padStart(4, '0') + (b.volume_label || '')) + '">';
+        var book = '<td class="book" data-v="' + esc(hiBookKey(b)) + '">';
         return '<tr class="hi-brow" data-b="' + b._i + '" title="Click to show / hide this batch\'s changes">'
             + (byBook
                 ? when + tw + esc(hiWhen(b.dtime)) + '</td><td>' + hiTypeHtml([b]) + '</td><td>' + hiFindHtml(b) + '</td><td>' + hiRepHtml(b) + '</td>'
-                : '<td class="ser">' + tw + hiSeriesHtml([b]) + '</td>' + book + hiBookHtml(b) + '</td>' + when + esc(hiWhen(b.dtime)) + '</td>')
+                : '<td class="ser" data-v="' + esc(hiBookKey(b)) + '">' + tw + hiSeriesHtml([b]) + '</td>' + book + hiBookHtml(b) + '</td>' + when + esc(hiWhen(b.dtime)) + '</td>')
             + '<td class="num">' + b.count + '</td><td>' + hiStatusHtml([b]) + '</td><td>' + esc(b.user_name || '') + '</td>'
             + '<td class="act">' + hiActHtml([b], 'batch') + '</td></tr>';
     }).join('');
@@ -3688,8 +3698,8 @@ function hiToggleBatch(tr) {
                 var rename = c.chapter ? '<div class="meta">Chapter name: “' + esc(c.chapter.before) + '” → “' + esc(c.chapter.after) + '”</div>' : '';
                 var v = function(x) { return ' data-v="' + esc(x == null ? '' : String(x)) + '"'; };
                 return '<tr>'
-                    + '<td class="ser"' + v(c.series_label) + '>' + (c.series_label ? esc(c.series_label) : '<span class="meta">—</span>') + '</td>'
-                    + '<td class="book"' + v(String(c.volume_number || 0).padStart(4, '0') + (c.volume_label || '')) + '>' + hiBookHtml(c) + '</td>'
+                    + '<td class="ser"' + v(hiSerKey(c)) + '>' + (c.series_label ? esc(c.series_label) : '<span class="meta">—</span>') + '</td>'
+                    + '<td class="book"' + v(hiBookKey(c)) + '>' + hiBookHtml(c) + '</td>'
                     + '<td class="chap"' + v(c.chapter_number != null ? c.chapter_number : chName) + '>' + chap + '</td>'
                     + '<td class="para"' + v(c.hdr_kind ? '' : c.paragraph_number) + '>' + para + '</td>'
                     + '<td class="cl-qchange"' + v((c.cleanup_change_match || '') + ' → ' + (c.cleanup_change_replace || '')) + '><div class="meta">“' + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
