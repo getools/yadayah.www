@@ -99,13 +99,14 @@ fetch('/api/page-footer.php')
 
 // Apply data-config overrides from site-config (if loaded later by another script)
 fetch('/api/site-config.php')
-    .then(function(r) { return r.json(); })
+    .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
     .then(function(cfg) {
         Array.prototype.forEach.call(footer.querySelectorAll('[data-config]'), function(el) {
             var k = el.getAttribute('data-config');
             if (cfg[k] != null) el.textContent = cfg[k];
         });
-    });
+    })
+    .catch(function() {});
 
 // Background video — apply from sessionStorage since bg-video.js may have run before footer was created
 (function() {
