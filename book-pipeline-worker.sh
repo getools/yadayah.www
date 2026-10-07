@@ -897,13 +897,15 @@ mkdir -p "$FB_FAIL_DIR" 2>/dev/null
 
 if [ -x /opt/yada-www/migrate_flipbook.sh ]; then
     flipbook_rows=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -F'|' -c "
-        SELECT replace(replace(volume_file, ' ', '-'), '''', '') AS slug,
+        SELECT COALESCE(NULLIF(replace(replace(volume_file, ' ', '-'), '''', ''), ''),
+                        volume_code)                              AS slug,
                volume_pdf                                          AS pdf_name,
                volume_key,
                COALESCE(volume_pipeline_status, '')                AS pipe_status
           FROM yy_volume
-         WHERE volume_file IS NOT NULL
-           AND volume_file <> ''
+         -- volume_file empty (books made by an older create-volume) falls
+         -- back to volume_code, which migrate_flipbook.sh also accepts.
+         WHERE COALESCE(NULLIF(volume_file, ''), volume_code, '') <> ''
          ORDER BY volume_key
     " 2>/dev/null)
 

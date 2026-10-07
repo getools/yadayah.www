@@ -47,6 +47,8 @@ ROW=$(docker exec yada-postgres-prod psql -U postgres -d yada -At -F '|' -c "
   SELECT volume_key, volume_label
     FROM yy_volume
    WHERE replace(replace(volume_file, ' ', '-'), '''', '') = '$URL_SLUG'
+      OR (COALESCE(volume_file, '') = '' AND volume_code = '$URL_SLUG')
+   ORDER BY (volume_file IS NULL OR volume_file = '')
    LIMIT 1
 ")
 if [ -z "$ROW" ]; then

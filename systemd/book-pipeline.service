@@ -1,6 +1,10 @@
 [Unit]
 Description=Book pipeline worker (docx -> pdf -> parse -> flipbook)
 Documentation=file:/opt/yada-www/book-pipeline-worker.sh
+# Starts are cheap (flock exits 0 when a run is in flight), so never rate-limit
+# them: on 2026-10-03 a burst hit the start limit, which FAILED book-pipeline.path
+# and left DOCX uploads waiting on the */10 cron for 4 days.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot

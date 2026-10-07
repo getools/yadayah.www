@@ -8,6 +8,9 @@ Description=Push trigger: run the book pipeline the moment a DOCX job is queued
 # the push event that replaces waiting for the */10 cron tick.
 PathChanged=/opt/yada-www/public/jobs/book-pipeline
 Unit=book-pipeline.service
+# A burst of job files (e.g. 37 books queued at once) must not trip the default
+# trigger limit: a tripped path unit FAILS and silently stops watching.
+TriggerLimitIntervalSec=0
 
 [Install]
 WantedBy=paths.target

@@ -533,6 +533,7 @@ if ($method === 'POST') {
     // a non-canonical value regardless of how a row was created.
     $canonCode = function($s) {
         $s = str_replace(['%20', ' '], '-', (string)$s);
+        $s = str_replace(["'", '’'], '', $s);   // flipbook/PDF slugs never carry apostrophes
         $s = preg_replace('/-+/', '-', $s);
         return trim($s, '-');
     };
@@ -551,15 +552,21 @@ if ($method === 'POST') {
 
     $stmt = $db->prepare("
         INSERT INTO yy_volume (series_key, volume_label, volume_number, volume_sort,
-                               volume_code, volume_pdf, volume_page_count, volume_status, volume_ask_rating,
+                               volume_code, volume_file, volume_pdf, volume_page_count, volume_status, volume_ask_rating,
                                volume_amazon_asin)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING volume_key
     ");
+    // volume_file must be set: the flipbook sweep (book-pipeline-worker.sh
+    // Phase 6) and migrate_flipbook.sh resolve books by
+    // replace(replace(volume_file,' ','-'),'''','') = volume_code. The
+    // canonical code already satisfies that, so store it as-is. Left NULL,
+    // the book's flipbook is never built.
     $stmt->execute([
         $seriesKey,
         $label,
         (int)($data['volume_number'] ?? 0),
         (int)($data['volume_sort'] ?? 0),
+        $code,
         $code,
         trim($data['volume_pdf'] ?? '') ?: null,
         (int)($data['volume_page_count'] ?? 0) ?: null,
