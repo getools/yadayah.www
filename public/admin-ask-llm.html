@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="page-version" content="1791583178">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ask Yada Local LLM - Yada Yah</title>
@@ -59,6 +60,7 @@
         .cmp-review textarea { width: 100%; box-sizing: border-box; min-height: 44px; padding: 6px; border: 1px solid #e0d88c; border-radius: 4px; font: inherit; font-size: 0.82rem; resize: vertical; margin-top: 4px; }
         .cmp-review .actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
         .cmp-review .saved { color: #27ae60; font-size: 0.78rem; }
+        .style-warn { padding: 5px 12px; font-size: 0.78rem; background: #fff4e5; color: #8a4b00; border-top: 1px solid #f5d9b0; }
         details.srcs { padding: 4px 12px 8px; font-size: 0.78rem; color: #555; border-top: 1px solid #f0f0f0; }
         details.srcs summary { cursor: pointer; color: #31345A; }
         details.srcs li { margin: 2px 0; }
@@ -330,6 +332,12 @@ function reviewBox(a) {
         + '<div class="actions"><button class="btn btn-primary btn-sm" data-save>Save</button><span class="saved"></span></div></div>';
 }
 function sourcesList(meta) {
+    // Style flags from the worker (bare English citations, mainstream names) sit above the sources
+    var warn = meta && meta.style_warnings && meta.style_warnings.length
+        ? '<div class="style-warn" title="' + esc(meta.style_warnings.join(' | ')) + '">&#9888; Style: ' + esc(meta.style_warnings.join(' · ')) + '</div>' : '';
+    return warn + sourcesOnly(meta);
+}
+function sourcesOnly(meta) {
     if (!meta || !meta.sources || !meta.sources.length) return '';
     var calls = (meta.tool_calls || []).filter(function (c) { return c.tool === 'search_library'; }).map(function (c) { return esc(c.query); });
     return '<details class="srcs"><summary>' + meta.sources.length + ' passages · ' + calls.length + ' searches</summary>'
