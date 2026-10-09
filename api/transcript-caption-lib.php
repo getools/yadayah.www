@@ -929,18 +929,38 @@ function cfGuardWindowCounts(array $ws, float $lo, float $hi): array {
 }
 /** Returns [bool ok, string reason]. $lo/$hi = the line's [start, next-line start). */
 function cfReplyEngineSupported(string $old, string $new, float $lo, float $hi,
-                                array $engineWords, float $pad = 0.6): array {
+                                array $engineWords, float $pad = 0.6,
+                                string $prevText = '', string $nextText = ''): array {
     if (count($engineWords) < 2) return [true, ''];
+    $oT = cfGuardNorm($old); $nT = cfGuardNorm($new);
+    // Boundary bleed: the reply starts with the previous line's last word (or
+    // ends with the next line's first) that the original line did not have —
+    // "…or how" / "How are they not allowed…" (2026-10-09).
+    $pT = cfGuardNorm($prevText); $xT = cfGuardNorm($nextText);
+    if ($pT && $nT && $oT && $nT[0] === end($pT) && $oT[0] !== $nT[0]) return [false, 'bleeds previous line: ' . $nT[0]];
+    if ($xT && $nT && $oT && end($nT) === $xT[0] && end($oT) !== end($nT)) return [false, 'bleeds next line: ' . end($nT)];
     $sets = [];
     foreach ($engineWords as $ws) $sets[] = cfGuardWindowCounts($ws, $lo - $pad, $hi + $pad);
-    $o = array_count_values(cfGuardNorm($old));
-    $n = array_count_values(cfGuardNorm($new));
+    $o = array_count_values($oT);
+    $n = array_count_values($nT);
+    // A heard word counts as dropped by how many of its occurrences go missing
+    // (capped at what >= 2 engines heard here) — not only when it vanishes
+    // entirely. Catches carry-over drops where the word recurs later in the line:
+    // "long way. You can see a long way" → "You can see a long way".
+    // Collapsing an immediate stutter ("the the" → "the", "They They") is a
+    // disfluency fix, not lost content — those repeats are exempt.
+    $stutter = [];
+    $oNF = array_values(array_filter($oT, fn($w) => !isset(CF_GUARD_FILLERS[$w])));   // "the uh the" counts too
+    for ($k = 1, $m = count($oNF); $k < $m; $k++) if ($oNF[$k] === $oNF[$k - 1]) $stutter[$oNF[$k]] = ($stutter[$oNF[$k]] ?? 0) + 1;
     $supDel = 0; $gone = [];
-    foreach ($o as $w => $_) {
+    foreach ($o as $w => $oc) {
         $w = (string)$w;
-        if (isset($n[$w]) || isset(CF_GUARD_FILLERS[$w])) continue;   // kept, or a filler
-        $heard = 0; foreach ($sets as $s) if (!empty($s[$w])) $heard++;
-        if ($heard >= 2) { $supDel++; $gone[] = $w; }
+        if (isset(CF_GUARD_FILLERS[$w])) continue;
+        $cnts = []; foreach ($sets as $s) $cnts[] = (int)($s[$w] ?? 0);
+        rsort($cnts);
+        $heard2 = $cnts[1] ?? 0;                         // occurrences >= 2 engines heard
+        $lost = max(0, min($oc, $heard2) - (int)($n[$w] ?? 0) - (int)($stutter[$w] ?? 0));
+        if ($lost > 0) { $supDel += $lost; $gone[] = $w; }
     }
     $added = 0; $unsIns = 0; $ins = [];
     foreach ($n as $w => $cnt) {
@@ -1140,7 +1160,8 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
                 $g  = $offset + $pos;
                 $lo = (float)$live[$g]['secs'];
                 $hi = isset($live[$g + 1]) ? (float)$live[$g + 1]['secs'] : $lo + 6.0;
-                [$ok, $why] = cfReplyEngineSupported($l['old'], $new, $lo, min($hi, $lo + 12.0), $engineWords);
+                [$ok, $why] = cfReplyEngineSupported($l['old'], $new, $lo, min($hi, $lo + 12.0), $engineWords, 0.6,
+                    (string)($live[$g - 1]['text'] ?? ''), (string)($live[$g + 1]['text'] ?? ''));
                 if (!$ok) { $new = $l['old']; $guarded++; }
             }
             if ($new !== $l['old']) { $upd->execute([$new, $l['key'], $itemKey]); $changed++; }

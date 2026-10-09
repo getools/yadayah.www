@@ -322,7 +322,18 @@ try {
                 $notify('union-fill:' . count($filled) . ':' . $tot);
             }
         }
-        $cmp = buildComparison($db, $itemKey, $spine, $refs, $spineWords, $weights);
+        // majority_insert (default ON, 2026-10-09): add words the spine has no
+        // slot for when a weighted majority of engine families heard them in
+        // the same gap — whisperx-word's aligner drops numerals ("from [1909]
+        // that", "[$40] trillion"); ~80 restored on item 18297621.
+        // family_vote (opt-in, default OFF): one vote per model family for
+        // substitutions too. Tested mixed — whisperx IS whisper-large-v3 inside,
+        // so the families aren't independent on word choice ("Rosh Hashanah" →
+        // "Russia Shana", "Eva Braun" → "Brown") — so it stays off.
+        $cmp = buildComparison($db, $itemKey, $spine, $refs, $spineWords, $weights, [
+            'family_vote'     => !empty($params['family_vote']),
+            'majority_insert' => !array_key_exists('majority_insert', $params) || $params['majority_insert'],
+        ]);
         if (isset($cmp['error'])) throw new Exception('consensus: ' . $cmp['error']);
         $stream = [];
         foreach ($cmp['slots'] as $sl) { $w = trim((string)$sl['consensus']); if ($w !== '') $stream[] = ['t' => $sl['t'], 'w' => $w]; }

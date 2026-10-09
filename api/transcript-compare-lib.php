@@ -110,7 +110,15 @@ function lcsOpcodes(array $a, array $b): array {
  * primary position ('' = gap). Extra reference tokens are appended to the
  * nearest preceding primary slot.
  */
-function alignWindow(array $primNorm, array $refNorm, array $refRaw): array {
+/**
+ * $ins (optional, by reference): when given, ref token INDICES (into $refRaw) with NO primary
+ * slot (LCS 'insert' ops only — a longer 'replace' surplus is usually a tokenisation
+ * difference like "brain-dead" vs "brain dead" or "gonna" vs "going to") are collected
+ * as $ins[p][] = index, meaning "inserted before primary word p" (p may equal
+ * count = after the last word). The grid output is unchanged either way; only
+ * buildComparison's majority_insert option reads $ins (2026-10-09).
+ */
+function alignWindow(array $primNorm, array $refNorm, array $refRaw, ?array &$ins = null): array {
     $out = array_fill(0, count($primNorm), '');
     if (!count($primNorm)) return $out;
     foreach (lcsOpcodes($primNorm, $refNorm) as $op) {
@@ -124,9 +132,11 @@ function alignWindow(array $primNorm, array $refNorm, array $refRaw): array {
             // so a clean per-word grid keeps at most one ref token per slot.
             $pa = $a2 - $a1; $pb = $b2 - $b1;
             for ($k = 0; $k < $pa; $k++) $out[$a1 + $k] = ($k < $pb) ? $refRaw[$b1 + $k] : '';
+        } elseif ($tag === 'insert' && $ins !== null) {
+            for ($k = $b1; $k < $b2; $k++) $ins[$a1][] = $k;
         }
         // insert: ref tokens with no primary anchor (usually window-edge
-        //         spillover) → drop. delete: ref missed these → leave ''.
+        //         spillover) → drop from the grid. delete: ref missed these → ''.
     }
     return $out;
 }
@@ -168,20 +178,28 @@ function primaryWords(array $rows): array {
  * primary anchor are dropped. Returns an array indexed like $primNorm; each
  * entry is the ref display token aligned to that primary word ('' = gap).
  */
-function alignSequence(array $primNorm, array $refNorm, array $refRaw): array {
+function alignSequence(array $primNorm, array $refNorm, array $refRaw, ?array &$ins = null): array {
     $out = array_fill(0, count($primNorm), '');
     if (!count($primNorm) || !count($refNorm)) return $out;
     $stack = [[0, count($primNorm), 0, count($refNorm)]];
     while ($stack) {
         [$pLo, $pHi, $rLo, $rHi] = array_pop($stack);
+        if ($pLo >= $pHi && $rLo < $rHi && $ins !== null) {
+            // ref tokens between two anchors with no primary word between them
+            // (e.g. "from [1909] that") — an insertion before primary $pLo.
+            for ($k = $rLo; $k < $rHi; $k++) $ins[$pLo][] = $k;
+            continue;
+        }
         if ($pLo >= $pHi || $rLo >= $rHi) continue;
         $pLen = $pHi - $pLo; $rLen = $rHi - $rLo;
         if ($pLen * $rLen <= 50000) {                 // small enough for direct LCS
             $pn = array_slice($primNorm, $pLo, $pLen);
             $rn = array_slice($refNorm,  $rLo, $rLen);
             $rr = array_slice($refRaw,   $rLo, $rLen);
-            $win = alignWindow($pn, $rn, $rr);
+            $wIns = ($ins !== null) ? [] : null;
+            $win = alignWindow($pn, $rn, $rr, $wIns);
             for ($k = 0; $k < $pLen; $k++) if (($win[$k] ?? '') !== '') $out[$pLo + $k] = $win[$k];
+            if ($wIns) foreach ($wIns as $p => $toks) foreach ($toks as $tk) $ins[$pLo + $p][] = $rLo + $tk;
             continue;
         }
         $anchor = findAnchor($primNorm, $refNorm, $pLo, $pHi, $rLo, $rHi);
@@ -410,7 +428,19 @@ function unionSpineWords(PDO $db, int $itemKey, string $spineCode, array $baseli
     return $merged;
 }
 
-function buildComparison(PDO $db, int $itemKey, string $primary, array $refs, ?array $spineWords = null, ?array $weights = null): array {
+/** Engine family = one underlying model: strip the -word / -diarize output variants. */
+if (!defined('CF_FAMILY_EPS')) define('CF_FAMILY_EPS', 0.05);
+function cmpEngineFamily(string $code): string {
+    // gpu-/groq- host the same open models: groq-whisper-large-v3 == gpu-whisper-large-v3.
+    $c = preg_replace('/^(gpu|groq)-/', '', $code);
+    return preg_replace('/-(word|diarize)$/', '', preg_replace('/-word$/', '', $c));
+}
+
+/** $opts: family_vote (bool), majority_insert (bool) — both default false (unchanged behaviour). */
+function buildComparison(PDO $db, int $itemKey, string $primary, array $refs, ?array $spineWords = null, ?array $weights = null, array $opts = []): array {
+    $familyVote     = !empty($opts['family_vote']);
+    $majorityInsert = !empty($opts['majority_insert']);
+    $refIns = []; $refTok = []; $refTime = [];
     // $spineWords (optional): a prebuilt primaryWords()-shaped spine, used by the
     // coverage-union path so voting can run over a spine whose gaps were filled
     // from other baselines. When null, the spine is loaded from $primary's rows
@@ -436,20 +466,149 @@ function buildComparison(PDO $db, int $itemKey, string $primary, array $refs, ?a
         // in the wrong slot, manufacturing offset "disagreements". Aligning the
         // ref's full token stream to the primary by CONTENT (unique-anchor LCS)
         // fixes it - duplicate/extra ref tokens with no primary anchor drop out.
-        $refRaw = []; $refNorm = [];
+        $refRaw = []; $refNorm = []; $refT = [];
         foreach ($rRows as $rr) {
-            foreach (tokenize($rr['txt']) as $tok) { $refRaw[] = $tok; $refNorm[] = normTok($tok); }
+            $rt = intervalToSecs($rr['seg']);
+            foreach (tokenize($rr['txt']) as $tok) { $refRaw[] = $tok; $refNorm[] = normTok($tok); $refT[] = $rt; }
         }
-        $refAligned[$code] = alignSequence($pNorm, $refNorm, $refRaw);
+        $refTok[$code] = $refRaw; $refTime[$code] = $refT;
+        $refIns[$code] = [];
+        $refAligned[$code] = $majorityInsert
+            ? alignSequence($pNorm, $refNorm, $refRaw, $refIns[$code])
+            : alignSequence($pNorm, $refNorm, $refRaw);
     }
+
+    // ── family_vote / majority_insert (opt-in, consensus worker, 2026-10-09) ──
+    // Outputs of ONE model (gpu-whisperx, -word, -diarize) are one opinion, not
+    // three: counted separately, the spine's family out-voted two independent
+    // engines 3-2 on every word ("re-enterprise" beat "free enterprise"). With
+    // family_vote each family casts ONE vote at its best member's weight
+    // (denied engines stay ~0). With majority_insert, words the spine has NO
+    // slot for are inserted when families holding > half the total family
+    // weight (and >= 2 families) put the same words at the same spot ("from
+    // [1909] that" — whisperx missed the year, parakeet + large-v3 heard it).
+    $wOf = fn(string $c): float => ($weights && isset($weights[$c])) ? (float)$weights[$c] : 1.0;
+    $fam = [];   // family => [codes...]
+    if ($familyVote || $majorityInsert) {
+        foreach (array_merge([$primary], array_keys($refAligned)) as $c) $fam[cmpEngineFamily($c)][] = $c;
+    }
+    $spineFam = cmpEngineFamily($primary);
+    $famW = [];
+    foreach ($fam as $f => $codes) $famW[$f] = max(array_map($wOf, $codes));
+    $famTotal = array_sum(array_filter($famW, fn($x) => $x > CF_FAMILY_EPS));
+    // A family's representative reading for slot $i: the spine word for the
+    // spine family; else its '-word' member's token, else first non-empty.
+    $famToken = function (string $f, int $i, string $spineWord) use ($fam, $refAligned, $primary, $spineFam): string {
+        if ($f === $spineFam) return $spineWord;
+        $best = '';
+        foreach ($fam[$f] as $c) {
+            $t = (string)($refAligned[$c][$i] ?? '');
+            if ($t === '') continue;
+            if (str_ends_with($c, '-word')) return $t;
+            if ($best === '') $best = $t;
+        }
+        return $best;
+    };
+    // Inserted words take the time the supplying engine heard them (a '-word'
+    // member when the family has one), clamped strictly between the spine's
+    // neighbouring words; evenly spread only when that time is unusable.
+    $insertSlotsBefore = function (int $p, float $tPrev, float $tCur) use ($fam, $famW, $famTotal, $refIns, $refTok, $refTime, $primary): array {
+        $tally = [];
+        foreach ($fam as $f => $codes) {
+            if (($famW[$f] ?? 0) <= CF_FAMILY_EPS) continue;
+            $rep = null; $repWord = false;
+            foreach ($codes as $c) {
+                if ($c === $primary || empty($refIns[$c][$p])) continue;
+                $idx = array_values(array_filter($refIns[$c][$p], fn($k) => normTok((string)$refTok[$c][$k]) !== ''));
+                if (!$idx) continue;
+                $isWord = str_ends_with($c, '-word');
+                if ($rep === null || ($isWord && !$repWord)) {
+                    $rep = array_map(fn($k) => [(string)$refTok[$c][$k], (float)$refTime[$c][$k]], $idx);
+                    $repWord = $isWord;
+                }
+            }
+            if ($rep === null) continue;
+            $key = implode(' ', array_map(fn($x) => normTok($x[0]), $rep));
+            if (!isset($tally[$key])) $tally[$key] = ['w' => 0.0, 'n' => 0, 'toks' => $rep, 'word' => $repWord];
+            elseif ($repWord && !$tally[$key]['word']) { $tally[$key]['toks'] = $rep; $tally[$key]['word'] = true; }
+            $tally[$key]['w'] += $famW[$f];
+            $tally[$key]['n']++;
+        }
+        $best = null;
+        foreach ($tally as $t) if ($t['n'] >= 2 && $t['w'] > $famTotal / 2 && (!$best || $t['w'] > $best['w'])) $best = $t;
+        if (!$best || count($best['toks']) > 6) return [];
+        $out = []; $n = count($best['toks']);
+        if ($tCur <= $tPrev) $tPrev = $tCur - 0.05 * ($n + 1);
+        $last = $tPrev;
+        foreach ($best['toks'] as $k => [$tok, $tt]) {
+            $even = $tPrev + ($k + 1) * ($tCur - $tPrev) / ($n + 1);
+            $t = ($best['word'] && $tt > $last + 0.005 && $tt < $tCur - 0.005) ? $tt : $even;
+            if ($t <= $last) $t = $even;
+            $last = $t;
+            $out[] = ['i' => -1, 't' => round($t, 2),
+                      'primary' => '', 'refs' => [], 'consensus' => $tok, 'agree' => false, 'inserted' => true];
+        }
+        return $out;
+    };
+    // Majority deletion: a family "votes to delete" slot $i when its reading is
+    // empty there but it has readings within 2 slots on BOTH sides (so it
+    // covered this passage and simply did not hear the word). Fillers are never
+    // deleted this way. Fixes "Methinks thinks that…" / "she's was trying".
+    $covered = function (string $f, int $i) use ($famToken, $pWords): bool {
+        $left = false; $right = false;
+        for ($d = 1; $d <= 2; $d++) {
+            if (!$left  && isset($pWords[$i - $d]) && $famToken($f, $i - $d, (string)$pWords[$i - $d]['word']) !== '') $left = true;
+            if (!$right && isset($pWords[$i + $d]) && $famToken($f, $i + $d, (string)$pWords[$i + $d]['word']) !== '') $right = true;
+        }
+        return $left && $right;
+    };
+    $fillers = ['uh' => 1, 'um' => 1, 'uhm' => 1, 'er' => 1, 'ah' => 1, 'hmm' => 1, 'mm' => 1, 'mhm' => 1, 'huh' => 1, 'mm-hmm' => 1, 'mhmm' => 1, 'uh-huh' => 1, 'yeah' => 1, 'no' => 1, 'yes' => 1];
 
     $slots = [];
     $disagreements = 0;
+    $prevT = null;
     foreach ($pWords as $w) {
         $i = $w['i'];
+        if ($majorityInsert) {
+            $tCur = (float)$w['t'];
+            foreach ($insertSlotsBefore($i, $prevT ?? ($tCur - 0.5), $tCur) as $s) $slots[] = $s;
+            $prevT = $tCur;
+        }
         $pn = $pNorm[$i];
         $rowRefs = [];
         $votes = [];
+        if ($familyVote) {
+            foreach ($refAligned as $code => $arr) $rowRefs[$code] = (string)($arr[$i] ?? '');
+            $agree = true; $delW = 0.0;
+            foreach ($fam as $f => $codes) {                  // spine family first (array order)
+                $tok = $famToken($f, $i, (string)$w['word']);
+                $tn = normTok($tok);
+                if ($tok === '' || $tn === '') {
+                    if ($f !== $spineFam) {
+                        $agree = false;
+                        if ($majorityInsert && ($famW[$f] ?? 0) > CF_FAMILY_EPS && $covered($f, $i)) $delW += $famW[$f];
+                    }
+                    continue;
+                }
+                if (!isset($votes[$tn])) $votes[$tn] = ['count' => 0.0, 'display' => $tok];
+                $votes[$tn]['count'] += $famW[$f];
+                if ($tn !== $pn) $agree = false;
+            }
+            $consensus = $w['word']; $best = -1;
+            foreach ($votes as $v) if ($v['count'] > $best) { $best = $v['count']; $consensus = $v['display']; }
+            // Only the MERGE pattern: the previous spine word was just replaced by
+            // a merged reading ("he thinks" → "methinks", "she was" → "she's").
+            // Plain omissions (backchannels "Mm-hmm.", "You know,", a second
+            // speaker's "No.") are things the other engines tend to skip — keep.
+            $prevSlot = $slots ? $slots[count($slots) - 1] : null;
+            $prevMerged = $prevSlot && empty($prevSlot['inserted'])
+                && normTok((string)$prevSlot['consensus']) !== normTok((string)$prevSlot['primary']);
+            if ($prevMerged && $delW > $famTotal / 2 && $delW > $best && !isset($fillers[$pn]) && $pn !== '') $consensus = '';
+            if (!$agree) $disagreements++;
+            $slots[] = ['i' => $i, 't' => round($w['t'], 2), 'primary' => $w['word'],
+                        'refs' => $rowRefs, 'consensus' => $consensus, 'agree' => $agree];
+            continue;
+        }
         // Weighted majority vote: each engine casts its learned edit-weight
         // (how closely it tracks the human-edited final), not a flat 1. The
         // spine votes its own weight; refs add theirs. Null $weights → every
