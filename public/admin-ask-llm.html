@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ask Yada Local LLM - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css?v=15">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        .sub-tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px; }
+        .sub-tab { padding: 10px 24px; font-size: 0.95rem; font-weight: 600; color: #666; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+        .sub-tab:hover { color: #31345A; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #31345A; }
+        .sub-panel { display: none; }
+        .sub-panel.active { display: block; }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+        body.embed .sub-tabs .sub-tab { padding: 8px 18px; font-size: 0.88rem; }
+        body.embed .app-header, body.embed h1.page-title { display: none; }
+        body.embed #app { padding-top: 0; }
+        .llm-note { font-size: 0.85rem; color: #666; margin: 4px 0 14px; }
+        .stat-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+        .stat-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 14px; min-width: 160px; background: #fafafa; }
+        .stat-card .big { font-size: 1.4rem; font-weight: 700; color: #31345A; }
+        .stat-card .lbl { font-size: 0.78rem; color: #777; text-transform: uppercase; letter-spacing: .03em; }
+        .stat-card .sub { font-size: 0.8rem; color: #555; }
+        .bar { height: 6px; background: #e8e8e8; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+        .bar > i { display: block; height: 100%; background: #31345A; }
+        table.llm { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+        table.llm th, table.llm td { padding: 6px 10px; border-bottom: 1px solid #e8e8e8; text-align: left; vertical-align: top; }
+        table.llm th { background: #f5f5f5; font-weight: 600; }
+        table.llm td.num { text-align: right; white-space: nowrap; }
+        .st { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .st-queued { background: #eef; color: #335; } .st-running { background: #fff4d6; color: #7a5a00; }
+        .st-done { background: #e3f6e8; color: #1e6b34; } .st-failed { background: #fde8e8; color: #9b1c1c; }
+        .st-cancelled { background: #eee; color: #666; }
+        .form-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .form-row label { font-weight: 600; font-size: 0.85rem; color: #555; }
+        .form-row input[type=text], .form-row input[type=number], .form-row select, .form-row textarea {
+            padding: 6px 9px; border: 1px solid #ccc; border-radius: 4px; font: inherit; font-size: 0.86rem; }
+        .settings-grid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px; max-width: 820px; align-items: baseline; }
+        .settings-grid label { text-align: right; font-weight: 600; font-size: 0.85rem; color: #555; }
+        .settings-grid input, .settings-grid select, .settings-grid textarea { padding: 6px 9px; border: 1px solid #ccc; border-radius: 4px; font: inherit; font-size: 0.86rem; }
+        .settings-grid textarea { min-height: 52px; resize: vertical; }
+        .cmp-q { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 18px; overflow: hidden; }
+        .cmp-q-head { background: #31345A; color: #fff; padding: 9px 14px; font-weight: 600; font-size: 0.92rem; display: flex; gap: 10px; align-items: baseline; }
+        .cmp-q-head .qn { opacity: .7; font-weight: 400; font-size: 0.8rem; }
+        .cmp-q-head .skip { margin-left: auto; font-size: 0.75rem; font-weight: 400; cursor: pointer; opacity: .8; }
+        .cmp-cols { display: grid; gap: 0; }
+        .cmp-col { border-right: 1px solid #eee; display: flex; flex-direction: column; min-width: 0; }
+        .cmp-col:last-child { border-right: none; }
+        .cmp-col-head { padding: 6px 12px; background: #f5f5f8; font-size: 0.8rem; font-weight: 600; color: #444; border-bottom: 1px solid #eee; display: flex; gap: 8px; }
+        .cmp-col-head .meta { font-weight: 400; color: #888; margin-left: auto; }
+        .cmp-answer { padding: 10px 12px; font-size: 0.86rem; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; max-height: 420px; overflow-y: auto; flex: 1; }
+        .cmp-answer.empty { color: #aaa; font-style: italic; }
+        .cmp-review { padding: 8px 12px; background: #fffde7; border-top: 1px solid #f0e68c; font-size: 0.82rem; }
+        .cmp-review .rate { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+        .cmp-review .rate input[type=range] { flex: 1; }
+        .cmp-review .rate output { width: 34px; text-align: right; font-weight: 700; }
+        .cmp-review textarea { width: 100%; box-sizing: border-box; min-height: 44px; padding: 6px; border: 1px solid #e0d88c; border-radius: 4px; font: inherit; font-size: 0.82rem; resize: vertical; margin-top: 4px; }
+        .cmp-review .actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+        .cmp-review .saved { color: #27ae60; font-size: 0.78rem; }
+        details.srcs { padding: 4px 12px 8px; font-size: 0.78rem; color: #555; border-top: 1px solid #f0f0f0; }
+        details.srcs summary { cursor: pointer; color: #31345A; }
+        details.srcs li { margin: 2px 0; }
+        .ref { background: #f3faf3; }
+        .muted { color: #888; font-size: 0.8rem; }
+        .run-pick label { margin-right: 14px; font-size: 0.85rem; white-space: nowrap; }
+        .q-inactive td { color: #aaa; text-decoration: line-through; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field"><label for="login-user">Login</label><input type="text" id="login-user" autocomplete="username"></div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=30"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1 class="page-title">Ask Yada — Local LLM (prototype)</h1>
+
+    <div class="sub-tabs">
+        <button class="sub-tab active" data-tab="overview">Overview</button>
+        <button class="sub-tab" data-tab="compare">Compare</button>
+        <button class="sub-tab" data-tab="runs">Test Runs</button>
+        <button class="sub-tab" data-tab="questions">Test Questions</button>
+        <button class="sub-tab" data-tab="chat">Chat Questions</button>
+    </div>
+
+    <!-- Overview -->
+    <div id="panel-overview" class="sub-panel active">
+        <p class="llm-note">Members message the <strong>Ask Yada</strong> member in Chat. A worker on the Puget GPU box picks up each question,
+            researches it in the books, video transcripts and glossary with a local model, and replies in the same conversation.</p>
+        <div class="stat-grid" id="stat-grid"></div>
+        <h3>Settings</h3>
+        <div class="settings-grid" id="settings-grid">
+            <label>Who may ask</label>
+            <select data-k="access"><option value="off">Off</option><option value="admins">Admins only</option><option value="members">All members</option></select>
+            <label>Chat model</label><input type="text" data-k="chat-model" list="model-list">
+            <label>Daily limit</label><input type="number" data-k="daily-limit" min="0" style="width:90px">
+            <label>Excluded series</label><input type="text" data-k="exclude-series" placeholder="series keys, comma separated">
+            <label>Acknowledgement</label><textarea data-k="ack-message"></textarea>
+            <label>Not-open reply</label><textarea data-k="closed-message"></textarea>
+            <label>Over-limit reply</label><textarea data-k="limit-message"></textarea>
+            <span></span><div><button class="btn btn-primary btn-sm" id="settings-save">Save settings</button> <span class="muted" id="settings-status"></span></div>
+        </div>
+    </div>
+
+    <!-- Compare -->
+    <div id="panel-compare" class="sub-panel">
+        <p class="llm-note">Each test question with the current Ask Yada answer (baseline) beside the answers from the selected test runs.
+            Rate 0–100 (same scale as the Ask Yada log), add a note, or write the corrected answer.</p>
+        <div class="form-row run-pick" id="run-pick"></div>
+        <div class="form-row">
+            <label><input type="checkbox" id="cmp-unreviewed"> Only questions with unreviewed answers</label>
+            <label><input type="checkbox" id="cmp-baseline" checked> Show current Ask Yada answer</label>
+            <span class="muted" id="cmp-count"></span>
+        </div>
+        <div id="cmp-list"></div>
+    </div>
+
+    <!-- Runs -->
+    <div id="panel-runs" class="sub-panel">
+        <h3>New test run</h3>
+        <p class="llm-note">Queues every active test question for one model. The worker answers them when the GPU is free;
+            only one large model fits on the card at a time, so a run finishes before the next model loads.</p>
+        <div class="form-row">
+            <label>Label</label><input type="text" id="run-label" placeholder="e.g. gpt-oss 120b, prompt v1" style="width:260px">
+            <label>Model</label><input type="text" id="run-model" list="model-list" style="width:220px">
+        </div>
+        <div class="form-row">
+            <label>Config (JSON)</label>
+            <input type="text" id="run-config" style="width:520px" placeholder='{"prompt":"v1","think":"medium","max_rounds":8}'>
+            <button class="btn btn-primary btn-sm" id="run-create">Queue run</button> <span class="muted" id="run-status"></span>
+        </div>
+        <h3>Runs</h3>
+        <table class="llm" id="runs-table"><thead><tr>
+            <th>#</th><th>Label</th><th>Model</th><th>Config</th><th class="num">Done</th><th class="num">Failed</th>
+            <th class="num">Reviewed</th><th class="num">Avg rating</th><th class="num">Avg time</th><th>Created</th><th></th>
+        </tr></thead><tbody></tbody></table>
+    </div>
+
+    <!-- Questions -->
+    <div id="panel-questions" class="sub-panel">
+        <div class="form-row">
+            <label>Add from Ask Yada history</label>
+            <input type="number" id="eb-n" value="150" min="1" max="500" style="width:80px"> questions, at least
+            <input type="number" id="eb-min" value="30" min="10" style="width:70px"> characters
+            <button class="btn btn-primary btn-sm" id="eb-go">Add</button> <span class="muted" id="eb-status"></span>
+        </div>
+        <p class="llm-note">Rated or corrected questions are taken first, then a random sample of distinct answered questions; curated Q&amp;A pairs are added as gold references.
+            Untick follow-ups that only make sense mid-conversation ("You can't give me one example?").</p>
+        <table class="llm" id="q-table"><thead><tr><th>Use</th><th>#</th><th>Question</th><th>Baseline</th><th class="num">Rating</th><th>Tags</th><th class="num">Answers</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <!-- Chat -->
+    <div id="panel-chat" class="sub-panel">
+        <p class="llm-note">Questions members sent to Ask Yada in Chat, newest first.</p>
+        <table class="llm" id="chat-table"><thead><tr><th>#</th><th>Status</th><th>Member</th><th>Question</th><th>Model</th><th class="num">Time</th><th>Asked</th><th></th></tr></thead><tbody></tbody></table>
+        <div id="chat-detail"></div>
+    </div>
+
+    <datalist id="model-list">
+        <option value="gpt-oss:120b"><option value="qwen3.5:122b"><option value="nemotron-3-super:120b">
+        <option value="llama3.3:70b"><option value="qwen2.5:72b">
+    </datalist>
+</div>
+
+<script src="js/admin-links.js?v=4"></script>
+<script>
+var API = '/api/ask-llm.php';
+var EMBED = /[?&]embed=1/.test(location.search);
+if (EMBED) document.body.classList.add('embed');
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function get(action, params) {
+    var q = '?action=' + action + (params ? '&' + params : '');
+    return fetch(API + q, {credentials: 'include'}).then(safeJson);
+}
+function post(body) {
+    return fetch(API, {method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(safeJson);
+}
+function fmtSecs(s) { if (s == null || s === '') return ''; s = Math.round(+s); return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's'; }
+function fmtDate(d) { return d ? String(d).replace('T', ' ').substring(0, 16) : ''; }
+function status(s) { return '<span class="st st-' + esc(s) + '">' + esc(s) + '</span>'; }
+
+// ── Tabs ──
+var loaded = {};
+function showTab(tab) {
+    document.querySelectorAll('.sub-tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    document.querySelectorAll('.sub-panel').forEach(function (p) { p.classList.toggle('active', p.id === 'panel-' + tab); });
+    try { sessionStorage.setItem('askLlmTab', tab); } catch (e) {}
+    ({overview: loadOverview, compare: loadCompareRuns, runs: loadRuns, questions: loadQuestions, chat: loadChat})[tab]();
+}
+document.querySelectorAll('.sub-tab').forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.tab); }); });
+
+// ── Overview ──
+function loadOverview() {
+    get('stats').then(function (d) {
+        if (d.error) { document.getElementById('stat-grid').innerHTML = '<span class="muted">' + esc(d.error) + '</span>'; return; }
+        var labels = {book: 'Books', transcript: 'Video transcripts', glossary: 'Glossary words'};
+        var html = '';
+        (d.chunks || []).forEach(function (c) {
+            var pct = c.chunks ? Math.round(100 * c.embedded / c.chunks) : 0;
+            html += '<div class="stat-card"><div class="lbl">' + esc(labels[c.type] || c.type) + '</div><div class="big">' + Number(c.chunks).toLocaleString() + '</div>'
+                + '<div class="sub">passages from ' + Number(c.sources).toLocaleString() + ' sources · ' + pct + '% embedded</div><div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+        });
+        var jobs = {};
+        (d.jobs || []).forEach(function (j) { jobs[j.job_kind] = jobs[j.job_kind] || {}; jobs[j.job_kind][j.job_status] = +j.n; });
+        ['chat', 'eval'].forEach(function (k) {
+            var j = jobs[k] || {};
+            html += '<div class="stat-card"><div class="lbl">' + (k === 'chat' ? 'Chat questions' : 'Test answers') + '</div><div class="big">' + (j.done || 0) + '</div>'
+                + '<div class="sub">answered · ' + (j.queued || 0) + ' queued · ' + (j.running || 0) + ' running · ' + (j.failed || 0) + ' failed</div></div>';
+        });
+        html += '<div class="stat-card"><div class="lbl">Test questions</div><div class="big">' + (d.eval_questions || 0) + '</div><div class="sub">active</div></div>';
+        document.getElementById('stat-grid').innerHTML = html;
+        document.querySelectorAll('#settings-grid [data-k]').forEach(function (el) { el.value = (d.settings || {})[el.dataset.k] || ''; });
+    });
+}
+document.getElementById('settings-save').addEventListener('click', function () {
+    var s = {};
+    document.querySelectorAll('#settings-grid [data-k]').forEach(function (el) { s[el.dataset.k] = el.value; });
+    post({action: 'settings_save', settings: s}).then(function (d) {
+        document.getElementById('settings-status').textContent = d.error ? d.error : 'Saved (' + d.saved + ' changed)';
+    });
+});
+
+// ── Runs ──
+var runsCache = [];
+function loadRuns() {
+    return get('runs').then(function (d) {
+        runsCache = d.runs || [];
+        var tb = document.querySelector('#runs-table tbody');
+        tb.innerHTML = runsCache.map(function (r) {
+            return '<tr><td>' + r.eval_run_key + '</td><td>' + esc(r.run_label) + '</td><td>' + esc(r.run_model) + '</td>'
+                + '<td class="muted">' + esc(r.run_config === '{}' ? '' : r.run_config) + '</td>'
+                + '<td class="num">' + r.done + ' / ' + r.jobs + '</td><td class="num">' + (+r.failed || '') + '</td>'
+                + '<td class="num">' + r.reviewed + '</td><td class="num">' + (r.avg_rating == null ? '' : r.avg_rating) + '</td>'
+                + '<td class="num">' + fmtSecs(r.avg_secs) + '</td><td>' + fmtDate(r.run_dtime) + '</td>'
+                + '<td><button class="btn btn-secondary btn-sm" data-cancel="' + r.eval_run_key + '">Cancel queued</button></td></tr>';
+        }).join('') || '<tr><td colspan="11" class="muted">No runs yet.</td></tr>';
+    });
+}
+document.querySelector('#runs-table').addEventListener('click', function (e) {
+    var k = e.target.dataset.cancel;
+    if (!k || !confirm('Cancel the queued (not yet answered) jobs of run ' + k + '?')) return;
+    post({action: 'run_cancel', eval_run_key: +k}).then(loadRuns);
+});
+document.getElementById('run-create').addEventListener('click', function () {
+    var cfg = document.getElementById('run-config').value.trim(), st = document.getElementById('run-status');
+    var parsed = {};
+    if (cfg) { try { parsed = JSON.parse(cfg); } catch (e) { st.textContent = 'Config is not valid JSON'; return; } }
+    post({action: 'run_create', label: document.getElementById('run-label').value, model: document.getElementById('run-model').value, config: parsed})
+        .then(function (d) { st.textContent = d.error ? d.error : 'Run ' + d.eval_run_key + ' queued with ' + d.jobs + ' questions'; loadRuns(); });
+});
+
+// ── Questions ──
+function loadQuestions() {
+    get('eval_questions').then(function (d) {
+        var tb = document.querySelector('#q-table tbody');
+        tb.innerHTML = (d.questions || []).map(function (q) {
+            return '<tr class="' + (q.eval_active_flag ? '' : 'q-inactive') + '"><td><input type="checkbox" data-q="' + q.eval_question_key + '"' + (q.eval_active_flag ? ' checked' : '') + '></td>'
+                + '<td>' + q.eval_question_key + '</td><td>' + esc(q.question_text) + '</td><td class="muted">' + esc(q.baseline_model || (q.reference_answer ? 'reference' : '')) + '</td>'
+                + '<td class="num">' + (q.baseline_rating == null ? '' : q.baseline_rating) + '</td><td>' + esc(q.eval_tags || '') + '</td><td class="num">' + q.answers + '</td></tr>';
+        }).join('') || '<tr><td colspan="7" class="muted">No test questions yet — add some from the Ask Yada history above.</td></tr>';
+    });
+}
+document.querySelector('#q-table').addEventListener('change', function (e) {
+    var k = e.target.dataset.q;
+    if (!k) return;
+    post({action: 'eval_toggle', eval_question_key: +k, active: e.target.checked}).then(function () {
+        e.target.closest('tr').classList.toggle('q-inactive', !e.target.checked);
+    });
+});
+document.getElementById('eb-go').addEventListener('click', function () {
+    var st = document.getElementById('eb-status');
+    st.textContent = 'Adding…';
+    post({action: 'eval_build', n: +document.getElementById('eb-n').value, min_len: +document.getElementById('eb-min').value})
+        .then(function (d) { st.textContent = d.error ? d.error : 'Added ' + d.added; loadQuestions(); });
+});
+
+// ── Compare ──
+function loadCompareRuns() {
+    loadRuns().then(function () {
+        var pick = document.getElementById('run-pick');
+        var chosen = selectedRuns();
+        if (!chosen.length) chosen = runsCache.slice(0, 2).map(function (r) { return String(r.eval_run_key); });
+        pick.innerHTML = '<strong style="font-size:.85rem">Runs:</strong> ' + (runsCache.map(function (r) {
+            return '<label><input type="checkbox" value="' + r.eval_run_key + '"' + (chosen.indexOf(String(r.eval_run_key)) >= 0 ? ' checked' : '') + '> #'
+                + r.eval_run_key + ' ' + esc(r.run_label) + ' <span class="muted">(' + r.done + '/' + r.jobs + ')</span></label>';
+        }).join('') || '<span class="muted">No runs yet.</span>');
+        loadCompare();
+    });
+}
+function selectedRuns() { return Array.prototype.map.call(document.querySelectorAll('#run-pick input:checked'), function (i) { return i.value; }); }
+document.getElementById('run-pick').addEventListener('change', loadCompare);
+document.getElementById('cmp-unreviewed').addEventListener('change', loadCompare);
+document.getElementById('cmp-baseline').addEventListener('change', loadCompare);
+
+function answerCol(head, meta, body, review, srcs, cls) {
+    return '<div class="cmp-col ' + (cls || '') + '"><div class="cmp-col-head">' + head + '<span class="meta">' + meta + '</span></div>'
+        + '<div class="cmp-answer' + (body ? '' : ' empty') + '">' + (body ? esc(body) : 'No answer yet') + '</div>' + (srcs || '') + (review || '') + '</div>';
+}
+function reviewBox(a) {
+    var r = a.review_rating == null ? '' : a.review_rating;
+    return '<div class="cmp-review" data-job="' + a.ask_job_key + '">'
+        + '<div class="rate"><span>Rating</span><input type="range" min="0" max="100" step="5" value="' + (r === '' ? 50 : r) + '" data-f="rating"' + (r === '' ? ' data-unset="1"' : '') + '>'
+        + '<output>' + (r === '' ? '–' : r) + '</output></div>'
+        + '<textarea data-f="note" placeholder="Note (what is right or wrong)">' + esc(a.review_note || '') + '</textarea>'
+        + '<textarea data-f="corrected" placeholder="Corrected answer (optional)">' + esc(a.review_corrected || '') + '</textarea>'
+        + '<div class="actions"><button class="btn btn-primary btn-sm" data-save>Save</button><span class="saved"></span></div></div>';
+}
+function sourcesList(meta) {
+    if (!meta || !meta.sources || !meta.sources.length) return '';
+    var calls = (meta.tool_calls || []).filter(function (c) { return c.tool === 'search_library'; }).map(function (c) { return esc(c.query); });
+    return '<details class="srcs"><summary>' + meta.sources.length + ' passages · ' + calls.length + ' searches</summary>'
+        + (calls.length ? '<div class="muted">Searches: ' + calls.join(' · ') + '</div>' : '')
+        + '<ol>' + meta.sources.map(function (s) { return '<li>' + esc(s.cite) + '</li>'; }).join('') + '</ol></details>';
+}
+function loadCompare() {
+    var runs = selectedRuns(), list = document.getElementById('cmp-list');
+    var showBase = document.getElementById('cmp-baseline').checked, onlyUnrev = document.getElementById('cmp-unreviewed').checked;
+    list.innerHTML = '<p class="muted">Loading…</p>';
+    get('compare', 'runs=' + runs.join(',')).then(function (d) {
+        var qs = d.questions || [], shown = 0;
+        var runLabel = {};
+        runsCache.forEach(function (r) { runLabel[r.eval_run_key] = '#' + r.eval_run_key + ' ' + r.run_label; });
+        var html = qs.map(function (q, i) {
+            var ans = q.answers || {};
+            if (onlyUnrev && !runs.some(function (k) { return ans[k] && ans[k].job_status === 'done' && ans[k].review_rating == null; })) return '';
+            shown++;
+            var cols = [];
+            if (q.reference_answer) cols.push(answerCol('Reference answer', '', q.reference_answer, '', '', 'ref'));
+            if (showBase && q.baseline_answer) cols.push(answerCol('Current Ask Yada', esc(q.baseline_model || '') + (q.baseline_rating != null ? ' · rated ' + q.baseline_rating : ''), q.baseline_answer));
+            runs.forEach(function (k) {
+                var a = ans[k];
+                if (!a) { cols.push(answerCol(esc(runLabel[k] || '#' + k), 'not in run', '')); return; }
+                var meta = a.job_status === 'done' ? fmtSecs(a.secs) : status(a.job_status) + (a.job_error ? ' ' + esc(a.job_error.substring(0, 80)) : '');
+                cols.push(answerCol(esc(runLabel[k] || '#' + k), meta, a.answer_text, a.job_status === 'done' ? reviewBox(a) : '', sourcesList(a.answer_meta)));
+            });
+            return '<div class="cmp-q"><div class="cmp-q-head"><span class="qn">Q' + q.eval_question_key + '</span>' + esc(q.question_text)
+                + '<span class="skip" data-skip="' + q.eval_question_key + '" title="Remove from the test set">remove</span></div>'
+                + '<div class="cmp-cols" style="grid-template-columns:repeat(' + Math.max(cols.length, 1) + ', minmax(0,1fr))">' + cols.join('') + '</div></div>';
+        }).join('');
+        list.innerHTML = html || '<p class="muted">Nothing to show — add test questions and queue a run first.</p>';
+        document.getElementById('cmp-count').textContent = shown + ' of ' + qs.length + ' questions';
+    });
+}
+document.getElementById('cmp-list').addEventListener('input', onRange);
+document.getElementById('cmp-list').addEventListener('click', function (e) {
+    if (e.target.dataset.skip) {
+        if (!confirm('Remove this question from the test set? (It stays in the Ask Yada log.)')) return;
+        post({action: 'eval_toggle', eval_question_key: +e.target.dataset.skip, active: false}).then(function () { e.target.closest('.cmp-q').remove(); });
+        return;
+    }
+    if (e.target.hasAttribute('data-save')) saveReview(e.target.closest('.cmp-review'));
+});
+function onRange(e) {
+    if (e.target.type === 'range') { e.target.removeAttribute('data-unset'); e.target.nextElementSibling.textContent = e.target.value; }
+}
+function saveReview(box, then) {
+    var body = {action: 'review', ask_job_key: +box.dataset.job};
+    box.querySelectorAll('[data-f]').forEach(function (el) {
+        if (el.dataset.f === 'rating' && el.hasAttribute('data-unset')) return;   // untouched slider: leave rating as is
+        body[el.dataset.f] = el.dataset.f === 'rating' ? +el.value : el.value;
+    });
+    post(body).then(function (d) {
+        var s = box.querySelector('.saved');
+        s.textContent = d.error ? d.error : 'Saved';
+        if (!d.error) setTimeout(function () { s.textContent = ''; }, 2500);
+        if (then) then();
+    });
+}
+
+// ── Chat questions ──
+var chatJobs = [];
+function loadChat() {
+    get('jobs', 'kind=chat').then(function (d) {
+        chatJobs = d.jobs || [];
+        document.querySelector('#chat-table tbody').innerHTML = chatJobs.map(function (j, i) {
+            var secs = j.job_finished_dtime && j.job_started_dtime ? (new Date(j.job_finished_dtime) - new Date(j.job_started_dtime)) / 1000 : null;
+            return '<tr><td>' + j.ask_job_key + '</td><td>' + status(j.job_status) + (j.job_progress && j.job_status !== 'done' ? ' <span class="muted">' + esc(j.job_progress) + '</span>' : '') + '</td>'
+                + '<td>' + esc(j.user_name || '') + '</td><td>' + esc((j.question_text || '').substring(0, 160)) + '</td><td>' + esc(j.job_model || '') + '</td>'
+                + '<td class="num">' + fmtSecs(secs) + '</td><td>' + fmtDate(j.job_dtime) + '</td>'
+                + '<td>' + (j.job_status === 'done' ? '<button class="btn btn-secondary btn-sm" data-open="' + i + '">Review</button>' : '')
+                + (j.job_status === 'failed' || j.job_status === 'cancelled' ? '<button class="btn btn-secondary btn-sm" data-retry="' + j.ask_job_key + '">Retry</button>' : '')
+                + (j.job_status === 'queued' ? '<button class="btn btn-secondary btn-sm" data-cancel="' + j.ask_job_key + '">Cancel</button>' : '') + '</td></tr>';
+        }).join('') || '<tr><td colspan="8" class="muted">No chat questions yet.</td></tr>';
+    });
+}
+document.querySelector('#chat-table').addEventListener('click', function (e) {
+    var t = e.target.dataset;
+    if (t.retry) post({action: 'job_retry', ask_job_key: +t.retry}).then(loadChat);
+    if (t.cancel) post({action: 'job_cancel', ask_job_key: +t.cancel}).then(loadChat);
+    if (t.open != null) {
+        var j = chatJobs[+t.open], meta = null;
+        try { meta = typeof j.answer_meta === 'string' ? JSON.parse(j.answer_meta) : j.answer_meta; } catch (x) {}
+        document.getElementById('chat-detail').innerHTML = '<div class="cmp-q" style="margin-top:16px"><div class="cmp-q-head">' + esc(j.question_text) + '</div>'
+            + '<div class="cmp-cols" style="grid-template-columns:1fr">' + answerCol(esc(j.job_model || ''), fmtDate(j.job_finished_dtime), j.answer_text, reviewBox(j), sourcesList(meta)) + '</div></div>';
+    }
+});
+document.getElementById('chat-detail').addEventListener('input', onRange);
+document.getElementById('chat-detail').addEventListener('click', function (e) {
+    if (e.target.hasAttribute('data-save')) saveReview(e.target.closest('.cmp-review'), loadChat);
+});
+
+// ── Live updates: job status pushes (admin-job-sse channel ask_llm_job) ──
+var es = null, pushTimer = null;
+function startStream() {
+    try { es = new EventSource('/api/admin-job-sse.php?channel=ask_llm_job'); } catch (e) { return; }
+    es.addEventListener('job', function () {
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(function () {
+            var tab = (document.querySelector('.sub-tab.active') || {}).dataset;
+            if (!tab) return;
+            if (tab.tab === 'chat') loadChat();
+            else if (tab.tab === 'runs') loadRuns();
+            else if (tab.tab === 'overview') loadOverview();
+        }, 1500);   // coalesce bursts; Compare is not auto-refreshed so an open review is never wiped
+    });
+    es.addEventListener('reconnect', function () { es.close(); setTimeout(startStream, 500); });
+    es.onerror = function () { es.close(); setTimeout(startStream, 15000); };
+}
+
+// ── Auth ──
+function checkAuth() {
+    fetch('/api/auth.php', {credentials: 'include'}).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.authenticated) {
+            document.getElementById('app').style.display = '';
+            document.getElementById('user-display').textContent = d.user_name;
+            if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+            var tab = 'overview';
+            try { tab = sessionStorage.getItem('askLlmTab') || 'overview'; } catch (e) {}
+            showTab(document.querySelector('.sub-tab[data-tab="' + tab + '"]') ? tab : 'overview');
+            startStream();
+        } else {
+            document.getElementById('login-screen').classList.add('visible');
+        }
+    });
+}
+checkAuth();
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+<script src="/js/session-state.js?v=1"></script>
+<script src="/js/error-reporter.js?v=14"></script>
+</body>
+</html>

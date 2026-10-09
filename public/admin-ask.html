@@ -150,6 +150,7 @@
         <button class="sub-tab" onclick="switchSubTab('log')">Log</button>
         <button class="sub-tab" onclick="switchSubTab('qanda')">Q&amp;A</button>
         <button class="sub-tab" onclick="switchSubTab('bans')">Users</button>
+        <button class="sub-tab" onclick="switchSubTab('llm')">Local LLM</button>
     </div>
 
     <div id="panel-config" class="sub-panel active">
@@ -253,6 +254,11 @@
         </table>
     </div>
 
+    <!-- Ask Yada local-LLM prototype (admin-ask-llm.html), loaded on first open -->
+    <div id="panel-llm" class="sub-panel">
+        <iframe id="llm-frame" data-src="admin-ask-llm.html?embed=1" title="Local LLM" style="width:100%;height:calc(100vh - 170px);min-height:600px;border:0;"></iframe>
+    </div>
+
     <div id="detail-overlay" class="popover-overlay" onclick="if(event.target===this)closeDetail()">
         <div class="popover-panel">
             <div class="popover-close"><button onclick="closeDetail()" title="Close">&times;</button></div>
@@ -354,6 +360,10 @@ function switchSubTab(tab) {
     for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
     document.querySelector('.sub-tab[onclick*="' + tab + '"]').classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'llm') {
+        var llmFrame = document.getElementById('llm-frame');
+        if (!llmFrame.getAttribute('src')) llmFrame.src = llmFrame.dataset.src;
+    }
     if (tab === 'log' && !sessionsLoaded) {
         sessionsLoaded = true;
         loadSessions(1);
