@@ -74,7 +74,7 @@ function cfgWindowCounts(array $ws, float $lo, float $hi): array {
  * "shift" failure (line i replaced by line i+1's text), pure fragment drops
  * ("Lenin." deleted) and next-line swallowing. Returns [ok, reason].
  */
-function cfReplyEngineSupported(string $old, string $new, float $lo, float $hi, array $engineWords, float $pad = 0.6): array {
+function tReplyEngineSupported(string $old, string $new, float $lo, float $hi, array $engineWords, float $pad = 0.6): array {
     if (count($engineWords) < 2) return [true, 'no-engines'];
     $sets = [];
     foreach ($engineWords as $ws) $sets[] = cfgWindowCounts($ws, $lo - $pad, $hi + $pad);
@@ -246,7 +246,7 @@ if ($opt['llm']) {
             if ($pos + 1 < count($lines) && cfReplySwallowsNext($new, $l['old'], (string)$lines[$pos + 1]['old'])) $why = 'swallows next (existing guard)';
             elseif ($opt['guard']) {
                 $hi = isset($live[$g + 1]) ? $live[$g + 1]['secs'] : $live[$g]['secs'] + 6;
-                [$ok, $reason] = cfReplyEngineSupported($l['old'], $new, $live[$g]['secs'], min($hi, $live[$g]['secs'] + 12), $engineWords);
+                [$ok, $reason] = tReplyEngineSupported($l['old'], $new, $live[$g]['secs'], min($hi, $live[$g]['secs'] + 12), $engineWords);
                 if (!$ok) $why = $reason;
             }
             $decisions[] = ['segment' => $live[$g]['segment'], 'old' => $l['old'], 'new' => $new, 'accepted' => $why === '', 'reason' => $why];

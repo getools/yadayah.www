@@ -121,6 +121,18 @@ function cfDedup(array $words): array {
  *                 the previous word is >= break_gap), and
  *    boundary_set(sorted float[] of segment-start secs; a boundary falling
  *                 between two words flushes the cue before the later word).
+ *    pause_v2    (bool, default false; consensus builds turn it on — added
+ *                 2026-10-09 after item 18297621 glued "Lenin." onto the next
+ *                 sentence across a 3.2s pause):
+ *                 - a "pause" is the start-to-start gap MINUS the previous
+ *                   word's estimated spoken length (chars / pause_cps, default
+ *                   15), so a long word ("exceedingly") no longer reads as one;
+ *                 - a short sentence-final fragment ("Lenin.") followed by a
+ *                   real pause is attached BACKWARD to the previous cue (when
+ *                   it fits and was spoken closer to it) instead of being
+ *                   carried into the next sentence;
+ *                 - a mid-clause hesitation never splits off a cue of <= 2
+ *                   words ("was a … clown." stays one cue).
  *  Returns [['start'=>float, 'text'=>"line1\nline2", 'chars'=>int, 'lines'=>int], ...]. */
 function cfReflow(array $words, array $o): array {
     $maxChars = max(10, (int)$o['max_chars']);
@@ -152,16 +164,21 @@ function cfReflow(array $words, array $o): array {
     // never render taller than the configured maximum.
     $softCap = (int)round($cap * $softOver);
     $cues = [];
+    $cueWords = [];   // parallel to $cues: each cue's word list (pause_v2 back-merge)
     $cur = [];
     $curStart = null;
     $prevT = null;
+    $prevW = '';
+    $pauseV2  = !empty($o['pause_v2']);
+    $pauseCps = max(1.0, (float)($o['pause_cps'] ?? 15.0));
 
-    $flush = function () use (&$cues, &$cur, &$curStart, $maxChars) {
+    $flush = function () use (&$cues, &$cueWords, &$cur, &$curStart, $maxChars) {
         if (!$cur) return;
         $lines = cfWrap(array_map(fn($x) => $x['w'], $cur), $maxChars);
         $text = implode("\n", $lines);
         $cues[] = ['start' => $curStart, 'text' => $text,
                    'chars' => mb_strlen(str_replace("\n", '', $text)), 'lines' => count($lines)];
+        $cueWords[] = $cur;
         $cur = [];
         $curStart = null;
     };
@@ -171,13 +188,45 @@ function cfReflow(array $words, array $o): array {
         // between the previous word and this one ends the current cue early —
         // but only once the cue has dwelt long enough to avoid tiny fragments.
         if ($cur && $prevT !== null) {
-            $hitGap = ($breakGap > 0 && ($wi['t'] - $prevT) >= $breakGap);
+            $gap = $wi['t'] - $prevT;
+            if ($pauseV2) $gap -= max(0.15, mb_strlen($prevW) / $pauseCps);
+            $hitGap = ($breakGap > 0 && $gap >= $breakGap);
             $hitBoundary = false;
             if ($nb) {
                 while ($bi < $nb && $bounds[$bi] <= $prevT) $bi++;
                 if ($bi < $nb && $bounds[$bi] <= $wi['t']) $hitBoundary = true;
             }
-            if (($hitGap || $hitBoundary) && ($prevT - $curStart) >= 0.4) {
+            if ($pauseV2 && $hitGap && !$hitBoundary) {
+                $midClause = !preg_match('/[.?!…।,;:]["\')\]\x{201D}\x{2019}]?$/u', $prevW);
+                if ($midClause && count($cur) <= 2) {
+                    // hesitation inside a clause ("was a … clown.") — keep going
+                } elseif (($prevT - $curStart) >= 0.4) {
+                    $flush();
+                } elseif (!$midClause && $cues
+                          && preg_match('/[.?!…।]["\')\]\x{201D}\x{2019}]?$/u', $prevW)) {
+                    // Orphan sentence-end fragment ("Lenin.") before a real pause:
+                    // attach it to the previous cue when it fits and was spoken
+                    // closer to it than to what follows; else let it stand alone.
+                    $li = count($cues) - 1;
+                    $merged = array_merge($cueWords[$li], $cur);
+                    $mw = array_map(fn($x) => $x['w'], $merged);
+                    $lastEnd = end($cueWords[$li])['t'];
+                    if (($curStart - $lastEnd) < $gap
+                        && mb_strlen(implode(' ', $mw)) <= $softCap
+                        && count(cfWrap($mw, $maxChars)) <= $maxLines
+                        && ($prevT - $cues[$li]['start']) <= $maxSecs) {
+                        $lines = cfWrap($mw, $maxChars);
+                        $text = implode("\n", $lines);
+                        $cues[$li] = ['start' => $cues[$li]['start'], 'text' => $text,
+                                      'chars' => mb_strlen(str_replace("\n", '', $text)), 'lines' => count($lines)];
+                        $cueWords[$li] = $merged;
+                        $cur = [];
+                        $curStart = null;
+                    } else {
+                        $flush();
+                    }
+                }
+            } elseif (($hitGap || $hitBoundary) && ($prevT - $curStart) >= 0.4) {
                 $flush();
             }
         }
@@ -220,6 +269,7 @@ function cfReflow(array $words, array $o): array {
             }
         }
         $prevT = $wi['t'];
+        $prevW = (string)$wi['w'];
     }
     $flush();
     return $cues;
@@ -802,6 +852,78 @@ function cfReplySwallowsNext(string $new, string $old, string $next): bool {
     return cfContiguousContains($newTok, $nextTok);            // i now swallows i+1
 }
 
+/**
+ * Engine-support guard for the LLM reconcile pass (added 2026-10-09).
+ *
+ * The merge-guard above only catches line i swallowing line i+1. Item 18297621
+ * ("Vlog On A Blog 22 September 2026") showed the opposite failures: qwen
+ * returned line i as line i+1's text ("Hitler was a Marxist." → "Stalin. Mao.",
+ * duplicating i+1 and losing i), shifted whole runs of lines by one, and
+ * dropped a carry-over word ("Lenin. And I…" → "And I…") — 89 of 434 changes on
+ * that item moved AWAY from what every engine heard. So an LLM reply is only
+ * applied when it stays faithful to the word-level engines in the line's OWN
+ * time window: it may not drop a (non-filler) word that >= 2 engines heard
+ * unless it substitutes something (a spelling/canonical fix), may not drop > 2
+ * such words, and may not add > 2 tokens no engine heard there (a neighbour's
+ * text pulled in). Calibrated on that item: kept 104/104 helpful changes,
+ * blocked 72/89 harmful ones. Needs >= 2 word-level engines, else no-op.
+ */
+const CF_GUARD_FILLERS = ['uh' => 1, 'um' => 1, 'uhm' => 1, 'er' => 1, 'ah' => 1, 'hmm' => 1, 'mm' => 1, 'mhm' => 1, 'huh' => 1];
+function cfGuardNorm(string $s): array {
+    $s = mb_strtolower(str_replace(['’', '‘'], "'", $s));
+    $s = preg_replace("/[^\\p{L}\\p{N}']+/u", ' ', $s);
+    $out = [];
+    foreach (preg_split('/\s+/u', trim($s)) as $w) { $w = trim($w, "'"); if ($w !== '') $out[] = $w; }
+    return $out;
+}
+/** Word-level engines' token streams for an item: [code => [[secs, tok], ...]], time-sorted. */
+function cfGuardEngineWords(PDO $db, int $itemKey, array $codes): array {
+    $out = [];
+    foreach ($codes as $c) {
+        if (!str_ends_with((string)$c, '-word')) continue;
+        $ws = [];
+        foreach (cfLoadAuto($db, $itemKey, (string)$c) as $r) {
+            foreach (cfGuardNorm($r['text']) as $t) $ws[] = [$r['secs'], $t];
+        }
+        if ($ws) $out[(string)$c] = $ws;
+    }
+    return $out;
+}
+function cfGuardWindowCounts(array $ws, float $lo, float $hi): array {
+    $a = 0; $b = count($ws);
+    while ($a < $b) { $m = ($a + $b) >> 1; if ($ws[$m][0] < $lo) $a = $m + 1; else $b = $m; }
+    $c = [];
+    for ($k = $a, $n = count($ws); $k < $n && $ws[$k][0] < $hi; $k++) $c[$ws[$k][1]] = ($c[$ws[$k][1]] ?? 0) + 1;
+    return $c;
+}
+/** Returns [bool ok, string reason]. $lo/$hi = the line's [start, next-line start). */
+function cfReplyEngineSupported(string $old, string $new, float $lo, float $hi,
+                                array $engineWords, float $pad = 0.6): array {
+    if (count($engineWords) < 2) return [true, ''];
+    $sets = [];
+    foreach ($engineWords as $ws) $sets[] = cfGuardWindowCounts($ws, $lo - $pad, $hi + $pad);
+    $o = array_count_values(cfGuardNorm($old));
+    $n = array_count_values(cfGuardNorm($new));
+    $supDel = 0; $gone = [];
+    foreach ($o as $w => $_) {
+        $w = (string)$w;
+        if (isset($n[$w]) || isset(CF_GUARD_FILLERS[$w])) continue;   // kept, or a filler
+        $heard = 0; foreach ($sets as $s) if (!empty($s[$w])) $heard++;
+        if ($heard >= 2) { $supDel++; $gone[] = $w; }
+    }
+    $added = 0; $unsIns = 0; $ins = [];
+    foreach ($n as $w => $cnt) {
+        $w = (string)$w;
+        if (isset($o[$w])) continue;
+        $added++;
+        $any = false; foreach ($sets as $s) if (!empty($s[$w])) { $any = true; break; }
+        if (!$any) { $unsIns += $cnt; $ins[] = $w; }
+    }
+    if ($supDel > 2 || $supDel > $added) return [false, 'drops heard: ' . implode(' ', $gone)];
+    if ($unsIns > 2) return [false, 'adds unheard: ' . implode(' ', $ins)];
+    return [true, ''];
+}
+
 // ── Auto multi-baseline LLM reconciliation (Layer 3) ─────────────────────────
 //   Runs the SAME baseline-aware consensus-decode that Smart Captions' ai_chunk
 //   does, but server-side over a freshly-built transcript so the *starting*
@@ -843,6 +965,10 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
         $brows = cfLoadAuto($db, $itemKey, $code);
         $alignByModel[$code] = cfAlignBaselineToLive($live, $brows, cfEstimateShift($live, $brows));
     }
+    // Engine-support guard input (opt out with $opts['engine_guard'] = false).
+    $engineWords = (!array_key_exists('engine_guard', $opts) || $opts['engine_guard'])
+        ? cfGuardEngineWords($db, $itemKey, $baselineCodes) : [];
+    $guarded = 0;
 
     $ctx    = cfCorrectionContext($db);
     $numCtx = $baselineCodes ? 16384 : 8192;
@@ -894,12 +1020,23 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
                 && cfReplySwallowsNext($new, $l['old'], (string)$lines[$pos + 1]['old'])) {
                 $new = $l['old'];
             }
+            // Engine-support guard: reject a reply that drifts from what the
+            // word-level engines heard in this line's own time window (shifted
+            // neighbour text, dropped words) — see cfReplyEngineSupported.
+            if ($new !== $l['old'] && $engineWords) {
+                $g  = $offset + $pos;
+                $lo = (float)$live[$g]['secs'];
+                $hi = isset($live[$g + 1]) ? (float)$live[$g + 1]['secs'] : $lo + 6.0;
+                [$ok, $why] = cfReplyEngineSupported($l['old'], $new, $lo, min($hi, $lo + 12.0), $engineWords);
+                if (!$ok) { $new = $l['old']; $guarded++; }
+            }
             if ($new !== $l['old']) { $upd->execute([$new, $l['key'], $itemKey]); $changed++; }
         }
         $chunks++;
         $emit('llm-reconcile:' . min($offset + $limit, $total) . '/' . $total . ':' . $changed);
     }
-    return ['ok' => true, 'changed' => $changed, 'chunks' => $chunks];
+    if ($guarded) error_log("llmReconcileTranscript: engine-guard rejected $guarded LLM edit(s) item=$itemKey");
+    return ['ok' => true, 'changed' => $changed, 'chunks' => $chunks, 'guarded' => $guarded];
 }
 /* ===================================================================== *
  *  Music / STT repetition-LOOP-block removal.

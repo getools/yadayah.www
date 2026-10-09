@@ -334,7 +334,17 @@ try {
             'max_secs'    => (float)($params['max_secs'] ?? 7.0),
             'min_secs'    => (float)($params['min_secs'] ?? 1.2),
             'break_punct' => array_key_exists('break_punct', $params) ? (bool)$params['break_punct'] : true,
-            'break_gap'   => (float)($params['break_gap'] ?? 0.6),
+            // Pause breaks (2026-10-09): every auto/default path used to send
+            // break_gap 0 (off), so a sentence-final fragment glued onto the
+            // next sentence across long pauses ("Lenin. And I have been…").
+            // Consensus now uses cfReflow's pause_v2 (duration-aware pauses,
+            // orphan back-merge, no mid-clause hesitation splits) with a 1.2s
+            // default; an explicit positive break_gap is honoured, 0/absent →
+            // 1.2. Opt out of v2 with params.pause_v2=false (then 0 = off).
+            'pause_v2'    => !array_key_exists('pause_v2', $params) || (bool)$params['pause_v2'],
+            'break_gap'   => (float)($params['break_gap'] ?? 0) > 0
+                                ? (float)$params['break_gap']
+                                : ((!array_key_exists('pause_v2', $params) || $params['pause_v2']) ? 1.2 : 0.0),
             'soft_overflow' => max(1.0, (float)($params['soft_overflow'] ?? 1.5)),
             'dedup'       => array_key_exists('dedup', $params) ? (bool)$params['dedup'] : true,
         ];

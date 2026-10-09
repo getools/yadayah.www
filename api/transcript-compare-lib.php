@@ -254,14 +254,37 @@ function unionSpineWords(PDO $db, int $itemKey, string $spineCode, array $baseli
 
     $cands = array_values(array_filter($baselineCodes, fn($c) => $c !== $spineCode));
     if (!$cands) return $pWords;
-    // Lazy-load each candidate's word stream once.
+    // Lazy-load each candidate's word stream once. Multi-word rows (segment /
+    // coarse ~30s chunk engines) are SPREAD linearly across their row's span
+    // (to the next row's start, capped at 30s) instead of every word sharing
+    // the row's start time (2026-10-09). Without this a coarse chunk starting
+    // inside a spine gap had ALL its words "inside the gap" and was dumped at
+    // one timestamp — item 4477552 "Vlog On A Blog 01 July 2026" got 5 rows at
+    // 0:49:02.00 (canary's whole 49:00-49:30 chunk) duplicating the timed text
+    // the spine already had from 49:02.15 on.
     $wordsByCode = [];
     $loadWords = function (string $c) use (&$wordsByCode, $db, $itemKey): array {
         if (!array_key_exists($c, $wordsByCode)) {
-            $wordsByCode[$c] = primaryWords(loadCompareRows($db, $itemKey, $c));
+            $rows = loadCompareRows($db, $itemKey, $c);
+            $ws = [];
+            $nr = count($rows);
+            for ($r = 0; $r < $nr; $r++) {
+                $t = intervalToSecs($rows[$r]['seg']);
+                $toks = tokenize($rows[$r]['txt']);
+                if (count($toks) <= 1) { $ws[] = ['t' => $t, 'word' => trim($rows[$r]['txt'])]; continue; }
+                $next = ($r + 1 < $nr) ? intervalToSecs($rows[$r + 1]['seg']) : $t + 0.4 * count($toks);
+                $span = max(0.0, min($next - $t, 30.0));
+                $step = $span / count($toks);
+                foreach ($toks as $q => $tok) $ws[] = ['t' => $t + $q * $step, 'word' => $tok];
+            }
+            foreach ($ws as $i => &$w) $w['i'] = $i;
+            unset($w);
+            $wordsByCode[$c] = $ws;
         }
         return $wordsByCode[$c];
     };
+    // Normalised spine tokens, for the overlap trim below.
+    $spineNorm = array_map(fn($w) => normTok((string)$w['word']), $pWords);
 
     $inserts = [];
     $n = count($pWords);
@@ -282,6 +305,36 @@ function unionSpineWords(PDO $db, int $itemKey, string $spineCode, array $baseli
             foreach ($loadWords($c) as $w) {
                 $t = (float)$w['t'];
                 if ($t > $gapStart + 0.05 && $t < $gapEnd - 0.05) $ws[] = $w;
+            }
+            // Overlap trim, both edges — the spine already has that text, timed:
+            //  (a) LEAD: drop fill up to the last 4-gram that repeats the 25
+            //      spine words just BEFORE the gap (a spread chunk's tail);
+            //  (b) TAIL: cut the fill at the first 4-gram that repeats the 25
+            //      spine words just AFTER it.
+            // 4-grams in a 25-word window, not 3-grams over 60: "in Mexico and"
+            // recurs naturally a few sentences on (item 7175511 lost a real
+            // "…could stay in Mexico and" to the looser test).
+            $gramAt = function (array $fn, int $j): ?string {
+                for ($d = 0; $d < 4; $d++) if (($fn[$j + $d] ?? '') === '') return null;
+                return ' ' . $fn[$j] . ' ' . $fn[$j + 1] . ' ' . $fn[$j + 2] . ' ' . $fn[$j + 3] . ' ';
+            };
+            if (count($ws) >= 4) {
+                $beforeStr = ' ' . implode(' ', array_slice($spineNorm, max(0, $k - 24), min(25, $k + 1))) . ' ';
+                $fn = array_map(fn($w) => normTok((string)$w['word']), $ws);
+                $cut = 0;
+                for ($j = 0; $j + 3 < count($fn); $j++) {
+                    $g4 = $gramAt($fn, $j);
+                    if ($g4 !== null && strpos($beforeStr, $g4) !== false) $cut = $j + 4;
+                }
+                if ($cut) $ws = array_slice($ws, $cut);
+            }
+            if (count($ws) >= 4) {
+                $afterStr = ' ' . implode(' ', array_slice($spineNorm, $k + 1, 25)) . ' ';
+                $fn = array_map(fn($w) => normTok((string)$w['word']), $ws);
+                for ($j = 0; $j + 3 < count($fn); $j++) {
+                    $g4 = $gramAt($fn, $j);
+                    if ($g4 !== null && strpos($afterStr, $g4) !== false) { $ws = array_slice($ws, 0, $j); break; }
+                }
             }
             if (count($ws) < $minWords) continue;
             $tier = in_array($c, ['gpu-canary-1b-flash', 'gpu-qwen2-audio'], true) ? 1
