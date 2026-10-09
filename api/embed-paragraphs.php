@@ -55,6 +55,19 @@ $junked = $db->exec("
 ");
 if ($junked > 0) fprintf(STDERR, "[embed-paragraphs] deactivated %d junk paragraphs first\n", $junked);
 
+// Re-parses replace yy_paragraph rows with NEW paragraph_keys, which orphans
+// their embeddings (all 3,450 May-2026 rows were orphans by October). Drop
+// rows whose paragraph is gone or inactive so they are re-embedded under the
+// new key below. yy_ask_embedding is a regenerable cache: its _rev trigger is
+// disabled (2026-10-09) so this churn doesn't copy every vector into _rev.
+$orphans = $db->exec("
+    DELETE FROM yy_ask_embedding e
+     WHERE e.source_type = 'paragraph'
+       AND NOT EXISTS (SELECT 1 FROM yy_paragraph p
+                        WHERE p.paragraph_key = e.source_key AND p.paragraph_active_flag)
+");
+if ($orphans > 0) fprintf(STDERR, "[embed-paragraphs] removed %d orphaned embeddings first\n", $orphans);
+
 $BATCH = (int)(getenv('EMBED_BATCH') ?: 64);
 $MIN_LEN = 30;  // skip near-empty paragraphs (TOC entries, page headers, etc.)
 $MAX_LEN = 4000;

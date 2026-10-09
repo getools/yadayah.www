@@ -548,6 +548,31 @@ try {
         error_log('consensus: loop-block guard threw item=' . $itemKey . ' — ' . $e->getMessage());
     }
 
+    // First-words anchor (2026-10-09): snap each line's start to where its
+    // opening words occur in the word-level baselines (the most reliable timing
+    // source), and count lines whose opening words aren't found nearby — the
+    // tell of shifted/clobbered text or coarse-only fill. Timestamps only, never
+    // text; snapshots first; FAIL-OPEN. A high unanchored share is surfaced as
+    // a quality note in job_error. Opt out with params.anchor_first_words=false.
+    if ($model === 'consensus' && !empty($baselines)
+        && (!array_key_exists('anchor_first_words', $params) || $params['anchor_first_words'])) {
+        try {
+            require_once __DIR__ . '/transcript-caption-lib.php';
+            $an = cfAnchorFirstWords($db, $itemKey, $baselines, ['apply' => true]);
+            error_log(sprintf('consensus: first-word anchor item=%d lines=%d anchored=%d retimed=%d unanchored=%d',
+                $itemKey, $an['lines'], $an['anchored'], $an['retimed'], $an['unanchored']));
+            $notify('anchor:' . $an['retimed'] . ':' . $an['unanchored']);
+            if ($an['lines'] > 0 && $an['unanchored'] / $an['lines'] >= 0.03) {
+                $note = sprintf('Quality note: %d of %d lines (%.1f%%) have opening words not found in the word-level baselines near their timestamp — review e.g. %s',
+                    $an['unanchored'], $an['lines'], 100 * $an['unanchored'] / $an['lines'], implode(' | ', array_slice($an['examples'], 0, 5)));
+                try { $db->prepare("UPDATE yy_feed_item_transcript_init_job SET job_error = ? WHERE job_key = ?")
+                         ->execute([mb_substr($note, 0, 2000), $jobKey]); } catch (\Throwable $e) {}
+            }
+        } catch (\Throwable $e) {
+            error_log('consensus: first-word anchor threw item=' . $itemKey . ' — ' . $e->getMessage());
+        }
+    }
+
     // Auto-name recurring speakers: match this build's raw SPEAKER_xx voices
     // against the saved global profiles and rename the confident ones in place,
     // so a freshly built diarised transcript arrives pre-named. FAIL-OPEN — the

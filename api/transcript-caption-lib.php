@@ -198,7 +198,10 @@ function cfReflow(array $words, array $o): array {
             }
             if ($pauseV2 && $hitGap && !$hitBoundary) {
                 $midClause = !preg_match('/[.?!…।,;:]["\')\]\x{201D}\x{2019}]?$/u', $prevW);
-                if ($midClause && count($cur) <= 2) {
+                if ($midClause && $gap < 2 * $breakGap) {
+                    // a mid-clause pause ("favored and … sponsored") needs twice
+                    // the threshold to split a cue; punctuated pauses use 1x
+                } elseif ($midClause && count($cur) <= 2) {
                     // hesitation inside a clause ("was a … clown.") — keep going
                 } elseif (($prevT - $curStart) >= 0.4) {
                     $flush();
@@ -247,7 +250,35 @@ function cfReflow(array $words, array $o): array {
         $trialLines = count(cfWrap($trialWords, $maxChars));
         $fits = $trialChars <= $softCap && $trialLines <= $maxLines;
         $overTime = ($wi['t'] - $curStart) > $maxSecs;
-        if ($cur && (!$fits || $overTime)) {
+        // pause_v2: a FORCED split (too long / over max_secs) goes at the
+        // largest pause inside the cue (punctuation counts +0.5s) instead of
+        // wherever the limit happened to trip ("…drive to start | a business."),
+        // provided the head keeps >= 3 words and the carried tail still fits.
+        // The boundary right before the incoming word (j == count) is itself a
+        // candidate — it wins when that is where the speaker actually paused.
+        $splitAt = 0;
+        if ($pauseV2 && $cur && (!$fits || $overTime) && count($cur) >= 4) {
+            $bestP = 0.3;
+            $nc = count($cur);
+            for ($j = 3; $j <= $nc; $j++) {
+                $pw = (string)$cur[$j - 1]['w'];
+                $nt = ($j < $nc) ? $cur[$j]['t'] : $wi['t'];
+                $p = $nt - $cur[$j - 1]['t'] - max(0.15, mb_strlen($pw) / $pauseCps);
+                if (preg_match('/[.?!…।,;:]["\')\]\x{201D}\x{2019}]?$/u', $pw)) $p += 0.5;
+                if ($p <= $bestP) continue;
+                $tail = array_merge(array_slice($cur, $j), [$wi]);
+                $tw = array_map(fn($x) => $x['w'], $tail);
+                if (mb_strlen(implode(' ', $tw)) <= $softCap && count(cfWrap($tw, $maxChars)) <= $maxLines
+                    && ($wi['t'] - $tail[0]['t']) <= $maxSecs) { $bestP = $p; $splitAt = $j; }
+            }
+        }
+        if ($splitAt) {
+            $tail = array_merge(array_slice($cur, $splitAt), [$wi]);
+            $cur = array_slice($cur, 0, $splitAt);
+            $flush();
+            $cur = $tail;
+            $curStart = $tail[0]['t'];
+        } elseif ($cur && (!$fits || $overTime)) {
             $flush();
             $curStart = $wi['t'];
             $cur = [$wi];
@@ -922,6 +953,88 @@ function cfReplyEngineSupported(string $old, string $new, float $lo, float $hi,
     if ($supDel > 2 || $supDel > $added) return [false, 'drops heard: ' . implode(' ', $gone)];
     if ($unsIns > 2) return [false, 'adds unheard: ' . implode(' ', $ins)];
     return [true, ''];
+}
+
+/**
+ * First-words anchor pass (added 2026-10-09). The word-level baselines are the
+ * most reliable timing source we have — on item 18297621 whisperx-word and
+ * parakeet-word (unrelated models) agreed on 95% of words, median 0.06s apart,
+ * 98% within 0.5s; whisper-large-v3-word runs ~0.2s early. So every editable
+ * line's OPENING words (first 3; first 2 as a fallback; the whole line when it
+ * has <= 2 words) must occur in a word baseline at about the line's start time.
+ *
+ * For each line, finds the nearest such occurrence within +/- $tol seconds
+ * (engines tried in reliability order: whisperx-word, parakeet-word, then any
+ * other -word) and snaps the line's start to it when it moved > 0.05s and the
+ * new time stays strictly between the neighbouring lines (order preserved).
+ * Lines whose opening words aren't found are left untouched and counted as
+ * "unanchored" — a quality signal (shifted/clobbered text, coarse-only fill).
+ * Only timestamps change, never text. Snapshot first when applying.
+ * Returns ['lines','anchored','retimed','unanchored','examples'=>[...]].
+ */
+function cfAnchorFirstWords(PDO $db, int $itemKey, array $baselineCodes, array $opts = []): array {
+    $tol   = (float)($opts['tol'] ?? 3.0);
+    $apply = !empty($opts['apply']);
+    $pref  = ['gpu-whisperx-word', 'gpu-parakeet-tdt-0.6b-v2-word'];
+    $codes = array_values(array_filter(array_map('strval', $baselineCodes), fn($c) => str_ends_with($c, '-word')));
+    usort($codes, function ($a, $b) use ($pref) {
+        $ia = array_search($a, $pref, true); $ib = array_search($b, $pref, true);
+        return ($ia === false ? 99 : $ia) <=> ($ib === false ? 99 : $ib);
+    });
+    $streams = cfGuardEngineWords($db, $itemKey, $codes);   // [code => [[secs, tok], ...]]
+    $live = cfLoadLive($db, $itemKey);
+    $res = ['lines' => count($live), 'anchored' => 0, 'retimed' => 0, 'unanchored' => 0, 'examples' => []];
+    if (!$streams || !$live) return $res;
+
+    $find = function (array $words, float $t0) use ($streams, $tol): ?float {
+        $nw = count($words);
+        foreach ($streams as $ws) {                      // reliability order; first engine with a hit wins
+            $n = count($ws); $a = 0; $b = $n;
+            while ($a < $b) { $m = ($a + $b) >> 1; if ($ws[$m][0] < $t0 - $tol) $a = $m + 1; else $b = $m; }
+            $best = null;
+            for ($i = $a; $i < $n && $ws[$i][0] <= $t0 + $tol; $i++) {
+                $ok = true;
+                for ($k = 0; $k < $nw; $k++) { if (($ws[$i + $k][1] ?? null) !== $words[$k]) { $ok = false; break; } }
+                if ($ok && ($best === null || abs($ws[$i][0] - $t0) < abs($best - $t0))) $best = (float)$ws[$i][0];
+            }
+            if ($best !== null) return $best;
+        }
+        return null;
+    };
+
+    $newSecs = [];
+    $n = count($live);
+    for ($i = 0; $i < $n; $i++) {
+        $toks = cfGuardNorm((string)$live[$i]['text']);
+        $s = (float)$live[$i]['secs'];
+        $newSecs[$i] = $s;
+        if (!$toks) continue;
+        $hit = (count($toks) <= 2) ? $find($toks, $s) : $find(array_slice($toks, 0, 3), $s);
+        if ($hit === null && count($toks) >= 3) $hit = $find(array_slice($toks, 0, 2), $s);
+        if ($hit === null) {
+            $res['unanchored']++;
+            if (count($res['examples']) < 20) $res['examples'][] = $live[$i]['segment'] . ' ' . mb_substr((string)$live[$i]['text'], 0, 60);
+            continue;
+        }
+        $res['anchored']++;
+        $prev = $i > 0 ? $newSecs[$i - 1] : -INF;
+        $next = $i + 1 < $n ? (float)$live[$i + 1]['secs'] : INF;
+        if (abs($hit - $s) > 0.05 && $hit > $prev + 0.01 && $hit < $next - 0.01) $newSecs[$i] = $hit;
+    }
+    $changes = [];
+    foreach ($live as $i => $r) if (abs($newSecs[$i] - (float)$r['secs']) > 0.05) $changes[] = [$r['key'], $newSecs[$i]];
+    $res['retimed'] = count($changes);
+    if ($apply && $changes) {
+        try { cfSnapshot($db, $itemKey, null, 'pre first-word anchor'); } catch (\Throwable $e) {}
+        $up = $db->prepare("UPDATE yy_feed_item_transcript SET feed_item_transcript_segment = ?::interval
+                             WHERE feed_item_transcript_key = ? AND feed_item_key = ?");
+        $db->beginTransaction();
+        try {
+            foreach ($changes as [$key, $secs]) $up->execute([cfSecsToInterval($secs), $key, $itemKey]);
+            $db->commit();
+        } catch (\Throwable $e) { $db->rollBack(); throw $e; }
+    }
+    return $res;
 }
 
 // ── Auto multi-baseline LLM reconciliation (Layer 3) ─────────────────────────

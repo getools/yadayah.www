@@ -336,6 +336,49 @@ function unionSpineWords(PDO $db, int $itemKey, string $spineCode, array $baseli
                     if ($g4 !== null && strpos($afterStr, $g4) !== false) { $ws = array_slice($ws, 0, $j); break; }
                 }
             }
+            // Exact edge trim (any length >= 1): drop fill words that simply
+            // repeat the spine's last words before the gap (fill head) or its
+            // first words after it (fill tail). The 4-gram test can't see a 1-3
+            // word overlap, which left stutters at line starts ("Listen,
+            // Listen, learn, live", "This This is funny") stamped at the coarse
+            // chunk's whole-second time.
+            if ($ws) {
+                $fn = array_map(fn($w) => normTok((string)$w['word']), $ws);
+                $maxL = min(6, count($fn));
+                for ($L = $maxL; $L >= 1; $L--) {                     // tail vs after-gap prefix
+                    if (array_slice($fn, -$L) === array_slice($spineNorm, $k + 1, $L)) {
+                        $ws = array_slice($ws, 0, count($ws) - $L); $fn = array_slice($fn, 0, count($fn) - $L); break;
+                    }
+                }
+                $maxL = min(6, count($fn), $k + 1);
+                for ($L = $maxL; $L >= 1; $L--) {                     // head vs before-gap suffix
+                    if (array_slice($fn, 0, $L) === array_slice($spineNorm, $k + 1 - $L, $L)) {
+                        $ws = array_slice($ws, $L); break;
+                    }
+                }
+            }
+            // Fuzzy near-duplicate: a SHORT fill (<= 6 words) whose words mostly
+            // (>= half) match the spine's 10 words either side of the gap is the
+            // coarse engine's mishearing of words the spine already has
+            // ("Methinks that Zelensky" vs "He thinks that Slavinsky", "Wow, so
+            // this" vs "Well, so this is…") — drop it. Long fills (VAD-dropped
+            // songs/intros, the reason gap-fill exists) are never affected.
+            if ($ws && count($ws) <= 6) {
+                $near = array_merge(array_slice($spineNorm, max(0, $k - 9), min(10, $k + 1)),
+                                    array_slice($spineNorm, $k + 1, 10));
+                $hit = 0;
+                foreach ($ws as $w) {
+                    $a = normTok((string)$w['word']);
+                    foreach ($near as $b) {
+                        if ($a === $b) { $hit++; break; }
+                        if (mb_strlen($a) >= 5 && mb_strlen($b) >= 5) {
+                            similar_text($a, $b, $pct);
+                            if ($pct >= 70.0) { $hit++; break; }
+                        }
+                    }
+                }
+                if ($hit * 2 >= count($ws)) continue;
+            }
             if (count($ws) < $minWords) continue;
             $tier = in_array($c, ['gpu-canary-1b-flash', 'gpu-qwen2-audio'], true) ? 1
                   : (str_ends_with($c, '-word') ? 3 : 2);

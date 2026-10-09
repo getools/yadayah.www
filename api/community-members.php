@@ -35,7 +35,23 @@ $search = trim($_GET['q'] ?? '');
 $sort = $_GET['sort'] ?? 'reputation';
 
 // Build WHERE clause
-$where = "WHERE u.user_active_flag = TRUE AND u.user_banned_flag = FALSE AND EXISTS (SELECT 1 FROM yy_user_role ur JOIN yy_role r ON ur.role_key = r.role_key WHERE ur.user_key = u.user_key AND r.role_code IN ('public', 'moderator'))";
+// The "Ask Yada" bot member (Ask Yada local-LLM prototype, see ask-llm.php) has no role, so it is
+// listed only to viewers its access setting allows — never to banned members.
+$askBotSql = '';
+$askBot = $db->query("SELECT max(CASE WHEN setting_code = 'bot-user-key' THEN setting_value END) AS bot,
+                             max(CASE WHEN setting_code = 'access' THEN setting_value END) AS access
+                        FROM yy_setting WHERE setting_scope_code = 'app' AND setting_group_code = 'ask-llm'")->fetch();
+$viewerKey = (int)($_SESSION['user_key'] ?? 0);
+if ($askBot && (int)$askBot['bot'] && $viewerKey && !currentUserBanned()) {
+    $askBotOk = $askBot['access'] === 'members';
+    if ($askBot['access'] === 'admins') {
+        $adm = $db->prepare("SELECT 1 FROM yy_user_role WHERE user_key = ? AND role_key = 2");
+        $adm->execute([$viewerKey]);
+        $askBotOk = (bool)$adm->fetchColumn();
+    }
+    if ($askBotOk) $askBotSql = ' OR u.user_key = ' . (int)$askBot['bot'];
+}
+$where = "WHERE u.user_active_flag = TRUE AND u.user_banned_flag = FALSE AND (EXISTS (SELECT 1 FROM yy_user_role ur JOIN yy_role r ON ur.role_key = r.role_key WHERE ur.user_key = u.user_key AND r.role_code IN ('public', 'moderator')){$askBotSql})";
 $params = [];
 
 if ($search) {

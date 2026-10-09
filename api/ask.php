@@ -205,13 +205,12 @@ if (count($contextRows) < 5 && $orQuery) {
 // prefix so duplicates with the keyword path don't bloat the prompt.
 try {
     require_once __DIR__ . '/ask-rag.php';
-    $voyageKey = getenv('VOYAGE_API_KEY') ?: '';
-    if (!$voyageKey) {
-        $vkStmt = $pdo->query("SELECT setting_value FROM yy_setting WHERE setting_scope_code = 'app' AND setting_code = 'voyage-api-key'");
-        $voyageKey = $vkStmt->fetchColumn() ?: '';
-    }
-    if ($voyageKey) {
-        $qEmbedding = generateEmbedding($cleanQ, $voyageKey);
+    // The query must be embedded by the same provider that embedded the stored
+    // paragraphs (yy_ask_embedding.embedding_model: OpenAI text-embedding-3-small
+    // @1024). _embedProvider() picks the provider and its own key — this used to
+    // require a Voyage key that was never set, so the vector pass never ran.
+    if (_embedProvider()) {
+        $qEmbedding = generateEmbedding($cleanQ);
         if ($qEmbedding) {
             $vecRows = searchSimilarParagraphs($pdo, $qEmbedding, 10);
             $seen2 = [];
