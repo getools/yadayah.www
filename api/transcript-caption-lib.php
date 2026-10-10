@@ -1105,7 +1105,7 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
 
     $ctx    = cfCorrectionContext($db);
     $numCtx = $baselineCodes ? 16384 : 8192;
-    try { cfSnapshot($db, $itemKey, null, 'pre auto LLM reconcile (init)'); } catch (\Throwable $e) {}
+    try { cfSnapshot($db, $itemKey, null, (string)($opts['snapshot_reason'] ?? 'pre auto LLM reconcile (init)')); } catch (\Throwable $e) {}
 
     $upd = $db->prepare("UPDATE yy_feed_item_transcript
                             SET feed_item_transcript_text = ?,
@@ -1114,6 +1114,11 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
 
     $changed = 0; $chunks = 0;
     for ($offset = 0; $offset < $total; $offset += $limit) {
+        // Optional abort hook (e.g. a background backfill stops as soon as an
+        // admin starts editing the item, so it never overwrites their work).
+        if (isset($opts['abort_if']) && is_callable($opts['abort_if']) && ($opts['abort_if'])()) {
+            return ['ok' => false, 'changed' => $changed, 'chunks' => $chunks, 'guarded' => $guarded, 'error' => 'aborted'];
+        }
         $slice = array_slice($live, $offset, $limit);
         $lines = [];
         foreach ($slice as $idx => $r) {

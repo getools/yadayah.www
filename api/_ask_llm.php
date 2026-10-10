@@ -103,7 +103,36 @@ function askLlmBuildBookChunks(PDO $db, int $volumeKey): array {
     return $chunks;
 }
 
-/** Transcript chunks for one video: consecutive cues, ~ASK_LLM_CHUNK_TARGET chars, with time range. */
+/**
+ * Diarization labels in one video that are Yada: named "…|Yada|…" labels, plus the ONE unnamed
+ * label (SPEAKER_xx) whose stored voice embedding is closest to the Yada voice profile at cosine
+ * distance < 0.40. Measured 2026-10-10: Yada's labels sit at 0.0–0.4, every other voice at ≥ 0.5.
+ */
+function askLlmYadaLabels(PDO $db, int $feedItemKey): array {
+    static $st = null;
+    $st ??= $db->prepare("
+        SELECT se.label FROM yy_feed_item_speaker_embedding se
+          JOIN yy_speaker_profile p ON p.speaker_profile_name = 'Yada'
+         WHERE se.feed_item_key = ? AND se.embedding IS NOT NULL
+           AND (se.embedding <=> p.speaker_profile_embedding) < 0.40
+         ORDER BY se.embedding <=> p.speaker_profile_embedding LIMIT 1");
+    $st->execute([$feedItemKey]);
+    return array_filter([$st->fetchColumn() ?: null]);
+}
+
+/** 'yada' | 'unlabeled' | 'other' for one transcript row. */
+function askLlmSpeakerClass(?string $label, array $yadaLabels): string {
+    if ($label === null || $label === '') return 'unlabeled';
+    if (strpos($label, '|Yada|') !== false || in_array($label, $yadaLabels, true)) return 'yada';
+    return 'other';
+}
+
+/**
+ * Transcript chunks for one video: consecutive cues by the SAME speaker class, ~ASK_LLM_CHUNK_TARGET
+ * chars, with time range. Other speakers' lines are dropped (and end the current chunk), so a chunk
+ * never mixes Yada with a guest. locator.speaker = 'yada' | 'unlabeled' (video never diarized);
+ * search decides whether 'unlabeled' is used (setting transcript-speakers).
+ */
 function askLlmBuildTranscriptChunks(PDO $db, int $feedItemKey): array {
     $meta = $db->prepare("SELECT COALESCE(feed_item_title_override, feed_item_title_import) AS title,
                                  COALESCE(feed_item_publish_override_dtime, feed_item_publish_import_dtime) AS pub,
@@ -116,22 +145,26 @@ function askLlmBuildTranscriptChunks(PDO $db, int $feedItemKey): array {
     $title = 'Video: ' . ($m['title'] ?: "#$feedItemKey") . ($date ? " ($date)" : '');
 
     $st = $db->prepare("SELECT EXTRACT(EPOCH FROM feed_item_transcript_segment)::numeric(10,2) AS t,
-                               feed_item_transcript_text AS txt
+                               feed_item_transcript_text AS txt, feed_item_transcript_speaker AS spk
                           FROM yy_feed_item_transcript
                          WHERE feed_item_key = ?
                          ORDER BY feed_item_transcript_sort, feed_item_transcript_segment");
     $st->execute([$feedItemKey]);
+    $yadaLabels = askLlmYadaLabels($db, $feedItemKey);
 
     $chunks = [];
     $buf = null;
     foreach ($st as $r) {
         $txt = trim(preg_replace('/\s+/u', ' ', $r['txt'] ?? ''));
         if ($txt === '') continue;
+        $cls = askLlmSpeakerClass($r['spk'], $yadaLabels);
+        if ($buf && $buf['locator']['speaker'] !== $cls) { $chunks[] = $buf; $buf = null; }
+        if ($cls === 'other') continue;
         foreach (askLlmSplitLong($txt) as $piece) {
             if (!$buf) {
                 $buf = ['title' => $title, 'text' => '', 'locator' => [
                     'feed_item_key' => $feedItemKey, 'url' => $m['feed_item_url'], 'date' => $date,
-                    'restricted' => (bool)$m['feed_item_restricted_flag'],
+                    'restricted' => (bool)$m['feed_item_restricted_flag'], 'speaker' => $cls,
                     't_from' => (float)$r['t'], 't_to' => (float)$r['t'],
                 ]];
             }
@@ -141,7 +174,80 @@ function askLlmBuildTranscriptChunks(PDO $db, int $feedItemKey): array {
         }
     }
     if ($buf) $chunks[] = $buf;
-    return $chunks;
+    // A lone "Yes." between two guest lines is noise, not a passage
+    return array_values(array_filter($chunks, fn($c) => mb_strlen($c['text']) >= 60));
+}
+
+/** Plain text of a community post/message body (HTML or markdown-ish), whitespace-normalised. */
+function askLlmPlain(?string $s): string {
+    $s = html_entity_decode(strip_tags(preg_replace('/<(br|\/p|\/div|\/li)\b[^>]*>/i', "\n", (string)$s)), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return trim(preg_replace(["/[ \t]+/u", "/\n{3,}/"], [' ', "\n\n"], $s));
+}
+
+/**
+ * Yada's own public community writing, one source per topic: his topic body (if he started it)
+ * and every reply he wrote in it, in order. Other members' words are NOT included.
+ * Returns [topic_key => [chunks…]].
+ */
+function askLlmBuildPostChunks(PDO $db, int $yadaUserKey): array {
+    $st = $db->prepare("
+        SELECT t.topic_key, t.topic_title, 0 AS ord, t.topic_dtime AS dt, coalesce(nullif(t.topic_body, ''), t.topic_body_html) AS body
+          FROM yy_community_topic t
+         WHERE t.user_key = :u AND t.topic_active_flag AND t.topic_delete_dtime IS NULL
+        UNION ALL
+        SELECT r.topic_key, t.topic_title, 1, r.reply_dtime, coalesce(nullif(r.reply_body, ''), r.reply_body_html)
+          FROM yy_community_reply r JOIN yy_community_topic t ON t.topic_key = r.topic_key
+         WHERE r.user_key = :u AND r.reply_active_flag AND r.reply_delete_dtime IS NULL AND t.topic_active_flag
+         ORDER BY 1, 4");
+    $st->execute([':u' => $yadaUserKey]);
+    $by = [];
+    foreach ($st as $r) {
+        $txt = askLlmPlain($r['body']);
+        if (mb_strlen($txt) < 40) continue;
+        $by[(int)$r['topic_key']][] = ['title' => 'Community: ' . trim($r['topic_title']), 'date' => substr($r['dt'], 0, 10), 'text' => $txt];
+    }
+    $out = [];
+    foreach ($by as $tk => $items) {
+        $chunks = [];
+        $buf = null;
+        foreach ($items as $it) {
+            foreach (askLlmSplitLong($it['text']) as $piece) {
+                if ($buf && mb_strlen($buf['text']) + mb_strlen($piece) > ASK_LLM_CHUNK_MAX) { $chunks[] = $buf; $buf = null; }
+                $buf ??= ['title' => $it['title'], 'text' => '', 'locator' => ['topic_key' => $tk, 'date' => $it['date']]];
+                $buf['text'] .= ($buf['text'] === '' ? '' : "\n\n") . $piece;
+            }
+        }
+        if ($buf) $chunks[] = $buf;
+        $out[$tk] = $chunks;
+    }
+    return $out;
+}
+
+/**
+ * Yada's own Chat (direct) messages, one source per thread, HIS messages only. These are private
+ * conversations: they are indexed for training/export, but search only uses them when the
+ * 'sources' setting includes 'dm' (off by default). Returns [thread_key => [chunks…]].
+ */
+function askLlmBuildDmChunks(PDO $db, int $yadaUserKey): array {
+    $st = $db->prepare("SELECT thread_key, message_dtime, message_body FROM yy_community_dm_message
+                         WHERE user_key = ? AND message_active_flag ORDER BY thread_key, message_dtime, message_key");
+    $st->execute([$yadaUserKey]);
+    $out = [];
+    $buf = [];
+    foreach ($st as $r) {
+        $txt = askLlmPlain($r['message_body']);
+        if (mb_strlen($txt) < 40) continue;
+        $tk = (int)$r['thread_key'];
+        foreach (askLlmSplitLong($txt) as $piece) {
+            $b = &$buf[$tk];
+            if ($b && mb_strlen($b['text']) + mb_strlen($piece) > ASK_LLM_CHUNK_MAX) { $out[$tk][] = $b; $b = null; }
+            $b ??= ['title' => 'Chat message', 'text' => '', 'locator' => ['thread_key' => $tk, 'date' => substr($r['message_dtime'], 0, 10)]];
+            $b['text'] .= ($b['text'] === '' ? '' : "\n\n") . $piece;
+            unset($b);
+        }
+    }
+    foreach ($buf as $tk => $b) if ($b) $out[$tk][] = $b;
+    return $out;
 }
 
 /** Glossary: one chunk per public word that has any definition text. Returns [word_key => chunk]. */
@@ -186,7 +292,7 @@ function askLlmBuildGlossaryChunks(PDO $db): array {
  * surplus rows are deleted. Returns [inserted, updated, deleted, unchanged].
  */
 function askLlmSyncChunks(PDO $db, string $type, int $sourceKey, array $chunks): array {
-    $st = $db->prepare("SELECT chunk_seq, ask_chunk_key, chunk_hash FROM yy_ask_chunk
+    $st = $db->prepare("SELECT chunk_seq, ask_chunk_key, chunk_hash, chunk_locator FROM yy_ask_chunk
                          WHERE chunk_source_type = ? AND chunk_source_key = ?");
     $st->execute([$type, $sourceKey]);
     $have = [];
@@ -198,6 +304,7 @@ function askLlmSyncChunks(PDO $db, string $type, int $sourceKey, array $chunks):
                                 chunk_embedding = NULL, chunk_embedding_model = NULL, chunk_embedding_dtime = NULL, chunk_dtime = now()
                           WHERE ask_chunk_key = ?");
     $n = [0, 0, 0, 0];
+    $locOnly = null;
     foreach (array_values($chunks) as $seq => $c) {
         $hash = md5($c['title'] . "\n" . $c['text']);
         $loc = json_encode($c['locator'], JSON_UNESCAPED_UNICODE);
@@ -208,6 +315,11 @@ function askLlmSyncChunks(PDO $db, string $type, int $sourceKey, array $chunks):
             $upd->execute([$c['title'], $loc, $c['text'], $hash, $have[$seq]['ask_chunk_key']]);
             $n[1]++;
         } else {
+            // Same text, new metadata (e.g. a speaker label was added): keep the embedding
+            if (json_decode($have[$seq]['chunk_locator'] ?? 'null', true) != $c['locator']) {
+                $locOnly ??= $db->prepare("UPDATE yy_ask_chunk SET chunk_locator = ?::jsonb WHERE ask_chunk_key = ?");
+                $locOnly->execute([$loc, $have[$seq]['ask_chunk_key']]);
+            }
             $n[3]++;
         }
         unset($have[$seq]);
@@ -235,19 +347,25 @@ function askLlmVectorLiteral(array $v): string {
  * $embedding: query vector from the worker (Qwen3-Embedding, 1024-d), or null for FTS only.
  */
 function askLlmSearch(PDO $db, string $query, ?array $embedding, array $sources, int $limit): array {
-    $sources = array_values(array_intersect($sources ?: ['book', 'transcript', 'glossary'], ['book', 'transcript', 'glossary']));
+    // Admin-chosen sources (setting 'sources'); a caller may narrow them, never widen them
+    $allowed = array_values(array_intersect(array_map('trim', explode(',', askLlmSetting($db, 'sources', 'book,transcript,post'))),
+                                            ['book', 'transcript', 'post', 'dm', 'glossary']));
+    $sources = array_values(array_intersect($sources ?: $allowed, $allowed));
     if (!$sources) return [];
     $limit = max(1, min(40, $limit));
     $pool = $limit * 4;
     $excl = askLlmExcludedSeries($db);
     $srcIn = implode(',', array_map(fn($s) => $db->quote($s), $sources));
     $exclSql = $excl ? 'AND coalesce((c.chunk_locator->>\'series_key\')::int, 0) NOT IN (' . implode(',', $excl) . ')' : '';
+    // Transcripts: Yada's own speech only, unless un-diarized videos are explicitly allowed
+    $spkIn = askLlmSetting($db, 'transcript-speakers', 'yada') === 'yada+unlabeled' ? "'yada','unlabeled'" : "'yada'";
 
     // Eligibility + weight, shared by both legs
     $gate = "
         LEFT JOIN yy_volume v ON c.chunk_source_type = 'book' AND v.volume_key = c.chunk_source_key
         WHERE c.chunk_source_type IN ($srcIn)
           AND (c.chunk_source_type <> 'book' OR (v.volume_ask_yada_flag AND v.volume_ask_rating > 0 AND v.volume_status <> 'I'))
+          AND (c.chunk_source_type <> 'transcript' OR c.chunk_locator->>'speaker' IN ($spkIn))
           $exclSql";
 
     $ranked = [];   // ask_chunk_key => ['fts' => rank, 'vec' => rank]

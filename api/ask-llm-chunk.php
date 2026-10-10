@@ -3,7 +3,7 @@
  * Ask Yada (local LLM) — CLI indexer. Rebuilds yy_ask_chunk from the live sources.
  * Idempotent: unchanged chunks keep their embeddings; changed ones are queued for re-embedding.
  *
- *   docker exec yada-www-web-1 php /var/www/html/api/ask-llm-chunk.php [all|book|transcript|glossary] [source_key]
+ *   docker exec yada-www-web-1 php /var/www/html/api/ask-llm-chunk.php [all|book|transcript|post|dm|glossary] [source_key]
  */
 if (php_sapi_name() !== 'cli') { http_response_code(404); exit; }
 require_once __DIR__ . '/config.php';
@@ -54,6 +54,25 @@ if (in_array($what, ['all', 'transcript'], true)) {
         $tot[2] += $n;
     }
     report('transcript', $tot);
+}
+
+// Yada's own community topics/replies ('post') and Chat messages ('dm'), keyed by topic / thread
+$yadaUser = (int)askLlmSetting($db, 'yada-user-key', '0');
+foreach (['post' => 'askLlmBuildPostChunks', 'dm' => 'askLlmBuildDmChunks'] as $type => $builder) {
+    if (!in_array($what, ['all', $type], true) || !$yadaUser) continue;
+    $tot = [0, 0, 0, 0];
+    $groups = $builder($db, $yadaUser);
+    $db->beginTransaction();
+    foreach ($groups as $key => $chunks) {
+        if ($only && $key !== $only) continue;
+        sumInto($tot, askLlmSyncChunks($db, $type, (int)$key, $chunks));
+    }
+    if (!$only) {
+        $keep = $groups ? 'AND chunk_source_key NOT IN (' . implode(',', array_map('intval', array_keys($groups))) . ')' : '';
+        $tot[2] += $db->exec("DELETE FROM yy_ask_chunk WHERE chunk_source_type = " . $db->quote($type) . " $keep");
+    }
+    $db->commit();
+    report($type, $tot);
 }
 
 if (in_array($what, ['all', 'glossary'], true)) {

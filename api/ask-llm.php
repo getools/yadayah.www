@@ -293,7 +293,7 @@ if ($action === 'compare') {
 }
 
 if ($method === 'POST' && $action === 'settings_save') {
-    $EDITABLE = ['access', 'chat-model', 'daily-limit', 'ack-message', 'closed-message', 'limit-message', 'exclude-series'];
+    $EDITABLE = ['access', 'chat-model', 'daily-limit', 'ack-message', 'closed-message', 'limit-message', 'exclude-series', 'sources', 'transcript-speakers'];
     $st = $db->prepare("UPDATE yy_setting SET setting_value = ?
                          WHERE setting_scope_code = 'app' AND setting_group_code = 'ask-llm' AND setting_code = ?
                            AND setting_value IS DISTINCT FROM ?");
