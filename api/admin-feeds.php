@@ -192,6 +192,65 @@ if ($method === 'GET' && !empty($_GET['page_feeds'])) {
     jsonResponse(['page_feeds' => $stmt->fetchAll(), 'pages' => $pages]);
 }
 
+// GET where each feed source is used (Sources tab "Used On" column + edit
+// form). Pages-New Items sections name their sources in
+// section_config->feed_keys; legacy yy_feed_page mappings still drive the
+// hashtag/category page links that sync writes. Item counts let the UI offer
+// the "deactivate its items" cascade. Keyed by feed_key.
+if ($method === 'GET' && isset($_GET['usage'])) {
+    $usage = [];
+    foreach ($db->query("SELECT feed_key FROM yy_feed")->fetchAll() as $f) {
+        $usage[(int)$f['feed_key']] = ['sections' => [], 'legacy' => [], 'items_total' => 0, 'items_active' => 0, 'items_source_off' => 0];
+    }
+    $secs = $db->query("
+        SELECT fk.v::int AS feed_key, s.section_key, s.section_label, s.section_title,
+               s.section_active_flag,
+               p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
+        FROM yy_section s
+        LEFT JOIN yy_page p ON p.page_key = s.page_key
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+            CASE WHEN jsonb_typeof(s.section_config->'feed_keys') = 'array' THEN s.section_config->'feed_keys' ELSE '[]'::jsonb END
+        ) AS fk(v)
+        WHERE s.section_type = 'items' AND fk.v ~ '^[0-9]+$'
+        ORDER BY p.page_code, s.section_sort, s.section_key
+    ")->fetchAll();
+    foreach ($secs as $r) {
+        $k = (int)$r['feed_key'];
+        if (!isset($usage[$k])) continue;
+        unset($r['feed_key']);
+        $usage[$k]['sections'][] = $r;
+    }
+    $leg = $db->query("
+        SELECT fp.feed_key, fp.feed_page_key, fp.feed_page_active_flag,
+               p.page_key, p.page_code, p.page_title, p.page_active_flag
+        FROM yy_feed_page fp
+        JOIN yy_page p ON p.page_key = fp.page_key
+        ORDER BY p.page_code, fp.feed_page_sort
+    ")->fetchAll();
+    foreach ($leg as $r) {
+        $k = (int)$r['feed_key'];
+        if (!isset($usage[$k])) continue;
+        unset($r['feed_key']);
+        $usage[$k]['legacy'][] = $r;
+    }
+    $cnt = $db->query("
+        SELECT i.feed_key, count(*) AS total,
+               count(*) FILTER (WHERE i.feed_item_active_flag) AS active,
+               count(o.feed_item_key) FILTER (WHERE NOT i.feed_item_active_flag) AS source_off
+        FROM yy_feed_item i
+        LEFT JOIN yy_feed_item_source_off o ON o.feed_item_key = i.feed_item_key
+        GROUP BY i.feed_key
+    ")->fetchAll();
+    foreach ($cnt as $r) {
+        $k = (int)$r['feed_key'];
+        if (!isset($usage[$k])) continue;
+        $usage[$k]['items_total'] = (int)$r['total'];
+        $usage[$k]['items_active'] = (int)$r['active'];
+        $usage[$k]['items_source_off'] = (int)$r['source_off'];
+    }
+    jsonResponse(['usage' => $usage]);
+}
+
 // GET latest sync status for a feed — polled by the UI while an async
 // (background) sync runs. Returns the most recent yy_feed_sync row for the
 // feed plus elapsed seconds. Counts are only populated when the run finishes
@@ -311,6 +370,52 @@ if ($method === 'POST') {
         }
 
         errorResponse('Invalid feed_page_action');
+    }
+
+    // Source → items cascade. 'deactivate' switches off every active item of
+    // the feed and remembers exactly which ones in yy_feed_item_source_off;
+    // 'reactivate' turns back on only those remembered items, so items that
+    // were already hidden by hand before the source went inactive stay hidden.
+    if (!empty($data['feed_items_action'])) {
+        $fk = (int)($data['feed_key'] ?? 0);
+        if (!$fk) errorResponse('feed_key required');
+        $userKey = (int)($_SESSION['user_key'] ?? 0);
+        $db->beginTransaction();
+        try {
+            if ($data['feed_items_action'] === 'deactivate') {
+                $db->prepare("
+                    INSERT INTO yy_feed_item_source_off (feed_item_key, feed_key, source_off_user_key)
+                    SELECT feed_item_key, feed_key, ? FROM yy_feed_item
+                    WHERE feed_key = ? AND feed_item_active_flag = TRUE
+                      AND feed_item_key NOT IN (SELECT feed_item_key FROM yy_feed_item_source_off)
+                ")->execute([$userKey, $fk]);
+                $st = $db->prepare("
+                    UPDATE yy_feed_item SET feed_item_active_flag = FALSE
+                    WHERE feed_key = ? AND feed_item_active_flag = TRUE
+                ");
+                $st->execute([$fk]);
+                $n = $st->rowCount();
+            } elseif ($data['feed_items_action'] === 'reactivate') {
+                $st = $db->prepare("
+                    UPDATE yy_feed_item SET feed_item_active_flag = TRUE
+                    WHERE feed_key = ? AND feed_item_active_flag = FALSE
+                      AND feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_source_off WHERE feed_key = ?)
+                ");
+                $st->execute([$fk, $fk]);
+                $n = $st->rowCount();
+                $db->prepare("DELETE FROM yy_feed_item_source_off WHERE feed_key = ?")->execute([$fk]);
+            } else {
+                $db->rollBack();
+                errorResponse('Invalid feed_items_action');
+            }
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            errorResponse('Item update failed: ' . $e->getMessage(), 500);
+        }
+        $db->prepare("INSERT INTO yy_monitor_event (event_source, event_severity, event_message, event_resolved_flag) VALUES ('feed_items_cascade', 'info', ?, TRUE)")
+           ->execute(["feed_key=$fk {$data['feed_items_action']}: $n item(s) by user $userKey"]);
+        jsonResponse(['ok' => true, 'action' => $data['feed_items_action'], 'count' => $n]);
     }
 
     $feedKey = $data['feed_key'] ?? null;

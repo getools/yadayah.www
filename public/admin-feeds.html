@@ -21,6 +21,15 @@
         .badge-active { background: #d4edda; color: #155724; }
         .badge-inactive { background: #f8d7da; color: #721c24; }
         .badge-site { background: #e2e3f1; color: #383d6e; }
+        .use-chip { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; background: #e8f0e8; color: #1b5e20; text-decoration: none; white-space: nowrap; border: 1px solid #c8dcc8; }
+        .use-chip:hover { background: #d4e8d4; }
+        .use-chip.off { background: #f3f3f3; color: #999; border-color: #e0e0e0; text-decoration: line-through; }
+        .use-chip.legacy { background: #fff8e1; color: #8a6d00; border-color: #f0e0a8; }
+        .use-none { color: #bbb; font-size: 0.72rem; }
+        .items-warn { color: #b45309; font-size: 0.72rem; font-weight: 600; }
+        #f-usage { font-size: 0.8rem; margin: -4px 0 12px; line-height: 1.7; }
+        #f-cascade-wrap { display: none; margin: -4px 0 12px 0; padding: 8px 10px; background: #fff8e1; border: 1px solid #f0e0a8; border-radius: 4px; font-size: 0.8rem; }
+        #f-cascade-wrap label { display: inline; margin: 0; font-weight: normal; }
         .sub-tab { padding:8px 20px;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px; }
         .sub-tab.active { color:#31345A;border-bottom-color:#E5C86C; }
         .feed-tab .item-row { font-size:0.82rem; }
@@ -120,6 +129,8 @@
                     <th>Site</th>
                     <th>URL</th>
                     <th>Status</th>
+                    <th title="Active / total items pulled in from this source">Items</th>
+                    <th title="Pages and Items sections that draw from this source. Green = live section, grey = section or page inactive, yellow = legacy page mapping (Pages tab).">Used On</th>
                     <th>Stream</th>
                     <th title="Per-feed YouTube captions OAuth grant. Required before captions can be uploaded.">OAuth</th>
                     <th>Actions</th>
@@ -405,8 +416,11 @@
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
                 <label style="display:inline;margin:0;">Active</label>
-                <input type="checkbox" id="f-active" checked>
+                <input type="checkbox" id="f-active" checked onchange="updateCascadeOption()">
             </div>
+            <div id="f-cascade-wrap"><input type="checkbox" id="f-cascade"> <label for="f-cascade" id="f-cascade-label"></label></div>
+            <div class="field" style="margin-bottom:4px;"><label>Used On</label></div>
+            <div id="f-usage"></div>
 
             <h4 style="margin:16px 0 8px;border-top:1px solid #e0e0e0;padding-top:16px;">Schedule</h4>
             <div id="schedules-container"></div>
@@ -924,16 +938,67 @@ function togglePassword() {
 
 var allPages = [];
 var pageMappings = [];
+var feedUsage = {};
+
+function _isOn(v) { return v === true || v === 't' || v === 1 || v === '1'; }
+
+// Public URL for a yy_page row (page_url wins; 'home' is the site root).
+function _pageHref(p) {
+    if (p.page_url && /^(\/|https?:)/.test(p.page_url)) return p.page_url;
+    return p.page_code && p.page_code.toLowerCase() !== 'home' ? '/' + p.page_code : '/';
+}
+
+// "Used On" chips for one feed: Pages-New Items sections first, then any
+// legacy yy_feed_page mappings. A chip is greyed (struck) when the section
+// or its page is inactive, so it draws nothing publicly.
+function feedUsageChips(feedKey) {
+    var u = feedUsage[feedKey];
+    if (!u || (!u.sections.length && !u.legacy.length)) return '<span class="use-none">not used</span>';
+    var out = '';
+    u.sections.forEach(function(s) {
+        var live = _isOn(s.section_active_flag) && _isOn(s.page_active_flag);
+        var sec = new DOMParser().parseFromString(s.section_label || s.section_title || '', 'text/html').body.textContent || '';
+        sec = sec.replace(/\s+/g, ' ').trim();
+        if (sec.length > 28) sec = sec.substring(0, 27) + '…';
+        if (!sec) sec = 'section #' + s.section_key;
+        var tip = 'Page: ' + (s.page_title || s.page_code || '?') + '\nItems section: ' + sec + ' (#' + s.section_key + ')'
+            + (!_isOn(s.page_active_flag) ? '\nPage is INACTIVE' : '')
+            + (!_isOn(s.section_active_flag) ? '\nSection is INACTIVE' : '');
+        out += '<a class="use-chip' + (live ? '' : ' off') + '" href="' + esc(_pageHref(s)) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">'
+            + esc(s.page_code || '?') + ' · ' + esc(sec) + '</a>';
+    });
+    u.legacy.forEach(function(m) {
+        var live = _isOn(m.feed_page_active_flag) && _isOn(m.page_active_flag);
+        out += '<a class="use-chip legacy' + (live ? '' : ' off') + '" href="#" onclick="event.preventDefault();switchFeedTab(\'pages\')" '
+            + 'title="Legacy page mapping (Pages tab) — drives hashtag/category page links, not the Items sections.'
+            + (!_isOn(m.page_active_flag) ? '\nPage is INACTIVE' : '') + (!_isOn(m.feed_page_active_flag) ? '\nMapping is INACTIVE' : '') + '">'
+            + esc(m.page_code) + ' (mapping)</a>';
+    });
+    return out;
+}
+
+function feedItemsCell(f) {
+    var u = feedUsage[f.feed_key];
+    if (!u) return '';
+    var html = '<span title="active / total">' + u.items_active.toLocaleString() + ' / ' + u.items_total.toLocaleString() + '</span>';
+    if (!_isOn(f.feed_active_flag) && u.items_active > 0)
+        html += '<br><span class="items-warn" title="This source is inactive but its items are still active, so they still show on the pages above. Edit the source to deactivate them.">⚠ still live</span>';
+    else if (u.items_source_off > 0)
+        html += '<br><span class="use-none" title="Items switched off when this source was deactivated">' + u.items_source_off.toLocaleString() + ' off w/ source</span>';
+    return html;
+}
 
 function loadFeeds() {
     return Promise.all([
         fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r) { return safeJson(r); }),
         fetch(API + '/admin-feeds.php?page_feeds=1&feed_key=0', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {pages:[]}; }),
-        fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {page_feeds:[]}; })
+        fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {page_feeds:[]}; }),
+        fetch(API + '/admin-feeds.php?usage=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {usage:{}}; })
     ]).then(function(results) {
         feeds = Array.isArray(results[0]) ? results[0] : [];
         allPages = (results[1] && results[1].pages) ? results[1].pages : [];
         pageMappings = (results[2] && results[2].page_feeds) ? results[2].page_feeds : [];
+        feedUsage = (results[3] && results[3].usage) ? results[3].usage : {};
         renderAll();
     });
 }
@@ -986,6 +1051,8 @@ function renderAll() {
             + '<td><span class="badge badge-site">' + esc(f.feed_site_code) + '</span></td>'
             + '<td style="font-size:0.8rem">' + ((function(){var u=f.feed_public_url||f.feed_source_url; return u?'<a href="'+esc(u)+'" target="_blank" style="color:#31345A">'+esc(u.replace(/https?:\/\/(www\.)?/, '').substring(0,40))+'</a>':esc(f.feed_account_id||'');})()) + '</td>'
             + '<td>' + statusBadge + '</td>'
+            + '<td style="white-space:nowrap;font-size:0.8rem;">' + feedItemsCell(f) + '</td>'
+            + '<td onclick="event.stopPropagation()" style="max-width:340px;">' + feedUsageChips(f.feed_key) + '</td>'
             + '<td onclick="event.stopPropagation()" style="white-space:nowrap;">' + streamCell + '</td>'
             + oauthCell
             + '<td class="actions" onclick="event.stopPropagation()">'
@@ -1060,6 +1127,9 @@ function openFeedSourceForm(data) {
     document.getElementById('f-stream').checked = streamOn;
     updateFormStreamBtn(d.feed_key, streamOn, d.feed_stream_dtime);
     document.getElementById('f-active').checked = d.feed_active_flag !== false;
+    _formFeedWasActive = d.feed_key ? d.feed_active_flag !== false : true;
+    document.getElementById('f-usage').innerHTML = d.feed_key ? feedUsageChips(d.feed_key) : '<span class="use-none">new source</span>';
+    updateCascadeOption(true);
 
     var container = document.getElementById('schedules-container');
     container.innerHTML = '';
@@ -1074,6 +1144,39 @@ function openFeedSourceForm(data) {
 
 function closeForm() {
     document.getElementById('form-overlay').classList.remove('open');
+}
+
+// Source → items cascade option under the Active checkbox.
+//  Unchecking Active  → offer "deactivate its N active items" (pre-ticked
+//                       when the user switches Active off in this edit;
+//                       left unticked for a source that was already inactive).
+//  Checking Active    → offer "reactivate the N items switched off with it".
+var _formFeedWasActive = true;
+function updateCascadeOption(onOpen) {
+    var wrap = document.getElementById('f-cascade-wrap');
+    var box = document.getElementById('f-cascade');
+    var label = document.getElementById('f-cascade-label');
+    var key = document.getElementById('f-key').value;
+    var u = key ? feedUsage[key] : null;
+    var active = document.getElementById('f-active').checked;
+    var nUsed = u ? u.sections.length + u.legacy.length : 0;
+    wrap.style.display = 'none';
+    box.checked = false;
+    box.dataset.action = '';
+    if (!u) return;
+    if (!active && u.items_active > 0) {
+        box.dataset.action = 'deactivate';
+        box.checked = !onOpen && _formFeedWasActive;
+        label.textContent = 'Also deactivate all ' + u.items_active.toLocaleString() + ' active item(s) pulled in from this source'
+            + (nUsed ? ' — they are removed from the ' + nUsed + ' place(s) listed under Used On.' : '.')
+            + ' Reactivating the source later can restore exactly these items.';
+        wrap.style.display = 'block';
+    } else if (active && u.items_source_off > 0) {
+        box.dataset.action = 'reactivate';
+        box.checked = !onOpen && !_formFeedWasActive;
+        label.textContent = 'Also reactivate the ' + u.items_source_off.toLocaleString() + ' item(s) that were deactivated with this source.';
+        wrap.style.display = 'block';
+    }
 }
 
 function addScheduleRow(data) {
@@ -1130,11 +1233,24 @@ function saveFeedSource() {
         feed_active_flag: document.getElementById('f-active').checked,
         schedules: collectSchedules()
     };
+    var cascadeBox = document.getElementById('f-cascade');
+    var cascade = (payload.feed_key && cascadeBox.checked && cascadeBox.dataset.action) ? cascadeBox.dataset.action : '';
     fetch(API + '/admin-feeds.php', {
         method: 'POST', credentials: 'include',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
     }).then(function(r) { return safeJson(r); })
+    .then(function() {
+        if (!cascade) return;
+        return fetch(API + '/admin-feeds.php', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({feed_items_action: cascade, feed_key: parseInt(payload.feed_key)})
+        }).then(function(r) { return safeJson(r); })
+        .then(function(res) {
+            if (!res || !res.ok) alert('Source saved, but the item ' + cascade + ' failed: ' + ((res && res.error) || 'unknown error'));
+        });
+    })
     .then(function() { closeForm(); loadFeeds(); });
 }
 
