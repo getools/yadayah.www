@@ -111,7 +111,6 @@
 
     <div class="sub-tabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #ddd;">
         <button class="sub-tab active" onclick="switchFeedTab('sources')">Sources</button>
-        <button class="sub-tab" onclick="switchFeedTab('pages')">Pages</button>
         <button class="sub-tab" onclick="switchFeedTab('items')" style="display:none;">Items (legacy)</button>
         <button class="sub-tab" onclick="switchFeedTab('recordings')">Items</button>
     </div>
@@ -130,35 +129,13 @@
                     <th>URL</th>
                     <th>Status</th>
                     <th title="Active / total items pulled in from this source">Items</th>
-                    <th title="Pages and Items sections that draw from this source. Green = live section, grey = section or page inactive, yellow = legacy page mapping (Pages tab).">Used On</th>
+                    <th title="Pages and Items sections that draw from this source. Green = live section, grey = section or page inactive.">Used On</th>
                     <th>Stream</th>
                     <th title="Per-feed YouTube captions OAuth grant. Required before captions can be uploaded.">OAuth</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="feeds-body"></tbody>
-        </table>
-    </div>
-
-    <!-- Pages Tab -->
-    <div id="tab-pages" class="feed-tab" style="display:none;">
-        <div class="toolbar">
-            <span id="feed-count" class="feed-count"></span>
-            <button class="btn btn-primary btn-sm" onclick="addPageMapping()">+ Add Page Mapping</button>
-        </div>
-        <table class="feeds-table">
-            <thead>
-                <tr>
-                    <th>Page</th>
-                    <th>Feed Source</th>
-                    <th>Include Filters</th>
-                    <th>Exclude Filters</th>
-                    <th>Listing Type</th>
-                    <th>Orientation</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="page-feeds-body"></tbody>
         </table>
     </div>
 
@@ -948,12 +925,12 @@ function _pageHref(p) {
     return p.page_code && p.page_code.toLowerCase() !== 'home' ? '/' + p.page_code : '/';
 }
 
-// "Used On" chips for one feed: Pages-New Items sections first, then any
-// legacy yy_feed_page mappings. A chip is greyed (struck) when the section
+// "Used On" chips for one feed: the Pages-New Items sections that draw from
+// it (legacy yy_feed_page mappings are not shown). A chip is greyed (struck) when the section
 // or its page is inactive, so it draws nothing publicly.
 function feedUsageChips(feedKey) {
     var u = feedUsage[feedKey];
-    if (!u || (!u.sections.length && !u.legacy.length)) return '<span class="use-none">not used</span>';
+    if (!u || !u.sections.length) return '<span class="use-none">not used</span>';
     var out = '';
     u.sections.forEach(function(s) {
         var live = _isOn(s.section_active_flag) && _isOn(s.page_active_flag);
@@ -966,13 +943,6 @@ function feedUsageChips(feedKey) {
             + (!_isOn(s.section_active_flag) ? '\nSection is INACTIVE' : '');
         out += '<a class="use-chip' + (live ? '' : ' off') + '" href="' + esc(_pageHref(s)) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">'
             + esc(s.page_code || '?') + ' · ' + esc(sec) + '</a>';
-    });
-    u.legacy.forEach(function(m) {
-        var live = _isOn(m.feed_page_active_flag) && _isOn(m.page_active_flag);
-        out += '<a class="use-chip legacy' + (live ? '' : ' off') + '" href="#" onclick="event.preventDefault();switchFeedTab(\'pages\')" '
-            + 'title="Legacy page mapping (Pages tab) — drives hashtag/category page links, not the Items sections.'
-            + (!_isOn(m.page_active_flag) ? '\nPage is INACTIVE' : '') + (!_isOn(m.feed_page_active_flag) ? '\nMapping is INACTIVE' : '') + '">'
-            + esc(m.page_code) + ' (mapping)</a>';
     });
     return out;
 }
@@ -1062,28 +1032,6 @@ function renderAll() {
     }
     body.innerHTML = html;
 
-    // Page Mappings table
-    var pfBody = document.getElementById('page-feeds-body');
-    var pfHtml = '';
-    var feedMap = {};
-    feeds.forEach(function(f) { feedMap[f.feed_key] = f.feed_name + ' (' + f.feed_site_code + ')'; });
-    for (var i = 0; i < pageMappings.length; i++) {
-        var pf = pageMappings[i];
-        pfHtml += '<tr onclick="editPageMapping(' + pf.feed_page_key + ')">'
-            + '<td><strong>' + esc(pf.page_code || '') + '</strong></td>'
-            + '<td>' + esc(feedMap[pf.feed_key] || 'Unknown') + '</td>'
-            + '<td>' + esc(pf.feed_page_filter_include || '') + '</td>'
-            + '<td>' + esc(pf.feed_page_filter_exclude || '') + '</td>'
-            + '<td>' + esc(pf.feed_page_listing_type || '') + '</td>'
-            + '<td>' + esc(pf.feed_page_filter_orientation || '') + '</td>'
-            + '<td class="actions" onclick="event.stopPropagation()">'
-            + '<button onclick="editPageMapping(' + pf.feed_page_key + ')">Edit</button>'
-            + '<button onclick="deletePageMapping(' + pf.feed_page_key + ')">Del</button>'
-            + '</td></tr>';
-    }
-    pfBody.innerHTML = pfHtml;
-    document.getElementById('feed-count').textContent = pageMappings.length + ' mapping(s)';
-
     // Populate dropdowns in page mapping form
     var pfFeedSelect = document.getElementById('pf-feed-source');
     var opts = '<option value="">— Select Feed Source —</option>';
@@ -1159,7 +1107,7 @@ function updateCascadeOption(onOpen) {
     var key = document.getElementById('f-key').value;
     var u = key ? feedUsage[key] : null;
     var active = document.getElementById('f-active').checked;
-    var nUsed = u ? u.sections.length + u.legacy.length : 0;
+    var nUsed = u ? u.sections.length : 0;
     wrap.style.display = 'none';
     box.checked = false;
     box.dataset.action = '';

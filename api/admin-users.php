@@ -60,8 +60,15 @@ switch ($method) {
         // Attach settings and roles to each user
         foreach ($users as &$u) {
             $u['page_settings'] = [];
+            // Codes are a tree ('glossary', 'glossary.translations', ...).
+            // A node with no saved value inherits its parent's (parents
+            // sort first), so a new tab under a denied page stays denied.
+            $byCode = [];
             foreach ($settings as $s) {
-                $val = $settingsMap[$u['user_key']][$s['setting_key']] ?? '1';
+                $dot = strrpos($s['setting_code'], '.');
+                $parentVal = $dot === false ? '1' : ($byCode[substr($s['setting_code'], 0, $dot)] ?? '1');
+                $val = $settingsMap[$u['user_key']][$s['setting_key']] ?? $parentVal;
+                $byCode[$s['setting_code']] = $val;
                 $u['page_settings'][] = [
                     'setting_key' => (int)$s['setting_key'],
                     'setting_code' => $s['setting_code'],

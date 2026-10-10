@@ -81,12 +81,12 @@
 // Maps nav link href to yy_setting.setting_code
 var PAGE_SETTING_MAP = {
     'admin-site.html': 'site',
-    'admin-translation.html': 'translation',
-    'admin-series.html': 'series',
+    'admin-translation.html': 'glossary.translations',
+    'admin-series.html': 'books.series',
     'admin-books.html': 'books',
-    'admin-word.html': 'word',
+    'admin-word.html': 'glossary.words',
     'admin-glossary.html': 'glossary',
-    'admin-lookups.html': 'lookups',
+    'admin-lookups.html': 'settings.lookups',
     'admin-ask.html': 'ask',
     'admin-timeline.html': 'timeline',
     'admin-memorial.html': 'memorial',
@@ -98,16 +98,22 @@ var PAGE_SETTING_MAP = {
     'admin-doyouyada.html': 'doyouyada',
     'admin-basics.html': 'basics',
     'admin-vlog.html': 'vlog',
-    'admin-backgrounds.html': 'backgrounds',
+    'admin-backgrounds.html': 'site.backgrounds',
     'admin-feeds.html': 'feeds',
     'admin-pages.html': 'pages',
-    'admin-redirects.html': 'redirects',
-    'admin-links.html': 'links',
+    'admin-redirects.html': 'pages.redirects',
+    'admin-links.html': 'pages.links',
     'admin-resources.html': 'resources',
     'admin-users.html': 'users',
-    'admin-test.html': 'test',
+    'admin-test.html': 'monitoring.tests',
     'admin-monitoring.html': 'monitoring',
-    'admin-misc.html': 'misc'
+    'admin-misc.html': 'misc',
+    'admin-ai.html': 'ai',
+    'admin-tts.html': 'tts',
+    'admin-perf.html': 'perf',
+    'admin-settings.html': 'settings',
+    'admin-manage.html': 'manage',
+    'admin-search.html': 'search'
 };
 
 function applyPagePermissions(pages) {

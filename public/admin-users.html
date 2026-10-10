@@ -43,6 +43,20 @@
         .page-perms { margin-top: 4px; }
         .page-perms label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 0.85rem; margin-right: 16px; margin-bottom: 6px; cursor: pointer; }
         .page-perms input[type=checkbox] { margin: 0; cursor: pointer; }
+        .pt-tools { font-size: 0.8rem; color: #999; margin: 2px 0 6px; }
+        .pt-tools a { color: #31345A; cursor: pointer; text-decoration: none; }
+        .pt-tools a:hover { text-decoration: underline; }
+        .perm-tree { border: 1px solid #e3e3e3; border-radius: 6px; padding: 6px 8px; max-height: 360px; overflow-y: auto; background: #fcfcfc; }
+        .perm-tree ul { list-style: none; margin: 0; padding: 0; }
+        .perm-tree ul ul { padding-left: 22px; }
+        .perm-tree .pt-collapsed > ul { display: none; }
+        .perm-tree .pt-row { display: flex; align-items: center; gap: 2px; min-height: 26px; }
+        .perm-tree .pt-row label { margin: 0; }
+        .perm-tree .pt-twist, .perm-tree .pt-twist-pad { width: 20px; flex: 0 0 20px; }
+        .perm-tree .pt-twist { background: none; border: none; padding: 0; cursor: pointer; color: #555; font-size: 1.05rem; line-height: 1; transition: transform 0.12s; transform: rotate(90deg); }
+        .perm-tree .pt-collapsed > .pt-row .pt-twist { transform: none; }
+        .perm-tree .pt-twist:hover { color: #000; }
+        .perm-tree .pt-count { font-size: 0.75rem; color: #999; margin-left: 8px; }
 
         .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .user-count { font-size: 0.85rem; color: #666; }
@@ -267,8 +281,11 @@ function renderTable() {
         if (!userHasAdmin) {
             pagesDisplay = '<span style="color:#999">--</span>';
         } else {
-            var pages = (u.page_settings || []).filter(function(p) { return p.enabled; }).map(function(p) {
-                return p.setting_code.charAt(0).toUpperCase() + p.setting_code.slice(1);
+            // Top-level pages only; '*' marks a page with some tabs turned off.
+            var ps = u.page_settings || [];
+            var pages = ps.filter(function(p) { return p.enabled && p.setting_code.indexOf('.') < 0; }).map(function(p) {
+                var partial = ps.some(function(c) { return !c.enabled && c.setting_code.indexOf(p.setting_code + '.') === 0; });
+                return esc(p.setting_label || p.setting_code) + (partial ? '*' : '');
             }).join(', ');
             var allEnabled = (u.page_settings || []).every(function(p) { return p.enabled; });
             pagesDisplay = allEnabled ? '<span style="color:#27ae60">All</span>' : (pages || '<span style="color:#c00">None</span>');
@@ -362,17 +379,10 @@ function showForm(user) {
     var permsSection = document.getElementById('f-page-perms').parentElement;
     if (hasAdminRole) {
         permsSection.style.display = '';
-        var permsHtml = '';
         var settings = user ? user.page_settings : allSettings.map(function(s) {
-            return { setting_key: s.setting_key, setting_code: s.setting_code, enabled: true };
+            return { setting_key: s.setting_key, setting_code: s.setting_code, setting_label: s.setting_label, enabled: true };
         });
-        for (var i = 0; i < settings.length; i++) {
-            var s = settings[i];
-            var label = s.setting_label || (s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1));
-            permsHtml += '<label><input type="checkbox" data-sk="' + s.setting_key + '"'
-                + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>';
-        }
-        document.getElementById('f-page-perms').innerHTML = permsHtml;
+        renderPermTree(settings);
     } else {
         permsSection.style.display = 'none';
         document.getElementById('f-page-perms').innerHTML = '';
@@ -393,6 +403,107 @@ function showForm(user) {
     document.getElementById('form-overlay').classList.add('open');
     // Reset change-tracking baseline so Save button works
     setTimeout(function() { if (window.rearmForm) rearmForm(); }, 50);
+}
+
+// ── Admin page access tree ──
+// Setting codes are dotted paths: 'glossary' > 'glossary.translations' >
+// 'glossary.translations.list'. Checking a node checks its ancestors (a tab
+// needs its page); unchecking a node unchecks everything under it. A checked
+// node with some unchecked descendants shows as indeterminate.
+function renderPermTree(settings) {
+    var nodes = {}, roots = [];
+    settings.forEach(function(s) {
+        nodes[s.setting_code] = { s: s, kids: [] };
+    });
+    settings.forEach(function(s) {
+        var dot = s.setting_code.lastIndexOf('.');
+        var parent = dot > 0 ? nodes[s.setting_code.slice(0, dot)] : null;
+        (parent ? parent.kids : roots).push(nodes[s.setting_code]);
+    });
+
+    function build(list) {
+        return '<ul>' + list.map(function(n) {
+            var s = n.s;
+            var label = s.setting_label || (s.setting_code.charAt(0).toUpperCase() + s.setting_code.slice(1));
+            var hasKids = n.kids.length > 0;
+            return '<li class="pt-node' + (hasKids ? ' pt-has-kids pt-collapsed' : '') + '">'
+                + '<div class="pt-row">'
+                + (hasKids ? '<button type="button" class="pt-twist" title="Expand / collapse" aria-label="Expand ' + esc(label) + '">&#9656;</button>'
+                           : '<span class="pt-twist-pad"></span>')
+                + '<label><input type="checkbox" data-sk="' + s.setting_key + '" data-code="' + esc(s.setting_code) + '"'
+                + (s.enabled ? ' checked' : '') + '> ' + esc(label) + '</label>'
+                + (hasKids ? '<span class="pt-count"></span>' : '')
+                + '</div>'
+                + (hasKids ? build(n.kids) : '')
+                + '</li>';
+        }).join('') + '</ul>';
+    }
+
+    var wrap = document.getElementById('f-page-perms');
+    wrap.innerHTML = '<div class="pt-tools">'
+        + '<a data-act="expand">Expand all</a> · <a data-act="collapse">Collapse all</a> · '
+        + '<a data-act="all">Select all</a> · <a data-act="none">Clear all</a></div>'
+        + '<div class="perm-tree">' + build(roots) + '</div>';
+
+    // A tab under a denied page can't be reached, so show it unchecked.
+    wrap.querySelectorAll('.perm-tree input[type=checkbox]').forEach(function(cb) {
+        if (!cb.checked) permSetDescendants(cb, false);
+    });
+    permRefresh();
+
+    wrap.onclick = function(e) {
+        var twist = e.target.closest('.pt-twist');
+        if (twist) { twist.closest('.pt-node').classList.toggle('pt-collapsed'); return; }
+        var act = e.target.getAttribute && e.target.getAttribute('data-act');
+        if (!act) return;
+        var lis = wrap.querySelectorAll('.pt-has-kids');
+        if (act === 'expand' || act === 'collapse') {
+            lis.forEach(function(li) { li.classList.toggle('pt-collapsed', act === 'collapse'); });
+            return;
+        }
+        wrap.querySelectorAll('.perm-tree input[type=checkbox]').forEach(function(cb) { cb.checked = act === 'all'; });
+        permRefresh();
+        permNotifyDirty();
+    };
+    wrap.onchange = function(e) {
+        var cb = e.target;
+        if (!cb.matches || !cb.matches('.perm-tree input[type=checkbox]')) return;
+        // Clicking a partly-checked node selects all of it rather than clearing it.
+        if (cb.getAttribute('data-ind') === '1') cb.checked = true;
+        permSetDescendants(cb, cb.checked);
+        if (cb.checked) {
+            var li = cb.closest('.pt-node').parentElement.closest('.pt-node');
+            while (li) {
+                li.querySelector(':scope > .pt-row input[type=checkbox]').checked = true;
+                li = li.parentElement.closest('.pt-node');
+            }
+        }
+        permRefresh();
+    };
+}
+
+function permSetDescendants(cb, val) {
+    cb.closest('.pt-node').querySelectorAll(':scope > ul input[type=checkbox]').forEach(function(c) { c.checked = val; });
+}
+
+function permRefresh() {
+    document.querySelectorAll('#f-page-perms .pt-has-kids').forEach(function(li) {
+        var cb = li.querySelector(':scope > .pt-row input[type=checkbox]');
+        var kids = li.querySelectorAll(':scope > ul input[type=checkbox]');
+        var on = 0;
+        kids.forEach(function(k) { if (k.checked) on++; });
+        var partial = cb.checked && on < kids.length;
+        cb.indeterminate = partial;
+        cb.setAttribute('data-ind', partial ? '1' : '0');
+        li.querySelector(':scope > .pt-row .pt-count').textContent = cb.checked ? on + '/' + kids.length : '';
+    });
+}
+
+// Bulk select/clear changes .checked without a user event; fire one so the
+// Save button's dirty tracking notices.
+function permNotifyDirty() {
+    var first = document.querySelector('#f-page-perms .perm-tree input[type=checkbox]');
+    if (first) first.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function closeForm() {
