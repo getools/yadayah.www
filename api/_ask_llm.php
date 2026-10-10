@@ -334,6 +334,23 @@ function askLlmSyncChunks(PDO $db, string $type, int $sourceKey, array $chunks):
 
 // ── Retrieval ───────────────────────────────────────────────────────
 
+/**
+ * Source weights (yy_setting app/ask-llm weight-*), multiplied into every passage's search score.
+ * 0 = never searched. Transcript lines are split: 'yada' = labelled as Yada (or his voice match),
+ * 'unlabeled' = no speaker label, assumed to be Yada (user decision 2026-10-10).
+ */
+function askLlmWeights(PDO $db): array {
+    $defaults = ['book' => 1.0, 'transcript:yada' => 1.0, 'transcript:unlabeled' => 0.8, 'post' => 1.0, 'dm' => 0.0, 'glossary' => 0.0];
+    $codes = ['book' => 'weight-book', 'transcript:yada' => 'weight-transcript-yada', 'transcript:unlabeled' => 'weight-transcript-unknown',
+              'post' => 'weight-post', 'dm' => 'weight-dm', 'glossary' => 'weight-glossary'];
+    $out = [];
+    foreach ($codes as $k => $code) {
+        $v = askLlmSetting($db, $code);
+        $out[$k] = $v === null || !is_numeric($v) ? $defaults[$k] : max(0.0, min(5.0, (float)$v));
+    }
+    return $out;
+}
+
 function askLlmVectorLiteral(array $v): string {
     if (count($v) !== ASK_LLM_EMBED_DIM) throw new InvalidArgumentException('embedding must have ' . ASK_LLM_EMBED_DIM . ' dims');
     return '[' . implode(',', array_map(fn($x) => (string)(float)$x, $v)) . ']';
@@ -347,18 +364,20 @@ function askLlmVectorLiteral(array $v): string {
  * $embedding: query vector from the worker (Qwen3-Embedding, 1024-d), or null for FTS only.
  */
 function askLlmSearch(PDO $db, string $query, ?array $embedding, array $sources, int $limit): array {
-    // Admin-chosen sources (setting 'sources'); a caller may narrow them, never widen them
-    $allowed = array_values(array_intersect(array_map('trim', explode(',', askLlmSetting($db, 'sources', 'book,transcript,post'))),
-                                            ['book', 'transcript', 'post', 'dm', 'glossary']));
+    // Per-source weights from the admin settings; weight 0 = never searched. A caller may narrow
+    // the sources (tool argument), never widen them.
+    $w = askLlmWeights($db);
+    $allowed = array_values(array_unique(array_map(fn($k) => explode(':', $k)[0], array_keys(array_filter($w)))));
     $sources = array_values(array_intersect($sources ?: $allowed, $allowed));
     if (!$sources) return [];
     $limit = max(1, min(40, $limit));
     $pool = $limit * 4;
     $excl = askLlmExcludedSeries($db);
     $srcIn = implode(',', array_map(fn($s) => $db->quote($s), $sources));
-    $exclSql = $excl ? 'AND coalesce((c.chunk_locator->>\'series_key\')::int, 0) NOT IN (' . implode(',', $excl) . ')' : '';
-    // Transcripts: Yada's own speech only, unless un-diarized videos are explicitly allowed
-    $spkIn = askLlmSetting($db, 'transcript-speakers', 'yada') === 'yada+unlabeled' ? "'yada','unlabeled'" : "'yada'";
+    $exclSql = $excl ? "AND coalesce((c.chunk_locator->>'series_key')::int, 0) NOT IN (" . implode(',', $excl) . ')' : '';
+    // Transcripts: Yada's labelled speech and/or speaker-unknown lines (assumed Yada), per their weights
+    $spk = array_filter(['yada' => $w['transcript:yada'], 'unlabeled' => $w['transcript:unlabeled']]);
+    $spkIn = $spk ? implode(',', array_map(fn($k) => "'$k'", array_keys($spk))) : "''";
 
     // Eligibility + weight, shared by both legs
     $gate = "
@@ -419,7 +438,8 @@ function askLlmSearch(PDO $db, string $query, ?array $embedding, array $sources,
     foreach ($rows as &$r) {
         $rk = $ranked[(int)$r['ask_chunk_key']];
         $rrf = (isset($rk['fts']) ? 1 / (60 + $rk['fts']) : 0) + (isset($rk['vec']) ? 1 / (60 + $rk['vec']) : 0);
-        $r['score'] = round($rrf * ((int)$r['rating'] / 50.0) * 1000, 3);
+        $key = $r['chunk_source_type'] === 'transcript' ? 'transcript:' . ($r['chunk_locator']['speaker'] ?? 'unlabeled') : $r['chunk_source_type'];
+        $r['score'] = round($rrf * ((int)$r['rating'] / 50.0) * ($w[$key] ?? 1.0) * 1000, 3);
         $r['chunk_locator'] = json_decode($r['chunk_locator'] ?? 'null', true);
         $r['ask_chunk_key'] = (int)$r['ask_chunk_key'];
         unset($r['rating']);

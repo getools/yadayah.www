@@ -338,6 +338,30 @@ try {
         $stream = [];
         foreach ($cmp['slots'] as $sl) { $w = trim((string)$sl['consensus']); if ($w !== '') $stream[] = ['t' => $sl['t'], 'w' => $w]; }
         if (!$stream) throw new Exception('consensus: empty word stream');
+        // Same-time runs (2026-10-10): with no word-level baseline the spine is
+        // segment-level (youtube / deepgram / whisperx segments), so every word
+        // of a segment shares the segment's start and every cue carved from it
+        // got that one timestamp (57 items in the 10-10 bulk regen, ~10k rows).
+        // Spread each run of identical times across its span to the next
+        // distinct time, proportional to word length, capped at a slow reading
+        // pace (chars / 12) so a trailing pause stays a pause.
+        $ns = count($stream);
+        for ($a = 0; $a < $ns; ) {
+            $b = $a;
+            while ($b + 1 < $ns && abs($stream[$b + 1]['t'] - $stream[$a]['t']) < 0.001) $b++;
+            if ($b > $a) {
+                $t0 = (float)$stream[$a]['t'];
+                $chars = 0; for ($q = $a; $q <= $b; $q++) $chars += mb_strlen($stream[$q]['w']) + 1;
+                $next = ($b + 1 < $ns) ? (float)$stream[$b + 1]['t'] : $t0 + $chars / 15.0;
+                $span = max(0.0, min($next - $t0, $chars / 12.0));
+                $cum = 0;
+                for ($q = $a; $q <= $b; $q++) {
+                    $stream[$q]['t'] = round($t0 + $span * $cum / max(1, $chars), 3);
+                    $cum += mb_strlen($stream[$q]['w']) + 1;
+                }
+            }
+            $a = $b + 1;
+        }
         $opts = [
             'max_chars'   => (int)($params['max_chars'] ?? 42),
             'max_lines'   => (int)($params['max_lines'] ?? 2),
@@ -363,7 +387,16 @@ try {
             // "Prioritize Breaks from Primary" → anchor caption breaks on the
             // spine (Primary) boundaries only; otherwise use the union of all
             // checked baselines' segment boundaries.
-            $bsources = !empty($params['prioritize_primary_breaks']) ? [$spine] : $baselines;
+            // 2026-10-10: use the operator's chosen PRIMARY's boundaries (that is
+            // what "Prioritize Breaks from Primary" means), not the timing spine —
+            // since the 07-26 spine fix a segment-level Primary (whisperx-diarize)
+            // no longer becomes the spine, and the word-level spine made EVERY
+            // word a boundary (captions cut every 1-3 words: "you've heard me" /
+            // "speak of"). Word-level outputs are never boundary sources.
+            $bsources = !empty($params['prioritize_primary_breaks'])
+                ? [($primary !== '' && in_array($primary, $baselines, true)) ? $primary : $spine]
+                : $baselines;
+            $bsources = array_values(array_filter($bsources, fn($c) => !str_ends_with((string)$c, '-word')));
             $bset = [];
             foreach ($bsources as $bcode) {
                 $bs = $db->prepare("SELECT feed_item_transcript_segment::text AS seg FROM yy_feed_item_transcript_auto WHERE feed_item_key = ? AND feed_item_transcript_auto_model = ?");

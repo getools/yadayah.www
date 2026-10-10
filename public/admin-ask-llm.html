@@ -42,6 +42,8 @@
         .settings-grid label { text-align: right; font-weight: 600; font-size: 0.85rem; color: #555; }
         .settings-grid input, .settings-grid select, .settings-grid textarea { padding: 6px 9px; border: 1px solid #ccc; border-radius: 4px; font: inherit; font-size: 0.86rem; }
         .settings-grid textarea { min-height: 52px; resize: vertical; }
+        .weights .weight-row { display: flex; gap: 10px; align-items: center; margin: 4px 0; font-size: 0.86rem; }
+        .weights .weight-row input { width: 70px; }
         .cmp-q { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 18px; overflow: hidden; }
         .cmp-q-head { background: #31345A; color: #fff; padding: 9px 14px; font-weight: 600; font-size: 0.92rem; display: flex; gap: 10px; align-items: baseline; }
         .cmp-q-head .qn { opacity: .7; font-weight: 400; font-size: 0.8rem; }
@@ -111,7 +113,7 @@
     <!-- Overview -->
     <div id="panel-overview" class="sub-panel active">
         <p class="llm-note">Members message the <strong>Ask Yada</strong> member in Chat. A worker on the Puget GPU box picks up each question,
-            researches it in the books, video transcripts and glossary with a local model, and replies in the same conversation.</p>
+            researches it in Yada's books, his video presentations and his Chat writing (weighted per source below) with a local model, and replies in the same conversation.</p>
         <div class="stat-grid" id="stat-grid"></div>
         <h3>Settings</h3>
         <div class="settings-grid" id="settings-grid">
@@ -120,6 +122,16 @@
             <label>Chat model</label><input type="text" data-k="chat-model" list="model-list">
             <label>Daily limit</label><input type="number" data-k="daily-limit" min="0" style="width:90px">
             <label>Excluded series</label><input type="text" data-k="exclude-series" placeholder="series keys, comma separated">
+            <label style="padding-top:10px">Source weights</label>
+            <div class="weights">
+                <p class="muted" style="margin:8px 0 6px">Multiplies each source's search score (books also use each book's own Ask Yada rating). 1 = normal, 2 = twice as strong, 0 = never used.</p>
+                <div class="weight-row"><input type="number" data-k="weight-book" min="0" max="5" step="0.1"><span>Books</span></div>
+                <div class="weight-row"><input type="number" data-k="weight-transcript-yada" min="0" max="5" step="0.1"><span>Transcripts — speaker Yada</span></div>
+                <div class="weight-row"><input type="number" data-k="weight-transcript-unknown" min="0" max="5" step="0.1"><span>Transcripts — speaker unknown (assumed Yada)</span></div>
+                <div class="weight-row"><input type="number" data-k="weight-post" min="0" max="5" step="0.1"><span>Chat — Yada's community posts</span></div>
+                <div class="weight-row"><input type="number" data-k="weight-dm" min="0" max="5" step="0.1"><span>Chat — Yada's direct messages <span class="muted">(private conversations; above 0, passages from them can appear in answers to other members)</span></span></div>
+                <div class="weight-row"><input type="number" data-k="weight-glossary" min="0" max="5" step="0.1"><span>Glossary</span></div>
+            </div>
             <label>Acknowledgement</label><textarea data-k="ack-message"></textarea>
             <label>Not-open reply</label><textarea data-k="closed-message"></textarea>
             <label>Over-limit reply</label><textarea data-k="limit-message"></textarea>
@@ -219,11 +231,17 @@ document.querySelectorAll('.sub-tab').forEach(function (b) { b.addEventListener(
 function loadOverview() {
     get('stats').then(function (d) {
         if (d.error) { document.getElementById('stat-grid').innerHTML = '<span class="muted">' + esc(d.error) + '</span>'; return; }
-        var labels = {book: 'Books', transcript: 'Video transcripts', glossary: 'Glossary words'};
+        var labels = {book: 'Books', 'transcript:yada': 'Transcripts — speaker Yada', 'transcript:unlabeled': 'Transcripts — speaker unknown',
+                      post: 'Chat — community posts', dm: 'Chat — direct messages', glossary: 'Glossary words'};
+        var wkey = {book: 'weight-book', 'transcript:yada': 'weight-transcript-yada', 'transcript:unlabeled': 'weight-transcript-unknown',
+                    post: 'weight-post', dm: 'weight-dm', glossary: 'weight-glossary'};
         var html = '';
         (d.chunks || []).forEach(function (c) {
             var pct = c.chunks ? Math.round(100 * c.embedded / c.chunks) : 0;
-            html += '<div class="stat-card"><div class="lbl">' + esc(labels[c.type] || c.type) + '</div><div class="big">' + Number(c.chunks).toLocaleString() + '</div>'
+            var wt = parseFloat((d.settings || {})[wkey[c.type]]);
+            var used = !(wt === 0);
+            html += '<div class="stat-card"' + (used ? '' : ' style="opacity:.55" title="Weight 0: not used"') + '><div class="lbl">' + esc(labels[c.type] || c.type)
+                + ' · ' + (used ? 'weight ' + (isNaN(wt) ? 1 : wt) : 'off') + '</div><div class="big">' + Number(c.chunks).toLocaleString() + '</div>'
                 + '<div class="sub">passages from ' + Number(c.sources).toLocaleString() + ' sources · ' + pct + '% embedded</div><div class="bar"><i style="width:' + pct + '%"></i></div></div>';
         });
         var jobs = {};

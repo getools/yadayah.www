@@ -153,6 +153,34 @@ function loadCompareRows(PDO $db, int $itemKey, string $model): array {
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/**
+ * YouTube auto-captions ROLL: each cue repeats the previous cue's text and adds
+ * a little ("Let's dive in." / "Let's dive in. >> Let's jump right in. And here
+ * we are" / ">> Let's jump right in. And here we are with…"). Used as a timing
+ * spine they put every phrase into the editable transcript 2-3x (item 1401952:
+ * 271 adjacent identical lines). Keep only what each row ADDS: drop its longest
+ * prefix (>= 2 tokens) that equals the tail of the text emitted so far. Genuine
+ * single-word repeats survive (overlap must be >= 2 tokens). 2026-10-10.
+ */
+function cmpCollapseRollingCaptions(array $rows): array {
+    $out = []; $tail = [];                       // normalized tail of emitted text (<= 40 tokens)
+    foreach ($rows as $r) {
+        $raw = tokenize((string)$r['txt']);
+        $raw = array_values(array_filter($raw, fn($t) => $t !== '>>'));
+        $nrm = array_map('normTok', $raw);
+        $best = 0;
+        $maxL = min(count($nrm), count($tail));
+        for ($L = $maxL; $L >= 2; $L--) {
+            if (array_slice($tail, -$L) === array_slice($nrm, 0, $L)) { $best = $L; break; }
+        }
+        $add = array_slice($raw, $best);
+        if (!$add) continue;
+        $out[] = ['seg' => $r['seg'], 'txt' => implode(' ', $add)];
+        $tail = array_slice(array_merge($tail, array_slice($nrm, $best)), -40);
+    }
+    return $out;
+}
+
 /** Primary word list: [{i, t, word}]. Word-level → 1 row/word; else tokenized. */
 function primaryWords(array $rows): array {
     $words = [];
@@ -266,6 +294,7 @@ function unionSpineWords(PDO $db, int $itemKey, string $spineCode, array $baseli
                          array &$filled = [], float $minGapSecs = 8.0, int $minWords = 3,
                          ?callable $soundGate = null, ?array $weights = null): array {
     $spineRows = loadCompareRows($db, $itemKey, $spineCode);
+    if ($spineCode === 'youtube') $spineRows = cmpCollapseRollingCaptions($spineRows);
     $pWords = primaryWords($spineRows);
     $filled = [];
     if (count($pWords) < 2) return $pWords;

@@ -231,7 +231,9 @@ if ($isWorker) {
 
 // ── Admin ───────────────────────────────────────────────────────────
 if ($action === 'stats') {
-    $chunks = $db->query("SELECT chunk_source_type AS type, count(*) AS chunks, count(chunk_embedding) AS embedded,
+    // Transcripts split by speaker attribution (yada | unlabeled) so the admin sees what is actually Yada
+    $chunks = $db->query("SELECT chunk_source_type || coalesce(':' || (chunk_locator->>'speaker'), '') AS type,
+                                 count(*) AS chunks, count(chunk_embedding) AS embedded,
                                  count(DISTINCT chunk_source_key) AS sources, sum(length(chunk_text))::bigint AS chars
                             FROM yy_ask_chunk GROUP BY 1 ORDER BY 1")->fetchAll();
     $jobs = $db->query("SELECT job_kind, job_status, count(*) AS n FROM yy_ask_job GROUP BY 1, 2 ORDER BY 1, 2")->fetchAll();
@@ -293,7 +295,8 @@ if ($action === 'compare') {
 }
 
 if ($method === 'POST' && $action === 'settings_save') {
-    $EDITABLE = ['access', 'chat-model', 'daily-limit', 'ack-message', 'closed-message', 'limit-message', 'exclude-series', 'sources', 'transcript-speakers'];
+    $EDITABLE = ['access', 'chat-model', 'daily-limit', 'ack-message', 'closed-message', 'limit-message', 'exclude-series',
+                 'weight-book', 'weight-transcript-yada', 'weight-transcript-unknown', 'weight-post', 'weight-dm', 'weight-glossary'];
     $st = $db->prepare("UPDATE yy_setting SET setting_value = ?
                          WHERE setting_scope_code = 'app' AND setting_group_code = 'ask-llm' AND setting_code = ?
                            AND setting_value IS DISTINCT FROM ?");
@@ -301,6 +304,10 @@ if ($method === 'POST' && $action === 'settings_save') {
     foreach ((array)($input['settings'] ?? []) as $code => $val) {
         if (!in_array($code, $EDITABLE, true)) continue;
         if ($code === 'access' && !in_array($val, ['off', 'admins', 'members'], true)) errorResponse('access must be off, admins or members', 400);
+        if (strpos($code, 'weight-') === 0) {
+            if (!is_numeric($val) || $val < 0 || $val > 5) errorResponse('weights must be numbers from 0 to 5', 400);
+            $val = (string)round((float)$val, 2);
+        }
         $st->execute([(string)$val, $code, (string)$val]);
         $n += $st->rowCount();
     }

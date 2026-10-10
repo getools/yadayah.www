@@ -5,16 +5,19 @@
  * and Yada's own community posts + Chat messages. Nothing written by anyone else is exported as
  * Yada text.
  *
- *   docker exec yada-www-web-1 php /var/www/html/api/ask-llm-corpus.php /tmp/ask-llm-corpus [--dm-pairs]
+ *   docker exec yada-www-web-1 php /var/www/html/api/ask-llm-corpus.php /tmp/ask-llm-corpus [--no-dm-pairs]
  *
  * Files:
  *   books.jsonl        one record per chapter            {series, volume, chapter, text}
- *   transcripts.jsonl  one record per video, Yada only   {title, date, url, text}
+ *   transcripts.jsonl  one record per video, Yada only   {title, date, url, speaker: yada|assumed|mixed, text}
+ *                      (lines with no speaker label are assumed to be Yada; other voices are dropped)
  *   posts.jsonl        one record per community topic    {title, date, text}
  *   dms.jsonl          one record per Chat thread        {text}            (Yada's messages only, no names)
  *   qa_pairs.jsonl     {question, answer, source}  — curated Q&A, admin corrections, top-rated answers,
  *                      and public community exchanges where Yada replied to a member.
- *                      --dm-pairs also adds Chat exchanges (a member's private question + Yada's reply).
+ *                      Chat exchanges (a member's private question + Yada's reply) are included — user
+ *                      decision 2026-10-10: private messages go into TRAINING (search still uses weight-dm,
+ *                      0 by default). --no-dm-pairs leaves them out.
  *   manifest.json      counts, characters, approximate tokens
  *
  * Same eligibility as Ask Yada retrieval: volume_ask_yada_flag, rating > 0, not Inactive, exclude-series.
@@ -26,7 +29,7 @@ ini_set('memory_limit', '2G');
 require_once __DIR__ . '/_ask_llm.php';
 
 $dir = rtrim($argv[1] ?? '/tmp/ask-llm-corpus', '/');
-$dmPairs = in_array('--dm-pairs', $argv, true);
+$dmPairs = !in_array('--no-dm-pairs', $argv, true);
 if (!is_dir($dir) && !mkdir($dir, 0700, true)) { fwrite(STDERR, "cannot create $dir\n"); exit(1); }
 
 $db = getDb();
@@ -87,28 +90,30 @@ foreach ($items as $fk) {
     $rows->execute([$fk]);
     $parts = [];
     $prev = null;
-    $sawYada = false;
+    $seen = [];   // which kinds of Yada text this video contributed: yada (labelled) / unlabeled (assumed)
     foreach ($rows as $r) {
         $txt = trim(preg_replace('/\s+/u', ' ', $r['txt'] ?? ''));
         if ($txt === '') continue;
+        // Unknown speaker (no label) is assumed to be Yada (user decision 2026-10-10); other voices are dropped
         $cls = askLlmSpeakerClass($r['spk'], $labels);
-        if ($cls !== 'yada') { $prev = $cls; continue; }
-        $sawYada = true;
+        if ($cls === 'other') { $prev = $cls; continue; }
+        $seen[$cls] = true;
         // a new paragraph wherever someone else spoke in between
-        if ($prev !== 'yada' && $parts) $parts[] = "\n\n";
+        if ($prev === 'other' && $parts) $parts[] = "\n\n";
         elseif ($parts) $parts[] = ' ';
         $parts[] = $txt;
-        $prev = 'yada';
+        $prev = $cls;
     }
-    if (!$sawYada) { $skippedUnlabeled++; continue; }
+    if (!$seen) { $skippedUnlabeled++; continue; }
     $text = implode('', $parts);
     if (mb_strlen($text) < 200) continue;
     $meta->execute([$fk]);
     $m = $meta->fetch() ?: [];
-    put($w, ['title' => $m['title'] ?? null, 'date' => $m['date'] ?? null, 'url' => $m['url'] ?? null, 'text' => $text]);
+    $basis = count($seen) > 1 ? 'mixed' : (isset($seen['yada']) ? 'yada' : 'assumed');
+    put($w, ['title' => $m['title'] ?? null, 'date' => $m['date'] ?? null, 'url' => $m['url'] ?? null, 'speaker' => $basis, 'text' => $text]);
 }
 close($w, $manifest);
-$manifest['transcripts_without_yada_speech'] = $skippedUnlabeled;
+$manifest['transcripts_with_no_yada_or_unknown_speech'] = $skippedUnlabeled;
 
 // ── Community posts: Yada's text per topic ──
 $w = writer($dir, 'posts.jsonl');
