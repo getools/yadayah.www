@@ -134,7 +134,16 @@ $jq = $db->prepare("SELECT job_params FROM yy_feed_item_transcript_init_job WHER
 $jq->execute([$itemKey]);
 $jp = json_decode((string)$jq->fetchColumn(), true) ?: [];
 $avail = array_column(cfAutoModels($db, $itemKey), 'code');
+if (!$avail) {
+    fwrite(STDERR, "item $itemKey: no engine rows in yy_feed_item_transcript_auto — cannot build consensus tail\n");
+    exit(1);
+}
 $baselines = $jp['baselines'] ?? $avail;
+// If job's baselines are stale (none have rows any more), fall back to what is currently available.
+if ($baselines && !array_intersect($baselines, $avail)) {
+    echo "note: job baselines [" . implode(',', $baselines) . "] have no rows; using available engines [" . implode(',', $avail) . "]\n";
+    $baselines = $avail;
+}
 $params = (array)($jp['params'] ?? ['max_chars' => 42, 'max_lines' => 2, 'max_secs' => 7, 'min_secs' => 1.2, 'break_punct' => true, 'dedup' => true]);
 $built = txBuildConsensusRows($db, $itemKey, $baselines, $params, (string)($jp['primary'] ?? ''), ['notify' => function ($s) {}]);
 $newAll = [];
