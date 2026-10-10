@@ -313,6 +313,9 @@ function unionSpineWords(PDO $db, int $itemKey, string $spineCode, array $baseli
     $loadWords = function (string $c) use (&$wordsByCode, $db, $itemKey): array {
         if (!array_key_exists($c, $wordsByCode)) {
             $rows = loadCompareRows($db, $itemKey, $c);
+            // Rolling YouTube auto-captions as a gap-fill source repeated every
+            // phrase 2-3x inside the gap (item 1024: 150 fills, +9,147 words).
+            if ($c === 'youtube') $rows = cmpCollapseRollingCaptions($rows);
             $ws = [];
             $nr = count($rows);
             for ($r = 0; $r < $nr; $r++) {

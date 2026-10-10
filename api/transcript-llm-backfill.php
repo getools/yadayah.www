@@ -31,6 +31,7 @@ $candSql = "
       FROM yy_feed_item_transcript_init_job j
       JOIN yy_feed_item_transcript_status s ON s.feed_item_key = j.job_item_key AND s.edit_status = 'Pending'
      WHERE j.job_model = 'consensus' AND j.job_status = 'done'
+       AND EXISTS (SELECT 1 FROM yy_feed_item fi WHERE fi.feed_item_key = j.job_item_key AND fi.feed_item_active_flag)
        AND j.job_completed >= '2026-10-10'
        AND j.job_params LIKE '%\"llm_reconcile\": false%'
        AND NOT EXISTS (SELECT 1 FROM yy_transcript_snapshot sn
@@ -41,16 +42,71 @@ $candSql = "
                           AND j2.job_status IN ('pending','running','done'))
      ORDER BY j.job_item_key DESC, j.job_key DESC";
 
+$tailSql = "
+    SELECT sn.feed_item_key AS k, sn.snapshot_reason, sn.snapshot_dtime
+      FROM yy_transcript_snapshot sn
+     WHERE sn.snapshot_reason LIKE 'pre tail rebuild (from %'
+       AND sn.snapshot_key = (SELECT MAX(s2.snapshot_key) FROM yy_transcript_snapshot s2
+                               WHERE s2.feed_item_key = sn.feed_item_key AND s2.snapshot_reason LIKE 'pre tail rebuild (from %')
+       AND NOT EXISTS (SELECT 1 FROM yy_transcript_snapshot s3 WHERE s3.feed_item_key = sn.feed_item_key
+                          AND s3.snapshot_reason = 'pre auto LLM reconcile (tail rebuild)' AND s3.snapshot_dtime > sn.snapshot_dtime)
+       AND EXISTS (SELECT 1 FROM yy_feed_item fi WHERE fi.feed_item_key = sn.feed_item_key AND fi.feed_item_active_flag)
+     ORDER BY sn.snapshot_dtime";
+
 if ($status) {
     $n = count($db->query($candSql)->fetchAll());
     $done = (int)$db->query("SELECT COUNT(DISTINCT feed_item_key) FROM yy_transcript_snapshot WHERE snapshot_reason = '" . BF_REASON . "'")->fetchColumn();
-    echo "remaining=$n done=$done\n";
+    $tails = count($db->query($tailSql)->fetchAll());
+    echo "remaining=$n done=$done tails_remaining=$tails\n";
     exit(0);
 }
 
 // Behind normal work: skip this tick if the init queue is busy.
 $busy = (int)$db->query("SELECT COUNT(*) FROM yy_feed_item_transcript_init_job WHERE job_status IN ('pending','running')")->fetchColumn();
 if ($busy > 0) { echo date('c') . " skip: init queue busy ($busy)\n"; exit(0); }
+
+// Tails first (2026-10-10): hand-edited transcripts whose UNREVIEWED tail was
+// rebuilt by transcript-tail-rebuild.php ('pre tail rebuild (from H:MM:SS)').
+// The LLM touches only lines from that point on and aborts if a human edits
+// anything there meanwhile; its snapshot marks the tail done.
+
+$tc = $db->query($tailSql . " LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+if ($tc) {
+    $itemKey = (int)$tc['k'];
+    preg_match('/from (\d+):(\d+):([\d.]+)/', (string)$tc['snapshot_reason'], $m);
+    $C = (int)$m[1] * 3600 + (int)$m[2] * 60 + (float)$m[3];
+    $jq = $db->prepare("SELECT job_params FROM yy_feed_item_transcript_init_job WHERE job_item_key = ? AND job_model = 'consensus' AND job_status = 'done' ORDER BY job_key DESC LIMIT 1");
+    $jq->execute([$itemKey]);
+    $jp = json_decode((string)$jq->fetchColumn(), true) ?: [];
+    $avail = array_column(cfAutoModels($db, $itemKey), 'code');
+    $baselines = array_values(array_intersect((array)($jp['baselines'] ?? []), $avail)) ?: $avail;
+    $weights = cfEngineWeights($db);
+    if ($weights) usort($baselines, fn($a, $b) => ($weights[$b] ?? 1.0) <=> ($weights[$a] ?? 1.0));
+    if ($dry) { printf("would backfill TAIL item=%d from=%.2f baselines=%s\n", $itemKey, $C, implode(',', $baselines)); exit(0); }
+    $since = date('c');
+    $chk = $db->prepare("SELECT COUNT(*) FROM yy_transcript_edit_log WHERE feed_item_key = ? AND edit_dtime > ?
+                           AND COALESCE(edit_user_key,0) <> 0 AND edit_segment >= ?::interval");
+    $abort = function () use ($chk, $itemKey, $since, $C): bool {
+        $chk->execute([$itemKey, $since, cfSecsToInterval($C)]); return (int)$chk->fetchColumn() > 0;
+    };
+    $t0 = microtime(true);
+    $rc = llmReconcileTranscript($db, $itemKey, $baselines, 'qwen2.5:72b', null,
+        ['from_secs' => $C, 'snapshot_reason' => 'pre auto LLM reconcile (tail rebuild)', 'abort_if' => $abort]);
+    $msg = sprintf('%s TAIL item=%d from=%.0fs llm ok=%d changed=%d guarded=%d%s', date('c'), $itemKey, $C,
+        !empty($rc['ok']), (int)($rc['changed'] ?? 0), (int)($rc['guarded'] ?? 0), empty($rc['ok']) ? ' error=' . ($rc['error'] ?? '?') : '');
+    if (empty($rc['ok']) && ($rc['error'] ?? '') !== 'aborted') {
+        $db->prepare("UPDATE yy_transcript_snapshot SET snapshot_reason = ? WHERE feed_item_key = ? AND snapshot_reason = ? AND snapshot_dtime >= to_timestamp(?)")
+           ->execute(['pre auto LLM reconcile (tail rebuild) — incomplete', $itemKey, 'pre auto LLM reconcile (tail rebuild)', (int)$t0 - 5]);
+    }
+    if (!empty($rc['ok']) && !$abort()) {
+        try {
+            $an = cfAnchorFirstWords($db, $itemKey, $baselines, ['apply' => true, 'from_secs' => $C]);
+            $msg .= sprintf(' anchor retimed=%d unanchored=%d', $an['retimed'], $an['unanchored']);
+        } catch (\Throwable $e) { $msg .= ' anchor-error=' . $e->getMessage(); }
+    }
+    echo $msg . sprintf(' %.0fs', microtime(true) - $t0) . "\n";
+    exit(0);
+}
 
 $c = $db->query($candSql . " LIMIT 1")->fetch(PDO::FETCH_ASSOC);
 if (!$c) { echo date('c') . " DONE: nothing left to backfill\n"; exit(0); }
