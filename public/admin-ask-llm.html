@@ -131,17 +131,12 @@
             <label>Who may ask</label>
             <div>
                 <select data-k="access"><option value="off">Off</option><option value="admins">Admins only</option><option value="members">All members</option></select>
-                <div class="hint">Who can send questions to the <strong>Ask Yada</strong> member in Chat, and who can find it in member search. <em>Off</em>: nobody. <em>Admins only</em>: for testing. <em>All members</em>: every member who isn't banned (banned members never see it). Anyone not allowed gets the "not open" reply set on the General tab.</div>
+                <div class="hint">Who can send questions to the <strong>Ask Yada</strong> member in Chat, and who can find it in member search. <em>Off</em>: nobody. <em>Admins only</em>: for testing. <em>All members</em>: every member who isn't banned (banned members never see it). Anyone not allowed gets the "not open" reply, and the daily question limit is set, on the General tab.</div>
             </div>
             <label>Chat model</label>
             <div>
                 <input type="text" data-k="chat-model" list="model-list">
                 <div class="hint">The local model on the Puget GPU box that answers members' Chat questions (an Ollama model name, e.g. <code>gpt-oss:120b</code>). Test runs choose their own model on the Test Runs tab.</div>
-            </div>
-            <label>Daily limit</label>
-            <div>
-                <input type="number" data-k="daily-limit" min="0" style="width:90px">
-                <div class="hint">How many questions one member can send in 24 hours. Extra questions get the "over limit" reply set on the General tab. 0 = no limit.</div>
             </div>
             <label style="padding-top:10px">Source weights</label>
             <div class="weights">

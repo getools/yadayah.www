@@ -191,7 +191,7 @@
         <!-- Replies the "Ask Yada" Chat member sends automatically (local-LLM prototype; settings app/ask-llm via ask-llm.php) -->
         <div class="config-section" style="margin-top:22px;">
             <h3 style="margin:0 0 4px 0;">Ask Yada in Chat</h3>
-            <div style="font-size:0.78rem;color:#777;margin-top:3px;line-height:1.4;margin-bottom:10px;">Automatic replies from the <strong>Ask Yada</strong> member when someone messages it in Chat. Who may ask, the model and the daily limit are on the Local LLM tab.</div>
+            <div style="font-size:0.78rem;color:#777;margin-top:3px;line-height:1.4;margin-bottom:10px;">Automatic replies from the <strong>Ask Yada</strong> member when someone messages it in Chat. Who may ask and the model are on the Local LLM tab.</div>
             <div style="display:grid; grid-template-columns:120px 1fr; gap:10px 16px; align-items:baseline; max-width:700px;">
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;padding-top:6px;">Acknowledgement</label>
                 <div><textarea id="llm-ack-message" rows="2" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;width:100%;box-sizing:border-box;"></textarea>
@@ -199,12 +199,15 @@
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;padding-top:6px;">Not-open Reply</label>
                 <div><textarea id="llm-closed-message" rows="2" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;width:100%;box-sizing:border-box;"></textarea>
                     <div style="font-size:0.78rem;color:#777;margin-top:3px;line-height:1.4;">Sent when someone who isn't allowed to ask (see "Who may ask" on the Local LLM tab) messages Ask Yada. Their question is not queued. Leave blank to stay silent.</div></div>
+                <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;padding-top:6px;">Daily Limit</label>
+                <div><input type="number" id="llm-daily-limit" min="0" style="width:90px;padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;">
+                    <div style="font-size:0.78rem;color:#777;margin-top:3px;line-height:1.4;">How many questions one member can send to Ask Yada in 24 hours. Questions past the limit are not queued and get the Over-limit Reply below. 0 = no limit.</div></div>
                 <label style="text-align:right;font-weight:600;font-size:0.875rem;color:#555;padding-top:6px;">Over-limit Reply</label>
                 <div><textarea id="llm-limit-message" rows="2" style="padding:7px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;font-family:inherit;resize:vertical;width:100%;box-sizing:border-box;"></textarea>
                     <div style="font-size:0.78rem;color:#777;margin-top:3px;line-height:1.4;">Sent when a member has used up their daily question limit. Their question is not queued.</div></div>
             </div>
             <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
-                <button class="btn btn-primary btn-sm" onclick="saveChatReplies()">Save Chat Replies</button>
+                <button class="btn btn-primary btn-sm" onclick="saveChatReplies()">Save Chat Settings</button>
                 <span class="model-status" id="llm-replies-status"></span>
             </div>
         </div>
@@ -415,7 +418,7 @@ function checkAuth() {
 var savedPromptValue = '';
 
 // ── Ask Yada in Chat: automatic replies (stored in yy_setting app/ask-llm, edited via ask-llm.php) ──
-var LLM_REPLY_FIELDS = {'ack-message': 'llm-ack-message', 'closed-message': 'llm-closed-message', 'limit-message': 'llm-limit-message'};
+var LLM_REPLY_FIELDS = {'ack-message': 'llm-ack-message', 'closed-message': 'llm-closed-message', 'daily-limit': 'llm-daily-limit', 'limit-message': 'llm-limit-message'};
 function loadChatReplies() {
     fetch(API + '/ask-llm.php?action=stats', {credentials:'include'}).then(safeJson).then(function(d) {
         if (d.error || !d.settings) return;

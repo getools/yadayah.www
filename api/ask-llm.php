@@ -304,6 +304,8 @@ if ($method === 'POST' && $action === 'settings_save') {
     foreach ((array)($input['settings'] ?? []) as $code => $val) {
         if (!in_array($code, $EDITABLE, true)) continue;
         if ($code === 'access' && !in_array($val, ['off', 'admins', 'members'], true)) errorResponse('access must be off, admins or members', 400);
+        // The chat trigger casts daily-limit to integer; a non-number would make it skip queueing
+        if ($code === 'daily-limit' && !preg_match('/^\d{1,6}$/', trim((string)$val))) errorResponse('Daily limit must be a whole number (0 = no limit)', 400);
         if (strpos($code, 'weight-') === 0) {
             if (!is_numeric($val) || $val < 0 || $val > 5) errorResponse('weights must be numbers from 0 to 5', 400);
             $val = (string)round((float)$val, 2);
