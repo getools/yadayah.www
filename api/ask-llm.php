@@ -295,7 +295,7 @@ if ($action === 'compare') {
 }
 
 if ($method === 'POST' && $action === 'settings_save') {
-    $EDITABLE = ['access', 'chat-model', 'daily-limit', 'ack-message', 'closed-message', 'limit-message', 'exclude-series',
+    $EDITABLE = ['access', 'chat-model', 'daily-limit', 'ack-message', 'closed-message', 'limit-message',
                  'weight-book', 'weight-transcript-yada', 'weight-transcript-unknown', 'weight-post', 'weight-dm', 'weight-glossary'];
     $st = $db->prepare("UPDATE yy_setting SET setting_value = ?
                          WHERE setting_scope_code = 'app' AND setting_group_code = 'ask-llm' AND setting_code = ?

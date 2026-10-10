@@ -580,6 +580,55 @@ function populateItemsFeedFilter() {
 // a single bookmark button — both mean "review in progress" and the
 // reviewer's resume bookmark (validation_bookmark_seconds) is the most
 // useful thing to surface.
+// Machine-pipeline stage line (2026-10-10). The button label shows the HUMAN
+// review state; this adds a small second line for where the item is in
+// MACHINE processing, from it.transcript_stage (api/_transcript_stage.php):
+// engines transcribing → build queued / building / failed → built (AI cleanup
+// queued) → built + AI cleanup done. Tooltip text is returned alongside.
+function txStageInfo(it) {
+    var s = it && it.transcript_stage;
+    if (typeof s === 'string') { try { s = JSON.parse(s); } catch (e) { s = null; } }
+    if (!s) return null;
+    var init = s.init || null;
+    var fmt = function(d) { return d ? recTranscriptCellFmtDate(d) : ''; };
+    var stt = parseInt(s.stt_active, 10) || 0, sttRun = parseInt(s.stt_running, 10) || 0;
+    var hist = [];
+    if (init) {
+        hist.push('Last build: ' + init.status + (init.created ? ' (queued ' + fmt(init.created) + ')' : '')
+                  + (init.done ? ', finished ' + fmt(init.done) : ''));
+        if (init.fast) hist.push('Built fast (structural fixes only) — AI cleanup runs separately');
+        if (init.error) hist.push(init.error);
+    }
+    if (s.ai_at) hist.push('AI cleanup: ' + fmt(s.ai_at));
+    if (s.edit_status) hist.push('Editable transcript: ' + s.edit_status);
+    var r = null;
+    if (stt > 0) {
+        r = { text: '⟳ Engines ' + (sttRun ? sttRun + ' running, ' : '') + (stt - sttRun) + ' queued', color: '#1d4d8a' };
+    } else if (init && init.status === 'pending') {
+        r = { text: '⏳ Build queued', color: '#1d4d8a' };
+    } else if (init && init.status === 'running') {
+        r = { text: '⚙ Building…', color: '#1d4d8a' };
+    } else if (init && init.status === 'error') {
+        r = { text: '✗ Last build failed', color: '#a52a2a' };
+    } else if (init && init.status === 'done') {
+        var aiDone = s.ai_at && (!init.done || new Date(s.ai_at) >= new Date(init.created || 0));
+        if (init.fast && !aiDone) r = { text: '○ AI cleanup queued', color: '#856404' };
+        else r = { text: '✓ Machine pass done', color: '#2e6b3a' };
+        if (init.error && /^Quality note/.test(init.error)) r.text += ' · ⚠';
+    }
+    if (!r) return null;
+    r.title = hist.join('\n');
+    return r;
+}
+function txStageLineHtml(it, onSolid) {
+    // onSolid: rendered inside a solid-colour button (Items-tab Transcribe
+    // button) — inherit the button's text colour so it stays readable.
+    var r = txStageInfo(it);
+    if (!r) return '';
+    return '<div style="font-size:0.62rem;font-weight:500;margin-top:2px;color:' + (onSolid ? 'inherit;opacity:0.92' : r.color) + ';white-space:nowrap;" title="'
+         + esc(r.title) + '">' + esc(r.text) + '</div>';
+}
+
 function transcribeBtnHtml(it) {
     // Transcription requires a complete MP3 on disk (recorded-to-completion
     // or uploaded). With no audio file there is nothing to transcribe, so
@@ -628,7 +677,7 @@ function transcribeBtnHtml(it) {
     return '<button data-tx-key="' + it.feed_item_key + '" onclick="openTranscript(' + it.feed_item_key + ')" '
         + 'title="' + esc(title) + '" '
         + 'style="background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-size:0.72rem;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.08);">'
-        + label + '</button>';
+        + label + txStageLineHtml(it, true) + '</button>';
 }
 
 function loadItems(page) {
@@ -2441,6 +2490,7 @@ function recTranscriptCell(it) {
         +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
         + label
         + (dateLine ? '<div style="font-size:0.65rem;color:#888;font-family:monospace;font-weight:400;margin-top:2px;">' + dateLine + '</div>' : '')
+        + txStageLineHtml(it)
         + '</button>';
 }
 // Upload the open transcript to YouTube as a caption track. Wraps the

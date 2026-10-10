@@ -1029,6 +1029,7 @@ function cfAnchorFirstWords(PDO $db, int $itemKey, array $baselineCodes, array $
         $s = (float)$live[$i]['secs'];
         $newSecs[$i] = $s;
         if (!$toks) continue;
+        if (isset($opts['from_secs']) && $s < (float)$opts['from_secs']) continue;   // tail-only runs
         $hit = (count($toks) <= 2) ? $find($toks, $s) : $find(array_slice($toks, 0, 3), $s);
         if ($hit === null && count($toks) >= 3) $hit = $find(array_slice($toks, 0, 2), $s);
         if ($hit === null) {
@@ -1077,6 +1078,12 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
     $limit = max(1, min(60, (int)($opts['chunk'] ?? 40)));
 
     $live  = cfLoadLive($db, $itemKey);
+    // Tail-only runs (transcript-tail-rebuild.php): leave every line before
+    // from_secs exactly as it is (hand-reviewed region).
+    if (isset($opts['from_secs'])) {
+        $from = (float)$opts['from_secs'];
+        $live = array_values(array_filter($live, fn($r) => (float)$r['secs'] >= $from));
+    }
     $total = count($live);
     if ($total === 0) return ['ok' => true, 'changed' => 0, 'chunks' => 0];
 

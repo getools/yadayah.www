@@ -44,6 +44,17 @@
         .settings-grid textarea { min-height: 52px; resize: vertical; }
         .weights .weight-row { display: flex; gap: 10px; align-items: center; margin: 4px 0; font-size: 0.86rem; }
         .weights .weight-row input { width: 70px; }
+        .hint { font-size: 0.78rem; color: #777; line-height: 1.45; margin-top: 4px; max-width: 640px; }
+        .hint code { font-size: 0.76rem; background: #f3f3f6; padding: 0 3px; border-radius: 3px; }
+        .weights .weight-row span .muted { font-size: 0.78rem; }
+        .book-select { border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; max-width: 640px; }
+        .bs-series { border-bottom: 1px solid #eee; }
+        .bs-series:last-child { border-bottom: none; }
+        .bs-series summary { padding: 7px 10px; cursor: pointer; font-size: 0.86rem; }
+        .bs-series summary:hover { background: #f7f7fb; }
+        .settings-grid .bs-book { display: block; padding: 3px 10px 3px 34px; font-size: 0.84rem; cursor: pointer; text-align: left; font-weight: normal; color: inherit; }
+        .bs-book:hover { background: #fafafa; }
+        .bs-saved { color: #27ae60; font-size: 0.76rem; }
         .cmp-q { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 18px; overflow: hidden; }
         .cmp-q-head { background: #31345A; color: #fff; padding: 9px 14px; font-weight: 600; font-size: 0.92rem; display: flex; gap: 10px; align-items: baseline; }
         .cmp-q-head .qn { opacity: .7; font-weight: 400; font-size: 0.8rem; }
@@ -118,24 +129,36 @@
         <h3>Settings</h3>
         <div class="settings-grid" id="settings-grid">
             <label>Who may ask</label>
-            <select data-k="access"><option value="off">Off</option><option value="admins">Admins only</option><option value="members">All members</option></select>
-            <label>Chat model</label><input type="text" data-k="chat-model" list="model-list">
-            <label>Daily limit</label><input type="number" data-k="daily-limit" min="0" style="width:90px">
-            <label>Excluded series</label><input type="text" data-k="exclude-series" placeholder="series keys, comma separated">
+            <div>
+                <select data-k="access"><option value="off">Off</option><option value="admins">Admins only</option><option value="members">All members</option></select>
+                <div class="hint">Who can send questions to the <strong>Ask Yada</strong> member in Chat, and who can find it in member search. <em>Off</em>: nobody. <em>Admins only</em>: for testing. <em>All members</em>: every member who isn't banned (banned members never see it). Anyone not allowed gets the "not open" reply set on the General tab.</div>
+            </div>
+            <label>Chat model</label>
+            <div>
+                <input type="text" data-k="chat-model" list="model-list">
+                <div class="hint">The local model on the Puget GPU box that answers members' Chat questions (an Ollama model name, e.g. <code>gpt-oss:120b</code>). Test runs choose their own model on the Test Runs tab.</div>
+            </div>
+            <label>Daily limit</label>
+            <div>
+                <input type="number" data-k="daily-limit" min="0" style="width:90px">
+                <div class="hint">How many questions one member can send in 24 hours. Extra questions get the "over limit" reply set on the General tab. 0 = no limit.</div>
+            </div>
             <label style="padding-top:10px">Source weights</label>
             <div class="weights">
-                <p class="muted" style="margin:8px 0 6px">Multiplies each source's search score (books also use each book's own Ask Yada rating). 1 = normal, 2 = twice as strong, 0 = never used.</p>
-                <div class="weight-row"><input type="number" data-k="weight-book" min="0" max="5" step="0.1"><span>Books</span></div>
-                <div class="weight-row"><input type="number" data-k="weight-transcript-yada" min="0" max="5" step="0.1"><span>Transcripts — speaker Yada</span></div>
-                <div class="weight-row"><input type="number" data-k="weight-transcript-unknown" min="0" max="5" step="0.1"><span>Transcripts — speaker unknown (assumed Yada)</span></div>
-                <div class="weight-row"><input type="number" data-k="weight-post" min="0" max="5" step="0.1"><span>Chat — Yada's community posts</span></div>
-                <div class="weight-row"><input type="number" data-k="weight-dm" min="0" max="5" step="0.1"><span>Chat — Yada's direct messages <span class="muted">(private conversations; above 0, passages from them can appear in answers to other members)</span></span></div>
-                <div class="weight-row"><input type="number" data-k="weight-glossary" min="0" max="5" step="0.1"><span>Glossary</span></div>
+                <div class="hint" style="margin:8px 0 6px">How strongly each source counts when the model searches Yada's library. Each passage's search score is multiplied by its source's weight (books also by each book's own Ask Yada rating from the Books page). 1 = normal, 2 = twice as strong, 0.5 = half, 0 = never used.</div>
+                <div class="weight-row"><input type="number" data-k="weight-book" min="0" max="5" step="0.05"><span>Books <span class="muted">— paragraphs from the books ticked under "Books" below</span></span></div>
+                <div class="weight-row"><input type="number" data-k="weight-transcript-yada" min="0" max="5" step="0.05"><span>Transcripts — speaker Yada <span class="muted">— video lines labelled as Yada, or matched to his voice</span></span></div>
+                <div class="weight-row"><input type="number" data-k="weight-transcript-unknown" min="0" max="5" step="0.05"><span>Transcripts — speaker unknown <span class="muted">— video lines with no speaker label, assumed to be Yada</span></span></div>
+                <div class="weight-row"><input type="number" data-k="weight-post" min="0" max="5" step="0.05"><span>Chat — Yada's community posts <span class="muted">— topics and replies Yada wrote in the community</span></span></div>
+                <div class="weight-row"><input type="number" data-k="weight-dm" min="0" max="5" step="0.05"><span>Chat — Yada's direct messages <span class="muted">— private conversations; above 0, passages from them can appear in answers to other members. (They are used for training either way.)</span></span></div>
+                <div class="weight-row"><input type="number" data-k="weight-glossary" min="0" max="5" step="0.05"><span>Glossary <span class="muted">— Hebrew word definitions; mixes Kirk, Perry and Yada sources, so it is not Yada's own voice</span></span></div>
             </div>
-            <label>Acknowledgement</label><textarea data-k="ack-message"></textarea>
-            <label>Not-open reply</label><textarea data-k="closed-message"></textarea>
-            <label>Over-limit reply</label><textarea data-k="limit-message"></textarea>
             <span></span><div><button class="btn btn-primary btn-sm" id="settings-save">Save settings</button> <span class="muted" id="settings-status"></span></div>
+            <label style="padding-top:4px">Books</label>
+            <div>
+                <div class="hint" style="margin-bottom:6px">Which books Ask Yada may use. This is the same <strong>Ask Yada</strong> flag as in the Books edit popover — a change here shows there too, and applies to both the current Ask Yada page and the local model. Ticks save immediately. Expand a series to choose individual books.</div>
+                <div id="book-select" class="book-select"><span class="muted">Loading books…</span></div>
+            </div>
         </div>
     </div>
 
@@ -229,6 +252,7 @@ document.querySelectorAll('.sub-tab').forEach(function (b) { b.addEventListener(
 
 // ── Overview ──
 function loadOverview() {
+    loadBookSelect();
     get('stats').then(function (d) {
         if (d.error) { document.getElementById('stat-grid').innerHTML = '<span class="muted">' + esc(d.error) + '</span>'; return; }
         var labels = {book: 'Books', 'transcript:yada': 'Transcripts — speaker Yada', 'transcript:unlabeled': 'Transcripts — speaker unknown',
@@ -447,6 +471,74 @@ document.querySelector('#chat-table').addEventListener('click', function (e) {
 document.getElementById('chat-detail').addEventListener('input', onRange);
 document.getElementById('chat-detail').addEventListener('click', function (e) {
     if (e.target.hasAttribute('data-save')) saveReview(e.target.closest('.cmp-review'), loadChat);
+});
+
+// ── Books selector: the yy_volume Ask Yada flag, via the same endpoint as the Books edit popover ──
+var bookOpen = {};
+try { bookOpen = JSON.parse(sessionStorage.getItem('askLlmBookOpen') || '{}') || {}; } catch (e) {}
+function loadBookSelect() {
+    fetch('/api/admin-books.php', {credentials: 'include'}).then(safeJson).then(function (d) {
+        var box = document.getElementById('book-select');
+        if (d.error) { box.innerHTML = '<span class="muted">' + esc(d.error) + '</span>'; return; }
+        var bySeries = {};
+        (d.volumes || []).forEach(function (v) { (bySeries[v.series_key] = bySeries[v.series_key] || []).push(v); });
+        box.innerHTML = (d.series || []).filter(function (s) { return bySeries[s.series_key]; }).map(function (s) {
+            var vols = bySeries[s.series_key];
+            var on = vols.filter(function (v) { return v.volume_ask_yada_flag; }).length;
+            return '<details class="bs-series" data-series="' + s.series_key + '"' + (bookOpen[s.series_key] ? ' open' : '') + '>'
+                + '<summary><input type="checkbox" class="bs-all" data-series="' + s.series_key + '"' + (on === vols.length ? ' checked' : '') + '> '
+                + '<strong>' + esc(s.series_label) + '</strong> <span class="muted bs-count">' + on + ' of ' + vols.length + ' books</span></summary>'
+                + vols.map(function (v) {
+                    var st = v.volume_status === 'I' ? ' <span class="muted">(inactive — never used)</span>' : v.volume_status === 'P' ? ' <span class="muted">(pending)</span>' : '';
+                    return '<label class="bs-book"><input type="checkbox" class="bs-vol" data-key="' + v.volume_key + '"' + (v.volume_ask_yada_flag ? ' checked' : '') + '> '
+                        + esc(v.volume_label) + st + ' <span class="muted">· rating ' + (v.volume_ask_rating == null ? 50 : v.volume_ask_rating) + '</span>'
+                        + '<span class="bs-saved"></span></label>';
+                }).join('') + '</details>';
+        }).join('') || '<span class="muted">No books.</span>';
+        box.querySelectorAll('.bs-series').forEach(syncSeriesBox);
+    });
+}
+function syncSeriesBox(det) {
+    var vols = det.querySelectorAll('.bs-vol'), on = det.querySelectorAll('.bs-vol:checked').length, all = det.querySelector('.bs-all');
+    all.checked = on === vols.length;
+    all.indeterminate = on > 0 && on < vols.length;
+    det.querySelector('.bs-count').textContent = on + ' of ' + vols.length + ' books';
+}
+function saveBookFlag(cb) {
+    var lbl = cb.closest('.bs-book'), mark = lbl.querySelector('.bs-saved');
+    mark.textContent = ' saving…';
+    return fetch('/api/admin-books.php?key=' + cb.dataset.key, {
+        method: 'PUT', credentials: 'include', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({volume_ask_yada_flag: cb.checked})
+    }).then(safeJson).then(function (d) {
+        if (d.error) { cb.checked = !cb.checked; mark.textContent = ' ' + d.error; }
+        else { mark.textContent = ' saved'; setTimeout(function () { mark.textContent = ''; }, 2000); }
+        syncSeriesBox(cb.closest('.bs-series'));
+    });
+}
+document.getElementById('book-select').addEventListener('click', function (e) {
+    // a click on the series checkbox must not also toggle the <details> open/closed
+    if (e.target.classList.contains('bs-all')) e.stopPropagation();
+});
+document.getElementById('book-select').addEventListener('toggle', function (e) {
+    var det = e.target;
+    if (!det.classList || !det.classList.contains('bs-series')) return;
+    bookOpen[det.dataset.series] = det.open;
+    try { sessionStorage.setItem('askLlmBookOpen', JSON.stringify(bookOpen)); } catch (x) {}
+}, true);
+document.getElementById('book-select').addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.classList.contains('bs-vol')) { saveBookFlag(t); return; }
+    if (t.classList.contains('bs-all')) {
+        var det = t.closest('.bs-series'), want = t.checked, todo = [];
+        det.querySelectorAll('.bs-vol').forEach(function (cb) { if (cb.checked !== want) { cb.checked = want; todo.push(cb); } });
+        if (todo.length && !confirm((want ? 'Allow' : 'Stop') + ' Ask Yada using ' + todo.length + ' book' + (todo.length > 1 ? 's' : '') + ' in this series?')) {
+            todo.forEach(function (cb) { cb.checked = !want; });
+            syncSeriesBox(det);
+            return;
+        }
+        todo.reduce(function (p, cb) { return p.then(function () { return saveBookFlag(cb); }); }, Promise.resolve());
+    }
 });
 
 // ── Live updates: job status pushes (admin-job-sse channel ask_llm_job) ──

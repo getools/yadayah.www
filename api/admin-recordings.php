@@ -15,6 +15,7 @@
  *     &page_keys=    — comma-separated yy_page.page_key list
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_transcript_stage.php';
 $user = requireAuth();
 $db = getDb();
 
@@ -268,6 +269,8 @@ $stmt = $db->prepare("
            -- listing so the same transcribeBtnHtml() helper can render in
            -- both tabs without divergence).
            EXISTS (SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS has_transcript,
+           -- Machine-pipeline stage (engines / build / AI cleanup) — see _transcript_stage.php
+           " . txStageSelectSql('fi.feed_item_key') . " AS transcript_stage,
            (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
               WHERE v.feed_item_key = fi.feed_item_key
               ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_status,
