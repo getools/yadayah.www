@@ -35,11 +35,16 @@ if ($method === 'GET' && isset($_GET['items'])) {
         $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_category WHERE category_key = ?)';
         $params[] = $catKey;
     }
+    // Page / section filter: items in the materialized pool (yy_section_item)
+    // of a Pages-New Items section — what the public pages actually draw from.
+    // The legacy yy_feed_item_page mapping is not consulted here.
     $pageKey = (int)($_GET['page_key'] ?? 0);
-    if ($pageKey) {
-        // Use yy_feed_item_page join table — this is the source of truth for which items
-        // belong to which page (populated by feed-item-pages.php based on feed_page filters).
-        $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_page WHERE page_key = ?)';
+    $sectionKey = (int)($_GET['section_key'] ?? 0);
+    if ($sectionKey) {
+        $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_section_item WHERE section_key = ?)';
+        $params[] = $sectionKey;
+    } elseif ($pageKey) {
+        $where[] = 'fi.feed_item_key IN (SELECT si.feed_item_key FROM yy_section_item si JOIN yy_section s ON s.section_key = si.section_key WHERE s.page_key = ?)';
         $params[] = $pageKey;
     }
     // Status filter — multi-checkbox of: active, restricted, inactive
@@ -137,6 +142,31 @@ if ($method === 'GET' && isset($_GET['items'])) {
         LIMIT ? OFFSET ?
     ");
     $stmt->execute(array_merge($params, [$limit, $offset]));
+    $items = $stmt->fetchAll();
+
+    // "On Pages" column: the Items sections whose pool holds each item.
+    if ($items) {
+        $itemKeys = array_map(fn($r) => (int)$r['feed_item_key'], $items);
+        $ph = implode(',', array_fill(0, count($itemKeys), '?'));
+        $secStmt = $db->prepare("
+            SELECT si.feed_item_key, s.section_key, s.section_label, s.section_title, s.section_active_flag,
+                   p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
+            FROM yy_section_item si
+            JOIN yy_section s ON s.section_key = si.section_key
+            LEFT JOIN yy_page p ON p.page_key = s.page_key
+            WHERE si.feed_item_key IN ($ph)
+            ORDER BY p.page_header_sort, p.page_key, s.section_sort, s.section_key
+        ");
+        $secStmt->execute($itemKeys);
+        $secsByItem = [];
+        foreach ($secStmt->fetchAll() as $r) {
+            $k = (int)$r['feed_item_key'];
+            unset($r['feed_item_key']);
+            $secsByItem[$k][] = $r;
+        }
+        foreach ($items as &$it) $it['sections_on'] = $secsByItem[(int)$it['feed_item_key']] ?? [];
+        unset($it);
+    }
 
     // Category hierarchy for filter dropdown
     $catStmt = $db->query("
@@ -152,14 +182,25 @@ if ($method === 'GET' && isset($_GET['items'])) {
         WHERE p.page_active_flag = TRUE AND p.page_key IN (SELECT DISTINCT page_key FROM yy_feed_page)
         ORDER BY p.page_title
     ");
+    // Page / section filter options: Items sections with a non-empty pool.
+    $secPagesStmt = $db->query("
+        SELECT s.section_key, s.section_label, s.section_title, s.section_active_flag,
+               p.page_key, p.page_code, p.page_title, p.page_active_flag,
+               (SELECT count(*) FROM yy_section_item si WHERE si.section_key = s.section_key) AS item_count
+        FROM yy_section s
+        JOIN yy_page p ON p.page_key = s.page_key
+        WHERE EXISTS (SELECT 1 FROM yy_section_item si WHERE si.section_key = s.section_key)
+        ORDER BY p.page_title, s.section_sort, s.section_key
+    ");
 
     jsonResponse([
-        'items' => $stmt->fetchAll(),
+        'items' => $items,
         'page' => $page,
         'total' => $total,
         'total_pages' => max(1, (int)ceil($total / $limit)),
         'categories' => $catStmt->fetchAll(),
         'pages' => $pagesStmt->fetchAll(),
+        'section_pages' => $secPagesStmt->fetchAll(),
     ]);
 }
 

@@ -327,7 +327,7 @@
                         </div>
                     </th>
                     <th style="width:260px;">
-                        <span>Pages</span>
+                        <span title="Items sections whose pool holds this item. Green = live, grey = section or page inactive.">On Pages</span>
                         <div id="rec-f-pages" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
                             <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
@@ -473,6 +473,7 @@ var _catFilterOptsFiltered = '<option value="">All</option>';
 var _pageFilterOpts = '<option value="">All</option>';
 var _allCategories = [];
 var _allPages = [];
+var _secPages = [];
 
 function onPageFilterChange() {
     var sel = document.getElementById('filter-page');
@@ -485,6 +486,10 @@ function onPageFilterChange() {
 function rebuildCategoryFilter() {
     var pageVal = _savedFilters.page;
     var pageKey = pageVal ? pageVal.replace('page:', '') : '';
+    if (pageVal && pageVal.indexOf('sec:') === 0) {
+        var sp = _secPages.find(function(x) { return 'sec:' + x.section_key === pageVal; });
+        pageKey = sp ? String(sp.page_key) : '';
+    }
     var opts = '<option value="">All</option>';
     if (pageKey) {
         _allCategories.forEach(function(c) {
@@ -710,7 +715,8 @@ function loadItems(page) {
     if (titleFilter) url += '&title=' + encodeURIComponent(titleFilter);
     if (tagsFilter) url += '&tags=' + encodeURIComponent(tagsFilter);
     var pageFilter = _savedFilters.page;
-    if (pageFilter) url += '&page_key=' + pageFilter.replace('page:','');
+    if (pageFilter && pageFilter.indexOf('sec:') === 0) url += '&section_key=' + pageFilter.replace('sec:','');
+    else if (pageFilter) url += '&page_key=' + pageFilter.replace('page:','');
     if (catFilter) {
         if (catFilter.indexOf('cat:') === 0) url += '&category_key=' + catFilter.replace('cat:','');
     }
@@ -733,10 +739,23 @@ function loadItems(page) {
             _allCategories = d.categories || [];
             _allPages = d.pages || [];
 
-            // Page dropdown — flat list of pages
+            // On Pages dropdown — pages with Items sections, each followed by
+            // its sections when it has more than one.
+            _secPages = d.section_pages || [];
             var pOpts = '<option value="">All</option>';
-            _allPages.forEach(function(pg) {
-                pOpts += '<option value="page:' + pg.page_key + '">' + esc(pg.page_title) + '</option>';
+            var pageOrder = [], secsByPage = {};
+            _secPages.forEach(function(sp) {
+                if (!secsByPage[sp.page_key]) { secsByPage[sp.page_key] = []; pageOrder.push(sp); }
+                secsByPage[sp.page_key].push(sp);
+            });
+            pageOrder.forEach(function(pg) {
+                var secs = secsByPage[pg.page_key];
+                pOpts += '<option value="page:' + pg.page_key + '">' + esc(pg.page_title || pg.page_code)
+                    + (!_isOn(pg.page_active_flag) ? ' (inactive)' : '') + '</option>';
+                if (secs.length > 1) secs.forEach(function(sp) {
+                    pOpts += '<option value="sec:' + sp.section_key + '">&nbsp;&nbsp;&nbsp;' + esc(_sectionName(sp, 34))
+                        + (!_isOn(sp.section_active_flag) ? ' (inactive)' : '') + '</option>';
+                });
             });
             _pageFilterOpts = pOpts;
             var pSel = document.getElementById('filter-page');
@@ -768,7 +787,7 @@ function loadItems(page) {
             + '<th style="' + ths + '" onclick="sortItems(\'feed_name\', event)" title="Shift+click to add as a secondary sort">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\', event)" title="Shift+click to add as a secondary sort">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\', event)" title="Shift+click to add as a secondary sort">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
-            + '<th>Page<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
+            + '<th title="Items sections whose pool holds this item. Green = live, grey = section or page inactive.">On Pages<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'category_title\', event)" title="Shift+click to add as a secondary sort">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\', event)" title="Shift+click to add as a secondary sort">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
@@ -798,7 +817,7 @@ function loadItems(page) {
                 + '<td style="font-size:0.75rem;color:#888;">' + esc(it.feed_name || '') + '</td>'
                 + '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.feed_item_title || '') + '</td>'
                 + '<td style="font-size:0.7rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;">' + esc(it.feed_item_tags || '') + '</td>'
-                + '<td style="font-size:0.75rem;color:#888;">' + esc(it.page_codes || '') + '</td>'
+                + '<td style="max-width:260px;line-height:1.5;">' + itemSectionChips(it.sections_on) + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + (function() {
                     var cl = it.categories_list;
                     if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch(e) { cl = null; } }
@@ -925,26 +944,40 @@ function _pageHref(p) {
     return p.page_code && p.page_code.toLowerCase() !== 'home' ? '/' + p.page_code : '/';
 }
 
+// Plain-text, truncated name for an Items section (section_title is rich HTML).
+function _sectionName(s, max) {
+    var sec = new DOMParser().parseFromString(s.section_label || s.section_title || '', 'text/html').body.textContent || '';
+    sec = sec.replace(/\s+/g, ' ').trim();
+    if (max && sec.length > max) sec = sec.substring(0, max - 1) + '…';
+    return sec || 'section #' + s.section_key;
+}
+
+// One "page · section" chip linking to the public page. Greyed (struck) when
+// the section or its page is inactive, so it draws nothing publicly.
+function sectionChip(s) {
+    var live = _isOn(s.section_active_flag) && _isOn(s.page_active_flag);
+    var sec = _sectionName(s, 28);
+    var tip = 'Page: ' + (s.page_title || s.page_code || '?') + '\nItems section: ' + sec + ' (#' + s.section_key + ')'
+        + (!_isOn(s.page_active_flag) ? '\nPage is INACTIVE' : '')
+        + (!_isOn(s.section_active_flag) ? '\nSection is INACTIVE' : '');
+    return '<a class="use-chip' + (live ? '' : ' off') + '" href="' + esc(_pageHref(s)) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">'
+        + esc(s.page_code || '?') + ' · ' + esc(sec) + '</a>';
+}
+
+// "On Pages" chips for one feed item: the Items sections whose pool
+// (yy_section_item) holds it. Shared by the Items and Recordings tables.
+function itemSectionChips(list) {
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch(e) { list = []; } }
+    if (!list || !list.length) return '<span class="use-none">—</span>';
+    return list.map(sectionChip).join('');
+}
+
 // "Used On" chips for one feed: the Pages-New Items sections that draw from
-// it (legacy yy_feed_page mappings are not shown). A chip is greyed (struck) when the section
-// or its page is inactive, so it draws nothing publicly.
+// it (legacy yy_feed_page mappings are not shown).
 function feedUsageChips(feedKey) {
     var u = feedUsage[feedKey];
     if (!u || !u.sections.length) return '<span class="use-none">not used</span>';
-    var out = '';
-    u.sections.forEach(function(s) {
-        var live = _isOn(s.section_active_flag) && _isOn(s.page_active_flag);
-        var sec = new DOMParser().parseFromString(s.section_label || s.section_title || '', 'text/html').body.textContent || '';
-        sec = sec.replace(/\s+/g, ' ').trim();
-        if (sec.length > 28) sec = sec.substring(0, 27) + '…';
-        if (!sec) sec = 'section #' + s.section_key;
-        var tip = 'Page: ' + (s.page_title || s.page_code || '?') + '\nItems section: ' + sec + ' (#' + s.section_key + ')'
-            + (!_isOn(s.page_active_flag) ? '\nPage is INACTIVE' : '')
-            + (!_isOn(s.section_active_flag) ? '\nSection is INACTIVE' : '');
-        out += '<a class="use-chip' + (live ? '' : ' off') + '" href="' + esc(_pageHref(s)) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">'
-            + esc(s.page_code || '?') + ' · ' + esc(sec) + '</a>';
-    });
-    return out;
+    return u.sections.map(sectionChip).join('');
 }
 
 function feedItemsCell(f) {
@@ -2987,22 +3020,13 @@ function loadRecordings(page) {
             renderRecordings(d);
         });
 }
-// Render the page checkbox list under the Pages column header. Preserves
-// the user's current selections across reloads.
-//
-// REC_PAGE_EXCLUDE: page titles/codes to hide from this filter — recordings
-// don't usually live under landing pages like Home or DoYouYada, so showing
-// them just adds noise. Match is case-insensitive and trimmed; compared
-// against page_title and page_code.
-var REC_PAGE_EXCLUDE = ['home', 'do you yada?', 'doyouyada'];
+// Render the page checkbox list under the On Pages column header: pages with
+// an Items section holding items (Home included — its sections are where most
+// items show). Preserves the user's current selections across reloads.
 function populateRecPageFilter(pages, currentSelections) {
     var box = document.getElementById('rec-f-pages');
     if (!box) return;
-    var filtered = pages.filter(function(p) {
-        var t = String(p.page_title || '').trim().toLowerCase();
-        var c = String(p.page_code  || '').trim().toLowerCase();
-        return REC_PAGE_EXCLUDE.indexOf(t) === -1 && REC_PAGE_EXCLUDE.indexOf(c) === -1;
-    });
+    var filtered = pages;
     if (box.dataset.populated === '1' && box.dataset.count === String(filtered.length)) return;
     box.dataset.populated = '1';
     box.dataset.count = String(filtered.length);
@@ -3013,7 +3037,7 @@ function populateRecPageFilter(pages, currentSelections) {
         var checked = sel[String(p.page_key)] ? ' checked' : '';
         html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
               + '<input type="checkbox" value="' + p.page_key + '" onchange="loadRecordings(1)"' + checked + '> '
-              + esc(p.page_title || p.page_code)
+              + esc(p.page_title || p.page_code) + (!_isOn(p.page_active_flag) ? ' <span style="color:#999;">(inactive)</span>' : '')
               + '</label>';
     });
     box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no pages</em>';
@@ -3148,13 +3172,8 @@ function renderRecordings(d) {
                       + 'title="Start recording" '
                       + 'style="' + commonBtn + 'color:#666;border-color:#ccc;">○ New</button>';
         }
-        // Pages cell — small badges for each page the item is mapped to via
-        // yy_feed_item_page. Empty placeholder if the item isn't on any page.
-        var pageBadges = '';
-        (it.pages || []).forEach(function(p) {
-            pageBadges += '<span style="display:inline-block;background:#eef2ff;color:#31345A;border:1px solid #c8d0f0;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin:1px 2px 1px 0;" title="' + esc(p.page_code) + '">' + esc(p.page_title || p.page_code) + '</span>';
-        });
-        if (!pageBadges) pageBadges = '<span style="font-size:0.7rem;color:#bbb;">—</span>';
+        // On Pages cell — chips for each Items section whose pool holds the item.
+        var pageBadges = itemSectionChips(it.sections_on);
 
         // Status cell — Active / Restricted / Inactive badge.
         var iStatusBadge;

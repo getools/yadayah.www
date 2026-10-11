@@ -33,7 +33,7 @@ $durMax      = isset($_GET['dur_max_s']) && $_GET['dur_max_s'] !== '' ? (int)$_G
 $statusRaw   = trim((string)($_GET['status'] ?? ''));
 $statuses    = $statusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $statusRaw)));
 // page_keys filter: comma-separated list of yy_page.page_key. Items shown
-// must be associated with at least one of these pages (via yy_feed_item_page).
+// must be in the pool (yy_section_item) of an Items section on one of these pages.
 $pageKeysRaw = trim((string)($_GET['page_keys'] ?? ''));
 $pageKeys    = $pageKeysRaw === '' ? [] :
     array_values(array_filter(array_map('intval',
@@ -114,9 +114,10 @@ if ($durMax !== null && $durMax > 0)  { $where .= " AND fi.feed_item_duration_se
 if ($episodeQ !== '')                 { $where .= " AND fi.feed_item_episode ILIKE ?"; $params[] = '%' . $episodeQ . '%'; }
 if (!empty($pageKeys)) {
     $placeholders = implode(',', array_fill(0, count($pageKeys), '?'));
-    $where .= " AND EXISTS (SELECT 1 FROM yy_feed_item_page fip
-                              WHERE fip.feed_item_key = fi.feed_item_key
-                                AND fip.page_key IN ($placeholders))";
+    $where .= " AND EXISTS (SELECT 1 FROM yy_section_item si
+                              JOIN yy_section s ON s.section_key = si.section_key
+                              WHERE si.feed_item_key = fi.feed_item_key
+                                AND s.page_key IN ($placeholders))";
     foreach ($pageKeys as $pk) $params[] = $pk;
 }
 if (!empty($categoryKeys)) {
@@ -295,28 +296,28 @@ $stmt = $db->prepare("
 $stmt->execute(array_merge($params, [$perPage, $offset]));
 $items = $stmt->fetchAll();
 
-// Attach the list of pages each item is associated with (page_key, page_code,
-// page_title) so the UI can render small badges in the new "Pages" column.
+// Attach the Items sections whose pool (yy_section_item) holds each item, so
+// the UI can render "On Pages" chips linking to where the item appears.
 if ($items) {
     $itemKeys = array_map(fn($r) => (int)$r['feed_item_key'], $items);
     $ph = implode(',', array_fill(0, count($itemKeys), '?'));
     $pgStmt = $db->prepare("
-        SELECT fip.feed_item_key, p.page_key, p.page_code, p.page_title
-          FROM yy_feed_item_page fip
-          JOIN yy_page p ON p.page_key = fip.page_key
-         WHERE fip.feed_item_key IN ($ph)
-         ORDER BY p.page_header_sort, p.page_key");
+        SELECT si.feed_item_key, s.section_key, s.section_label, s.section_title, s.section_active_flag,
+               p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
+          FROM yy_section_item si
+          JOIN yy_section s ON s.section_key = si.section_key
+          LEFT JOIN yy_page p ON p.page_key = s.page_key
+         WHERE si.feed_item_key IN ($ph)
+         ORDER BY p.page_header_sort, p.page_key, s.section_sort, s.section_key");
     $pgStmt->execute($itemKeys);
     $pagesByItem = [];
     foreach ($pgStmt->fetchAll() as $r) {
-        $pagesByItem[(int)$r['feed_item_key']][] = [
-            'page_key'   => (int)$r['page_key'],
-            'page_code'  => $r['page_code'],
-            'page_title' => $r['page_title'],
-        ];
+        $k = (int)$r['feed_item_key'];
+        unset($r['feed_item_key']);
+        $pagesByItem[$k][] = $r;
     }
     foreach ($items as &$it) {
-        $it['pages'] = $pagesByItem[(int)$it['feed_item_key']] ?? [];
+        $it['sections_on'] = $pagesByItem[(int)$it['feed_item_key']] ?? [];
     }
     unset($it);
 
@@ -390,15 +391,14 @@ if ($items) {
     unset($it);
 }
 
-// Pages that actually have at least one feed_item associated with them —
-// used to render the checkbox filter under the Pages column header. Filtering
-// the active-pages list by EXISTS in yy_feed_item_page avoids cluttering
-// the UI with pages that would never narrow the result set.
+// Pages with at least one Items section holding items — used to render the
+// checkbox filter under the "On Pages" column header.
 $allPagesStmt = $db->query("
-    SELECT p.page_key, p.page_code, p.page_title
+    SELECT p.page_key, p.page_code, p.page_title, p.page_active_flag
       FROM yy_page p
-     WHERE p.page_active_flag IS DISTINCT FROM FALSE
-       AND EXISTS (SELECT 1 FROM yy_feed_item_page fip WHERE fip.page_key = p.page_key)
+     WHERE EXISTS (SELECT 1 FROM yy_section_item si
+                     JOIN yy_section s ON s.section_key = si.section_key
+                    WHERE s.page_key = p.page_key)
      ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();
 
