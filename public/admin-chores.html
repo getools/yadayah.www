@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="page-version" content="1791768000">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chores - Yada Yah</title>
+    <link rel="stylesheet" href="css/app.css?v=15">
+    <link rel="stylesheet" href="css/login.css">
+    <style>
+        /* Full width, like Feeds — the MP3s / Transcripts tables are wide. */
+        #app.container { max-width: 100%; padding: 0 16px; box-sizing: border-box; }
+        .sub-tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 12px; }
+        .sub-tab { padding: 10px 24px; font-size: 0.95rem; font-weight: 600; color: #666; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+        .sub-tab:hover { color: #31345A; }
+        .sub-tab.active { color: #31345A; border-bottom-color: #31345A; }
+        .chore-panel { display: none; }
+        .chore-panel.active { display: block; }
+        /* Each tab is the real admin page in ?chores=<tab> mode. The frame
+           fills the window and scrolls itself, so the framed page's fixed
+           popovers (Record, Generate, editors) stay on screen. */
+        .chore-panel iframe { width: 100%; height: 75vh; border: 0; display: block; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+    <div class="login-card">
+        <h1>Admin</h1>
+        <div class="field">
+            <label for="login-user">Login</label>
+            <input type="text" id="login-user" autocomplete="username">
+        </div>
+        <div class="field">
+            <label for="login-pass">Password</label>
+            <div class="pass-wrap">
+                <input type="password" id="login-pass" autocomplete="current-password">
+                <button type="button" class="pass-toggle" onclick="togglePassword()" title="Show/hide password">&#128065;</button>
+            </div>
+        </div>
+        <div id="login-error" class="error-messages" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    </div>
+</div>
+
+<div id="app" class="container" style="display:none">
+    <div class="app-header">
+        <nav class="nav-tabs"></nav>
+<script src="/js/admin-nav.js?v=32"></script>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <h1>Chores</h1>
+
+    <div class="sub-tabs">
+        <button class="sub-tab" data-tab="mp3" onclick="switchChore('mp3')" title="Feeds items that have no MP3 yet">MP3s</button>
+        <button class="sub-tab" data-tab="transcripts" onclick="switchChore('transcripts')" title="Feeds items that have an MP3, oldest first">Transcripts</button>
+        <button class="sub-tab" data-tab="ask" onclick="switchChore('ask')" title="Ask → Log">Ask Yada</button>
+        <button class="sub-tab" data-tab="edit" onclick="switchChore('edit')" title="Books → Edit">Book Edit</button>
+        <button class="sub-tab" data-tab="words" onclick="switchChore('words')" title="Glossary → Words">Words</button>
+    </div>
+
+    <div id="chore-mp3" class="chore-panel"><iframe title="MP3s"></iframe></div>
+    <div id="chore-transcripts" class="chore-panel"><iframe title="Transcripts"></iframe></div>
+    <div id="chore-ask" class="chore-panel"><iframe title="Ask Yada"></iframe></div>
+    <div id="chore-edit" class="chore-panel"><iframe title="Book Edit"></iframe></div>
+    <div id="chore-words" class="chore-panel"><iframe title="Words"></iframe></div>
+</div>
+
+<script src="js/admin-links.js?v=5"></script>
+<script>
+var API = '/api';
+
+// Each chore is the real admin tab, framed in ?chores=<tab> mode (the page
+// hides its own header and tabs and opens the right tab). No .html in the
+// src: the .html form 301s to http:// and the frame is blocked.
+var CHORES = {
+    mp3:         { src: '/admin-feeds?chores=mp3',         code: 'chores.mp3' },
+    transcripts: { src: '/admin-feeds?chores=transcripts', code: 'chores.transcripts' },
+    ask:         { src: '/admin-ask?chores=ask',           code: 'chores.ask' },
+    edit:        { src: '/admin-books?chores=edit#edit',   code: 'chores.edit' },
+    words:       { src: '/admin-glossary?chores=words',    code: 'chores.words' }
+};
+var CHORE_STORE = 'admin-chores:tab';
+var chorePages = {};
+
+function choreAllowed(name) {
+    return CHORES[name] && chorePages[CHORES[name].code] !== false;
+}
+
+function switchChore(name) {
+    if (!choreAllowed(name)) {
+        name = Object.keys(CHORES).filter(choreAllowed)[0];
+        if (!name) return;
+    }
+    document.querySelectorAll('.sub-tab').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === name);
+    });
+    document.querySelectorAll('.chore-panel').forEach(function (p) {
+        p.classList.toggle('active', p.id === 'chore-' + name);
+    });
+    var f = document.querySelector('#chore-' + name + ' iframe');
+    if (!f.getAttribute('src')) f.setAttribute('src', CHORES[name].src);   // loaded on first open
+    fitFrames();
+    try { localStorage.setItem(CHORE_STORE, name); } catch (e) {}
+    if (history.replaceState) history.replaceState(null, '', '#' + name);
+}
+
+// Frame height = the rest of the window, so the frame does the scrolling.
+function fitFrames() {
+    var f = document.querySelector('.chore-panel.active iframe');
+    if (!f) return;
+    var top = f.getBoundingClientRect().top + window.scrollY;
+    f.style.height = Math.max(window.innerHeight - top - 8, 400) + 'px';
+}
+window.addEventListener('resize', fitFrames);
+
+function showApp(d) {
+    document.getElementById('login-screen').classList.remove('visible');
+    document.getElementById('app').style.display = '';
+    document.getElementById('user-display').textContent = d.user_name;
+    if (typeof applyPagePermissions === 'function') applyPagePermissions(d.pages);
+    chorePages = d.pages || {};
+    Object.keys(CHORES).forEach(function (n) {
+        var b = document.querySelector('.sub-tab[data-tab="' + n + '"]');
+        if (b) b.style.display = choreAllowed(n) ? '' : 'none';
+    });
+    var name = location.hash.replace('#', '');
+    if (!CHORES[name]) { try { name = localStorage.getItem(CHORE_STORE) || ''; } catch (e) { name = ''; } }
+    switchChore(CHORES[name] ? name : 'mp3');
+}
+
+function checkAuth() {
+    fetch(API + '/auth.php', {credentials:'include'}).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) showApp(d);
+        else document.getElementById('login-screen').classList.add('visible');
+    });
+}
+
+function doLogin() {
+    var u = document.getElementById('login-user').value;
+    var p = document.getElementById('login-pass').value;
+    var err = document.getElementById('login-error');
+    err.style.display = 'none';
+    fetch(API + '/auth.php', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({login: u, password: p})
+    }).then(function(r){return safeJson(r);}).then(function(d) {
+        if (d.authenticated) showApp(d);
+        else { err.textContent = d.error || 'Login failed'; err.style.display = ''; }
+    });
+}
+
+function doLogout() { fetch(API + '/auth.php', {method:'DELETE', credentials:'include'}).then(function(){ location.reload(); }); }
+function togglePassword() { var i = document.getElementById('login-pass'); i.type = i.type === 'password' ? 'text' : 'password'; }
+
+document.getElementById('login-pass').addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+</script>
+<script src="/js/admin-login.js?v=8"></script>
+<script>checkAuth();</script>
+</body>
+</html>

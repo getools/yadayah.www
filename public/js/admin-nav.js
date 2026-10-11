@@ -28,6 +28,7 @@ if (!document.getElementById('admin-dirty-js')) {
 }
 
 var tabs = [
+    ['admin-chores.html', 'Chores', 'Day-to-day work queues: MP3s to record, transcripts, Ask Yada log, book edits and words.'],
     ['admin-site.html', 'Site'],
     ['admin-books.html', 'Books'],
     ['admin-glossary.html', 'Glossary'],

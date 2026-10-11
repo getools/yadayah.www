@@ -32,7 +32,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=31"></script>
+<script src="/js/admin-nav.js?v=32"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -119,6 +119,11 @@ document.getElementById('login-pass').addEventListener('keydown', function(e) {
 // keyed by page. Which sections exist, their order and labels come from
 // admin-nav.js (window.ADMIN_NAV_TABS); a tab missing here still gets a card.
 var SECTION_INFO = {
+    'admin-chores': {
+        icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+        desc: 'Day-to-day work queues in one place: videos still needing an MP3, transcripts to work through, the Ask Yada log, book edits and glossary words.',
+        tabs: ['MP3s', 'Transcripts', 'Ask Yada', 'Book Edit', 'Words']
+    },
     'admin-site': {
         icon: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/>',
         desc: 'Site-wide look and feel: header, logo, toolbars, page headings, backgrounds, fonts and custom CSS.',

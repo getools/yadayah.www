@@ -6,6 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Books Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=15">
+    <script>
+    // Chores (admin-chores.html) frames this page as one of its tabs with
+    // ?chores=<tab>. Opened on its own, go to that tab instead.
+    (function () {
+        var m = /[?&]chores=([a-z0-9]+)/.exec(location.search);
+        if (!m) return;
+        var framed = false;
+        try { framed = window.self !== window.top; } catch (e) { framed = true; }
+        if (!framed) { location.replace('/admin-chores#' + m[1]); return; }
+        window.CHORES_TAB = m[1];
+        document.documentElement.classList.add('chores', 'chores-' + m[1]);
+    })();
+    </script>
+    <style>
+        html.chores .app-header, html.chores #app > h1, html.chores #app > .sub-tabs { display: none; }
+    </style>
     <link rel="stylesheet" href="css/login.css">
     <style>
         /* Single table for the whole list — series rows span all columns so
@@ -723,7 +739,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=30"></script>
+<script src="/js/admin-nav.js?v=32"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -1240,7 +1256,7 @@
     </div>
 </div>
 
-<script src="js/admin-links.js?v=4"></script>
+<script src="js/admin-links.js?v=5"></script>
 <script>
 var API = '/api';
 var allSeries = [];
@@ -3164,6 +3180,8 @@ function serDoUpload(blob, filename) {
 // ── Flipbook tab (moved in from admin-flipbook.html) ─────────
 var fbLoaded = false;
 function initFlipbookTab() {
+    // Chores → Book Edit: always the Edit tab (#edit-changes etc. still pick its sub-tab).
+    if (window.CHORES_TAB && location.hash.indexOf('#edit') !== 0) history.replaceState(null, '', '#edit');
     if (location.hash === '#flipbook') switchTab('flipbook');
     if (location.hash === '#edit') switchTab('edit');
     // #history = the old Replace History tab, now Edit → Changes.

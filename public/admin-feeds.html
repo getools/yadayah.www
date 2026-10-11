@@ -6,6 +6,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=15">
+    <script>
+    // Chores (admin-chores.html) frames this page as one of its tabs with
+    // ?chores=<tab>. Opened on its own, go to that tab instead.
+    (function () {
+        var m = /[?&]chores=([a-z0-9]+)/.exec(location.search);
+        if (!m) return;
+        var framed = false;
+        try { framed = window.self !== window.top; } catch (e) { framed = true; }
+        if (!framed) { location.replace('/admin-chores#' + m[1]); return; }
+        window.CHORES_TAB = m[1];
+        document.documentElement.classList.add('chores', 'chores-' + m[1]);
+        // session-state.js keys on the URL path, so it would load this user's
+        // Feeds filters into the Chores tab (and save Chores' back). Chores
+        // keeps its own state via adminUI instead.
+        document.documentElement.setAttribute('data-no-persist', '');
+    })();
+    </script>
+    <style>
+        html.chores .app-header, html.chores #app > .sub-tabs { display: none !important; }
+    </style>
     <link rel="stylesheet" href="css/login.css">
     <style>
         /* Override the 1100px cap from app.css — feeds tables benefit from full screen width. */
@@ -102,7 +122,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=30"></script>
+<script src="/js/admin-nav.js?v=32"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -231,12 +251,21 @@
             }
             #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.7rem;font-weight:normal; }
             #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer;font-weight:normal;font-size:0.7rem; }
+            #rec-f-categories details > summary { cursor:pointer;font-weight:600;color:#31345A;font-size:0.72rem;padding:1px 0;user-select:none; }
+            #rec-f-categories details > summary .cat-n { font-weight:normal;color:#999; }
+            #rec-f-categories details > summary .cat-n.on { color:#1a7f37;font-weight:600; }
+            #rec-f-categories .cat-grp { display:grid;grid-template-columns:1fr 1fr;column-gap:8px;padding:1px 0 3px 10px; }
             /* Very light warm tint for rows currently in a finalize /
                transcribe pipeline. Marks the row as "do not touch" without
                reducing legibility. Applied per-td so border-collapse layouts
                render the tint reliably. */
             #rec-table tr.rec-row-inprogress td { background-color: #fff9e6; }
             #rec-table tr.rec-row-inprogress:hover td { background-color: #fff3c7; }
+            /* Chores tabs: no Edit column; MP3s has no Transcript column,
+               Transcripts has no Record / Download above Recording. */
+            html.chores #rec-table .rec-col-actions, html.chores #rec-table td.actions { display: none; }
+            html.chores-mp3 #rec-table .rec-col-tx, html.chores-mp3 #rec-table td.tx-cell-td { display: none; }
+            html.chores-transcripts #rec-process-btn, html.chores-transcripts #rec-stop-btn, html.chores-transcripts #rec-download-btn { display: none !important; }
         </style>
         <!-- Hidden file input used by per-row MP3 upload icons in the
              MP3 column. recMp3UploadClick() stashes the target row's
@@ -259,12 +288,12 @@
                         <button class="btn btn-secondary btn-sm" id="rec-stop-btn" onclick="stopBatchRecording()" style="display:none;background:#444;color:#fff;white-space:nowrap;">⬛ Stop</button>
                         <button class="btn btn-primary btn-sm" id="rec-download-btn" onclick="downloadSelectedRecordings()" title="Download MP3s for selected items that already have one" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">⬇ Download</button>
                     </th>
-                    <th style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
+                    <th class="rec-col-tx" style="background:#fafafa;border-bottom:0;padding:6px 4px;text-align:center;">
                         <button class="btn btn-primary btn-sm" id="rec-upload-btn" onclick="uploadCaptionsBulkFromHeader(this)" style="background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;" title="Upload transcripts as YouTube captions for selected rows; if none selected, prompts to upload all queued">↑ Upload</button>
                         <button class="btn btn-primary btn-sm" id="rec-tx-generate-btn" onclick="openGenerateStudio()" title="Generate baselines + build editable transcripts for selected rows" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">&#9881; Generate</button>
                         <button class="btn btn-primary btn-sm" id="rec-tx-download-btn" onclick="downloadSelectedTranscripts()" title="Download .vtt files for selected items whose transcript is Approved, Reviewed, or already Uploaded" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">⬇ Download</button>
                     </th>
-                    <th colspan="5" style="background:#fafafa;border-bottom:0;"></th>
+                    <th colspan="5" id="rec-action-tail" style="background:#fafafa;border-bottom:0;"></th>
                 </tr>
                 <tr>
                     <th style="width:36px;vertical-align:top;"><input type="checkbox" id="rec-select-all" onchange="toggleAllRecordings(this.checked)" title="Select all on this page"></th>
@@ -308,7 +337,7 @@
                             <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
                         </div>
                     </th>
-                    <th style="width:140px;" title="Transcript / caption-upload state">
+                    <th class="rec-col-tx" style="width:140px;" title="Transcript / caption-upload state">
                         <span>Transcript</span>
                         <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;font-weight:normal;">
                             <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-captions" value="captions" onchange="loadRecordings(1)" title="Transcript has been uploaded to YouTube as a caption track and is current (no later review)"> Captions</label>
@@ -327,14 +356,14 @@
                         </div>
                     </th>
                     <th style="width:260px;">
-                        <span title="Items sections whose pool holds this item. Green = live, grey = section or page inactive.">On Pages</span>
+                        <span title="Items sections whose pool holds this item. Green = live, grey = section or page inactive.">Pages</span>
                         <div id="rec-f-pages" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:160px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
                             <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
                     </th>
                     <th style="width:220px;">
                         <span>Categories</span>
-                        <div id="rec-f-categories" class="rec-status-checks" onclick="event.stopPropagation()" style="display:grid;grid-template-columns:1fr 1fr;column-gap:8px;max-height:96px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                        <div id="rec-f-categories" class="rec-status-checks" onclick="event.stopPropagation()" style="max-height:220px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
                             <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
                     </th>
@@ -342,7 +371,7 @@
                         <span>Episode</span><br>
                         <input type="text" class="rec-filter" id="rec-f-episode" oninput="recDebouncedReload()" placeholder="…" onclick="event.stopPropagation()">
                     </th>
-                    <th style="width:60px;text-align:right;"></th>
+                    <th class="rec-col-actions" style="width:60px;text-align:right;"></th>
                 </tr>
             </thead>
             <tbody id="rec-body"></tbody>
@@ -411,8 +440,43 @@
     </div>
 </div>
 
-<script src="js/admin-links.js?v=4"></script>
+<script src="js/admin-links.js?v=5"></script>
 <script src="js/admin-ui-state.js?v=1"></script>
+<script>
+// Chores → MP3s / Transcripts run this page's Items tab with their own saved
+// state (scope chores-<tab> instead of feeds) and their own first-visit
+// defaults. A row with an MP3 is always Recording "Complete", so Transcripts
+// starts on Complete (Feeds' Partial + New would always be empty).
+(function () {
+    var tab = window.CHORES_TAB;
+    if (!tab || !window.adminUI) return;
+    var CHECKS = {
+        mp3:         { 'rec-f-mp3-yes': false, 'rec-f-mp3-no': true },
+        transcripts: { 'rec-f-mp3-yes': true, 'rec-f-mp3-no': false,
+                       'rec-f-status-complete': true, 'rec-f-status-partial': false, 'rec-f-status-new': false }
+    }[tab] || {};
+    var DEFAULTS = {
+        mp3: { recFilters: { feed: '', mp3Yes: false, mp3No: true, sComplete: false, sPartial: true, sNew: true,
+                             iActive: true, iRestricted: false, iInactive: false, perPage: 10 } },
+        transcripts: { recSort: 'published', recDir: 'asc', recSortKeys: [{ col: 'published', dir: 'asc' }],
+                       recFilters: { feed: '', mp3Yes: true, mp3No: false, sComplete: true, sPartial: false, sNew: false,
+                                     iActive: true, iRestricted: false, iInactive: false, perPage: 50 } }
+    }[tab] || {};
+    var scope = function (page) { return String(page).replace(/^feeds/, 'chores2-' + tab); };
+    var save = adminUI.save, load = adminUI.load, clear = adminUI.clear;
+    adminUI.save = function (page, k, v) { return save.call(adminUI, scope(page), k, v); };
+    adminUI.load = function (page, k, def) {
+        var v = load.call(adminUI, scope(page), k, undefined);
+        if (v === undefined && page === 'feeds' && DEFAULTS.hasOwnProperty(k)) return JSON.parse(JSON.stringify(DEFAULTS[k]));
+        return v === undefined ? def : v;
+    };
+    adminUI.clear = function (page) { return clear.call(adminUI, page ? scope(page) : page); };
+    // "Clear filters" goes back to this tab's defaults, not Feeds'.
+    window.choresResetRecFilters = function () {
+        Object.keys(CHECKS).forEach(function (id) { var el = document.getElementById(id); if (el) el.checked = CHECKS[id]; });
+    };
+})();
+</script>
 <script src="/js/admin-login.js?v=8"></script>
 <script src="/js/multi-sort.js?v=1"></script>
 <script>
@@ -491,7 +555,7 @@ function catLabel(c) {
 // Header text for an Items section's category group: "Page" when the page has
 // one categorized section, "Page · section" otherwise.
 function categoryGroupLabel(c, multi) {
-    var pg = c.page_title || c.page_code || '?';
+    var pg = _pageLabel(c);
     if (!multi) return pg;
     var sp = (_secPages || []).find(function(x) { return x.section_key == c.section_key; });
     return pg + ' · ' + ((sp && _sectionName(sp, 28)) || ('#' + c.section_key));
@@ -741,13 +805,11 @@ function loadItems(page) {
                 if (!secsByPage[sp.page_key]) { secsByPage[sp.page_key] = []; pageOrder.push(sp); }
                 secsByPage[sp.page_key].push(sp);
             });
-            pageOrder.forEach(function(pg) {
+            _homeFirst(pageOrder).forEach(function(pg) {
                 var secs = secsByPage[pg.page_key];
-                pOpts += '<option value="page:' + pg.page_key + '">' + esc(pg.page_title || pg.page_code)
-                    + (!_isOn(pg.page_active_flag) ? ' (inactive)' : '') + '</option>';
+                pOpts += '<option value="page:' + pg.page_key + '">' + esc(_pageLabel(pg)) + '</option>';
                 if (secs.length > 1) secs.forEach(function(sp) {
-                    pOpts += '<option value="sec:' + sp.section_key + '">&nbsp;&nbsp;&nbsp;' + esc(_sectionName(sp, 34) || 'Section #' + sp.section_key)
-                        + (!_isOn(sp.section_active_flag) ? ' (inactive)' : '') + '</option>';
+                    pOpts += '<option value="sec:' + sp.section_key + '">&nbsp;&nbsp;&nbsp;' + esc(_sectionName(sp, 34) || 'Section #' + sp.section_key) + '</option>';
                 });
             });
             _pageFilterOpts = pOpts;
@@ -768,7 +830,7 @@ function loadItems(page) {
             + '<th style="' + ths + '" onclick="sortItems(\'feed_name\', event)" title="Shift+click to add as a secondary sort">Feed' + iarr('feed_name') + '<br>' + buildFeedFilterDropdown() + '</th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_title\', event)" title="Shift+click to add as a secondary sort">Title' + iarr('feed_item_title') + '<br><input type="text" id="filter-title" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_tags\', event)" title="Shift+click to add as a secondary sort">Tags' + iarr('feed_item_tags') + '<br><input type="text" id="filter-tags" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\')loadItems(1)"></th>'
-            + '<th title="Items sections whose pool holds this item. Green = live, grey = section or page inactive.">On Pages<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
+            + '<th title="Items sections whose pool holds this item. Green = live, grey = section or page inactive.">Pages<br><select id="filter-page" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="onPageFilterChange()">' + _pageFilterOpts + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'category_title\', event)" title="Shift+click to add as a secondary sort">Category' + iarr('category_title') + '<br><select id="filter-category" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="_savedFilters.category=this.value;loadItems(1)">' + _catFilterOptsFiltered + '</select></th>'
             + '<th style="' + ths + '" onclick="sortItems(\'feed_item_episode\', event)" title="Shift+click to add as a secondary sort">Episode' + iarr('feed_item_episode') + '<br><input type="text" id="filter-episode" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px 4px;border:1px solid #ddd;border-radius:3px;box-sizing:border-box;" onclick="event.stopPropagation()" oninput="if(this.value===\'\')loadItems(1)" onkeydown="if(event.key===\'Enter\'){_savedFilters.episode=this.value;loadItems(1);}"></th>'
             + '<th>MP3<br><select id="filter-mp3" style="font-size:0.7rem;font-weight:normal;width:100%;padding:2px;border:1px solid #ddd;border-radius:3px;" onclick="event.stopPropagation()" onchange="loadItems(1)"><option value="">All</option><option value="yes">Yes</option><option value="no">No</option></select></th>'
@@ -862,6 +924,12 @@ function checkAuth() {
                 var hashTab = (location.hash || '').replace(/^#/, '');
                 var savedTab = window.adminUI ? adminUI.load('feeds', 'tab', 'sources') : 'sources';
                 var targetTab = hashTab || savedTab;
+                if (window.CHORES_TAB) {
+                    // Chores tabs are the Items tab minus the Edit (and, for
+                    // MP3s, Transcript) column, so the button row spans 4.
+                    targetTab = 'recordings';
+                    document.getElementById('rec-action-tail').colSpan = 4;
+                }
                 if (targetTab && targetTab !== 'sources' && document.querySelector('.sub-tab[onclick*="' + targetTab + '"]')) {
                     switchFeedTab(targetTab);
                 }
@@ -917,6 +985,17 @@ function _pageHref(p) {
 }
 
 // Plain-text, truncated name for an Items section (section_title is rich HTML);
+// Display name for a page in filters/headers: the home page (page_code
+// 'home', titled "Yada Yahowah") reads as "Home". DB title is untouched.
+function _pageLabel(p) {
+    return p.page_code === 'home' ? 'Home' : (p.page_title || p.page_code || '?');
+}
+// Pages with the home page moved to the front (lists are ordered by title).
+function _homeFirst(list) {
+    return list.filter(function(p) { return p.page_code === 'home'; })
+        .concat(list.filter(function(p) { return p.page_code !== 'home'; }));
+}
+
 // '' when the section has neither label nor title.
 function _sectionName(s, max) {
     var sec = new DOMParser().parseFromString(s.section_label || s.section_title || '', 'text/html').body.textContent || '';
@@ -931,7 +1010,7 @@ function _sectionName(s, max) {
 function sectionChip(s) {
     var live = _isOn(s.section_active_flag) && _isOn(s.page_active_flag);
     var sec = _sectionName(s, 28);
-    var tip = 'Page: ' + (s.page_title || s.page_code || '?') + '\nItems section: ' + (sec || 'unnamed') + ' (#' + s.section_key + ')'
+    var tip = 'Page: ' + _pageLabel(s) + '\nItems section: ' + (sec || 'unnamed') + ' (#' + s.section_key + ')'
         + (!_isOn(s.page_active_flag) ? '\nPage is INACTIVE' : '')
         + (!_isOn(s.section_active_flag) ? '\nSection is INACTIVE' : '');
     return '<a class="use-chip' + (live ? '' : ' off') + '" href="' + esc(_pageHref(s)) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">'
@@ -2777,6 +2856,8 @@ function recClearFilters() {
     });
     document.querySelectorAll('#rec-f-pages input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
     document.querySelectorAll('#rec-f-categories input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
+    recCatCounts();
+    if (window.choresResetRecFilters) window.choresResetRecFilters();
     loadRecordings(1);
 }
 // Parse "H:MM:SS" / "MM:SS" / "SS" / "1:30" → seconds. Returns null if blank.
@@ -2891,7 +2972,7 @@ function populateRecPageFilter(pages, currentSelections) {
         var checked = sel[String(p.page_key)] ? ' checked' : '';
         html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
               + '<input type="checkbox" value="' + p.page_key + '" onchange="loadRecordings(1)"' + checked + '> '
-              + esc(p.page_title || p.page_code) + (!_isOn(p.page_active_flag) ? ' <span style="color:#999;">(inactive)</span>' : '')
+              + esc(_pageLabel(p))
               + '</label>';
     });
     box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no pages</em>';
@@ -2904,15 +2985,40 @@ function populateRecCategoryFilter(cats, currentSelections) {
     box.dataset.count = String(cats.length);
     var sel = {};
     (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
-    var html = '';
+    // One collapsible group per Items section (Home first), collapsed unless
+    // it holds a ticked category.
+    var groups = [], bySec = {}, secsPerPage = {};
     cats.forEach(function(c) {
-        var checked = sel[String(c.category_key)] ? ' checked' : '';
-        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
-              + '<input type="checkbox" value="' + c.category_key + '" onchange="loadRecordings(1)"' + checked + '> '
-              + esc(c.category_title) + ' <span style="color:#999;">' + esc(c.page_code || '') + '</span>'
-              + '</label>';
+        (secsPerPage[c.page_key] = secsPerPage[c.page_key] || {})[c.section_key] = 1;
+        if (!bySec[c.section_key]) { bySec[c.section_key] = []; groups.push(c); }
+        bySec[c.section_key].push(c);
+    });
+    var html = '';
+    _homeFirst(groups).forEach(function(g) {
+        var list = bySec[g.section_key];
+        var multi = Object.keys(secsPerPage[g.page_key] || {}).length > 1;
+        var inner = '', nOn = 0;
+        list.forEach(function(c) {
+            var on = !!sel[String(c.category_key)];
+            if (on) nOn++;
+            inner += '<label>'
+                  + '<input type="checkbox" value="' + c.category_key + '" onchange="recCatCounts();loadRecordings(1)"' + (on ? ' checked' : '') + '> '
+                  + esc(c.category_title) + '</label>';
+        });
+        html += '<details' + (nOn ? ' open' : '') + '><summary>' + esc(categoryGroupLabel(g, multi))
+              + ' <span class="cat-n"></span></summary><div class="cat-grp">' + inner + '</div></details>';
     });
     box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no categories</em>';
+    recCatCounts();
+}
+// Refresh each Categories group's "(ticked/total)" count in its summary.
+function recCatCounts() {
+    document.querySelectorAll('#rec-f-categories details').forEach(function(d) {
+        var all = d.querySelectorAll('input[type=checkbox]');
+        var on = d.querySelectorAll('input[type=checkbox]:checked').length;
+        var n = d.querySelector('.cat-n');
+        if (n) { n.textContent = on ? '(' + on + '/' + all.length + ')' : '(' + all.length + ')'; n.classList.toggle('on', on > 0); }
+    });
 }
 function populateRecFeedFilter(feeds, current) {
     var sel = document.getElementById('rec-f-feed');
@@ -3087,8 +3193,11 @@ function renderRecordings(d) {
             +     '</tr>';
     });
     body.innerHTML = html;
-    document.getElementById('rec-select-all').checked = false;
-    updateProcessSelectedLabel();
+    // Chores → MP3s starts with every loaded row ticked.
+    var allOn = window.CHORES_TAB === 'mp3';
+    document.getElementById('rec-select-all').checked = allOn;
+    if (allOn) toggleAllRecordings(true);
+    else updateProcessSelectedLabel();
 }
 function toggleAllRecordings(on) {
     // Skip disabled (in-progress) checkboxes — toggling them does nothing

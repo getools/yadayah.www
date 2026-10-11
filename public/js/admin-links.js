@@ -80,6 +80,7 @@
 // Admin page permission filtering
 // Maps nav link href to yy_setting.setting_code
 var PAGE_SETTING_MAP = {
+    'admin-chores.html': 'chores',
     'admin-site.html': 'site',
     'admin-translation.html': 'glossary.translations',
     'admin-series.html': 'books.series',
