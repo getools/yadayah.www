@@ -1,4 +1,25 @@
 /* admin-nav.js — single source for the admin navigation toolbar */
+
+// Define safeJson here (loaded before inline scripts) so it is always
+// available when checkAuth() fires its fetch callback, even on pages where
+// admin-login.js is loaded after the inline script block.
+if (!window.safeJson) {
+    window.safeJson = function(response) {
+        if (!response.ok) {
+            return response.text().then(function(text) {
+                var err = { error: 'HTTP ' + response.status + ': ' + (text || response.statusText).substring(0, 200) };
+                try { var j = JSON.parse(text); if (j.error) err.error = j.error; } catch(e) {}
+                return err;
+            });
+        }
+        return response.text().then(function(text) {
+            if (!text || !text.trim()) return { error: 'Empty response from server' };
+            try { return JSON.parse(text); }
+            catch(e) { return { error: 'Invalid JSON: ' + text.substring(0, 100) }; }
+        });
+    };
+}
+
 (function() {
 'use strict';
 
