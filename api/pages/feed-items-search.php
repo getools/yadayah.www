@@ -36,7 +36,7 @@ if ($keys !== '') {
     // Scope the typeahead to the SAME filters the Items section uses, so a
     // pinned title is always an item the section would actually display.
     // The editor passes the section config fields as query params; feed_keys
-    // arrives comma-separated and pages as a JSON array.
+    // arrives comma-separated.
     $cfg = [
         'content_type'     => $_GET['content_type']    ?? '',
         'orientation'      => $_GET['orientation']      ?? '',
@@ -52,9 +52,8 @@ if ($keys !== '') {
     if (!empty($_GET['feed_keys'])) {
         $cfg['feed_keys'] = array_values(array_filter(array_map('intval', explode(',', $_GET['feed_keys']))));
     }
-    if (!empty($_GET['pages'])) {
-        $decoded = json_decode($_GET['pages'], true);
-        if (is_array($decoded)) $cfg['pages'] = $decoded;
+    if (!empty($_GET['include_categorized_section'])) {
+        $cfg['include_categorized_section'] = (int)$_GET['include_categorized_section'];
     }
     appendItemsSectionFilters($cfg, $where, $params);
 } else {

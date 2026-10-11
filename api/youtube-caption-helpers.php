@@ -183,13 +183,10 @@ function ytCaptionsFetchChannel(string $accessToken, ?string $fallbackHandle = n
 
 /**
  * Render a feed_item's transcript as SRT text. Returns null if the item
- * has no segments. Each cue overlaps the next by ~1 second so YouTube's
- * player runs the scrolling/rolling caption transition instead of cutting
- * abruptly between cues. The DB-stored segment timings are unchanged —
- * the overlap is applied only at upload time.
- *
- * For non-last cues:  end = nextStart + overlap
- * For the last cue:   end = feed_item_duration_seconds (or start + 5s)
+ * has no segments. Since 2026-10-11 the cues are ROLLING two-line captions
+ * (see ytCaptionsRollingCues) with millisecond times; until then each cue
+ * overlapped the next by 1s and every time was truncated to a whole second.
+ * The DB-stored segment timings are unchanged — layout happens at upload time.
  *
  * SRT format:
  *   1
@@ -199,7 +196,60 @@ function ytCaptionsFetchChannel(string $accessToken, ?string $fallbackHandle = n
  *   2
  *   ...
  */
-const YT_CAPTIONS_OVERLAP_SECONDS = 1;
+const YT_CAPTIONS_OVERLAP_SECONDS = 1;   // legacy (pre-2026-10-11 overlap mode); no longer used by the upload
+const YT_CAPTIONS_ROLL_MAX_CHARS = 42;   // one YouTube caption line
+const YT_CAPTIONS_ROLL_STALE_SECS = 4;   // after a longer pause, a new cue starts without the old line
+
+/**
+ * Rolling two-line captions (2026-10-11) — the scroll style YouTube's own
+ * auto-captions use, mirrored from the editor's "YouTube" download
+ * (_buildYouTubeRolling in admin-feeds.html). Each transcript row is wrapped
+ * into display lines of <= 42 chars; each display line gets its own start (the
+ * row's span split in proportion to characters); every cue shows the PREVIOUS
+ * display line on top and the new one underneath, so text scrolls up a line at
+ * a time. The previous line is dropped after a real pause (> 4s, measured from
+ * when that line was plausibly finished being spoken). Times keep milliseconds.
+ * Returns [['start' => float, 'end' => float, 'text' => "line1\nline2"], ...].
+ */
+function ytCaptionsRollingCues(array $rows, float $totalSeconds = 0.0): array {
+    $wrap = function (string $text): array {
+        $out = []; $cur = '';
+        foreach (preg_split('/\s+/u', trim($text)) as $w) {
+            if ($w === '') continue;
+            if ($cur !== '' && mb_strlen($cur . ' ' . $w) > YT_CAPTIONS_ROLL_MAX_CHARS) { $out[] = $cur; $cur = $w; }
+            else $cur = ($cur === '') ? $w : $cur . ' ' . $w;
+        }
+        if ($cur !== '') $out[] = $cur;
+        return $out;
+    };
+    $lines = [];
+    $n = count($rows);
+    for ($i = 0; $i < $n; $i++) {
+        $start = ytCaptionsHmsToSeconds((string)$rows[$i]['feed_item_transcript_segment']);
+        $end = ($i + 1 < $n) ? ytCaptionsHmsToSeconds((string)$rows[$i + 1]['feed_item_transcript_segment'])
+                             : ($totalSeconds > $start ? min($totalSeconds, $start + 8) : $start + 5);
+        if ($end <= $start) $end = $start + 2;
+        $parts = $wrap((string)$rows[$i]['feed_item_transcript_text']);
+        $total = 0; foreach ($parts as $p) $total += mb_strlen($p) + 1;
+        $t = $start;
+        foreach ($parts as $p) {
+            $d = ($end - $start) * (mb_strlen($p) + 1) / max(1, $total);
+            $lines[] = ['start' => $t, 'slot' => $t + $d, 'spoken' => $t + min($d, mb_strlen($p) / 12 + 1), 'text' => $p];
+            $t += $d;
+        }
+    }
+    $cues = [];
+    $m = count($lines);
+    for ($j = 0; $j < $m; $j++) {
+        $cs = $lines[$j]['start'];
+        $ce = ($j + 1 < $m) ? $lines[$j + 1]['start'] : $lines[$j]['slot'];
+        if ($totalSeconds > 0 && $ce > $totalSeconds) $ce = $totalSeconds;
+        if ($ce <= $cs) $ce = $cs + 1;
+        $prev = ($j > 0 && $cs - $lines[$j - 1]['spoken'] <= YT_CAPTIONS_ROLL_STALE_SECS) ? $lines[$j - 1]['text'] . "\n" : '';
+        $cues[] = ['start' => $cs, 'end' => $ce, 'text' => $prev . $lines[$j]['text']];
+    }
+    return $cues;
+}
 
 function ytCaptionsBuildSrt(PDO $db, int $feedItemKey): ?string {
     $stmt = $db->prepare("
@@ -209,53 +259,47 @@ function ytCaptionsBuildSrt(PDO $db, int $feedItemKey): ?string {
          ORDER BY feed_item_transcript_sort
     ");
     $stmt->execute([$feedItemKey]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = array_values(array_filter($stmt->fetchAll(PDO::FETCH_ASSOC),
+        fn($r) => trim((string)$r['feed_item_transcript_text']) !== ''));
     if (!$rows) return null;
 
-    // Total duration for the LAST row's end-time fallback + overlap clamp.
+    // Total duration clamps the last cue.
     $durStmt = $db->prepare("SELECT feed_item_duration_seconds FROM yy_feed_item WHERE feed_item_key = ?");
     $durStmt->execute([$feedItemKey]);
-    $totalSeconds = (int)($durStmt->fetchColumn() ?: 0);
+    $totalSeconds = (float)($durStmt->fetchColumn() ?: 0);
 
+    // Rolling two-line cues (replaced the 1s-overlap trick on 2026-10-11:
+    // the rolling layout does the scrolling itself, and times now keep ms —
+    // the old builder truncated every timestamp to a whole second).
     $srt = '';
-    $n = count($rows);
-    for ($i = 0; $i < $n; $i++) {
-        $startSec = ytCaptionsHmsToSeconds((string)$rows[$i]['feed_item_transcript_segment']);
-        if ($i + 1 < $n) {
-            $nextStart = ytCaptionsHmsToSeconds((string)$rows[$i + 1]['feed_item_transcript_segment']);
-            // Extend this cue past the next cue's start so the two
-            // overlap — that's what triggers YouTube's smooth scroll
-            // animation between captions.
-            $endSec = $nextStart + YT_CAPTIONS_OVERLAP_SECONDS;
-        } else {
-            $endSec = $totalSeconds > $startSec ? $totalSeconds : $startSec + 5;
-        }
-        // Don't run past the video end on the last cue or the overlap.
-        if ($totalSeconds > 0 && $endSec > $totalSeconds) $endSec = $totalSeconds;
-        // Clamp end > start; SRT players choke on zero-length cues.
-        if ($endSec <= $startSec) $endSec = $startSec + 1;
+    foreach (ytCaptionsRollingCues($rows, $totalSeconds) as $i => $c) {
         $srt .= ($i + 1) . "\n"
-             . ytCaptionsSecondsToSrt($startSec) . ' --> ' . ytCaptionsSecondsToSrt($endSec) . "\n"
-             . trim((string)$rows[$i]['feed_item_transcript_text']) . "\n\n";
+             . ytCaptionsSecondsToSrt($c['start']) . ' --> ' . ytCaptionsSecondsToSrt($c['end']) . "\n"
+             . $c['text'] . "\n\n";
     }
     return $srt;
 }
 
-function ytCaptionsHmsToSeconds(string $hms): int {
-    // Accepts "HH:MM:SS" or "MM:SS" or just seconds.
-    $parts = explode(':', $hms);
-    $secs = 0;
+/** "HH:MM:SS(.fff)" / "MM:SS" / seconds → float seconds (keeps milliseconds; was int-truncating before 2026-10-11). */
+function ytCaptionsHmsToSeconds(string $hms): float {
+    $parts = explode(':', trim($hms));
+    $secs = 0.0;
     foreach ($parts as $p) {
-        $secs = $secs * 60 + (int)$p;
+        $secs = $secs * 60 + (float)$p;
     }
     return $secs;
 }
 
-function ytCaptionsSecondsToSrt(int $totalSec): string {
-    $h = intdiv($totalSec, 3600);
-    $m = intdiv($totalSec % 3600, 60);
-    $s = $totalSec % 60;
-    return sprintf('%02d:%02d:%02d,000', $h, $m, $s);
+/** float seconds → SRT "HH:MM:SS,mmm". */
+function ytCaptionsSecondsToSrt(float $totalSec): string {
+    if ($totalSec < 0) $totalSec = 0;
+    $ms = (int)round($totalSec * 1000);
+    return sprintf('%02d:%02d:%02d,%03d', intdiv($ms, 3600000), intdiv($ms % 3600000, 60000), intdiv($ms % 60000, 1000), $ms % 1000);
+}
+
+/** float seconds → VTT "HH:MM:SS.mmm". */
+function ytCaptionsSecondsToVtt(float $totalSec): string {
+    return str_replace(',', '.', ytCaptionsSecondsToSrt($totalSec));
 }
 
 /**

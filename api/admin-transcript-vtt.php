@@ -55,7 +55,7 @@ if (!$rows) {
     exit;
 }
 
-$totalSeconds = (int)($item['feed_item_duration_seconds'] ?? 0);
+$totalSeconds = (float)($item['feed_item_duration_seconds'] ?? 0);
 
 // Filename: slugified title, max 120 chars, plus the feed_item_key suffix
 // so identical-titled items never collide.
@@ -67,11 +67,9 @@ if (strlen($slug) > 120) $slug = substr($slug, 0, 120);
 $filename = $slug . '-' . $key . '.vtt';
 
 // VTT seconds-to-timestamp: HH:MM:SS.mmm (period decimal, not comma).
-$fmt = function (int $totalSec): string {
-    $h = intdiv($totalSec, 3600);
-    $m = intdiv($totalSec % 3600, 60);
-    $s = $totalSec % 60;
-    return sprintf('%02d:%02d:%02d.000', $h, $m, $s);
+// Keeps milliseconds (2026-10-11; was truncated to whole seconds).
+$fmt = function (float $totalSec): string {
+    return ytCaptionsSecondsToVtt($totalSec);
 };
 
 header('Content-Type: text/vtt; charset=utf-8');

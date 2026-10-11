@@ -50,11 +50,9 @@ $rowsStmt = $db->prepare("
 ");
 
 // Reused inline (mirror of admin-transcript-vtt.php's fmt closure).
-$fmt = function (int $totalSec): string {
-    $h = intdiv($totalSec, 3600);
-    $m = intdiv($totalSec % 3600, 60);
-    $s = $totalSec % 60;
-    return sprintf('%02d:%02d:%02d.000', $h, $m, $s);
+// Keeps milliseconds (2026-10-11; was truncated to whole seconds).
+$fmt = function (float $totalSec): string {
+    return ytCaptionsSecondsToVtt($totalSec);
 };
 
 $slugify = function (string $s): string {
@@ -84,7 +82,7 @@ foreach ($keys as $key) {
     $rows = $rowsStmt->fetchAll(PDO::FETCH_ASSOC);
     if (!$rows) continue;
 
-    $totalSeconds = (int)($item['feed_item_duration_seconds'] ?? 0);
+    $totalSeconds = (float)($item['feed_item_duration_seconds'] ?? 0);
     $vtt = "WEBVTT\n\n";
     $n = count($rows);
     for ($i = 0; $i < $n; $i++) {
