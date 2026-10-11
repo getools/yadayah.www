@@ -16,6 +16,19 @@
         .sessions-table tr.selected { background: #e8edff; }
         .sessions-table .ua { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sessions-table .num { text-align: right; }
+        #sessions-table th.ms-sortable { cursor: pointer; white-space: nowrap; }
+        #sessions-table th.ms-sortable:hover { background: #ebebeb; }
+        #sessions-table tr.filter-row th { background: #fafafa; padding: 4px 6px; top: 33px; z-index: 1; }
+        #sessions-table tr.filter-row input, #sessions-table tr.filter-row select { width: 100%; min-width: 60px; box-sizing: border-box; padding: 3px 5px; font-size: 0.78rem; font-weight: normal; border: 1px solid #ccc; border-radius: 3px; background: #fff; }
+        #sessions-table tr.filter-row input.bad { border-color: #c0392b; background: #fdecea; }
+        #sessions-table tbody.loading-rows { opacity: 0.45; }
+        .review-btn { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; min-width: 112px; padding: 4px 10px; border: 1px solid rgba(0,0,0,0.15); border-radius: 5px; cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 600; color: #333; line-height: 1.25; }
+        .review-btn small { font-size: 0.7rem; font-weight: normal; color: #555; white-space: nowrap; }
+        .review-btn:hover { filter: brightness(0.95); border-color: rgba(0,0,0,0.3); }
+        .review-btn.rv-none { background: #dcebfa; }
+        .review-btn.rv-some { background: #f1e3c6; }
+        .review-btn.rv-all  { background: #d6f0d8; }
+        .sessions-hint { font-size: 0.75rem; color: #999; margin: -6px 0 6px; }
 
         /* Popover overlay */
         .popover-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: flex-start; padding: 40px 20px; overflow-y: auto; }
@@ -308,6 +321,7 @@
 </div>
 
 <script src="js/admin-links.js?v=4"></script>
+<script src="/js/multi-sort.js?v=1"></script>
 <script src="/api/site-fonts.js.php"></script>
 <script src="js/tinymce/tinymce.min.js"></script>
 <script src="/js/admin-fonts-tinymce.js?v=5"></script>
@@ -771,41 +785,177 @@ function loadBannedIPs() {
         });
 }
 
-function loadSessions(page) {
+// Sessions table: server-side sort (sorts=col:dir,…) + per-column filters.
+var SESS_SORT_DEFAULT = [{col: 'date', dir: 'desc'}];
+var _sessSort = SESS_SORT_DEFAULT.slice();
+var _sessFilters = {};
+var _sessModels = [];
+var _sessReq = 0;
+var _sessFilterTimer = null;
+var _reviewDirty = false;
+try {
+    _sessSort = MultiSort.parse(sessionStorage.getItem('askSessSort')) || SESS_SORT_DEFAULT.slice();
+    _sessFilters = JSON.parse(sessionStorage.getItem('askSessFilters') || '{}') || {};
+} catch (e) {}
+
+var SESS_COLS = [
+    {col: 'date',     label: 'Date/Time', filter: 'f_date',     ph: 'YYYY-MM-DD'},
+    {col: 'user',     label: 'User',      filter: 'f_user',     ph: 'Name / email'},
+    {col: 'ip',       label: 'IP',        filter: 'f_ip',       ph: 'IP'},
+    {col: 'location', label: 'Location',  filter: 'f_location', ph: 'City / country'},
+    {col: 'model',    label: 'Model',     filter: 'f_model',    select: 'model'},
+    {col: 'qs',       label: 'Qs',        filter: 'f_qs',       ph: '>2', num: true, dflt: 'desc'},
+    {col: 'tokens',   label: 'Tokens',    filter: 'f_tokens',   ph: '>10000', num: true, dflt: 'desc'},
+    {col: 'duration', label: 'Duration',  filter: 'f_duration', ph: 'secs >60', num: true, dflt: 'desc'},
+    {col: 'review',   label: 'Review',    filter: 'f_review',   select: 'review', dflt: 'desc', center: true}
+];
+
+function saveSessPrefs() {
+    try {
+        sessionStorage.setItem('askSessSort', JSON.stringify(_sessSort));
+        sessionStorage.setItem('askSessFilters', JSON.stringify(_sessFilters));
+    } catch (e) {}
+}
+
+function sessionsQuery(page) {
+    var q = 'page=' + page + '&limit=50&sorts=' + encodeURIComponent(MultiSort.toParam(_sessSort));
+    Object.keys(_sessFilters).forEach(function(k) {
+        if (_sessFilters[k] !== '' && _sessFilters[k] != null) q += '&' + k + '=' + encodeURIComponent(_sessFilters[k]);
+    });
+    return q;
+}
+
+// keepDetail: refresh the list without closing the open session popover.
+function loadSessions(page, keepDetail) {
     currentPage = page;
-    document.getElementById('sessions-container').innerHTML = '<div class="loading">Loading sessions...</div>';
-    closeDetail();
+    var reqId = ++_sessReq;
+    var tbody = document.querySelector('#sessions-table tbody');
+    if (tbody) tbody.classList.add('loading-rows');
+    else document.getElementById('sessions-container').innerHTML = '<div class="loading">Loading sessions...</div>';
+    if (!keepDetail) closeDetail();
 
     // Load banned IPs and sessions in parallel
     Promise.all([
         loadBannedIPs(),
-        fetch(API + '/ask-sessions.php?page=' + page + '&limit=50', {credentials:'include'}).then(function(r) { return safeJson(r); })
+        fetch(API + '/ask-sessions.php?' + sessionsQuery(page), {credentials:'include'}).then(function(r) { return safeJson(r); })
     ]).then(function(results) {
+        if (reqId !== _sessReq) return;   // a newer sort/filter request superseded this one
         var d = results[1];
-        if (d.error) { document.getElementById('sessions-container').innerHTML = '<div class="empty-state">' + d.error + '</div>'; return; }
+        if (d.error) {
+            var tb = document.querySelector('#sessions-table tbody');
+            if (tb) { tb.classList.remove('loading-rows'); tb.innerHTML = '<tr><td colspan="' + SESS_COLS.length + '" class="empty-state">' + esc(d.error) + '</td></tr>'; }
+            else document.getElementById('sessions-container').innerHTML = '<div class="empty-state">' + esc(d.error) + '</div>';
+            return;
+        }
+        if (d.page > d.total_pages) { loadSessions(d.total_pages, keepDetail); return; }
+        _sessModels = d.models || [];
         renderStats(d);
-        renderSessions(d.sessions);
+        renderSessions(d.sessions || []);
         renderPagination(d.page, d.total_pages);
     });
 }
 
 function renderStats(d) {
+    var filtered = d.filtered != null ? d.filtered : d.total;
     document.getElementById('stats-bar').innerHTML =
-        '<span><strong>' + d.total + '</strong> total sessions</span>' +
+        (filtered !== d.total
+            ? '<span><strong>' + filtered + '</strong> of <strong>' + d.total + '</strong> sessions match the filters</span>'
+            : '<span><strong>' + d.total + '</strong> total sessions</span>') +
         '<span>Page <strong>' + d.page + '</strong> of <strong>' + d.total_pages + '</strong></span>';
 }
 
-function renderSessions(sessions) {
-    if (!sessions.length) {
-        document.getElementById('sessions-container').innerHTML = '<div class="empty-state">No sessions found.</div>';
+function sessFilterCell(c) {
+    var v = _sessFilters[c.filter] || '';
+    if (c.select === 'review') {
+        var opts = [['', 'All'], ['pending', 'Not complete'], ['none', 'None done'], ['some', 'Some done'], ['all', 'All done']];
+        return '<select data-f="' + c.filter + '" onchange="sessFilterChanged(this, true)">' +
+            opts.map(function(o) { return '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+            '</select>';
+    }
+    if (c.select === 'model') {
+        return '<select data-f="' + c.filter + '" id="sess-model-filter" onchange="sessFilterChanged(this, true)"></select>';
+    }
+    return '<input type="text" data-f="' + c.filter + '" value="' + esc(v) + '" placeholder="' + esc(c.ph || '') + '"' +
+        (c.num ? ' title="A number, or &gt;5, &lt;=10, 3-8"' : '') + ' oninput="sessFilterChanged(this)" onkeydown="if(event.key===\'Enter\')sessFilterChanged(this, true)">';
+}
+
+function fillModelFilter() {
+    var sel = document.getElementById('sess-model-filter');
+    if (!sel) return;
+    var v = _sessFilters.f_model || '';
+    var list = _sessModels.slice();
+    if (v && v !== '(none)' && list.indexOf(v) < 0) list.push(v);
+    sel.innerHTML = '<option value="">All</option>' +
+        list.map(function(m) { return '<option value="' + esc(m) + '"' + (v === m ? ' selected' : '') + '>' + esc(m) + '</option>'; }).join('') +
+        '<option value="(none)"' + (v === '(none)' ? ' selected' : '') + '>(none)</option>';
+}
+
+function sessFilterChanged(el, now) {
+    var v = el.value.trim();
+    if (v) _sessFilters[el.getAttribute('data-f')] = v;
+    else delete _sessFilters[el.getAttribute('data-f')];
+    el.classList.remove('bad');
+    if (el.tagName === 'INPUT' && /^f_(qs|tokens|duration)$/.test(el.getAttribute('data-f')) && v &&
+        !/^\s*((<=|>=|<|>|=)?\s*[\d,.]+|[\d,.]+\s*-\s*[\d,.]+)\s*$/.test(v)) {
+        el.classList.add('bad');
         return;
     }
-    var html = '<table class="sessions-table"><thead><tr>' +
-        '<th>Date/Time</th><th>User</th><th>IP</th><th>Location</th><th>Model</th><th class="num">Qs</th>' +
-        '<th class="num">Notes</th><th class="num">Rating</th>' +
-        '<th class="num">Tokens</th><th class="num">Duration</th>' +
-        '</tr></thead><tbody>';
+    saveSessPrefs();
+    clearTimeout(_sessFilterTimer);
+    _sessFilterTimer = setTimeout(function() { loadSessions(1); }, now ? 0 : 400);
+}
 
+function sortSessionsBy(col, ev) {
+    var c = SESS_COLS.filter(function(x) { return x.col === col; })[0] || {};
+    _sessSort = MultiSort.click(_sessSort, col, ev, c.dflt || 'asc');
+    saveSessPrefs();
+    loadSessions(1, true);
+}
+
+function clearSessFilters() {
+    _sessFilters = {};
+    saveSessPrefs();
+    var t = document.getElementById('sessions-table');
+    if (t) t.parentNode.removeChild(t);
+    loadSessions(1);
+}
+
+function renderSessionsHead() {
+    var cont = document.getElementById('sessions-container');
+    var head = '<tr>' + SESS_COLS.map(function(c) {
+        return '<th class="ms-sortable' + (c.num ? ' num' : '') + '"' + (c.center ? ' style="text-align:center"' : '') +
+            ' data-col="' + c.col + '" onclick="sortSessionsBy(\'' + c.col + '\', event)">' + c.label +
+            '<span class="ms-arrow"></span></th>';
+    }).join('') + '</tr>';
+    var filters = '<tr class="filter-row">' + SESS_COLS.map(function(c) { return '<th>' + sessFilterCell(c) + '</th>'; }).join('') + '</tr>';
+    cont.innerHTML = '<div class="sessions-hint">' + MultiSort.HINT +
+        ' Review sorts by notes + ratings still pending, then by date. <a href="#" onclick="clearSessFilters();return false;">Clear filters</a></div>' +
+        '<table class="sessions-table" id="sessions-table"><thead>' + head + filters + '</thead><tbody></tbody></table>';
+}
+
+function reviewButtonHtml(s) {
+    var totalQs = parseInt(s.total_questions) || 0;
+    var notes = parseInt(s.notes_done) || 0;
+    var ratings = parseInt(s.ratings_done) || 0;
+    var state = s.review_state || (notes + ratings === 0 && totalQs ? 'none' : (notes === totalQs && ratings === totalQs ? 'all' : 'some'));
+    return '<button type="button" class="review-btn rv-' + state + '" onclick="event.stopPropagation();loadDetail(' + s.ask_session_key + ', this.closest(\'tr\'))">' +
+        'Review<small>' + notes + ' of ' + totalQs + ' Notes</small><small>' + ratings + ' of ' + totalQs + ' Ratings</small></button>';
+}
+
+function renderSessions(sessions) {
+    if (!document.getElementById('sessions-table')) renderSessionsHead();
+    fillModelFilter();
+    var ths = document.querySelectorAll('#sessions-table th[data-col]');
+    for (var t = 0; t < ths.length; t++) {
+        ths[t].querySelector('.ms-arrow').innerHTML = MultiSort.arrowHtml(_sessSort, ths[t].getAttribute('data-col'));
+    }
+    var tbody = document.querySelector('#sessions-table tbody');
+    tbody.classList.remove('loading-rows');
+    if (!sessions.length) {
+        tbody.innerHTML = '<tr><td colspan="' + SESS_COLS.length + '" class="empty-state">No sessions found.</td></tr>';
+        return;
+    }
+    var html = '';
     for (var i = 0; i < sessions.length; i++) {
         var s = sessions[i];
         var dt = formatDateMil(s.ask_session_dtime);
@@ -813,24 +963,20 @@ function renderSessions(sessions) {
         var dur = formatDuration(parseInt(s.total_duration_ms)||0);
         var loc = [s.ip_city, s.ip_region, s.ip_country].filter(Boolean).join(', ');
         var userName = s.ask_user_name || (s.user_key ? 'User #' + s.user_key : '');
-        var pendNotes = parseInt(s.pending_notes) || 0;
-        var pendCorr = parseInt(s.pending_corrections) || 0;
         var totalQs = parseInt(s.total_questions) || parseInt(s.ask_session_question_count) || 0;
-        html += '<tr onclick="loadDetail(' + s.ask_session_key + ', this)" data-key="' + s.ask_session_key + '">' +
+        html += '<tr onclick="loadDetail(' + s.ask_session_key + ', this)" data-key="' + s.ask_session_key + '"' + (s.ask_session_key === selectedKey ? ' class="selected"' : '') + '>' +
             '<td>' + dt + '</td>' +
             '<td>' + (userName ? esc(userName) : '<span style="color:#ccc">—</span>') + '</td>' +
             '<td' + (bannedIPs[s.ip_address] ? ' style="color:#c0392b;font-weight:600;"' : '') + '>' + esc(s.ip_address || '') + (bannedIPs[s.ip_address] ? ' <span style="font-size:0.7rem;background:#c0392b;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;">Banned</span>' : '') + '</td>' +
             '<td>' + esc(loc) + '</td>' +
             '<td>' + esc(s.model || '') + '</td>' +
             '<td class="num">' + totalQs + '</td>' +
-            '<td class="num">' + (pendNotes > 0 ? '<span style="color:#c0392b;font-weight:600;">' + pendNotes + '</span>' : '<span style="color:#27ae60;">0</span>') + '</td>' +
-            '<td class="num">' + (pendCorr > 0 ? '<span style="color:#c0392b;font-weight:600;">' + pendCorr + '</span>' : '<span style="color:#27ae60;">0</span>') + '</td>' +
             '<td class="num">' + tokens.toLocaleString() + '</td>' +
             '<td class="num">' + dur + '</td>' +
+            '<td style="text-align:center">' + reviewButtonHtml(s) + '</td>' +
             '</tr>';
     }
-    html += '</tbody></table>';
-    document.getElementById('sessions-container').innerHTML = html;
+    tbody.innerHTML = html;
 }
 
 function renderPagination(page, totalPages) {
@@ -885,7 +1031,7 @@ function saveNote(logKey, noteId, btn) {
         body: JSON.stringify({ ask_session_log_key: logKey, admin_note: note })
     }).then(function(r) { return safeJson(r); }).then(function(d) {
         btn.disabled = false;
-        if (d.saved) { statusEl.textContent = 'Saved'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
+        if (d.saved) { _reviewDirty = true; statusEl.textContent = 'Saved'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
         else { statusEl.textContent = d.error || 'Error'; statusEl.style.color = '#c00'; }
     }).catch(function() { btn.disabled = false; statusEl.textContent = 'Error'; statusEl.style.color = '#c00'; });
 }
@@ -905,7 +1051,7 @@ function autoSaveRating(logKey, sessionKey) {
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ ask_session_log_key: logKey, ask_session_key: sessionKey, rating: rating })
         }).then(function(r) { return safeJson(r); }).then(function(d) {
-            if (d.saved) { statusEl.textContent = 'Saved'; statusEl.style.color = '#27ae60'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
+            if (d.saved) { _reviewDirty = true; statusEl.textContent = 'Saved'; statusEl.style.color = '#27ae60'; setTimeout(function() { statusEl.textContent = ''; }, 2000); }
             else { statusEl.textContent = d.error || 'Error'; statusEl.style.color = '#c00'; }
         }).catch(function() { statusEl.textContent = 'Error'; statusEl.style.color = '#c00'; });
     }, 500);
@@ -933,6 +1079,8 @@ function closeDetail() {
     var rows = document.querySelectorAll('.sessions-table tr');
     for (var i = 0; i < rows.length; i++) rows[i].classList.remove('selected');
     selectedKey = null;
+    // A note/rating was saved while the popover was open: refresh the Review buttons.
+    if (_reviewDirty) { _reviewDirty = false; loadSessions(currentPage, true); }
 }
 
 // Fit a single Admin Notes textarea to its content (bounded by the CSS
