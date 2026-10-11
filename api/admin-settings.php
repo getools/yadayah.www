@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $st = $db->prepare("SELECT count(*) FROM yy_monitor_event
                             WHERE event_resolved_flag = FALSE
                               AND event_source NOT IN ('agent_op','honeypot')
-                              AND event_severity IN ('error','warning')
+                              AND event_severity IN ('critical','error','warning')
                               AND COALESCE(event_fix_attempts,0) < ?");
         $st->execute([$maxAttempts]);
         $unresolved = (int)$st->fetchColumn();

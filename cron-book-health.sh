@@ -55,13 +55,12 @@ probe() {
     out=$(curl -ksS -o /dev/null -m 15 -w '%{http_code}' "$url" 2>/dev/null) || rc=$?
     rc=${rc:-0}
     code=$out
-    local want=${EXPECT[$url]:-200}
     if [ "$rc" -ne 0 ]; then
         emit_event "$url" critical "Book health: connect failed ($url)" "curl rc=$rc"
         return 1
     fi
-    if [ "$code" != "$want" ]; then
-        emit_event "$url" critical "Book health: ${url} returned ${code} (expected ${want})" ""
+    if [ "$code" != "200" ]; then
+        emit_event "$url" critical "Book health: ${url} returned ${code} (expected 200)" ""
         return 1
     fi
     return 0
@@ -75,18 +74,11 @@ SISTER_DOMAINS=(
     "https://inthecompanyofgoodandevil.com"
 )
 
-# Pending (volume_status P) books are members-only: flipbook-frame.php answers
-# an anonymous request with 403, so that is the healthy response (anything
-# else means the gate broke). Only the landing page is gated; toc.json is not.
-declare -A EXPECT=()
-PENDING=" $($PSQL -At -c "SELECT volume_code FROM yy_volume WHERE volume_status = 'P'" 2>/dev/null | tr '\n' ' ') "
-
 URLS=()
 for d in "$PUBLIC"/YY-*; do
     [ -d "$d" ] || continue
     slug=$(basename "$d")
     URLS+=("https://yadayah.com/${slug}/")
-    [[ "$PENDING" == *" ${slug} "* ]] && EXPECT["https://yadayah.com/${slug}/"]=403
     [ -f "$d/toc.json" ] && URLS+=("https://yadayah.com/${slug}/toc.json")
 done
 for host in "${SISTER_DOMAINS[@]}"; do

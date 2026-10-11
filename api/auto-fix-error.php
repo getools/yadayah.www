@@ -157,7 +157,7 @@ $stmt = $db->prepare("
     FROM yy_monitor_event
     WHERE event_resolved_flag = FALSE
       AND event_source NOT IN ('agent_op', 'honeypot')
-      AND event_severity IN ('error', 'warning')
+      AND event_severity IN ('critical', 'error', 'warning')
       AND COALESCE(event_fix_attempts, 0) < $MAX_FIX_ATTEMPTS
     ORDER BY event_dtime DESC
     LIMIT $MAX_TRIAGE
