@@ -115,7 +115,7 @@ if ($episodeQ !== '')                 { $where .= " AND fi.feed_item_episode ILI
 if (!empty($pageKeys)) {
     $placeholders = implode(',', array_fill(0, count($pageKeys), '?'));
     $where .= " AND EXISTS (SELECT 1 FROM yy_section_item si
-                              JOIN yy_section s ON s.section_key = si.section_key
+                              JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
                               WHERE si.feed_item_key = fi.feed_item_key
                                 AND s.page_key IN ($placeholders))";
     foreach ($pageKeys as $pk) $params[] = $pk;
@@ -305,7 +305,7 @@ if ($items) {
         SELECT si.feed_item_key, s.section_key, s.section_label, s.section_title, s.section_active_flag,
                p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
           FROM yy_section_item si
-          JOIN yy_section s ON s.section_key = si.section_key
+          JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
           LEFT JOIN yy_page p ON p.page_key = s.page_key
          WHERE si.feed_item_key IN ($ph)
          ORDER BY p.page_header_sort, p.page_key, s.section_sort, s.section_key");
@@ -397,7 +397,7 @@ $allPagesStmt = $db->query("
     SELECT p.page_key, p.page_code, p.page_title, p.page_active_flag
       FROM yy_page p
      WHERE EXISTS (SELECT 1 FROM yy_section_item si
-                     JOIN yy_section s ON s.section_key = si.section_key
+                     JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
                     WHERE s.page_key = p.page_key)
      ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();

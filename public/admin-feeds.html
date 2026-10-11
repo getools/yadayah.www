@@ -753,7 +753,7 @@ function loadItems(page) {
                 pOpts += '<option value="page:' + pg.page_key + '">' + esc(pg.page_title || pg.page_code)
                     + (!_isOn(pg.page_active_flag) ? ' (inactive)' : '') + '</option>';
                 if (secs.length > 1) secs.forEach(function(sp) {
-                    pOpts += '<option value="sec:' + sp.section_key + '">&nbsp;&nbsp;&nbsp;' + esc(_sectionName(sp, 34))
+                    pOpts += '<option value="sec:' + sp.section_key + '">&nbsp;&nbsp;&nbsp;' + esc(_sectionName(sp, 34) || 'Section #' + sp.section_key)
                         + (!_isOn(sp.section_active_flag) ? ' (inactive)' : '') + '</option>';
                 });
             });
@@ -944,24 +944,26 @@ function _pageHref(p) {
     return p.page_code && p.page_code.toLowerCase() !== 'home' ? '/' + p.page_code : '/';
 }
 
-// Plain-text, truncated name for an Items section (section_title is rich HTML).
+// Plain-text, truncated name for an Items section (section_title is rich HTML);
+// '' when the section has neither label nor title.
 function _sectionName(s, max) {
     var sec = new DOMParser().parseFromString(s.section_label || s.section_title || '', 'text/html').body.textContent || '';
     sec = sec.replace(/\s+/g, ' ').trim();
     if (max && sec.length > max) sec = sec.substring(0, max - 1) + '…';
-    return sec || 'section #' + s.section_key;
+    return sec;
 }
 
-// One "page · section" chip linking to the public page. Greyed (struck) when
-// the section or its page is inactive, so it draws nothing publicly.
+// One "page · section" chip linking to the public page ("page #key" for an
+// unnamed section). Greyed (struck) when the section or its page is inactive,
+// so it draws nothing publicly.
 function sectionChip(s) {
     var live = _isOn(s.section_active_flag) && _isOn(s.page_active_flag);
     var sec = _sectionName(s, 28);
-    var tip = 'Page: ' + (s.page_title || s.page_code || '?') + '\nItems section: ' + sec + ' (#' + s.section_key + ')'
+    var tip = 'Page: ' + (s.page_title || s.page_code || '?') + '\nItems section: ' + (sec || 'unnamed') + ' (#' + s.section_key + ')'
         + (!_isOn(s.page_active_flag) ? '\nPage is INACTIVE' : '')
         + (!_isOn(s.section_active_flag) ? '\nSection is INACTIVE' : '');
     return '<a class="use-chip' + (live ? '' : ' off') + '" href="' + esc(_pageHref(s)) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">'
-        + esc(s.page_code || '?') + ' · ' + esc(sec) + '</a>';
+        + esc(s.page_code || '?') + (sec ? ' · ' + esc(sec) : ' #' + s.section_key) + '</a>';
 }
 
 // "On Pages" chips for one feed item: the Items sections whose pool
@@ -8742,6 +8744,7 @@ function downloadTranscript() {
         + '<button data-fmt="vtt"  style="' + btn + '"><strong>VTT</strong> &nbsp;<span style="' + sub + '">standard .vtt subtitle file</span></button>'
         + '<button data-fmt="csv"  style="' + btn + '"><strong>CSV</strong> &nbsp;<span style="' + sub + '">timestamp, text — one line each</span></button>'
         + '<button data-fmt="text" style="' + btn + '"><strong>Text only</strong> &nbsp;<span style="' + sub + '">just the text, one line each</span></button>'
+        + '<button data-fmt="youtube" style="' + btn + '"><strong>YouTube</strong> &nbsp;<span style="' + sub + '">rolling two-line captions (.vtt) — each new line scrolls up under the previous one</span></button>'
         + '</div>'
         + '<div style="text-align:right;margin-top:14px;"><button data-fmt="cancel" style="background:none;border:none;color:#666;cursor:pointer;font-size:0.85rem;">Cancel</button></div>'
         + '</div>';
@@ -8762,6 +8765,7 @@ function doDownloadTranscript(rows, fmt) {
     base = base.replace(/[^\w.\- ]+/g, '').replace(/\s+/g, '_').slice(0, 80) || 'transcript';
     if (fmt === 'vtt')      _dlBlob(base + '.vtt', _buildVtt(rows), 'text/vtt');
     else if (fmt === 'csv') _dlBlob(base + '.csv', _buildCsv(rows), 'text/csv');
+    else if (fmt === 'youtube') _dlBlob(base + '.youtube.vtt', _buildYouTubeRolling(rows), 'text/vtt');
     else                    _dlBlob(base + '.txt', rows.map(function(r){ return r.text; }).join('\r\n') + '\r\n', 'text/plain');
 }
 
@@ -8782,6 +8786,51 @@ function _buildVtt(rows) {
         var end = (i + 1 < rows.length) ? parseSegmentToSeconds(rows[i + 1].segment) : start + 5;
         if (!(end > start)) end = start + 2;
         out += _fmtVttTime(start) + ' --> ' + _fmtVttTime(end) + '\n' + rows[i].text + '\n\n';
+    }
+    return out;
+}
+// YouTube-style ROLLING captions (2026-10-11): the two-line scroll YouTube's
+// own auto-captions use. Each transcript line is wrapped into display lines of
+// <= 42 chars, each display line gets its own start time (the line's span split
+// in proportion to characters), and every cue shows the PREVIOUS display line on
+// top with the new one underneath — so text scrolls up one line at a time. The
+// previous line is dropped after a real pause (> 4s) so stale text doesn't linger.
+function _buildYouTubeRolling(rows) {
+    var MAX = 42, STALE = 4;
+    var wrap = function(text) {
+        var out = [], cur = '';
+        String(text).replace(/\s+/g, ' ').trim().split(' ').forEach(function(w) {
+            if (!w) return;
+            if (cur && (cur + ' ' + w).length > MAX) { out.push(cur); cur = w; }
+            else cur = cur ? cur + ' ' + w : w;
+        });
+        if (cur) out.push(cur);
+        return out;
+    };
+    var lines = [];   // {start, end, text}
+    for (var i = 0; i < rows.length; i++) {
+        var start = parseSegmentToSeconds(rows[i].segment);
+        var end = (i + 1 < rows.length) ? parseSegmentToSeconds(rows[i + 1].segment) : start + 5;
+        if (!(end > start)) end = start + 2;
+        var parts = wrap(rows[i].text);
+        var total = parts.reduce(function(n, p) { return n + p.length + 1; }, 0) || 1;
+        var t = start;
+        parts.forEach(function(p) {
+            var d = (end - start) * (p.length + 1) / total;
+            // end = when the line is plausibly finished being SPOKEN (reading
+            // pace, capped at its slot) — rows carry no end times, and the
+            // slot itself runs up to the next row, which would hide pauses.
+            lines.push({start: t, end: t + Math.min(d, p.length / 12 + 1), text: p});
+            t += d;
+        });
+    }
+    var out = 'WEBVTT\n\n';
+    for (var j = 0; j < lines.length; j++) {
+        var cs = lines[j].start;
+        var ce = (j + 1 < lines.length) ? lines[j + 1].start : lines[j].end;
+        if (!(ce > cs)) ce = cs + 1;
+        var prev = (j > 0 && cs - lines[j - 1].end <= STALE) ? lines[j - 1].text + '\n' : '';
+        out += _fmtVttTime(cs) + ' --> ' + _fmtVttTime(ce) + '\n' + prev + lines[j].text + '\n\n';
     }
     return out;
 }

@@ -44,7 +44,7 @@ if ($method === 'GET' && isset($_GET['items'])) {
         $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_section_item WHERE section_key = ?)';
         $params[] = $sectionKey;
     } elseif ($pageKey) {
-        $where[] = 'fi.feed_item_key IN (SELECT si.feed_item_key FROM yy_section_item si JOIN yy_section s ON s.section_key = si.section_key WHERE s.page_key = ?)';
+        $where[] = 'fi.feed_item_key IN (SELECT si.feed_item_key FROM yy_section_item si JOIN yy_section s ON s.section_key = si.section_key WHERE s.page_key = ? AND s.section_type = \'items\')';
         $params[] = $pageKey;
     }
     // Status filter — multi-checkbox of: active, restricted, inactive
@@ -152,7 +152,7 @@ if ($method === 'GET' && isset($_GET['items'])) {
             SELECT si.feed_item_key, s.section_key, s.section_label, s.section_title, s.section_active_flag,
                    p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
             FROM yy_section_item si
-            JOIN yy_section s ON s.section_key = si.section_key
+            JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
             LEFT JOIN yy_page p ON p.page_key = s.page_key
             WHERE si.feed_item_key IN ($ph)
             ORDER BY p.page_header_sort, p.page_key, s.section_sort, s.section_key
@@ -189,7 +189,8 @@ if ($method === 'GET' && isset($_GET['items'])) {
                (SELECT count(*) FROM yy_section_item si WHERE si.section_key = s.section_key) AS item_count
         FROM yy_section s
         JOIN yy_page p ON p.page_key = s.page_key
-        WHERE EXISTS (SELECT 1 FROM yy_section_item si WHERE si.section_key = s.section_key)
+        WHERE s.section_type = 'items'
+          AND EXISTS (SELECT 1 FROM yy_section_item si WHERE si.section_key = s.section_key)
         ORDER BY p.page_title, s.section_sort, s.section_key
     ");
 
