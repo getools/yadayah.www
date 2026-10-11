@@ -411,49 +411,6 @@
     </div>
 </div>
 
-<!-- Edit Page Mapping Form -->
-<div id="pf-form-overlay" class="form-overlay" onclick="if(event.target===this)closePfForm()">
-    <div class="form-panel">
-        <div class="form-header">
-            <h3 id="pf-form-title">Edit Page Mapping</h3>
-            <button onclick="closePfForm()">&times;</button>
-        </div>
-        <div class="form-body">
-            <input type="hidden" id="pf-key">
-            <div class="field"><label>Feed Source</label>
-                <select id="pf-feed-source"></select>
-            </div>
-            <div class="field"><label>Page</label>
-                <select id="pf-page"></select>
-            </div>
-            <div class="field"><label>Include Filters (+)</label><textarea id="pf-filter-pos" placeholder="Comma-separated: #Invite, #YadaYah"></textarea></div>
-            <div class="field"><label>Exclude Filters (-)</label><textarea id="pf-filter-neg" placeholder="Comma-separated: Private, Deleted video"></textarea></div>
-            <div class="field"><label>Listing Type</label>
-                <select id="pf-listing-type">
-                    <option value="">— None —</option>
-                    <option value="video">Video (horizontal)</option>
-                    <option value="shorts">Shorts (vertical)</option>
-                    <option value="post">Post</option>
-                    <option value="channel">Channel</option>
-                    <option value="featured">Featured</option>
-                </select>
-            </div>
-            <div class="field"><label>Orientation Filter</label>
-                <select id="pf-orientation">
-                    <option value="">— Any —</option>
-                    <option value="horizontal">Horizontal</option>
-                    <option value="vertical">Vertical</option>
-                </select>
-            </div>
-            <input type="hidden" id="pf-sort" value="0">
-            <div class="form-actions">
-                <button class="btn btn-primary" onclick="savePageMapping()">Save</button>
-                <button class="btn btn-secondary" onclick="closePfForm()">Cancel</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script src="js/admin-links.js?v=4"></script>
 <script src="js/admin-ui-state.js?v=1"></script>
 <script src="/js/admin-login.js?v=8"></script>
@@ -472,7 +429,6 @@ var _catFilterOpts = '<option value="">All</option>';
 var _catFilterOptsFiltered = '<option value="">All</option>';
 var _pageFilterOpts = '<option value="">All</option>';
 var _allCategories = [];
-var _allPages = [];
 var _secPages = [];
 
 function onPageFilterChange() {
@@ -483,20 +439,18 @@ function onPageFilterChange() {
     loadItems(1);
 }
 
+// Category options narrow to the On Pages pick: a page shows its sections'
+// categories, a section only its own. Categories are per Items section
+// (yy_category), so a page with several sections lists each set under it.
 function rebuildCategoryFilter() {
-    var pageVal = _savedFilters.page;
-    var pageKey = pageVal ? pageVal.replace('page:', '') : '';
-    if (pageVal && pageVal.indexOf('sec:') === 0) {
-        var sp = _secPages.find(function(x) { return 'sec:' + x.section_key === pageVal; });
-        pageKey = sp ? String(sp.page_key) : '';
-    }
+    var pageVal = _savedFilters.page || '';
     var opts = '<option value="">All</option>';
-    if (pageKey) {
-        _allCategories.forEach(function(c) {
-            if (String(c.page_key) === pageKey) {
-                opts += '<option value="cat:' + c.category_key + '">' + esc(catLabel(c)) + '</option>';
-            }
-        });
+    if (pageVal) {
+        var isSec = pageVal.indexOf('sec:') === 0;
+        var want = pageVal.replace(/^(page|sec):/, '');
+        opts += categoryOptionsHtml(_allCategories.filter(function(c) {
+            return String(isSec ? c.section_key : c.page_key) === want;
+        }));
     } else {
         opts = _catFilterOpts;
     }
@@ -532,6 +486,46 @@ function catLabel(c) {
     var label = c.category_title || '';
     if (c.category_subtitle) label += ' ~ ' + c.category_subtitle;
     return label;
+}
+
+// Header text for an Items section's category group: "Page" when the page has
+// one categorized section, "Page · section" otherwise.
+function categoryGroupLabel(c, multi) {
+    var pg = c.page_title || c.page_code || '?';
+    if (!multi) return pg;
+    var sp = (_secPages || []).find(function(x) { return x.section_key == c.section_key; });
+    return pg + ' · ' + ((sp && _sectionName(sp, 28)) || ('#' + c.section_key));
+}
+
+// <option> list for a set of categories, grouped under a disabled header per
+// Items section. Values are "cat:<category_key>".
+function categoryOptionsHtml(cats) {
+    var secsPerPage = {};
+    cats.forEach(function(c) { (secsPerPage[c.page_key] = secsPerPage[c.page_key] || {})[c.section_key] = 1; });
+    var out = '', lastSec = null;
+    cats.forEach(function(c) {
+        if (c.section_key !== lastSec) {
+            lastSec = c.section_key;
+            var multi = Object.keys(secsPerPage[c.page_key] || {}).length > 1;
+            out += '<option disabled style="font-weight:700;color:#31345A;">── ' + esc(categoryGroupLabel(c, multi)) + ' ──</option>';
+        }
+        out += '<option value="cat:' + c.category_key + '">&nbsp;&nbsp;&nbsp;' + esc(catLabel(c)) + '</option>';
+    });
+    return out;
+}
+
+// "Category" cell for an item: its category in each Items section that has
+// filed it (from sections_on), de-duplicated. Tooltip names the section.
+function itemCategoriesHtml(list) {
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch(e) { list = []; } }
+    var seen = {}, parts = [];
+    (list || []).forEach(function(s) {
+        if (!s.category_key || seen[s.category_key]) return;
+        seen[s.category_key] = 1;
+        var where = (s.page_code || '?') + (_sectionName(s, 28) ? ' · ' + _sectionName(s, 28) : ' #' + s.section_key);
+        parts.push('<span title="' + esc(where) + '">' + esc(s.category_title || s.category_slug || '') + '</span>');
+    });
+    return parts.join(', ');
 }
 
 function buildFeedFilterDropdown() {
@@ -735,9 +729,8 @@ function loadItems(page) {
         _allItems = items;
         _itemsTotalPages = d.total_pages || 1;
         // Build page and category filter dropdowns (only on first load)
-        if (d.pages && _pageFilterOpts === '<option value="">All</option>') {
+        if (d.section_pages && _pageFilterOpts === '<option value="">All</option>') {
             _allCategories = d.categories || [];
-            _allPages = d.pages || [];
 
             // On Pages dropdown — pages with Items sections, each followed by
             // its sections when it has more than one.
@@ -761,20 +754,8 @@ function loadItems(page) {
             var pSel = document.getElementById('filter-page');
             if (pSel) pSel.innerHTML = pOpts;
 
-            // Category dropdown — grouped by page
-            var catsByPage = {};
-            _allCategories.forEach(function(c) { var pk = c.page_key; if (!catsByPage[pk]) catsByPage[pk] = []; catsByPage[pk].push(c); });
-            var cOpts = '<option value="">All</option>';
-            _allPages.forEach(function(pg) {
-                var pgCats = catsByPage[pg.page_key] || [];
-                if (pgCats.length) {
-                    cOpts += '<option disabled style="font-weight:700;color:#31345A;">── ' + esc(pg.page_title) + ' ──</option>';
-                    pgCats.forEach(function(c) {
-                        cOpts += '<option value="cat:' + c.category_key + '">&nbsp;&nbsp;&nbsp;' + esc(catLabel(c)) + '</option>';
-                    });
-                }
-            });
-            _catFilterOpts = cOpts;
+            // Category dropdown — grouped by Items section
+            _catFilterOpts = '<option value="">All</option>' + categoryOptionsHtml(_allCategories);
             _catFilterOptsFiltered = _savedFilters.page ? '' : cOpts;
             rebuildCategoryFilter();
         }
@@ -818,14 +799,7 @@ function loadItems(page) {
                 + '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(it.feed_item_title || '') + '</td>'
                 + '<td style="font-size:0.7rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;">' + esc(it.feed_item_tags || '') + '</td>'
                 + '<td style="max-width:260px;line-height:1.5;">' + itemSectionChips(it.sections_on) + '</td>'
-                + '<td style="font-size:0.75rem;color:#888;">' + (function() {
-                    var cl = it.categories_list;
-                    if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch(e) { cl = null; } }
-                    if (cl && cl.length) {
-                        return cl.map(function(c) { return esc(c.category_title) + (c.episode ? ' (' + esc(c.episode) + ')' : ''); }).join(', ');
-                    }
-                    return esc(it.category_title || '');
-                })() + '</td>'
+                + '<td style="font-size:0.75rem;color:#888;">' + itemCategoriesHtml(it.sections_on) + '</td>'
                 + '<td style="font-size:0.75rem;color:#888;">' + (it.feed_item_episode || '') + '</td>'
                 + '<td style="text-align:center;">' + (it.feed_item_audio_file ? '<a href="/' + esc(it.feed_item_audio_file) + '" target="_blank" title="MP3">&#127911;</a>' : '') + '</td>'
                 + '<td style="text-align:center;">' + statusBadge + '</td>'
@@ -932,8 +906,6 @@ function togglePassword() {
     input.type = input.type === 'password' ? 'text' : 'password';
 }
 
-var allPages = [];
-var pageMappings = [];
 var feedUsage = {};
 
 function _isOn(v) { return v === true || v === 't' || v === 1 || v === '1'; }
@@ -975,7 +947,7 @@ function itemSectionChips(list) {
 }
 
 // "Used On" chips for one feed: the Pages-New Items sections that draw from
-// it (legacy yy_feed_page mappings are not shown).
+// it (yy_section.section_config->feed_keys).
 function feedUsageChips(feedKey) {
     var u = feedUsage[feedKey];
     if (!u || !u.sections.length) return '<span class="use-none">not used</span>';
@@ -996,14 +968,10 @@ function feedItemsCell(f) {
 function loadFeeds() {
     return Promise.all([
         fetch(API + '/admin-feeds.php', {credentials:'include'}).then(function(r) { return safeJson(r); }),
-        fetch(API + '/admin-feeds.php?page_feeds=1&feed_key=0', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {pages:[]}; }),
-        fetch(API + '/admin-feeds.php?all_page_feeds=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {page_feeds:[]}; }),
         fetch(API + '/admin-feeds.php?usage=1', {credentials:'include'}).then(function(r) { return safeJson(r); }).catch(function() { return {usage:{}}; })
     ]).then(function(results) {
         feeds = Array.isArray(results[0]) ? results[0] : [];
-        allPages = (results[1] && results[1].pages) ? results[1].pages : [];
-        pageMappings = (results[2] && results[2].page_feeds) ? results[2].page_feeds : [];
-        feedUsage = (results[3] && results[3].usage) ? results[3].usage : {};
+        feedUsage = (results[1] && results[1].usage) ? results[1].usage : {};
         renderAll();
     });
 }
@@ -1066,21 +1034,6 @@ function renderAll() {
             + '</td></tr>';
     }
     body.innerHTML = html;
-
-    // Populate dropdowns in page mapping form
-    var pfFeedSelect = document.getElementById('pf-feed-source');
-    var opts = '<option value="">— Select Feed Source —</option>';
-    feeds.forEach(function(f) {
-        opts += '<option value="' + f.feed_key + '">' + esc(f.feed_name + ' (' + f.feed_site_code + ')') + '</option>';
-    });
-    pfFeedSelect.innerHTML = opts;
-
-    var pfPageSelect = document.getElementById('pf-page');
-    var pOpts = '<option value="">— Select Page —</option>';
-    allPages.forEach(function(p) {
-        pOpts += '<option value="' + p.page_key + '">' + esc(p.page_code) + '</option>';
-    });
-    pfPageSelect.innerHTML = pOpts;
 }
 
 function esc(s) {
@@ -1235,62 +1188,6 @@ function saveFeedSource() {
         });
     })
     .then(function() { closeForm(); loadFeeds(); });
-}
-
-// ── Page Mapping form ──
-function addPageMapping() { openPageMappingForm({}); }
-
-function editPageMapping(key) {
-    var pf = pageMappings.find(function(p) { return p.feed_page_key == key; });
-    openPageMappingForm(pf || {});
-}
-
-function openPageMappingForm(d) {
-    document.getElementById('pf-form-title').textContent = d.feed_page_key ? 'Edit Page Mapping' : 'Add Page Mapping';
-    document.getElementById('pf-key').value = d.feed_page_key || '';
-    document.getElementById('pf-feed-source').value = d.feed_key || '';
-    document.getElementById('pf-page').value = d.page_key || '';
-    document.getElementById('pf-filter-pos').value = d.feed_page_filter_include || '';
-    document.getElementById('pf-filter-neg').value = d.feed_page_filter_exclude || '';
-    document.getElementById('pf-listing-type').value = d.feed_page_listing_type || '';
-    document.getElementById('pf-orientation').value = d.feed_page_filter_orientation || '';
-    document.getElementById('pf-sort').value = d.feed_page_sort || 0;
-    document.getElementById('pf-form-overlay').classList.add('open');
-}
-
-function closePfForm() { document.getElementById('pf-form-overlay').classList.remove('open'); }
-
-function savePageMapping() {
-    var key = document.getElementById('pf-key').value;
-    var payload = {
-        feed_page_action: key ? 'update' : 'create',
-        feed_page_key: key || undefined,
-        feed_key: parseInt(document.getElementById('pf-feed-source').value),
-        page_key: parseInt(document.getElementById('pf-page').value),
-        feed_page_filter_include: document.getElementById('pf-filter-pos').value,
-        feed_page_filter_exclude: document.getElementById('pf-filter-neg').value,
-        feed_page_listing_type: document.getElementById('pf-listing-type').value,
-        feed_page_filter_orientation: document.getElementById('pf-orientation').value,
-        feed_page_sort: parseInt(document.getElementById('pf-sort').value) || 0
-    };
-    fetch(API + '/admin-feeds.php', {
-        method: 'POST', credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-    }).then(function(r) { return safeJson(r); })
-    .then(function(d) {
-        if (d.error) { alert(d.error); return; }
-        closePfForm(); loadFeeds();
-    }).catch(function(e) { alert('Save failed: ' + e.message); });
-}
-
-function deletePageMapping(key) {
-    if (!confirm('Delete this page mapping?')) return;
-    fetch(API + '/admin-feeds.php', {
-        method: 'DELETE', credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ feed_page_key: key })
-    }).then(function() { loadFeeds(); });
 }
 
 function deleteFeed(key, name) {
@@ -1503,28 +1400,29 @@ function editItem(key) {
         + fld('Duration', 'feed_item_duration', item.feed_item_duration, {readonly:true})
         + '</div>';
 
-    // Page / Category assignment (spans columns 2-3 within the grid)
-    var itemPages = [];
-    try { itemPages = typeof item.page_list === 'string' ? JSON.parse(item.page_list) : (item.page_list || []); } catch(e) {}
-    if (itemPages && itemPages.length) {
+    // Category per Items section (spans columns 2-3 within the grid): one
+    // picker for each section whose pool holds this item and that has its own
+    // categories. Saved as section_categories → yy_section_item.category_key.
+    var itemSecs = it_sectionsWithCategories(item);
+    if (itemSecs.length) {
         html += '<div style="grid-column:2/4;margin-top:4px;border-top:1px solid #eee;padding-top:10px;">'
             + '<div style="display:flex;gap:8px;margin-bottom:6px;">'
-            + '<span style="min-width:90px;font-weight:600;font-size:0.85rem;color:#555;">Page</span>'
+            + '<span style="min-width:170px;font-weight:600;font-size:0.85rem;color:#555;">On page</span>'
             + '<span style="flex:1;font-weight:600;font-size:0.85rem;color:#555;">Category</span>'
-            + '</div>';
-        // Multi-category editor: one row per currently-assigned category, plus an Add button
-        html += '<div id="cat-rows-container" style="display:flex;flex-direction:column;gap:6px;"></div>'
-            + '<button type="button" onclick="addCategoryRow()" style="margin-top:8px;padding:4px 10px;font-size:0.78rem;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;">+ Add Category</button>'
-            + '</div>';
-        // Stash the category list and current item categories on the form so addCategoryRow can use them
-        var existingCats = item.categories_list || [];
-        if (typeof existingCats === 'string') { try { existingCats = JSON.parse(existingCats); } catch(e) { existingCats = []; } }
-        // If the legacy single column is set but no junction entries, seed from it
-        if ((!existingCats || !existingCats.length) && item.feed_item_category_key) {
-            var legacy = (_allCategories || []).find(function(c){ return c.category_key == item.feed_item_category_key; });
-            if (legacy) existingCats = [{category_key: legacy.category_key, category_title: legacy.category_title, category_slug: legacy.category_slug, episode: item.feed_item_episode || ''}];
-        }
-        window._editItemCategories = existingCats || [];
+            + '</div><div style="display:flex;flex-direction:column;gap:6px;">';
+        itemSecs.forEach(function(s) {
+            var opts = '<option value="">— None —</option>';
+            _allCategories.forEach(function(c) {
+                if (c.section_key != s.section_key) return;
+                opts += '<option value="' + c.category_key + '"' + (c.category_key == s.category_key ? ' selected' : '') + '>' + esc(catLabel(c)) + '</option>';
+            });
+            html += '<div style="display:flex;align-items:center;gap:8px;">'
+                + '<span style="min-width:170px;">' + sectionChip(s) + '</span>'
+                + '<select class="sec-cat-select" data-section-key="' + s.section_key + '" data-orig="' + (s.category_key || '') + '"'
+                + ' style="flex:1;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;">' + opts + '</select>'
+                + '</div>';
+        });
+        html += '</div></div>';
     }
 
     // MP3 upload (spans columns 2-3)
@@ -1547,61 +1445,16 @@ function editItem(key) {
 
     document.getElementById('item-edit-body').innerHTML = html;
     overlay.style.display = 'flex';
-    renderCategoryRows();
 }
 
-function renderCategoryRows() {
-    var container = document.getElementById('cat-rows-container');
-    if (!container) return;
-    container.innerHTML = '';
-    var cats = window._editItemCategories || [];
-    cats.forEach(function(c) { addCategoryRow(c); });
-    if (!cats.length) addCategoryRow(); // empty row to start with
-}
-
-function addCategoryRow(preset) {
-    var container = document.getElementById('cat-rows-container');
-    if (!container) return;
-    preset = preset || {};
-    var row = document.createElement('div');
-    row.className = 'cat-row';
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;';
-    var sel = document.createElement('select');
-    sel.className = 'cat-row-select';
-    sel.style.cssText = 'flex:1;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;';
-    var opt = document.createElement('option');
-    opt.value = ''; opt.textContent = '— Select category —';
-    sel.appendChild(opt);
-    var groups = {};
-    (_allCategories || []).forEach(function(c) {
-        var grp = c.page_title || c.page_code || '';
-        if (!groups[grp]) groups[grp] = [];
-        groups[grp].push(c);
+// The item's Items sections that have categories to pick from, one entry per
+// section (sections_on is one row per section already).
+function it_sectionsWithCategories(item) {
+    var list = item.sections_on;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch(e) { list = []; } }
+    return (list || []).filter(function(s) {
+        return _allCategories.some(function(c) { return c.section_key == s.section_key; });
     });
-    Object.keys(groups).sort().forEach(function(grp) {
-        var og = document.createElement('optgroup');
-        og.label = grp;
-        groups[grp].forEach(function(c) {
-            var o = document.createElement('option');
-            o.value = c.category_key;
-            o.textContent = catLabel(c);
-            if (preset.category_key == c.category_key) o.selected = true;
-            og.appendChild(o);
-        });
-        sel.appendChild(og);
-    });
-    row.appendChild(sel);
-    var ep = document.createElement('input');
-    ep.type = 'text'; ep.className = 'cat-row-ep'; ep.placeholder = 'episode';
-    ep.value = preset.episode || '';
-    ep.style.cssText = 'width:90px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;';
-    row.appendChild(ep);
-    var rm = document.createElement('button');
-    rm.type = 'button'; rm.textContent = '×';
-    rm.style.cssText = 'padding:2px 8px;border:1px solid #e0c0c0;border-radius:4px;background:#fff;color:#c0392b;cursor:pointer;font-size:0.9rem;';
-    rm.onclick = function() { row.remove(); };
-    row.appendChild(rm);
-    container.appendChild(row);
 }
 
 function saveItem() {
@@ -1616,19 +1469,15 @@ function saveItem() {
     });
     // Cast booleans
     if (typeof data.feed_item_active_flag === 'boolean') data.feed_item_active_flag = data.feed_item_active_flag;
-    // Collect ALL category rows into an array
-    var categories = [];
-    document.querySelectorAll('.cat-row').forEach(function(row) {
-        var sel = row.querySelector('.cat-row-select');
-        var ep = row.querySelector('.cat-row-ep');
-        if (sel && sel.value) {
-            categories.push({ category_key: parseInt(sel.value), episode: (ep && ep.value || '').trim() || null });
-        }
+    // Per-section category picks — send only the ones that changed, so an
+    // untouched section keeps its hashtag-derived category (a sent value is
+    // stamped as a manual edit and wins over future syncs).
+    var secCats = [];
+    document.querySelectorAll('.sec-cat-select').forEach(function(sel) {
+        if (sel.value === sel.getAttribute('data-orig')) return;
+        secCats.push({ section_key: parseInt(sel.getAttribute('data-section-key'), 10), category_key: sel.value ? parseInt(sel.value, 10) : null });
     });
-    data.categories = categories;
-    // Keep legacy single-column in sync with first selection for backwards compat
-    data.feed_item_category_key = categories.length ? categories[0].category_key : null;
-    if (categories.length && categories[0].episode) data.feed_item_episode = categories[0].episode;
+    if (secCats.length) data.section_categories = secCats;
 
     fetch(API + '/admin-feeds.php?item_update=1', {
         method: 'PUT', credentials: 'include',
@@ -3019,6 +2868,9 @@ function loadRecordings(page) {
             populateRecFeedFilter(d.feeds || [], v('rec-f-feed'));
             populateRecPageFilter(d.pages || [], checkedPages);
             populateRecCategoryFilter(d.categories || [], checkedCats);
+            // The item editor's per-section category pickers read
+            // _allCategories; seed it if the Items tab hasn't loaded yet.
+            if (!_allCategories.length && d.categories) _allCategories = d.categories;
             renderRecordings(d);
         });
 }
@@ -3057,7 +2909,7 @@ function populateRecCategoryFilter(cats, currentSelections) {
         var checked = sel[String(c.category_key)] ? ' checked' : '';
         html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;">'
               + '<input type="checkbox" value="' + c.category_key + '" onchange="loadRecordings(1)"' + checked + '> '
-              + esc(c.category_title)
+              + esc(c.category_title) + ' <span style="color:#999;">' + esc(c.page_code || '') + '</span>'
               + '</label>';
     });
     box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no categories</em>';
@@ -3229,14 +3081,7 @@ function renderRecordings(d) {
             +     '<td class="tx-cell-td" data-item-key="' + it.feed_item_key + '" style="font-size:0.78rem;text-align:center;">' + recTranscriptCell(it) + '</td>'
             +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
-            +     '<td style="font-size:0.75rem;color:#888;">' + (function() {
-                    var cl = it.categories_list;
-                    if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch(e) { cl = null; } }
-                    if (cl && cl.length) {
-                        return cl.map(function(c) { return esc(c.category_title) + (c.episode ? ' (' + esc(c.episode) + ')' : ''); }).join(', ');
-                    }
-                    return esc(it.category_title || '');
-                })() + '</td>'
+            +     '<td style="font-size:0.75rem;color:#888;">' + itemCategoriesHtml(it.sections_on) + '</td>'
             +     '<td style="font-size:0.75rem;color:#888;">' + esc(it.feed_item_episode || '') + '</td>'
             +     '<td class="actions" style="white-space:nowrap;text-align:right;"><button onclick="editItem(' + it.feed_item_key + ')">Edit</button></td>'
             +     '</tr>';

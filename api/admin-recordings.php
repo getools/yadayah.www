@@ -45,8 +45,8 @@ $pageKeys    = $pageKeysRaw === '' ? [] :
 $itemStatusRaw = trim((string)($_GET['item_status'] ?? ''));
 $itemStatuses  = $itemStatusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $itemStatusRaw)));
 
-// category_keys filter: comma-separated yy_feed_page_category.category_key.
-// Items shown must be tagged with at least one of these categories.
+// category_keys filter: comma-separated yy_category.category_key (Items-section
+// categories). Items shown must be filed under at least one of them.
 $categoryKeysRaw = trim((string)($_GET['category_keys'] ?? ''));
 $categoryKeys    = $categoryKeysRaw === '' ? [] :
     array_values(array_filter(array_map('intval',
@@ -122,9 +122,9 @@ if (!empty($pageKeys)) {
 }
 if (!empty($categoryKeys)) {
     $placeholders = implode(',', array_fill(0, count($categoryKeys), '?'));
-    $where .= " AND EXISTS (SELECT 1 FROM yy_feed_item_category fic
-                              WHERE fic.feed_item_key = fi.feed_item_key
-                                AND fic.category_key IN ($placeholders))";
+    $where .= " AND EXISTS (SELECT 1 FROM yy_section_item csi
+                              WHERE csi.feed_item_key = fi.feed_item_key
+                                AND csi.category_key IN ($placeholders))";
     foreach ($categoryKeys as $ck) $params[] = $ck;
 }
 if (!empty($mp3Filter)) {
@@ -259,13 +259,6 @@ $stmt = $db->prepare("
            fi.feed_item_yt_caption_message        AS yt_caption_message,
            (SELECT COUNT(*) FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS yt_caption_segment_count,
            fi.feed_item_yt_caption_segments_at_upload AS yt_caption_segments_at_upload,
-           -- Categories list — same shape returned by the Items tab so the
-           -- same render snippet works on both sides without divergence.
-           (SELECT json_agg(json_build_object('category_key', cc.category_key, 'category_title', cc.category_title, 'category_slug', cc.category_slug, 'episode', fic.feed_item_category_episode, 'page_title', pp.page_title) ORDER BY pp.page_title, cc.category_sort, cc.category_title)
-            FROM yy_feed_item_category fic
-            JOIN yy_feed_page_category cc ON fic.category_key = cc.category_key
-            JOIN yy_page pp ON cc.page_key = pp.page_key
-            WHERE fic.feed_item_key = fi.feed_item_key) AS categories_list,
            -- Transcribe-column inputs (mirrored from admin-feeds.php Items
            -- listing so the same transcribeBtnHtml() helper can render in
            -- both tabs without divergence).
@@ -303,10 +296,12 @@ if ($items) {
     $ph = implode(',', array_fill(0, count($itemKeys), '?'));
     $pgStmt = $db->prepare("
         SELECT si.feed_item_key, s.section_key, s.section_label, s.section_title, s.section_active_flag,
-               p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
+               p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag,
+               c.category_key, c.category_title, c.category_slug
           FROM yy_section_item si
           JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
           LEFT JOIN yy_page p ON p.page_key = s.page_key
+          LEFT JOIN yy_category c ON c.category_key = si.category_key
          WHERE si.feed_item_key IN ($ph)
          ORDER BY p.page_header_sort, p.page_key, s.section_sort, s.section_key");
     $pgStmt->execute($itemKeys);
@@ -402,15 +397,16 @@ $allPagesStmt = $db->query("
      ORDER BY p.page_header_sort, p.page_key");
 $allPages = $allPagesStmt->fetchAll();
 
-// Categories that have at least one feed_item tagged. Only categories
-// belonging to a YouTube-bearing video appear in the recordings list, so
-// EXISTS keeps the dropdown narrow.
+// Items-section categories with at least one filed item, for the checkbox
+// filter under the Categories column header.
 $allCategoriesStmt = $db->query("
-    SELECT c.category_key, c.category_title, c.page_key, p.page_title
-      FROM yy_feed_page_category c
-      JOIN yy_page p ON p.page_key = c.page_key
-     WHERE EXISTS (SELECT 1 FROM yy_feed_item_category fic WHERE fic.category_key = c.category_key)
-     ORDER BY p.page_title, c.category_sort, c.category_title");
+    SELECT c.category_key, c.category_title, c.category_slug, c.section_key, s.page_key, p.page_code, p.page_title
+      FROM yy_category c
+      JOIN yy_section s ON s.section_key = c.section_key AND s.section_type = 'items'
+      JOIN yy_page p ON p.page_key = s.page_key
+     WHERE c.category_active_flag = TRUE
+       AND EXISTS (SELECT 1 FROM yy_section_item si WHERE si.category_key = c.category_key)
+     ORDER BY p.page_title, s.section_sort, s.section_key, c.category_sort, c.category_title");
 $allCategories = $allCategoriesStmt->fetchAll();
 
 $feedsStmt = $db->query("

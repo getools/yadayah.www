@@ -139,11 +139,11 @@ jsonResponse(['page' => $page, 'sections' => $out]);
  *   duration_min_sec: int
  *   duration_max_sec: int
  *   content_type:     'video'|'image'|'audio'|...
- *   page_key:         int              — items linked to this page via yy_feed_item_page
- *   category_key:     int              — items in this yy_feed_page_category
+ *   include_categorized_section: int  — items with a category in that
+ *                                       section bypass the hashtag/title filters
  *   title_include:    'foo,bar'        — wildcard convention
  *   title_exclude:    'baz'
- *   sort:             'posted'|'title'|'orientation'|'page'|'category'|'random'
+ *   sort:             'posted'|'title'|'orientation'|'category'|'random'|…
  *   sort_dir:         'asc'|'desc'    — ignored when sort='random'
  *   max_count:        int (default 24, capped at 200)
  */
@@ -154,7 +154,7 @@ jsonResponse(['page' => $page, 'sections' => $out]);
  * yy_section_item. Returned newest-config-order (category_sort, title) with a
  * live item count. Empty when nothing is filed yet — the UI then shows no
  * filter. Keyspace note: these are SECTION-scoped yy_category (keyed by
- * section_key), distinct from page-scoped yy_feed_page_category.
+ * section_key).
  */
 function sectionItemCategories(PDO $db, int $sectionKey): array {
     if ($sectionKey <= 0) return [];
@@ -215,11 +215,13 @@ function buildItemsOrderBy(array $cfg, int $sectionKey = 0): string {
             case 'orientation':
                 $orderParts[] = "i.feed_item_orientation $dir NULLS LAST";
                 break;
-            case 'page':
-                $orderParts[] = "(SELECT MIN(page_key) FROM yy_feed_item_page WHERE feed_item_key = i.feed_item_key) $dir NULLS LAST";
-                break;
             case 'category':
-                $orderParts[] = "(SELECT MIN(category_key) FROM yy_feed_item_category WHERE feed_item_key = i.feed_item_key) $dir NULLS LAST";
+                // This section's category order (yy_category.category_sort of
+                // the item's yy_section_item.category_key). Needs the `si` join,
+                // so it is skipped without a section_key, like section_sort.
+                if ($sectionKey > 0) {
+                    $orderParts[] = "(SELECT c.category_sort FROM yy_category c WHERE c.category_key = si.category_key) $dir NULLS LAST";
+                }
                 break;
             case 'duration':
                 $orderParts[] = "i.feed_item_duration_seconds $dir NULLS LAST";
@@ -253,6 +255,12 @@ function buildItemsOrderBy(array $cfg, int $sectionKey = 0): string {
                 break;
         }
     }
+    // Deterministic tie-break (newest first, then key) so items that tie on
+    // the configured sorts — e.g. two videos with the same episode number —
+    // keep a stable order instead of following the pool table's physical row
+    // order, which changes whenever the section's pool is rebuilt on save.
+    $orderParts[] = "COALESCE(i.feed_item_publish_override_dtime, i.feed_item_publish_import_dtime) DESC NULLS LAST";
+    $orderParts[] = "i.feed_item_key DESC";
     return implode(', ', $orderParts);
 }
 

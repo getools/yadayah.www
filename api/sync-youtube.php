@@ -100,8 +100,8 @@ foreach ($feeds as $feed) {
 
         $totalFound = count($videos);
 
-        // All YouTube items are videos — shorts are identified by duration at query time
-        // via yy_feed_page.feed_page_filter_duration_max.
+        // All YouTube items are videos — shorts are identified at query time by
+        // each Items section's own duration/orientation filters.
         $type = 'video';
 
         foreach ($videos as $v) {
@@ -211,12 +211,10 @@ foreach ($feeds as $feed) {
                 else $totalUpdated++;
             }
 
-            // Apply parsed captures (episode/date/title/sort) + category
-            // assignments. Each field is arbitrated by most-recent-wins
-            // (hashtag vs. admin edit) and category rows are replaced only for
-            // the page_keys our templates actually touched, so other pages'
-            // admin assignments are never wiped.
-            if (($parse['fields'] || $parse['categories'])) {
+            // Apply parsed captures (episode/date/title/sort) + section
+            // category links. Each field is arbitrated by most-recent-wins
+            // (hashtag vs. admin edit), per section for categories.
+            if ($parse['fields'] || $parse['section_categories']) {
                 $itemKeyStmt = $db->prepare("SELECT feed_item_key FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ?");
                 $itemKeyStmt->execute([$feedKey, $videoId]);
                 $itemKey = (int)($itemKeyStmt->fetchColumn() ?: 0);
@@ -329,11 +327,6 @@ if ($sweepApiKey && $sweepRows) {
     if ($isCli) echo "Privacy check (thumbnail): {$checkedCount} item(s) probed, {$restrictCount} marked restricted\n";
 }
 
-// Update feed item → page associations after sync
-require_once __DIR__ . '/feed-item-pages.php';
-foreach ($feeds as $feed) {
-    updateItemPagesForFeed($db, (int)$feed['feed_key']);
-}
 
 if (!$isCli) {
     jsonResponse(['synced' => true, 'results' => $results]);

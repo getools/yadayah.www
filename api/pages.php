@@ -266,16 +266,14 @@ case 'DELETE':
     $key = (int)($_GET['key'] ?? 0);
     if (!$key) errorResponse('Missing key');
 
-    // yy_page is the site's feed anchor: yy_feed_item_page / yy_feed_page /
-    // yy_menu_item / yy_page_alias / yy_section all cascade off it, so deleting
-    // a busy page silently destroys every feed association attached to it.
+    // yy_page anchors yy_section (its Items sections + their item pools and
+    // categories), yy_menu_item and yy_page_alias, which all cascade off it,
+    // so deleting a busy page silently destroys everything attached to it.
     // Mirrors the guard in api/pages/admin-pages.php. Callers must pass force=1
     // once they have seen what would go. (Added 2026-08-23, when the builder
     // and this legacy admin became two front-ends on the SAME table.)
     $dep = $db->prepare("
-        SELECT (SELECT count(*) FROM yy_feed_item_page     WHERE page_key = :k) AS feed_items,
-               (SELECT count(*) FROM yy_feed_page          WHERE page_key = :k) AS feeds,
-               (SELECT count(*) FROM yy_feed_page_category WHERE page_key = :k) AS feed_categories,
+        SELECT (SELECT count(*) FROM yy_section            WHERE page_key = :k AND section_type = 'items') AS items_sections,
                (SELECT count(*) FROM yy_menu_item          WHERE page_key = :k) AS menu_items,
                (SELECT count(*) FROM yy_page_alias         WHERE page_key = :k) AS aliases");
     $dep->execute([':k' => $key]);

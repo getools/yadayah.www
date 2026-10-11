@@ -1,27 +1,13 @@
 <?php
 /**
- * TEST endpoint — feed-item + category management for the prototype page
- * editor's Items section. Keyed by page_key (the feed/yy_page key the
- * section pulls from). Mirrors /api/admin-feed.php's writes exactly, but
- * page_key-based and scoped to the /test editor:
+ * Feed-item + category management for the page editor's Items section.
  *
- *   GET    ?action=categories&page_key=N
- *   POST   ?action=category&page_key=N    body {category_title, category_subtitle?, category_sort?}
- *   PUT    ?action=category&key=K         body {category_title?, category_subtitle?, category_sort?}
- *   DELETE ?action=category&key=K
- *   PUT    ?action=item&key=K&page_key=N   body {sort?, episode?, category_key?}
+ *   PUT    ?action=item&key=K   body {sort?, episode?}   (item-level, yy_feed_item)
  *
- * Sort & Episode are item-level (yy_feed_item). Category assignment lives in
- * yy_feed_item_category, page-scoped (one category per page per item).
- *
- * ── New-system category list (yy_category, scoped per section_key) ──
- * The prototype editor's Categories panel manages each Items section's OWN
- * category set in yy_category. These are display/definition only for now:
- * item COUNTS are bridged from the matching page category (page_key + slug),
- * and per-item ASSIGNMENT still writes yy_feed_item_category (FK →
- * yy_feed_page_category), so the 1,074 live assignments and production
- * category pages are untouched.
- *   GET    ?action=section_categories&section_key=K&page_key=N
+ * ── Category list (yy_category, scoped per section_key) ──
+ * The editor's Categories panel manages each Items section's OWN category
+ * set in yy_category; items are filed via yy_section_item.category_key.
+ *   GET    ?action=section_categories&section_key=K
  *   POST   ?action=section_category&section_key=K   body {category_title, category_subtitle?, category_sort?}
  *   PUT    ?action=section_category&key=K           body {category_title?, category_subtitle?, category_sort?}
  *   DELETE ?action=section_category&key=K
@@ -29,7 +15,7 @@
  * ── New-system item list (yy_section_item, the materialized matching pool) ──
  * The editor's Matching-items list reads these (membership + order from the
  * filter rebuild) and assigns each item's section-scoped category directly on
- * yy_section_item.category_key (NOT yy_feed_item_category). Sort/episode stay
+ * yy_section_item.category_key. Sort/episode stay
  * item-level on yy_feed_item via ?action=item.
  *   GET    ?action=section_items&section_key=K
  *   PUT    ?action=section_item&section_key=K&key=FEED_ITEM_KEY  body {category_key}
@@ -42,74 +28,15 @@ $db      = getDb();
 $method  = $_SERVER['REQUEST_METHOD'];
 $action  = $_GET['action'] ?? '';
 $key     = (int)($_GET['key'] ?? 0);
-$pageKey = (int)($_GET['page_key'] ?? 0);
 
 function tslug(string $t): string {
     return trim(strtolower(preg_replace('/[^a-z0-9]+/', '-', strtolower(trim($t)))), '-');
 }
 
-// ── Categories ──────────────────────────────────────────────────────────
-if ($action === 'categories' && $method === 'GET') {
-    if (!$pageKey) errorResponse('page_key required');
-    $st = $db->prepare("
-        SELECT c.category_key, c.category_title, c.category_subtitle, c.category_slug, c.category_sort,
-               (SELECT COUNT(*) FROM yy_feed_item_category fic
-                  JOIN yy_feed_item fi ON fi.feed_item_key = fic.feed_item_key
-                 WHERE fic.category_key = c.category_key AND fi.feed_item_active_flag = TRUE) AS item_count
-          FROM yy_feed_page_category c
-         WHERE c.page_key = ? AND c.category_active_flag = TRUE
-         ORDER BY c.category_sort, c.category_title
-    ");
-    $st->execute([$pageKey]);
-    jsonResponse(['categories' => $st->fetchAll()]);
-}
-
-if ($action === 'category' && $method === 'POST') {
-    if (!$pageKey) errorResponse('page_key required');
-    $d = json_decode(file_get_contents('php://input'), true) ?: [];
-    $title = trim($d['category_title'] ?? '');
-    if ($title === '') errorResponse('Category title is required');
-    $sub  = trim($d['category_subtitle'] ?? '');
-    $sort = (int)($d['category_sort'] ?? 0);
-    $st = $db->prepare("INSERT INTO yy_feed_page_category (page_key, category_title, category_subtitle, category_slug, category_sort) VALUES (?, ?, ?, ?, ?) RETURNING category_key");
-    $st->execute([$pageKey, $title, $sub ?: null, tslug($title), $sort]);
-    jsonResponse(['saved' => true, 'category_key' => (int)$st->fetchColumn()]);
-}
-
-if ($action === 'category' && $method === 'PUT') {
-    if (!$key) errorResponse('category key required');
-    $d = json_decode(file_get_contents('php://input'), true) ?: [];
-    $f = []; $p = [];
-    if (isset($d['category_title'])) {
-        $f[] = 'category_title = ?'; $p[] = trim($d['category_title']);
-        $f[] = 'category_slug = ?';  $p[] = tslug($d['category_title']);
-    }
-    if (array_key_exists('category_subtitle', $d)) {
-        $f[] = 'category_subtitle = ?'; $p[] = trim($d['category_subtitle']) ?: null;
-    }
-    if (isset($d['category_sort'])) {
-        $f[] = 'category_sort = ?'; $p[] = (int)$d['category_sort'];
-    }
-    if (!$f) errorResponse('Nothing to update');
-    $f[] = 'category_revision_dtime = NOW()'; $p[] = $key;
-    $db->prepare("UPDATE yy_feed_page_category SET " . implode(', ', $f) . " WHERE category_key = ?")->execute($p);
-    jsonResponse(['saved' => true]);
-}
-
-if ($action === 'category' && $method === 'DELETE') {
-    if (!$key) errorResponse('category key required');
-    // yy_feed_item_category rows removed by ON DELETE CASCADE.
-    $db->prepare("DELETE FROM yy_feed_page_category WHERE category_key = ?")->execute([$key]);
-    jsonResponse(['deleted' => true]);
-}
-
-// ── Section categories (NEW system — yy_category, scoped by section_key) ──
+// ── Section categories (yy_category, scoped by section_key) ──
 // The editor's Categories panel reads/writes these. Item counts come from
 // yy_section_item.category_key — the SAME place ?action=section_item writes
-// when you pick a category in the Matching-items list. (They used to be
-// bridged from the legacy yy_feed_page_category by page_key+slug, so the
-// column never moved when you assigned a category here, and slugs shared
-// across pages counted each other's items.)
+// when you pick a category in the Matching-items list.
 if ($action === 'section_categories' && $method === 'GET') {
     $sectionKey = (int)($_GET['section_key'] ?? 0);
     if (!$sectionKey) errorResponse('section_key required');
@@ -181,9 +108,8 @@ if ($action === 'section_category' && $method === 'PUT') {
 
 if ($action === 'section_category' && $method === 'DELETE') {
     if (!$key) errorResponse('category key required');
-    // yy_category is NOT referenced by yy_feed_item_category, so removing a
-    // section category leaves live item assignments intact (interim design).
-    // The _rev trigger records the delete.
+    // yy_section_item.category_key is ON DELETE SET NULL, so filed items
+    // simply become uncategorized. The _rev trigger records the delete.
     $db->prepare("DELETE FROM yy_category WHERE category_key = ?")->execute([$key]);
     jsonResponse(['deleted' => true]);
 }
@@ -220,8 +146,7 @@ function sectionItemsOrderBy(PDO $db, int $sectionKey): string {
             case 'section_sort': $parts[] = "si.section_item_sort $dir NULLS LAST"; break;
             case 'title':       $parts[] = "COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) $dir"; break;
             case 'orientation': $parts[] = "fi.feed_item_orientation $dir NULLS LAST"; break;
-            case 'page':        $parts[] = "(SELECT MIN(page_key) FROM yy_feed_item_page WHERE feed_item_key = fi.feed_item_key) $dir NULLS LAST"; break;
-            case 'category':    $parts[] = "(SELECT MIN(category_key) FROM yy_feed_item_category WHERE feed_item_key = fi.feed_item_key) $dir NULLS LAST"; break;
+            case 'category':    $parts[] = "(SELECT c2.category_sort FROM yy_category c2 WHERE c2.category_key = si.category_key) $dir NULLS LAST"; break;
             case 'duration':    $parts[] = "fi.feed_item_duration_seconds $dir NULLS LAST"; break;
             case 'sort':        $parts[] = "fi.feed_item_sort $dir NULLS LAST"; break;
             case 'random':      $parts[] = "RANDOM()"; break;
@@ -327,10 +252,9 @@ if ($action === 'section_items_reset_sort' && $method === 'POST') {
     jsonResponse(['reset' => true, 'updated' => $upd->rowCount()]);
 }
 
-// ── Item (sort / episode / category) ─────────────────────────────────────
+// ── Item (sort / episode) — item-level fields on yy_feed_item ───────────
 if ($action === 'item' && $method === 'PUT') {
     if (!$key)     errorResponse('item key required');
-    if (!$pageKey) errorResponse('page_key required');
     $d = json_decode(file_get_contents('php://input'), true) ?: [];
     $f = []; $p = [];
     if (isset($d['sort'])) {
@@ -341,17 +265,6 @@ if ($action === 'item' && $method === 'PUT') {
         $f[] = 'feed_item_episode = ?';
         $p[] = ($d['episode'] !== null && $d['episode'] !== '') ? trim($d['episode']) : null;
         stampManualField($db, $key, 'episode');
-    }
-    // Category → yy_feed_item_category, page-scoped (one per page per item).
-    if (array_key_exists('category_key', $d)) {
-        $catKey = $d['category_key'] ? (int)$d['category_key'] : null;
-        $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ? AND category_key IN (SELECT category_key FROM yy_feed_page_category WHERE page_key = ?)")
-           ->execute([$key, $pageKey]);
-        if ($catKey) {
-            $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key) VALUES (?, ?) ON CONFLICT (feed_item_key, category_key) DO NOTHING")
-               ->execute([$key, $catKey]);
-        }
-        stampManualField($db, $key, 'category:' . $pageKey);
     }
     if ($f) {
         $f[] = 'feed_item_revision_dtime = NOW()'; $p[] = $key;

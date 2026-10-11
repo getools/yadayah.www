@@ -70,9 +70,10 @@ $where = [$matchSql];
 $params = [$matchParm];
 
 if ($group !== null) {
-    $where[] = "EXISTS (SELECT 1 FROM yy_feed_item_page fip
-                        WHERE fip.feed_item_key = t.feed_item_key
-                          AND fip.page_key = ?)";
+    $where[] = "EXISTS (SELECT 1 FROM yy_section_item si
+                        JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
+                        WHERE si.feed_item_key = t.feed_item_key
+                          AND s.page_key = ?)";
     $params[] = $group;
 }
 if ($category !== null) {

@@ -322,11 +322,6 @@ foreach ($brokenStmt->fetchAll() as $row) {
 }
 if ($cleared > 0 && $isCli) echo "Cleared {$cleared} thumbnail paths pointing to missing files\n";
 
-// Update feed item → page associations after sync
-require_once __DIR__ . '/feed-item-pages.php';
-foreach ($feeds as $feed) {
-    updateItemPagesForFeed($db, (int)$feed['feed_key']);
-}
 
 if (!$isCli) {
     jsonResponse(['synced' => true, 'results' => $results]);

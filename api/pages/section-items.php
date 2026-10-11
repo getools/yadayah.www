@@ -21,31 +21,6 @@ require_once __DIR__ . '/../feed-helpers.php';
 define('PAGE_RENDER_LIB', true);              // load page-render.php as a library
 require_once __DIR__ . '/page-render.php';    // resolveItemsSection()
 
-/**
- * The section-scoped yy_category key for an item, or null.
- * Bridges the item's page-scoped assignment (yy_feed_item_category ->
- * yy_feed_page_category) to the section's own yy_category set by slug
- * (slug is unique within a page). If the item maps to several, the
- * lowest-sorted category wins.
- */
-function sectionItemCategory(PDO $db, int $sectionKey, int $feedItemKey, array $pageKeys): ?int {
-    if (!$pageKeys) return null;
-    $place = implode(',', array_fill(0, count($pageKeys), '?'));
-    $st = $db->prepare("
-        SELECT yc.category_key
-          FROM yy_feed_item_category fic
-          JOIN yy_feed_page_category pc ON pc.category_key = fic.category_key AND pc.page_key IN ($place)
-          JOIN yy_category yc ON yc.section_key = ? AND yc.category_slug = pc.category_slug
-                             AND yc.category_active_flag = TRUE
-         WHERE fic.feed_item_key = ?
-         ORDER BY yc.category_sort, yc.category_key
-         LIMIT 1
-    ");
-    $st->execute(array_merge($pageKeys, [$sectionKey, $feedItemKey]));
-    $v = $st->fetchColumn();
-    return $v === false ? null : (int)$v;
-}
-
 /** Rebuild yy_section_item for one section. Returns the number of items stored. */
 function rebuildSectionItems(PDO $db, int $sectionKey): int {
     $st = $db->prepare("SELECT section_type, section_config FROM yy_section WHERE section_key = ?");
@@ -71,18 +46,13 @@ function rebuildSectionItems(PDO $db, int $sectionKey): int {
         $offset += 200;
     } while (count($batch) === 200 && $offset < 100000);
 
-    // Page scope for the category bridge.
-    $pageKeys = [];
-    foreach (($cfg['pages'] ?? []) as $p) if (!empty($p['page_key'])) $pageKeys[] = (int)$p['page_key'];
-    if (!empty($cfg['page_key'])) $pageKeys[] = (int)$cfg['page_key'];
-    $pageKeys = array_values(array_unique($pageKeys));
-
     // Preserve the category AND per-section sort each item already has — the
-    // editor writes yy_section_item.category_key and section_item_sort
-    // directly (Matching-items list), so both are authoritative once set.
-    // Rebuild derives a value only for items NEWLY entering the section;
-    // surviving items keep their stored category + sort, so a filter refresh
-    // never wipes a manual ordering.
+    // editor and the hashtag engine (applyParsedItemFields) write
+    // yy_section_item.category_key and section_item_sort directly, so both are
+    // authoritative once set. Items NEWLY entering the section start
+    // uncategorized until the engine or an admin files them; surviving items
+    // keep their stored category + sort, so a filter refresh never wipes a
+    // manual ordering.
     $prevCat  = [];
     $prevSort = [];
     $pst = $db->prepare("SELECT feed_item_key, category_key, section_item_sort FROM yy_section_item WHERE section_key = ?");
@@ -111,10 +81,8 @@ function rebuildSectionItems(PDO $db, int $sectionKey): int {
         $fik = (int)$it['feed_item_key'];
         if (isset($seen[$fik])) continue;   // dedupe (pinned + filter overlap)
         $seen[$fik] = true;
-        // Surviving item keeps its stored category + sort; new item derives.
-        $catKey = array_key_exists($fik, $prevCat)
-                ? $prevCat[$fik]
-                : sectionItemCategory($db, $sectionKey, $fik, $pageKeys);
+        // Surviving item keeps its stored category + sort.
+        $catKey = $prevCat[$fik] ?? null;
         $sortVal = (array_key_exists($fik, $prevSort) && $prevSort[$fik] !== null)
                  ? $prevSort[$fik]
                  : 0;

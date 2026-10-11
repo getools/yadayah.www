@@ -383,15 +383,11 @@ case 'DELETE':
     $key = (int)($_GET['key'] ?? 0);
     if (!$key) errorResponse('Missing key');
 
-    // Since the 2026-08-23 unification this row IS the site's feed anchor, and
-    // yy_feed_item_page / yy_feed_page / yy_menu_item / yy_page_alias all
-    // cascade off it. Deleting a busy page used to cost a yy_page_test row and
-    // its sections; it now destroys every feed association too. Refuse unless
-    // the caller has seen the damage and passed force=1.
+    // This row anchors yy_section (Items sections + their item pools and
+    // categories), yy_menu_item and yy_page_alias, which all cascade off it.
+    // Refuse unless the caller has seen the damage and passed force=1.
     $dep = $db->prepare("
-        SELECT (SELECT count(*) FROM yy_feed_item_page     WHERE page_key = :k) AS feed_items,
-               (SELECT count(*) FROM yy_feed_page          WHERE page_key = :k) AS feeds,
-               (SELECT count(*) FROM yy_feed_page_category WHERE page_key = :k) AS feed_categories,
+        SELECT (SELECT count(*) FROM yy_section            WHERE page_key = :k AND section_type = 'items') AS items_sections,
                (SELECT count(*) FROM yy_menu_item          WHERE page_key = :k) AS menu_items,
                (SELECT count(*) FROM yy_page_alias         WHERE page_key = :k) AS aliases");
     $dep->execute([':k' => $key]);

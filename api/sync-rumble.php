@@ -122,10 +122,9 @@ try {
             else $totalUpdated++;
         }
 
-        // Apply parsed captures (episode/date/title/sort) + category
-        // assignments via the shared engine (most-recent-wins arbitration;
-        // page-scoped category replacement).
-        if ($parse['fields'] || $parse['categories']) {
+        // Apply parsed captures (episode/date/title/sort) + section category
+        // links via the shared engine (most-recent-wins arbitration).
+        if ($parse['fields'] || $parse['section_categories']) {
             $itemKeyStmt = $db->prepare("SELECT feed_item_key FROM yy_feed_item WHERE feed_key = ? AND feed_item_external_id = ?");
             $itemKeyStmt->execute([$feedKey, $vidId]);
             $itemKey = (int)($itemKeyStmt->fetchColumn() ?: 0);
@@ -165,10 +164,6 @@ if ($error) {
     logMonitorEvent('sync_rumble', 'error', 'Rumble sync failed: ' . $error,
         "found=$totalFound inserted=$totalInserted updated=$totalUpdated\nfeed_sync_key=$syncKey");
 }
-
-// Update feed item → page associations after sync
-require_once __DIR__ . '/feed-item-pages.php';
-updateItemPagesForFeed($db, $feedKey);
 
 $result = [
     'synced' => !$error,

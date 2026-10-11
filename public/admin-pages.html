@@ -1190,7 +1190,7 @@ function sectionDefaultConfig(type){
                                       age_min_h: '', age_max_h: '',
                                       include_hashtags: '', exclude_hashtags: '',
                                       duration_min_sec: '', duration_max_sec: '',
-                                      content_type: '', page_key: '', category_key: '',
+                                      content_type: '',
                                       title_include: '', title_exclude: '',
                                       sort: 'posted', sort_dir: 'desc',
                                       max_count: 24, columns: 3, featured_first: false,
@@ -2227,7 +2227,7 @@ function renderItemsBody(s){
                  +     '<label style="display:block;font-size:0.82rem;font-weight:600;color:#444;margin:8px 0 3px">Feeds (sources)</label>'
                  +     feedPickerHtml
                  +     '<div style="margin-top:12px">' + renderPinnedItemsPicker(s) + '</div>'
-                 +     '<div style="margin-top:12px"' + filtersAttr + '>' + renderPagesPicker(s) + '</div>'
+                 +     '<div style="margin-top:12px"' + filtersAttr + '>' + renderCategorizedSectionPicker(s) + '</div>'
                  +   '</div>'
                  +   '<div' + filtersAttr + '>'
                  +     filtersBanner
@@ -2393,115 +2393,64 @@ function renderItemsBody(s){
     return topBlock + bottomBlock + previewBlock;
 }
 
-// ── Page + category cascading multi-selector (Items section) ──
+// ── "Also include items categorized in" (Items section) ──
+// config.include_categorized_section = another Items section's key: items that
+// section has filed under one of its categories pass this section's hashtag
+// and title filters regardless (e.g. a Home "latest vlogs" row that should
+// keep every categorized vlog even when it carries #Basics). Replaced the
+// page + legacy-category picker (cfg.pages) retired on 2026-10-11.
 // Uses ONE shared cache loaded once, reused by every Items editor on the page.
-var pagesCatalogue = null;       // [{page_key, page_title, categories:[{category_key,category_title}]}]
-var pagesCataloguePromise = null;
+var catSectionsCatalogue = null;   // [{section_key, section_label, section_title, page_code, page_title, categorized_items, ...}]
+var catSectionsPromise = null;
 
-function loadPagesCatalogue(){
-    if (pagesCatalogue) return Promise.resolve(pagesCatalogue);
-    if (pagesCataloguePromise) return pagesCataloguePromise;
-    pagesCataloguePromise = fetch(API + '/pages/pages-with-categories.php', {credentials:'include'})
+function loadCatSectionsCatalogue(){
+    if (catSectionsCatalogue) return Promise.resolve(catSectionsCatalogue);
+    if (catSectionsPromise) return catSectionsPromise;
+    catSectionsPromise = fetch(API + '/pages/pages-with-categories.php', {credentials:'include'})
         .then(safeJson).then(function(rows){
-            pagesCatalogue = Array.isArray(rows) ? rows : [];
-            return pagesCatalogue;
-        }).catch(function(){ pagesCatalogue = []; return []; });
-    return pagesCataloguePromise;
+            catSectionsCatalogue = Array.isArray(rows) ? rows : [];
+            return catSectionsCatalogue;
+        }).catch(function(){ catSectionsCatalogue = []; return []; });
+    return catSectionsPromise;
 }
 
-function getPageEntries(s){
-    // Migrate legacy single page_key/category_key into the new array shape.
-    var c = s.config || {};
-    if (Array.isArray(c.pages)) return c.pages;
-    if (c.page_key) return [{ page_key: parseInt(c.page_key, 10), category_key: c.category_key ? parseInt(c.category_key,10) : null }];
-    return [];
-}
-function ensurePageEntries(s){
-    if (!Array.isArray(s.config.pages)) s.config.pages = getPageEntries(s);
-    delete s.config.page_key;
-    delete s.config.category_key;
-    return s.config.pages;
+function renderCategorizedSectionPicker(s){
+    setTimeout(function(){ loadCatSectionsCatalogue().then(function(){ redrawCategorizedSectionPicker(s.local_id); }); }, 0);
+    return '<label title="Items that the chosen section has filed under one of its categories are included even when this section\'s hashtag or title filters would leave them out.">Also include items categorized in</label>'
+         + '<div id="catsec-picker-' + s.local_id + '">' + renderCategorizedSectionPickerInner(s) + '</div>';
 }
 
-function renderPagesPicker(s){
-    var rootId = 'pages-picker-' + s.local_id;
-    // Async-fill when the catalogue arrives — render placeholder rows synchronously.
-    setTimeout(function(){ loadPagesCatalogue().then(function(){ redrawPagesPicker(s.local_id); }); }, 0);
-    return '<label>Groups &amp; Categories</label>'
-         + '<div id="' + rootId + '">' + renderPagesPickerInner(s) + '</div>';
-}
-
-function renderPagesPickerInner(s){
-    var entries = getPageEntries(s);
-    if (!pagesCatalogue) {
-        return '<div style="color:#999;font-size:0.82rem;font-style:italic;padding:4px 0">Loading pages…</div>'
-             + (entries.length ? '<div style="font-size:0.78rem;color:#888;margin-top:4px">' + entries.length + ' selected</div>' : '');
+function renderCategorizedSectionPickerInner(s){
+    var cur = parseInt((s.config || {}).include_categorized_section, 10) || 0;
+    if (!catSectionsCatalogue) {
+        return '<div style="color:#999;font-size:0.82rem;font-style:italic;padding:4px 0">Loading sections…</div>';
     }
-    var rows = entries.map(function(e, i){ return renderPageRow(s, e, i); }).join('');
-    return (rows || '<div style="color:#999;font-style:italic;font-size:0.82rem;padding:4px 0">No group filters</div>')
-         + '<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="addPageEntry(' + s.local_id + ')">+ Add group</button>';
+    var opts = '<option value="">— None —</option>';
+    catSectionsCatalogue.forEach(function(r){
+        if (s.key != null && r.section_key === s.key) return;   // not itself
+        var name = String(r.section_label || '').trim()
+            || (new DOMParser().parseFromString(r.section_title || '', 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim()
+            || ('section #' + r.section_key);
+        if (name.length > 40) name = name.substring(0, 39) + '…';
+        var label = (r.page_title || r.page_code || '?') + ' · ' + name + ' (' + r.categorized_items + ' categorized)';
+        opts += '<option value="' + r.section_key + '"' + (r.section_key === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
+    });
+    return '<select onchange="setCategorizedSection(' + s.local_id + ',this.value)" style="min-width:260px;max-width:100%">' + opts + '</select>';
 }
 
-function renderPageRow(s, entry, idx){
-    var pageOpts = '<option value="">— Select —</option>'
-                 + (pagesCatalogue || []).map(function(p){
-                     var label = p.page_title || p.page_code || ('page ' + p.page_key);
-                     return '<option value="' + p.page_key + '"' + (entry.page_key === p.page_key ? ' selected' : '') + '>' + esc(label) + '</option>';
-                 }).join('');
-    var catSelectHtml = '';
-    if (entry.page_key) {
-        var page = (pagesCatalogue || []).find(function(p){ return p.page_key === entry.page_key; });
-        if (page && page.categories && page.categories.length) {
-            catSelectHtml = '<select onchange="setPageEntryCategory(' + s.local_id + ',' + idx + ',this.value)" style="min-width:160px">'
-                          + '<option value=""' + (!entry.category_key?' selected':'') + '>All</option>'
-                          + page.categories.map(function(cat){
-                              return '<option value="' + cat.category_key + '"' + (entry.category_key === cat.category_key ? ' selected' : '') + '>' + esc(cat.category_title) + '</option>';
-                          }).join('')
-                          + '</select>';
-        }
-        // No categories on this page → no second dropdown rendered (per spec)
-    }
-    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'
-         + '<select onchange="setPageEntryPage(' + s.local_id + ',' + idx + ',this.value)" style="min-width:200px">' + pageOpts + '</select>'
-         + catSelectHtml
-         + '<button class="toggle-body" style="color:#c0392b" onclick="removePageEntry(' + s.local_id + ',' + idx + ')" title="Remove">✕</button>'
-         + '</div>';
+function redrawCategorizedSectionPicker(localId){
+    var s = findSection(localId); if (!s) return;
+    var el = document.getElementById('catsec-picker-' + localId);
+    if (el) el.innerHTML = renderCategorizedSectionPickerInner(s);
 }
 
-function redrawPagesPicker(localId){
+function setCategorizedSection(localId, val){
     var s = findSection(localId); if (!s) return;
-    var el = document.getElementById('pages-picker-' + localId);
-    if (el) el.innerHTML = renderPagesPickerInner(s);
-}
-
-function addPageEntry(localId){
-    var s = findSection(localId); if (!s) return;
-    var arr = ensurePageEntries(s);
-    arr.push({ page_key: null, category_key: null });
-    redrawPagesPicker(localId);
-    scheduleAutosave();
-}
-function removePageEntry(localId, idx){
-    var s = findSection(localId); if (!s) return;
-    var arr = ensurePageEntries(s);
-    arr.splice(idx, 1);
-    redrawPagesPicker(localId);
-    scheduleAutosave();
-}
-function setPageEntryPage(localId, idx, val){
-    var s = findSection(localId); if (!s) return;
-    var arr = ensurePageEntries(s);
-    if (!arr[idx]) return;
-    arr[idx].page_key = val ? parseInt(val,10) : null;
-    arr[idx].category_key = null;   // reset category when page changes
-    redrawPagesPicker(localId);     // re-render so the right category list shows
-    scheduleAutosave();
-}
-function setPageEntryCategory(localId, idx, val){
-    var s = findSection(localId); if (!s) return;
-    var arr = ensurePageEntries(s);
-    if (!arr[idx]) return;
-    arr[idx].category_key = val ? parseInt(val,10) : null;
+    var k = parseInt(val, 10) || 0;
+    if (k) s.config.include_categorized_section = k;
+    else delete s.config.include_categorized_section;
+    // Drop the retired page-scope keys if this section still carries them.
+    delete s.config.pages; delete s.config.page_key; delete s.config.category_key;
     scheduleAutosave();
 }
 
@@ -2595,8 +2544,7 @@ function searchPinnedItems(localId, q){
         if (c.duration_max_sec)     params.push('duration_max_sec=' + encodeURIComponent(c.duration_max_sec));
         if (c.age_min_h)            params.push('age_min_h=' + encodeURIComponent(c.age_min_h));
         if (c.age_max_h)            params.push('age_max_h=' + encodeURIComponent(c.age_max_h));
-        var pages = (c.pages || []).filter(function(p){ return p && p.page_key; });
-        if (pages.length)           params.push('pages=' + encodeURIComponent(JSON.stringify(pages)));
+        if (c.include_categorized_section) params.push('include_categorized_section=' + encodeURIComponent(c.include_categorized_section));
         var url = API + '/pages/feed-items-search.php?' + params.join('&');
         fetch(url, {credentials:'include'})
             .then(safeJson).then(function(d){
@@ -2657,8 +2605,7 @@ var SORT_FIELDS = [
     // manual-order lead, so asc/desc and its position here actually apply.
     {v:'section_sort', label:'Sort #'},
     {v:'orientation', label:'Orientation'},
-    {v:'page',        label:'Page'},
-    {v:'category',    label:'Page category'},
+    {v:'category',    label:'Category'},
     {v:'duration',    label:'Duration'},
     {v:'random',      label:'Random'}
 ];
@@ -3143,12 +3090,11 @@ function scheduleAutosave(){
 //   1. Categories  — create / rename / re-sort / delete THIS section's own
 //      category set in yy_category, scoped by section_key (the saved
 //      section's key) via items-manage.php's section_category endpoints.
-//      Item counts are bridged from the matching page category.
+//      Item counts come from yy_section_item.category_key.
 //   2. Matching items — every feed item the section's filters select, in
 //      sort order. Clicking a row makes its Category / Episode / Sort
-//      editable inline; changes autosave (PUT item) and re-sort the list.
-//      The per-item category dropdown still uses the page's categories
-//      (yy_feed_page_category) since live assignments are page-scoped.
+//      editable inline; changes autosave and re-sort the list. Category and
+//      Sort # are per section (yy_section_item); Episode is item-level.
 var _itemsPreviewTimer = null;
 function scheduleItemsPreviews(){
     if (_itemsPreviewTimer) clearTimeout(_itemsPreviewTimer);
@@ -3159,24 +3105,15 @@ function refreshAllItemsPreviews(){
         if (s && s.type === 'items' && !s.collapsed) refreshItemsPreview(s.local_id);
     });
 }
-// First page_key the section pulls from — the namespace its categories +
-// item edits resolve against.
-function sectionPageKey(s){
-    var pgs = (s && s.config && s.config.pages) || [];
-    for (var i = 0; i < pgs.length; i++){ if (pgs[i] && pgs[i].page_key) return parseInt(pgs[i].page_key, 10) || 0; }
-    return 0;
-}
 function refreshItemsPreview(localId){
     var el = document.getElementById('items-preview-' + localId); if (!el) return;
     var s = findSection(localId); if (!s) return;
     var token = (s._previewToken = (s._previewToken || 0) + 1);
-    var pk = sectionPageKey(s);
     var sk = (s.key != null) ? s.key : 0;   // section_key — saved sections only
     // Categories panel AND the per-item dropdown both use this section's own
-    // set in yy_category (section-scoped). page_key tags along so the API can
-    // bridge each category's item count.
+    // set in yy_category (section-scoped).
     var catP = sk
-        ? fetch(API + '/pages/items-manage.php?action=section_categories&section_key=' + sk + '&page_key=' + pk, { credentials: 'include' })
+        ? fetch(API + '/pages/items-manage.php?action=section_categories&section_key=' + sk, { credentials: 'include' })
             .then(function(r){ return r.ok ? r.json() : { categories: [] }; })
             .then(function(d){ return d.categories || []; }).catch(function(){ return []; })
         : Promise.resolve([]);
@@ -3235,7 +3172,6 @@ function fmtPreviewDate(d){
 }
 function renderItemsPreview(el, s, d){
     var localId = s.local_id;
-    var pk = sectionPageKey(s);
     var cats = s._categories || [];
     // Shared ▲▼ nudge-button styling — used by both the Categories panel and
     // the Matching-items list below.
@@ -3405,9 +3341,8 @@ function saveItemField(localId, itemKey, field, value){
         return;
     }
     // Episode stays item-level on yy_feed_item.
-    var pk = sectionPageKey(s); if (!pk) return;
     var payload = {}; payload[field] = value;
-    fetch(API + '/pages/items-manage.php?action=item&key=' + itemKey + '&page_key=' + pk, {
+    fetch(API + '/pages/items-manage.php?action=item&key=' + itemKey, {
         method: 'PUT', credentials: 'include',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     }).then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })

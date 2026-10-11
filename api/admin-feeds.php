@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/_transcript_stage.php';
+require_once __DIR__ . '/feed-helpers.php';   // stampManualField()
 
 $user = requireAuth();
 $db = getDb();
@@ -31,13 +32,14 @@ if ($method === 'GET' && isset($_GET['items'])) {
     if ($tagsFilter) { $where[] = 'fi.feed_item_tags ILIKE ?'; $params[] = '%'.$tagsFilter.'%'; }
     $episodeFilter = trim($_GET['episode'] ?? '');
     if ($episodeFilter) { $where[] = 'fi.feed_item_episode ILIKE ?'; $params[] = '%'.$episodeFilter.'%'; }
+    // Category filter: items filed under this Items-section category
+    // (yy_category via yy_section_item.category_key).
     if ($catKey) {
-        $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_feed_item_category WHERE category_key = ?)';
+        $where[] = 'fi.feed_item_key IN (SELECT feed_item_key FROM yy_section_item WHERE category_key = ?)';
         $params[] = $catKey;
     }
     // Page / section filter: items in the materialized pool (yy_section_item)
     // of a Pages-New Items section — what the public pages actually draw from.
-    // The legacy yy_feed_item_page mapping is not consulted here.
     $pageKey = (int)($_GET['page_key'] ?? 0);
     $sectionKey = (int)($_GET['section_key'] ?? 0);
     if ($sectionKey) {
@@ -81,6 +83,9 @@ if ($method === 'GET' && isset($_GET['items'])) {
         'feed_item_episode' => 'fi.feed_item_episode',
         'feed_item_active_flag' => 'fi.feed_item_active_flag',
         'feed_name' => 'f.feed_name',
+        'category_title' => "(SELECT MIN(c.category_title) FROM yy_section_item si
+                               JOIN yy_category c ON c.category_key = si.category_key
+                              WHERE si.feed_item_key = fi.feed_item_key)",
         'status' => "CASE
                        WHEN fi.feed_item_restricted_flag = TRUE THEN 2
                        WHEN fi.feed_item_active_flag = FALSE THEN 1
@@ -109,20 +114,6 @@ if ($method === 'GET' && isset($_GET['items'])) {
 
     $stmt = $db->prepare("
         SELECT fi.*, COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS feed_item_title, f.feed_name,
-               (SELECT string_agg(DISTINCT p.page_code, ', ' ORDER BY p.page_code)
-                FROM yy_feed_item_page fip JOIN yy_page p ON fip.page_key = p.page_key
-                WHERE fip.feed_item_key = fi.feed_item_key
-               ) AS page_codes,
-               (SELECT json_agg(json_build_object('page_key', p.page_key, 'page_code', p.page_code, 'page_title', p.page_title) ORDER BY p.page_title)
-                FROM (SELECT DISTINCT ON (p.page_key) p.page_key, p.page_code, p.page_title
-                      FROM yy_feed_item_page fip JOIN yy_page p ON fip.page_key = p.page_key
-                      WHERE fip.feed_item_key = fi.feed_item_key
-                ) p) AS page_list,
-               (SELECT json_agg(json_build_object('category_key', cc.category_key, 'category_title', cc.category_title, 'category_slug', cc.category_slug, 'episode', fic.feed_item_category_episode, 'page_title', pp.page_title) ORDER BY pp.page_title, cc.category_sort, cc.category_title)
-                FROM yy_feed_item_category fic
-                JOIN yy_feed_page_category cc ON fic.category_key = cc.category_key
-                JOIN yy_page pp ON cc.page_key = pp.page_key
-                WHERE fic.feed_item_key = fi.feed_item_key) AS categories_list,
                -- Most recent validation status + reviewer's resume bookmark.
                -- Two correlated subqueries to keep the change small; same row.
                (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
@@ -144,16 +135,19 @@ if ($method === 'GET' && isset($_GET['items'])) {
     $stmt->execute(array_merge($params, [$limit, $offset]));
     $items = $stmt->fetchAll();
 
-    // "On Pages" column: the Items sections whose pool holds each item.
+    // "On Pages" + "Category" columns: the Items sections whose pool holds
+    // each item, with the item's category (if any) in that section.
     if ($items) {
         $itemKeys = array_map(fn($r) => (int)$r['feed_item_key'], $items);
         $ph = implode(',', array_fill(0, count($itemKeys), '?'));
         $secStmt = $db->prepare("
             SELECT si.feed_item_key, s.section_key, s.section_label, s.section_title, s.section_active_flag,
-                   p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag
+                   p.page_key, p.page_code, p.page_title, p.page_url, p.page_active_flag,
+                   c.category_key, c.category_title, c.category_slug
             FROM yy_section_item si
             JOIN yy_section s ON s.section_key = si.section_key AND s.section_type = 'items'
             LEFT JOIN yy_page p ON p.page_key = s.page_key
+            LEFT JOIN yy_category c ON c.category_key = si.category_key
             WHERE si.feed_item_key IN ($ph)
             ORDER BY p.page_header_sort, p.page_key, s.section_sort, s.section_key
         ");
@@ -168,19 +162,16 @@ if ($method === 'GET' && isset($_GET['items'])) {
         unset($it);
     }
 
-    // Category hierarchy for filter dropdown
+    // Category filter + item-editor options: every active category of an
+    // Items section, with its section and page.
     $catStmt = $db->query("
-        SELECT c.category_key, c.category_title, c.category_subtitle, c.category_slug, c.category_sort, c.page_key, p.page_code, p.page_title
-        FROM yy_feed_page_category c
-        JOIN yy_page p ON c.page_key = p.page_key
+        SELECT c.category_key, c.category_title, c.category_subtitle, c.category_slug, c.category_sort,
+               c.section_key, s.page_key, p.page_code, p.page_title
+        FROM yy_category c
+        JOIN yy_section s ON s.section_key = c.section_key AND s.section_type = 'items'
+        JOIN yy_page p ON p.page_key = s.page_key
         WHERE c.category_active_flag = TRUE
-        ORDER BY p.page_title, c.category_sort, c.category_title
-    ");
-    $pagesStmt = $db->query("
-        SELECT p.page_key, p.page_code, p.page_title
-        FROM yy_page p
-        WHERE p.page_active_flag = TRUE AND p.page_key IN (SELECT DISTINCT page_key FROM yy_feed_page)
-        ORDER BY p.page_title
+        ORDER BY p.page_title, s.section_sort, s.section_key, c.category_sort, c.category_title
     ");
     // Page / section filter options: Items sections with a non-empty pool.
     $secPagesStmt = $db->query("
@@ -200,49 +191,18 @@ if ($method === 'GET' && isset($_GET['items'])) {
         'total' => $total,
         'total_pages' => max(1, (int)ceil($total / $limit)),
         'categories' => $catStmt->fetchAll(),
-        'pages' => $pagesStmt->fetchAll(),
         'section_pages' => $secPagesStmt->fetchAll(),
     ]);
 }
 
-// GET all page feed mappings
-if ($method === 'GET' && !empty($_GET['all_page_feeds'])) {
-    $stmt = $db->query("
-        SELECT pf.*, p.page_code, p.page_title
-        FROM yy_feed_page pf
-        JOIN yy_page p ON p.page_key = pf.page_key
-        ORDER BY p.page_code, pf.feed_page_sort
-    ");
-    jsonResponse(['page_feeds' => $stmt->fetchAll()]);
-}
-
-// GET page feeds for a specific feed (must be before main GET handler)
-if ($method === 'GET' && !empty($_GET['page_feeds'])) {
-    $feedKey = (int)($_GET['feed_key'] ?? 0);
-    $pages = $db->query("SELECT page_key, page_code, page_title FROM yy_page ORDER BY page_code")->fetchAll();
-    if (!$feedKey) {
-        jsonResponse(['page_feeds' => [], 'pages' => $pages]);
-    }
-    $stmt = $db->prepare("
-        SELECT pf.*, p.page_code, p.page_title
-        FROM yy_feed_page pf
-        JOIN yy_page p ON p.page_key = pf.page_key
-        WHERE pf.feed_key = ?
-        ORDER BY pf.feed_page_sort
-    ");
-    $stmt->execute([$feedKey]);
-    jsonResponse(['page_feeds' => $stmt->fetchAll(), 'pages' => $pages]);
-}
-
 // GET where each feed source is used (Sources tab "Used On" column + edit
 // form). Pages-New Items sections name their sources in
-// section_config->feed_keys; legacy yy_feed_page mappings still drive the
-// hashtag/category page links that sync writes. Item counts let the UI offer
-// the "deactivate its items" cascade. Keyed by feed_key.
+// section_config->feed_keys. Item counts let the UI offer the "deactivate its
+// items" cascade. Keyed by feed_key.
 if ($method === 'GET' && isset($_GET['usage'])) {
     $usage = [];
     foreach ($db->query("SELECT feed_key FROM yy_feed")->fetchAll() as $f) {
-        $usage[(int)$f['feed_key']] = ['sections' => [], 'legacy' => [], 'items_total' => 0, 'items_active' => 0, 'items_source_off' => 0];
+        $usage[(int)$f['feed_key']] = ['sections' => [], 'items_total' => 0, 'items_active' => 0, 'items_source_off' => 0];
     }
     $secs = $db->query("
         SELECT fk.v::int AS feed_key, s.section_key, s.section_label, s.section_title,
@@ -261,19 +221,6 @@ if ($method === 'GET' && isset($_GET['usage'])) {
         if (!isset($usage[$k])) continue;
         unset($r['feed_key']);
         $usage[$k]['sections'][] = $r;
-    }
-    $leg = $db->query("
-        SELECT fp.feed_key, fp.feed_page_key, fp.feed_page_active_flag,
-               p.page_key, p.page_code, p.page_title, p.page_active_flag
-        FROM yy_feed_page fp
-        JOIN yy_page p ON p.page_key = fp.page_key
-        ORDER BY p.page_code, fp.feed_page_sort
-    ")->fetchAll();
-    foreach ($leg as $r) {
-        $k = (int)$r['feed_key'];
-        if (!isset($usage[$k])) continue;
-        unset($r['feed_key']);
-        $usage[$k]['legacy'][] = $r;
     }
     $cnt = $db->query("
         SELECT i.feed_key, count(*) AS total,
@@ -330,28 +277,14 @@ if ($method === 'GET') {
         $schedStmt->execute([$feedKey]);
         $feed['schedules'] = $schedStmt->fetchAll();
 
-        // Include feed_page rows
-        $fpStmt = $db->prepare("
-            SELECT fp.*, p.page_code, p.page_title
-            FROM yy_feed_page fp
-            JOIN yy_page p ON p.page_key = fp.page_key
-            WHERE fp.feed_key = ?
-            ORDER BY fp.feed_page_sort
-        ");
-        $fpStmt->execute([$feedKey]);
-        $feed['feed_pages'] = $fpStmt->fetchAll();
-
         jsonResponse($feed);
     }
 
-    // All feeds with first page's filters
+    // All feeds with their schedule summary
     $stmt = $db->query("
         SELECT f.*,
             (SELECT count(*) FROM yy_feed_schedule s WHERE s.feed_key = f.feed_key AND s.schedule_active_flag = true) as schedule_count,
-            (SELECT max(s.schedule_last_run) FROM yy_feed_schedule s WHERE s.feed_key = f.feed_key) as last_run,
-            (SELECT count(*) FROM yy_feed_page fp WHERE fp.feed_key = f.feed_key) as page_count,
-            (SELECT fp.feed_page_filter_include FROM yy_feed_page fp WHERE fp.feed_key = f.feed_key ORDER BY fp.feed_page_sort LIMIT 1) as feed_page_filter_include,
-            (SELECT fp.feed_page_filter_exclude FROM yy_feed_page fp WHERE fp.feed_key = f.feed_key ORDER BY fp.feed_page_sort LIMIT 1) as feed_page_filter_exclude
+            (SELECT max(s.schedule_last_run) FROM yy_feed_schedule s WHERE s.feed_key = f.feed_key) as last_run
         FROM yy_feed f
         ORDER BY f.feed_name
     ");
@@ -371,48 +304,6 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
     if (!$data) errorResponse('Invalid JSON');
-
-    // Page feed mapping create/update
-    if (!empty($data['feed_page_action'])) {
-        $action = $data['feed_page_action'];
-
-        if ($action === 'create') {
-            $db->prepare("INSERT INTO yy_feed_page (page_key, feed_key, feed_page_filter_include, feed_page_filter_exclude, feed_page_listing_type, feed_page_filter_orientation, feed_page_sort) VALUES (?, ?, ?, ?, ?, ?, ?)")
-               ->execute([
-                   (int)$data['page_key'],
-                   (int)$data['feed_key'],
-                   $data['feed_page_filter_include'] ?? null,
-                   $data['feed_page_filter_exclude'] ?? null,
-                   $data['feed_page_listing_type'] ?? null,
-                   $data['feed_page_filter_orientation'] ?? null,
-                   (int)($data['feed_page_sort'] ?? 0),
-               ]);
-            // Re-evaluate page associations
-            require_once __DIR__ . '/feed-item-pages.php';
-            updatePageItems($db, (int)$data['page_key']);
-            jsonResponse(['created' => true]);
-        }
-
-        if ($action === 'update') {
-            $db->prepare("UPDATE yy_feed_page SET feed_key = ?, page_key = ?, feed_page_filter_include = ?, feed_page_filter_exclude = ?, feed_page_listing_type = ?, feed_page_filter_orientation = ?, feed_page_sort = ?, feed_page_revision_dtime = NOW() WHERE feed_page_key = ?")
-               ->execute([
-                   (int)$data['feed_key'],
-                   (int)$data['page_key'],
-                   $data['feed_page_filter_include'] ?? null,
-                   $data['feed_page_filter_exclude'] ?? null,
-                   $data['feed_page_listing_type'] ?? null,
-                   $data['feed_page_filter_orientation'] ?? null,
-                   (int)($data['feed_page_sort'] ?? 0),
-                   (int)$data['feed_page_key'],
-               ]);
-            // Re-evaluate page associations
-            require_once __DIR__ . '/feed-item-pages.php';
-            updatePageItems($db, (int)$data['page_key']);
-            jsonResponse(['updated' => true]);
-        }
-
-        errorResponse('Invalid feed_page_action');
-    }
 
     // Source → items cascade. 'deactivate' switches off every active item of
     // the feed and remembers exactly which ones in yy_feed_item_source_off;
@@ -577,24 +468,27 @@ if ($method === 'PUT' && isset($_GET['item_update'])) {
         $vals[] = $itemKey;
         $db->prepare("UPDATE yy_feed_item SET " . implode(', ', $sets) . " WHERE feed_item_key = ?")->execute($vals);
     }
-    // Multi-category assignments — replace all if 'categories' array is provided
-    if (array_key_exists('categories', $data) && is_array($data['categories'])) {
-        $db->prepare("DELETE FROM yy_feed_item_category WHERE feed_item_key = ?")->execute([$itemKey]);
-        $catUp = $db->prepare("INSERT INTO yy_feed_item_category (feed_item_key, category_key, feed_item_category_episode) VALUES (?, ?, ?) ON CONFLICT (feed_item_key, category_key) DO UPDATE SET feed_item_category_episode = EXCLUDED.feed_item_category_episode");
-        foreach ($data['categories'] as $ca) {
-            $catKey = (int)($ca['category_key'] ?? 0);
-            if (!$catKey) continue;
-            $ep = isset($ca['episode']) && $ca['episode'] !== '' ? trim((string)$ca['episode']) : null;
-            $catUp->execute([$itemKey, $catKey, $ep]);
+    // Per-section category picks: [{section_key, category_key|null}]. Only
+    // sections whose pool already holds the item can be set, and only to one
+    // of that section's own categories. Stamped as a manual edit so the next
+    // sync's hashtag parse doesn't overwrite it (same as the page editor).
+    $secCats = (isset($data['section_categories']) && is_array($data['section_categories'])) ? $data['section_categories'] : null;
+    if ($secCats !== null) {
+        $chk = $db->prepare("SELECT 1 FROM yy_category WHERE category_key = ? AND section_key = ?");
+        $upd = $db->prepare("UPDATE yy_section_item SET category_key = ?, section_item_dtime = NOW() WHERE section_key = ? AND feed_item_key = ?");
+        foreach ($secCats as $sc) {
+            $sk = (int)($sc['section_key'] ?? 0);
+            if (!$sk) continue;
+            $ck = (isset($sc['category_key']) && $sc['category_key'] !== '' && $sc['category_key'] !== null) ? (int)$sc['category_key'] : null;
+            if ($ck !== null) {
+                $chk->execute([$ck, $sk]);
+                if (!$chk->fetchColumn()) errorResponse("Category $ck does not belong to section $sk");
+            }
+            $upd->execute([$ck, $sk, $itemKey]);
+            if ($upd->rowCount()) stampManualField($db, $itemKey, 'section_category:' . $sk);
         }
     }
-    if (!$sets && !array_key_exists('categories', $data)) errorResponse('Nothing to update');
-    // Re-evaluate page associations if tags, title, or orientation changed
-    $pageRelevant = ['feed_item_tags', 'feed_item_title_override', 'feed_item_title_import', 'feed_item_orientation', 'feed_item_active_flag'];
-    if (array_intersect(array_keys($data), $pageRelevant)) {
-        require_once __DIR__ . '/feed-item-pages.php';
-        updateItemPages($db, $itemKey);
-    }
+    if (!$sets && $secCats === null) errorResponse('Nothing to update');
     jsonResponse(['saved' => true]);
 }
 
@@ -673,16 +567,9 @@ if ($method === 'PUT') {
 if ($method === 'DELETE') {
     $data = json_decode(file_get_contents('php://input'), true);
 
-    // Delete page-feed mapping
-    if (!empty($data['feed_page_key'])) {
-        $db->prepare("DELETE FROM yy_feed_page WHERE feed_page_key = ?")->execute([$data['feed_page_key']]);
-        jsonResponse(['deleted' => true]);
-    }
-
     // Delete feed
     $feedKey = $data['feed_key'] ?? null;
     if (!$feedKey) errorResponse('feed_key required');
-    $db->prepare("DELETE FROM yy_feed_page WHERE feed_key = ?")->execute([$feedKey]);
     $db->prepare("DELETE FROM yy_feed_schedule WHERE feed_key = ?")->execute([$feedKey]);
     $db->prepare("DELETE FROM yy_feed WHERE feed_key = ?")->execute([$feedKey]);
     jsonResponse(['deleted' => true]);
