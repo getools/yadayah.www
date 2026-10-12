@@ -295,6 +295,40 @@ remap_tts_markers() {
     fi
 }
 
+# ── Seed chapters for a volume that has none ──────────────────────
+# parse_volume_from_bundle.py only MAPS paragraphs onto yy_chapter rows that
+# already exist — it never creates them. A volume added through Admin → Books
+# has no chapter rows, so every parse left all its paragraphs with chapter_key
+# NULL; TTS builds per chapter, so the book silently never got narrated
+# (s04v06, created 09-01, found 10-12). Seed from the PDF outline (the same
+# source the flipbook TOC uses) — but ONLY when the volume has ZERO chapters:
+# a partially-seeded book is left alone (s04v04 deliberately has no ch 2).
+# The script itself only INSERTs, never updates/deletes (yy_tts_audio cascades).
+# Best effort — never affects the parse outcome.
+seed_chapters_if_empty() {
+    local vk="$1" n pdf sd_output sd_rc=0
+    [ -f /opt/yada-www/parsers/seed_chapters_from_outline.py ] || return 0
+    n=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -c \
+        "SELECT count(*) FROM yy_chapter WHERE volume_key = $vk" 2>/dev/null | tr -d '[:space:]')
+    [ "$n" = "0" ] || return 0
+    pdf=$(docker exec "$PG_CONTAINER" psql -U postgres -d yada -At -c \
+        "SELECT volume_pdf FROM yy_volume WHERE volume_key = $vk" 2>/dev/null | tr -d '\r\n')
+    if [ -z "$pdf" ] || [ ! -f "$PDF_DIR/$pdf" ]; then
+        log "Chapter seed: volume $vk has 0 chapters but no PDF ($pdf) — skipped"
+        return 0
+    fi
+    sd_output=$(timeout 300 python3 /opt/yada-www/parsers/seed_chapters_from_outline.py \
+        "$PDF_DIR/$pdf" "$vk" --apply --strict 2>&1) || sd_rc=$?
+    echo "$sd_output" >> /var/log/book-pipeline.log
+    if [ "$sd_rc" -ne 0 ] || ! echo "$sd_output" | grep -q '^\[seed\] inserted'; then
+        log "Chapter seed: volume $vk has 0 chapters and seeding inserted none (exit $sd_rc)"
+        log_monitor_event "book_chapter_seed" "warning" \
+            "Volume $vk has no chapters and none could be seeded from the PDF outline — TTS cannot build it" "$sd_output"
+    else
+        log "Chapter seed: volume $vk — $(echo "$sd_output" | tail -1)"
+    fi
+}
+
 # Process a single job file.
 process_job() {
     local job="$1"
@@ -691,6 +725,7 @@ process_job() {
     # no translations). Failures here log a monitor event but do NOT mark
     # the docx→pdf→flip pipeline as failed — the artifacts are still good.
     if [ -x /opt/yada-www/parsers/parse_volume_from_bundle.py ]; then
+        seed_chapters_if_empty "$volume_key"
         log "Running paragraph + translation extraction (capped at $PARSER_MEM_MAX)"
         local pv_output pv_rc
         pv_output=$(systemd-run --scope --quiet \
@@ -1055,6 +1090,7 @@ if [ -x /opt/yada-www/parsers/parse_volume_from_bundle.py ]; then
     if [ -n "$parse_target" ]; then
         log "Parse-sweep: picking up volume $parse_target"
         DID_WORK=1
+        seed_chapters_if_empty "$parse_target"
         ps_rc=0
         ps_output=$(systemd-run --scope --quiet \
             --property=MemoryMax=$PARSER_MEM_MAX \

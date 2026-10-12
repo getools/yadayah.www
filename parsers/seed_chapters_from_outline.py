@@ -2,7 +2,7 @@
 """
 seed_chapters_from_outline.py — create yy_chapter rows from a PDF outline.
 
-Usage: seed_chapters_from_outline.py <pdf-path> <volume-key> [--apply]
+Usage: seed_chapters_from_outline.py <pdf-path> <volume-key> [--apply] [--strict]
 
 parse_volume_from_bundle.py only MAPS paragraphs onto yy_chapter rows that
 already exist; it never creates them (only the older DOCX-based
@@ -63,6 +63,7 @@ def printed_page_of(doc, physical):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     apply_ = "--apply" in sys.argv[1:]
+    strict = "--strict" in sys.argv[1:]
     if len(args) != 2:
         sys.stderr.write(
             "usage: seed_chapters_from_outline.py <pdf> <volume-key> [--apply]\n")
@@ -94,6 +95,17 @@ def main():
             continue
         parts = line.split("\t")
         existing[int(parts[0])] = parts[1] if len(parts) > 1 else ""
+
+    # --strict (used by the unattended pipeline): refuse an outline whose
+    # chapter numbers aren't exactly 1..N, each once. Broken outlines repeat
+    # entries or carry junk ("7  N ~ H"), and a deliberate gap (s04v04 has no
+    # ch 2) needs a human anyway. Exit 3 so the caller can raise a warning.
+    if strict:
+        nums = [w[0] for w in wanted]
+        if not nums or sorted(nums) != list(range(1, len(nums) + 1)):
+            sys.stderr.write("[seed] --strict: outline chapter numbers are not "
+                             "exactly 1..N (got %s) - not seeding\n" % nums)
+            return 3
 
     to_insert = [w for w in wanted if w[0] not in existing]
     skipped = [w for w in wanted if w[0] in existing]
