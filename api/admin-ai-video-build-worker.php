@@ -20,6 +20,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/spawn-helpers.php';
+require_once __DIR__ . '/_gpu_gate.php';
 
 $jobKey = (int)($argv[1] ?? 0);
 if (!$jobKey) {
@@ -271,6 +272,17 @@ updateJob($db, $jobKey, [
     'i2v_job_message' => 'Submitting to engine',
     'i2v_job_progress'=> 1,
 ]);
+
+// Puget GPU gate (_gpu_gate.php): hold here (job stays 'running' so the
+// one-at-a-time cap holds) while a TTS build, a transcription or an LLM
+// transcript pass is on the card — the broker lease would otherwise stop
+// their containers / unload ollama mid-job, or the card runs out.
+if (gpuIsPugetEndpoint($endpoint)) {
+    $waited = gpuGateWait($db, 'gen', function ($why) use ($db, $jobKey) {
+        updateJob($db, $jobKey, ['i2v_job_message' => 'Waiting for GPU: ' . $why]);
+    });
+    if ($waited) updateJob($db, $jobKey, ['i2v_job_message' => 'Submitting to engine']);
+}
 
 // Resolve input image files (dual host/container path). An empty list is a
 // legitimate text-to-video job — the engine decides whether its checkpoint can

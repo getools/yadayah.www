@@ -115,6 +115,11 @@ function claimWorkerSlot($db, int $jobKey, bool &$spawned): int {
         reapOrphanedJobs($db); // clear dead 'running' jobs so one orphan can't wedge the queue
         $running = (int)$db->query("SELECT COUNT(*) FROM yy_feed_item_transcript_job WHERE job_status = 'running'")->fetchColumn();
         if ($running >= 1) return $running;            // slot taken — leave $jobKey pending
+        // Puget GPU gate (_gpu_gate.php): an image/video/audio job or an LLM
+        // transcript pass holds the card — leave pending; gpu-queue-tick.php
+        // (root cron) starts the worker once the gate opens.
+        require_once __DIR__ . '/_gpu_gate.php';
+        if (gpuGateReason($db, 'stt') !== null) return $running;
         $workerScript = __DIR__ . '/transcript-worker.php';
         if (!file_exists($workerScript)) return $running;
         $logFile = sys_get_temp_dir() . '/transcript_' . $jobKey . '.log';

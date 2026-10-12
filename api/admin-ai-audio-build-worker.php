@@ -15,6 +15,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/spawn-helpers.php';
+require_once __DIR__ . '/_gpu_gate.php';
 
 // How many times a job may be requeued purely because the GPU was busy.
 // Each attempt waits out the engine's full lease window (~30 min).
@@ -91,6 +92,17 @@ updateJob($db, $jobKey, [
     't2a_job_message'  => 'Submitting to engine',
     't2a_job_progress' => 1,
 ]);
+
+// Puget GPU gate (_gpu_gate.php): hold here (job stays 'running' so the
+// one-at-a-time cap holds) while a TTS build, a transcription or an LLM
+// transcript pass is on the card — the broker lease would otherwise stop
+// their containers / unload ollama mid-job, or the card runs out.
+if (gpuIsPugetEndpoint($endpoint)) {
+    $waited = gpuGateWait($db, 'gen', function ($why) use ($db, $jobKey) {
+        updateJob($db, $jobKey, ['t2a_job_message' => 'Waiting for GPU: ' . $why]);
+    });
+    if ($waited) updateJob($db, $jobKey, ['t2a_job_message' => 'Submitting to engine']);
+}
 
 // Resolve reference clips — dual host/container path.
 $inputAudio = is_string($job['t2a_job_input_audio']) ? (json_decode($job['t2a_job_input_audio'], true) ?: []) : ($job['t2a_job_input_audio'] ?: []);

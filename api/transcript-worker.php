@@ -113,6 +113,11 @@ register_shutdown_function(function () use ($jobKey) {
             $stmt->execute([(int)$jobKey]);
             $running = (int)$stmt->fetchColumn();
             if ($running >= $MAX_CONCURRENT_WORKERS) return;
+            // Puget GPU gate: don't start the next job while an image/video/
+            // audio job or an LLM transcript pass holds the card; the job stays
+            // pending and gpu-queue-tick.php (root cron) restarts the queue.
+            require_once __DIR__ . '/_gpu_gate.php';
+            if (gpuGateReason($db, 'stt') !== null) return;
             // Priority-aware FIFO: single-item interactive generates set
             // job_priority=1 so they jump ahead of a large bulk batch
             // (job_priority=0) without breaking the strict one-worker rule.

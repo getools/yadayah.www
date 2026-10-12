@@ -120,18 +120,33 @@ def outline_targets(docx_path):
     for c in chapters:
         seen.add(strip_page(c))
 
+    # Match TOC1 chapters to yychapter ones by NUMBER, not text. The two
+    # never agree verbatim: the heading runs number and title together
+    # ("1`Eden ~ Joy") while the TOC line has tab spacing and often a
+    # different glyph for the same letter ("1   ʿEden ~ Joy"). Comparing
+    # text re-added every chapter, doubling the flipbook TOC.
+    seen_nums = set()
+    for c in chapters:
+        m = re.match(r"^(\d+)", c)
+        if m:
+            seen_nums.add(int(m.group(1)))
+
     back_matter = []
     for entry in toc_entries:
         title = strip_page(entry)
         if title in seen:
             continue
-        if re.match(r"^\d", title):
+        m = re.match(r"^(\d+)", title)
+        if m:
+            if int(m.group(1)) in seen_nums:
+                continue
             # Numbered chapter present in TOC1 but missing from yychapter
             # (e.g. the heading was not styled yychapter in the DOCX, so
             # Word did not bookmark it). Recover it so find_chapter_pages()
             # can locate it in the PDF.
             chapters.append(title)
             seen.add(title)
+            seen_nums.add(int(m.group(1)))
         else:
             # Unnumbered back matter (RESOURCES and friends).
             back_matter.append(title)
@@ -172,15 +187,41 @@ def numbered_chapters(chapters):
     chapters 1,3,4..15 because chapter 2 was authored without the yychapter
     style, so positional numbering would silently shift every chapter after
     the gap by one.
+
+    Returns (numbered, unnumbered). Positional numbers are only a fallback
+    for books where NO heading carries a number; otherwise unnumbered
+    headings (s02v01's "Prelude" ... "Prophecy") come back separately. Giving
+    them positions 1..4 collided with the real chapters 1..4 and pointed
+    those chapters at the prelude pages.
     """
-    out = []
-    for pos, raw in enumerate(chapters, 1):
-        m = re.match(r"^(\d+)\s*(.*\S)\s*$", raw)
+    parsed = [(raw, re.match(r"^(\d+)\s*(.*\S)\s*$", raw)) for raw in chapters]
+    if not any(m for _, m in parsed):
+        return [(pos, norm(raw)) for pos, raw in enumerate(chapters, 1)], []
+    out, unnumbered = [], []
+    for raw, m in parsed:
         if m:
             out.append((int(m.group(1)), norm(m.group(2))))
         else:
-            out.append((pos, norm(raw)))
-    return out
+            unnumbered.append(norm(raw))
+    return out, unnumbered
+
+
+def find_unnumbered_pages(doc, titles):
+    """Locate unnumbered yychapter headings: first page whose leading lines
+    contain the title as a whole line NOT followed by a bare page number
+    (that is a contents listing; s02v01's half-title page lists "Prelude"
+    above "1", one page before the real heading)."""
+    found = {}
+    for pno in range(doc.page_count):
+        head, lines = head_lines(doc[pno], 4)
+        for j, line in enumerate(head):
+            title = norm(line)
+            if title not in titles or title in found:
+                continue
+            if j + 1 < len(lines) and re.match(r"^\d+$", lines[j + 1]):
+                continue
+            found[title] = pno + 1
+    return found
 
 
 def find_chapter_pages(doc, numbered):
@@ -334,8 +375,15 @@ def main():
     toc = []
 
     if chapters:
-        numbered = numbered_chapters(chapters)
+        numbered, unnumbered = numbered_chapters(chapters)
         ch_pages = find_chapter_pages(doc, numbered)
+        un_pages = find_unnumbered_pages(doc, unnumbered)
+        for title in unnumbered:
+            if title in un_pages:
+                toc.append([1, title, un_pages[title]])
+            else:
+                sys.stderr.write("[outline] WARNING heading not located: %s\n"
+                                 % title[:60])
         last = max(ch_pages.values()) if ch_pages else 0
         bm_pages = find_back_matter_pages(doc, back_matter, last)
 
@@ -354,9 +402,10 @@ def main():
             if title in bm_pages:
                 toc.append([1, norm(title), bm_pages[title]])
 
-        missing_ch = len(chapters) - len(ch_pages)
+        missing_ch = len(chapters) - len(ch_pages) - len(un_pages)
         print("[outline] %s: %d/%d chapters located, %d back-matter entries"
-              % (pdf_path.rsplit("/", 1)[-1], len(ch_pages), len(chapters),
+              % (pdf_path.rsplit("/", 1)[-1], len(ch_pages) + len(un_pages),
+                 len(chapters),
                  len(bm_pages)))
         if missing_ch:
             sys.stderr.write("[outline] %d chapter(s) could not be located\n"
@@ -378,6 +427,15 @@ def main():
             sys.stderr.write("[outline] %d section(s) could not be located\n"
                              % missing_sec)
 
+    # The same heading can arrive twice, e.g. RESOURCES as both a TOC1 back-
+    # matter line and a yyheadingsection paragraph.
+    uniq, seen_entries = [], set()
+    for entry in toc:
+        key = (norm(entry[1]), entry[2])
+        if key not in seen_entries:
+            seen_entries.add(key)
+            uniq.append(entry)
+    toc = uniq
     toc.sort(key=lambda e: e[2])
 
     for level, title, page in toc:

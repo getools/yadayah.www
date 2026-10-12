@@ -354,9 +354,28 @@ try {
     // logs and leaves the built transcript intact — it never throws or blanks a
     // line, and it snapshots first for one-click undo. Opt out per build with
     // params.llm_reconcile=false; override the model with params.llm_model.
+    // Puget GPU gate (_gpu_gate.php): qwen2.5:72b needs ~50G, so the pass is
+    // SKIPPED (not waited for) while a TTS build / image-video-audio job /
+    // transcription holds the card or another LLM pass is running. A skipped or
+    // GPU-aborted pass is recorded as llm_reconcile=false on the job, which is
+    // exactly what transcript-llm-backfill.php picks up later when it's quiet.
+    $llmDefer = function (string $why) use ($db, $jobKey, $itemKey, $notify) {
+        $db->prepare("UPDATE yy_feed_item_transcript_init_job
+                         SET job_params = (COALESCE(NULLIF(job_params, ''), '{}')::jsonb || '{\"llm_reconcile\": false}'::jsonb)::text
+                       WHERE job_key = ?")->execute([$jobKey]);
+        error_log(sprintf('consensus: LLM reconcile DEFERRED to backfill item=%d — %s', $itemKey, $why));
+        $notify('llm-reconcile:partial:0');
+    };
+    $llmLocked = false;
     if ($model === 'consensus'
         && (!array_key_exists('llm_reconcile', $params) || $params['llm_reconcile'])
         && !empty($baselines)) {
+        require_once __DIR__ . '/_gpu_gate.php';
+        $gpuWhy = gpuGateReason($db, 'llm');
+        if ($gpuWhy === null && !($llmLocked = gpuLlmLock($db))) $gpuWhy = 'another LLM pass is running';
+        if ($gpuWhy !== null) $llmDefer($gpuWhy);
+    }
+    if ($llmLocked) {
         try {
             require_once __DIR__ . '/transcript-caption-lib.php';
             $llmModel = trim((string)($params['llm_model'] ?? 'qwen2.5:72b')) ?: 'qwen2.5:72b';
@@ -368,7 +387,9 @@ try {
             if (!empty($weights)) {
                 usort($llmBaselines, fn($a, $b) => ($weights[$b] ?? 1.0) <=> ($weights[$a] ?? 1.0));
             }
-            $rc = llmReconcileTranscript($db, $itemKey, $llmBaselines, $llmModel, $notify);
+            // Stop mid-pass if a TTS build or an image/video/audio job needs the card.
+            $gpuAbort = fn(): bool => gpuTtsActive($db) > 0 || gpuGenActive($db) > 0;
+            $rc = llmReconcileTranscript($db, $itemKey, $llmBaselines, $llmModel, $notify, ['abort_if' => $gpuAbort]);
             if (!empty($rc['ok'])) {
                 error_log(sprintf('consensus: LLM reconcile item=%d model=%s changed=%d chunks=%d',
                     $itemKey, $llmModel, (int)($rc['changed'] ?? 0), (int)($rc['chunks'] ?? 0)));
@@ -378,8 +399,11 @@ try {
                     $itemKey, $rc['error'] ?? 'unknown', (int)($rc['changed'] ?? 0)));
                 $notify('llm-reconcile:partial:' . (int)($rc['changed'] ?? 0));
             }
+            if (($rc['error'] ?? '') === 'aborted') $llmDefer('GPU needed by TTS / generation');
         } catch (\Throwable $e) {
             error_log('consensus: LLM reconcile threw item=' . $itemKey . ' — ' . $e->getMessage());
+        } finally {
+            gpuLlmUnlock($db);
         }
     }
 
