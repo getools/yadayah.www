@@ -1,26 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1791761476">
+    <meta name="page-version" content="1791784804">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ask Sessions - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=15">
-    <script>
-    // Chores (admin-chores.html) frames this page as one of its tabs with
-    // ?chores=<tab>. Opened on its own, go to that tab instead.
-    (function () {
-        var m = /[?&]chores=([a-z0-9]+)/.exec(location.search);
-        if (!m) return;
-        var framed = false;
-        try { framed = window.self !== window.top; } catch (e) { framed = true; }
-        if (!framed) { location.replace('/admin-chores#' + m[1]); return; }
-        window.CHORES_TAB = m[1];
-        document.documentElement.classList.add('chores', 'chores-' + m[1]);
-    })();
-    </script>
+    <script src="/js/admin-chores.js?v=1"></script>
     <style>
-        html.chores .app-header, html.chores #app > h1, html.chores #app > .sub-tabs { display: none; }
+        html.chores #app > h1:not(.chores-title), html.chores #app > .sub-tabs { display: none; }
     </style>
     <link rel="stylesheet" href="css/login.css">
     <style>

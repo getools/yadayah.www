@@ -1,30 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="page-version" content="1791761476">
+    <meta name="page-version" content="1791784805">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feeds Admin - Yada Yah</title>
     <link rel="stylesheet" href="css/app.css?v=15">
-    <script>
-    // Chores (admin-chores.html) frames this page as one of its tabs with
-    // ?chores=<tab>. Opened on its own, go to that tab instead.
-    (function () {
-        var m = /[?&]chores=([a-z0-9]+)/.exec(location.search);
-        if (!m) return;
-        var framed = false;
-        try { framed = window.self !== window.top; } catch (e) { framed = true; }
-        if (!framed) { location.replace('/admin-chores#' + m[1]); return; }
-        window.CHORES_TAB = m[1];
-        document.documentElement.classList.add('chores', 'chores-' + m[1]);
-        // session-state.js keys on the URL path, so it would load this user's
-        // Feeds filters into the Chores tab (and save Chores' back). Chores
-        // keeps its own state via adminUI instead.
-        document.documentElement.setAttribute('data-no-persist', '');
-    })();
-    </script>
+    <script src="/js/admin-chores.js?v=1"></script>
     <style>
-        html.chores .app-header, html.chores #app > .sub-tabs { display: none !important; }
+        html.chores #app > .sub-tabs { display: none !important; }
     </style>
     <link rel="stylesheet" href="css/login.css">
     <style>
@@ -1952,6 +1936,7 @@ function openTranscript(itemKey) {
     }
     ov.style.display = 'flex';
     resetVideoView();   // dock + smallest on every open (overlay DOM is reused)
+    watchTranscriptFit();
     // The overlay is created once and reused, so #t-rows still holds the
     // PREVIOUS open's rows (possibly a different item, or pre-edit text) until
     // the fetch in loadTranscript() resolves. Blank it first so the user never
@@ -8221,7 +8206,7 @@ function showTranscriptErrorPopover() {
     if (ov) ov.remove();
     ov = document.createElement('div');
     ov.id = 't-err-overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;display:flex;align-items:center;justify-content:center;padding:40px 20px;';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10010;display:flex;align-items:center;justify-content:center;padding:40px 20px;';
     ov.addEventListener('click', function(e){ if (e.target === ov) ov.remove(); });
     var box = document.createElement('div');
     box.style.cssText = 'background:#fff;border-radius:10px;width:100%;max-width:820px;box-shadow:0 8px 32px rgba(0,0,0,0.25);display:flex;flex-direction:column;max-height:80vh;';
@@ -9371,9 +9356,40 @@ function toggleTranscriptMaximize() {
         card.dataset.maximized = '1';
         if (btn) { btn.textContent = '⤡'; btn.title = 'Restore'; }
     }
-    // Tell the rows container to fill the new height
+    // Fit the rows container to the new height
+    fitTranscriptRows();
+}
+
+// The rows list (and the player column beside it) end at the bottom of the
+// window, so the editor never runs off the page; a fixed 70vh plus the
+// header and toolbars was taller than short windows. Refit whenever the
+// card or the window changes size (status banner, toolbars wrapping, ...).
+function fitTranscriptRows() {
+    var ov = document.getElementById('transcript-overlay');
+    var card = document.getElementById('t-card');
     var rc = document.getElementById('t-rows-container');
-    if (rc) rc.style.maxHeight = isMax ? '70vh' : 'calc(100vh - 180px)';
+    if (!ov || !card || !rc || ov.style.display === 'none') return;
+    var bottom = card.dataset.maximized === '1' ? 20 : 40;   // card padding (+ overlay padding)
+    var fit = function (el) {
+        var top = el.getBoundingClientRect().top + ov.scrollTop;
+        var h = Math.max(Math.floor(window.innerHeight - top - bottom), 240) + 'px';
+        if (el.style.maxHeight !== h) el.style.maxHeight = h;
+    };
+    fit(rc);
+    var col = document.getElementById('t-player-col');
+    if (col) { col.style.overflowY = 'auto'; fit(col); }
+}
+var _tFitObserver = null;
+function watchTranscriptFit() {
+    if (!_tFitObserver) {
+        window.addEventListener('resize', fitTranscriptRows);
+        var card = document.getElementById('t-card');
+        if (card && window.ResizeObserver) {
+            _tFitObserver = new ResizeObserver(function () { fitTranscriptRows(); });
+            _tFitObserver.observe(card);
+        }
+    }
+    fitTranscriptRows();
 }
 
 // ── Video window size controls (transcript editor) ───────────────────────────
