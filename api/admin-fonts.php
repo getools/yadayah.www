@@ -4,7 +4,7 @@
  *
  *   GET                → list all rows (active + inactive) for the admin grid,
  *                        each with `files` = its hosted /fonts/* files (from css/app.css)
- *                        and `pipeline` = its PDF-pipeline copy, if it has one
+ *                        and `slots` = its .ttc / .ttf / .woff2 files under /fonts (any may be missing)
  *   POST               → create a row { display, stack, glyph, group, sort, note, active }
  *   PUT  ?key=N        → update a row
  *   DELETE ?key=N      → delete a row
@@ -65,14 +65,14 @@ case 'GET':
             foreach ($um[1] as $name) $faces[$fam][$name] = true;
         }
     }
-    // PDF-pipeline copies (separate from the web files), from the status the
-    // host installer writes — see admin-pipeline-font.php. Matched on file base.
-    $pipe = json_decode((string)@file_get_contents(__DIR__ . '/../jobs/pipeline-fonts/status.json'), true);
-    $pipeFonts = is_array($pipe['fonts'] ?? null) ? $pipe['fonts'] : [];
+    // One slot per type for each hosted font: /fonts/<base>.ttc|.ttf|.woff2,
+    // <base> taken from its @font-face files. A slot with no file is empty and
+    // can be filled by upload. (.ttc is a download — browsers can't load it.)
+    $SLOT_EXTS = ['ttc', 'ttf', 'woff2'];
     foreach ($rows as &$row) {
         $primary = strtolower(trim(trim(explode(',', $row['font_css_stack'])[0]), "'\" "));
         $row['files'] = [];
-        $row['pipeline'] = null;
+        $row['slots'] = [];
         foreach (array_keys($faces[$primary] ?? []) as $name) {
             $p = __DIR__ . '/../fonts/' . $name;
             $row['files'][] = [
@@ -80,9 +80,17 @@ case 'GET':
                 'size'  => is_file($p) ? filesize($p) : null,
                 'mtime' => is_file($p) ? date('c', filemtime($p)) : null,
             ];
-            $base = pathinfo($name, PATHINFO_FILENAME);
-            if (!$row['pipeline'] && isset($pipeFonts[$base])) {
-                $row['pipeline'] = ['base' => $base] + $pipeFonts[$base];
+        }
+        if ($row['files']) {
+            $base = pathinfo($row['files'][0]['path'], PATHINFO_FILENAME);
+            foreach ($SLOT_EXTS as $ext) {
+                $p = __DIR__ . "/../fonts/$base.$ext";
+                $row['slots'][] = [
+                    'ext'   => $ext,
+                    'path'  => "/fonts/$base.$ext",
+                    'size'  => is_file($p) ? filesize($p) : null,
+                    'mtime' => is_file($p) ? date('c', filemtime($p)) : null,
+                ];
             }
         }
     }
