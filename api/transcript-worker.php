@@ -738,7 +738,11 @@ if (!$rows && !$wantYoutubeCaptions) {
                 // and parse it. Map yt-dlp's 0-100% download progress into the
                 // 30-65% slice of our overall job_progress.
                 $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg
-                     . " --newline -x --audio-format mp3 --audio-quality 5 --output "
+                     // aresample=async=1: keep stream timestamp gaps as silence
+                     // so the MP3 stays on the video's timeline (no drift).
+                     . " --newline -x --audio-format mp3 --audio-quality 5"
+                     . " --postprocessor-args " . escapeshellarg('ExtractAudio+ffmpeg_o:-af aresample=async=1')
+                     . " --output "
                      . escapeshellarg($audioPath) . " " . escapeshellarg($videoUrl) . " 2>&1";
                 $proc = popen($cmd, 'r');
                 if ($proc) {
@@ -888,6 +892,7 @@ if (!$rows && !$wantYoutubeCaptions) {
                 }
                 wlog('provider=' . $providerFamily . ' returned ' . count($rows ?: []) . ' rows in '
                     . round(microtime(true) - $__engineT0, 1) . 's' . ($whisperErr ? ' (err: ' . $whisperErr . ')' : ''));
+                if ($rows && $usedUploadedAudio) $rows = driftRemapRows($db, (int)$itemKey, $audioPath, $rows);
                 // Only delete the audio if we downloaded it ourselves; preserve admin uploads
                 if (!$usedUploadedAudio) @unlink($audioPath);
                 if (!$rows) {
@@ -1231,6 +1236,43 @@ function secsToIntervalFrac(float $secs): string {
     $ms = (int)round(($secs - $whole) * 1000);
     if ($ms >= 1000) { $ms = 0; $s++; }
     return sprintf('%02d:%02d:%02d.%03d', $h, $m, $s, $ms);
+}
+
+// 2026-10-13 drift fix: older yt-dlp MP3s squeezed out the ~0.3s audio holes at
+// each 5-min recording join, so they run ahead of the YouTube timeline. Items
+// re-timed by the drift backfill keep their offset map (knots [[secs, offset]])
+// in _drift_map_20261013; rows transcribed from an MP3 older than that map are
+// moved onto the same video timeline so they line up with the re-timed rows.
+function driftRemapRows(PDO $db, int $itemKey, string $audioPath, array $rows): array {
+    if (!$rows || !is_file($audioPath)) return $rows;
+    try {
+        $st = $db->prepare("SELECT knots, extract(epoch from dtime) AS t FROM _drift_map_20261013 WHERE feed_item_key = ? AND status = 'applied' AND knots IS NOT NULL");
+        $st->execute([$itemKey]);
+        $m = $st->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { return $rows; }
+    if (!$m || filemtime($audioPath) >= (float)$m['t']) return $rows;
+    $kn = json_decode($m['knots'], true);
+    if (!is_array($kn) || !$kn) return $rows;
+    $n = count($kn);
+    $off = function (float $s) use ($kn, $n): float {
+        if ($s <= $kn[0][0]) return (float)$kn[0][1];
+        if ($s >= $kn[$n - 1][0]) return (float)$kn[$n - 1][1];
+        for ($i = 1; $i < $n; $i++) {
+            if ($s < $kn[$i][0]) {
+                [$t0, $o0] = $kn[$i - 1]; [$t1, $o1] = $kn[$i];
+                return $o0 + ($o1 - $o0) * ($s - $t0) / ($t1 - $t0);
+            }
+        }
+        return (float)$kn[$n - 1][1];
+    };
+    foreach ($rows as &$r) {
+        $p = array_map('floatval', explode(':', (string)($r['segment'] ?? '0')));
+        $secs = count($p) === 3 ? $p[0] * 3600 + $p[1] * 60 + $p[2] : (count($p) === 2 ? $p[0] * 60 + $p[1] : $p[0]);
+        $r['segment'] = secsToIntervalFrac(max(0.0, $secs + $off($secs)));
+    }
+    unset($r);
+    wlog("drift remap: item $itemKey rows shifted by stored map (" . $n . " knots)");
+    return $rows;
 }
 
 // Map internal model code → { openai_model, granularity }. Centralized so

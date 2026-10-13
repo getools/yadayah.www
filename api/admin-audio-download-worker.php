@@ -54,8 +54,13 @@ $remoteComponentsArg = ' --extractor-args ' . escapeshellarg('youtube:remote-com
 setStatus($statusFile, ['state' => 'running', 'progress' => 5, 'message' => 'Starting yt-dlp…', 'output_path' => $relPath]);
 
 // Run yt-dlp with --newline so we can stream progress per line.
+// aresample=async=1 keeps the source's timestamp gaps as silence. Livestream
+// uploads have a ~0.3s audio hole at every 5-min recording chunk join; a plain
+// re-encode squeezes them out, so the MP3 ends up ~0.1% shorter than the video
+// and transcript timestamps drift early as the show goes on.
 $cmd = escapeshellcmd($ytDlp) . $cookiesArg . $playerArg . $remoteComponentsArg
      . ' --newline -x --audio-format mp3 --audio-quality 5 --no-playlist'
+     . ' --postprocessor-args ' . escapeshellarg('ExtractAudio+ffmpeg_o:-af aresample=async=1')
      . ' --output ' . escapeshellarg($absPath)
      . ' ' . escapeshellarg($url) . ' 2>&1';
 

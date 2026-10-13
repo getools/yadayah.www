@@ -87,7 +87,9 @@ if (!$audioPath) {
     foreach (['/opt/yada-www/cookies.txt', '/tmp/youtube_cookies.txt'] as $c) {
         if (file_exists($c)) { $cookieArg = '--cookies ' . escapeshellarg($c) . ' '; break; }
     }
-    $cmd = "$ytdlp $cookieArg-x --audio-format mp3 --audio-quality 5 -o "
+    // aresample=async=1 keeps stream timestamp gaps as silence (no timing drift).
+    $cmd = "$ytdlp $cookieArg-x --audio-format mp3 --audio-quality 5"
+         . " --postprocessor-args " . escapeshellarg('ExtractAudio+ffmpeg_o:-af aresample=async=1') . " -o "
          . escapeshellarg($audioPath) . " " . escapeshellarg($item['feed_item_url']) . " 2>&1";
     $out = shell_exec($cmd);
     if (!file_exists($audioPath) || filesize($audioPath) < 10000) {
