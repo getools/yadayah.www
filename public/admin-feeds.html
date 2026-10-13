@@ -6651,7 +6651,7 @@ function formatSpeakerLabel(abbrev, name, color) {
 // stored value; otherwise derives from the name.
 function speakerAbbrev(label) {
     var parsed = parseSpeakerLabel(label);
-    if (parsed.abbrev) return parsed.abbrev.substring(0, 4);
+    if (parsed.abbrev) return parsed.abbrev.substring(0, 5);   // chip shows up to 5 chars (was 4, 2026-10-13)
     var s = parsed.name;
     if (s.length === 0) return '';
     if (s.length <= 2) return s;
@@ -6777,7 +6777,7 @@ function openRowSpeakerPicker(chipEl) {
         + '<div style="font-size:0.7rem;color:#888;margin-bottom:4px;">Add new speaker</div>'
         + '<div style="display:flex;align-items:center;gap:4px;">'
         +   '<input type="color" id="t-row-spk-new-color" value="' + esc(nextColor) + '" title="Pick chip color" style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:transparent;">'
-        +   '<input id="t-row-spk-new-abbrev" maxlength="4" placeholder="ab" style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;">'
+        +   '<input id="t-row-spk-new-abbrev" maxlength="5" placeholder="ab" style="font-size:0.78rem;width:54px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;">'
         +   '<input id="t-row-spk-new-name" placeholder="name…" style="font-size:0.78rem;flex:1;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
         +   '<button onclick="createAndAssignSpeaker()" title="Create and assign" style="background:#27ae60;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-weight:700;">✓</button>'
         + '</div>'
@@ -7078,11 +7078,11 @@ function buildSpeakerPopoverHtml() {
             +   '</td>'
             +   '<td style="padding:3px 4px;">'
             +     '<input class="t-spk-abbrev" value="' + esc(displayAbbrev) + '"'
-            +       ' maxlength="4"'
+            +       ' maxlength="5"'
             +       (ro ? '' : ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}" onblur="commitSpeakerRename(this)"')
             +       roAttr
             +       ' placeholder="ab"'
-            +       ' style="font-size:0.78rem;width:46px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;' + roStyle + '">'
+            +       ' style="font-size:0.78rem;width:54px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;' + roStyle + '">'
             +   '</td>'
             +   '<td style="padding:3px 0;">'
             +     '<input class="t-spk-name" value="' + esc(parsed.name) + '"'
