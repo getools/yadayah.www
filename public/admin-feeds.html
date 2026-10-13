@@ -1918,7 +1918,7 @@ function openTranscript(itemKey) {
             + '</div>'
             + '<div id="t-rows-container" style="max-height:70vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">'
             + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
-            + '<div id="t-spk-popover" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;font-size:0.82rem;z-index:10003;min-width:220px;"></div>'
+            + '<div id="t-spk-popover" onmouseenter="speakerPopoverEnter()" onmouseleave="speakerPopoverLeave()" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;font-size:0.82rem;z-index:10003;min-width:220px;max-height:calc(100vh - 16px);overflow:auto;box-sizing:border-box;"></div>'
             + '<div id="t-row-spk-popover" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:6px;font-size:0.82rem;z-index:10004;min-width:240px;"></div>'
             + '<div id="t-excerpt-popover" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px;font-size:0.85rem;z-index:10005;min-width:280px;max-width:340px;"></div>'
             + '<thead style="background:#f5f5f5;position:sticky;top:0;z-index:1;"><tr>'
@@ -6723,7 +6723,11 @@ function openRowSpeakerPicker(chipEl) {
         +   '<button onclick="closeRowSpeakerPicker()" title="Close (Esc)" style="background:none;border:none;cursor:pointer;color:#888;font-size:1.05rem;line-height:1;padding:0 2px;">&times;</button>'
         + '</div>'
         + (curGeneric
-            ? '<div style="font-size:0.7rem;color:#a36100;margin:0 4px 4px;">Picking a named speaker identifies ' + esc(curLabel.replace(/^SPEAKER_/i, 'Speaker ')) + ' on all ' + _countRowsWithSpeaker(curLabel) + ' of its segments.</div>'
+            ? '<div style="font-size:0.7rem;color:#a36100;margin:0 4px 4px;">' + esc(curLabel.replace(/^SPEAKER_/i, 'Speaker '))
+              + (_countRowsWithSpeaker(curLabel) > 1
+                  ? ' is on ' + _countRowsWithSpeaker(curLabel) + ' segments — after you pick a named speaker you\'ll choose: all of them, or just this line.'
+                  : ' — pick a named speaker to identify it.')
+              + '</div>'
             : '')
         + '<div style="max-height:240px;overflow-y:auto;">';
     labels.forEach(function(lbl) {
@@ -6866,17 +6870,61 @@ function pickRowSpeaker(label) {
     if (!_rowSpkAnchor) return;
     var fromLabel = _rowChipLabel(_rowSpkAnchor);
     if (label && label !== fromLabel && isUnidentifiedSpeakerLabel(fromLabel) && !isUnidentifiedSpeakerLabel(label)) {
-        // Identifying an unknown voice applies to all of its segments, not just this one.
+        // Identifying an unknown voice: ASK whether every other segment of that
+        // voice should get the same speaker (2026-10-13) — default "all", but a
+        // diarizer cluster can mix voices, so "just this line" is offered too.
+        var anchor = _rowSpkAnchor;
         var pop0 = document.getElementById('t-row-spk-popover');
         if (pop0) pop0.style.display = 'none';
         _rowSpkAnchor = null;
-        identifySpeakerEverywhere(fromLabel, label);
+        var n = _countRowsWithSpeaker(fromLabel);
+        if (n <= 1) { identifySpeakerEverywhere(fromLabel, label); return; }
+        _askSpeakerAssignScope(fromLabel, label, n, function(scope) {
+            if (scope === 'all') identifySpeakerEverywhere(fromLabel, label);
+            else if (scope === 'one') applyRowSpeakerLabel(anchor, label);
+        });
         return;
     }
     applyRowSpeakerLabel(_rowSpkAnchor, label);
     var pop = document.getElementById('t-row-spk-popover');
     if (pop) pop.style.display = 'none';
     _rowSpkAnchor = null;
+}
+// "Assign all N segments of Speaker 3 to Yada, or just this line?" — cb('all'|'one'|null).
+// Enter = all (default), Esc / Cancel / backdrop = nothing changes.
+function _askSpeakerAssignScope(fromLabel, toLabel, n, cb) {
+    var fromTxt = String(fromLabel).replace(/^SPEAKER_/i, 'Speaker ');
+    var toTxt = parseSpeakerLabel(toLabel).name || speakerAbbrev(toLabel) || toLabel;
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10003;display:flex;justify-content:center;align-items:center;';
+    var b = 'display:block;width:100%;text-align:left;border-radius:6px;padding:9px 12px;cursor:pointer;font-size:0.88rem;';
+    ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:20px;max-width:420px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.25);">'
+        + '<h3 style="margin:0 0 6px 0;color:#31345A;font-size:1rem;">Assign ' + esc(fromTxt) + ' to ' + speakerChipForLabel(toLabel) + ' ' + esc(toTxt) + '?</h3>'
+        + '<div style="font-size:0.82rem;color:#555;margin-bottom:14px;">' + esc(fromTxt) + ' appears on <strong>' + n + '</strong> segments in this transcript.</div>'
+        + '<div style="display:flex;flex-direction:column;gap:8px;">'
+        +   '<button data-s="all" style="' + b + 'background:#31345A;color:#fff;border:1px solid #31345A;"><strong>All ' + n + ' segments</strong> &nbsp;<span style="opacity:0.8;font-size:0.78rem;">— every line of ' + esc(fromTxt) + ' becomes ' + esc(toTxt) + '</span></button>'
+        +   '<button data-s="one" style="' + b + 'background:#fff;color:#222;border:1px solid #ccc;"><strong>Just this line</strong> &nbsp;<span style="color:#888;font-size:0.78rem;">— the other ' + (n - 1) + ' stay ' + esc(fromTxt) + '</span></button>'
+        + '</div>'
+        + '<div style="text-align:right;margin-top:12px;"><button data-s="cancel" style="background:none;border:none;color:#666;cursor:pointer;font-size:0.85rem;">Cancel</button></div>'
+        + '</div>';
+    var done = function(scope) {
+        document.removeEventListener('keydown', onKey, true);
+        if (ov.parentNode) ov.parentNode.removeChild(ov);
+        cb(scope);
+    };
+    var onKey = function(e) {
+        if (e.key === 'Escape') { e.stopPropagation(); done(null); }
+        else if (e.key === 'Enter') { e.preventDefault(); done('all'); }
+    };
+    ov.addEventListener('click', function(e) {
+        if (e.target === ov) { done(null); return; }
+        var btn = e.target.closest('button'); if (!btn) return;
+        var s = btn.getAttribute('data-s');
+        done(s === 'cancel' ? null : s);
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(ov);
+    var first = ov.querySelector('button[data-s="all"]'); if (first) first.focus();
 }
 // Repaint the open per-row picker (e.g. once the saved-profile list arrives)
 // so its "Saved speakers" section fills in without the operator reopening it.
@@ -6989,7 +7037,7 @@ function buildSpeakerPopoverHtml() {
     if (!labels.length) {
         var fillBtn0 = _transcriptReadonly ? '' :
             '<div style="margin-top:8px;"><button onclick="fillSpeakersFromBaseline()" style="background:#31345A;color:#fff;border:none;border-radius:4px;padding:5px 10px;font-size:0.76rem;cursor:pointer;" title="Label each segment using the automatic voice-based speaker detection (WhisperX). Doesn\'t change any text and won\'t overwrite speakers you have set.">Auto-assign speakers</button></div>';
-        return '<div style="color:#888;padding:6px 4px;">No speaker labels on this transcript yet.</div>' + fillBtn0;
+        return speakerPopoverHeadHtml() + '<div style="color:#888;padding:6px 4px;">No speaker labels on this transcript yet.</div>' + fillBtn0;
     }
     var ro = !!_transcriptReadonly;
     var roAttr  = ro ? ' disabled' : '';
@@ -6997,7 +7045,7 @@ function buildSpeakerPopoverHtml() {
     var roBanner = ro
         ? '<div style="font-size:0.7rem;color:#a36100;margin-bottom:6px;">Read-only — switch to Current to edit speakers.</div>'
         : '';
-    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:6px;font-size:0.78rem;">Speakers in this transcript</div>'
+    var html = speakerPopoverHeadHtml()
         + roBanner
         + '<div style="font-size:0.7rem;color:#888;margin-bottom:6px;">Tick to show a speaker’s segments, untick to hide.</div>'
         + '<table style="border-collapse:collapse;font-size:0.78rem;">'
@@ -7080,10 +7128,68 @@ function positionSpeakerPopover() {
     var pop = document.getElementById('t-spk-popover');
     var anchor = document.getElementById('t-spk-anchor');
     if (!pop || !anchor) return;
+    if (_spkPopPos) {
+        var w = pop.offsetWidth || 260, h = pop.offsetHeight || 100;
+        pop.style.left = Math.max(8, Math.min(_spkPopPos.left, window.innerWidth - w - 8)) + 'px';
+        pop.style.top  = Math.max(8, Math.min(_spkPopPos.top, window.innerHeight - Math.min(h, 120) - 8)) + 'px';
+        return;
+    }
     var r = anchor.getBoundingClientRect();
     pop.style.top  = (r.bottom + 4) + 'px';
     pop.style.left = Math.max(8, r.left - 4) + 'px';
 }
+// Header bar: drag handle (moves the popover and keeps it open there),
+// double-click = back under the icon, × = close (Esc too).
+var _spkPopPos = null;   // {left, top} once dragged; null = anchored to the icon
+function speakerPopoverHeadHtml() {
+    return '<div onmousedown="startSpeakerPopoverDrag(event)" ondblclick="resetSpeakerPopoverPosition()" '
+         +   'title="Drag to move — it stays open where you put it. Double-click to put it back under the icon." '
+         +   'style="position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:6px;margin:-8px -10px 6px;padding:5px 6px 5px 10px;'
+         +   'background:#f4f5fa;border-bottom:1px solid #e3e5ef;border-radius:6px 6px 0 0;cursor:move;user-select:none;">'
+         +   '<span style="color:#aab;font-size:0.8rem;">⠿</span>'
+         +   '<span style="flex:1;font-weight:600;color:#31345A;font-size:0.78rem;">Speakers in this transcript</span>'
+         +   '<button onclick="closeSpeakerPopover()" onmousedown="event.stopPropagation()" title="Close (Esc)" '
+         +     'style="background:none;border:none;color:#666;font-size:1.05rem;line-height:1;padding:0 4px;cursor:pointer;">×</button>'
+         + '</div>';
+}
+function closeSpeakerPopover() {
+    if (_speakerPopoverHideTimer) { clearTimeout(_speakerPopoverHideTimer); _speakerPopoverHideTimer = null; }
+    hideSpeakerPopover();
+}
+function resetSpeakerPopoverPosition() {
+    _spkPopPos = null;
+    positionSpeakerPopover();
+}
+function startSpeakerPopoverDrag(e) {
+    if (e.button !== 0) return;
+    var pop = document.getElementById('t-spk-popover');
+    if (!pop) return;
+    e.preventDefault();
+    var r = pop.getBoundingClientRect();
+    var dx = e.clientX - r.left, dy = e.clientY - r.top;
+    function move(ev) {
+        _spkPopPos = { left: ev.clientX - dx, top: ev.clientY - dy };
+        positionSpeakerPopover();
+    }
+    function up() {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+    }
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+}
+// Esc closes the speakers popover — unless the per-row speaker picker is open
+// (capture phase, so this runs before that picker's own Esc handler closes it).
+window.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var pop = document.getElementById('t-spk-popover');
+    if (!pop || pop.style.display !== 'block') return;
+    var rowPick = document.getElementById('t-row-spk-popover');
+    if (rowPick && rowPick.style.display === 'block') return;
+    var find = document.getElementById('t-find-input');
+    if (find && document.activeElement === find) return;
+    closeSpeakerPopover();
+}, true);
 function showSpeakerPopover() {
     var pop = document.getElementById('t-spk-popover');
     if (!pop) return;
@@ -7111,6 +7217,7 @@ function hideSpeakerPopover() {
 }
 function speakerPopoverEnter() { showSpeakerPopover(); }
 function speakerPopoverLeave() {
+    if (_spkPopPos) return;   // moved by the user → stays open until closed
     if (_speakerPopoverHideTimer) clearTimeout(_speakerPopoverHideTimer);
     _speakerPopoverHideTimer = setTimeout(hideSpeakerPopover, 220);
 }
