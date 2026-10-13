@@ -106,7 +106,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=33"></script>
+<script src="/js/admin-nav.js?v=35"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -234,6 +234,8 @@
                 box-sizing: border-box;
             }
             #rec-table .rec-status-checks { display:flex;flex-direction:column;gap:1px;font-size:0.7rem;font-weight:normal; }
+            @keyframes recTxPulse { 50% { opacity: 0.62; } }
+            #rec-table .rec-tx-busy { animation: recTxPulse 1.6s ease-in-out infinite; }
             #rec-table .rec-status-checks label { display:flex;align-items:center;gap:3px;cursor:pointer;font-weight:normal;font-size:0.7rem; }
             #rec-f-categories details > summary { cursor:pointer;font-weight:600;color:#31345A;font-size:0.72rem;padding:1px 0;user-select:none; }
             #rec-f-categories details > summary .cat-n { font-weight:normal;color:#999; }
@@ -295,11 +297,11 @@
                         <input type="date" class="rec-filter" id="rec-f-pub-from" onchange="loadRecordings(1)" style="margin-bottom:2px;" title="From" onclick="event.stopPropagation()">
                         <input type="date" class="rec-filter" id="rec-f-pub-to"   onchange="loadRecordings(1)" title="To"   onclick="event.stopPropagation()">
                     </th>
-                    <th style="width:140px;" class="rec-sortable" data-col="feed">
-                        <span class="rec-sortable-label" onclick="recSort('feed', event)" title="Shift+click to add as a secondary sort">Source</span><br>
-                        <select class="rec-filter" id="rec-f-feed" onchange="loadRecordings(1)" onclick="event.stopPropagation()">
-                            <option value="">All</option>
-                        </select>
+                    <th style="width:170px;" class="rec-sortable" data-col="feed">
+                        <span class="rec-sortable-label" onclick="recSort('feed', event)" title="Shift+click to add as a secondary sort">Source</span>
+                        <div id="rec-f-feeds" class="rec-status-checks" onclick="event.stopPropagation()" title="None ticked = all sources" style="max-height:130px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                            <em style="font-size:0.7rem;color:#999;">loading…</em>
+                        </div>
                     </th>
                     <th style="width:120px;" class="rec-sortable" data-col="duration">
                         <span class="rec-sortable-label" onclick="recSort('duration', event)" title="Shift+click to add as a secondary sort">Duration</span><br>
@@ -315,20 +317,29 @@
                     </th>
                     <th style="width:120px;" class="rec-sortable" data-col="processed">
                         <span class="rec-sortable-label" onclick="recSort('processed', event)" title="Shift+click to add as a secondary sort">Recording</span>
-                        <div class="rec-status-checks" onclick="event.stopPropagation()">
-                            <label><input type="checkbox" id="rec-f-status-complete" onchange="loadRecordings(1)"> Complete</label>
-                            <label><input type="checkbox" id="rec-f-status-partial"  onchange="loadRecordings(1)" checked> Partial</label>
-                            <label><input type="checkbox" id="rec-f-status-new"      onchange="loadRecordings(1)" checked> New</label>
+                        <div id="rec-f-status" class="rec-status-checks" onclick="event.stopPropagation()">
+                            <label title="No MP3 and nothing recorded yet"><input type="checkbox" value="new" onchange="loadRecordings(1)" checked> New</label>
+                            <label title="Recording stopped part-way; resumes from the saved point"><input type="checkbox" value="partial" onchange="loadRecordings(1)" checked> Partial</label>
+                            <label title="A recording window is recording this video right now"><input type="checkbox" value="recording" onchange="loadRecordings(1)" checked> Recording</label>
+                            <label title="In a recording window batch, waiting its turn"><input type="checkbox" value="queued" onchange="loadRecordings(1)" checked> Queued</label>
+                            <label title="Recording finished; the MP3 is being validated / encoded"><input type="checkbox" value="encoding" onchange="loadRecordings(1)" checked> Encoding</label>
+                            <label title="Transcription engines are running on this MP3"><input type="checkbox" value="transcribing" onchange="loadRecordings(1)"> Transcribing</label>
+                            <label title="MP3 on disk (or on a linked copy of this video)"><input type="checkbox" value="complete" onchange="loadRecordings(1)"> Complete</label>
                         </div>
                     </th>
                     <th class="rec-col-tx" style="width:140px;" title="Transcript / caption-upload state">
                         <span>Transcript</span>
                         <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;font-weight:normal;">
-                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-captions" value="captions" onchange="loadRecordings(1)" title="Transcript has been uploaded to YouTube as a caption track and is current (no later review)"> Captions</label>
-                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-reviewed" value="reviewed" onchange="loadRecordings(1)" title="Transcript reviewed/Approved; not yet uploaded (or upload is older than review)"> Reviewed</label>
-                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-editable" value="editable" onchange="loadRecordings(1)" title="Has an editable (live) transcript"> Editable</label>
-                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-pending"  value="pending"  onchange="loadRecordings(1)" title="Transcript records exist but haven't been Approved by an admin"> Pending</label>
-                            <label style="font-weight:normal;"><input type="checkbox" id="rec-f-cap-missing"  value="missing"  onchange="loadRecordings(1)" title="No transcript records yet"> None</label>
+                            <label title="No MP3 yet, so nothing to transcribe"><input type="checkbox" value="nomp3" onchange="loadRecordings(1)"> No MP3</label>
+                            <label title="Has an MP3; no transcript and nothing queued"><input type="checkbox" value="none" onchange="loadRecordings(1)"> None</label>
+                            <label title="Waiting for the speech-to-text engines or the transcript build"><input type="checkbox" value="queued" onchange="loadRecordings(1)"> Queued</label>
+                            <label title="Speech-to-text engines or the transcript build running now"><input type="checkbox" value="processing" onchange="loadRecordings(1)"> Processing</label>
+                            <label title="The last transcript build failed"><input type="checkbox" value="failed" onchange="loadRecordings(1)"> Build failed</label>
+                            <label title="Built fast; waiting for the AI cleanup pass (runs when the GPU is idle)"><input type="checkbox" value="ai_queued" onchange="loadRecordings(1)"> AI cleanup</label>
+                            <label title="Baseline transcript built and AI-cleaned; no one has edited it yet"><input type="checkbox" value="ready" onchange="loadRecordings(1)"> Ready to edit</label>
+                            <label title="An admin has started editing; not Approved yet"><input type="checkbox" value="editing" onchange="loadRecordings(1)"> Editing</label>
+                            <label title="Approved; not on YouTube yet, or approved again after the last upload"><input type="checkbox" value="approved" onchange="loadRecordings(1)"> Approved</label>
+                            <label title="Approved and uploaded to YouTube as captions"><input type="checkbox" value="uploaded" onchange="loadRecordings(1)"> On YouTube</label>
                         </div>
                     </th>
                     <th style="width:110px;">
@@ -434,19 +445,19 @@
 (function () {
     var tab = window.CHORES_TAB;
     if (!tab || !window.adminUI) return;
+    var HERALD = ['1']; // yy_feed 1 = YouTube - @YahowahsHerald; Chores defaults to it
     var CHECKS = {
-        mp3:         { 'rec-f-mp3-yes': false, 'rec-f-mp3-no': true },
-        transcripts: { 'rec-f-mp3-yes': true, 'rec-f-mp3-no': false,
-                       'rec-f-status-complete': true, 'rec-f-status-partial': false, 'rec-f-status-new': false }
+        mp3:         { mp3: ['no'],  status: ['new', 'partial', 'recording', 'queued', 'encoding'] },
+        transcripts: { mp3: ['yes'], status: ['complete', 'transcribing'] }
     }[tab] || {};
     var DEFAULTS = {
-        mp3: { recFilters: { feed: '', mp3Yes: false, mp3No: true, sComplete: false, sPartial: true, sNew: true,
+        mp3: { recFilters: { feedKeys: HERALD, mp3Yes: false, mp3No: true, recStatus: ['new', 'partial', 'recording', 'queued', 'encoding'],
                              iActive: true, iRestricted: false, iInactive: false, perPage: 10 } },
         transcripts: { recSort: 'published', recDir: 'asc', recSortKeys: [{ col: 'published', dir: 'asc' }],
-                       recFilters: { feed: '', mp3Yes: true, mp3No: false, sComplete: true, sPartial: false, sNew: false,
+                       recFilters: { feedKeys: HERALD, mp3Yes: true, mp3No: false, recStatus: ['complete', 'transcribing'],
                                      iActive: true, iRestricted: false, iInactive: false, perPage: 50 } }
     }[tab] || {};
-    var scope = function (page) { return String(page).replace(/^feeds/, 'chores2-' + tab); };
+    var scope = function (page) { return String(page).replace(/^feeds/, 'chores3-' + tab); };
     var save = adminUI.save, load = adminUI.load, clear = adminUI.clear;
     adminUI.save = function (page, k, v) { return save.call(adminUI, scope(page), k, v); };
     adminUI.load = function (page, k, def) {
@@ -457,7 +468,11 @@
     adminUI.clear = function (page) { return clear.call(adminUI, page ? scope(page) : page); };
     // "Clear filters" goes back to this tab's defaults, not Feeds'.
     window.choresResetRecFilters = function () {
-        Object.keys(CHECKS).forEach(function (id) { var el = document.getElementById(id); if (el) el.checked = CHECKS[id]; });
+        if (CHECKS.mp3) recSetChecked('rec-f-mp3', CHECKS.mp3);
+        if (CHECKS.status) recSetChecked('rec-f-status', CHECKS.status);
+        if (tab === 'mp3' || tab === 'transcripts') {
+            document.querySelectorAll('#rec-f-feeds input[type=checkbox]').forEach(function (cb) { cb.checked = HERALD.indexOf(cb.value) >= 0; });
+        }
     };
 })();
 </script>
@@ -649,7 +664,8 @@ function txStageInfo(it) {
     } else if (init && init.status === 'error') {
         r = { text: '✗ Last build failed', color: '#a52a2a' };
     } else if (init && init.status === 'done') {
-        var aiDone = s.ai_at && (!init.done || new Date(s.ai_at) >= new Date(init.created || 0));
+        var aiDone = (s.ai_at && (!init.done || new Date(s.ai_at) >= new Date(init.created || 0)))
+                  || (s.ai_skip && new Date(s.ai_skip) >= new Date(init.created || 0)); // backfill: nothing to do
         if (init.fast && !aiDone) r = { text: '○ AI cleanup queued', color: '#856404' };
         else r = { text: '✓ Machine pass done', color: '#2e6b3a' };
         if (init.error && /^Quality note/.test(init.error)) r.text += ' · ⚠';
@@ -2418,6 +2434,20 @@ function recTranscriptCellFmtDate(s) {
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
          + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
+// Transcript button states, in pipeline order. Colour families: blue =
+// machine work, lavender = ready for a human, amber = a human is on it,
+// green = done (solid once it is on YouTube).
+var REC_TX_STATES = {
+    none:       { label: 'None',            fg: '#666',    border: '#ccc',    bg: '#fff',    title: 'No transcript yet and nothing queued — click to start' },
+    queued:     { label: '◷ Queued',        fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Waiting for the speech-to-text engines or the transcript build' },
+    processing: { label: '⟳ Processing',    fg: '#fff',    border: '#2d58ad', bg: '#3b6fd4', busy: true,   title: 'Speech-to-text engines or the transcript build running now' },
+    ai_queued:  { label: '◷ AI cleanup',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Baseline built fast; the AI cleanup pass has not run yet, so it is not ready to edit' },
+    failed:     { label: '✗ Build failed',  fg: '#a52a2a', border: '#e0a0a8', bg: '#fdecea', title: 'The last transcript build failed' },
+    ready:      { label: '✎ Ready to edit', fg: '#5b2d8a', border: '#c9b3e6', bg: '#f4edfb', title: 'Baseline transcript built and AI-cleaned; no one has edited it yet' },
+    editing:    { label: '✎ Editing',       fg: '#fff',    border: '#7c4a00', bg: '#a36100', title: 'An admin has started editing; not Approved yet' },
+    approved:   { label: '✓ Approved',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#eaf6ee', title: 'Approved; not uploaded to YouTube yet' },
+    uploaded:   { label: '✓ On YouTube',    fg: '#fff',    border: '#155724', bg: '#1d6b3a', title: 'Approved and uploaded to YouTube as captions' }
+};
 function recTranscriptCell(it) {
     // Gate: transcription requires a complete MP3 on disk — one produced by
     // a finished recording or an explicit upload. Without an audio file
@@ -2432,77 +2462,47 @@ function recTranscriptCell(it) {
             +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
             + 'No MP3</button>';
     }
-    // Highest-priority state: an in-flight transcription job. The
-    // background poller populates _genTxRunningJobs from
-    // /api/admin-transcript-models.php?action=running; when present,
-    // render a "Generating N%" / "Queued" badge so the row reflects the
-    // queue without the user needing to open the Generate popover.
-    var running = (typeof _genTxRunningJobs === 'object' && _genTxRunningJobs && _genTxRunningJobs[it.feed_item_key])
-                || null;
+    // One state per row, computed server-side (transcript_state in
+    // admin-recordings.php) so the button and the Transcript filter always
+    // agree. The 30s running-jobs poll can move a row into Queued /
+    // Processing between list reloads.
+    var state = it.transcript_state || 'none';
+    var running = (typeof _genTxRunningJobs === 'object' && _genTxRunningJobs && _genTxRunningJobs[it.feed_item_key]) || null;
+    if (running) state = running.job_status === 'running' ? 'processing' : 'queued';
+    var S = REC_TX_STATES[state] || REC_TX_STATES.none;
+    var stage = txStageInfo(it);
+    var sub = '', title = S.title;
     if (running) {
-        var rPct = parseInt(running.job_progress, 10) || 0;
-        var rLabel = (running.job_status === 'running')
-            ? 'Generating ' + rPct + '%'
-            : 'Queued';
-        var rModelShort = (running.job_model || '').replace(/^groq-|^assemblyai-|^elevenlabs-|^azure-|^deepgram-|^whisper-1-/, '');
-        var rTitle = (running.job_model || 'transcription') + (running.job_message ? ': ' + running.job_message : '');
-        return '<button onclick="openTranscript(' + it.feed_item_key + ')" '
-            + 'title="' + esc(rTitle) + '" '
-            + 'style="border:1px solid #b0c4ff;background:#eef2ff;color:#1d4d8a;'
-            +        'padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;'
-            +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
-            + rLabel
-            + '<div style="font-size:0.65rem;color:#5a73a0;font-family:monospace;font-weight:400;margin-top:2px;">' + esc(rModelShort) + '</div>'
-            + '</button>';
-    }
-    var hasTx     = it.has_transcript === true || it.has_transcript === 't';
-    var uploadDt  = it.yt_caption_uploaded_dtime || null;
-    var reviewSt  = it.transcript_validation_status || null;
-    var reviewDt  = it.transcript_validation_dtime || null;
-    // Button styling matches the Recording column's pattern (tinted bg +
-    // matching border + same padding / font / width). Each state picks its
-    // own color triple: text / border / background.
-    var label, fg, border, bg, dateLine, title;
-    var reviewIsNewer = reviewDt && uploadDt && (new Date(reviewDt) > new Date(uploadDt));
-    if (!hasTx) {
-        label = 'None'; fg = '#666'; border = '#ccc'; bg = '#fff';
-        dateLine = '';
-        title = 'No transcript records yet';
-    } else if (reviewSt === 'Approved' && (!uploadDt || reviewIsNewer)) {
-        label = 'Reviewed'; fg = '#a36100'; border = '#e0c000'; bg = '#fffbe6';
-        dateLine = recTranscriptCellFmtDate(reviewDt);
-        title = uploadDt
-            ? 'Approved on ' + dateLine + ' — newer than the YouTube upload (' + recTranscriptCellFmtDate(uploadDt) + ')'
-            : 'Approved on ' + dateLine + ' — not yet uploaded to YouTube';
-    } else if (uploadDt) {
-        label = 'Uploaded'; fg = '#1d6b3a'; border = '#a3d4ad'; bg = '#eaf6ee';
-        dateLine = recTranscriptCellFmtDate(uploadDt);
-        title = 'Uploaded to YouTube on ' + dateLine;
-    } else {
-        label = 'Pending'; fg = '#856404'; border = '#e6c200'; bg = '#fff8e1';
-        // Show how far into the video the last reviewer paused (bookmark
-        // saved by the Transcribe popover's auto-bookmark). If no
-        // review activity yet, fall back to the latest review datetime
-        // if any.
+        var rModel = (running.job_model || '').replace(/^groq-|^assemblyai-|^elevenlabs-|^azure-|^deepgram-|^whisper-1-/, '');
+        sub = (running.job_status === 'running' ? 'Generating ' + (parseInt(running.job_progress, 10) || 0) + '%' : 'STT waiting')
+            + (rModel ? ' · ' + rModel : '');
+        if (running.job_message) title += '\n' + running.job_message;
+    } else if (state === 'queued' || state === 'processing' || state === 'failed' || state === 'ready') {
+        if (stage) { sub = stage.text; if (stage.title) title += '\n\n' + stage.title; }
+    } else if (state === 'ai_queued') {
+        sub = 'queued · runs when GPU idle';
+        if (stage && stage.title) title += '\n\n' + stage.title;
+    } else if (state === 'editing') {
         var sec = Math.max(0, Math.floor(Number(it.transcript_bookmark_seconds) || 0));
         if (sec > 0) {
             var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
             var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
-            dateLine = h > 0 ? pad(h) + ':' + pad(m) + ':' + pad(x) : pad(m) + ':' + pad(x);
-            title = 'Last reviewer left off at ' + dateLine + ' — not yet Approved';
-        } else {
-            dateLine = recTranscriptCellFmtDate(reviewDt);
-            title = 'Transcript exists but has not been Approved by an admin';
+            sub = 'left off at ' + (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(x);
         }
+        if (it.transcript_validation_status === 'Errors') { sub = '⚠ flagged errors' + (sub ? ' · ' + sub : ''); }
+    } else if (state === 'approved') {
+        sub = recTranscriptCellFmtDate(it.transcript_validation_dtime);
+        if (it.yt_caption_uploaded_dtime) title = 'Approved again after the YouTube upload (' + recTranscriptCellFmtDate(it.yt_caption_uploaded_dtime) + ') — re-upload to update the captions';
+    } else if (state === 'uploaded') {
+        sub = recTranscriptCellFmtDate(it.yt_caption_uploaded_dtime);
     }
-    return '<button onclick="openTranscript(' + it.feed_item_key + ')" '
+    return '<button onclick="openTranscript(' + it.feed_item_key + ')"' + (S.busy ? ' class="rec-tx-busy"' : '') + ' '
         + 'title="' + esc(title) + '" '
-        + 'style="border:1px solid ' + border + ';background:' + bg + ';color:' + fg + ';'
+        + 'style="border:1px ' + (S.dashed ? 'dashed' : 'solid') + ' ' + S.border + ';background:' + S.bg + ';color:' + S.fg + ';'
         +        'padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;'
         +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
-        + label
-        + (dateLine ? '<div style="font-size:0.65rem;color:#888;font-family:monospace;font-weight:400;margin-top:2px;">' + dateLine + '</div>' : '')
-        + txStageLineHtml(it)
+        + S.label
+        + (sub ? '<div style="font-size:0.63rem;font-weight:400;margin-top:2px;opacity:0.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(sub) + '</div>' : '')
         + '</button>';
 }
 // Upload the open transcript to YouTube as a caption track. Wraps the
@@ -2766,17 +2766,17 @@ function _persistRecFilters() {
     var categoryKeys = Array.prototype.map.call(
         document.querySelectorAll('#rec-f-categories input[type=checkbox]:checked'),
         function(cb){ return cb.value; });
+    var feedKeys = recCheckedFeeds();
     adminUI.save('feeds', 'recFilters', {
         key: v('rec-f-key'), title: v('rec-f-title'),
         pubFrom: v('rec-f-pub-from'), pubTo: v('rec-f-pub-to'),
-        feed: v('rec-f-feed'), durMin: v('rec-f-dur-min'), durMax: v('rec-f-dur-max'),
-        sComplete: c('rec-f-status-complete'), sPartial: c('rec-f-status-partial'), sNew: c('rec-f-status-new'),
+        feedKeys: feedKeys, durMin: v('rec-f-dur-min'), durMax: v('rec-f-dur-max'),
+        recStatus: recCheckedVals('rec-f-status'),
         iActive: c('rec-f-istatus-active'), iRestricted: c('rec-f-istatus-restricted'), iInactive: c('rec-f-istatus-inactive'),
         pageKeys: pageKeys,
         categoryKeys: categoryKeys,
         mp3Yes: c('rec-f-mp3-yes'), mp3No: c('rec-f-mp3-no'),
-        capCaptions: c('rec-f-cap-captions'), capReviewed: c('rec-f-cap-reviewed'),
-        capPending: c('rec-f-cap-pending'), capEditable: c('rec-f-cap-editable'), capMissing: c('rec-f-cap-missing'),
+        txStatus: recCheckedVals('rec-f-cap'),
         episode: v('rec-f-episode'),
         perPage: parseInt((document.getElementById('rec-per-page')||{}).value, 10) || 50,
     });
@@ -2790,11 +2790,20 @@ function _restoreRecFiltersFromStorage() {
     var setChk = function(id, val) { var el=document.getElementById(id); if (el && val !== undefined) el.checked = !!val; };
     setVal('rec-f-key', saved.key); setVal('rec-f-title', saved.title);
     setVal('rec-f-pub-from', saved.pubFrom); setVal('rec-f-pub-to', saved.pubTo);
-    setVal('rec-f-feed', saved.feed);
+    if (Array.isArray(saved.feedKeys)) window._recRestoredFeedKeys = saved.feedKeys.map(String);
+    else if (saved.feed) window._recRestoredFeedKeys = [String(saved.feed)];
     setVal('rec-f-dur-min', saved.durMin); setVal('rec-f-dur-max', saved.durMax);
-    setChk('rec-f-status-complete', saved.sComplete);
-    setChk('rec-f-status-partial', saved.sPartial);
-    setChk('rec-f-status-new', saved.sNew);
+    if (Array.isArray(saved.recStatus)) recSetChecked('rec-f-status', saved.recStatus);
+    else if (saved.sComplete !== undefined || saved.sPartial !== undefined || saved.sNew !== undefined) {
+        // Old save (Complete / Partial / New only). In-progress rows used to
+        // fall under those, so keep them alongside.
+        var st = [];
+        if (saved.sComplete) st.push('complete', 'transcribing');
+        if (saved.sPartial || saved.sNew) st.push('recording', 'queued', 'encoding');
+        if (saved.sPartial) st.push('partial');
+        if (saved.sNew) st.push('new');
+        recSetChecked('rec-f-status', st);
+    }
     setChk('rec-f-istatus-active', saved.iActive);
     setChk('rec-f-istatus-restricted', saved.iRestricted);
     setChk('rec-f-istatus-inactive', saved.iInactive);
@@ -2805,11 +2814,16 @@ function _restoreRecFiltersFromStorage() {
     if (Array.isArray(saved.categoryKeys)) window._recRestoredCategoryKeys = saved.categoryKeys;
     setChk('rec-f-mp3-yes', saved.mp3Yes);
     setChk('rec-f-mp3-no', saved.mp3No);
-    setChk('rec-f-cap-captions', saved.capCaptions);
-    setChk('rec-f-cap-reviewed', saved.capReviewed);
-    setChk('rec-f-cap-pending', saved.capPending);
-    setChk('rec-f-cap-editable', saved.capEditable);
-    setChk('rec-f-cap-missing', saved.capMissing);
+    if (Array.isArray(saved.txStatus)) recSetChecked('rec-f-cap', saved.txStatus);
+    else {
+        var tx = [];
+        if (saved.capCaptions) tx.push('uploaded');
+        if (saved.capReviewed) tx.push('approved');
+        if (saved.capPending) tx.push('ai_queued', 'ready', 'editing');
+        if (saved.capEditable) tx.push('ai_queued', 'ready', 'editing', 'approved', 'uploaded');
+        if (saved.capMissing) tx.push('none');
+        recSetChecked('rec-f-cap', tx);
+    }
     setVal('rec-f-episode', saved.episode);
 }
 function itemsClearFilters() {
@@ -2829,16 +2843,12 @@ function recClearFilters() {
     ['rec-f-key','rec-f-title','rec-f-pub-from','rec-f-pub-to','rec-f-dur-min','rec-f-dur-max','rec-f-episode'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
     });
-    var feedSel = document.getElementById('rec-f-feed'); if (feedSel) feedSel.value = '';
-    var c = document.getElementById('rec-f-status-complete'); if (c) c.checked = false;
-    var p = document.getElementById('rec-f-status-partial');  if (p) p.checked = true;
-    var n = document.getElementById('rec-f-status-new');      if (n) n.checked = true;
+    document.querySelectorAll('#rec-f-feeds input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
+    recSetChecked('rec-f-status', REC_STATUS_DEFAULT);
     var ia = document.getElementById('rec-f-istatus-active');     if (ia) ia.checked = true;
     var ir = document.getElementById('rec-f-istatus-restricted'); if (ir) ir.checked = false;
     var ii = document.getElementById('rec-f-istatus-inactive');   if (ii) ii.checked = false;
-    ['rec-f-mp3-yes','rec-f-mp3-no','rec-f-cap-captions','rec-f-cap-reviewed','rec-f-cap-pending','rec-f-cap-editable','rec-f-cap-missing'].forEach(function(id){
-        var el = document.getElementById(id); if (el) el.checked = false;
-    });
+    ['rec-f-mp3', 'rec-f-cap'].forEach(function(id){ recSetChecked(id, []); });
     document.querySelectorAll('#rec-f-pages input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
     document.querySelectorAll('#rec-f-categories input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
     recCatCounts();
@@ -2865,10 +2875,7 @@ function loadRecordings(page) {
     var perPage = parseInt(document.getElementById('rec-per-page').value) || 50;
     var v = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
     var checked = function(id) { var el = document.getElementById(id); return el && el.checked; };
-    var statuses = [];
-    if (checked('rec-f-status-complete')) statuses.push('complete');
-    if (checked('rec-f-status-partial'))  statuses.push('partial');
-    if (checked('rec-f-status-new'))      statuses.push('new');
+    var statuses = recCheckedVals('rec-f-status');
 
     var durMin = recParseDuration(v('rec-f-dur-min'));
     var durMax = recParseDuration(v('rec-f-dur-max'));
@@ -2880,7 +2887,8 @@ function loadRecordings(page) {
     if (v('rec-f-title'))    qs += '&title=' + encodeURIComponent(v('rec-f-title'));
     if (v('rec-f-pub-from')) qs += '&pub_from=' + encodeURIComponent(v('rec-f-pub-from'));
     if (v('rec-f-pub-to'))   qs += '&pub_to=' + encodeURIComponent(v('rec-f-pub-to'));
-    if (v('rec-f-feed'))     qs += '&feed_key=' + encodeURIComponent(v('rec-f-feed'));
+    var checkedFeeds = recCheckedFeeds();
+    if (checkedFeeds.length) qs += '&feed_keys=' + encodeURIComponent(checkedFeeds.join(','));
     if (durMin !== null && durMin > 0) qs += '&dur_min_s=' + durMin;
     if (durMax !== null && durMax > 0) qs += '&dur_max_s=' + durMax;
     if (statuses.length) qs += '&status=' + encodeURIComponent(statuses.join(','));
@@ -2931,7 +2939,7 @@ function loadRecordings(page) {
                 return;
             }
             _recItems = d.items || [];
-            populateRecFeedFilter(d.feeds || [], v('rec-f-feed'));
+            populateRecFeedFilter(d.feeds || [], checkedFeeds);
             populateRecPageFilter(d.pages || [], checkedPages);
             populateRecCategoryFilter(d.categories || [], checkedCats);
             // The item editor's per-section category pickers read
@@ -3005,15 +3013,38 @@ function recCatCounts() {
         if (n) { n.textContent = on ? '(' + on + '/' + all.length + ')' : '(' + all.length + ')'; n.classList.toggle('on', on > 0); }
     });
 }
-function populateRecFeedFilter(feeds, current) {
-    var sel = document.getElementById('rec-f-feed');
-    if (!sel) return;
-    if (sel.options.length > 1 && sel.value === current) return; // already populated
-    var opts = '<option value="">All</option>';
+// Header checkbox groups (Recording, Transcript, Stage, MP3): read / set by value.
+var REC_STATUS_DEFAULT = ['new', 'partial', 'recording', 'queued', 'encoding'];
+function recCheckedVals(id) {
+    return Array.prototype.map.call(document.querySelectorAll('#' + id + ' input[type=checkbox]:checked'), function(cb){ return cb.value; });
+}
+function recSetChecked(id, vals) {
+    document.querySelectorAll('#' + id + ' input[type=checkbox]').forEach(function(cb){ cb.checked = vals.indexOf(cb.value) >= 0; });
+}
+// Ticked Source checkboxes; before the first render, the restored selection.
+function recCheckedFeeds() {
+    var box = document.getElementById('rec-f-feeds');
+    if (box && box.dataset.populated === '1') {
+        return Array.prototype.map.call(box.querySelectorAll('input[type=checkbox]:checked'), function(cb){ return cb.value; });
+    }
+    return Array.isArray(window._recRestoredFeedKeys) ? window._recRestoredFeedKeys.slice() : [];
+}
+function populateRecFeedFilter(feeds, currentSelections) {
+    var box = document.getElementById('rec-f-feeds');
+    if (!box) return;
+    if (box.dataset.populated === '1' && box.dataset.count === String(feeds.length)) return;
+    box.dataset.populated = '1';
+    box.dataset.count = String(feeds.length);
+    var sel = {};
+    (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
+    var html = '';
     feeds.forEach(function(f) {
-        opts += '<option value="' + f.feed_key + '"' + (String(f.feed_key) === String(current) ? ' selected' : '') + '>' + esc(f.feed_name) + '</option>';
+        html += '<label title="' + esc(f.feed_name) + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+              + '<input type="checkbox" value="' + f.feed_key + '" onchange="loadRecordings(1)"' + (sel[String(f.feed_key)] ? ' checked' : '') + '> '
+              + esc(f.feed_name.replace(/^YouTube - /, ''))
+              + '</label>';
     });
-    sel.innerHTML = opts;
+    box.innerHTML = html || '<em style="font-size:0.7rem;color:#999;">no sources</em>';
 }
 
 function renderRecordings(d) {
@@ -6685,7 +6716,15 @@ function openRowSpeakerPicker(chipEl) {
     var labels = Object.keys(seen);
     var palette = ['#3367d6','#1d6b3a','#a36100','#7b2d8e','#a30','#0d7377','#5d4037','#37474f'];
     var nextColor = palette[labels.length % palette.length];
-    var html = '<div style="font-weight:600;color:#31345A;margin-bottom:4px;font-size:0.78rem;padding:0 4px;">Assign speaker</div>'
+    var curLabel = _rowChipLabel(chipEl);
+    var curGeneric = isUnidentifiedSpeakerLabel(curLabel);
+    var html = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:0 4px;">'
+        +   '<span style="font-weight:600;color:#31345A;font-size:0.78rem;flex:1;">Assign speaker</span>'
+        +   '<button onclick="closeRowSpeakerPicker()" title="Close (Esc)" style="background:none;border:none;cursor:pointer;color:#888;font-size:1.05rem;line-height:1;padding:0 2px;">&times;</button>'
+        + '</div>'
+        + (curGeneric
+            ? '<div style="font-size:0.7rem;color:#a36100;margin:0 4px 4px;">Picking a named speaker identifies ' + esc(curLabel.replace(/^SPEAKER_/i, 'Speaker ')) + ' on all ' + _countRowsWithSpeaker(curLabel) + ' of its segments.</div>'
+            : '')
         + '<div style="max-height:240px;overflow-y:auto;">';
     labels.forEach(function(lbl) {
         var parsed = parseSpeakerLabel(lbl);
@@ -6738,6 +6777,7 @@ function openRowSpeakerPicker(chipEl) {
         +   '<input id="t-row-spk-new-name" placeholder="name…" style="font-size:0.78rem;flex:1;padding:3px 6px;border:1px solid #ccc;border-radius:3px;">'
         +   '<button onclick="createAndAssignSpeaker()" title="Create and assign" style="background:#27ae60;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-weight:700;">✓</button>'
         + '</div>'
+        + '<div style="text-align:right;margin-top:6px;"><button onclick="closeRowSpeakerPicker()" style="background:none;border:1px solid #ddd;border-radius:4px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:#555;">Cancel</button></div>'
         + '</div>';
     pop.innerHTML = html;
     pop.style.display = 'block';
@@ -6766,6 +6806,53 @@ function openRowSpeakerPicker(chipEl) {
         document.addEventListener('click', closeRowSpeakerPickerOnce, { once: true });
     }, 0);
 }
+function closeRowSpeakerPicker() {
+    var pop = document.getElementById('t-row-spk-popover');
+    if (pop) pop.style.display = 'none';
+    _rowSpkAnchor = null;
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var pop = document.getElementById('t-row-spk-popover');
+    if (pop && pop.style.display === 'block') closeRowSpeakerPicker();
+});
+// A raw diarizer label (SPEAKER_04, "Speaker 4", bare digits) — an unknown
+// voice nobody has identified yet, as opposed to a named speaker.
+function isUnidentifiedSpeakerLabel(label) {
+    var l = String(label || '').trim();
+    return /^SPEAKER[ _]?\d+$/i.test(l) || /^\d+$/.test(l);
+}
+// The current label of the row a picker chip belongs to.
+function _rowChipLabel(chipEl) {
+    var td = chipEl && chipEl.closest('td');
+    var hidden = td && td.querySelector('input[data-field="speaker"]');
+    return hidden ? String(hidden.value || '') : String((chipEl && chipEl.getAttribute('data-label')) || '');
+}
+// Identify an unknown voice: every segment carrying the generic label becomes
+// the named speaker (live rows, cluster duplicates, voice embeddings — the
+// server's rename_speaker), so the SPEAKER_xx entry disappears. The DOM is
+// updated first so an autosave racing the rename can't write the old label back.
+function identifySpeakerEverywhere(from, to) {
+    if (!_transcriptItemKey || _transcriptReadonly) return;
+    var n = _countRowsWithSpeaker(from);
+    _applySpeakerLabelChangeInDom(from, to);
+    refreshSpeakerPopoverIfOpen();
+    var statusEl = document.getElementById('t-status');
+    if (statusEl) statusEl.textContent = 'Identifying speaker…';
+    var disp = parseSpeakerLabel(to).name || speakerAbbrev(to) || to;
+    _spkRenameChain = _spkRenameChain.then(function() {
+        return fetch(API + '/admin-transcript.php', {
+            method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({action:'rename_speaker', item_key: _transcriptItemKey, from: from, to: to})
+        }).then(function(r){ return safeJson(r); }).then(function(d) {
+            if (!d || d.error) { if (statusEl) statusEl.textContent = '✗ ' + ((d && d.error) || 'identify failed'); return; }
+            if (statusEl) {
+                statusEl.textContent = '✓ ' + from.replace(/^SPEAKER_/i, 'Speaker ') + ' → ' + disp + ' on ' + Math.max(n, d.renamed || 0) + ' segment(s)';
+                setTimeout(function() { if (statusEl.textContent.charAt(0) === '✓') statusEl.textContent = ''; }, 3000);
+            }
+        });
+    });
+}
 function closeRowSpeakerPickerOnce(e) {
     var pop = document.getElementById('t-row-spk-popover');
     if (pop && !pop.contains(e.target)) {
@@ -6777,6 +6864,15 @@ function closeRowSpeakerPickerOnce(e) {
 }
 function pickRowSpeaker(label) {
     if (!_rowSpkAnchor) return;
+    var fromLabel = _rowChipLabel(_rowSpkAnchor);
+    if (label && label !== fromLabel && isUnidentifiedSpeakerLabel(fromLabel) && !isUnidentifiedSpeakerLabel(label)) {
+        // Identifying an unknown voice applies to all of its segments, not just this one.
+        var pop0 = document.getElementById('t-row-spk-popover');
+        if (pop0) pop0.style.display = 'none';
+        _rowSpkAnchor = null;
+        identifySpeakerEverywhere(fromLabel, label);
+        return;
+    }
     applyRowSpeakerLabel(_rowSpkAnchor, label);
     var pop = document.getElementById('t-row-spk-popover');
     if (pop) pop.style.display = 'none';
@@ -6948,6 +7044,7 @@ function buildSpeakerPopoverHtml() {
             +       ' style="font-size:0.78rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;' + roStyle + '">'
             +   '</td>'
             +   (ro ? '' : '<td style="padding:3px 0 3px 6px;white-space:nowrap;"><button onclick="saveSpeakerProfileFromRow(this)" title="' + esc(starTitle) + '" style="background:none;border:none;cursor:pointer;font-size:0.95rem;color:' + starColor + ';padding:0 2px;line-height:1;">' + starGlyph + '</button>'
+            +     (isUnidentifiedSpeakerLabel(lbl) ? '<button onclick="jumpToSpeakerTurn(' + JSON.stringify(lbl).replace(/"/g, '&quot;') + ')" title="Jump to and play this speaker’s next turn (click again for the next one)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:#a36100;padding:0 2px;line-height:1;">▸</button>' : '')
             +     '<button onclick="removeSpeakerFromList(' + JSON.stringify(lbl).replace(/"/g, '&quot;') + ')" title="Remove this speaker — clears it from its ' + counts[lbl] + ' segment(s) (text unchanged) and drops it from the list" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#c0392b;padding:0 2px;line-height:1;margin-left:2px;">&times;</button></td>')
             + '</tr>';
     });
@@ -6963,6 +7060,13 @@ function buildSpeakerPopoverHtml() {
     html += '</table>';
     if (!ro) {
         html += buildSpeakerSuggestionHtml(labels);
+        var unknownLabels = labels.filter(isUnidentifiedSpeakerLabel);
+        if (unknownLabels.length) {
+            html += '<div style="margin-top:8px;padding:6px 8px;background:#fff8e6;border:1px solid #f0dca8;border-radius:4px;font-size:0.74rem;color:#7a5200;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+                 +    '<span>' + unknownLabels.length + ' unidentified speaker' + (unknownLabels.length === 1 ? '' : 's') + '</span>'
+                 +    '<button onclick="jumpToUnidentifiedSpeaker()" style="background:#a36100;color:#fff;border:none;border-radius:4px;padding:4px 9px;font-size:0.74rem;cursor:pointer;" title="Scroll to where the next unidentified speaker first talks, play it, and open the picker so you can say who it is.">Identify next ▸</button>'
+                 +  '</div>';
+        }
         html += '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">'
              +    '<button onclick="fillSpeakersFromBaseline()" style="background:#eef;border:1px solid #ccd;border-radius:4px;padding:4px 9px;font-size:0.74rem;cursor:pointer;" title="Label each segment that has no speaker yet, using the automatic voice-based speaker detection (WhisperX). Doesn\'t change any text and won\'t overwrite speakers you have set.">Auto-assign unlabeled segments</button>'
              +    '<button onclick="matchSpeakersAgainstProfiles(true)" style="background:#eef;border:1px solid #ccd;border-radius:4px;padding:4px 9px;font-size:0.74rem;cursor:pointer;" title="Match this transcript’s generic SPEAKER_xx voices against your saved speakers and name the confident ones.">Match against saved speakers</button>'
@@ -7210,6 +7314,64 @@ function removeSpeakerFromList(label) {
         });
     });
 }
+// ── Jump to unidentified speakers ────────────────────────────────────────
+// A "turn" = a row whose speaker differs from the row above it.
+function _speakerTurnRows(label) {
+    var out = [], prev = null;
+    document.querySelectorAll('#t-rows tr').forEach(function(tr) {
+        var inp = tr.querySelector('input[data-field="speaker"]');
+        var v = inp ? String(inp.value || '') : '';
+        if (v === label && prev !== label) out.push(tr);
+        prev = v;
+    });
+    return out;
+}
+function _focusSpeakerRow(tr, openPicker) {
+    if (!tr) return;
+    tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    var seg = tr.querySelector('input[data-field="segment"]');
+    var secs = seg ? parseSegmentToSeconds(seg.value) : NaN;
+    if (!isNaN(secs)) seekVideoTo(Math.max(0, secs - 0.3));
+    tr.style.transition = 'outline-color .6s';
+    tr.style.outline = '2px solid #a36100';
+    setTimeout(function() { tr.style.outline = ''; }, 1800);
+    if (openPicker) {
+        var chip = tr.querySelector('.t-spk-chip');
+        if (chip) setTimeout(function() { openRowSpeakerPicker(chip); }, 350);
+    }
+}
+var _spkTurnCursor = {};
+// Cycle through one speaker's turns (to hear several samples before naming it).
+function jumpToSpeakerTurn(label) {
+    var turns = _speakerTurnRows(label);
+    if (!turns.length) return;
+    var i = ((_spkTurnCursor[label] == null ? -1 : _spkTurnCursor[label]) + 1) % turns.length;
+    _spkTurnCursor[label] = i;
+    var statusEl = document.getElementById('t-status');
+    if (statusEl) statusEl.textContent = label.replace(/^SPEAKER_/i, 'Speaker ') + ' — turn ' + (i + 1) + ' / ' + turns.length;
+    _focusSpeakerRow(turns[i], false);
+}
+// Go to the first appearance of the next still-unidentified speaker (in
+// transcript order, wrapping), play it, and open its picker.
+var _lastUnknownJumped = null;
+function jumpToUnidentifiedSpeaker() {
+    var firsts = [], seen = {};
+    document.querySelectorAll('#t-rows tr').forEach(function(tr) {
+        var inp = tr.querySelector('input[data-field="speaker"]');
+        var v = inp ? String(inp.value || '') : '';
+        if (v && !seen[v] && isUnidentifiedSpeakerLabel(v)) { seen[v] = true; firsts.push({label: v, tr: tr}); }
+    });
+    var statusEl = document.getElementById('t-status');
+    if (!firsts.length) { if (statusEl) statusEl.textContent = '✓ No unidentified speakers left'; return; }
+    var idx = 0;
+    for (var i = 0; i < firsts.length; i++) if (firsts[i].label === _lastUnknownJumped) { idx = (i + 1) % firsts.length; break; }
+    _lastUnknownJumped = firsts[idx].label;
+    var sp = document.getElementById('t-spk-popover');
+    if (sp) sp.style.display = 'none';
+    if (statusEl) statusEl.textContent = 'Unidentified ' + (idx + 1) + ' / ' + firsts.length + ': ' + firsts[idx].label.replace(/^SPEAKER_/i, 'Speaker ') + ' (' + _countRowsWithSpeaker(firsts[idx].label) + ' segments) — who is this?';
+    _focusSpeakerRow(firsts[idx].tr, true);
+}
+
 // Repaint every transcript row currently labelled `from` as `to`, in place,
 // and keep the popover's cached rows in sync — no full reload.
 function _applySpeakerLabelChangeInDom(from, to) {
@@ -8825,11 +8987,11 @@ function openTranscriptDict() {
             + '<button onclick="closeTranscriptDict()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;">×</button>'
             + '</div>'
             + '<div style="display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:14px;">'
-            + '<button class="td-tab td-tab-active" data-td="glossary" onclick="switchTdTab(\'glossary\')" style="background:#31345A;color:#fff;border:none;padding:8px 16px;cursor:pointer;font-size:0.85rem;">Glossary (Whisper Prompt)</button>'
-            + '<button class="td-tab" data-td="corrections" onclick="switchTdTab(\'corrections\')" style="background:#fff;color:#31345A;border:none;padding:8px 16px;cursor:pointer;font-size:0.85rem;">Corrections</button>'
+            + '<button class="td-tab td-tab-active" data-td="corrections" onclick="switchTdTab(\'corrections\')" style="background:#31345A;color:#fff;border:none;padding:8px 16px;cursor:pointer;font-size:0.85rem;">Corrections</button>'
+            + '<button class="td-tab" data-td="glossary" onclick="switchTdTab(\'glossary\')" style="background:#fff;color:#31345A;border:none;padding:8px 16px;cursor:pointer;font-size:0.85rem;">Glossary (AI Prompt)</button>'
             + '</div>'
-            + '<div id="td-glossary" class="td-pane">'
-            + '<div style="margin-bottom:10px;font-size:0.85rem;color:#555;">Terms below are sent to OpenAI Whisper as the <code>prompt</code> parameter to bias recognition toward unusual vocabulary. Limit ~224 tokens (~860 chars). Higher priority terms come first.</div>'
+            + '<div id="td-glossary" class="td-pane" style="display:none;">'
+            + '<div style="margin-bottom:10px;font-size:0.85rem;color:#555;">Terms below are sent to AI as a prompt parameter to bias recognition toward unusual vocabulary. Limit ~224 tokens (~860 chars). Higher priority terms come first.</div>'
             + '<div style="display:flex;gap:8px;margin-bottom:10px;">'
             + '<input type="text" id="td-gloss-term" placeholder="Term (e.g., Yahowah)" style="flex:1;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
             + '<input type="number" id="td-gloss-priority" placeholder="Priority" value="0" style="width:90px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'
@@ -8839,7 +9001,7 @@ function openTranscriptDict() {
             + '<div id="td-prompt-preview" style="display:none;margin-bottom:10px;padding:10px;background:#f5f7fa;border:1px solid #e0e4ec;border-radius:6px;font-size:0.82rem;"></div>'
             + '<div id="td-gloss-list" style="max-height:50vh;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;"></div>'
             + '</div>'
-            + '<div id="td-corrections" class="td-pane" style="display:none;">'
+            + '<div id="td-corrections" class="td-pane">'
             + '<div style="margin-bottom:10px;font-size:0.85rem;color:#555;">Wrong → right substitutions are auto-applied to new transcripts and can be re-applied to existing ones. Auto-learned from admin edits.</div>'
             + '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">'
             + '<input type="text" id="td-corr-wrong" placeholder="Wrong" style="flex:1;min-width:140px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;">'

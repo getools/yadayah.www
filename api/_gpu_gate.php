@@ -8,23 +8,29 @@
  * lease unloads ollama and STOPS the STT/TTS containers (killing their jobs).
  * So those two are gated; TTS builds are top priority and never wait.
  *
- *   class      waits while
- *   'llm_bg'   TTS build queued/running · gen job active · any STT job queued/running
- *              (background transcript cleanup — lowest priority)
- *   'llm'      TTS build queued/running · gen job active · STT job running
- *              (Layer-3 step of a fresh consensus build — skipped, not waited:
- *              the build marks llm_reconcile=false and the backfill does it later)
- *   'gen'      TTS build queued/running · STT job running · LLM pass running
- *   'stt'      gen job active · LLM pass running · a video is being PACKAGED
- *              (its baselines are done and its build/LLM pass is queued or
- *              running — one video is finished before the next starts) (next job stays pending;
- *              gpu-queue-tick.php restarts the queue when the gate opens)
+ * 2026-10-13: WHO waits for whom is now decided by the Puget AI job queue
+ * (_ai_queue.php): one queue over every job table, ordered by job-class
+ * priority (yy_ai_job_class, editable from the admin toolbar queue widget),
+ * then in-class priority, then submitted time. Gate class names map to job
+ * classes; with the default priorities the behaviour matches the old rules:
+ *
+ *   gate class   job class          waits while (defaults)
+ *   'llm_bg'     llm_backfill       anything is running or queued (lowest priority)
+ *   'llm'        transcript_build   TTS / QA / gen running or queued ahead · STT running
+ *                (Layer-3 of a fresh consensus build — waits up to 3h, then deferred)
+ *   'gen'/'image'/'video'/'audio_gen'   anything running · TTS / QA / earlier gen queued
+ *   'stt'        stt                gen / LLM running · gen / build queued ahead ·
+ *                                   a video is being PACKAGED (gpuPackagingActive)
+ *                (next job stays pending; gpu-queue-tick.php restarts the queue)
  *
  * "LLM pass running" = some process holds advisory lock GPU_LLM_LOCK (taken
  * by the backfill and the init worker around llmReconcileTranscript).
  */
 
+require_once __DIR__ . '/_ai_queue.php';
+
 const GPU_LLM_LOCK = 742010;
+const GPU_GATE_CLASS_MAP = ['llm_bg' => 'llm_backfill', 'llm' => 'transcript_build', 'gen' => 'image'];
 
 // Pending builds only count while the TTS queue is actually moving (a build
 // running, or any build row touched in the last 2h) — so an abandoned
@@ -74,23 +80,15 @@ function gpuLlmActive(PDO $db): bool {
                                                AND classid = 0 AND objid = " . GPU_LLM_LOCK . " AND objsubid = 1)")->fetchColumn();
 }
 
-/** Null when $class may use the GPU now, else a short human-readable reason. */
-function gpuGateReason(PDO $db, string $class): ?string {
+/**
+ * Null when $class may use the GPU now, else a short human-readable reason.
+ * $class is a gate class ('stt', 'llm', 'llm_bg', 'gen') or a job class code
+ * from yy_ai_job_class; $jobKey names the asking job (gen workers pass it).
+ */
+function gpuGateReason(PDO $db, string $class, ?int $jobKey = null): ?string {
     $why = [];
-    if (in_array($class, ['llm_bg', 'llm', 'gen'], true)) {
-        $t = gpuTtsActive($db);
-        if ($t) $why[] = "TTS building ($t chapter" . ($t === 1 ? '' : 's') . ' left)';
-    }
-    if (in_array($class, ['llm_bg', 'llm', 'stt'], true)) {
-        $g = gpuGenActive($db);
-        if ($g) $why[] = "$g image/video/audio job" . ($g === 1 ? '' : 's');
-    }
-    if (in_array($class, ['llm_bg', 'llm', 'gen'], true)) {
-        $s = gpuSttCounts($db);
-        if ($s['running']) $why[] = 'transcription running';
-        elseif ($class === 'llm_bg' && $s['pending']) $why[] = "{$s['pending']} transcription jobs queued";
-    }
-    if (in_array($class, ['gen', 'stt'], true) && gpuLlmActive($db)) $why[] = 'LLM transcript pass running';
+    $r = aiqGateReason($db, GPU_GATE_CLASS_MAP[$class] ?? $class, $jobKey);
+    if ($r !== null) $why[] = $r;
     if ($class === 'stt') {
         $p = gpuPackagingActive($db);
         if ($p) $why[] = "finishing $p video" . ($p === 1 ? '' : 's') . ' (build / AI cleanup) before the next';
@@ -106,10 +104,28 @@ function gpuIsPugetEndpoint(string $endpoint): bool {
 /**
  * Block until $class may use the GPU. $onWait($reason) is called when the
  * reason changes (status message); returns seconds waited.
+ *
+ * For one-worker-per-job classes (image/video/audio_gen) with a $jobKey, the
+ * job then holds its AIQ_HOLD_NS lock — that is what marks it "on the card"
+ * to everyone else — until the worker exits. The gate is re-checked with the
+ * lock held, so two workers passing at the same instant can't both proceed.
  */
-function gpuGateWait(PDO $db, string $class, ?callable $onWait = null, int $poll = 30): int {
+function gpuGateWait(PDO $db, string $class, ?callable $onWait = null, int $poll = 30, ?int $jobKey = null): int {
     $t0 = time(); $last = null;
-    while (($r = gpuGateReason($db, $class)) !== null) {
+    $jobClass = GPU_GATE_CLASS_MAP[$class] ?? $class;
+    $hold = $jobKey !== null && isset(AIQ_HOLD_NS[$jobClass]);
+    while (true) {
+        $r = gpuGateReason($db, $class, $jobKey);
+        if ($r === null && $hold) {
+            if (aiqHold($db, $jobClass, $jobKey)) {
+                $r = gpuGateReason($db, $class, $jobKey);
+                if ($r === null) break;
+                aiqUnhold($db, $jobClass, $jobKey);
+            } else {
+                $r = 'claiming the GPU';
+            }
+        }
+        if ($r === null) break;
         if ($r !== $last && $onWait) $onWait($r);
         $last = $r;
         sleep($poll);

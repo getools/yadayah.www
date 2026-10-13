@@ -98,9 +98,9 @@ updateJob($db, $jobKey, [
 // transcript pass is on the card — the broker lease would otherwise stop
 // their containers / unload ollama mid-job, or the card runs out.
 if (gpuIsPugetEndpoint($endpoint)) {
-    $waited = gpuGateWait($db, 'gen', function ($why) use ($db, $jobKey) {
+    $waited = gpuGateWait($db, 'audio_gen', function ($why) use ($db, $jobKey) {
         updateJob($db, $jobKey, ['t2a_job_message' => 'Waiting for GPU: ' . $why]);
-    });
+    }, 30, (int)$jobKey);
     if ($waited) updateJob($db, $jobKey, ['t2a_job_message' => 'Submitting to engine']);
 }
 

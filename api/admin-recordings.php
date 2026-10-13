@@ -8,6 +8,7 @@
  *     &pub_from=     — published date >= YYYY-MM-DD
  *     &pub_to=       — published date <= YYYY-MM-DD
  *     &feed_key=N    — exact feed match
+ *     &feed_keys=    — comma-separated yy_feed.feed_key list (any of)
  *     &dur_min_s=N   — duration_seconds >= N
  *     &dur_max_s=N   — duration_seconds <= N
  *     &status=...    — comma-separated subset of: complete, partial, new
@@ -28,6 +29,9 @@ $titleQ      = trim((string)($_GET['title'] ?? ''));
 $pubFrom     = trim((string)($_GET['pub_from'] ?? ''));
 $pubTo       = trim((string)($_GET['pub_to'] ?? ''));
 $feedKey     = (int)($_GET['feed_key'] ?? 0);
+$feedKeys    = array_values(array_unique(array_filter(array_map('intval',
+    explode(',', (string)($_GET['feed_keys'] ?? ''))), function($n){ return $n > 0; })));
+if ($feedKey > 0 && !in_array($feedKey, $feedKeys, true)) $feedKeys[] = $feedKey;
 $durMin      = isset($_GET['dur_min_s']) && $_GET['dur_min_s'] !== '' ? (int)$_GET['dur_min_s'] : null;
 $durMax      = isset($_GET['dur_max_s']) && $_GET['dur_max_s'] !== '' ? (int)$_GET['dur_max_s'] : null;
 $statusRaw   = trim((string)($_GET['status'] ?? ''));
@@ -52,11 +56,9 @@ $categoryKeys    = $categoryKeysRaw === '' ? [] :
     array_values(array_filter(array_map('intval',
         array_map('trim', explode(',', $categoryKeysRaw))), function($n){ return $n > 0; }));
 
-// caption_status filter: comma-separated subset of: completed, queued, error, never.
-//   completed = feed_item_yt_caption_status = 'success'
-//   queued    = feed_item_yt_caption_status IN ('queued', NULL-but-has-transcript-on-connected-feed)
-//   error     = feed_item_yt_caption_status = 'error'
-//   never     = feed_item_yt_caption_status IS NULL OR no transcript / not connected
+// caption_status filter: comma-separated transcript_state values — nomp3,
+// none, queued, processing, failed, ai_queued, ready, editing, approved, uploaded (old
+// values captions / reviewed / pending / missing / editable still accepted).
 $captionStatusRaw = trim((string)($_GET['caption_status'] ?? ''));
 $captionStatuses  = $captionStatusRaw === '' ? [] : array_filter(array_map('trim', explode(',', $captionStatusRaw)));
 
@@ -108,7 +110,7 @@ if ($keyQ !== '')   { $where .= " AND CAST(fi.feed_item_key AS TEXT) LIKE ?"; $p
 if ($titleQ !== '') { $where .= " AND COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) ILIKE ?"; $params[] = '%' . $titleQ . '%'; }
 if ($pubFrom !== '') { $where .= " AND COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) >= ?"; $params[] = $pubFrom; }
 if ($pubTo !== '')   { $where .= " AND COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) < (?::date + INTERVAL '1 day')"; $params[] = $pubTo; }
-if ($feedKey > 0)    { $where .= " AND fi.feed_key = ?"; $params[] = $feedKey; }
+if ($feedKeys)      { $where .= " AND fi.feed_key IN (" . implode(',', array_fill(0, count($feedKeys), '?')) . ")"; array_push($params, ...$feedKeys); }
 if ($durMin !== null && $durMin >= 0) { $where .= " AND fi.feed_item_duration_seconds >= ?"; $params[] = $durMin; }
 if ($durMax !== null && $durMax > 0)  { $where .= " AND fi.feed_item_duration_seconds <= ?"; $params[] = $durMax; }
 if ($episodeQ !== '')                 { $where .= " AND fi.feed_item_episode ILIKE ?"; $params[] = '%' . $episodeQ . '%'; }
@@ -134,75 +136,123 @@ if (!empty($mp3Filter)) {
     if ($hasYes && !$hasNo)      $where .= " AND fi.feed_item_audio_file IS NOT NULL";
     else if ($hasNo && !$hasYes) $where .= " AND fi.feed_item_audio_file IS NULL";
 }
+$sttAny = "EXISTS(SELECT 1 FROM yy_feed_item_transcript_job cj WHERE cj.feed_item_key = fi.feed_item_key AND cj.job_status IN ('pending','running'))";
+// Transcript button state, first that applies:
+//   nomp3      no MP3 on disk
+//   processing STT job or editable-transcript build running
+//   queued     STT job or build pending
+//   failed     latest build errored and there is no transcript (or nobody is editing it)
+//   none       no transcript
+//   approved   latest review Approved, and no upload or the upload is older
+//   uploaded   on YouTube as captions
+//   editing    an admin changed it (edit_status 'Editing'), left a bookmark, or flagged Errors
+//   ai_queued  built fast and the AI cleanup pass (transcript-llm-backfill.php) hasn't run
+//              on it since — no finished AI snapshot or backfill skip newer than the build
+//   ready      baseline built, nobody has touched it yet
+$txInit   = "(SELECT ij.job_status FROM yy_feed_item_transcript_init_job ij
+               WHERE ij.job_item_key = fi.feed_item_key ORDER BY ij.job_key DESC LIMIT 1)";
+$txVal    = "(SELECT v.validation_status FROM yy_feed_item_transcript_validation v
+               WHERE v.feed_item_key = fi.feed_item_key ORDER BY v.validation_dtime DESC LIMIT 1)";
+$txValDt  = "(SELECT v.validation_dtime FROM yy_feed_item_transcript_validation v
+               WHERE v.feed_item_key = fi.feed_item_key ORDER BY v.validation_dtime DESC LIMIT 1)";
+$txValBm  = "(SELECT v.validation_bookmark_seconds FROM yy_feed_item_transcript_validation v
+               WHERE v.feed_item_key = fi.feed_item_key ORDER BY v.validation_dtime DESC LIMIT 1)";
+$txUpl    = "fi.feed_item_yt_caption_uploaded_dtime";
+$txAiPending = "EXISTS (SELECT 1 FROM (SELECT ij.job_status, ij.job_params, ij.job_created
+                                         FROM yy_feed_item_transcript_init_job ij
+                                        WHERE ij.job_item_key = fi.feed_item_key ORDER BY ij.job_key DESC LIMIT 1) lj
+        WHERE lj.job_status = 'done'
+          AND (lj.job_params LIKE '%\"llm_reconcile\": false%' OR lj.job_params LIKE '%\"llm_reconcile\":false%')
+          AND NOT EXISTS (SELECT 1 FROM yy_transcript_snapshot sn WHERE sn.feed_item_key = fi.feed_item_key
+                 AND sn.snapshot_reason LIKE 'pre auto LLM reconcile%' AND sn.snapshot_reason NOT LIKE '%incomplete%'
+                 AND sn.snapshot_dtime >= lj.job_created)
+          AND NOT EXISTS (SELECT 1 FROM yy_transcript_llm_backfill_skip sk WHERE sk.feed_item_key = fi.feed_item_key
+                 AND sk.skip_dtime >= lj.job_created))";
+$txStateSql = "(CASE
+    WHEN NULLIF(btrim(fi.feed_item_audio_file), '') IS NULL THEN 'nomp3'
+    WHEN EXISTS(SELECT 1 FROM yy_feed_item_transcript_job cj WHERE cj.feed_item_key = fi.feed_item_key AND cj.job_status = 'running')
+         OR $txInit = 'running' THEN 'processing'
+    WHEN $sttAny OR $txInit = 'pending' THEN 'queued'
+    WHEN NOT EXISTS(SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key)
+         THEN CASE WHEN $txInit = 'error' THEN 'failed' ELSE 'none' END
+    WHEN $txVal = 'Approved' AND ($txUpl IS NULL OR $txValDt > $txUpl) THEN 'approved'
+    WHEN $txUpl IS NOT NULL THEN 'uploaded'
+    WHEN EXISTS(SELECT 1 FROM yy_feed_item_transcript_status es WHERE es.feed_item_key = fi.feed_item_key AND es.edit_status = 'Editing')
+         OR COALESCE($txValBm, 0) > 0 OR $txVal = 'Errors' THEN 'editing'
+    WHEN $txInit = 'error' THEN 'failed'
+    WHEN $txAiPending THEN 'ai_queued'
+    ELSE 'ready'
+  END)";
 if (!empty($captionStatuses)) {
-    // Transcript-state cascade — every row falls into exactly one of:
-    //   captions — yt_caption_uploaded_dtime IS NOT NULL AND no later
-    //              Approved review (the upload is current).
-    //   reviewed — latest validation = 'Approved' AND (no upload yet
-    //              OR latest review is newer than the upload — i.e.
-    //              upload is stale w.r.t. the current review).
-    //   pending  — has transcript records, no Approved review, no
-    //              upload date yet.
-    //   missing  — no transcript records at all.
-    //   editable — has a live editable transcript (superset of captions/
-    //              reviewed/pending; OR-combined with the others).
-    $hasTx        = "EXISTS(SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key)";
-    $latestStatus = "(SELECT v.validation_status FROM yy_feed_item_transcript_validation v
-                       WHERE v.feed_item_key = fi.feed_item_key
-                       ORDER BY v.validation_dtime DESC LIMIT 1)";
-    $latestDtime  = "(SELECT v.validation_dtime FROM yy_feed_item_transcript_validation v
-                       WHERE v.feed_item_key = fi.feed_item_key
-                       ORDER BY v.validation_dtime DESC LIMIT 1)";
-    $capOrs = [];
-    foreach ($captionStatuses as $cs) {
-        if ($cs === 'captions') {
-            $capOrs[] = "(fi.feed_item_yt_caption_uploaded_dtime IS NOT NULL
-                          AND NOT ($latestStatus = 'Approved' AND $latestDtime > fi.feed_item_yt_caption_uploaded_dtime))";
-        } elseif ($cs === 'reviewed') {
-            $capOrs[] = "($hasTx AND $latestStatus = 'Approved'
-                          AND (fi.feed_item_yt_caption_uploaded_dtime IS NULL
-                            OR $latestDtime > fi.feed_item_yt_caption_uploaded_dtime))";
-        } elseif ($cs === 'pending') {
-            $capOrs[] = "($hasTx AND ($latestStatus IS DISTINCT FROM 'Approved')
-                          AND fi.feed_item_yt_caption_uploaded_dtime IS NULL)";
-        } elseif ($cs === 'editable') {
-            // Has an editable (live) transcript, regardless of review/upload state.
-            $capOrs[] = $hasTx;
-        } elseif ($cs === 'missing') {
-            $capOrs[] = "NOT $hasTx";
-        }
+    $legacy = ['captions' => ['uploaded'], 'reviewed' => ['approved'], 'pending' => ['ai_queued', 'ready', 'editing'],
+               'missing' => ['none'], 'editable' => ['ai_queued', 'ready', 'editing', 'approved', 'uploaded'],
+               'generating' => ['processing']];
+    $want = [];
+    foreach ($captionStatuses as $cs) foreach ($legacy[$cs] ?? [$cs] as $w) $want[$w] = true;
+    $want = array_values(array_intersect(array_keys($want),
+        ['nomp3', 'none', 'queued', 'processing', 'failed', 'ai_queued', 'ready', 'editing', 'approved', 'uploaded']));
+    if ($want) {
+        $where .= " AND $txStateSql IN (" . implode(',', array_fill(0, count($want), '?')) . ")";
+        array_push($params, ...$want);
     }
-    if ($capOrs) $where .= " AND (" . implode(' OR ', $capOrs) . ")";
 }
 
-// Status filter: multi-checkbox of Complete / Partial / New
-//   complete = feed_item_audio_file IS NOT NULL (or any cluster sibling has audio)
-//   partial  = audio_file IS NULL AND resume_seconds > 0
-//   new      = audio_file IS NULL AND (resume_seconds IS NULL OR resume_seconds = 0)
-$clusterHasAudioSql = "
-    EXISTS (
-        SELECT 1 FROM yy_feed_item sib
-         WHERE sib.feed_item_audio_file IS NOT NULL
-           AND sib.feed_item_key IN (
-                SELECT feed_item_key_b FROM yy_feed_item_link
-                  WHERE feed_item_key_a = fi.feed_item_key
-                    AND feed_item_link_confirmed_flag IS DISTINCT FROM FALSE
-                UNION ALL
-                SELECT feed_item_key_a FROM yy_feed_item_link
-                  WHERE feed_item_key_b = fi.feed_item_key
-                    AND feed_item_link_confirmed_flag IS DISTINCT FROM FALSE
-           )
-    )";
+// Status filter (Recording column): new, partial, recording, queued,
+// encoding, transcribing, complete — see the block below.
+// Two direct EXISTS on the link table's partial indexes. The old
+// sib IN (... UNION ALL ...) form planned as a nested anti-join that
+// scanned ~7M rows (37s) whenever New was the only Recording filter.
+$clusterHasAudioSql = "(
+    EXISTS (SELECT 1 FROM yy_feed_item_link cl JOIN yy_feed_item sib ON sib.feed_item_key = cl.feed_item_key_b
+             WHERE cl.feed_item_key_a = fi.feed_item_key
+               AND cl.feed_item_link_confirmed_flag IS DISTINCT FROM FALSE
+               AND sib.feed_item_audio_file IS NOT NULL)
+ OR EXISTS (SELECT 1 FROM yy_feed_item_link cl JOIN yy_feed_item sib ON sib.feed_item_key = cl.feed_item_key_a
+             WHERE cl.feed_item_key_b = fi.feed_item_key
+               AND cl.feed_item_link_confirmed_flag IS DISTINCT FROM FALSE
+               AND sib.feed_item_audio_file IS NOT NULL)
+)";
 if (!empty($statuses)) {
+    // Mirrors the Recording cell, which shows the first that applies:
+    // Recording / Queued (live recording-window heartbeat), Encoding (finalize
+    // state file), Transcribing (STT job pending/running), then Complete /
+    // Partial / New from the MP3 columns. Same files + freshness rules as the
+    // in_progress block further down.
+    $recNow = $recQueued = $recEnc = [];
+    $tmpDir = sys_get_temp_dir();
+    foreach (glob("$tmpDir/recording_active_*") ?: [] as $f) {
+        $k = (int)substr(basename($f), strlen('recording_active_'));
+        clearstatcache(true, $f);
+        if ($k <= 0 || time() - (int)@filemtime($f) > 15) continue;
+        $j = json_decode((string)@file_get_contents($f), true);
+        if (is_array($j) && !empty($j['recording_now'])) $recNow[] = $k; else $recQueued[] = $k;
+    }
+    foreach (glob("$tmpDir/finalize_*.state") ?: [] as $f) {
+        $k = (int)substr(basename($f), strlen('finalize_'));
+        $st = json_decode((string)@file_get_contents($f), true) ?: [];
+        $fs = $st['status'] ?? '';
+        if ($k > 0 && $fs !== '' && !in_array($fs, ['complete', 'error', 'idle'], true)) $recEnc[] = $k;
+    }
+    $inKeys = function (array $keys) {
+        return $keys ? 'fi.feed_item_key IN (' . implode(',', array_map('intval', $keys)) . ')' : 'FALSE';
+    };
+    $isRec    = $inKeys(array_merge($recNow, $recQueued));
+    $isEnc    = $inKeys($recEnc);
+    // Partial / New rows have no MP3, so they can't have STT jobs; leaving
+    // $sttAny out of their test also keeps the planner off a 30s+ anti-join.
+    $idleRec  = "NOT ($isRec) AND NOT ($isEnc)";
+    $idle     = "$idleRec AND NOT $sttAny";
+    $hasAudio = "fi.feed_item_audio_file IS NOT NULL";
+    $resumed  = "COALESCE(fi.feed_item_audio_resume_seconds, 0) > 0";
     $statusOrs = [];
     foreach ($statuses as $s) {
-        if ($s === 'complete') {
-            $statusOrs[] = "(fi.feed_item_audio_file IS NOT NULL OR $clusterHasAudioSql)";
-        } elseif ($s === 'partial') {
-            $statusOrs[] = "(fi.feed_item_audio_file IS NULL AND COALESCE(fi.feed_item_audio_resume_seconds, 0) > 0)";
-        } elseif ($s === 'new') {
-            $statusOrs[] = "(fi.feed_item_audio_file IS NULL AND COALESCE(fi.feed_item_audio_resume_seconds, 0) = 0 AND NOT $clusterHasAudioSql)";
-        }
+        if ($s === 'recording')        $statusOrs[] = $inKeys($recNow);
+        elseif ($s === 'queued')       $statusOrs[] = $inKeys($recQueued);
+        elseif ($s === 'encoding')     $statusOrs[] = "($isEnc AND NOT ($isRec))";
+        elseif ($s === 'transcribing') $statusOrs[] = "($sttAny AND NOT ($isRec) AND NOT ($isEnc))";
+        elseif ($s === 'complete')     $statusOrs[] = "($idle AND ($hasAudio OR (NOT $resumed AND $clusterHasAudioSql)))";
+        elseif ($s === 'partial')      $statusOrs[] = "($idleRec AND NOT $hasAudio AND $resumed)";
+        elseif ($s === 'new')          $statusOrs[] = "($idleRec AND NOT $hasAudio AND NOT $resumed AND NOT $clusterHasAudioSql)";
     }
     if ($statusOrs) $where .= " AND (" . implode(' OR ', $statusOrs) . ")";
 }
@@ -265,6 +315,8 @@ $stmt = $db->prepare("
            EXISTS (SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key) AS has_transcript,
            -- Machine-pipeline stage (engines / build / AI cleanup) — see _transcript_stage.php
            " . txStageSelectSql('fi.feed_item_key') . " AS transcript_stage,
+           -- Transcript button state — the same expression the Transcript filter uses
+           $txStateSql AS transcript_state,
            (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
               WHERE v.feed_item_key = fi.feed_item_key
               ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_status,
@@ -432,6 +484,7 @@ jsonResponse([
         'key' => $keyQ, 'title' => $titleQ,
         'pub_from' => $pubFrom, 'pub_to' => $pubTo,
         'feed_key' => $feedKey,
+        'feed_keys' => $feedKeys,
         'dur_min_s' => $durMin, 'dur_max_s' => $durMax,
         'status' => $statuses,
         'item_status' => $itemStatuses,

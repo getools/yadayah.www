@@ -31,6 +31,7 @@ function txStageSelectSql(string $col): string {
                    WHERE sn.feed_item_key = $col
                      AND sn.snapshot_reason LIKE 'pre auto LLM reconcile%'
                      AND sn.snapshot_reason NOT LIKE '%incomplete%'),
-        'edit_status', (SELECT st.edit_status FROM yy_feed_item_transcript_status st WHERE st.feed_item_key = $col)
+        'edit_status', (SELECT st.edit_status FROM yy_feed_item_transcript_status st WHERE st.feed_item_key = $col),
+        'ai_skip', (SELECT sk.skip_dtime FROM yy_transcript_llm_backfill_skip sk WHERE sk.feed_item_key = $col)
     )";
 }

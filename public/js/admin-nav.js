@@ -48,6 +48,14 @@ if (!document.getElementById('admin-dirty-js')) {
     document.head.appendChild(d);
 }
 
+// Puget AI job queue badge + popover (top right of the toolbar)
+if (!document.getElementById('admin-ai-queue-js')) {
+    var aq = document.createElement('script');
+    aq.id = 'admin-ai-queue-js';
+    aq.src = '/js/admin-ai-queue.js?v=2';
+    document.head.appendChild(aq);
+}
+
 var tabs = [
     ['admin-chores.html', 'Chores', 'Day-to-day work queues: MP3s to record, transcripts, Ask Yada log, book edits and words.'],
     ['admin-site.html', 'Site'],

@@ -23,6 +23,15 @@ if (in_array('--status', $argv, true)) {
     $s = gpuSttCounts($db);
     echo "$ts tts=" . gpuTtsActive($db) . " gen=" . gpuGenActive($db) . " stt_running={$s['running']} stt_pending={$s['pending']} llm=" . (gpuLlmActive($db) ? 'yes' : 'no') . "\n";
     foreach (['stt', 'gen', 'llm', 'llm_bg'] as $c) echo "  $c: " . (gpuGateReason($db, $c) ?? 'clear') . "\n";
+    // Puget AI job queue (_ai_queue.php): every class, in priority order.
+    $snap = aiqSnapshot($db, 5);
+    echo "queue: running=" . count($snap['running']) . " queued={$snap['queued_total']} held={$snap['held_total']}"
+       . " all_done_in=" . round(($snap['all_done_at'] - $snap['now']) / 60) . "m\n";
+    foreach ($snap['classes'] as $c) {
+        $b = $snap['by_class'][$c['code']] ?? [];
+        echo sprintf("  %-3d %-17s %s queued=%d held=%d gate=%s\n", $c['priority'], $c['code'], $c['exclusive'] ? 'excl ' : 'share',
+            $b['count'] ?? 0, $b['held'] ?? 0, aiqGateReason($db, $c['code']) ?? 'clear');
+    }
     exit(0);
 }
 

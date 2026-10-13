@@ -80,6 +80,17 @@ if ($isWorker) {
                           job_finished_dtime = now()
                     WHERE job_status = 'running' AND job_lease_until < now() AND job_attempts >= 3");
 
+        // Puget AI job queue (_ai_queue.php): only hand out kinds whose job
+        // class may use the GPU now; the rest stay queued for a later claim.
+        require_once __DIR__ . '/_gpu_gate.php';
+        $gpuWhy = [];
+        foreach ($kinds as $i => $k) {
+            $why = gpuGateReason($db, $k === 'eval' ? 'ask_eval' : 'ask');
+            if ($why !== null) { $gpuWhy[$k] = $why; unset($kinds[$i]); }
+        }
+        $kinds = array_values($kinds);
+        if (!$kinds) jsonResponse(['job' => null, 'waiting' => $gpuWhy]);
+
         $kindIn = implode(',', array_map(fn($k) => $db->quote($k), $kinds));
         $modelSql = '';
         if ($models) {   // eval jobs are pinned to a model; only take those this worker has loaded
