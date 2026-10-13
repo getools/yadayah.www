@@ -106,7 +106,7 @@
 <div id="app" class="container" style="display:none">
     <div class="app-header">
         <nav class="nav-tabs"></nav>
-<script src="/js/admin-nav.js?v=35"></script>
+<script src="/js/admin-nav.js?v=38"></script>
         <div class="user-info">
             <span id="user-display"></span>
             <button class="btn btn-secondary btn-sm" onclick="doLogout()">Logout</button>
@@ -7636,13 +7636,13 @@ function openSpeakerManager() {
         overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
         document.body.appendChild(overlay);
     }
-    overlay.innerHTML = '<div style="background:#fff;border-radius:8px;max-width:560px;width:92%;max-height:82vh;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,0.3);padding:16px 18px;">'
+    overlay.innerHTML = '<div style="background:#fff;border-radius:8px;max-width:640px;width:94%;max-height:82vh;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,0.3);padding:16px 18px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
         +   '<div style="font-weight:700;color:#31345A;font-size:0.95rem;">Saved speakers</div>'
         +   '<button onclick="document.getElementById(\'spk-mgr-overlay\').remove()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#888;line-height:1;">&times;</button>'
         + '</div>'
         + '<div id="spk-mgr-body" style="color:#888;font-size:0.8rem;">Loading…</div>'
-        + '<div style="font-size:0.7rem;color:#999;margin-top:10px;">Deleting a profile stops it auto-matching future transcripts; segments already labelled with its name are left unchanged. Merge folds an accidental duplicate’s voice samples into another.</div>'
+        + '<div style="font-size:0.7rem;color:#999;margin-top:10px;">Saving a changed name, abbreviation or colour updates every transcript line of that speaker (all videos, matched by name) and future transcripts. Deleting a profile stops it auto-matching future transcripts; segments already labelled with its name are left unchanged.</div>'
         + '</div>';
     loadSpeakerManager();
 }
@@ -7657,13 +7657,19 @@ function loadSpeakerManager() {
         if (!profiles.length) { body.innerHTML = '<div style="color:#999;">No saved speakers yet. Name a speaker in a transcript and click its ★ to save one.</div>'; return; }
         var opts = profiles.map(function(p){ return '<option value="' + p.key + '">' + esc(p.name) + '</option>'; }).join('');
         var rows = profiles.map(function(p){
-            var chip = '<span style="display:inline-block;background:' + speakerChipPalette(p.label) + ';color:#fff;font-size:0.62rem;font-weight:700;padding:1px 5px;border-radius:8px;min-width:12px;text-align:center;">' + esc(speakerAbbrev(p.label) || '?') + '</span>';
-            return '<tr data-key="' + p.key + '" style="border-top:1px solid #eee;">'
-                +   '<td style="padding:5px 6px;">' + chip + '</td>'
+            var parsed = parseSpeakerLabel(p.label);
+            var color = parsed.color || speakerChipPalette(p.label);
+            var abbrev = speakerAbbrev(p.label);
+            var chip = '<span class="spk-mgr-chip" style="display:inline-block;background:' + esc(color) + ';color:#fff;font-size:0.62rem;font-weight:700;padding:1px 5px;border-radius:8px;min-width:12px;text-align:center;">' + esc(abbrev || '?') + '</span>';
+            var live = ' oninput="speakerMgrPreview(this)"';
+            return '<tr data-key="' + p.key + '" data-old-name="' + esc(p.name) + '" style="border-top:1px solid #eee;">'
+                +   '<td style="padding:5px 6px;width:52px;text-align:center;">' + chip + '</td>'
+                +   '<td style="padding:5px 2px;"><input type="color" class="spk-mgr-color" value="' + esc(color) + '"' + live + ' title="Chip colour" style="width:24px;height:22px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:transparent;"></td>'
+                +   '<td style="padding:5px 2px;"><input class="spk-mgr-abbrev" maxlength="5" value="' + esc(abbrev) + '"' + live + ' placeholder="ab" title="Chip abbreviation (up to 5 characters)" style="font-size:0.8rem;width:54px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;"></td>'
                 +   '<td style="padding:5px 6px;"><input class="spk-mgr-name" value="' + esc(p.name) + '" style="font-size:0.8rem;width:130px;padding:3px 6px;border:1px solid #ccc;border-radius:3px;"></td>'
                 +   '<td style="padding:5px 6px;color:#999;font-size:0.72rem;white-space:nowrap;">' + p.samples + ' sample' + (p.samples == 1 ? '' : 's') + '</td>'
                 +   '<td style="padding:5px 6px;white-space:nowrap;">'
-                +     '<button onclick="renameSpeakerProfile(' + p.key + ', this)" title="Save the new name" style="background:#31345A;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:0.72rem;cursor:pointer;">Save</button> '
+                +     '<button onclick="renameSpeakerProfile(' + p.key + ', this)" title="Save name / abbreviation / colour — applies to every transcript line of this speaker" style="background:#31345A;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:0.72rem;cursor:pointer;">Save</button> '
                 +     '<button onclick="deleteSpeakerProfile(' + p.key + ',' + JSON.stringify(p.name).replace(/"/g,'&quot;') + ')" title="Delete this saved speaker" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:0.9rem;">&times;</button>'
                 +   '</td>'
                 + '</tr>';
@@ -7674,19 +7680,54 @@ function loadSpeakerManager() {
         body.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:0.8rem;"><tbody>' + rows + '</tbody></table>';
     });
 }
+// Live chip preview while editing a saved speaker's colour / abbreviation.
+function speakerMgrPreview(el) {
+    var tr = el.closest('tr'); if (!tr) return;
+    var chip = tr.querySelector('.spk-mgr-chip');
+    var ab = (tr.querySelector('.spk-mgr-abbrev') || {}).value || '';
+    var col = (tr.querySelector('.spk-mgr-color') || {}).value || '';
+    if (chip) { chip.textContent = ab.trim() || '?'; if (col) chip.style.background = col; }
+}
+// Save a saved speaker's name / abbreviation / colour. The server applies the
+// new label to EVERY transcript line of that person (matched by name, so stray
+// colour/abbreviation variants are unified) and to the stored voice samples.
 function renameSpeakerProfile(key, btn) {
     var tr = btn.closest('tr');
-    var inp = tr && tr.querySelector('.spk-mgr-name');
-    var name = inp ? inp.value.trim() : '';
+    var name = ((tr && tr.querySelector('.spk-mgr-name')) || {}).value || '';
+    name = name.trim();
     if (!name) { alert('A name is required.'); return; }
+    var abbrev = (((tr.querySelector('.spk-mgr-abbrev')) || {}).value || '').trim().slice(0, 5);
+    var color = (((tr.querySelector('.spk-mgr-color')) || {}).value || '').toLowerCase();
+    var oldName = tr.getAttribute('data-old-name') || '';
+    var label = formatSpeakerLabel(abbrev || speakerAbbrev(name), name, color);
+    if (!confirm('Update "' + oldName + '" everywhere?\n\nEvery transcript line labelled as ' + oldName
+               + ' (in all videos) will show as ' + (abbrev || speakerAbbrev(name)) + ' · ' + name
+               + ', and future transcripts will use it too.')) return;
+    btn.disabled = true; btn.textContent = '…';
     fetch(API + '/admin-transcript.php', {
         method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({action:'rename_speaker_profile', profile_key: key, name: name})
+        body: JSON.stringify({action:'rename_speaker_profile', profile_key: key, name: name, label: label})
     }).then(function(r){ return safeJson(r); }).then(function(d) {
-        if (!d || d.error) { alert('Rename failed: ' + ((d && d.error) || '?')); return; }
+        btn.disabled = false;
+        if (!d || d.error) { btn.textContent = 'Save'; alert('Update failed: ' + ((d && d.error) || '?')); return; }
         _savedSpeakerProfileNames = null;   // force reload of the star map
-        btn.textContent = '✓'; setTimeout(function(){ btn.textContent = 'Save'; }, 1200);
-    });
+        _savedSpeakerProfiles = null;
+        // Keep an open transcript in step so a later autosave can't write the
+        // old label back: relabel every on-screen variant of this person.
+        var seen = {};
+        document.querySelectorAll('#t-rows input[data-field="speaker"]').forEach(function(inp) {
+            var v = inp.value || '';
+            if (v && v !== d.label && !seen[v] && parseSpeakerLabel(v).name.toLowerCase() === oldName.toLowerCase()) seen[v] = true;
+        });
+        Object.keys(seen).forEach(function(v) { _applySpeakerLabelChangeInDom(v, d.label); });
+        refreshSpeakerPopoverIfOpen();
+        tr.setAttribute('data-old-name', name);
+        btn.textContent = '✓';
+        var note = tr.querySelector('.spk-mgr-note');
+        if (!note) { note = document.createElement('div'); note.className = 'spk-mgr-note'; note.style.cssText = 'font-size:0.68rem;color:#2e6b3a;'; btn.parentNode.appendChild(note); }
+        note.textContent = 'Updated ' + (d.rows_changed || 0) + ' lines in ' + (d.items_changed || 0) + ' videos';
+        setTimeout(function(){ btn.textContent = 'Save'; }, 1500);
+    }).catch(function() { btn.disabled = false; btn.textContent = 'Save'; alert('Update failed (network).'); });
 }
 function deleteSpeakerProfile(key, name) {
     if (!confirm('Delete saved speaker "' + name + '"?\n\nThis removes the reusable voice profile so it no longer auto-matches future transcripts. Segments already labelled with this name are unchanged.')) return;

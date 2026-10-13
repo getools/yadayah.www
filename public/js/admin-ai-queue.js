@@ -21,7 +21,10 @@ var data = null, open = false, tab = 'queue', es = null, sseUp = false;
 var pollTimer = null, openTimer = null, debounce = null, clsDraft = null;
 
 var css = '' +
-'#aiq-btn{display:inline-flex;align-items:center;gap:6px;margin:0 10px 0 6px;padding:4px 10px;border:1px solid #d5d8de;border-radius:14px;background:#fff;color:#444;font:12px/1.3 inherit;cursor:pointer;white-space:nowrap;max-width:250px}' +
+// Pages without a .user-info: a zero-height slot under the toolbar, right-aligned.
+'.aiq-slot{position:relative;height:0}' +
+'.aiq-slot #aiq-btn{position:absolute;right:0;top:-12px}' +
+'#aiq-btn{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid #d5d8de;border-radius:14px;background:#fff;color:#444;font-family:inherit;font-size:12px;font-weight:400;font-style:normal;line-height:1.3;letter-spacing:normal;text-transform:none;text-align:left;cursor:pointer;white-space:nowrap;max-width:280px;z-index:5}' +
 '#aiq-btn:hover{border-color:#3498db}' +
 '#aiq-btn svg{flex:none}' +
 '#aiq-btn .aiq-dot{width:8px;height:8px;border-radius:50%;background:#b8bcc4;flex:none}' +
@@ -70,8 +73,19 @@ btn.title = 'Puget AI queue';
 btn.innerHTML = '<span class="aiq-dot"></span>' +
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>' +
     '<span class="aiq-txt">AI queue</span>';
+// Under the name + Logout button (admin-nav.js lays .user-info out as rows).
 var userInfo = header.querySelector('.user-info');
-header.insertBefore(btn, userInfo || null);
+if (userInfo) {
+    var row = document.createElement('div');
+    row.className = 'aiq-row';
+    row.appendChild(btn);
+    userInfo.appendChild(row);
+} else {
+    var slot = document.createElement('div');
+    slot.className = 'aiq-slot';
+    slot.appendChild(btn);
+    header.parentNode.insertBefore(slot, header.nextSibling);
+}
 btn.addEventListener('click', function (e) { e.stopPropagation(); open ? closePop() : openPop(); });
 
 var pop = null;
@@ -144,6 +158,9 @@ function openPop() {
         document.body.appendChild(pop);
     }
     pop.style.display = '';
+    // Open just below the badge (it scrolls with the page; the popover is fixed).
+    var br = btn.getBoundingClientRect();
+    if (window.innerWidth > 700) pop.style.top = Math.max(8, Math.min(br.bottom + 8, window.innerHeight - 200)) + 'px';
     if (data) paintPop(); else pop.innerHTML = '<div class="aiq-body aiq-empty">Loading…</div>';
     load();
     clearInterval(openTimer);

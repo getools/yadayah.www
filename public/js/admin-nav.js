@@ -52,7 +52,7 @@ if (!document.getElementById('admin-dirty-js')) {
 if (!document.getElementById('admin-ai-queue-js')) {
     var aq = document.createElement('script');
     aq.id = 'admin-ai-queue-js';
-    aq.src = '/js/admin-ai-queue.js?v=2';
+    aq.src = '/js/admin-ai-queue.js?v=4';
     document.head.appendChild(aq);
 }
 
@@ -86,6 +86,46 @@ window.ADMIN_NAV_TABS = tabs;
 
 var nav = document.querySelector('.app-header .nav-tabs');
 if (!nav) return;
+
+// Right side of the toolbar: [name (login id)] [Logout] on one row, the Puget
+// AI queue badge (admin-ai-queue.js) on the row below.
+if (!document.getElementById('admin-user-info-css')) {
+    var uc = document.createElement('style');
+    uc.id = 'admin-user-info-css';
+    uc.textContent =
+        '.app-header .user-info{flex-direction:row;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px 10px;padding:6px 0 8px}' +
+        '.app-header .user-info #user-display{font-weight:600;color:#444}' +
+        '.app-header .user-info .user-login-id{color:#999;font-size:.8rem;margin-left:-6px}' +
+        '.app-header .user-info .user-login-id:empty{display:none}' +
+        '.app-header .user-info .aiq-row{flex-basis:100%;display:flex;justify-content:flex-end}';
+    document.head.appendChild(uc);
+}
+function addLoginId() {
+    var disp = document.getElementById('user-display');
+    if (!disp || document.getElementById('user-login-id')) return;
+    var idEl = document.createElement('span');
+    idEl.id = 'user-login-id';
+    idEl.className = 'user-login-id';
+    disp.parentNode.insertBefore(idEl, disp.nextSibling);
+    // The page fills #user-display with the display name; add the login id
+    // beside it when they differ.
+    fetch('/api/auth.php', {credentials: 'same-origin', cache: 'no-store'})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(u) {
+            if (!u || !u.authenticated || !u.user_code) return;
+            var show = function() {
+                var name = (disp.textContent || '').trim();
+                // Some pages (e.g. TTS) never fill it — show the name anyway.
+                if (!name) { disp.textContent = name = u.user_name || u.user_code; }
+                idEl.textContent = name && name.toLowerCase() !== String(u.user_code).toLowerCase() ? '(' + u.user_code + ')' : '';
+                disp.title = idEl.title = 'Signed in as ' + (u.user_name || u.user_code) + ' — login id: ' + u.user_code;
+            };
+            show();
+            new MutationObserver(show).observe(disp, {childList: true, characterData: true, subtree: true});
+        })
+        .catch(function() {});
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addLoginId); else addLoginId();
 
 // Caddy redirects /admin-foo.html -> /admin-foo, so location.pathname is
 // the no-extension form. Strip .html from both sides before comparing or

@@ -693,11 +693,65 @@ if ($method === 'POST') {
         if (!$profileKey) errorResponse('profile_key required');
         $name = trim((string)($data['name'] ?? ''));
         if ($name === '') errorResponse('a name is required');
-        $label = trim((string)($data['label'] ?? ''));
-        if ($label === '') $label = $name . '|' . $name;
-        $db->prepare("UPDATE yy_speaker_profile SET speaker_profile_name=?, speaker_profile_label=?, speaker_profile_updated_dtime=now() WHERE speaker_profile_key=?")
-           ->execute([$name, $label, $profileKey]);
-        jsonResponse(['renamed' => true, 'profile_key' => $profileKey, 'name' => $name, 'label' => $label]);
+        $old = $db->prepare("SELECT speaker_profile_name AS n, speaker_profile_label AS l FROM yy_speaker_profile WHERE speaker_profile_key = ?");
+        $old->execute([$profileKey]);
+        $prev = $old->fetch(PDO::FETCH_ASSOC);
+        if (!$prev) errorResponse('Speaker profile not found', 404);
+        $label = mb_substr(trim((string)($data['label'] ?? '')), 0, 64);
+        // A name-only edit keeps the profile's abbreviation + colour (it used to
+        // reset the label to "Name|Name", silently dropping both).
+        if ($label === '') {
+            $pp = explode('|', (string)$prev['l']);
+            $label = count($pp) >= 3 ? trim($pp[0]) . '|' . $name . '|' . trim($pp[2])
+                   : (count($pp) === 2 ? trim($pp[0]) . '|' . $name : $name);
+        }
+        if (mb_strtolower($name) !== mb_strtolower((string)$prev['n'])) {
+            $dup = $db->prepare("SELECT 1 FROM yy_speaker_profile WHERE lower(speaker_profile_name) = lower(?) AND speaker_profile_key <> ?");
+            $dup->execute([$name, $profileKey]);
+            if ($dup->fetchColumn()) errorResponse('Another saved speaker is already called "' . $name . '".');
+        }
+        // Propagate to EVERY transcript (2026-10-13): each line labelled as this
+        // person — matched by NAME, so stray abbreviation/colour variants of the
+        // same speaker are unified too — gets the new label, as do the stored
+        // voice samples (so auto-matching + profile learning keep working).
+        // Speaker labels aren't part of the uploaded captions, so the per-row
+        // caption-queue trigger is skipped (replica mode); every changed row is
+        // backed up to yy_speaker_label_change_bak (batch id returned).
+        $oldName = (string)$prev['n'];
+        $batch = 'spk' . $profileKey . '-' . date('YmdHis');
+        $match = "(lower(trim(split_part(feed_item_transcript_speaker, '|', 2))) = lower(?)
+                   OR (strpos(feed_item_transcript_speaker, '|') = 0 AND lower(trim(feed_item_transcript_speaker)) = lower(?)))
+                  AND feed_item_transcript_speaker IS DISTINCT FROM ?";
+        $db->beginTransaction();
+        try {
+            $db->prepare("UPDATE yy_speaker_profile SET speaker_profile_name=?, speaker_profile_label=?, speaker_profile_updated_dtime=now() WHERE speaker_profile_key=?")
+               ->execute([$name, $label, $profileKey]);
+            $db->prepare("INSERT INTO yy_speaker_label_change_bak (change_batch, speaker_profile_key, feed_item_transcript_key, feed_item_key, old_label, new_label)
+                          SELECT ?, ?, feed_item_transcript_key, feed_item_key, feed_item_transcript_speaker, ?
+                            FROM yy_feed_item_transcript WHERE $match")
+               ->execute([$batch, $profileKey, $label, $oldName, $oldName, $label]);
+            $db->exec("SET LOCAL session_replication_role = replica");
+            $u = $db->prepare("UPDATE yy_feed_item_transcript SET feed_item_transcript_speaker = ? WHERE $match");
+            $u->execute([$label, $oldName, $oldName, $label]);
+            $rowsChanged = $u->rowCount();
+            $db->exec("SET LOCAL session_replication_role = DEFAULT");
+            // Voice samples: drop rows that would collide with an existing
+            // (item, model, new label) sample, then relabel the rest.
+            $em = "(lower(trim(split_part(label, '|', 2))) = lower(?) OR (strpos(label, '|') = 0 AND lower(trim(label)) = lower(?))) AND label <> ?";
+            $db->prepare("DELETE FROM yy_feed_item_speaker_embedding s WHERE $em
+                            AND EXISTS (SELECT 1 FROM yy_feed_item_speaker_embedding t WHERE t.feed_item_key = s.feed_item_key AND t.model = s.model AND t.label = ?)")
+               ->execute([$oldName, $oldName, $label, $label]);
+            $db->prepare("UPDATE yy_feed_item_speaker_embedding SET label = ? WHERE $em")->execute([$label, $oldName, $oldName, $label]);
+            $db->prepare("UPDATE yy_speaker_profile_sample SET label = ? WHERE speaker_profile_key = ?")->execute([$label, $profileKey]);
+            $db->commit();
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            errorResponse('Update failed: ' . $e->getMessage(), 500);
+        }
+        $items = $db->prepare("SELECT COUNT(DISTINCT feed_item_key) FROM yy_speaker_label_change_bak WHERE change_batch = ?");
+        $items->execute([$batch]);
+        jsonResponse(['renamed' => true, 'profile_key' => $profileKey, 'name' => $name, 'label' => $label,
+                      'rows_changed' => $rowsChanged, 'items_changed' => (int)$items->fetchColumn(), 'undo_batch' => $batch]);
     }
 
     // Delete a saved profile. Existing transcript labels are untouched (they
