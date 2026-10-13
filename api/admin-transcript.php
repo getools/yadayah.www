@@ -479,7 +479,10 @@ if ($method === 'POST') {
             $eUp = $db->prepare("UPDATE yy_feed_item_speaker_embedding SET label = ? WHERE feed_item_key IN ($placeholders) AND label = ? AND NOT EXISTS (SELECT 1 FROM yy_feed_item_speaker_embedding ex WHERE ex.feed_item_key = yy_feed_item_speaker_embedding.feed_item_key AND ex.model = yy_feed_item_speaker_embedding.model AND ex.label = ?)");
             $eUp->execute(array_merge([$to], $itemKeys, [$from, $to]));
         }
-        jsonResponse(['renamed' => $changed, 'from' => $from, 'to' => $to]);
+        // Learn from this manual identification (2026-10-13): if the new name has
+        // a saved global voice profile, fold this video's sample into it.
+        $learn = ($to !== null && $changed > 0) ? speakerProfileLearnFromLabel($db, $itemKeys, $to, 'rename') : null;
+        jsonResponse(['renamed' => $changed, 'from' => $from, 'to' => $to, 'profile_learn' => $learn]);
     }
 
     if ($action === 'save_speaker_profile') {
@@ -679,7 +682,8 @@ if ($method === 'POST') {
             $db->prepare("UPDATE yy_feed_item_speaker_embedding SET label=? WHERE feed_item_key=? AND label=? AND NOT EXISTS (SELECT 1 FROM yy_feed_item_speaker_embedding ex WHERE ex.feed_item_key = yy_feed_item_speaker_embedding.feed_item_key AND ex.model = yy_feed_item_speaker_embedding.model AND ex.label = ?)")->execute([$toLabel, (int)$ik, $fromLabel, $toLabel]);
         }
         if ($changed > 0) foreach ($itemKeys as $ik) markTranscriptEditing($db, (int)$ik);
-        jsonResponse(['assigned' => true, 'from' => $fromLabel, 'to' => $toLabel, 'name' => $prof['nm'], 'changed' => $changed]);
+        $learn = $changed > 0 ? speakerProfileLearnFromLabel($db, $itemKeys, $toLabel, 'assign') : null;   // learn (2026-10-13)
+        jsonResponse(['assigned' => true, 'from' => $fromLabel, 'to' => $toLabel, 'name' => $prof['nm'], 'changed' => $changed, 'profile_learn' => $learn]);
     }
 
     // ── Global speaker-profile management (itemless) ─────────────────────

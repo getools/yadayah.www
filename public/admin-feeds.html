@@ -9107,26 +9107,127 @@ function switchTdTab(name) {
     document.getElementById('td-glossary').style.display = name === 'glossary' ? 'block' : 'none';
     document.getElementById('td-corrections').style.display = name === 'corrections' ? 'block' : 'none';
 }
+// Per-column filters shared by both Transcript Dictionary tables. Text
+// columns match a case-insensitive substring; numeric columns take "90",
+// ">=90", "<50" or a "10-90" range; On/Off columns use a select. The filter
+// inputs sit in a second header row and only the <tbody> re-renders while
+// typing, so the input keeps focus.
+var _tdFilters = { gloss: {}, corr: {} };
+function tdNumMatch(v, f) {
+    v = +v || 0;
+    var m = f.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+    if (m) return v >= +m[1] && v <= +m[2];
+    m = f.match(/^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) return true;   // half-typed / unparseable filter: don't hide rows
+    var n = +m[2];
+    switch (m[1]) {
+        case '>=': return v >= n;
+        case '<=': return v <= n;
+        case '>':  return v > n;
+        case '<':  return v < n;
+        default:   return v === n;
+    }
+}
+function tdRowMatches(table, cols, kinds, row) {
+    var f = _tdFilters[table];
+    for (var col in f) {
+        var q = (f[col] || '').trim();
+        if (!q || !cols[col]) continue;
+        var v = cols[col][0](row);
+        if (kinds[col] === 'flag') { if ((q === 'on') !== !!v) return false; }
+        else if (kinds[col] === 'num') { if (!tdNumMatch(v, q)) return false; }
+        else if (String(v).toLowerCase().indexOf(q.toLowerCase()) < 0) return false;
+    }
+    return true;
+}
+function tdFilterTh(table, col, kind, onchange) {
+    var val = _tdFilters[table][col] || '';
+    var st = 'width:100%;box-sizing:border-box;padding:2px 4px;border:1px solid #ccc;border-radius:3px;font-size:0.76rem;font-weight:normal;';
+    var h = 'onchange="_tdFilters.' + table + '[\'' + col + '\']=this.value;' + onchange + '()"';
+    if (kind === 'flag') {
+        return '<th style="padding:3px 6px;"><select ' + h + ' style="' + st + '">'
+            + '<option value=""' + (val === '' ? ' selected' : '') + '>All</option>'
+            + '<option value="on"' + (val === 'on' ? ' selected' : '') + '>On</option>'
+            + '<option value="off"' + (val === 'off' ? ' selected' : '') + '>Off</option>'
+            + '</select></th>';
+    }
+    return '<th style="padding:3px 6px;"><input type="text" value="' + esc(val) + '" '
+        + 'oninput="_tdFilters.' + table + '[\'' + col + '\']=this.value;' + onchange + '()" '
+        + 'placeholder="' + (kind === 'num' ? '&gt;=90' : 'Filter') + '" '
+        + 'title="' + (kind === 'num' ? 'Number, &gt;=N, &lt;N or a range like 10-90' : 'Contains (case-insensitive)') + '" '
+        + 'style="' + st + '"></th>';
+}
+function tdNoMatchRow(cols) {
+    return '<tr><td colspan="' + cols + '" style="padding:16px;text-align:center;color:#999;">No rows match the filters.</td></tr>';
+}
+
+// Loaded glossary terms + sort state (same click / Shift+click UX as Corrections).
+var _tdGlossItems = [];
+var _tdGlossKeys = [{ col: 'priority', dir: 'desc' }, { col: 'term', dir: 'asc' }]; // server's default order
+var TD_GLOSS_COLS = {
+    term:     [function(g){ return (g.glossary_term || '').toLowerCase(); },          'str'],
+    priority: [function(g){ return +g.glossary_priority || 0; },                      'num'],
+    active:   [function(g){ return g.glossary_active_flag ? 1 : 0; },                  'num'],
+    added:    [function(g){ return (g.glossary_added_dtime || '').substring(0,10); }, 'str']
+};
+var TD_GLOSS_FILTER = { term: 'str', priority: 'num', active: 'flag', added: 'str' };
+function sortGlossaryBy(col, ev) {
+    if (!TD_GLOSS_COLS[col]) return;
+    _tdGlossKeys = MultiSort.click(_tdGlossKeys, col, ev, TD_GLOSS_COLS[col][1] === 'str' ? 'asc' : 'desc');
+    renderGlossary();
+}
+function tdGlossTh(col, label, extra) {
+    var active = MultiSort.rank(_tdGlossKeys, col) > 0;
+    return '<th onclick="sortGlossaryBy(\'' + col + '\', event)" title="Sort by ' + label + ' · Shift+click adds a secondary sort" style="padding:6px;cursor:pointer;user-select:none;white-space:nowrap;'
+        + (active ? 'color:#31345A;font-weight:700;' : 'color:#555;')
+        + (extra || '') + '">' + label + '<span style="color:#31345A;">' + MultiSort.arrowHtml(_tdGlossKeys, col) + '</span></th>';
+}
 function loadGlossary() {
     fetch(API + '/admin-transcript-dict.php?type=glossary&_=' + Date.now(), {credentials:'include', cache:'no-store'})
         .then(function(r){return safeJson(r);})
         .then(function(d) {
-            var el = document.getElementById('td-gloss-list');
-            if (!d.items || !d.items.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">No terms yet.</div>'; return; }
-            var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
-                + '<thead style="background:#f5f5f5;"><tr><th style="padding:6px;text-align:left;">Term</th><th style="padding:6px;width:80px;">Priority</th><th style="padding:6px;width:90px;">Active</th><th style="padding:6px;width:80px;">Added</th><th style="padding:6px;width:80px;"></th></tr></thead><tbody>';
-            d.items.forEach(function(g) {
-                var dt = (g.glossary_added_dtime || '').substring(0,10);
-                html += '<tr style="border-top:1px solid #eee;' + (g.glossary_active_flag ? '' : 'opacity:0.5;') + '">'
-                    + '<td style="padding:6px;">' + esc(g.glossary_term) + '</td>'
-                    + '<td style="padding:6px;text-align:center;">' + g.glossary_priority + '</td>'
-                    + '<td style="padding:6px;text-align:center;"><button onclick="toggleGlossary(' + g.glossary_key + ')" style="background:none;border:1px solid #ccc;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:0.78rem;">' + (g.glossary_active_flag ? 'On' : 'Off') + '</button></td>'
-                    + '<td style="padding:6px;font-size:0.78rem;color:#888;">' + dt + '</td>'
-                    + '<td style="padding:6px;text-align:center;"><button onclick="deleteGlossary(' + g.glossary_key + ')" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
-                    + '</tr>';
-            });
-            el.innerHTML = html + '</tbody></table>';
+            _tdGlossItems = (d && d.items) ? d.items.slice() : [];
+            renderGlossary();
         });
+}
+function renderGlossary() {
+    var el = document.getElementById('td-gloss-list');
+    if (!el) return;
+    if (!_tdGlossItems.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">No terms yet.</div>'; return; }
+    el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+        + '<thead style="background:#f5f5f5;"><tr>'
+        +   tdGlossTh('term', 'Term', 'text-align:left;')
+        +   tdGlossTh('priority', 'Priority', 'width:80px;')
+        +   tdGlossTh('active', 'Active', 'width:90px;')
+        +   tdGlossTh('added', 'Added', 'width:90px;')
+        +   '<th style="padding:6px;width:80px;"></th>'
+        + '</tr><tr>'
+        +   tdFilterTh('gloss', 'term', 'str', 'renderGlossaryBody')
+        +   tdFilterTh('gloss', 'priority', 'num', 'renderGlossaryBody')
+        +   tdFilterTh('gloss', 'active', 'flag', 'renderGlossaryBody')
+        +   tdFilterTh('gloss', 'added', 'str', 'renderGlossaryBody')
+        +   '<th></th>'
+        + '</tr></thead><tbody id="td-gloss-tbody"></tbody></table>';
+    renderGlossaryBody();
+}
+function renderGlossaryBody() {
+    var tb = document.getElementById('td-gloss-tbody');
+    if (!tb) return;
+    var byCols = MultiSort.comparator(_tdGlossKeys, function(g, col) { return (TD_GLOSS_COLS[col] || TD_GLOSS_COLS.priority)[0](g); });
+    var items = _tdGlossItems.filter(function(g) { return tdRowMatches('gloss', TD_GLOSS_COLS, TD_GLOSS_FILTER, g); })
+        .sort(function(a, b) { return byCols(a, b) || (a.glossary_key - b.glossary_key); });
+    var html = '';
+    items.forEach(function(g) {
+        var dt = (g.glossary_added_dtime || '').substring(0,10);
+        html += '<tr style="border-top:1px solid #eee;' + (g.glossary_active_flag ? '' : 'opacity:0.5;') + '">'
+            + '<td style="padding:6px;">' + esc(g.glossary_term) + '</td>'
+            + '<td style="padding:6px;text-align:center;">' + g.glossary_priority + '</td>'
+            + '<td style="padding:6px;text-align:center;"><button onclick="toggleGlossary(' + g.glossary_key + ')" style="background:none;border:1px solid #ccc;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:0.78rem;">' + (g.glossary_active_flag ? 'On' : 'Off') + '</button></td>'
+            + '<td style="padding:6px;font-size:0.78rem;color:#888;">' + dt + '</td>'
+            + '<td style="padding:6px;text-align:center;"><button onclick="deleteGlossary(' + g.glossary_key + ')" style="background:none;border:none;color:#c00;cursor:pointer;font-size:1rem;">×</button></td>'
+            + '</tr>';
+    });
+    tb.innerHTML = html || tdNoMatchRow(5);
 }
 function addGlossaryTerm() {
     var term = document.getElementById('td-gloss-term').value.trim();
@@ -9194,8 +9295,9 @@ var TD_CORR_COLS = {
     'case':   [function(c){ return c.correction_case_sensitive ? 1 : 0; },     'num'],
     wb:       [function(c){ return c.correction_word_boundary ? 1 : 0; },      'num'],
     active:   [function(c){ return c.correction_active_flag ? 1 : 0; },        'num'],
-    lastseen: [function(c){ return c.correction_last_seen_dtime || ''; },      'str']
+    lastseen: [function(c){ return (c.correction_last_seen_dtime || '').substring(0,10); }, 'str']
 };
+var TD_CORR_FILTER = { wrong: 'str', right: 'str', count: 'num', 'case': 'flag', wb: 'flag', active: 'flag', lastseen: 'str' };
 function sortCorrectionsBy(col, ev) {
     if (!TD_CORR_COLS[col]) return;
     // Plain click = sort by this column alone; Shift+click adds a tie-breaker.
@@ -9224,16 +9326,7 @@ function renderCorrections() {
     if (!el) return;
     _tdCorrections = {};
     if (!_tdCorrItems.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">No corrections yet.</div>'; return; }
-    var mul = (_tdCorrKeys[0] && _tdCorrKeys[0].dir === 'asc') ? 1 : -1;
-    var byCols = MultiSort.comparator(_tdCorrKeys, null, function(a, b, col) {
-        var get = (TD_CORR_COLS[col] || TD_CORR_COLS.count)[0], av = get(a), bv = get(b);
-        return av < bv ? -1 : (av > bv ? 1 : 0);
-    });
-    var items = _tdCorrItems.slice().sort(function(a, b) {
-        // Stable tiebreak so equal rows don't jump around between sorts.
-        return byCols(a, b) || (a.correction_key - b.correction_key) * mul;
-    });
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+    el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
         + '<thead style="background:#f5f5f5;"><tr>'
         +   tdCorrTh('wrong', 'Wrong', 'text-align:left;')
         +   tdCorrTh('right', 'Right', 'text-align:left;')
@@ -9241,16 +9334,42 @@ function renderCorrections() {
         +   tdCorrTh('case', 'Case', 'width:60px;')
         +   tdCorrTh('wb', 'WB', 'width:60px;')
         +   tdCorrTh('active', 'Active', 'width:90px;')
-        +   tdCorrTh('lastseen', 'Last seen', 'width:80px;')
+        +   tdCorrTh('lastseen', 'Last seen', 'width:90px;')
         +   '<th style="padding:6px;width:70px;"></th>'
-        + '</tr></thead><tbody>';
+        + '</tr><tr>'
+        +   tdFilterTh('corr', 'wrong', 'str', 'renderCorrectionsBody')
+        +   tdFilterTh('corr', 'right', 'str', 'renderCorrectionsBody')
+        +   tdFilterTh('corr', 'count', 'num', 'renderCorrectionsBody')
+        +   tdFilterTh('corr', 'case', 'flag', 'renderCorrectionsBody')
+        +   tdFilterTh('corr', 'wb', 'flag', 'renderCorrectionsBody')
+        +   tdFilterTh('corr', 'active', 'flag', 'renderCorrectionsBody')
+        +   tdFilterTh('corr', 'lastseen', 'str', 'renderCorrectionsBody')
+        +   '<th></th>'
+        + '</tr></thead><tbody id="td-corr-tbody"></tbody></table>';
+    renderCorrectionsBody();
+}
+function renderCorrectionsBody() {
+    var tb = document.getElementById('td-corr-tbody');
+    if (!tb) return;
+    _tdCorrections = {};
+    var mul = (_tdCorrKeys[0] && _tdCorrKeys[0].dir === 'asc') ? 1 : -1;
+    var byCols = MultiSort.comparator(_tdCorrKeys, null, function(a, b, col) {
+        var get = (TD_CORR_COLS[col] || TD_CORR_COLS.count)[0], av = get(a), bv = get(b);
+        return av < bv ? -1 : (av > bv ? 1 : 0);
+    });
+    var items = _tdCorrItems.filter(function(c) { return tdRowMatches('corr', TD_CORR_COLS, TD_CORR_FILTER, c); })
+        .sort(function(a, b) {
+            // Stable tiebreak so equal rows don't jump around between sorts.
+            return byCols(a, b) || (a.correction_key - b.correction_key) * mul;
+        });
+    var html = '';
     items.forEach(function(c) {
         _tdCorrections[c.correction_key] = c;
         html += '<tr id="tdcorr-row-' + c.correction_key + '" style="border-top:1px solid #eee;' + (c.correction_active_flag ? '' : 'opacity:0.5;') + '">'
             + tdCorrRowHtml(c)
             + '</tr>';
     });
-    el.innerHTML = html + '</tbody></table>';
+    tb.innerHTML = html || tdNoMatchRow(8);
 }
 // Swap a row into inline-edit mode: Wrong/Right become text inputs and
 // Case/WB become checkboxes, pre-filled from the loaded row. Save posts an

@@ -33,6 +33,10 @@ try { $db->exec("SET statement_timeout = 0"); } catch (\Throwable $e) {}
 // shutdown. The single-worker gate inside the helper prevents overlap.
 register_shutdown_function(function () {
     try { spawnNextInitWorker(getDb()); } catch (\Throwable $e) {}
+    // Per-video pipeline (2026-10-13): the STT queue holds the next video while
+    // this one is packaging; kick it now instead of waiting up to 5 min for the
+    // root cron tick (it re-checks the gate itself, so this is always safe).
+    try { @exec('php ' . escapeshellarg(__DIR__ . '/gpu-queue-tick.php') . ' > /dev/null 2>&1 &'); } catch (\Throwable $e) {}
 });
 
 // Atomically claim the job so a double-spawn can't run it twice; stamp
@@ -371,6 +375,20 @@ try {
         && (!array_key_exists('llm_reconcile', $params) || $params['llm_reconcile'])
         && !empty($baselines)) {
         require_once __DIR__ . '/_gpu_gate.php';
+        // Per-video pipeline (2026-10-13): WAIT for the card instead of
+        // deferring the LLM pass to the backfill. The STT queue holds the next
+        // video while this build is packaging (gpuPackagingActive), so a
+        // running transcription is at most the one job that triggered this
+        // build; TTS builds / image-video-audio jobs keep priority. Bounded
+        // (3h) — after that the old defer-to-backfill path applies.
+        $waitUntil = time() + 3 * 3600; $waited = false;
+        while (time() < $waitUntil && gpuGateReason($db, 'llm') !== null) {
+            if (!$waited) { $notify('llm-reconcile:waiting:' . gpuGateReason($db, 'llm')); $waited = true; }
+            sleep(15);
+            $cs = $db->prepare("SELECT job_status FROM yy_feed_item_transcript_init_job WHERE job_key = ?");
+            $cs->execute([$jobKey]);
+            if ($cs->fetchColumn() !== 'running') break;        // superseded / cancelled
+        }
         $gpuWhy = gpuGateReason($db, 'llm');
         if ($gpuWhy === null && !($llmLocked = gpuLlmLock($db))) $gpuWhy = 'another LLM pass is running';
         if ($gpuWhy !== null) $llmDefer($gpuWhy);

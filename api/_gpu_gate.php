@@ -15,7 +15,9 @@
  *              (Layer-3 step of a fresh consensus build — skipped, not waited:
  *              the build marks llm_reconcile=false and the backfill does it later)
  *   'gen'      TTS build queued/running · STT job running · LLM pass running
- *   'stt'      gen job active · LLM pass running (next job stays pending;
+ *   'stt'      gen job active · LLM pass running · a video is being PACKAGED
+ *              (its baselines are done and its build/LLM pass is queued or
+ *              running — one video is finished before the next starts) (next job stays pending;
  *              gpu-queue-tick.php restarts the queue when the gate opens)
  *
  * "LLM pass running" = some process holds advisory lock GPU_LLM_LOCK (taken
@@ -48,6 +50,25 @@ function gpuSttCounts(PDO $db): array {
     return ['running' => (int)$r['running'], 'pending' => (int)$r['pending']];
 }
 
+/**
+ * Per-video pipeline (2026-10-13): consensus builds that are PACKAGING a video
+ * (build → LLM cleanup → anchor → speaker naming) — i.e. pending/running init
+ * jobs whose item has NO engine (STT) job still pending/running. While one
+ * exists the STT queue does not start the next video, so each video is
+ * finished before the next begins. Builds still waiting for their own
+ * baselines don't count (that would deadlock), and stale rows (pending > 24h,
+ * running > 4h) can't hold the queue shut.
+ */
+function gpuPackagingActive(PDO $db): int {
+    return (int)$db->query("SELECT COUNT(*) FROM yy_feed_item_transcript_init_job ij
+                             WHERE ij.job_model = 'consensus'
+                               AND ((ij.job_status = 'pending' AND ij.job_created > NOW() - INTERVAL '24 hours')
+                                 OR (ij.job_status = 'running' AND COALESCE(ij.job_started, ij.job_created) > NOW() - INTERVAL '4 hours'))
+                               AND NOT EXISTS (SELECT 1 FROM yy_feed_item_transcript_job sj
+                                                WHERE sj.feed_item_key = ij.job_item_key
+                                                  AND sj.job_status IN ('pending','running'))")->fetchColumn();
+}
+
 function gpuLlmActive(PDO $db): bool {
     return (bool)$db->query("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted
                                                AND classid = 0 AND objid = " . GPU_LLM_LOCK . " AND objsubid = 1)")->fetchColumn();
@@ -70,6 +91,10 @@ function gpuGateReason(PDO $db, string $class): ?string {
         elseif ($class === 'llm_bg' && $s['pending']) $why[] = "{$s['pending']} transcription jobs queued";
     }
     if (in_array($class, ['gen', 'stt'], true) && gpuLlmActive($db)) $why[] = 'LLM transcript pass running';
+    if ($class === 'stt') {
+        $p = gpuPackagingActive($db);
+        if ($p) $why[] = "finishing $p video" . ($p === 1 ? '' : 's') . ' (build / AI cleanup) before the next';
+    }
     return $why ? implode(', ', $why) : null;
 }
 

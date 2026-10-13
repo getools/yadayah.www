@@ -747,6 +747,55 @@ function buildWhisperWordJoin(PDO $db, int $itemKey, string $refModel = 'youtube
  * admin-transcript.php match/fill actions AND by the build workers so freshly
  * built diarised transcripts arrive pre-named.
  */
+/**
+ * Learn from a MANUAL speaker identification (2026-10-13). Called after an
+ * admin renames/assigns a speaker label in the editor: when the label's name
+ * matches an existing GLOBAL voice profile, this item's captured voice sample
+ * for that label is folded into the profile centroid — so every manual
+ * identification improves future auto-naming, not only an explicit ☆ save.
+ * Guards: no auto-CREATE (unknown names still need ☆ once); the sample must be
+ * at least suggestion-similar to the profile (cos >= $minSim) so a mislabel or
+ * a mixed diarization cluster can't drag a profile to the wrong voice; one
+ * sample per (profile, item) via yy_speaker_profile_sample.
+ * Returns ['learned'=>bool, 'reason'=>string, ...]. Never throws.
+ */
+function speakerProfileLearnFromLabel(PDO $db, array $itemKeys, string $label, string $source, float $minSim = 0.40): array {
+    try {
+        $p = explode('|', $label);
+        $name = trim($p[1] ?? $p[0] ?? '');
+        if ($name === '' || !$itemKeys) return ['learned' => false, 'reason' => 'no name'];
+        $pq = $db->prepare("SELECT speaker_profile_key AS k, speaker_profile_embedding::text AS e, speaker_profile_sample_count AS c
+                              FROM yy_speaker_profile WHERE lower(speaker_profile_name) = lower(?) AND speaker_profile_feed_key IS NULL LIMIT 1");
+        $pq->execute([$name]);
+        $prof = $pq->fetch(PDO::FETCH_ASSOC);
+        if (!$prof) return ['learned' => false, 'reason' => 'no saved profile named ' . $name];
+        $ph = implode(',', array_fill(0, count($itemKeys), '?'));
+        $eq = $db->prepare("SELECT feed_item_key AS ik, embedding::text AS e FROM yy_feed_item_speaker_embedding
+                             WHERE feed_item_key IN ($ph) AND label = ? ORDER BY captured_dtime DESC LIMIT 1");
+        $eq->execute(array_merge(array_map('intval', $itemKeys), [$label]));
+        $erow = $eq->fetch(PDO::FETCH_ASSOC);
+        if (!$erow) return ['learned' => false, 'reason' => 'no voice sample captured for this speaker'];
+        $dq = $db->prepare("SELECT 1 FROM yy_speaker_profile_sample WHERE speaker_profile_key = ? AND feed_item_key = ?");
+        $dq->execute([(int)$prof['k'], (int)$erow['ik']]);
+        if ($dq->fetchColumn()) return ['learned' => false, 'reason' => 'this video already contributed a sample'];
+        $vec = fn(string $s) => array_map('floatval', explode(',', trim($s, '[] ')));
+        $l2  = function (array $v) { $n = sqrt(array_sum(array_map(fn($x) => $x * $x, $v))); return $n > 0 ? array_map(fn($x) => $x / $n, $v) : $v; };
+        $new = $l2($vec((string)$erow['e'])); $old = $l2($vec((string)$prof['e']));
+        $sim = 0.0; foreach ($new as $i => $x) $sim += $x * ($old[$i] ?? 0.0);
+        if ($sim < $minSim) return ['learned' => false, 'reason' => sprintf('voice too dissimilar to the saved profile (%.2f < %.2f)', $sim, $minSim), 'sim' => $sim];
+        $c = max(1, (int)$prof['c']);
+        $merged = []; foreach ($new as $i => $x) $merged[$i] = (($old[$i] ?? 0.0) * $c + $x) / ($c + 1);
+        $db->prepare("UPDATE yy_speaker_profile SET speaker_profile_embedding = ?::vector, speaker_profile_sample_count = ?, speaker_profile_updated_dtime = now()
+                       WHERE speaker_profile_key = ?")->execute(['[' . implode(',', $l2($merged)) . ']', $c + 1, (int)$prof['k']]);
+        $db->prepare("INSERT INTO yy_speaker_profile_sample (speaker_profile_key, feed_item_key, label, similarity, source) VALUES (?, ?, ?, ?, ?)")
+           ->execute([(int)$prof['k'], (int)$erow['ik'], $label, round($sim, 4), $source]);
+        return ['learned' => true, 'reason' => 'sample added', 'profile_key' => (int)$prof['k'], 'name' => $name, 'samples' => $c + 1, 'sim' => round($sim, 3)];
+    } catch (\Throwable $e) {
+        error_log('speakerProfileLearnFromLabel: ' . $e->getMessage());
+        return ['learned' => false, 'reason' => 'error'];
+    }
+}
+
 function matchSpeakerProfilesForItem(PDO $db, int $srcItem, array $itemKeys, float $autoTh = 0.55, float $suggestTh = 0.40): array {
     $matched = [];
     $suggestions = [];

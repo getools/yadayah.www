@@ -807,6 +807,44 @@ function cfDeniedEngines(PDO $db): array {
     return array_keys($deny);
 }
 
+/**
+ * Human-edit examples relevant to a chunk (2026-10-13): patterns from
+ * yy_transcript_edit_example whose "before" words all occur, contiguously, in
+ * one of the chunk's lines. Ranked by how many different videos the editors
+ * made that change in. Fail-open (table optional) → [].
+ */
+function cfEditExamples(PDO $db, array $lines, int $limit = 10): array {
+    try {
+        $norm = fn(string $s) => ' ' . implode(' ', cfGuardNorm($s)) . ' ';
+        $texts = []; $toks = [];
+        foreach ($lines as $l) {
+            $raw = (string)($l['text'] ?? '');
+            $t = $norm($raw); $texts[] = $t;
+            foreach (explode(' ', trim($t)) as $w) if ($w !== '') $toks[$w] = 1;
+            // also whole words incl. inner punctuation ("yadiyah.com"), the form patterns are keyed by
+            foreach (preg_split('/\s+/u', mb_strtolower($raw)) as $w) { $w = trim($w, " 	.,;:!?\"'()[]"); if ($w !== '') $toks[$w] = 1; }
+        }
+        if (!$toks) return [];
+        $arr = '{' . implode(',', array_map(fn($x) => '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], (string)$x) . '"', array_keys($toks))) . '}';
+        $st = $db->prepare("SELECT from_text, to_text, item_count, edit_count, example_before, example_after
+                              FROM yy_transcript_edit_example WHERE key_tokens && ?::text[]
+                             ORDER BY item_count DESC, edit_count DESC LIMIT 60");
+        $st->execute([$arr]);
+        $out = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $needle = $norm((string)$r['from_text']);
+            if (trim($needle) === '') continue;
+            $hit = false; foreach ($texts as $t) if (strpos($t, $needle) !== false) { $hit = true; break; }
+            if (!$hit) continue;
+            $out[] = ['from' => (string)$r['from_text'], 'to' => (string)$r['to_text'], 'items' => (int)$r['item_count'],
+                      'before' => mb_substr(preg_replace('/\s+/u', ' ', (string)$r['example_before']), 0, 120),
+                      'after'  => mb_substr(preg_replace('/\s+/u', ' ', (string)$r['example_after']), 0, 120)];
+            if (count($out) >= $limit) break;
+        }
+        return $out;
+    } catch (\Throwable $e) { return []; }
+}
+
 function cfBuildMessages(array $ctx, array $lines): array {
     $sys = "You proofread automatic speech-to-text transcripts of Hebrew/English religious lectures.\n"
          . "Fix ONLY transcription errors: misheard words, wrong Hebrew transliterations, proper nouns, "
@@ -835,6 +873,17 @@ function cfBuildMessages(array $ctx, array $lines): array {
     if ($ctx['glossary']) {
         $sys .= "\nCanonical spellings of names/terms used in this material:\n"
               . implode(', ', array_slice($ctx['glossary'], 0, 60)) . "\n";
+    }
+    if (!empty($ctx['examples'])) {
+        // Learned from the human editors (yy_transcript_edit_example, rebuilt
+        // nightly from the edit log) — only patterns whose "before" words occur
+        // in THIS chunk (cfEditExamples). Advisory, like the corrections list.
+        $sys .= "\nCorrections the human editors of these transcripts have made repeatedly (before → after, with an example line). "
+              . "When the SAME words appear here, prefer the editors' version — unless the alternates clearly show something else was said:\n";
+        foreach ($ctx['examples'] as $ex) {
+            $sys .= '- "' . $ex['from'] . '" → ' . ($ex['to'] === '' ? '(removed)' : '"' . $ex['to'] . '"')
+                  . '  [' . $ex['items'] . ' videos]  e.g. "' . $ex['before'] . '" → "' . $ex['after'] . "\"\n";
+        }
     }
     $sys .= "\nReturn ONLY a JSON object of the form: {\"lines\":[{\"i\":<index>,\"text\":\"<corrected line>\"}, ...]}";
 
@@ -1139,7 +1188,9 @@ function llmReconcileTranscript(PDO $db, int $itemKey, array $baselineCodes,
             }
             $lines[] = ['i' => $idx, 'text' => $r['text'], 'key' => $r['key'], 'old' => $r['text'], 'alts' => $alts];
         }
-        $resp = gpuLlmChat($model, cfBuildMessages($ctx, $lines),
+        $ctxChunk = $ctx;
+        $ctxChunk['examples'] = cfEditExamples($db, $lines);     // learned from human edits (2026-10-13)
+        $resp = gpuLlmChat($model, cfBuildMessages($ctxChunk, $lines),
             ['json' => true, 'temperature' => 0.1, 'timeout' => 280, 'keep_alive' => '20m', 'num_ctx' => $numCtx]);
         if (empty($resp['ok'])) {
             error_log("llmReconcileTranscript: LLM error at offset $offset item=$itemKey: " . ($resp['error'] ?? 'unknown'));

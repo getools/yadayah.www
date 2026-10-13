@@ -1109,10 +1109,6 @@ function maybeAutoBuildEditable(PDO $db, int $itemKey, int $completedJobKey): vo
         $st->execute([$itemKey, $completedJobKey]);
         if ((int)$st->fetchColumn() > 0) return;                 // more baselines still queued
 
-        $st = $db->prepare("SELECT optin::int FROM yy_feed_item_editable_optin WHERE feed_item_key = ?");
-        $st->execute([$itemKey]);
-        if ((int)$st->fetchColumn() !== 1) return;               // not opted in (absent row → off)
-
         // Overwrite is allowed only when there's no transcript yet, or it's
         // 'Pending' (consensus-built, not human-edited). 'Editing' is protected.
         $st = $db->prepare("SELECT (SELECT COUNT(*) FROM yy_feed_item_transcript WHERE feed_item_key = ?) AS rown,
@@ -1120,6 +1116,16 @@ function maybeAutoBuildEditable(PDO $db, int $itemKey, int $completedJobKey): vo
         $st->execute([$itemKey, $itemKey]);
         $pr = $st->fetch(PDO::FETCH_ASSOC);
         if ((int)$pr['rown'] > 0 && (string)($pr['st'] ?? '') !== 'Pending') return;   // protected (Editing) — never overwrite
+
+        // Opt-in gates CREATING an editable transcript. An item that already has
+        // a machine-built ('Pending') one is rebuilt whenever its baselines are
+        // (re)generated, so each video is finished — build, LLM cleanup, anchor,
+        // speaker naming — right after its engines (per-video pipeline, 2026-10-13).
+        if ((int)$pr['rown'] === 0) {
+            $st = $db->prepare("SELECT optin::int FROM yy_feed_item_editable_optin WHERE feed_item_key = ?");
+            $st->execute([$itemKey]);
+            if ((int)$st->fetchColumn() !== 1) return;           // not opted in (absent row → off)
+        }
 
         $st = $db->prepare("SELECT 1 FROM yy_feed_item_transcript_init_job
                              WHERE job_item_key = ? AND job_status IN ('pending','running') LIMIT 1");
