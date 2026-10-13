@@ -187,6 +187,61 @@
             .audio-results { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
             .audio-results .take { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; max-width:520px; }
             .audio-results .take audio { width:100%; }
+            /* Config → Classes (yy_ai_job_class editor) */
+            .cls-table { width:100%; border-collapse:collapse; font-size:0.86rem; }
+            .cls-table th { text-align:left; font-size:0.74rem; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); border-bottom:1px solid var(--line); padding:6px 8px; white-space:nowrap; }
+            .cls-table td { border-bottom:1px solid #f0f0f0; padding:7px 8px; vertical-align:middle; }
+            .cls-table td.n, .cls-table th.n { text-align:right; font-variant-numeric:tabular-nums; }
+            .cls-table td.nw { white-space:nowrap; }
+            .cls-table .cls-name { font-weight:600; }
+            .cls-table .cls-code { font-family:ui-monospace,Consolas,monospace; font-size:0.74rem; color:var(--muted); }
+            .cls-table .cls-desc { color:var(--muted); font-size:0.8rem; }
+            .cls-table input[type=number] { width:84px; padding:4px 6px; text-align:right; }
+            .cls-table input[type=checkbox] { width:16px; height:16px; }
+            .cls-table tr.dirty td { background:#fff8e6; }
+            .cls-table .cls-rank { color:var(--muted); width:28px; }
+            .cls-actions { display:flex; gap:8px; align-items:center; margin-top:14px; }
+            .cls-msg { color:var(--muted); font-size:0.85rem; }
+            .cls-msg.err { color:var(--err); }
+            @media (max-width: 760px) { .cls-hide-sm { display:none; } }
+            /* Config → Log */
+            .cls-actions button.hidden { display:none; }
+            .log-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+            .log-filters select, .log-filters input[type=text] { width:auto; }
+            .log-filters input[type=text] { flex:1 1 220px; }
+            .log-status { display:flex; gap:4px; flex-wrap:wrap; }
+            .log-status button { background:#f0f0f3; color:#555; border:1px solid var(--line); border-radius:14px; padding:4px 11px; font-size:0.8rem; }
+            .log-status button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+            .log-status button .n { opacity:.75; font-weight:500; margin-left:4px; }
+            label.log-auto { display:flex; align-items:center; gap:5px; margin:0; font-weight:500; font-size:0.82rem; color:var(--muted); }
+            .log-table { width:100%; border-collapse:collapse; font-size:0.84rem; }
+            .log-table th { text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); border-bottom:1px solid var(--line); padding:6px 7px; white-space:nowrap; }
+            .log-table td { border-bottom:1px solid #f0f0f0; padding:6px 7px; vertical-align:top; }
+            .log-table tr.log-row { cursor:pointer; }
+            .log-table tr.log-row:hover td { background:#f7f7fa; }
+            .log-table tr.log-row.open td { background:#f4f5fb; }
+            .log-table td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+            .log-table .nw { white-space:nowrap; }
+            .log-table .log-item { font-weight:600; word-break:break-word; }
+            .log-table .log-sub { color:var(--muted); font-size:0.78rem; word-break:break-word; }
+            .log-table .log-err { color:var(--err); font-size:0.78rem; word-break:break-word; }
+            .log-chip { display:inline-block; background:#eef0f7; color:var(--accent); border-radius:10px; padding:1px 8px; font-size:0.74rem; font-weight:600; white-space:nowrap; }
+            .log-st { display:inline-block; border-radius:10px; padding:1px 8px; font-size:0.74rem; font-weight:600; white-space:nowrap; background:#eee; color:#555; }
+            .log-st.running { background:#dbeafe; color:#1d4ed8; }
+            .log-st.queued { background:#fff3d6; color:var(--warn); }
+            .log-st.held { background:#f3e8ff; color:#7e22ce; }
+            .log-st.done { background:#daf3e0; color:var(--ok); }
+            .log-st.failed { background:#fde2e0; color:var(--err); }
+            .log-bar { height:4px; background:#eee; border-radius:2px; margin-top:4px; overflow:hidden; max-width:120px; }
+            .log-bar i { display:block; height:100%; background:var(--accent); }
+            .log-detail td { background:#fbfbfd; padding:10px 14px 14px; }
+            .log-kv { display:grid; grid-template-columns:minmax(150px, max-content) 1fr; gap:3px 14px; font-size:0.8rem; }
+            .log-kv .k { color:var(--muted); font-family:ui-monospace,Consolas,monospace; font-size:0.76rem; }
+            .log-kv .v { word-break:break-word; white-space:pre-wrap; }
+            .log-kv .v pre { margin:0; max-height:320px; overflow:auto; background:#f3f3f6; padding:6px 8px; border-radius:4px; font-size:0.74rem; white-space:pre-wrap; }
+            .log-kv .v.null { color:#aaa; }
+            .log-kv h5 { grid-column:1 / -1; margin:10px 0 2px; font-size:0.74rem; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+            @media (max-width: 760px) { .log-hide-sm { display:none; } }
         }
         /* admin-tts sets this on <body> while its voice player bar is open. */
         body.vc-playing { padding-bottom: 64px; }
@@ -211,6 +266,7 @@
         <button class="tab active" data-tab="video">Video</button>
         <button class="tab" data-tab="image">Image</button>
         <button class="tab" data-tab="audio">Audio</button>
+        <button class="tab" data-tab="config">Config</button>
         <button class="help-toggle" id="help-toggle" type="button">Field help: on</button>
     </div>
 
@@ -523,6 +579,50 @@
         <div class="voices-inline">
             <div id="tts-inline" class="tts-host"></div>
         </div>
+        </div>
+    </div>
+
+    <!-- Config: settings for the Puget AI job queue. Classes = yy_ai_job_class,
+         the same rows as the toolbar AI-queue popover's Priorities tab
+         (api/admin-ai-queue.php; ordering/gating in api/_ai_queue.php). -->
+    <div class="tab-panel hidden" data-panel="config">
+        <div class="subtabs">
+            <button class="subtab active" type="button" data-cfgtab="classes">Classes</button>
+            <button class="subtab" type="button" data-cfgtab="log">Log</button>
+        </div>
+        <div class="subpanel" data-cfgpanel="classes">
+        <section>
+            <h2>Job classes</h2>
+            <p class="desc">Every kind of work that runs on the Puget GPU. The next job is picked by <b>priority (highest first)</b>, then by <b>time submitted (oldest first)</b>.
+                <b>Whole GPU</b> jobs never run beside anything else; the others (resident TTS / STT engines) can share the card.
+                Running jobs are never interrupted. TTS chapter builds, previews and QA still start as soon as they are queued, so their priority only affects queue order and estimates.</p>
+            <div id="cls-body"><div class="empty">Loading…</div></div>
+            <div class="cls-actions">
+                <button type="button" id="cls-save">Save</button>
+                <button type="button" class="ghost" id="cls-reset">Undo changes</button>
+                <button type="button" class="ghost" id="cls-refresh">Refresh</button>
+                <span class="cls-msg" id="cls-msg"></span>
+            </div>
+        </section>
+        </div>
+        <div class="subpanel hidden" data-cfgpanel="log">
+        <section>
+            <h2>Job log</h2>
+            <p class="desc">Current and past jobs from every AI job table, with current jobs listed first and then the newest. Click a row to see every field of that job.
+                TTS chapter builds show only their latest run, because a rebuild updates the same row.</p>
+            <div class="log-filters">
+                <select id="log-class" title="Class"><option value="">All classes</option></select>
+                <div class="log-status" id="log-status"></div>
+                <input type="text" id="log-q" placeholder="Search item, model or job #">
+                <button type="button" class="ghost" id="log-refresh">Refresh</button>
+                <label class="log-auto"><input type="checkbox" id="log-auto" checked> Auto-refresh</label>
+            </div>
+            <div id="log-body"><div class="empty">Loading…</div></div>
+            <div class="cls-actions">
+                <button type="button" class="ghost hidden" id="log-more">Load more</button>
+                <span class="cls-msg" id="log-msg"></span>
+            </div>
+        </section>
         </div>
     </div>
 </main>
@@ -2781,11 +2881,317 @@ function activateTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
     if (name === 'audio') loadVoicesInline();
+    if (name === 'config') activateConfigSubtab(document.querySelector('.subtab[data-cfgtab].active')?.dataset.cfgtab || 'classes');
     saveTabState('activeTab', name);
 }
+function activateConfigSubtab(name) {
+    document.querySelectorAll('.subtab[data-cfgtab]').forEach(t => t.classList.toggle('active', t.dataset.cfgtab === name));
+    document.querySelectorAll('.subpanel[data-cfgpanel]').forEach(p => p.classList.toggle('hidden', p.dataset.cfgpanel !== name));
+    if (name === 'classes') ClassesCfg.load();
+    if (name === 'log') JobLog.show(); else JobLog.hide();
+    saveTabState('configSubtab', name);
+}
+// ── Config → Log: current + past jobs from all AI job tables
+// (api/admin-ai-log.php). Auto-refresh polls while the Log is on screen.
+const JobLog = {
+    API: '/api/admin-ai-log.php',
+    PAGE: 100,
+    STATUSES: [['', 'All'], ['active', 'Current'], ['done', 'Done'], ['failed', 'Failed'], ['cancelled', 'Cancelled']],
+    status: '',
+    rows: [],
+    total: 0,
+    open: new Set(),        // 'class:key' rows expanded
+    details: {},            // 'class:key' → detail payload
+    timer: null,
+    seq: 0,
+    wired: false,
+    visible() { const p = document.querySelector('[data-cfgpanel="log"]'); return p && p.offsetParent !== null; },
+    show() {
+        if (!this.wired) this.wire();
+        this.fillClasses();
+        this.load(false);
+        this.schedule();
+    },
+    hide() { clearTimeout(this.timer); this.timer = null; },
+    schedule() {
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => {
+            if (!this.visible()) { this.timer = null; return; }
+            if ($('log-auto').checked && !document.hidden) this.load(true);
+            this.schedule();
+        }, 15000);
+    },
+    async fillClasses() {
+        const sel = $('log-class');
+        if (sel.options.length > 1) return;
+        if (!ClassesCfg.data) await ClassesCfg.load();
+        (ClassesCfg.data?.classes || []).filter(c => c.code !== 'llm_backfill').forEach(c => {
+            const o = document.createElement('option');
+            o.value = c.code; o.textContent = c.name;
+            sel.appendChild(o);
+        });
+        try { const v = sessionState.load('logClass', ''); if (v && [...sel.options].some(o => o.value === v)) { sel.value = v; this.load(false); } } catch (e) {}
+    },
+    className(code) { return (ClassesCfg.data?.classes || []).find(c => c.code === code)?.name || code; },
+    wire() {
+        this.wired = true;
+        try { this.status = sessionState.load('logStatus', '') || ''; } catch (e) {}
+        this.paintStatus({});
+        $('log-status').addEventListener('click', e => {
+            const b = e.target.closest('button[data-s]');
+            if (!b) return;
+            this.status = b.dataset.s;
+            saveTabState('logStatus', this.status);
+            this.load(false);
+        });
+        $('log-class').addEventListener('change', () => { saveTabState('logClass', $('log-class').value); this.load(false); });
+        let t = null;
+        $('log-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => this.load(false), 350); });
+        $('log-refresh').addEventListener('click', () => this.load(true));
+        $('log-more').addEventListener('click', () => this.load(false, true));
+        $('log-body').addEventListener('click', e => {
+            const tr = e.target.closest('tr.log-row');
+            if (!tr || e.target.closest('a')) return;
+            const id = tr.dataset.id;
+            if (this.open.has(id)) this.open.delete(id); else { this.open.add(id); this.loadDetail(id); }
+            this.paint();
+        });
+    },
+    paintStatus(counts) {
+        $('log-status').innerHTML = this.STATUSES.map(([s, label]) => {
+            const n = s ? counts[s] : Object.values(counts).reduce((a, b) => a + b, 0);
+            return '<button type="button" data-s="' + s + '" class="' + (this.status === s ? 'on' : '') + '">' + label +
+                   (n != null && !isNaN(n) ? '<span class="n">' + Number(n).toLocaleString() + '</span>' : '') + '</button>';
+        }).join('');
+    },
+    query(offset, limit) {
+        const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+        if ($('log-class').value) p.set('class', $('log-class').value);
+        if (this.status) p.set('status', this.status);
+        if ($('log-q').value.trim()) p.set('q', $('log-q').value.trim());
+        return this.API + '?' + p;
+    },
+    // keep=true re-fetches everything already shown (refresh in place);
+    // more=true appends the next page; otherwise starts over at page 1.
+    async load(keep, more) {
+        const my = ++this.seq;
+        const offset = more ? this.rows.length : 0;
+        const limit = more ? this.PAGE : (keep ? Math.max(this.PAGE, Math.min(500, this.rows.length)) : this.PAGE);
+        if (!keep && !more) $('log-msg').textContent = 'Loading…';
+        try {
+            const r = await fetch(this.query(offset, limit), { credentials: 'same-origin', cache: 'no-cache' });
+            const j = window.safeJson ? await window.safeJson(r) : await r.json();
+            if (my !== this.seq) return;
+            if (j.error) throw new Error(j.error);
+            this.rows = more ? this.rows.concat(j.rows) : j.rows;
+            this.total = j.total;
+            if (!keep && !more) this.open.clear();
+            // Expanded rows: refresh their detail too (status may have moved on).
+            if (keep) this.open.forEach(id => this.loadDetail(id, true));
+            this.paintStatus(j.counts || {});
+            this.paint();
+            $('log-msg').textContent = 'Showing ' + this.rows.length.toLocaleString() + ' of ' + this.total.toLocaleString() +
+                ' · updated ' + new Date().toLocaleTimeString();
+        } catch (e) {
+            if (my !== this.seq) return;
+            $('log-msg').textContent = 'Load failed: ' + e.message;
+            if (!this.rows.length) $('log-body').innerHTML = '<div class="empty">Could not load the job log.</div>';
+        }
+    },
+    async loadDetail(id, quiet) {
+        const [cls, key] = id.split(':');
+        if (!quiet) { delete this.details[id]; }
+        try {
+            const r = await fetch(this.API + '?class=' + encodeURIComponent(cls) + '&key=' + encodeURIComponent(key), { credentials: 'same-origin', cache: 'no-cache' });
+            const j = window.safeJson ? await window.safeJson(r) : await r.json();
+            this.details[id] = j.error ? { error: j.error } : j;
+        } catch (e) { this.details[id] = { error: e.message }; }
+        if (this.open.has(id)) this.paint();
+    },
+    group(st) {
+        if (['pending', 'queued', 'running'].includes(st)) return 'active';
+        if (['complete', 'completed', 'done'].includes(st)) return 'done';
+        if (['failed', 'error'].includes(st)) return 'failed';
+        return 'other';
+    },
+    when(t) {
+        if (!t) return '';
+        const d = new Date(t * 1000), now = new Date();
+        return d.toDateString() === now.toDateString()
+            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    },
+    dur(s) {
+        if (s == null || s < 0) return '';
+        s = Math.round(s);
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+        return Math.floor(s / 3600) + 'h ' + Math.floor(s % 3600 / 60) + 'm';
+    },
+    paint() {
+        if (!this.rows.length) {
+            $('log-body').innerHTML = '<div class="empty">No jobs match.</div>';
+            $('log-more').classList.add('hidden');
+            return;
+        }
+        const now = Date.now() / 1000;
+        let h = '<table class="log-table"><thead><tr><th>Class</th><th class="n">#</th><th>Status</th><th>Item</th>' +
+                '<th class="log-hide-sm">Submitted</th><th class="log-hide-sm">Started</th><th class="log-hide-sm">Finished</th><th class="n">Run time</th>' +
+                '<th class="log-hide-sm">By</th></tr></thead><tbody>';
+        this.rows.forEach(r => {
+            const id = r.class + ':' + r.key, g = this.group(r.status), isOpen = this.open.has(id);
+            // Live queue state (running/queued/held) beats the table's own status word.
+            const live = g === 'active' && r.state ? r.state : null;
+            const stCls = live || (g === 'active' ? (r.status === 'running' ? 'running' : 'queued') : g);
+            const stTxt = live && live !== r.status ? r.status + ' · ' + live : r.status;
+            const run = r.started ? (r.finished || (g === 'active' ? now : null)) - r.started : null;
+            h += '<tr class="log-row' + (isOpen ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+                 '<td><span class="log-chip">' + esc(this.className(r.class)) + '</span></td>' +
+                 '<td class="n">' + r.key + '</td>' +
+                 '<td><span class="log-st ' + esc(stCls) + '" title="' + esc(r.why || '') + '">' + esc(stTxt) + '</span>' +
+                    (live === 'running' && r.on_gpu === false ? '<div class="log-sub">not on the GPU yet</div>' : '') +
+                    (r.why ? '<div class="log-sub">' + esc(r.why) + '</div>' : '') +
+                    (g === 'active' && r.progress != null ? '<div class="log-bar"><i style="width:' + Math.max(0, Math.min(100, r.progress)) + '%"></i></div>' : '') + '</td>' +
+                 '<td><div class="log-item">' + esc(r.label || '—') + '</div>' +
+                    (r.sub ? '<div class="log-sub">' + esc(r.sub) + '</div>' : '') +
+                    (r.message ? '<div class="log-sub">' + esc(r.message) + '</div>' : '') +
+                    (r.error ? '<div class="log-err">' + esc(r.error.length > 240 ? r.error.slice(0, 240) + '…' : r.error) + '</div>' : '') + '</td>' +
+                 '<td class="nw log-hide-sm" title="' + esc(r.submitted ? new Date(r.submitted * 1000).toLocaleString() : '') + '">' + esc(this.when(r.submitted)) + '</td>' +
+                 '<td class="nw log-hide-sm" title="' + esc(r.started ? new Date(r.started * 1000).toLocaleString() : '') + '">' + esc(this.when(r.started)) + '</td>' +
+                 '<td class="nw log-hide-sm" title="' + esc(r.finished ? new Date(r.finished * 1000).toLocaleString() : '') + '">' + esc(this.when(r.finished)) + '</td>' +
+                 '<td class="n">' + esc(this.dur(run)) + '</td>' +
+                 '<td class="log-sub log-hide-sm">' + esc(r.user || '') + '</td></tr>';
+            if (isOpen) h += '<tr class="log-detail"><td colspan="9">' + this.detailHtml(this.details[id]) + '</td></tr>';
+        });
+        h += '</tbody></table>';
+        $('log-body').innerHTML = h;
+        $('log-more').classList.toggle('hidden', this.rows.length >= this.total);
+    },
+    detailHtml(d) {
+        if (!d) return '<div class="log-sub">Loading…</div>';
+        if (d.error) return '<div class="log-err">' + esc(d.error) + '</div>';
+        let h = '<div class="log-kv">';
+        const extra = Object.entries(d.extra || {});
+        if (extra.length) {
+            h += '<h5>Related</h5>';
+            extra.forEach(([k, v]) => { h += '<div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div>'; });
+        }
+        h += '<h5>' + esc(d.table) + ' — every field</h5>';
+        Object.entries(d.row || {}).forEach(([k, v]) => {
+            let vh, cls = 'v';
+            if (v === null || v === '') { vh = v === null ? 'null' : '(empty)'; cls += ' null'; }
+            else if (typeof v === 'object') vh = '<pre>' + esc(JSON.stringify(v, null, 2)) + '</pre>';
+            else if (/_dtime$|_created$|_completed$|_started$|_since$|_until$/.test(k) && typeof v === 'string' && !isNaN(Date.parse(v)))
+                vh = esc(new Date(v).toLocaleString()) + ' <span class="log-sub">' + esc(v) + '</span>';
+            else if (typeof v === 'string' && v.length > 400) vh = '<pre>' + esc(v) + '</pre>';
+            else vh = esc(v);
+            h += '<div class="k">' + esc(k) + '</div><div class="' + cls + '">' + vh + '</div>';
+        });
+        return h + '</div>';
+    },
+};
+// ── Config → Classes: yy_ai_job_class (priority / whole GPU / default est.)
+// Same API as the toolbar AI-queue popover's Priorities tab; save_classes
+// pings the ai_queue channel so the toolbar badge re-ranks at once.
+const ClassesCfg = {
+    API: '/api/admin-ai-queue.php',
+    data: null,     // last GET: {classes, by_class, ...}
+    draft: null,    // {code: {priority, exclusive, est_secs}}
+    loading: false,
+    msg(text, isErr) { const m = $('cls-msg'); m.textContent = text || ''; m.classList.toggle('err', !!isErr); },
+    async load() {
+        if (this.loading) return;
+        this.loading = true;
+        try {
+            const r = await fetch(this.API + '?limit=0', { credentials: 'same-origin', cache: 'no-cache' });
+            const j = window.safeJson ? await window.safeJson(r) : await r.json();
+            if (j.error) throw new Error(j.error);
+            this.data = j;
+            if (!this.draft) this.resetDraft();
+            this.paint();
+        } catch (e) {
+            if (!this.data) $('cls-body').innerHTML = '<div class="empty">Could not load job classes: ' + esc(e.message) + '</div>';
+            else this.msg('Refresh failed: ' + e.message, true);
+        } finally { this.loading = false; }
+    },
+    resetDraft() {
+        this.draft = {};
+        (this.data.classes || []).forEach(c => { this.draft[c.code] = { priority: c.priority, exclusive: c.exclusive, est_secs: c.est_secs }; });
+    },
+    changed() {
+        return (this.data.classes || []).filter(c => {
+            const d = this.draft[c.code];
+            return d && (d.priority !== c.priority || d.exclusive !== c.exclusive || d.est_secs !== c.est_secs);
+        }).map(c => ({ code: c.code, ...this.draft[c.code] }));
+    },
+    paint() {
+        const d = this.data, byClass = d.by_class || {};
+        // Rank by the draft priority so the order previews the edit.
+        const rows = (d.classes || []).slice().sort((a, b) =>
+            (this.draft[b.code].priority || 0) - (this.draft[a.code].priority || 0) || (a.sort || 0) - (b.sort || 0));
+        let h = '<table class="cls-table"><thead><tr><th>#</th><th>Class</th><th class="cls-hide-sm">What it is</th>' +
+                '<th class="n">Priority</th><th>Whole GPU</th><th class="n">Default est.</th><th class="n">Queued</th></tr></thead><tbody>';
+        rows.forEach((c, i) => {
+            const x = this.draft[c.code], b = byClass[c.code] || {};
+            const dirty = x.priority !== c.priority || x.exclusive !== c.exclusive || x.est_secs !== c.est_secs;
+            h += '<tr' + (dirty ? ' class="dirty"' : '') + '><td class="cls-rank">' + (i + 1) + '</td>' +
+                 '<td><div class="cls-name">' + esc(c.name) + '</div><div class="cls-code">' + esc(c.code) + '</div></td>' +
+                 '<td class="cls-desc cls-hide-sm">' + esc(c.description) + '</td>' +
+                 '<td class="n"><input type="number" min="0" max="1000" step="1" data-c="' + esc(c.code) + '" data-f="priority" value="' + esc(x.priority) + '"></td>' +
+                 '<td><input type="checkbox" data-c="' + esc(c.code) + '" data-f="exclusive"' + (x.exclusive ? ' checked' : '') + ' title="Needs the whole GPU — never runs beside another job"></td>' +
+                 '<td class="n nw"><input type="number" min="1" max="86400" step="1" data-c="' + esc(c.code) + '" data-f="est_secs" value="' + esc(x.est_secs) + '" title="Seconds — used for ETAs only until there is run history"> s</td>' +
+                 '<td class="n">' + (b.count || 0).toLocaleString() + (b.held ? ' <span class="cls-desc">+' + Number(b.held).toLocaleString() + ' held</span>' : '') + '</td></tr>';
+        });
+        h += '</tbody></table>';
+        $('cls-body').innerHTML = h;
+        const n = this.changed().length;
+        this.msg(n ? n + ' unsaved change' + (n === 1 ? '' : 's') : '');
+    },
+    wire() {
+        // Inputs are delegated: paint() replaces the table.
+        $('cls-body').addEventListener('change', e => {
+            const inp = e.target.closest('input[data-c]');
+            if (!inp) return;
+            const x = this.draft[inp.dataset.c], f = inp.dataset.f;
+            if (!x) return;
+            x[f] = f === 'exclusive' ? inp.checked : parseInt(inp.value, 10);
+            this.paint();
+        });
+        $('cls-reset').addEventListener('click', () => { if (this.data) { this.resetDraft(); this.paint(); } });
+        $('cls-refresh').addEventListener('click', () => {
+            if (this.data && this.changed().length && !confirm('Discard unsaved changes and reload?')) return;
+            this.draft = null;
+            this.load();
+        });
+        $('cls-save').addEventListener('click', () => this.save());
+    },
+    async save() {
+        if (!this.data) return;
+        const changed = this.changed();
+        if (!changed.length) { this.msg('Nothing changed.'); return; }
+        const bad = changed.find(c => !Number.isInteger(c.priority) || c.priority < 0 || c.priority > 1000 ||
+                                      !Number.isInteger(c.est_secs) || c.est_secs < 1 || c.est_secs > 86400);
+        if (bad) { this.msg('Priority must be 0–1000 and the estimate 1–86400 seconds (' + bad.code + ').', true); return; }
+        const btn = $('cls-save');
+        btn.disabled = true;
+        this.msg('Saving…');
+        try {
+            const r = await fetch(this.API, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ action: 'save_classes', classes: changed }) });
+            const j = window.safeJson ? await window.safeJson(r) : await r.json();
+            if (j.error) throw new Error(j.error);
+            this.draft = null;
+            await this.load();
+            this.msg('Saved ' + j.updated + ' class' + (j.updated === 1 ? '' : 'es') + '.');
+            toast('Job classes saved');
+        } catch (e) {
+            this.msg('Save failed: ' + e.message, true);
+        } finally { btn.disabled = false; }
+    },
+};
 function activateAudioSubtab(name) {
-    document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.subtab === name));
-    document.querySelectorAll('.subpanel').forEach(p => p.classList.toggle('hidden', p.dataset.subpanel !== name));
+    document.querySelectorAll('.subtab[data-subtab]').forEach(t => t.classList.toggle('active', t.dataset.subtab === name));
+    document.querySelectorAll('.subpanel[data-subpanel]').forEach(p => p.classList.toggle('hidden', p.dataset.subpanel !== name));
     if (name === 'voices') loadVoicesInline();
     saveTabState('audioSubtab', name);
 }
@@ -2795,6 +3201,10 @@ window.addEventListener('load', () => {
     const tab = sessionState.load('activeTab', '');
     const sub = sessionState.load('audioSubtab', '');
     if (sub && document.querySelector('.subtab[data-subtab="' + sub + '"]')) activateAudioSubtab(sub);
+    const cfg = sessionState.load('configSubtab', '');
+    if (cfg && document.querySelector('.subtab[data-cfgtab="' + cfg + '"]')) {
+        document.querySelectorAll('.subtab[data-cfgtab]').forEach(t => t.classList.toggle('active', t.dataset.cfgtab === cfg));
+    }
     if (tab && document.querySelector('.tab[data-tab="' + tab + '"]')) activateTab(tab);
 });
 // ── Audio → Voices: the admin-tts Voices pane, mounted inline ─────────────
@@ -2921,7 +3331,9 @@ document.addEventListener('DOMContentLoaded', () => {
     TABS.image.init();
     TABS.audio.init();
     document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
-    document.querySelectorAll('.subtab').forEach(t => t.addEventListener('click', () => activateAudioSubtab(t.dataset.subtab)));
+    document.querySelectorAll('.subtab[data-subtab]').forEach(t => t.addEventListener('click', () => activateAudioSubtab(t.dataset.subtab)));
+    document.querySelectorAll('.subtab[data-cfgtab]').forEach(t => t.addEventListener('click', () => activateConfigSubtab(t.dataset.cfgtab)));
+    ClassesCfg.wire();
     document.querySelectorAll('[data-act="picker-close"], #picker-modal').forEach(el => {
         el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'picker-close') Picker.close(); });
     });
