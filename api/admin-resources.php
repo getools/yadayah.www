@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/image-helpers.php';
+require_once __DIR__ . '/resource-downloads.php';
 $user = requireAuth();
 $db = getDb();
 setCurrentUser($db, $user['user_key']);
@@ -48,10 +49,14 @@ if ($method === 'GET') {
         $stmt->execute([(int)$_GET['key']]);
         $row = $stmt->fetch();
         if (!$row) errorResponse('Not found', 404);
+        $row['resource_downloads'] = resourceDownloadsEnrich($row['resource_downloads'], false);
         jsonResponse($row);
     }
     $stmt = $db->query("SELECT * FROM yy_resource ORDER BY resource_sort ASC, resource_key ASC");
-    jsonResponse(['resources' => $stmt->fetchAll()]);
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$row) $row['resource_downloads'] = resourceDownloadsEnrich($row['resource_downloads'], false);
+    unset($row);
+    jsonResponse(['resources' => $rows]);
 }
 
 if ($method === 'POST') {
@@ -59,7 +64,8 @@ if ($method === 'POST') {
     if (empty($data['resource_title'])) errorResponse('Title is required');
     $imageValue = handleImageUpload($data, $UPLOAD_DIR);
 
-    $stmt = $db->prepare("INSERT INTO yy_resource (resource_image, resource_title, resource_subtitle, resource_summary, resource_link_title, resource_link_url, resource_sort, resource_active_flag) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *");
+    $downloads = resourceDownloadsNormalize($data['resource_downloads'] ?? []);
+    $stmt = $db->prepare("INSERT INTO yy_resource (resource_image, resource_title, resource_subtitle, resource_summary, resource_link_title, resource_link_url, resource_sort, resource_active_flag, resource_downloads) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) RETURNING *");
     $stmt->execute([
         $imageValue,
         $data['resource_title'],
@@ -68,9 +74,12 @@ if ($method === 'POST') {
         $data['resource_link_title'] ?: null,
         $data['resource_link_url'] ?: null,
         (int)($data['resource_sort'] ?? 0),
-        !empty($data['resource_active_flag']) && $data['resource_active_flag'] !== '0',
+        (int)(!empty($data['resource_active_flag']) && $data['resource_active_flag'] !== '0'),
+        json_encode($downloads),
     ]);
-    jsonResponse($stmt->fetch(), 201);
+    $row = $stmt->fetch();
+    $row['resource_downloads'] = resourceDownloadsEnrich($row['resource_downloads'], false);
+    jsonResponse($row, 201);
 }
 
 if ($method === 'PUT') {
@@ -78,7 +87,10 @@ if ($method === 'PUT') {
     if (empty($data['resource_key'])) errorResponse('resource_key required');
     $imageValue = handleImageUpload($data, $UPLOAD_DIR);
 
-    $stmt = $db->prepare("UPDATE yy_resource SET resource_image = ?, resource_title = ?, resource_subtitle = ?, resource_summary = ?, resource_link_title = ?, resource_link_url = ?, resource_sort = ?, resource_active_flag = ? WHERE resource_key = ? RETURNING *");
+    // Downloads change only when the client sends them (never blank an unsupplied field).
+    $downloads = array_key_exists('resource_downloads', $data)
+        ? json_encode(resourceDownloadsNormalize($data['resource_downloads'])) : null;
+    $stmt = $db->prepare("UPDATE yy_resource SET resource_image = ?, resource_title = ?, resource_subtitle = ?, resource_summary = ?, resource_link_title = ?, resource_link_url = ?, resource_sort = ?, resource_active_flag = ?, resource_downloads = COALESCE(?::jsonb, resource_downloads) WHERE resource_key = ? RETURNING *");
     $stmt->execute([
         $imageValue,
         $data['resource_title'],
@@ -87,11 +99,13 @@ if ($method === 'PUT') {
         $data['resource_link_title'] ?: null,
         $data['resource_link_url'] ?: null,
         (int)($data['resource_sort'] ?? 0),
-        !empty($data['resource_active_flag']) && $data['resource_active_flag'] !== '0',
+        (int)(!empty($data['resource_active_flag']) && $data['resource_active_flag'] !== '0'),
+        $downloads,
         (int)$data['resource_key'],
     ]);
     $row = $stmt->fetch();
     if (!$row) errorResponse('Not found', 404);
+    $row['resource_downloads'] = resourceDownloadsEnrich($row['resource_downloads'], false);
     jsonResponse($row);
 }
 

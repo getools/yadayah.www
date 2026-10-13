@@ -41,6 +41,16 @@
         .form-body .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
         .form-body .checkbox-row input[type=checkbox] { width: 16px; height: 16px; }
         .form-body .checkbox-row label { margin: 0; font-weight: normal; }
+        .dl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .dl-table td { padding: 4px 6px 4px 0; vertical-align: middle; }
+        .dl-table td.dl-type { width: 92px; white-space: nowrap; }
+        .dl-table td.dl-type label { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-weight: 600; cursor: pointer; }
+        .dl-table td.dl-meta { width: 170px; color: #888; font-size: 0.78rem; }
+        .dl-table td.dl-meta.dl-missing { color: #c0392b; }
+        .dl-table td.dl-btn { width: 80px; text-align: right; }
+        .dl-table tr.dl-msg td { padding-top: 0; font-size: 0.78rem; }
+        .dl-hint { font-weight: normal; color: #888; font-size: 0.78rem; }
+        .dl-chips { color: #888; font-size: 0.78rem; }
 
         .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .res-count { font-size: 0.85rem; color: #666; }
@@ -132,6 +142,11 @@
             <div class="form-row">
                 <div class="field"><label>Link URL</label><input type="text" id="f-link-url"></div>
                 <div class="field" style="max-width:150px"><label>Link Title</label><input type="text" id="f-link-title" placeholder="Download"></div>
+            </div>
+            <div class="field">
+                <label>Download files <span class="dl-hint">— each ticked file shows on /resources as its own download link; offer any one, two or all three</span></label>
+                <table class="dl-table"><tbody id="dl-body"></tbody></table>
+                <input type="file" id="dl-file" style="display:none" onchange="dlPicked(this)">
             </div>
             <div class="field">
                 <label>Upload file to server</label>
@@ -243,7 +258,8 @@ function renderResources() {
         html += '<td class="icon-cell">' + (r.resource_image ? '<img src="' + esc(r.resource_image) + '">' : '') + '</td>';
         html += '<td>' + esc(r.resource_title) + '</td>';
         html += '<td>' + esc(r.resource_subtitle) + '</td>';
-        html += '<td>' + esc(r.resource_link_title) + '</td>';
+        var dls = (r.resource_downloads || []).map(function(d) { return d.label; }).join(' · ');
+        html += '<td>' + esc(r.resource_link_title) + (dls ? ' <span class="dl-chips">' + esc(dls) + '</span>' : '') + '</td>';
         html += '<td>' + (r.resource_sort || 0) + '</td>';
         html += '<td>' + status + '</td>';
         html += '<td class="actions"><button onclick="event.stopPropagation();editResource(' + r.resource_key + ')">Edit</button></td>';
@@ -266,6 +282,7 @@ function openForm(data) {
     document.getElementById('f-summary').value = data ? (data.resource_summary || '') : '';
     document.getElementById('f-sort').value = data ? (data.resource_sort || 0) : 0;
     document.getElementById('f-active').checked = data ? data.resource_active_flag : true;
+    dlInit(data);
     document.getElementById('form-title').textContent = data ? 'Edit Resource' : 'Add Resource';
     document.getElementById('btn-delete').style.display = data ? '' : 'none';
     var preview = document.getElementById('f-image-preview');
@@ -339,6 +356,143 @@ function uploadImage(input) {
     };
 
     xhr.send(fd);
+}
+
+// ── Download files (.ttc / .ttf / .woff2) ────────────────────────
+// Stored in yy_resource.resource_downloads as [{ext, path}] in this order.
+// Upload… replaces the file at its path (admin-resource-file.php: confirm +
+// backup), then ticks it. Only ticked files that exist appear on /resources.
+var DL_TYPES = [
+    { ext: 'ttc',   label: 'TTC',   hint: 'font collection — every face in one file' },
+    { ext: 'ttf',   label: 'TTF',   hint: 'TrueType — one face' },
+    { ext: 'woff2', label: 'WOFF2', hint: 'compressed web font' }
+];
+var dlState = {};      // ext → { offer, path, exists, size, mtime, msg, color }
+var dlExtra = [];      // stored entries of other types, kept as they are
+var dlTarget = null;   // ext being uploaded
+
+function dlBase() {
+    for (var i = 0; i < DL_TYPES.length; i++) {
+        var p = (dlState[DL_TYPES[i].ext] || {}).path;
+        if (p) return p.replace(/\.[A-Za-z0-9]+$/, '');
+    }
+    var link = document.getElementById('f-link-url').value.trim();
+    var m = /^\/api\/font\.php\?f=([A-Za-z0-9._-]+)\.[A-Za-z0-9]+/.exec(link);
+    if (m) return '/fonts/' + m[1];
+    m = /^(\/fonts\/[A-Za-z0-9._-]+)\.(ttc|ttf|otf|woff2?)$/i.exec(link.split(/[?#]/)[0]);
+    return m ? m[1] : '';
+}
+
+function dlInit(data) {
+    dlState = {};
+    dlExtra = [];
+    var stored = (data && data.resource_downloads) || [];
+    stored.forEach(function(d) {
+        var known = DL_TYPES.some(function(t) { return t.ext === d.ext; });
+        if (!known) { dlExtra.push({ ext: d.ext, path: d.path }); return; }
+        dlState[d.ext] = { offer: true, path: d.path, exists: d.exists, size: d.size, mtime: d.mtime };
+    });
+    var base = dlBase();
+    DL_TYPES.forEach(function(t) {
+        if (!dlState[t.ext]) dlState[t.ext] = { offer: false, path: base ? base + '.' + t.ext : '', exists: null };
+    });
+    dlRender();
+}
+
+function dlMeta(st) {
+    if (st.exists === null || st.exists === undefined) return { text: 'not checked yet', cls: '' };
+    if (!st.exists) return { text: 'not on the server', cls: 'dl-missing' };
+    return { text: Math.round(st.size / 1024).toLocaleString() + ' KB · ' + new Date(st.mtime).toLocaleDateString(), cls: '' };
+}
+
+function dlRender() {
+    document.getElementById('dl-body').innerHTML = DL_TYPES.map(function(t) {
+        var st = dlState[t.ext];
+        var meta = dlMeta(st);
+        var row = '<tr title="' + esc(t.hint) + '">'
+            + '<td class="dl-type"><label><input type="checkbox"' + (st.offer ? ' checked' : '') + ' onchange="dlState[\'' + t.ext + '\'].offer=this.checked">' + t.label + '</label></td>'
+            + '<td><input type="text" value="' + esc(st.path) + '" placeholder="/fonts/Name.' + t.ext + '" onchange="dlPath(\'' + t.ext + '\', this.value)"></td>'
+            + '<td class="dl-meta ' + meta.cls + '">' + esc(meta.text) + '</td>'
+            + '<td class="dl-btn"><button type="button" class="btn btn-secondary btn-sm" onclick="dlPick(\'' + t.ext + '\')">Upload…</button></td>'
+            + '</tr>';
+        if (st.msg) row += '<tr class="dl-msg"><td></td><td colspan="3" style="color:' + st.color + '">' + esc(st.msg) + '</td></tr>';
+        return row;
+    }).join('');
+}
+
+function dlPath(ext, val) {
+    var st = dlState[ext];
+    st.path = val.trim();
+    st.exists = null;      // re-checked on the next load
+    st.msg = '';
+    dlRender();
+}
+
+function dlPick(ext) {
+    var st = dlState[ext];
+    if (!st.path) {
+        var base = dlBase();
+        if (!base) { st.msg = 'Enter a path first, e.g. /fonts/Name.' + ext; st.color = '#c0392b'; return dlRender(); }
+        st.path = base + '.' + ext;
+    }
+    dlTarget = ext;
+    var input = document.getElementById('dl-file');
+    input.value = '';
+    input.accept = '.' + ext;
+    input.click();
+}
+
+function dlPicked(input) {
+    var file = input.files[0];
+    var ext = dlTarget;
+    if (!file || !ext) return;
+    var st = dlState[ext];
+    function show(msg, color) { st.msg = msg; st.color = color; dlRender(); }
+    if (extOf(file.name) !== ext) { input.value = ''; return show('Pick a .' + ext + ' file', '#c0392b'); }
+    dlSend(file, ext, false, show);
+    input.value = '';
+}
+
+function dlSend(file, ext, overwrite, show) {
+    var st = dlState[ext];
+    show('Uploading…', '#2980b9');
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('path', st.path);
+    if (overwrite) fd.append('overwrite', '1');
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/admin-resource-file.php', true);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) show('Uploading ' + Math.round(e.loaded / e.total * 100) + '%', '#2980b9');
+    };
+    xhr.onload = function() {
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch (e) { return show('Upload failed (HTTP ' + xhr.status + ')', '#c0392b'); }
+        if (xhr.status === 409 && d.exists) {
+            if (confirm(d.path + ' already exists (' + Math.round(d.size / 1024).toLocaleString() + ' KB, ' + new Date(d.mtime).toLocaleString() + ').\n\nReplace it with ' + file.name + '? The old copy is kept as a backup.')) {
+                dlSend(file, ext, true, show);
+            } else {
+                show('Not uploaded: the file already exists', '#888');
+            }
+            return;
+        }
+        if (d.error) return show(d.error, '#c0392b');
+        st.exists = true; st.size = d.size; st.mtime = new Date().toISOString(); st.offer = true;
+        var warn = d.warnings && d.warnings.length ? ' ⚠ ' + d.warnings.join(' ') : '';
+        show((d.replaced ? 'Replaced ' : 'Uploaded ') + d.path + '. Click Save to publish it on /resources.' + warn, warn ? '#b9770e' : '#27ae60');
+    };
+    xhr.onerror = function() { show('Upload failed', '#c0392b'); };
+    xhr.send(fd);
+}
+
+function dlList() {
+    var list = [];
+    DL_TYPES.forEach(function(t) {
+        var st = dlState[t.ext];
+        if (st && st.offer && st.path) list.push({ ext: t.ext, path: st.path });
+    });
+    return list.concat(dlExtra);
 }
 
 function extOf(p) {
@@ -437,6 +591,7 @@ function saveForm() {
     fd.append('resource_sort', document.getElementById('f-sort').value || '0');
     fd.append('resource_active_flag', document.getElementById('f-active').checked ? '1' : '0');
     fd.append('resource_image', document.getElementById('f-image').value);
+    fd.append('resource_downloads', JSON.stringify(dlList()));
 
     if (key) {
         fd.append('resource_key', key);

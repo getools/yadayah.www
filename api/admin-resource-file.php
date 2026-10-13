@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('Method not allowed', 4
 
 $WEB_ROOT = realpath(__DIR__ . '/..');
 // Static, non-executable types only — never php/html/js/css/htaccess.
-$ALLOWED = ['ttf', 'otf', 'woff', 'woff2', 'pdf', 'epub', 'mobi', 'doc', 'docx', 'xls', 'xlsx',
+$ALLOWED = ['ttf', 'ttc', 'otf', 'woff', 'woff2', 'pdf', 'epub', 'mobi', 'doc', 'docx', 'xls', 'xlsx',
             'ppt', 'pptx', 'odt', 'rtf', 'txt', 'csv', 'zip', 'jpg', 'jpeg', 'png', 'gif', 'webp',
             'mp3', 'm4a', 'wav', 'ogg', 'mp4', 'webm', 'mov'];
 // Top-level folders that hold code or app data, not downloadable files.
