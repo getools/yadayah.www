@@ -93,6 +93,16 @@
         #font-files-modal .ffm-body { padding:16px 20px; }
         .font-file { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #eee; font-size:0.85rem; flex-wrap:wrap; }
         .font-file:last-child { border-bottom:none; }
+        .ffm-pipe { margin-top:14px; padding-top:12px; border-top:2px solid #e5e8eb; font-size:0.85rem; }
+        .ffm-pipe:empty { display:none; }
+        .ffm-pipe h4 { margin:0 0 4px; font-size:0.9rem; color:#333; }
+        .ffm-pipe h4 span { font-weight:normal; color:#888; font-size:0.78rem; }
+        .ffm-pipe .fp-file { padding:6px 0; border-bottom:1px solid #eee; }
+        .ffm-pipe .fp-file b { color:#1a5276; }
+        .ffm-pipe .fp-alias { color:#888; font-size:0.78rem; }
+        .ffm-pipe .fp-faces { color:#666; font-size:0.78rem; }
+        .ffm-pipe .fp-ctl { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+        .ffm-pipe select { padding:3px 6px; font-size:0.82rem; }
         .font-file .ff-name { font-weight:600; color:#1a5276; min-width:200px; }
         .font-file .ff-meta { color:#888; flex:1; }
         .font-file .ff-missing { color:#c0392b; flex:1; }
@@ -343,12 +353,14 @@
         </p>
         <span id="font-save-status"></span>
         <input type="file" id="font-file-input" accept=".woff2,.woff,.ttf,.otf" style="display:none" onchange="fontUploadPicked(this)">
+        <input type="file" id="font-pipe-input" accept=".ttc" style="display:none" onchange="fontPipePicked(this)">
         <div id="font-files-modal" onclick="if(event.target===this)fontFilesClose()">
             <div class="ffm-panel">
                 <div class="ffm-head"><h3 id="ffm-title">Font files</h3><button onclick="fontFilesClose()">&times;</button></div>
                 <div class="ffm-body">
                     <div id="ffm-list"></div>
                     <div class="ffm-note">Upload replaces the file on the server (you confirm first; the old copy is kept). Browsers load the .woff2 before the .ttf, so update both. Visitors get the new file within about 5 minutes.</div>
+                    <div id="ffm-pipe" class="ffm-pipe"></div>
                 </div>
             </div>
         </div>
@@ -956,6 +968,7 @@ function fontLoadRows(){
                 note:    r.font_note || '',
                 active:  !!r.font_active_flag,
                 files:   r.files || [],
+                pipeline: r.pipeline || null,
                 _dirty:  false
             };
         });
@@ -1027,6 +1040,7 @@ function fontFileMeta(f){
 function fontFilesHtml(r, idx){
     if (!r.files || !r.files.length) return '<span class="ff-none" title="System or web font — no files hosted on this server">—</span>';
     var tip = r.files.map(function(f){ return f.path.split('/').pop() + ' — ' + fontFileMeta(f); }).join('\n');
+    if (r.pipeline) tip += '\n\nPDF pipeline: ' + r.pipeline.files.filter(function(f){ return !f.alias; }).map(function(f){ return f.name + ' — ' + fontFileMeta(f); }).join(', ');
     var missing = r.files.some(function(f){ return f.size == null; });
     return '<button type="button" class="ff-btn' + (missing ? ' ff-warn' : '') + '" title="' + fontEscAttr(tip + '\n\nClick to upload new files') + '" onclick="fontFilesOpen(' + idx + ')">'
          + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>'
@@ -1045,6 +1059,8 @@ function fontFilesClose(){
     document.getElementById('font-files-modal').classList.remove('open');
     fontFilesIdx = null;
     fontFileMsg = {};
+    fontPipeMsg = null;
+    clearTimeout(fontPipePoll);
 }
 
 function fontFilesModalRender(){
@@ -1060,6 +1076,102 @@ function fontFilesModalRender(){
              +   (msg ? '<span class="ff-msg" style="color:' + msg.color + '">' + fontEsc(msg.text) + '</span>' : '')
              + '</div>';
     }).join('');
+    fontPipeRender(r);
+}
+
+// ── PDF-pipeline copy ─────────────────────────────────────────────
+// The PDF pipeline (ONLYOFFICE + the fonts embedded for Word) uses its own
+// copy on the host, not /fonts/*. Uploading here queues the host installer
+// (api/admin-pipeline-font.php → parsers/pipeline_font_install.py), which
+// takes either a single-face .ttf or a .ttc collection (e.g. Regular + Italic).
+var fontPipeMsg = null;        // { text, color, ext } for the pipeline section
+var fontPipePoll = null;
+
+function fontPipeRender(r){
+    var el = document.getElementById('ffm-pipe');
+    var p = r && r.pipeline;
+    if (!p) { el.innerHTML = ''; return; }
+    var main = p.files.filter(function(f){ return !f.alias; });
+    var cur = main.length ? main[0].name.split('.').pop().toLowerCase() : 'ttc';
+    var sel = (fontPipeMsg && fontPipeMsg.ext) || cur;
+    var files = main.concat(p.files.filter(function(f){ return f.alias; })).map(function(f){
+        var faces = (f.faces || []).map(function(x){ return x.error ? 'unreadable: ' + x.error : (x.family + ' ' + x.style + (x.version ? ' v' + x.version : '')); }).join(' · ');
+        return f.alias
+            ? '<div class="fp-file fp-alias">' + fontEsc(f.name) + ' — alias so older docs that name the font “' + fontEsc(((f.faces || [])[0] || {}).family || '') + '” get the same glyphs</div>'
+            : '<div class="fp-file"><b>' + fontEsc(f.name) + '</b> <span class="ff-meta">' + fontEsc(fontFileMeta(f)) + '</span><div class="fp-faces">' + fontEsc(faces) + '</div></div>';
+    }).join('') || '<div class="fp-file ff-missing">No file installed</div>';
+    el.innerHTML = '<h4>PDF pipeline copy <span>— used for book PDFs (ONLYOFFICE, and embedded for Word); separate from the website files above</span></h4>'
+        + files
+        + '<div class="fp-ctl">Upload as <select id="ffm-pipe-ext">'
+        +   '<option value="ttc"' + (sel === 'ttc' ? ' selected' : '') + '>.ttc — collection (Regular + Italic…)</option>'
+        +   '<option value="ttf"' + (sel === 'ttf' ? ' selected' : '') + '>.ttf — single face</option>'
+        + '</select><button type="button" class="btn btn-secondary btn-sm" onclick="fontPipePick()">Upload…</button>'
+        + (fontPipeMsg ? '<span class="ff-msg" style="color:' + fontPipeMsg.color + '">' + fontEsc(fontPipeMsg.text) + '</span>' : '')
+        + '</div>'
+        + '<div class="ffm-note">Replaces the installed file (the old one is backed up) and removes the other type. Installing takes a minute or two and briefly restarts ONLYOFFICE. Existing PDFs keep their old glyphs until each book is rebuilt.</div>';
+}
+
+function fontPipePick(){
+    var ext = document.getElementById('ffm-pipe-ext').value;
+    var input = document.getElementById('font-pipe-input');
+    input.value = '';
+    input.accept = '.' + ext;
+    input.dataset.ext = ext;
+    input.click();
+}
+
+function fontPipePicked(input){
+    var file = input.files[0];
+    var r = fontRows[fontFilesIdx];
+    if (!file || !r || !r.pipeline) return;
+    var ext = input.dataset.ext;
+    function show(text, color){ fontPipeMsg = { text: text, color: color, ext: ext }; fontPipeRender(r); }
+    if (file.name.split('.').pop().toLowerCase() !== ext) return show('Pick a .' + ext + ' file (or change “Upload as”)', '#c0392b');
+    var main = r.pipeline.files.filter(function(f){ return !f.alias; })[0];
+    if (!confirm('Replace the PDF-pipeline font' + (main ? ' ' + main.name : '') + ' with ' + file.name + '?\n\nThe old file is backed up. ONLYOFFICE restarts briefly.')) { input.value = ''; return; }
+    show('Uploading…', '#2980b9');
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('base', r.pipeline.base);
+    fd.append('ext', ext);
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/admin-pipeline-font.php', true);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = function(e){ if (e.lengthComputable) show('Uploading ' + Math.round(e.loaded / e.total * 100) + '%', '#2980b9'); };
+    xhr.onload = function(){
+        var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return show('Upload failed (HTTP ' + xhr.status + ')', '#c0392b'); }
+        if (d.error) return show(d.error, '#c0392b');
+        show('Uploaded — installing on the server…', '#2980b9');
+        fontPipeWatch(d.id, r, show, Date.now());
+    };
+    xhr.onerror = function(){ show('Upload failed', '#c0392b'); };
+    xhr.send(fd);
+    input.value = '';
+}
+
+// The install runs on the host (path unit), so check back until it reports.
+function fontPipeWatch(id, r, show, started){
+    clearTimeout(fontPipePoll);
+    fontPipePoll = setTimeout(function(){
+        fetch(API + '/admin-pipeline-font.php?job=' + encodeURIComponent(id), { credentials: 'include' })
+            .then(function(res){ return res.json(); })
+            .then(function(j){
+                if (j.state === 'installed' || j.state === 'error') {
+                    var warn = (j.warnings || []).length ? ' ⚠ ' + j.warnings.join('; ') : '';
+                    if (j.state === 'error') show('Install failed: ' + (j.message || 'unknown error'), '#c0392b');
+                    else show('Installed ' + (j.installed || []).join(', ') + '.' + warn, warn ? '#b9770e' : '#27ae60');
+                    return fetch(API + '/admin-fonts.php', { credentials: 'include' }).then(function(res){ return res.json(); }).then(function(all){
+                        (all.rows || []).forEach(function(x){ if (x.font_key === r.key) r.pipeline = x.pipeline || null; });
+                        fontRender();
+                        if (fontRows[fontFilesIdx] === r) fontPipeRender(r);
+                    });
+                }
+                if (Date.now() - started > 15 * 60 * 1000) return show('Still installing after 15 minutes — check Admin → Monitoring (source pipeline-font)', '#b9770e');
+                show(j.state === 'queued' ? 'Uploaded — waiting for the installer…' : 'Installing…', '#2980b9');
+                fontPipeWatch(id, r, show, started);
+            })
+            .catch(function(){ fontPipeWatch(id, r, show, started); });
+    }, 3000);
 }
 
 function fontUploadPick(idx, path){

@@ -1,0 +1,13 @@
+[Unit]
+Description=Push trigger: install a PDF-pipeline font the moment one is uploaded
+
+[Path]
+# api/admin-pipeline-font.php (Admin -> Site -> Fonts -> files popover) drops a
+# job .json here after saving the uploaded .ttf/.ttc under ../files/. The
+# installer always moves each job to ../done/, so the dir empties again.
+DirectoryNotEmpty=/opt/yada-www/public/jobs/pipeline-fonts/incoming
+Unit=pipeline-font.service
+TriggerLimitIntervalSec=0
+
+[Install]
+WantedBy=paths.target

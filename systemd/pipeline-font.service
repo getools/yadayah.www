@@ -1,0 +1,11 @@
+[Unit]
+Description=Install uploaded PDF-pipeline fonts (/usr/local/share/fonts/yada + ONLYOFFICE)
+Documentation=file:/opt/yada-www/parsers/pipeline_font_install.py
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/yada-www/parsers/pipeline_font_install.py
+StandardOutput=append:/var/log/pipeline-font.log
+StandardError=append:/var/log/pipeline-font.log
+TimeoutStartSec=1200
