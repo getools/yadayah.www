@@ -2080,9 +2080,12 @@ function cleanupFindLike(string $q): string {
  * GET  ?action=italic_books                    series → books that have a DOCX, + the saved choices
  * GET  ?action=italic_books&volume=N           that book's chapters (key 0 = front matter)
  * GET  ?action=italic_scan&volume=N[&chaps=K,…] the book's italic words that are not in Yada Towrah-Times
- * POST ?action=italic_choices {choices: {word: 'ytt'|'tnr'|'und'}, words: [w…]}   remember each word's choice
- *        (page: Y = ytt, N = tnr — leave it alone, says nothing about its language; ? = und, clears the row);
- *        `words` (the ones being switched) get a Books glossary row labelled H — see cleanupItalicLexicon()
+ * POST ?action=italic_choices {choices: {word: 'H'|'G'|'A'|'X'|'und'}, words: {word: 'H'|'G'|'A'}}
+ *        remember each word's Language choice (yy_italic_font_choice.italic_choice_font holds the code):
+ *        H = Hebrew (Yada Towrah-Times in the books), G = Greek, A = Arabic, X = leave it alone in the
+ *        books (says nothing about its language), und = "?" nobody decided → no row (clears a saved one).
+ *        Older pages' 'ytt' / 'tnr' are read as H / X. `words` get a Books glossary row labelled with
+ *        that language — see cleanupItalicLexicon(). Only H words are ever switched in the DOCX.
  * POST ?action=italic_apply {volume_key, chaps: [K…]|null, words: [w…], run}
  *
  * _docx_italic.py reads the DOCX (the staged copy when there is a current
@@ -2126,7 +2129,7 @@ function cleanupItalicBooks(): void {
     }
     $choices = [];
     foreach ($db->query('SELECT italic_choice_word, italic_choice_font FROM yy_italic_font_choice') as $r) {
-        $choices[$r['italic_choice_word']] = $r['italic_choice_font'];
+        $choices[$r['italic_choice_word']] = cleanupItalicCode($r['italic_choice_font']);
     }
     jsonResponse(['series' => array_values($series), 'choices' => (object)$choices, 'font' => CLEANUP_ITALIC_FONT]);
 }
@@ -2175,21 +2178,24 @@ function cleanupItalicScan(): void {
     foreach ($db->query('SELECT DISTINCT word_translit_text FROM yy_word_translit') as $r) {
         $gloss[cleanupItalicNorm((string)$r['word_translit_text'])] = true;
     }
-    // h: the spelling (exact, any case — as cleanupItalicLexicon matches) belongs to a yy_word record
-    // labelled H — Hebrew, from any source, not "Not a word". The page then defaults the word to Y.
-    $hebrew = [];
-    foreach ($db->query("SELECT DISTINCT lower(trim(s.txt)) AS lc
+    // l: the language of the yy_word record(s) with this spelling (exact, any case — as
+    // cleanupItalicLexicon matches), any source, not "Not a word"; H wins over G over A when
+    // records disagree. The page defaults the word's Language to it.
+    $langOf = [];
+    $rank = ['H' => 3, 'G' => 2, 'A' => 1];
+    foreach ($db->query("SELECT DISTINCT lower(trim(s.txt)) AS lc, w.word_language
                            FROM yy_word w
                            JOIN (SELECT word_key, word_translit AS txt FROM yy_word
                                  UNION SELECT word_key, word_translit_text FROM yy_word_translit) s ON s.word_key = w.word_key
-                          WHERE w.word_language = 'H' AND NOT w.word_excluded_flag AND trim(coalesce(s.txt, '')) <> ''") as $r) {
-        $hebrew[$r['lc']] = true;
+                          WHERE w.word_language IN ('H', 'G', 'A') AND NOT w.word_excluded_flag AND trim(coalesce(s.txt, '')) <> ''") as $r) {
+        $l = trim((string)$r['word_language']);
+        if (!isset($langOf[$r['lc']]) || $rank[$l] > $rank[$langOf[$r['lc']]]) $langOf[$r['lc']] = $l;
     }
     $words = [];
     foreach ($res['words'] as $w) {
         $words[] = ['w' => $w['w'], 'n' => (int)$w['n'], 'fonts' => $w['fonts'], 'ex' => $w['ex'],
                     'g' => isset($gloss[cleanupItalicNorm($w['w'])]),
-                    'h' => isset($hebrew[mb_strtolower(trim($w['w']), 'UTF-8')])];
+                    'l' => $langOf[mb_strtolower(trim($w['w']), 'UTF-8')] ?? null];
     }
     jsonResponse(['volume_key' => $vk, 'label' => $vol['label'], 'words' => $words, 'occurrences' => (int)$res['occurrences'],
                   'stage' => $stage, 'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null]);
@@ -2204,13 +2210,14 @@ function cleanupItalicChoices(array $authUser): void {
                         ON CONFLICT (italic_choice_word) DO UPDATE SET italic_choice_font = EXCLUDED.italic_choice_font,
                                user_key = EXCLUDED.user_key, user_name = EXCLUDED.user_name, italic_choice_dtime = now()
                         WHERE yy_italic_font_choice.italic_choice_font <> EXCLUDED.italic_choice_font");
-    // 'und' (the page's "?" — nobody has decided) = no row: it clears a saved Y / N.
+    // 'und' (the page's "?" — nobody has decided) = no row: it clears a saved choice.
     $del = $db->prepare('DELETE FROM yy_italic_font_choice WHERE italic_choice_word = ?');
     $n = 0;
     $db->beginTransaction();
     foreach ((array)($in['choices'] ?? []) as $w => $f) {
         $w = (string)$w;
-        if ($w === '' || mb_strlen($w) > 200 || !in_array($f, ['tnr', 'ytt', 'und'], true)) continue;
+        $f = $f === 'und' ? 'und' : cleanupItalicCode((string)$f);
+        if ($w === '' || mb_strlen($w) > 200 || $f === null) continue;
         if ($f === 'und') {
             $del->execute([$w]);
             $n += $del->rowCount();
@@ -2219,18 +2226,30 @@ function cleanupItalicChoices(array $authUser): void {
         $up->execute([$w, $f, (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
         $n += $up->rowCount();
     }
-    // Every word being switched to Yada Towrah-Times is Hebrew: give it a Books glossary row, labelled H.
-    $lex = cleanupItalicLexicon($db, array_map('strval', (array)($in['words'] ?? [])));
+    // H / G / A words go in the glossary as Books words labelled with that language (X never touches it).
+    // `words` is {word: language}; an older page sends a plain list, which meant Hebrew.
+    $wordLangs = [];
+    foreach ((array)($in['words'] ?? []) as $k => $v) {
+        if (is_int($k)) $wordLangs[(string)$v] = 'H';
+        elseif (in_array($l = cleanupItalicCode((string)$v), ['H', 'G', 'A'], true)) $wordLangs[(string)$k] = $l;
+    }
+    $lex = cleanupItalicLexicon($db, $wordLangs);
     $db->commit();
     jsonResponse(['saved' => $n, 'lexicon' => $lex]);
 }
 
+/** A Language choice code: H | G | A | X, or null. 'ytt' / 'tnr' are the older Y / N (Hebrew / leave alone). */
+function cleanupItalicCode(string $f): ?string {
+    $f = ['ytt' => 'H', 'tnr' => 'X'][$f] ?? $f;
+    return in_array($f, ['H', 'G', 'A', 'X'], true) ? $f : null;
+}
+
 /**
- * The words chosen for Yada Towrah-Times, in the glossary: each needs a
- * yy_word row with source 'books' and language H. Matched the way the word
- * harvest (_word_harvest.php, Books coverage) matches — the exact lower-cased
- * spelling in word_translit or any yy_word_translit row of a 'books' word.
- *   found       → word_language set to H where it isn't already (only changed
+ * The words given a language on the Italics tab (H, G or A), in the glossary:
+ * each needs a yy_word row with source 'books' and that language. Matched the
+ * way the word harvest (_word_harvest.php, Books coverage) matches — the exact
+ * lower-cased spelling in word_translit or any yy_word_translit row of a 'books' word.
+ *   found       → word_language set to the choice where it differs (only changed
  *                 rows are written: yy_word carries the trg_yy_word_rev audit trigger)
  *   not found   → a new 'books' row (word_translit + one yy_word_translit row,
  *                 counts left NULL for the harvest to fill on the next parse)
@@ -2238,11 +2257,13 @@ function cleanupItalicChoices(array $authUser): void {
  *                 and reported: the harvest never re-creates those either.
  * Runs inside the caller's transaction.
  */
-function cleanupItalicLexicon(PDO $db, array $words): array {
+function cleanupItalicLexicon(PDO $db, array $wordLangs): array {
     $out = ['created' => [], 'relabelled' => [], 'already' => 0, 'not_a_word' => []];
-    $words = array_values(array_unique(array_filter(array_map('trim', $words), function ($w) {
-        return $w !== '' && mb_strlen($w) <= 200;
-    })));
+    $words = [];   // word → H | G | A
+    foreach ($wordLangs as $w => $l) {
+        $w = trim((string)$w);
+        if ($w !== '' && mb_strlen($w) <= 200 && in_array($l, ['H', 'G', 'A'], true)) $words[$w] = $l;
+    }
     if (!$words) return $out;
     // lower-cased spelling → the 'books' / "Not a word" rows that own it
     $bySpelling = [];
@@ -2252,11 +2273,12 @@ function cleanupItalicLexicon(PDO $db, array $words): array {
                               UNION SELECT word_key, word_translit_text FROM yy_word_translit) s ON s.word_key = w.word_key
                        WHERE (w.word_source_code = 'books' OR w.word_excluded_flag) AND trim(coalesce(s.txt, '')) <> ''");
     foreach ($st as $r) $bySpelling[$r['lc']][(int)$r['word_key']] = $r;
-    $relabel = $db->prepare("UPDATE yy_word SET word_language = 'H' WHERE word_key = ? AND word_language IS DISTINCT FROM 'H'");
+    $relabel = $db->prepare("UPDATE yy_word SET word_language = ? WHERE word_key = ? AND word_language IS DISTINCT FROM ?");
     $insW = $db->prepare("INSERT INTO yy_word (word_source_code, word_translit, word_active_flag, word_language)
-                          VALUES ('books', ?, true, 'H') RETURNING word_key");
+                          VALUES ('books', ?, true, ?) RETURNING word_key");
     $insT = $db->prepare('INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort) VALUES (?, ?, 0)');
-    foreach ($words as $w) {
+    foreach ($words as $w => $lang) {
+        $w = (string)$w;
         $rows = array_values($bySpelling[mb_strtolower($w, 'UTF-8')] ?? []);
         $books = array_filter($rows, function ($r) { return $r['word_source_code'] === 'books' && !$r['word_excluded_flag']; });
         if (!$books && array_filter($rows, function ($r) { return $r['word_excluded_flag']; })) {
@@ -2265,23 +2287,24 @@ function cleanupItalicLexicon(PDO $db, array $words): array {
         }
         if ($books) {
             $changed = false;
-            foreach ($books as $r) {
-                $relabel->execute([(int)$r['word_key']]);
+            foreach ($books as $k => $r) {
+                $relabel->execute([$lang, (int)$r['word_key'], $lang]);
                 if ($relabel->rowCount()) {
                     $changed = true;
-                    $out['relabelled'][] = ['word' => $w, 'word_key' => (int)$r['word_key'], 'was' => $r['word_language']];
+                    $out['relabelled'][] = ['word' => $w, 'lang' => $lang, 'word_key' => (int)$r['word_key'], 'was' => $r['word_language']];
+                    $bySpelling[mb_strtolower($w, 'UTF-8')][(int)$r['word_key']]['word_language'] = $lang;
                 }
             }
             if (!$changed) $out['already']++;
             continue;
         }
-        $insW->execute([$w]);
+        $insW->execute([$w, $lang]);
         $wk = (int)$insW->fetchColumn();
         $insT->execute([$wk, $w]);
-        $out['created'][] = ['word' => $w, 'word_key' => $wk];
+        $out['created'][] = ['word' => $w, 'lang' => $lang, 'word_key' => $wk];
         // Two picks that differ only in case ("Towrah" / "towrah") share the one row.
         $bySpelling[mb_strtolower($w, 'UTF-8')][$wk] = ['word_key' => $wk, 'word_source_code' => 'books',
-                                                         'word_language' => 'H', 'word_excluded_flag' => false];
+                                                         'word_language' => $lang, 'word_excluded_flag' => false];
     }
     return $out;
 }

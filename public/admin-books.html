@@ -395,7 +395,6 @@
         .it-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; font-size: 0.85rem; }
         .it-tools input[type=text] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; width: 200px; }
         .it-tools label { display: inline-flex; align-items: center; gap: 4px; color: #555; cursor: pointer; }
-        .it-bulk { margin-left: auto; color: #555; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .it-sum { font-size: 0.85rem; color: #555; margin-bottom: 6px; }
         /* No inner scroll box: the table grows with the page (user, 2026-10-14). The header sticks to the window. */
         .it-table { border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; }
@@ -419,7 +418,7 @@
         .it-rad label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; font-weight: 600; }
         .it-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
         .it-foot #it-save-slot { margin-left: auto; display: inline-flex; gap: 8px; }
-        @media (max-width: 700px) { .it-bulk { margin-left: 0; } .it-ex { max-width: 240px; } }
+        @media (max-width: 700px) { .it-ex { max-width: 240px; } }
         .hi-table th.hi-sortable { cursor: pointer; user-select: none; }
         .hi-table th.hi-sortable:hover { color: #2980b9; }
         .hi-table th.sorted { color: #2c3e50; }
@@ -1028,10 +1027,11 @@
                 </div>
                 <p class="cl-note">Parse lists every italic word in the chosen books and chapters that is not already in <b>Yada Towrah-Times</b>.
                    Words in the Yada Towrah glyph font, Hebrew letters and running headers / footers are left out; half rings (ʾ ʿ) count as part of the word.
-                   For each word pick <b>?</b> (undecided), <b>Y</b> (a Hebrew word: Yada Towrah-Times throughout the books) or <b>N</b> (leave it alone in the books —
-                   this does not say it is not Hebrew, and does not change its glossary language).
-                   <b>Save</b> remembers the choices and puts each Y word in the glossary as a <b>Books</b> word
-                   labelled <b>H — Hebrew</b>; the Word files are not touched. <b>Apply to Books</b> then switches every place a saved Y word
+                   For each word pick a <b>Language</b>: <b>?</b> (undecided), <b>H</b> (Hebrew: Yada Towrah-Times throughout the books), <b>G</b> (Greek),
+                   <b>A</b> (Arabic) or <b>X</b> (leave it alone in the books — this does not say what language it is, and does not change its glossary language).
+                   A word whose spelling the glossary already labels Hebrew, Greek or Arabic starts with that language.
+                   <b>Save</b> remembers the choices and puts each H, G or A word in the glossary as a <b>Books</b> word labelled with that language;
+                   the Word files are not touched. <b>Apply to Books</b> then switches every place a saved H word
                    appears in the parsed books and chapters, in a staged copy of each book's DOCX, queued on the <i>Changes</i> tab as an <b>Italic font</b> change
                    until you commit it.</p>
             </div>
@@ -1041,15 +1041,9 @@
                     <input type="text" id="it-q" placeholder="Word contains…" autocomplete="off" spellcheck="false" title="Only words containing this (half rings and apostrophes ignored unless typed)">
                     <label title="Only words the glossary has as a transliteration"><input type="checkbox" id="it-f-gloss"> Glossary words</label>
                     <label title="Only words with a half ring (ʾ ʿ) or a backtick"><input type="checkbox" id="it-f-ring"> With ʾ ʿ `</label>
-                    <label title="Only words with this Yada Towrah Font choice">Yada Towrah Font
-                        <select id="it-f-font"><option value="">All</option><option value="und">?</option><option value="ytt">Y</option><option value="tnr">N</option></select></label>
-                    <label title="Hide words that were saved as N (leave alone) before"><input type="checkbox" id="it-f-kept"> Hide words saved as N</label>
+                    <label title="Only words with this Language choice">Language
+                        <select id="it-f-font"><option value="">All</option><option value="und">?</option><option value="H">H</option><option value="G">G</option><option value="A">A</option><option value="X">X</option></select></label>
                     <label title="How many words the list shows at a time (Show more adds the next lot)">Show <select id="it-psize"></select> at a time</label>
-                    <span class="it-bulk">Set the words shown to
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="itSetShown('und')" title="Undecided">?</button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="itSetShown('ytt')" title="Hebrew: Yada Towrah-Times in the books">Y</button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="itSetShown('tnr')" title="Leave alone in the books">N</button>
-                    </span>
                 </div>
                 <div class="it-sum" id="it-sum"></div>
                 <div class="it-table">
@@ -1059,9 +1053,9 @@
                             <th data-sort="n" class="num" title="Sort by how many times it appears in the parsed books">Count</th>
                             <th data-sort="b" class="num" title="Sort by how many books it appears in">Books</th>
                             <th title="The font the word's letters are in now">Font now</th>
-                            <th data-sort="g" title="H = the glossary has this spelling labelled H — Hebrew (the word starts as Y) · ✓ = a glossary transliteration. Click to sort.">Glossary</th>
+                            <th data-sort="g" title="H / G / A = the glossary has this spelling labelled Hebrew / Greek / Arabic (the word starts with that Language) · ✓ = a glossary transliteration. Click to sort.">Glossary</th>
                             <th title="The word in its first paragraph">Example</th>
-                            <th data-sort="c" title="? = undecided · Y = Hebrew, Yada Towrah-Times in the books · N = leave alone in the books (says nothing about its language). Click to sort.">Yada Towrah Font</th>
+                            <th data-sort="c" title="? = undecided · H = Hebrew: Yada Towrah-Times in the books · G = Greek · A = Arabic · X = leave alone in the books (says nothing about its language). Click to sort.">Language</th>
                         </tr></thead>
                         <tbody id="it-body"></tbody>
                     </table>
@@ -3311,16 +3305,20 @@ function initFlipbookTab() {
 // ── Edit → Italics: italic words → Yada Towrah-Times ──
 // Parse reads each chosen book's DOCX (?action=italic_scan, one request per
 // book) and lists the italic words not already in Yada Towrah-Times, merged
-// across the books. Each word gets a "Yada Towrah Font" choice: ? (und —
-// nobody has decided; the default, stored as NO row), Y (ytt — a Hebrew word:
-// Yada Towrah-Times in the books, Books/H in the glossary) or N (tnr — leave it
-// alone in the books; it does NOT say the word isn't Hebrew, so it never
-// touches yy_word). Save remembers the choices (italic_choices); Apply to
-// Books switches the saved Y words in the staged DOCX (italic_apply) — over
-// the books and chapters of the last Parse, not whatever the tree says now.
-var IT_FONTS = {und: ['?', 'Undecided — nobody has decided yet whether this is a Hebrew word'],
-                ytt: ['Y', 'Yes — a Hebrew word: put it in Yada Towrah-Times throughout the books (and in the glossary as a Books word labelled H)'],
-                tnr: ['N', 'No — leave it alone in the books (this does not say it is not Hebrew; its glossary language is not changed)']};
+// across the books. Each word gets a "Language": ? (und — nobody has decided;
+// stored as NO row), H (Hebrew: Yada Towrah-Times in the books, Books/H in the
+// glossary), G (Greek) / A (Arabic: Books/G or /A in the glossary, the books
+// untouched) or X (leave it alone in the books; it says nothing about the
+// language, so it never touches yy_word). Save remembers the choices
+// (italic_choices); Apply to Books switches the saved H words in the staged
+// DOCX (italic_apply) — over the books and chapters of the last Parse, not
+// whatever the tree says now. Options in this order (user, 2026-10-14).
+var IT_LANGS = {und: ['?', 'Undecided — nobody has decided yet what language this word is'],
+                H: ['H', 'Hebrew — put it in Yada Towrah-Times throughout the books, and in the glossary as a Books word labelled H'],
+                G: ['G', 'Greek — in the glossary as a Books word labelled G; the books are left as they are'],
+                A: ['A', 'Arabic — in the glossary as a Books word labelled A; the books are left as they are'],
+                X: ['X', 'Leave it alone in the books — this does not say what language it is; its glossary language is not changed']};
+var IT_LANG_ORDER = ['und', 'H', 'G', 'A', 'X'];
 var IT_STORE = 'admin-books:italics:books';
 // Rows shown at a time (the "Show N at a time" select; 0 = all), remembered per browser.
 var IT_PAGE_STORE = 'admin-books:italics:page';
@@ -3331,8 +3329,8 @@ function itPageSize() { return itPage || Infinity; }
 var itBound = false;
 var itBkSaved = null;      // saved tree selection, used until the tree is built
 var itBkBuilt = false;
-var itSaved = {};          // word → 'ytt' (Y) | 'tnr' (N), as saved before (yy_italic_font_choice); absent = ?
-var itChoice = {};         // word → 'und' | 'ytt' | 'tnr', picked on this page
+var itSaved = {};          // word → 'H' | 'G' | 'A' | 'X', as saved before (yy_italic_font_choice); absent = ?
+var itChoice = {};         // word → 'und' | 'H' | 'G' | 'A' | 'X', picked on this page
 var itWords = [];          // [{w, n, books: {vk: n}, fonts: {}, ex: [[pre, w, post]], g}]
 var itScope = [];          // the last Parse: [{vk, label, chaps: [chapter keys] | null}]
 var itShown = itPageSize();
@@ -3340,7 +3338,7 @@ var itSort = {k: 'n', dir: -1};
 var itBusy = false;
 var itBookLabels = {};     // volume key → label
 var itRadioSeq = 0;        // unique radio-group names across renders
-var itHebrew = {};         // word → true when a yy_word record labelled H has its spelling (defaults to Y)
+var itGlossLang = {};      // word → 'H' | 'G' | 'A' when a yy_word record with that language has its spelling (its default)
 
 function itInit() {
     if (itBound) return;
@@ -3353,9 +3351,9 @@ function itInit() {
     // wires Save (it would sit disabled until a field "changed").
     var slot = document.getElementById('it-save-slot');
     slot.innerHTML = '<button type="button" class="btn btn-primary btn-sm" id="it-save" onclick="itSave()" disabled'
-        + ' title="Remember the ? / Y / N chosen for each word, and put every Y word in the glossary as a Books word labelled H (Hebrew). The Word files are not touched.">Save</button> '
+        + ' title="Remember the Language chosen for each word, and put every H, G or A word in the glossary as a Books word labelled with it. The Word files are not touched.">Save</button> '
         + '<button type="button" class="btn btn-primary btn-sm" id="it-apply" onclick="itApply()" disabled'
-        + ' title="Switch every place the SAVED Y words appear in the parsed books and chapters to Yada Towrah-Times, in each book\'s staged DOCX (queued until you commit it on Changes)">Apply to Books</button>';
+        + ' title="Switch every place the SAVED H words appear in the parsed books and chapters to Yada Towrah-Times, in each book\'s staged DOCX (queued until you commit it on Changes)">Apply to Books</button>';
     document.getElementById('it-save')._dirtyEntry = {skip: true};
     var body = document.getElementById('it-body');
     body.addEventListener('change', function(e) {
@@ -3363,8 +3361,8 @@ function itInit() {
         if (r.type !== 'radio' || !r.closest('.it-rad')) return;
         itChoice[r.closest('.it-rad').getAttribute('data-w')] = r.value;
         var tr = r.closest('tr');
-        tr.classList.toggle('ytt', r.value === 'ytt');
-        tr.querySelector('.it-w').classList.toggle('yt-times', r.value === 'ytt');
+        tr.classList.toggle('ytt', r.value === 'H');
+        tr.querySelector('.it-w').classList.toggle('yt-times', r.value === 'H');
         itSummary();
     });
     var t = null;
@@ -3377,7 +3375,7 @@ function itInit() {
         itRender();
     });
     document.getElementById('it-q').addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { itShown = itPageSize(); itRender(); }, 200); });
-    ['it-f-gloss', 'it-f-ring', 'it-f-font', 'it-f-kept'].forEach(function(id) {
+    ['it-f-gloss', 'it-f-ring', 'it-f-font'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', function() { itShown = itPageSize(); itRender(); });
     });
     document.querySelectorAll('#cl-pane-italics th[data-sort]').forEach(function(th) {
@@ -3557,7 +3555,7 @@ function itProg(html) {
 function itParse() {
     if (itBusy) return;
     if (!itBkBuilt) { alert('The book list is still loading.'); return; }
-    // Only picks made by hand count here, not the unsaved Y defaults (those come back on their own).
+    // Only picks made by hand count here, not the unsaved glossary defaults (those come back on their own).
     var byHand = Object.keys(itChoice).some(function(w) { return itChoice[w] !== (itSaved[w] || itDefault(w)); });
     if (byHand && !confirm('Parse again? The fonts you picked and have not saved yet are kept for words that are listed again.')) return;
     itBkToggle(false);
@@ -3588,7 +3586,7 @@ function itParse() {
                 s.n = 0;
                 (d.words || []).forEach(function(x) {
                     var m = merged[x.w];
-                    if (!m) m = merged[x.w] = {w: x.w, n: 0, books: {}, fonts: {}, ex: [], g: x.g, h: x.h};
+                    if (!m) m = merged[x.w] = {w: x.w, n: 0, books: {}, fonts: {}, ex: [], g: x.g, l: x.l || null};
                     m.n += x.n;
                     s.n += x.n;
                     m.books[s.vk] = x.n;
@@ -3604,8 +3602,8 @@ function itParse() {
         document.getElementById('it-parse').disabled = false;
         itScope = scope;
         itWords = Object.keys(merged).map(function(w) { return merged[w]; });
-        itHebrew = {};
-        itWords.forEach(function(x) { if (x.h) itHebrew[x.w] = true; });
+        itGlossLang = {};
+        itWords.forEach(function(x) { if (x.l) itGlossLang[x.w] = x.l; });
         // Keep unsaved picks for words listed again; drop the rest.
         var keep = {};
         itWords.forEach(function(x) { if (itChoice[x.w]) keep[x.w] = itChoice[x.w]; });
@@ -3620,9 +3618,10 @@ function itParse() {
 }
 
 /* ── List ── */
-// A word's choice: picked on the page, else saved, else its default — Y when a yy_word
-// record labelled H — Hebrew has this spelling (x.h from italic_scan), otherwise ?.
-function itDefault(w) { return itHebrew[w] ? 'ytt' : 'und'; }
+// A word's Language: picked on the page, else saved, else its default — the
+// language (H / G / A) of a yy_word record with this spelling (x.l from
+// italic_scan), otherwise ?.
+function itDefault(w) { return itGlossLang[w] || 'und'; }
 function itFontOf(w) { return itChoice[w] || itSaved[w] || itDefault(w); }
 function itStrip(s) { return String(s).replace(/[ʾʿʼ`'‘’]/g, '').toLowerCase(); }
 
@@ -3631,13 +3630,12 @@ function itFiltered() {
     var raw = /[ʾʿʼ`'‘’]/.test(q);     // a half ring / apostrophe typed: it must match exactly
     var qq = raw ? q.toLowerCase() : itStrip(q);
     var fG = document.getElementById('it-f-gloss').checked, fR = document.getElementById('it-f-ring').checked;
-    var fF = document.getElementById('it-f-font').value, fK = document.getElementById('it-f-kept').checked;
+    var fF = document.getElementById('it-f-font').value;
     return itWords.filter(function(x) {
         if (qq && (raw ? x.w.toLowerCase() : itStrip(x.w)).indexOf(qq) < 0) return false;
-        if (fG && !x.g && !x.h) return false;
+        if (fG && !x.g && !x.l) return false;
         if (fR && !/[ʾʿ`]/.test(x.w)) return false;
         if (fF && itFontOf(x.w) !== fF) return false;
-        if (fK && itSaved[x.w] === 'tnr' && !itChoice[x.w]) return false;
         return true;
     });
 }
@@ -3647,8 +3645,8 @@ function itSorted(list) {
     var val = function(x) {
         if (k === 'n') return x.n;
         if (k === 'b') return Object.keys(x.books).length;
-        if (k === 'g') return x.h ? 2 : x.g ? 1 : 0;
-        if (k === 'c') return {und: 0, ytt: 1, tnr: 2}[itFontOf(x.w)];   // ascending: ?, Y, N
+        if (k === 'g') return x.l ? 2 : x.g ? 1 : 0;
+        if (k === 'c') return IT_LANG_ORDER.indexOf(itFontOf(x.w));   // ascending: ? H G A X
         return itStrip(x.w);
     };
     return list.slice().sort(function(a, b) {
@@ -3658,6 +3656,8 @@ function itSorted(list) {
         return b.n - a.n || (a.w < b.w ? -1 : a.w > b.w ? 1 : 0);
     });
 }
+
+var IT_LANG_NAME = {H: 'Hebrew', G: 'Greek', A: 'Arabic'};
 
 function itRender() {
     var list = itSorted(itFiltered());
@@ -3672,18 +3672,19 @@ function itRender() {
         var bookTip = nb.map(function(vk) { return (itBookLabels[vk] || vk) + ': ' + x.books[vk]; }).join('\n');
         var ex = x.ex[0] ? '…' + esc(x.ex[0][0]) + '<mark>' + esc(x.ex[0][1]) + '</mark>' + esc(x.ex[0][2]) + '…' : '';
         var exTip = x.ex.map(function(e) { return '…' + e[0] + e[1] + e[2] + '…'; }).join('\n\n');
-        var kept = itSaved[x.w] ? '<span class="it-kept" title="Saved as ' + IT_FONTS[itSaved[x.w]][0] + ' before">saved ' + IT_FONTS[itSaved[x.w]][0] + '</span>' : '';
+        var kept = itSaved[x.w] ? '<span class="it-kept" title="Saved as ' + IT_LANGS[itSaved[x.w]][0] + ' before">saved ' + IT_LANGS[itSaved[x.w]][0] + '</span>' : '';
         var nm = 'itr' + (itRadioSeq++);
-        return '<tr' + (f === 'ytt' ? ' class="ytt"' : '') + '>'
-            + '<td><span class="it-w' + (f === 'ytt' ? ' yt-times' : '') + '">' + esc(x.w) + '</span>' + kept + '</td>'
+        return '<tr' + (f === 'H' ? ' class="ytt"' : '') + '>'
+            + '<td><span class="it-w' + (f === 'H' ? ' yt-times' : '') + '">' + esc(x.w) + '</span>' + kept + '</td>'
             + '<td class="num">' + x.n + '</td>'
             + '<td class="num" title="' + esc(bookTip) + '">' + nb.length + '</td>'
             + '<td>' + esc(Object.keys(x.fonts).join(', ')) + '</td>'
-            + '<td>' + (x.h ? '<span class="it-h" title="The glossary has this spelling labelled H — Hebrew, so it starts as Y">H</span>' : x.g ? '&#10003;' : '') + '</td>'
+            + '<td>' + (x.l ? '<span class="it-h" title="The glossary has this spelling labelled ' + x.l + ' — ' + IT_LANG_NAME[x.l] + ', so it starts as ' + x.l + '">' + x.l + '</span>'
+                : x.g ? '&#10003;' : '') + '</td>'
             + '<td class="it-ex" title="' + esc(exTip) + '">' + ex + '</td>'
             + '<td><span class="it-rad" data-w="' + esc(x.w) + '">'
-            + ['und', 'ytt', 'tnr'].map(function(v) {
-                return '<label title="' + esc(IT_FONTS[v][1]) + '"><input type="radio" name="' + nm + '" value="' + v + '"' + (f === v ? ' checked' : '') + '> ' + IT_FONTS[v][0] + '</label>';
+            + IT_LANG_ORDER.map(function(v) {
+                return '<label title="' + esc(IT_LANGS[v][1]) + '"><input type="radio" name="' + nm + '" value="' + v + '"' + (f === v ? ' checked' : '') + '> ' + IT_LANGS[v][0] + '</label>';
             }).join('') + '</span></td></tr>';
     }).join('');
     document.getElementById('it-body').innerHTML = rows
@@ -3699,19 +3700,19 @@ function itMore() { itShown += itPageSize(); itRender(); }
 function itSummary(nShown) {
     if (nShown === undefined) nShown = itFiltered().length;
     var occ = itWords.reduce(function(n, x) { return n + x.n; }, 0);
-    var cnt = {und: 0, ytt: 0, tnr: 0}, yocc = 0, byDefault = 0;
+    var cnt = {und: 0, H: 0, G: 0, A: 0, X: 0}, hocc = 0, byDefault = 0;
     itWords.forEach(function(x) {
         var f = itFontOf(x.w); cnt[f]++;
-        if (f === 'ytt') yocc += x.n;
-        if (!itChoice[x.w] && !itSaved[x.w] && itHebrew[x.w]) byDefault++;
+        if (f === 'H') hocc += x.n;
+        if (!itChoice[x.w] && !itSaved[x.w] && itGlossLang[x.w]) byDefault++;
     });
     var books = itScope.length;
     var nPicks = Object.keys(itPicks()).length;
     var ready = itApplyWords();
     document.getElementById('it-sum').innerHTML = itWords.length + ' word' + (itWords.length === 1 ? '' : 's') + ' (' + occ + ' place' + (occ === 1 ? '' : 's') + ') in '
         + books + ' book' + (books === 1 ? '' : 's') + (nShown !== itWords.length ? ' · ' + nShown + ' shown' : '')
-        + ' · ? <b>' + cnt.und + '</b> · Y <b>' + cnt.ytt + '</b> (' + yocc + ' place' + (yocc === 1 ? '' : 's') + ') · N <b>' + cnt.tnr + '</b>'
-        + (nPicks ? ' · <b>' + nPicks + '</b> unsaved' + (byDefault ? ' (' + byDefault + ' Y by default: labelled H in the glossary)' : '') : '');
+        + ' · ? <b>' + cnt.und + '</b> · H <b>' + cnt.H + '</b> (' + hocc + ' place' + (hocc === 1 ? '' : 's') + ') · G <b>' + cnt.G + '</b> · A <b>' + cnt.A + '</b> · X <b>' + cnt.X + '</b>'
+        + (nPicks ? ' · <b>' + nPicks + '</b> unsaved' + (byDefault ? ' (' + byDefault + ' by default: the glossary labels the spelling)' : '') : '');
     var save = document.getElementById('it-save');
     save.disabled = itBusy || !nPicks;
     save.textContent = nPicks ? 'Save — ' + nPicks + ' change' + (nPicks === 1 ? '' : 's') : 'Save';
@@ -3720,37 +3721,30 @@ function itSummary(nShown) {
     apply.textContent = ready.length ? 'Apply to Books — ' + ready.length + ' word' + (ready.length === 1 ? '' : 's') : 'Apply to Books';
 }
 
-function itSetShown(f) {
-    var list = itFiltered();
-    if (list.length > 50 && !confirm('Set all ' + list.length + ' words shown to ' + IT_FONTS[f][0] + '?')) return;
-    list.forEach(function(x) { itChoice[x.w] = f; });
-    itRender();
-}
-
-// What Save would write: every listed word whose choice on the page differs
-// from what is saved (no saved row = ?). That includes the Y a word gets by
-// default from an H glossary record, until it is saved.
+// What Save would write: every listed word whose Language on the page differs
+// from what is saved (no saved row = ?). That includes the default a word gets
+// from its glossary record's language, until it is saved.
 function itPicks() {
     var out = {};
     itWords.forEach(function(x) { var f = itFontOf(x.w); if (f !== (itSaved[x.w] || 'und')) out[x.w] = f; });
     return out;
 }
 
-// The listed words whose SAVED choice is Y: what Apply to Books switches.
+// The listed words whose SAVED Language is H: what Apply to Books switches to Yada Towrah-Times.
 function itApplyWords() {
-    return itWords.filter(function(x) { return itSaved[x.w] === 'ytt'; });
+    return itWords.filter(function(x) { return itSaved[x.w] === 'H'; });
 }
 
 /* ── Save: the choices, and the glossary ── */
-// What Save did in the glossary (cleanupItalicLexicon): Books words added / relabelled H.
+// What Save did in the glossary (cleanupItalicLexicon): Books words added / relabelled H, G or A.
 function itLexHtml(lex) {
     if (!lex) return '';
-    var words = function(list) { return list.map(function(x) { return esc(x.word || x); }).join(', '); };
+    var words = function(list) { return list.map(function(x) { return esc(x.word || x) + (x.lang ? ' (' + x.lang + ')' : ''); }).join(', '); };
     var parts = [];
     if (lex.created.length) parts.push('added <b>' + lex.created.length + '</b> as new Books words: ' + words(lex.created));
-    if (lex.relabelled.length) parts.push('labelled <b>' + lex.relabelled.length + '</b> existing Books word' + (lex.relabelled.length === 1 ? '' : 's') + ' Hebrew: ' + words(lex.relabelled));
-    if (lex.already) parts.push(lex.already + ' already a Hebrew Books word');
-    var html = parts.length ? '<div>Glossary (source Books, language H — Hebrew): ' + parts.join('; ') + '.</div>' : '';
+    if (lex.relabelled.length) parts.push('relabelled <b>' + lex.relabelled.length + '</b> existing Books word' + (lex.relabelled.length === 1 ? '' : 's') + ': ' + words(lex.relabelled));
+    if (lex.already) parts.push(lex.already + ' already labelled so');
+    var html = parts.length ? '<div>Glossary (source Books): ' + parts.join('; ') + '.</div>' : '';
     if (lex.not_a_word.length) {
         html += '<div class="it-err">Not added to the glossary — marked "Not a word" there: ' + words(lex.not_a_word) + '.</div>';
     }
@@ -3758,13 +3752,15 @@ function itLexHtml(lex) {
 }
 
 // Save remembers each changed pick (yy_italic_font_choice) and gives every
-// Yada Towrah-Times word a Books glossary row labelled H. The Word files are
-// not touched — that is Apply to Books. then(ok) runs after it finishes.
+// H / G / A word a Books glossary row labelled with it (X and ? never touch
+// the glossary). The Word files are not touched — that is Apply to Books.
+// then(ok) runs after it finishes.
 function itSave(then) {
     if (itBusy) return;
     var picks = itPicks();
     if (!Object.keys(picks).length) { if (then) then(true); return; }
-    var ytt = Object.keys(picks).filter(function(w) { return picks[w] === 'ytt'; });
+    var langs = {};
+    Object.keys(picks).forEach(function(w) { if (IT_LANG_NAME[picks[w]]) langs[w] = picks[w]; });
     itBusy = true;
     itButtons();
     itProg('Saving ' + Object.keys(picks).length + ' choice' + (Object.keys(picks).length === 1 ? '' : 's') + '…');
@@ -3775,9 +3771,9 @@ function itSave(then) {
         itRender();
         if (then) then(false);
     };
-    clPost('italic_choices', {choices: picks, words: ytt}).then(function(d) {
+    clPost('italic_choices', {choices: picks, words: langs}).then(function(d) {
         if (!d || d.error) return fail((d && d.error) || 'no answer');
-        var c = {und: 0, ytt: 0, tnr: 0};
+        var c = {und: 0, H: 0, G: 0, A: 0, X: 0};
         Object.keys(picks).forEach(function(w) {
             c[picks[w]]++;
             if (picks[w] === 'und') delete itSaved[w]; else itSaved[w] = picks[w];   // ? = no saved row
@@ -3786,8 +3782,8 @@ function itSave(then) {
         itBusy = false;
         document.getElementById('it-parse').disabled = false;
         var n = Object.keys(picks).length;
-        itProg('<div>Saved <b>' + n + '</b> choice' + (n === 1 ? '' : 's') + ' (Y ' + c.ytt + ', N ' + c.tnr + ', ? ' + c.und + ').'
-            + (then || !c.ytt ? '' : ' Click <b>Apply to Books</b> to put the Y words in Yada Towrah-Times in the Word files.') + '</div>' + itLexHtml(d.lexicon));
+        itProg('<div>Saved <b>' + n + '</b> choice' + (n === 1 ? '' : 's') + ' (? ' + c.und + ', H ' + c.H + ', G ' + c.G + ', A ' + c.A + ', X ' + c.X + ').'
+            + (then || !c.H ? '' : ' Click <b>Apply to Books</b> to put the H words in Yada Towrah-Times in the Word files.') + '</div>' + itLexHtml(d.lexicon));
         itRender();
         if (then) then(true);
     }, function(err) { fail(String(err)); });
@@ -3798,7 +3794,7 @@ function itButtons() {
 }
 
 /* ── Apply to Books: the DOCX ── */
-// Switches every place each SAVED Yada Towrah-Times word appears, book by
+// Switches every place each SAVED H (Hebrew) word appears, book by
 // book, in the books and chapters of the last Parse (staged DOCX, queued on
 // Changes). Unsaved picks are saved first, so the files never get ahead of the
 // saved choices and the glossary.
@@ -3848,7 +3844,7 @@ function itApplyRun() {
         document.getElementById('it-parse').disabled = false;
         // Words now in Yada Towrah-Times drop off the list (from the books that took them).
         itWords = itWords.filter(function(x) {
-            if (itSaved[x.w] !== 'ytt') return true;
+            if (itSaved[x.w] !== 'H') return true;
             Object.keys(x.books).forEach(function(vk) { if (done[vk]) { x.n -= x.books[vk]; delete x.books[vk]; } });
             return Object.keys(x.books).length > 0;
         });
