@@ -363,6 +363,58 @@
         .hi-type.ty-r { background: #e8f1fb; color: #1f5f9e; }
         .hi-type.ty-d { background: #f3e8fb; color: #7d3c98; }
         .hi-type.ty-a { background: #e8f8f0; color: #1e8449; }
+        .hi-type.ty-f { background: #fdf2e3; color: #a04000; }
+        /* Edit → Italics. 'YadaTowrah' above is the v7.12 Yada Towrah-Times web font. */
+        .yt-times { font-family: 'YadaTowrah', 'Times New Roman', serif; }
+        .it-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .it-bk-wrap { position: relative; }
+        .it-bk-btn { padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer;
+            font-size: 0.85rem; color: #333; max-width: 560px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+        .it-bk-btn:hover { border-color: #3498db; }
+        .it-bk-btn .caret { color: #888; font-size: 0.75rem; margin-left: 4px; }
+        .it-bk-pop { position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; width: 480px; max-width: calc(100vw - 32px);
+            background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.15); }
+        .it-bk-pop[hidden] { display: none; }
+        .it-bk-tree { max-height: 460px; overflow-y: auto; padding: 8px 6px; font-size: 0.85rem; }
+        .it-bk-tree label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 4px; border-radius: 3px; flex: 1; min-width: 0; }
+        .it-bk-tree label:hover { background: #f0f4ff; }
+        .it-bk-tree label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .it-bk-node { display: flex; align-items: center; }
+        .it-bk-all { font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 4px; margin-bottom: 4px; }
+        .it-bk-series > .it-bk-node { font-weight: 600; }
+        .it-bk-tw { flex: none; width: 20px; height: 20px; border: none; background: none; cursor: pointer; color: #666;
+            font-size: 0.7rem; padding: 0; transition: transform 0.15s; }
+        .it-bk-open > .it-bk-node .it-bk-tw { transform: rotate(90deg); }
+        .it-bk-kids { display: none; padding-left: 22px; }
+        .it-bk-open > .it-bk-kids { display: block; }
+        .it-bk-n { color: #999; font-weight: 400; margin-left: auto; padding-left: 8px; flex: none; }
+        .it-bk-loading { color: #999; font-size: 0.8rem; padding: 3px 4px; }
+        .it-prog { margin: 0 0 12px; padding: 8px 12px; border: 1px solid #d5dbe2; border-radius: 6px; background: #f8fafc; font-size: 0.85rem; color: #444; }
+        .it-prog[hidden], .it-res[hidden] { display: none; }
+        .it-prog .it-err { color: #c0392b; }
+        .it-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; font-size: 0.85rem; }
+        .it-tools input[type=text] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; width: 200px; }
+        .it-tools label { display: inline-flex; align-items: center; gap: 4px; color: #555; cursor: pointer; }
+        .it-bulk { margin-left: auto; color: #555; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .it-sum { font-size: 0.85rem; color: #555; margin-bottom: 6px; }
+        .it-table { max-height: 62vh; overflow: auto; border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; }
+        .it-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .it-table th { position: sticky; top: 0; background: #f5f7fa; text-align: left; padding: 6px 8px; border-bottom: 1px solid #d5dbe2; white-space: nowrap; z-index: 1; }
+        .it-table th[data-sort] { cursor: pointer; }
+        .it-table th[data-sort]:hover { color: #1f5f9e; }
+        .it-table th.sorted::after { content: ' \25B2'; font-size: 0.7em; color: #888; }
+        .it-table th.sorted.desc::after { content: ' \25BC'; }
+        .it-table td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+        .it-table td.num, .it-table th.num { text-align: right; }
+        .it-table tr.ytt { background: #fffaf0; }
+        .it-w { font-family: 'Times New Roman', serif; font-style: italic; font-size: 1.05rem; white-space: nowrap; }
+        .it-w.yt-times { font-family: 'YadaTowrah', 'Times New Roman', serif; }
+        .it-ex { color: #666; max-width: 460px; }
+        .it-ex mark { background: #fff3c4; font-style: italic; color: #222; }
+        .it-kept { color: #999; font-size: 0.75rem; margin-left: 4px; }
+        .it-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+        .it-foot .it-save { margin-left: auto; }
+        @media (max-width: 700px) { .it-bulk { margin-left: 0; } .it-ex { max-width: 240px; } }
         .hi-table th.hi-sortable { cursor: pointer; user-select: none; }
         .hi-table th.hi-sortable:hover { color: #2980b9; }
         .hi-table th.sorted { color: #2c3e50; }
@@ -804,6 +856,7 @@
         <div class="cl-subtabs">
             <button type="button" class="cl-subtab active" data-pane="search" onclick="clSubTab('search')" title="Search the book text and replace matches">Search/Replace</button>
             <button type="button" class="cl-subtab" data-pane="direct" onclick="clSubTab('direct')" title="Browse a book page by page and edit any paragraph directly">Direct</button>
+            <button type="button" class="cl-subtab" data-pane="italics" onclick="clSubTab('italics')" title="List italic words that are not in Yada Towrah-Times and switch the ones you choose to it">Italics</button>
             <button type="button" class="cl-subtab" data-pane="changes" onclick="clSubTab('changes')" title="Every search/replace change, queued or committed — commit or discard queued ones here">Changes<span class="cl-subtab-n" id="cl-subtab-n" hidden></span></button>
         </div>
         <div class="cl-pane active" id="cl-pane-search">
@@ -945,6 +998,70 @@
             </div>
         </div>
 
+        <!-- Italics: italic words not in Yada Towrah-Times → choose a font per word → Save switches them in the DOCX.
+             data-no-persist: the tree and the per-word selects are rebuilt by itInit / itRender. -->
+        <div class="cl-pane" id="cl-pane-italics" data-no-persist>
+            <div class="cl-tool">
+                <h3>Italic words &rarr; Yada Towrah-Times</h3>
+                <div class="it-bar">
+                    <span class="cl-lbl">Books</span>
+                    <div class="it-bk-wrap">
+                        <button type="button" class="it-bk-btn" id="it-bk-btn" onclick="itBkToggle()" aria-expanded="false" title="Choose the series, books and chapters to parse">
+                            <span id="it-bk-label">All Books</span> <span class="caret">&#9662;</span>
+                        </button>
+                        <div class="it-bk-pop" id="it-bk-pop" hidden>
+                            <div class="it-bk-tree" id="it-bk-tree"><div class="it-bk-loading">Loading…</div></div>
+                            <div class="cl-pop-foot">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="itBkExpandAll(true)">Expand all</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="itBkExpandAll(false)">Collapse all</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="itBkToggle(false)">Done</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="it-parse" onclick="itParse()"
+                            title="Read the Word DOCX of each chosen book and list its italic words that are not in Yada Towrah-Times">Parse</button>
+                </div>
+                <p class="cl-note">Parse lists every italic word in the chosen books and chapters that is not already in <b>Yada Towrah-Times</b>.
+                   Words in the Yada Towrah glyph font, Hebrew letters and running headers / footers are left out; half rings (ʾ ʿ) count as part of the word.
+                   Pick a font for each word, then <b>Save</b>: every place a word set to Yada Towrah-Times appears in the parsed books and chapters is switched in a
+                   staged copy of the book's DOCX. It is queued on the <i>Changes</i> tab as an <b>Italic font</b> change until you commit it.
+                   Each of those words is also put in the glossary as a <b>Books</b> word labelled <b>H — Hebrew</b>.</p>
+            </div>
+            <div class="it-prog" id="it-prog" hidden></div>
+            <div class="it-res" id="it-res" hidden>
+                <div class="it-tools">
+                    <input type="text" id="it-q" placeholder="Word contains…" autocomplete="off" spellcheck="false" title="Only words containing this (half rings and apostrophes ignored unless typed)">
+                    <label title="Only words the glossary has as a transliteration"><input type="checkbox" id="it-f-gloss"> Glossary words</label>
+                    <label title="Only words with a half ring (ʾ ʿ) or a backtick"><input type="checkbox" id="it-f-ring"> With ʾ ʿ `</label>
+                    <label title="Only words set to Yada Towrah-Times"><input type="checkbox" id="it-f-ytt"> Set to Yada Towrah-Times</label>
+                    <label title="Hide words that were saved as Times New Roman before"><input type="checkbox" id="it-f-kept"> Hide words kept before</label>
+                    <span class="it-bulk">Set the words shown to
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="itSetShown('ytt')">Yada Towrah-Times</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="itSetShown('tnr')">Times New Roman</button>
+                    </span>
+                </div>
+                <div class="it-sum" id="it-sum"></div>
+                <div class="it-table">
+                    <table>
+                        <thead><tr>
+                            <th data-sort="w" title="Sort by word">Word</th>
+                            <th data-sort="n" class="num" title="Sort by how many times it appears in the parsed books">Count</th>
+                            <th data-sort="b" class="num" title="Sort by how many books it appears in">Books</th>
+                            <th title="The font the word's letters are in now">Font now</th>
+                            <th data-sort="g" title="Sort glossary transliterations first">Glossary</th>
+                            <th title="The word in its first paragraph">Example</th>
+                            <th data-sort="c" title="Sort by the font chosen">Font</th>
+                        </tr></thead>
+                        <tbody id="it-body"></tbody>
+                    </table>
+                </div>
+                <div class="it-foot">
+                    <button type="button" class="btn btn-secondary btn-sm" id="it-more" onclick="itMore()" hidden>Show more</button>
+                    <span id="it-save-slot"></span>
+                </div>
+            </div>
+        </div>
+
         <!-- Changes: every Cleanup Replace batch, queued or committed; queued ones are committed / discarded here. -->
         <div class="cl-pane" id="cl-pane-changes">
         <div class="hi-bar">
@@ -978,6 +1095,7 @@
                 <span class="hi-flbl">Type</span>
                 <label title="Made with Search/Replace (includes every change from before types were recorded)"><input type="checkbox" class="hi-ty" value="replace" checked> Search/Replace</label>
                 <label title="Edited by hand, on the Direct tab or with ✎ in Search/Replace"><input type="checkbox" class="hi-ty" value="direct" checked> Direct</label>
+                <label title="Italic words switched to Yada Towrah-Times on the Italics tab"><input type="checkbox" class="hi-ty" value="font" checked> Italic font</label>
                 <label title="Made by AI"><input type="checkbox" class="hi-ty" value="ai" checked> AI</label>
             </span>
             <span class="hi-fgrp">
@@ -2911,13 +3029,14 @@ function switchTab(name) {
     if (name === 'edit') clInit();
 }
 
-// Edit's own tabs: Search/Replace, Changes and Direct (#edit / #edit-changes / #edit-direct).
+// Edit's own tabs: Search/Replace, Direct, Italics and Changes (#edit / #edit-direct / #edit-italics / #edit-changes).
 function clSubTab(name) {
     document.querySelectorAll('#tab-edit .cl-subtab').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-pane') === name); });
     document.querySelectorAll('#tab-edit .cl-pane').forEach(function(p) { p.classList.toggle('active', p.id === 'cl-pane-' + name); });
-    if (history.replaceState) history.replaceState(null, '', name === 'changes' ? '#edit-changes' : name === 'direct' ? '#edit-direct' : '#edit');
+    if (history.replaceState) history.replaceState(null, '', name === 'search' ? '#edit' : '#edit-' + name);
     if (name === 'changes') hiInit();
     if (name === 'direct') deInit();
+    if (name === 'italics') itInit();
 }
 
 // Series keeps its own page permission ('series' in PAGE_SETTING_MAP)
@@ -3175,6 +3294,462 @@ function initFlipbookTab() {
     // #history = the old Replace History tab, now Edit → Changes.
     if (location.hash === '#edit-changes' || location.hash === '#history') { switchTab('edit'); clSubTab('changes'); }
     if (location.hash === '#edit-direct') { switchTab('edit'); clSubTab('direct'); }
+    if (location.hash === '#edit-italics') { switchTab('edit'); clSubTab('italics'); }
+}
+
+// ── Edit → Italics: italic words → Yada Towrah-Times ──
+// Parse reads each chosen book's DOCX (?action=italic_scan, one request per
+// book) and lists the italic words not already in Yada Towrah-Times, merged
+// across the books. Each word gets a font: Times New Roman (left as it is)
+// or Yada Towrah-Times. Save remembers the choices (italic_choices) and, book
+// by book, switches the Yada Towrah-Times words in the staged DOCX
+// (italic_apply) — over the books and chapters of the last Parse, not
+// whatever the tree says now.
+var IT_STORE = 'admin-books:italics:books';
+var IT_PAGE = 300;
+var itBound = false;
+var itBkSaved = null;      // saved tree selection, used until the tree is built
+var itBkBuilt = false;
+var itSaved = {};          // word → 'tnr' | 'ytt', as saved before (yy_italic_font_choice)
+var itChoice = {};         // word → the font picked on this page
+var itWords = [];          // [{w, n, books: {vk: n}, fonts: {}, ex: [[pre, w, post]], g}]
+var itScope = [];          // the last Parse: [{vk, label, chaps: [chapter keys] | null}]
+var itShown = IT_PAGE;
+var itSort = {k: 'n', dir: -1};
+var itBusy = false;
+var itBookLabels = {};     // volume key → label
+
+function itInit() {
+    if (itBound) return;
+    itBound = true;
+    try {
+        var s = JSON.parse(localStorage.getItem(IT_STORE) || 'null');
+        if (s && (s.vols || s.chaps)) itBkSaved = {vols: (s.vols || []).map(String), chaps: s.chaps || {}};
+    } catch (e) { /* private mode / bad JSON = all books */ }
+    // The Save button is made here, not in the markup, so admin-dirty.js
+    // never wires it (it would sit disabled until a field "changed").
+    var slot = document.getElementById('it-save-slot');
+    slot.innerHTML = '<button type="button" class="btn btn-primary btn-sm it-save" id="it-save" onclick="itSave()" disabled'
+        + ' title="Switch every place the words set to Yada Towrah-Times appear in the parsed books and chapters (queued until you commit it on Changes)">Save</button>';
+    document.getElementById('it-save')._dirtyEntry = {skip: true};
+    var body = document.getElementById('it-body');
+    body.addEventListener('change', function(e) {
+        var sel = e.target.closest('select.it-sel');
+        if (!sel) return;
+        itChoice[sel.getAttribute('data-w')] = sel.value;
+        var tr = sel.closest('tr');
+        tr.classList.toggle('ytt', sel.value === 'ytt');
+        tr.querySelector('.it-w').classList.toggle('yt-times', sel.value === 'ytt');
+        itSummary();
+    });
+    var t = null;
+    document.getElementById('it-q').addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { itShown = IT_PAGE; itRender(); }, 200); });
+    ['it-f-gloss', 'it-f-ring', 'it-f-ytt', 'it-f-kept'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', function() { itShown = IT_PAGE; itRender(); });
+    });
+    document.querySelectorAll('#cl-pane-italics th[data-sort]').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var k = th.getAttribute('data-sort');
+            itSort = itSort.k === k ? {k: k, dir: -itSort.dir} : {k: k, dir: k === 'w' ? 1 : -1};
+            itRender();
+        });
+    });
+    itBkInit();
+}
+
+/* ── Books: All Books → Series → Books → Chapters (as the Glossary's Books filter) ──
+   A book's chapters load the first time it is expanded (or at once, when the
+   saved selection names some of them). Selection = {vols: [volume_key…],
+   chaps: {volume_key: [chapter_key…]}} — a wholly ticked book goes in vols, a
+   partly ticked one lists its chapters (0 = front matter). Nothing or
+   everything ticked = all books. */
+function itBkInit() {
+    fetch(API + '/admin-books-cleanup.php?action=italic_books', {credentials: 'include'})
+        .then(function(r) { return safeJson(r); }).then(function(d) {
+        var tree = document.getElementById('it-bk-tree');
+        if (!d || d.error) { tree.innerHTML = '<div class="it-bk-loading">Could not load the books' + (d && d.error ? ': ' + esc(d.error) : '') + '.</div>'; return; }
+        itSaved = d.choices || {};
+        var sv = itBkSaved;
+        var on = function(vk) { return !sv || sv.vols.indexOf(String(vk)) >= 0; };
+        var nBooks = 0, html = '';
+        (d.series || []).forEach(function(s) {
+            nBooks += s.books.length;
+            html += '<div class="it-bk-series">'
+                + '<div class="it-bk-node"><button type="button" class="it-bk-tw" title="Expand / collapse">&#9654;</button>'
+                + '<label><input type="checkbox" data-level="series"><span>' + esc(s.label) + '</span>'
+                + '<span class="it-bk-n">' + s.books.length + '</span></label></div><div class="it-bk-kids">'
+                + s.books.map(function(b) {
+                    itBookLabels[b.key] = b.label;
+                    return '<div class="it-bk-book" data-vol="' + b.key + '">'
+                        + '<div class="it-bk-node"><button type="button" class="it-bk-tw" title="Show chapters">&#9654;</button>'
+                        + '<label title="' + esc(b.code || '') + '"><input type="checkbox" data-level="book" value="' + b.key + '"'
+                        + (on(b.key) ? ' checked' : '') + '><span>' + esc(b.label) + '</span></label></div>'
+                        + '<div class="it-bk-kids"></div></div>';
+                }).join('')
+                + '</div></div>';
+        });
+        tree.innerHTML = '<div class="it-bk-node it-bk-all"><span class="it-bk-tw" style="visibility:hidden"></span>'
+            + '<label><input type="checkbox" data-level="all"><span>All Books</span>'
+            + '<span class="it-bk-n">' + nBooks + '</span></label></div>' + html;
+        itBkBuilt = true;
+        Object.keys((sv && sv.chaps) || {}).forEach(function(vk) {
+            var book = tree.querySelector('.it-bk-book[data-vol="' + vk + '"]');
+            if (book) itBkLoadChapters(book, sv.chaps[vk].map(String));
+        });
+        itBkSync();
+    });
+    var tree = document.getElementById('it-bk-tree');
+    tree.addEventListener('click', function(e) {
+        var tw = e.target.closest('button.it-bk-tw');
+        if (!tw) return;
+        var node = tw.parentNode.parentNode;
+        node.classList.toggle('it-bk-open');
+        if (node.classList.contains('it-bk-book')) itBkLoadChapters(node, null);
+    });
+    tree.addEventListener('change', function(e) {
+        var cb = e.target, lvl = cb.getAttribute('data-level');
+        if (lvl === 'all') {
+            tree.querySelectorAll('input[type=checkbox]').forEach(function(x) { x.checked = cb.checked; x.indeterminate = false; });
+        } else if (lvl === 'series' || lvl === 'book') {
+            cb.closest('.it-bk-node').parentNode.querySelectorAll('.it-bk-kids input').forEach(function(x) {
+                x.checked = cb.checked; x.indeterminate = false;
+            });
+        }
+        itBkSync();
+        try {
+            var s = itBkSel();
+            if (s) localStorage.setItem(IT_STORE, JSON.stringify(s)); else localStorage.removeItem(IT_STORE);
+        } catch (e2) {}
+    });
+}
+
+function itBkLoadChapters(book, want) {
+    if (book.getAttribute('data-loaded')) return;
+    book.setAttribute('data-loaded', '1');
+    var kids = book.querySelector('.it-bk-kids');
+    kids.innerHTML = '<div class="it-bk-loading">Loading chapters…</div>';
+    fetch(API + '/admin-books-cleanup.php?action=italic_books&volume=' + book.getAttribute('data-vol'), {credentials: 'include'})
+        .then(function(r) { return safeJson(r); }).then(function(d) {
+        if (!d || d.error) { kids.innerHTML = '<div class="it-bk-loading">Could not load chapters.</div>'; book.removeAttribute('data-loaded'); return; }
+        var bookOn = book.querySelector('input[data-level=book]').checked;
+        kids.innerHTML = (d.chapters || []).map(function(c) {
+            var on = want ? want.indexOf(String(c.key)) >= 0 : bookOn;
+            return '<div class="it-bk-node"><label><input type="checkbox" data-level="chapter" value="' + c.key + '"'
+                + (on ? ' checked' : '') + '><span>' + esc(c.label) + '</span></label></div>';
+        }).join('') || '<div class="it-bk-loading">No chapters.</div>';
+        itBkSync();
+    });
+}
+
+// Roll ticks up (chapter → book → series → All Books) and redraw the button's summary.
+function itBkSync() {
+    var tree = document.getElementById('it-bk-tree');
+    var total = 0, full = 0, parts = [];
+    tree.querySelectorAll('.it-bk-series').forEach(function(s) {
+        var sFull = 0, sAny = 0, sParts = [];
+        var books = s.querySelectorAll('.it-bk-book');
+        books.forEach(function(b) {
+            var bcb = b.querySelector('input[data-level=book]');
+            var name = b.querySelector('label span').textContent;
+            var ch = b.querySelectorAll('input[data-level=chapter]');
+            if (ch.length) {
+                var n = 0;
+                ch.forEach(function(c) { if (c.checked) n++; });
+                bcb.checked = n === ch.length;
+                bcb.indeterminate = n > 0 && n < ch.length;
+                if (bcb.indeterminate) sParts.push(name + ' (' + n + ' of ' + ch.length + ' ch.)');
+            }
+            if (bcb.checked) { sFull++; sParts.push(name); }
+            if (bcb.checked || bcb.indeterminate) sAny++;
+        });
+        var scb = s.querySelector('input[data-level=series]');
+        scb.checked = sFull === books.length;
+        scb.indeterminate = !scb.checked && sAny > 0;
+        total += books.length; full += sFull;
+        if (scb.checked) parts.push(s.querySelector('.it-bk-node label span').textContent);
+        else parts = parts.concat(sParts);
+    });
+    var sel = itBkSel();
+    var a = tree.querySelector('input[data-level=all]');
+    a.checked = !sel && full === total;
+    a.indeterminate = !!sel;
+    document.getElementById('it-bk-label').textContent = !sel
+        ? (full === 0 && total ? 'No books ticked (all books)' : 'All Books')
+        : parts.join(', ');
+}
+
+// The current selection, or null for all books.
+function itBkSel() {
+    if (!itBkBuilt) return itBkSaved;
+    var vols = [], chaps = {}, nBooks = 0, anyPart = false;
+    document.querySelectorAll('#it-bk-tree .it-bk-book').forEach(function(b) {
+        nBooks++;
+        var vk = b.getAttribute('data-vol');
+        if (b.querySelector('input[data-level=book]').checked) { vols.push(vk); return; }
+        var ticked = [];
+        b.querySelectorAll('input[data-level=chapter]:checked').forEach(function(c) { ticked.push(c.value); });
+        if (ticked.length) { chaps[vk] = ticked; anyPart = true; }
+    });
+    if (!anyPart && (vols.length === 0 || vols.length === nBooks)) return null;
+    return {vols: vols, chaps: chaps};
+}
+
+function itBkToggle(force) {
+    var pop = document.getElementById('it-bk-pop');
+    var open = force === undefined ? pop.hidden : force;
+    pop.hidden = !open;
+    document.getElementById('it-bk-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function itBkExpandAll(open) {
+    document.querySelectorAll('#it-bk-tree .it-bk-series').forEach(function(s) { s.classList.toggle('it-bk-open', open); });
+}
+
+document.addEventListener('mousedown', function(e) {
+    var pop = document.getElementById('it-bk-pop');
+    if (pop && !pop.hidden && !e.target.closest('.it-bk-wrap')) itBkToggle(false);
+});
+document.addEventListener('keydown', function(e) {
+    var pop = document.getElementById('it-bk-pop');
+    if (e.key === 'Escape' && pop && !pop.hidden) itBkToggle(false);
+});
+
+/* ── Parse ── */
+function itProg(html) {
+    var p = document.getElementById('it-prog');
+    p.hidden = !html;
+    p.innerHTML = html || '';
+}
+
+function itParse() {
+    if (itBusy) return;
+    if (!itBkBuilt) { alert('The book list is still loading.'); return; }
+    var dirty = Object.keys(itChoice).some(function(w) { return itChoice[w] !== (itSaved[w] || 'tnr'); });
+    if (dirty && !confirm('Parse again? The fonts you picked and have not saved yet are kept for words that are listed again.')) return;
+    itBkToggle(false);
+    var sel = itBkSel();
+    var scope = [];
+    document.querySelectorAll('#it-bk-tree .it-bk-book').forEach(function(b) {
+        var vk = b.getAttribute('data-vol');
+        if (!sel || sel.vols.indexOf(vk) >= 0) scope.push({vk: vk, label: itBookLabels[vk] || vk, chaps: null});
+        else if (sel.chaps[vk]) scope.push({vk: vk, label: itBookLabels[vk] || vk, chaps: sel.chaps[vk].slice()});
+    });
+    if (!scope.length) { alert('Tick at least one book or chapter.'); return; }
+    itBusy = true;
+    document.getElementById('it-parse').disabled = true;
+    document.getElementById('it-save').disabled = true;
+    var merged = {}, errors = [], occ = 0, staged = [], i = 0;
+    function next() {
+        if (i >= scope.length) return done();
+        var s = scope[i++];
+        itProg('Parsing ' + i + ' of ' + scope.length + ': <b>' + esc(s.label) + '</b>' + (s.chaps ? ' (' + s.chaps.length + ' chapter' + (s.chaps.length === 1 ? '' : 's') + ')' : '') + '…'
+            + (errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : ''));
+        fetch(API + '/admin-books-cleanup.php?action=italic_scan&volume=' + s.vk + (s.chaps ? '&chaps=' + s.chaps.join(',') : ''), {credentials: 'include'})
+            .then(function(r) { return safeJson(r); })
+            .then(function(d) {
+                if (!d || d.error) { errors.push(s.label + ': ' + ((d && d.error) || 'no answer')); return; }
+                occ += d.occurrences || 0;
+                if (d.stage === 'ok') staged.push(s.label);
+                s.n = 0;
+                (d.words || []).forEach(function(x) {
+                    var m = merged[x.w];
+                    if (!m) m = merged[x.w] = {w: x.w, n: 0, books: {}, fonts: {}, ex: [], g: x.g};
+                    m.n += x.n;
+                    s.n += x.n;
+                    m.books[s.vk] = x.n;
+                    Object.keys(x.fonts || {}).forEach(function(f) { m.fonts[f] = (m.fonts[f] || 0) + x.fonts[f]; });
+                    (x.ex || []).forEach(function(e) { if (m.ex.length < 3) m.ex.push(e); });
+                });
+            })
+            .catch(function(err) { errors.push(s.label + ': ' + err); })
+            .then(next);
+    }
+    function done() {
+        itBusy = false;
+        document.getElementById('it-parse').disabled = false;
+        itScope = scope;
+        itWords = Object.keys(merged).map(function(w) { return merged[w]; });
+        // Keep unsaved picks for words listed again; drop the rest.
+        var keep = {};
+        itWords.forEach(function(x) { if (itChoice[x.w]) keep[x.w] = itChoice[x.w]; });
+        itChoice = keep;
+        itShown = IT_PAGE;
+        itProg((errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : '')
+            + (staged.length ? '<div>Read the staged (queued, not yet committed) DOCX of: ' + esc(staged.join(', ')) + '.</div>' : ''));
+        document.getElementById('it-res').hidden = false;
+        itRender();
+    }
+    next();
+}
+
+/* ── List ── */
+function itFontOf(w) { return itChoice[w] || itSaved[w] || 'tnr'; }
+function itStrip(s) { return String(s).replace(/[ʾʿʼ`'‘’]/g, '').toLowerCase(); }
+
+function itFiltered() {
+    var q = document.getElementById('it-q').value.trim();
+    var raw = /[ʾʿʼ`'‘’]/.test(q);     // a half ring / apostrophe typed: it must match exactly
+    var qq = raw ? q.toLowerCase() : itStrip(q);
+    var fG = document.getElementById('it-f-gloss').checked, fR = document.getElementById('it-f-ring').checked;
+    var fY = document.getElementById('it-f-ytt').checked, fK = document.getElementById('it-f-kept').checked;
+    return itWords.filter(function(x) {
+        if (qq && (raw ? x.w.toLowerCase() : itStrip(x.w)).indexOf(qq) < 0) return false;
+        if (fG && !x.g) return false;
+        if (fR && !/[ʾʿ`]/.test(x.w)) return false;
+        if (fY && itFontOf(x.w) !== 'ytt') return false;
+        if (fK && itSaved[x.w] === 'tnr' && !itChoice[x.w]) return false;
+        return true;
+    });
+}
+
+function itSorted(list) {
+    var k = itSort.k, dir = itSort.dir;
+    var val = function(x) {
+        if (k === 'n') return x.n;
+        if (k === 'b') return Object.keys(x.books).length;
+        if (k === 'g') return x.g ? 1 : 0;
+        if (k === 'c') return itFontOf(x.w) === 'ytt' ? 1 : 0;
+        return itStrip(x.w);
+    };
+    return list.slice().sort(function(a, b) {
+        var va = val(a), vb = val(b);
+        if (va < vb) return -dir;
+        if (va > vb) return dir;
+        return b.n - a.n || (a.w < b.w ? -1 : a.w > b.w ? 1 : 0);
+    });
+}
+
+function itRender() {
+    var list = itSorted(itFiltered());
+    document.querySelectorAll('#cl-pane-italics th[data-sort]').forEach(function(th) {
+        var on = th.getAttribute('data-sort') === itSort.k;
+        th.classList.toggle('sorted', on);
+        th.classList.toggle('desc', on && itSort.dir < 0);
+    });
+    var rows = list.slice(0, itShown).map(function(x) {
+        var f = itFontOf(x.w);
+        var nb = Object.keys(x.books);
+        var bookTip = nb.map(function(vk) { return (itBookLabels[vk] || vk) + ': ' + x.books[vk]; }).join('\n');
+        var ex = x.ex[0] ? '…' + esc(x.ex[0][0]) + '<mark>' + esc(x.ex[0][1]) + '</mark>' + esc(x.ex[0][2]) + '…' : '';
+        var exTip = x.ex.map(function(e) { return '…' + e[0] + e[1] + e[2] + '…'; }).join('\n\n');
+        var kept = itSaved[x.w] ? '<span class="it-kept" title="Saved as ' + (itSaved[x.w] === 'ytt' ? 'Yada Towrah-Times' : 'Times New Roman') + ' before">saved</span>' : '';
+        return '<tr' + (f === 'ytt' ? ' class="ytt"' : '') + '>'
+            + '<td><span class="it-w' + (f === 'ytt' ? ' yt-times' : '') + '">' + esc(x.w) + '</span>' + kept + '</td>'
+            + '<td class="num">' + x.n + '</td>'
+            + '<td class="num" title="' + esc(bookTip) + '">' + nb.length + '</td>'
+            + '<td>' + esc(Object.keys(x.fonts).join(', ')) + '</td>'
+            + '<td>' + (x.g ? '&#10003;' : '') + '</td>'
+            + '<td class="it-ex" title="' + esc(exTip) + '">' + ex + '</td>'
+            + '<td><select class="it-sel" data-w="' + esc(x.w) + '" title="Times New Roman = leave the word as it is">'
+            + '<option value="tnr"' + (f === 'tnr' ? ' selected' : '') + '>Times New Roman</option>'
+            + '<option value="ytt"' + (f === 'ytt' ? ' selected' : '') + '>Yada Towrah-Times</option></select></td></tr>';
+    }).join('');
+    document.getElementById('it-body').innerHTML = rows
+        || '<tr><td colspan="7" class="meta" style="padding:12px">' + (itWords.length ? 'No words match the filter.' : 'No italic words outside Yada Towrah-Times in the parsed books.') + '</td></tr>';
+    var more = document.getElementById('it-more');
+    more.hidden = list.length <= itShown;
+    more.textContent = 'Show more (' + (list.length - itShown) + ' left)';
+    itSummary(list.length);
+}
+
+function itMore() { itShown += IT_PAGE; itRender(); }
+
+function itSummary(nShown) {
+    if (nShown === undefined) nShown = itFiltered().length;
+    var occ = itWords.reduce(function(n, x) { return n + x.n; }, 0);
+    var yw = itWords.filter(function(x) { return itFontOf(x.w) === 'ytt'; });
+    var yocc = yw.reduce(function(n, x) { return n + x.n; }, 0);
+    var books = itScope.length;
+    document.getElementById('it-sum').innerHTML = itWords.length + ' word' + (itWords.length === 1 ? '' : 's') + ' (' + occ + ' place' + (occ === 1 ? '' : 's') + ') in '
+        + books + ' book' + (books === 1 ? '' : 's') + (nShown !== itWords.length ? ' · ' + nShown + ' shown' : '')
+        + ' · <b>' + yw.length + '</b> set to Yada Towrah-Times (' + yocc + ' place' + (yocc === 1 ? '' : 's') + ')';
+    var btn = document.getElementById('it-save');
+    btn.disabled = itBusy || !yw.length;
+    btn.textContent = yw.length ? 'Save — ' + yw.length + ' word' + (yw.length === 1 ? '' : 's') + ' → Yada Towrah-Times' : 'Save';
+}
+
+function itSetShown(f) {
+    var list = itFiltered();
+    if (list.length > 50 && !confirm('Set all ' + list.length + ' words shown to ' + (f === 'ytt' ? 'Yada Towrah-Times' : 'Times New Roman') + '?')) return;
+    list.forEach(function(x) { itChoice[x.w] = f; });
+    itRender();
+}
+
+/* ── Save ── */
+// What Save did in the glossary (cleanupItalicLexicon): Books words added / relabelled H.
+function itLexHtml(lex) {
+    if (!lex) return '';
+    var words = function(list) { return list.map(function(x) { return esc(x.word || x); }).join(', '); };
+    var parts = [];
+    if (lex.created.length) parts.push('added <b>' + lex.created.length + '</b> as new Books words: ' + words(lex.created));
+    if (lex.relabelled.length) parts.push('labelled <b>' + lex.relabelled.length + '</b> existing Books word' + (lex.relabelled.length === 1 ? '' : 's') + ' Hebrew: ' + words(lex.relabelled));
+    if (lex.already) parts.push(lex.already + ' already a Hebrew Books word');
+    var html = parts.length ? '<div>Glossary (source Books, language H — Hebrew): ' + parts.join('; ') + '.</div>' : '';
+    if (lex.not_a_word.length) {
+        html += '<div class="it-err">Not added to the glossary — marked "Not a word" there: ' + words(lex.not_a_word) + '.</div>';
+    }
+    return html;
+}
+
+function itSave() {
+    if (itBusy) return;
+    var ytt = itWords.filter(function(x) { return itFontOf(x.w) === 'ytt'; });
+    if (!ytt.length) return;
+    // Books with at least one of the words, each with just its own words.
+    var jobs = [];
+    itScope.forEach(function(s) {
+        var ws = ytt.filter(function(x) { return x.books[s.vk]; }).map(function(x) { return x.w; });
+        if (ws.length) jobs.push({s: s, words: ws});
+    });
+    var occ = ytt.reduce(function(n, x) { return n + x.n; }, 0);
+    if (!confirm('Switch ' + ytt.length + ' word' + (ytt.length === 1 ? '' : 's') + ' (' + occ + ' place' + (occ === 1 ? '' : 's') + ') to Yada Towrah-Times in '
+        + jobs.length + ' book' + (jobs.length === 1 ? '' : 's') + '?\n\nThe changes go into each book\'s staged DOCX and are queued on the Changes tab until you commit them.'
+        + '\nEach word is also added to the glossary as a Books word labelled H (Hebrew), if it is not there already.')) return;
+    itBusy = true;
+    document.getElementById('it-parse').disabled = true;
+    document.getElementById('it-save').disabled = true;
+    // Remember every pick that differs from what was saved before.
+    var picks = {};
+    Object.keys(itChoice).forEach(function(w) { if (itChoice[w] !== itSaved[w]) picks[w] = itChoice[w]; });
+    var run = 'it' + Date.now().toString(36);
+    var ok = [], errors = [], changed = 0, i = 0, done = {}, lex = null;
+    // Also gives each Yada Towrah-Times word a Books glossary row labelled H (Hebrew).
+    clPost('italic_choices', {choices: picks, words: ytt.map(function(x) { return x.w; })}).then(function(d) {
+        if (d && d.error) errors.push('Remembering the choices / glossary words: ' + d.error);
+        else { Object.keys(picks).forEach(function(w) { itSaved[w] = picks[w]; }); lex = d.lexicon || null; }
+        next();
+    }, function(err) { errors.push('Remembering the choices / glossary words: ' + err); next(); });
+    function next() {
+        if (i >= jobs.length) return finish();
+        var j = jobs[i++];
+        itProg('Saving ' + i + ' of ' + jobs.length + ': <b>' + esc(j.s.label) + '</b> (' + j.words.length + ' word' + (j.words.length === 1 ? '' : 's') + ')…'
+            + (errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : ''));
+        clPost('italic_apply', {volume_key: +j.s.vk, chaps: j.s.chaps, words: j.words, run: run})
+            .then(function(d) {
+                if (!d || d.error) { errors.push(j.s.label + ': ' + ((d && d.error) || 'no answer')); return; }
+                changed += d.changed || 0;
+                ok.push(j.s.label + ' (' + (d.changed || 0) + ')');
+                done[j.s.vk] = 1;
+            }, function(err) { errors.push(j.s.label + ': ' + err); })
+            .then(next);
+    }
+    function finish() {
+        itBusy = false;
+        document.getElementById('it-parse').disabled = false;
+        // Words now in Yada Towrah-Times drop off the list (from the books that took them).
+        itWords = itWords.filter(function(x) {
+            if (itFontOf(x.w) !== 'ytt') return true;
+            Object.keys(x.books).forEach(function(vk) { if (done[vk]) { x.n -= x.books[vk]; delete x.books[vk]; } });
+            return Object.keys(x.books).length > 0;
+        });
+        itProg('<div>' + (ok.length ? 'Queued <b>' + changed + '</b> font change' + (changed === 1 ? '' : 's') + ' in ' + ok.length + ' book' + (ok.length === 1 ? '' : 's')
+                + ': ' + esc(ok.join(', ')) + '. <a href="#edit-changes" onclick="clShowQueued(); return false;">Review &amp; commit in Changes &rarr;</a>' : 'Nothing was changed.') + '</div>'
+            + itLexHtml(lex)
+            + (errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : ''));
+        itRender();
+        clLoadPending();
+        if (hiBound) hiLoad();
+    }
 }
 
 // ── Cleanup → Changes tab (was Replace History) ──
@@ -3346,6 +3921,7 @@ function hiFindHtml(b) {
         return '<span class="hi-dlbl">&#9998; ¶ ' + esc(String(b.paragraph_number || '')) + (o.source === 'search' ? ' (from Search/Replace)' : '') + '</span> '
             + (o.format_only ? '<span class="meta">formatting</span>' : hiDirectSnip(o, o.old));
     }
+    if (hiTypeOf(b) === 'font') return '<span class="hi-dlbl"><i>I</i> Italic words &rarr; ' + esc(o.font || 'Yada Towrah-Times') + '</span>';
     return '<span class="q">“' + esc(b.find || '') + '”</span>'
         + hiFlags([o.bold ? '<b>B</b>' : '', o.italic ? '<i>I</i>' : '', o['case'] ? 'Aa' : '', o.word ? 'whole words' : '']);
 }
@@ -3355,6 +3931,12 @@ function hiRepHtml(b) {
     if (hiTypeOf(b) === 'direct') {
         return (o.format_only ? '<span class="meta">(same text, new formatting)</span>' : hiDirectSnip(o, o.new))
             + (o.note ? '<span class="hi-note" title="The editor’s note on this change">&#128221; ' + esc(o.note) + '</span>' : '');
+    }
+    if (hiTypeOf(b) === 'font') {
+        // One change row per word: 'replaced' lists the batch's words.
+        var ws = b.replaced || [];
+        return ws.slice(0, 20).map(function(w) { return '<i class="yt-times">' + esc(w) + '</i>'; }).join(', ')
+            + (ws.length > 20 ? ' <span class="meta">+ ' + (ws.length - 20) + ' more</span>' : '');
     }
     return hiRepList(b).map(function(r) { return '<span class="q">“' + esc(r) + '”</span>'; }).join(' / ')
         + hiFlags([o.rbold ? '<b>B</b>' : '', o.ritalic ? '<i>I</i>' : '']);
@@ -3418,7 +4000,7 @@ function hiUsers(g) {
 }
 
 // ── change types: search/replace, direct (edited by hand), ai ──
-var HI_TYPES = {replace: ['Search/Replace', 'ty-r'], direct: ['Direct', 'ty-d'], ai: ['AI', 'ty-a']};
+var HI_TYPES = {replace: ['Search/Replace', 'ty-r'], direct: ['Direct', 'ty-d'], font: ['Italic font', 'ty-f'], ai: ['AI', 'ty-a']};
 function hiTypeOf(b) { var t = (b.options || {}).type; return HI_TYPES[t] ? t : 'replace'; }
 function hiTypeHtml(batches) {
     var seen = {};
@@ -3696,7 +4278,9 @@ function hiToggleBatch(tr) {
             // excerpts are server-built HTML: escaped text inside <b>/<i>/<mark> only.
             // One row per change: Series · Book · Chapter · ¶ · the change.
             var rows = (d.changes || []).map(function(c) {
-                var para = c.hdr_kind ? (c.hdr_kind === 'footer' ? 'Footer' : 'Running header') : '¶ ' + esc(String(c.paragraph_number == null ? '' : c.paragraph_number));
+                var font = c.type === 'font';
+                var para = font ? esc(String(c.font_count || '')) + ' place' + (+c.font_count === 1 ? '' : 's')
+                    : c.hdr_kind ? (c.hdr_kind === 'footer' ? 'Footer' : 'Running header') : '¶ ' + esc(String(c.paragraph_number == null ? '' : c.paragraph_number));
                 var chName = c.chapter_name || '';
                 var chap = c.chapter_number != null || chName
                     ? '<span title="' + esc(chName) + '">' + (c.chapter_number != null ? esc(String(c.chapter_number)) + (chName ? ' · ' : '') : '') + esc(chName) + '</span>'
@@ -3707,8 +4291,9 @@ function hiToggleBatch(tr) {
                     + '<td class="ser"' + v(hiSerKey(c)) + '>' + (c.series_label ? esc(c.series_label) : '<span class="meta">—</span>') + '</td>'
                     + '<td class="book"' + v(hiBookKey(c)) + '>' + hiBookHtml(c) + '</td>'
                     + '<td class="chap"' + v(c.chapter_number != null ? c.chapter_number : chName) + '>' + chap + '</td>'
-                    + '<td class="para"' + v(c.hdr_kind ? '' : c.paragraph_number) + '>' + para + '</td>'
-                    + '<td class="cl-qchange"' + v((c.cleanup_change_match || '') + ' → ' + (c.cleanup_change_replace || '')) + '><div class="meta">“' + esc(c.cleanup_change_match || '') + '” → “' + esc(c.cleanup_change_replace) + '”</div>'
+                    + '<td class="para"' + v(font ? c.font_count : c.hdr_kind ? '' : c.paragraph_number) + '>' + para + '</td>'
+                    + '<td class="cl-qchange"' + v((c.cleanup_change_match || '') + ' → ' + (c.cleanup_change_replace || '')) + '><div class="meta">“' + esc(c.cleanup_change_match || '') + '” → '
+                    + (font ? 'Yada Towrah-Times' : '“' + esc(c.cleanup_change_replace) + '”') + '</div>'
                     + '<div class="ex old">' + (c.cleanup_change_excerpt_before || '') + '</div>'
                     + '<div class="ex new"><span class="arrow">→</span>' + (c.cleanup_change_excerpt_after || '') + '</div>' + rename + '</td></tr>';
             }).join('');
@@ -5245,9 +5830,10 @@ function clRenderQueue() {
         (v.batches || []).forEach(function(bt) {
             var rep = bt.replace !== null && bt.replace !== undefined ? [bt.replace] : (bt.replaced || []);
             var direct = (bt.options || {}).type === 'direct';
-            var k = direct ? 'direct' : bt.find + '\u0000' + rep.join(' / ');
+            var font = (bt.options || {}).type === 'font';
+            var k = direct ? 'direct' : font ? 'font' : bt.find + '\u0000' + rep.join(' / ');
             var r = byKey[k];
-            if (!r) { r = byKey[k] = {find: bt.find, rep: rep, n: 0, books: {}, last: '', direct: direct}; runs.push(r); }
+            if (!r) { r = byKey[k] = {find: bt.find, rep: rep, n: 0, books: {}, last: '', direct: direct, font: font}; runs.push(r); }
             r.n += bt.count; r.books[v.volume_key] = 1;
             if (bt.dtime > r.last) r.last = bt.dtime;
         });
@@ -5257,6 +5843,7 @@ function clRenderQueue() {
     var line = function(r) {
         var nb = Object.keys(r.books).length;
         if (r.direct) return '<li>&#9998; Direct edits <span class="meta">· ' + r.n + ' change' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
+        if (r.font) return '<li><i>I</i> Italic words &rarr; Yada Towrah-Times <span class="meta">· ' + r.n + ' word' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';
         return '<li><span class="q">“' + esc(r.find) + '”</span> <span class="arrow">→</span> '
             + r.rep.map(function(x) { return '<span class="q">“' + esc(x) + '”</span>'; }).join(' / ')
             + ' <span class="meta">· ' + r.n + ' change' + (r.n === 1 ? '' : 's') + ' in ' + nb + ' book' + (nb === 1 ? '' : 's') + '</span></li>';

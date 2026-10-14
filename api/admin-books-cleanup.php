@@ -23,6 +23,8 @@
  * POST ?action=direct_divider — the book's divider after a paragraph; see cleanupDirectDivider().
  * POST ?action=direct_note {paragraph_key, note} — re-word the note on a paragraph's latest queued edit.
  * GET  ?action=word_meta / ?action=words — the glossary word picker; see cleanupWords().
+ * GET  ?action=italic_books | italic_scan, POST ?action=italic_choices | italic_apply — Edit → Italics:
+ *        italic words → Yada Towrah-Times in the DOCX; see cleanupItalicBooks().
  *
  * Candidate rows come from paragraph_text_plain (trigram-indexed); the match
  * and formatting test then run against paragraph_text_html, which is what
@@ -57,6 +59,8 @@ const CLEANUP_DIRECT_FONTS = ['Times New Roman', 'Yada Towrah', 'Arial', 'Calibr
 // Edit → Direct: the note an admin can leave on an edit (options.note), shown on the Changes tab.
 const CLEANUP_NOTE_MAX = 2000;
 const CLEANUP_NOTE_ROW_SQL = "cleanup_change_options->>'type' = 'direct' AND coalesce(cleanup_change_options->>'mode', '') <> 'divider'";
+// Edit → Italics: the font chosen italic words are switched to (v7.12 — NOT "Yada Towrah", whose ASCII are glyphs).
+const CLEANUP_ITALIC_FONT = 'Yada Towrah-Times';
 const CLEANUP_APOS_WILDCARD = "\u{275C}";
 const CLEANUP_APOS_CLASS = "[\u{02BF}\u{02BE}'`\u{2018}\u{2019}\u{201A}\u{201B}\u{00B4}\u{02BC}\u{02BB}\u{02B9}\u{2032}]";
 const CLEANUP_WORD_SCRIPTS = [
@@ -79,6 +83,10 @@ if ($action === 'direct_divider')  cleanupDirectDivider($authUser);
 if ($action === 'direct_note')     cleanupDirectNote();
 if ($action === 'word_meta') cleanupWordMeta();
 if ($action === 'words')     cleanupWords();
+if ($action === 'italic_books')   cleanupItalicBooks();
+if ($action === 'italic_scan')    cleanupItalicScan();
+if ($action === 'italic_choices') cleanupItalicChoices($authUser);
+if ($action === 'italic_apply')   cleanupItalicApply($authUser);
 if ($action !== 'search' && $action !== 'matches') errorResponse('Unknown action');
 
 $q = (string)($_GET['q'] ?? '');
@@ -933,6 +941,7 @@ function cleanupHistory(): void {
                                    c.cleanup_change_excerpt_before, c.cleanup_change_excerpt_after, c.cleanup_change_status,
                                    c.cleanup_change_options->>'hdr_kind' AS hdr_kind, c.cleanup_change_options->>'hdr' AS hdr,
                                    c.cleanup_change_options->'chapter' AS chapter,
+                                   c.cleanup_change_options->>'type' AS type, c.cleanup_change_options->>'count' AS font_count,
                                    v.volume_code, v.volume_label, v.volume_number, v.volume_sort, s.series_label, s.series_sort,
                                    ch.chapter_number, ch.chapter_name
                               FROM yy_cleanup_change c
@@ -958,8 +967,8 @@ function cleanupHistory(): void {
     $where = ['c.cleanup_change_status IN (' . implode(',', array_map([$db, 'quote'], $statuses)) . ')'];
     $args = [];
     if ((int)($_GET['volume'] ?? 0)) { $where[] = 'c.volume_key = ?'; $args[] = (int)$_GET['volume']; }
-    // Type: replace (search/replace — also every change from before types were recorded), direct, ai.
-    $types = array_values(array_intersect(['replace', 'direct', 'ai'], explode(',', (string)($_GET['type'] ?? ''))));
+    // Type: replace (search/replace — also every change from before types were recorded), direct, font (Italics), ai.
+    $types = array_values(array_intersect(['replace', 'direct', 'font', 'ai'], explode(',', (string)($_GET['type'] ?? ''))));
     if ($types) {
         $where[] = "coalesce(c.cleanup_change_options->>'type', 'replace') IN (" . implode(',', array_map([$db, 'quote'], $types)) . ')';
     }
@@ -2064,4 +2073,309 @@ function cleanupFindLike(string $q): string {
     return '%' . implode('_', array_map(function ($p) {
         return strtr($p, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']);
     }, $parts)) . '%';
+}
+
+/* ── Edit → Italics: italic words → Yada Towrah-Times ────────────────────
+ *
+ * GET  ?action=italic_books                    series → books that have a DOCX, + the saved choices
+ * GET  ?action=italic_books&volume=N           that book's chapters (key 0 = front matter)
+ * GET  ?action=italic_scan&volume=N[&chaps=K,…] the book's italic words that are not in Yada Towrah-Times
+ * POST ?action=italic_choices {choices: {word: 'tnr'|'ytt'}, words: [w…]}   remember each word's choice;
+ *        `words` (the ones being switched) get a Books glossary row labelled H — see cleanupItalicLexicon()
+ * POST ?action=italic_apply {volume_key, chaps: [K…]|null, words: [w…], run}
+ *
+ * _docx_italic.py reads the DOCX (the staged copy when there is a current
+ * one, as Replace does). Apply switches every occurrence of the chosen words
+ * in the chosen chapters to Yada Towrah-Times in the book's STAGED DOCX and
+ * logs one change row per word (type 'font', no paragraph: the parsed text
+ * is unchanged until the commit's re-parse). Like every other edit, nothing
+ * rebuilds until it is committed on the Changes tab; Discard drops it.
+ */
+function cleanupItalicBooks(): void {
+    $db = getDb();
+    $vk = (int)($_GET['volume'] ?? 0);
+    if ($vk) {
+        $st = $db->prepare('SELECT chapter_key, chapter_number, chapter_name FROM yy_chapter
+                             WHERE volume_key = ? ORDER BY chapter_sort, chapter_number, chapter_key');
+        $st->execute([$vk]);
+        $rows = [['key' => 0, 'label' => 'Front matter (before chapter 1)']];
+        foreach ($st->fetchAll() as $r) {
+            $name = trim((string)$r['chapter_name']);
+            $rows[] = ['key' => (int)$r['chapter_key'], 'label' => 'Chapter ' . $r['chapter_number'] . ($name !== '' ? ' — ' . $name : '')];
+        }
+        jsonResponse(['chapters' => $rows]);
+    }
+    $rows = $db->query('SELECT s.series_key, s.series_label, s.series_name, s.series_number,
+                               v.volume_key, v.volume_label, v.volume_number, v.volume_code, v.volume_docx
+                          FROM yy_volume v
+                          JOIN yy_series s ON s.series_key = v.series_key
+                         ORDER BY s.series_sort, s.series_number, s.series_key, v.volume_sort, v.volume_number, v.volume_key')->fetchAll();
+    $series = [];
+    foreach ($rows as $r) {
+        $paths = cleanupPaths($r);
+        if (!$paths['name'] || !is_file($paths['live'])) continue;   // nothing to scan
+        $sk = (int)$r['series_key'];
+        if (!isset($series[$sk])) {
+            $label = trim((string)($r['series_label'] ?: $r['series_name'] ?: ''));
+            $series[$sk] = ['key' => $sk, 'label' => $label !== '' ? $label : 'Series ' . $r['series_number'], 'books' => []];
+        }
+        $label = trim((string)($r['volume_label'] ?: $r['volume_code']));
+        $series[$sk]['books'][] = ['key' => (int)$r['volume_key'], 'code' => $r['volume_code'],
+                                   'label' => ($r['volume_number'] ? $r['volume_number'] . ' · ' : '') . $label];
+    }
+    $choices = [];
+    foreach ($db->query('SELECT italic_choice_word, italic_choice_font FROM yy_italic_font_choice') as $r) {
+        $choices[$r['italic_choice_word']] = $r['italic_choice_font'];
+    }
+    jsonResponse(['series' => array_values($series), 'choices' => (object)$choices, 'font' => CLEANUP_ITALIC_FONT]);
+}
+
+/** chapter keys (0 = front matter) → [chapter numbers for the script | null = whole book, {name: number}]. */
+function cleanupItalicScope(PDO $db, int $vk, $chaps): array {
+    $st = $db->prepare('SELECT chapter_key, chapter_number, chapter_name FROM yy_chapter WHERE volume_key = ?');
+    $st->execute([$vk]);
+    $byKey = [];
+    $titles = [];
+    foreach ($st->fetchAll() as $r) {
+        $byKey[(int)$r['chapter_key']] = (int)$r['chapter_number'];
+        if (trim((string)$r['chapter_name']) !== '') $titles[(string)$r['chapter_name']] = (int)$r['chapter_number'];
+    }
+    if ($chaps === null || $chaps === '' || $chaps === []) return [null, (object)$titles];
+    $keys = is_array($chaps) ? $chaps : explode(',', (string)$chaps);
+    $nums = [];
+    foreach ($keys as $k) {
+        $k = (int)$k;
+        if ($k === 0) $nums[] = 0;
+        elseif (isset($byKey[$k])) $nums[] = $byKey[$k];
+    }
+    if (!$nums) errorResponse('None of those chapters belong to this book');
+    return [array_values(array_unique($nums)), (object)$titles];
+}
+
+/** A word as the glossary match sees it: lower case, no half-rings or apostrophes. */
+function cleanupItalicNorm(string $w): string {
+    return mb_strtolower(preg_replace('/[\x{02BE}\x{02BF}\x{02BC}`\'\x{2018}\x{2019}\s]/u', '', $w), 'UTF-8');
+}
+
+function cleanupItalicScan(): void {
+    $db = getDb();
+    $vk = (int)($_GET['volume'] ?? 0);
+    if (!$vk) errorResponse('volume required');
+    $vol = cleanupVolume($db, $vk);
+    $paths = cleanupPaths($vol);
+    if (!$paths['name'] || !is_file($paths['live'])) errorResponse($vol['label'] . ': no DOCX on the server');
+    [$chapters, $titles] = cleanupItalicScope($db, $vk, $_GET['chaps'] ?? null);
+    $stage = cleanupStageState($paths);
+    $res = cleanupRunItalicScript(['mode' => 'scan', 'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'],
+                                   'chapters' => $chapters, 'titles' => $titles]);
+    if (empty($res['ok'])) errorResponse($vol['label'] . ': could not read the DOCX — ' . ($res['error'] ?? 'no output'), 500);
+    // Flag the words the glossary knows as a transliteration.
+    $gloss = [];
+    foreach ($db->query('SELECT DISTINCT word_translit_text FROM yy_word_translit') as $r) {
+        $gloss[cleanupItalicNorm((string)$r['word_translit_text'])] = true;
+    }
+    $words = [];
+    foreach ($res['words'] as $w) {
+        $words[] = ['w' => $w['w'], 'n' => (int)$w['n'], 'fonts' => $w['fonts'], 'ex' => $w['ex'],
+                    'g' => isset($gloss[cleanupItalicNorm($w['w'])])];
+    }
+    jsonResponse(['volume_key' => $vk, 'label' => $vol['label'], 'words' => $words, 'occurrences' => (int)$res['occurrences'],
+                  'stage' => $stage, 'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null]);
+}
+
+function cleanupItalicChoices(array $authUser): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $db = getDb();
+    $up = $db->prepare("INSERT INTO yy_italic_font_choice (italic_choice_word, italic_choice_font, user_key, user_name)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT (italic_choice_word) DO UPDATE SET italic_choice_font = EXCLUDED.italic_choice_font,
+                               user_key = EXCLUDED.user_key, user_name = EXCLUDED.user_name, italic_choice_dtime = now()
+                        WHERE yy_italic_font_choice.italic_choice_font <> EXCLUDED.italic_choice_font");
+    $n = 0;
+    $db->beginTransaction();
+    foreach ((array)($in['choices'] ?? []) as $w => $f) {
+        $w = (string)$w;
+        if ($w === '' || mb_strlen($w) > 200 || !in_array($f, ['tnr', 'ytt'], true)) continue;
+        $up->execute([$w, $f, (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
+        $n += $up->rowCount();
+    }
+    // Every word being switched to Yada Towrah-Times is Hebrew: give it a Books glossary row, labelled H.
+    $lex = cleanupItalicLexicon($db, array_map('strval', (array)($in['words'] ?? [])));
+    $db->commit();
+    jsonResponse(['saved' => $n, 'lexicon' => $lex]);
+}
+
+/**
+ * The words chosen for Yada Towrah-Times, in the glossary: each needs a
+ * yy_word row with source 'books' and language H. Matched the way the word
+ * harvest (_word_harvest.php, Books coverage) matches — the exact lower-cased
+ * spelling in word_translit or any yy_word_translit row of a 'books' word.
+ *   found       → word_language set to H where it isn't already (only changed
+ *                 rows are written: yy_word carries the trg_yy_word_rev audit trigger)
+ *   not found   → a new 'books' row (word_translit + one yy_word_translit row,
+ *                 counts left NULL for the harvest to fill on the next parse)
+ *   "Not a word" (word_excluded_flag, any source) owns the spelling → left alone
+ *                 and reported: the harvest never re-creates those either.
+ * Runs inside the caller's transaction.
+ */
+function cleanupItalicLexicon(PDO $db, array $words): array {
+    $out = ['created' => [], 'relabelled' => [], 'already' => 0, 'not_a_word' => []];
+    $words = array_values(array_unique(array_filter(array_map('trim', $words), function ($w) {
+        return $w !== '' && mb_strlen($w) <= 200;
+    })));
+    if (!$words) return $out;
+    // lower-cased spelling → the 'books' / "Not a word" rows that own it
+    $bySpelling = [];
+    $st = $db->query("SELECT w.word_key, w.word_source_code, w.word_language, w.word_excluded_flag, lower(trim(s.txt)) AS lc
+                        FROM yy_word w
+                        JOIN (SELECT word_key, word_translit AS txt FROM yy_word
+                              UNION SELECT word_key, word_translit_text FROM yy_word_translit) s ON s.word_key = w.word_key
+                       WHERE (w.word_source_code = 'books' OR w.word_excluded_flag) AND trim(coalesce(s.txt, '')) <> ''");
+    foreach ($st as $r) $bySpelling[$r['lc']][(int)$r['word_key']] = $r;
+    $relabel = $db->prepare("UPDATE yy_word SET word_language = 'H' WHERE word_key = ? AND word_language IS DISTINCT FROM 'H'");
+    $insW = $db->prepare("INSERT INTO yy_word (word_source_code, word_translit, word_active_flag, word_language)
+                          VALUES ('books', ?, true, 'H') RETURNING word_key");
+    $insT = $db->prepare('INSERT INTO yy_word_translit (word_key, word_translit_text, word_translit_sort) VALUES (?, ?, 0)');
+    foreach ($words as $w) {
+        $rows = array_values($bySpelling[mb_strtolower($w, 'UTF-8')] ?? []);
+        $books = array_filter($rows, function ($r) { return $r['word_source_code'] === 'books' && !$r['word_excluded_flag']; });
+        if (!$books && array_filter($rows, function ($r) { return $r['word_excluded_flag']; })) {
+            $out['not_a_word'][] = $w;
+            continue;
+        }
+        if ($books) {
+            $changed = false;
+            foreach ($books as $r) {
+                $relabel->execute([(int)$r['word_key']]);
+                if ($relabel->rowCount()) {
+                    $changed = true;
+                    $out['relabelled'][] = ['word' => $w, 'word_key' => (int)$r['word_key'], 'was' => $r['word_language']];
+                }
+            }
+            if (!$changed) $out['already']++;
+            continue;
+        }
+        $insW->execute([$w]);
+        $wk = (int)$insW->fetchColumn();
+        $insT->execute([$wk, $w]);
+        $out['created'][] = ['word' => $w, 'word_key' => $wk];
+        // Two picks that differ only in case ("Towrah" / "towrah") share the one row.
+        $bySpelling[mb_strtolower($w, 'UTF-8')][$wk] = ['word_key' => $wk, 'word_source_code' => 'books',
+                                                         'word_language' => 'H', 'word_excluded_flag' => false];
+    }
+    return $out;
+}
+
+function cleanupItalicApply(array $authUser): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') errorResponse('POST required', 405);
+    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $vk = (int)($in['volume_key'] ?? 0);
+    if (!$vk) errorResponse('volume_key required');
+    $words = array_values(array_unique(array_filter(array_map('strval', (array)($in['words'] ?? [])), function ($w) {
+        return $w !== '' && mb_strlen($w) <= 200;
+    })));
+    if (!$words) errorResponse('No words chosen');
+    $db = getDb();
+    $vol = cleanupVolume($db, $vk);
+    $label = $vol['label'];
+    cleanupCheckLock($vol, $authUser);
+    $paths = cleanupPaths($vol);
+    if (!$paths['name'] || !is_file($paths['live'])) errorResponse($label . ': no DOCX on the server to edit');
+    [$chapters, $titles] = cleanupItalicScope($db, $vk, $in['chaps'] ?? null);
+
+    $lock = fopen($paths['lock'], 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) errorResponse('Could not lock ' . $label);
+    $stage = cleanupStageState($paths);
+    if ($stage === 'stale') {
+        errorResponse($label . ': a new DOCX was uploaded after the queued changes were made. Discard this book\'s queued changes first.', 409);
+    }
+    $stageDir = dirname($paths['staged']);
+    if (!is_dir($stageDir)) @mkdir($stageDir, 0775, true);
+    $tmpOut = $stageDir . '/.' . $paths['name'] . '.italic-' . getmypid() . '.tmp';
+    $res = cleanupRunItalicScript(['mode' => 'apply', 'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'],
+                                   'docx_out' => $tmpOut, 'words' => $words, 'chapters' => $chapters, 'titles' => $titles]);
+    if (empty($res['ok'])) {
+        @unlink($tmpOut);
+        errorResponse($label . ': DOCX edit failed — ' . ($res['error'] ?? 'no output') . '. Nothing was changed.', 500);
+    }
+    $counts = (array)($res['counts'] ?? []);
+    if (!$counts) {
+        @unlink($tmpOut);
+        jsonResponse(['volume_key' => $vk, 'changed' => 0, 'words' => 0]);
+    }
+    if ((int)($res['remaining'] ?? 0) > 0) {
+        @unlink($tmpOut);
+        errorResponse($label . ': ' . (int)$res['remaining'] . ' of the chosen words were still not in ' . CLEANUP_ITALIC_FONT
+            . ' after the edit — nothing was changed.', 500);
+    }
+
+    // The new DOCX becomes the staged copy (as cleanupReplace).
+    $prev = null;
+    if ($stage === 'ok') {
+        $prev = $paths['staged'] . '.prev';
+        @rename($paths['staged'], $prev);
+    } else {
+        @file_put_contents($paths['sidecar'], json_encode([
+            'base_md5' => md5_file($paths['live']), 'staged_at' => date('c'), 'volume_key' => $vk,
+        ]));
+    }
+    @chmod($tmpOut, 0644);
+    if (!@rename($tmpOut, $paths['staged'])) {
+        @unlink($tmpOut);
+        if ($prev) @rename($prev, $paths['staged']); else @unlink($paths['sidecar']);
+        errorResponse($label . ': could not write the staged DOCX — nothing was changed', 500);
+    }
+    $h = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
+    try {
+        $batch = bin2hex(random_bytes(8));
+        $run = substr(preg_replace('/[^a-z0-9]/', '', (string)($in['run'] ?? '')), 0, 40) ?: null;
+        $db->beginTransaction();
+        $ins = $db->prepare('INSERT INTO yy_cleanup_change
+            (cleanup_change_batch, volume_key, paragraph_key, paragraph_number, cleanup_change_find,
+             cleanup_change_replace, cleanup_change_options, cleanup_change_match,
+             cleanup_change_before_html, cleanup_change_before_plain, cleanup_change_after_html,
+             cleanup_change_excerpt_before, cleanup_change_excerpt_after,
+             cleanup_change_user_key, cleanup_change_user_name)
+            VALUES (?, ?, NULL, NULL, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)');
+        foreach ($counts as $w => $n) {
+            $w = (string)$w;
+            $ex = $res['examples'][$w] ?? ['', $w, ''];
+            $pre = $ex[0] !== '' ? '…' . $h($ex[0]) : '';
+            $post = $ex[2] !== '' ? $h($ex[2]) . '…' : '';
+            $opts = json_encode(['type' => 'font', 'font' => CLEANUP_ITALIC_FONT, 'count' => (int)$n, 'run' => $run,
+                                 'chapters' => $chapters], JSON_UNESCAPED_UNICODE);
+            $ins->execute([$batch, $vk, $w, $w, $opts, $w, '<i>' . $h($w) . '</i>', $w, '<i class="yt-times">' . $h($w) . '</i>',
+                $pre . '<mark><i>' . $h($w) . '</i></mark>' . $post,
+                $pre . '<mark><i class="yt-times">' . $h($w) . '</i></mark>' . $post,
+                (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
+        }
+        $db->commit();
+    } catch (\Throwable $ex) {
+        if ($db->inTransaction()) $db->rollBack();
+        if ($prev) { @rename($prev, $paths['staged']); }
+        else { @unlink($paths['staged']); @unlink($paths['sidecar']); }
+        logMonitorEvent('cleanup_italic', 'error', $label . ': DB update failed — ' . $ex->getMessage(), $ex->getFile() . ':' . $ex->getLine());
+        errorResponse($label . ': saving failed (' . $ex->getMessage() . ') — nothing was changed', 500);
+    }
+    if ($prev) @unlink($prev);
+    flock($lock, LOCK_UN);
+    fclose($lock);
+    jsonResponse(['volume_key' => $vk, 'changed' => array_sum(array_map('intval', $counts)), 'words' => count($counts)]);
+}
+
+function cleanupRunItalicScript(array $req): array {
+    // -I and cwd '/': see cleanupRunDocxScript().
+    $proc = proc_open(['python3', '-I', __DIR__ . '/_docx_italic.py'],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, '/');
+    if (!is_resource($proc)) return ['ok' => false, 'error' => 'could not start python3'];
+    fwrite($pipes[0], json_encode($req, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+    fclose($pipes[0]);
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]);
+    proc_close($proc);
+    $res = json_decode((string)$out, true);
+    if (!is_array($res)) return ['ok' => false, 'error' => trim($err) ?: 'no output'];
+    return $res;
 }
