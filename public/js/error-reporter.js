@@ -76,7 +76,13 @@
     // reference the browser-built-in `mostVisited` API, which is only available
     // on chrome://newtab or extension pages. When injected into a regular page
     // it throws ReferenceError at <anonymous>:1:1. Not in yadayah.com code.
-    /mostVisited is not defined/i
+    /mostVisited is not defined/i,
+    // "Dark Reader" browser extension (dark-mode overlay) registers a global
+    // DarkReader object. When the extension is partially loaded or reloads
+    // mid-page, its own injected scripts can throw "Can't find variable:
+    // DarkReader" attributed to the host page URL. Yadayah.com has no
+    // DarkReader calls; all such errors originate from the extension itself.
+    /DarkReader/i
   ];
 
   // Files whose errors we should not report (third-party bundles)

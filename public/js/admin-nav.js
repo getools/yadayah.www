@@ -27,7 +27,7 @@ if (!window.safeJson) {
 if (!document.getElementById('error-reporter-js')) {
     var s = document.createElement('script');
     s.id = 'error-reporter-js';
-    s.src = '/js/error-reporter.js?v=16';
+    s.src = '/js/error-reporter.js?v=17';
     document.head.appendChild(s);
 }
 
