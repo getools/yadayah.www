@@ -362,9 +362,15 @@ def reparse_volume(vol_key, dry_run=False, verbose=False):
     # volume_parse_flag off, trans_rows is empty, so any rows left from a
     # period when the book WAS opted in are cleared. Nothing here is hand-
     # authored — every row is re-derivable by re-running this parser.
+    #
+    # DELETE and INSERT are kept in the SAME transaction (one commit below).
+    # Committing after DELETE but before INSERT left a window where a
+    # concurrent parse could insert (vol, 1) between our DELETE commit and
+    # our INSERT, causing a UniqueViolation that also left the volume with
+    # zero paragraphs. Atomic DELETE+INSERT means: if the INSERT fails the
+    # DELETE is also rolled back, keeping the old paragraphs intact.
     cur.execute("DELETE FROM yy_paragraph   WHERE volume_key = %s", (vol_key,))
     cur.execute("DELETE FROM yy_translation WHERE volume_key = %s", (vol_key,))
-    conn.commit()
 
     if para_rows:
         execute_values(cur, """
@@ -376,7 +382,8 @@ def reparse_volume(vol_key, dry_run=False, verbose=False):
                 paragraph_is_continuation
             ) VALUES %s
         """, para_rows, page_size=500)
-        conn.commit()
+
+    conn.commit()  # Atomic: DELETE + INSERT (or just DELETE if no paragraphs)
 
     # Junk-row deactivation. EXCLUDES paragraphs flagged is_continuation —
     # those are legitimate tails of a logical paragraph (e.g. "62:2)" — no
