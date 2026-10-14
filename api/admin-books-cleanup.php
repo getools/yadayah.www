@@ -2080,7 +2080,8 @@ function cleanupFindLike(string $q): string {
  * GET  ?action=italic_books                    series → books that have a DOCX, + the saved choices
  * GET  ?action=italic_books&volume=N           that book's chapters (key 0 = front matter)
  * GET  ?action=italic_scan&volume=N[&chaps=K,…] the book's italic words that are not in Yada Towrah-Times
- * POST ?action=italic_choices {choices: {word: 'tnr'|'ytt'}, words: [w…]}   remember each word's choice;
+ * POST ?action=italic_choices {choices: {word: 'ytt'|'tnr'|'und'}, words: [w…]}   remember each word's choice
+ *        (page: Y = ytt, N = tnr — leave it alone, says nothing about its language; ? = und, clears the row);
  *        `words` (the ones being switched) get a Books glossary row labelled H — see cleanupItalicLexicon()
  * POST ?action=italic_apply {volume_key, chaps: [K…]|null, words: [w…], run}
  *
@@ -2174,10 +2175,21 @@ function cleanupItalicScan(): void {
     foreach ($db->query('SELECT DISTINCT word_translit_text FROM yy_word_translit') as $r) {
         $gloss[cleanupItalicNorm((string)$r['word_translit_text'])] = true;
     }
+    // h: the spelling (exact, any case — as cleanupItalicLexicon matches) belongs to a yy_word record
+    // labelled H — Hebrew, from any source, not "Not a word". The page then defaults the word to Y.
+    $hebrew = [];
+    foreach ($db->query("SELECT DISTINCT lower(trim(s.txt)) AS lc
+                           FROM yy_word w
+                           JOIN (SELECT word_key, word_translit AS txt FROM yy_word
+                                 UNION SELECT word_key, word_translit_text FROM yy_word_translit) s ON s.word_key = w.word_key
+                          WHERE w.word_language = 'H' AND NOT w.word_excluded_flag AND trim(coalesce(s.txt, '')) <> ''") as $r) {
+        $hebrew[$r['lc']] = true;
+    }
     $words = [];
     foreach ($res['words'] as $w) {
         $words[] = ['w' => $w['w'], 'n' => (int)$w['n'], 'fonts' => $w['fonts'], 'ex' => $w['ex'],
-                    'g' => isset($gloss[cleanupItalicNorm($w['w'])])];
+                    'g' => isset($gloss[cleanupItalicNorm($w['w'])]),
+                    'h' => isset($hebrew[mb_strtolower(trim($w['w']), 'UTF-8')])];
     }
     jsonResponse(['volume_key' => $vk, 'label' => $vol['label'], 'words' => $words, 'occurrences' => (int)$res['occurrences'],
                   'stage' => $stage, 'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null]);
@@ -2192,11 +2204,18 @@ function cleanupItalicChoices(array $authUser): void {
                         ON CONFLICT (italic_choice_word) DO UPDATE SET italic_choice_font = EXCLUDED.italic_choice_font,
                                user_key = EXCLUDED.user_key, user_name = EXCLUDED.user_name, italic_choice_dtime = now()
                         WHERE yy_italic_font_choice.italic_choice_font <> EXCLUDED.italic_choice_font");
+    // 'und' (the page's "?" — nobody has decided) = no row: it clears a saved Y / N.
+    $del = $db->prepare('DELETE FROM yy_italic_font_choice WHERE italic_choice_word = ?');
     $n = 0;
     $db->beginTransaction();
     foreach ((array)($in['choices'] ?? []) as $w => $f) {
         $w = (string)$w;
-        if ($w === '' || mb_strlen($w) > 200 || !in_array($f, ['tnr', 'ytt'], true)) continue;
+        if ($w === '' || mb_strlen($w) > 200 || !in_array($f, ['tnr', 'ytt', 'und'], true)) continue;
+        if ($f === 'und') {
+            $del->execute([$w]);
+            $n += $del->rowCount();
+            continue;
+        }
         $up->execute([$w, $f, (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
         $n += $up->rowCount();
     }
