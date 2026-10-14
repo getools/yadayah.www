@@ -32,7 +32,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fitz  # noqa: E402  PyMuPDF
 from derive_pdf_outline import (  # noqa: E402
-    find_back_matter_pages, norm)
+    _is_title, find_back_matter_pages, norm)
 
 
 def _para_text_with_tabs(p):
@@ -84,7 +84,6 @@ def toc_targets(docx_path):
     return anchors, (int(m.group(1)) if m else None)
 
 
-BIDI = re.compile("[‎‏‪-‮⁦-⁩]")
 
 
 def _chapter_pages(doc, chapters):
@@ -102,16 +101,13 @@ def _chapter_pages(doc, chapters):
     for pno, lines in enumerate(pages):
         on_page = []
         for number, title in chapters:
-            probe = title[:18]
-            if not probe:
+            if not title:
                 continue
-            # Hebrew halves ("יהוה ~ YaHoWaH") come out of the PDF reversed;
-            # the English half after "~" survives, so accept that too.
-            tail = norm(title.split("~", 1)[1])[:18] if "~" in title else ""
 
-            def is_title(line):
-                line = norm(BIDI.sub("", line))
-                return line.startswith(probe) or bool(tail and tail in line)
+            def is_title(line, title=title):
+                # Shared with derive_pdf_outline: bidi-reversed Hebrew and
+                # dropped spaces are tolerated there.
+                return _is_title(line, title)
 
             for j in range(len(lines) - 1):
                 if lines[j] == str(number) and is_title(lines[j + 1]):

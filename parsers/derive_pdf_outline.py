@@ -224,6 +224,26 @@ def find_unnumbered_pages(doc, titles):
     return found
 
 
+_BIDI = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def _is_title(line, title):
+    """Does a PDF line open with this chapter title?
+
+    Hebrew halves ("יהוה ~ YaHoWaH") come out of the PDF bidi-reversed with
+    direction marks, so the English half after "~" is accepted anywhere in
+    the line as well (s03v99 ch12 was never bookmarked)."""
+    # Spaces are ignored: extraction sometimes drops one ("Can QusayyScam?",
+    # s07v02 ch1, which then fell back to the contents page).
+    line = re.sub(r"\s+", "", _BIDI.sub("", line))
+    flat = re.sub(r"\s+", "", title)
+    probe = flat[:15]
+    if probe and line.startswith(probe):
+        return True
+    tail = re.sub(r"\s+", "", title.split("~", 1)[1])[:15] if "~" in title else ""
+    return bool(tail) and tail in line
+
+
 def find_chapter_pages(doc, numbered):
     """Map chapter number -> physical page number (both 1-based).
 
@@ -249,8 +269,23 @@ def find_chapter_pages(doc, numbered):
 
     found = {}
 
+    # The book's own contents page lists "1" above "Shemowth ~ Names" too,
+    # which pass 1 took for chapter 1's opening (s03v99 ch1 -> p6, 2026-10-14).
+    # A page where three or more chapters "start" is a contents page: skip it.
+    toc_pages = set()
+    for pno, lines in enumerate(page_lines):
+        hits = 0
+        for number, title in numbered:
+            if any(lines[j] == str(number) and _is_title(lines[j + 1], title)
+                   for j in range(len(lines) - 1)):
+                hits += 1
+        if hits >= 3:
+            toc_pages.add(pno)
+
     # Pass 1: head lines (n=4) — fast path, preserves original behaviour
     for pno, lines in enumerate(page_lines):
+        if pno in toc_pages:
+            continue
         head = lines[:4]
         if len(head) < 2:
             continue
@@ -262,14 +297,14 @@ def find_chapter_pages(doc, numbered):
                 continue
             for j in range(len(head) - 1):
                 if (head[j] == str(number)
-                        and norm(head[j + 1]).startswith(probe)):
+                        and _is_title(head[j + 1], title)):
                     found[number] = pno + 1
                     break
 
     # Pass 2: all lines on a single page — mid-page chapter starts
     if len(found) < len(numbered):
         for pno, lines in enumerate(page_lines):
-            if len(lines) < 2:
+            if len(lines) < 2 or pno in toc_pages:
                 continue
             for number, title in numbered:
                 if number in found:
@@ -279,7 +314,7 @@ def find_chapter_pages(doc, numbered):
                     continue
                 for j in range(len(lines) - 1):
                     if (lines[j] == str(number)
-                            and norm(lines[j + 1]).startswith(probe)):
+                            and _is_title(lines[j + 1], title)):
                         found[number] = pno + 1
                         break
 
@@ -300,7 +335,7 @@ def find_chapter_pages(doc, numbered):
                 if not probe:
                     continue
                 if (last_line == str(number)
-                        and norm(first_content).startswith(probe)):
+                        and _is_title(first_content, title)):
                     found[number] = pno + 2  # title is on the next page
                     break
 
@@ -332,19 +367,46 @@ def find_section_pages(doc, sections, n=12):
     n=12 to tolerate ONLYOFFICE PDFs that put running headers/footers before
     the section title in the extracted text stream.
     """
+    def match(title, line, idx):
+        whole = norm(title).upper()
+        ln = norm(line).upper()
+        # Short titles must be the whole line: "Conclusion" matched a body
+        # line "conclusions that I am going..." (s03v99 p9). An exact line
+        # may sit deeper (justified text extracts one word per line, so
+        # s03v99's "Introduction" is line 19); prefixes stay within n.
+        if ln == whole:
+            if idx < n:
+                return True
+            # Deeper lines must match case too: a lone justified body word
+            # ("torture", s07v05 p368) is not the heading "Torture".
+            return idx < max(n, 25) and norm(line) == norm(title)
+        return len(whole) > 16 and idx < n and ln.startswith(whole[:16])
+
     found = {}
     for pno in range(doc.page_count):
         lines = [l.strip() for l in doc[pno].get_text().split("\n") if l.strip()]
+        hits = []          # (line index, title) in page order
         for title in sections:
-            if title in found:
+            if not norm(title):
                 continue
-            probe = norm(title)[:16].upper()
-            if not probe:
-                continue
-            for line in lines[:n]:
-                if norm(line).upper().startswith(probe):
-                    found[title] = pno + 1
+            for i, l in enumerate(lines[:max(n, 25)]):
+                # "TITLE" then a bare page number is a contents listing
+                # (s07v05 p6: "AFTERWORD", "510"), not the heading itself.
+                if i + 1 < len(lines) and re.match(r"^\d+$", lines[i + 1]):
+                    continue
+                if match(title, l, i):
+                    hits.append((i, title))
                     break
+        hits.sort()
+        # A page listing three or more section titles is a contents/appendix
+        # list (s07v05 p531: TOPICAL APPENDIX, then Fighting, Terrorism,
+        # War...). Only its first title, the page's own heading, opens there.
+        # A contents page (s07v05 p6) lists them below its own heading, so
+        # the kept title must also be at the top of the page.
+        if len(hits) >= 3:
+            hits = hits[:1] if hits[0][0] <= 3 else []
+        for _, title in hits:
+            found.setdefault(title, pno + 1)
     return found
 
 
