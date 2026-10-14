@@ -96,15 +96,15 @@ def main():
         parts = line.split("\t")
         existing[int(parts[0])] = parts[1] if len(parts) > 1 else ""
 
-    # --strict (used by the unattended pipeline): refuse an outline whose
-    # chapter numbers aren't exactly 1..N, each once. Broken outlines repeat
-    # entries or carry junk ("7  N ~ H"), and a deliberate gap (s04v04 has no
-    # ch 2) needs a human anyway. Exit 3 so the caller can raise a warning.
+    # --strict (used by the unattended pipeline): refuse an outline with
+    # duplicate chapter numbers (a sign of a broken/repeated outline entry).
+    # Gaps are allowed — some books deliberately skip a number (e.g. s04v04
+    # has no ch 2, s03v99 has no ch 12). Exit 3 so the caller can warn.
     if strict:
         nums = [w[0] for w in wanted]
-        if not nums or sorted(nums) != list(range(1, len(nums) + 1)):
-            sys.stderr.write("[seed] --strict: outline chapter numbers are not "
-                             "exactly 1..N (got %s) - not seeding\n" % nums)
+        if not nums or len(nums) != len(set(nums)):
+            sys.stderr.write("[seed] --strict: outline chapter numbers contain "
+                             "duplicates (got %s) - not seeding\n" % nums)
             return 3
 
     to_insert = [w for w in wanted if w[0] not in existing]

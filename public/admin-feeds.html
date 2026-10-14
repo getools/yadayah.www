@@ -818,7 +818,7 @@ function loadItems(page) {
 
             // Category dropdown — grouped by Items section
             _catFilterOpts = '<option value="">All</option>' + categoryOptionsHtml(_allCategories);
-            _catFilterOptsFiltered = _savedFilters.page ? '' : cOpts;
+            _catFilterOptsFiltered = _savedFilters.page ? '' : _catFilterOpts;
             rebuildCategoryFilter();
         }
         document.getElementById('items-count').textContent = (d.total || items.length) + ' item(s) — page ' + (d.page || 1) + '/' + _itemsTotalPages;
