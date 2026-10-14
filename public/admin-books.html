@@ -3428,6 +3428,7 @@ function itBkInit() {
             if (book) itBkLoadChapters(book, sv.chaps[vk].map(String));
         });
         itBkSync();
+        itLoadLast();   // the saved choices are in by now (d.choices above)
     });
     var tree = document.getElementById('it-bk-tree');
     tree.addEventListener('click', function(e) {
@@ -3552,6 +3553,10 @@ function itProg(html) {
     p.innerHTML = html || '';
 }
 
+// The last Parse's books and chapters ([{vk, chaps}]), so opening the tab can
+// show its list again from the server's scan cache without parsing.
+var IT_LAST_STORE = 'admin-books:italics:last';
+
 function itParse() {
     if (itBusy) return;
     if (!itBkBuilt) { alert('The book list is still loading.'); return; }
@@ -3567,21 +3572,42 @@ function itParse() {
         else if (sel.chaps[vk]) scope.push({vk: vk, label: itBookLabels[vk] || vk, chaps: sel.chaps[vk].slice()});
     });
     if (!scope.length) { alert('Tick at least one book or chapter.'); return; }
+    itRun(scope, false);
+}
+
+// On opening the tab: the last Parse again, from the cache only (books whose
+// DOCX changed since are left out and named, for a Parse to refresh).
+function itLoadLast() {
+    var last = null;
+    try { last = JSON.parse(localStorage.getItem(IT_LAST_STORE) || 'null'); } catch (e) {}
+    if (!Array.isArray(last)) return;
+    var scope = last.filter(function(s) { return s && itBookLabels[s.vk]; }).map(function(s) {
+        return {vk: String(s.vk), label: itBookLabels[s.vk], chaps: Array.isArray(s.chaps) ? s.chaps.map(String) : null};
+    });
+    if (scope.length) itRun(scope, true);
+}
+
+// Scan each book of the scope (one request per book) and merge the words.
+// cachedOnly: take only what the server has cached, never parse.
+function itRun(scope, cachedOnly) {
     itBusy = true;
-    document.getElementById('it-parse').disabled = true;
-    document.getElementById('it-save').disabled = true;
-    document.getElementById('it-apply').disabled = true;
-    var merged = {}, errors = [], occ = 0, staged = [], i = 0;
+    itButtons();
+    var merged = {}, errors = [], staged = [], missing = [], fromCache = 0, oldest = null, i = 0;
     function next() {
         if (i >= scope.length) return done();
         var s = scope[i++];
-        itProg('Parsing ' + i + ' of ' + scope.length + ': <b>' + esc(s.label) + '</b>' + (s.chaps ? ' (' + s.chaps.length + ' chapter' + (s.chaps.length === 1 ? '' : 's') + ')' : '') + '…'
+        itProg((cachedOnly ? 'Loading the last Parse ' : 'Parsing ') + i + ' of ' + scope.length + ': <b>' + esc(s.label) + '</b>'
+            + (s.chaps ? ' (' + s.chaps.length + ' chapter' + (s.chaps.length === 1 ? '' : 's') + ')' : '') + '…'
             + (errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : ''));
-        fetch(API + '/admin-books-cleanup.php?action=italic_scan&volume=' + s.vk + (s.chaps ? '&chaps=' + s.chaps.join(',') : ''), {credentials: 'include'})
+        fetch(API + '/admin-books-cleanup.php?action=italic_scan&volume=' + s.vk + (s.chaps ? '&chaps=' + s.chaps.join(',') : '')
+                + (cachedOnly ? '&cached=1' : ''), {credentials: 'include'})
             .then(function(r) { return safeJson(r); })
             .then(function(d) {
                 if (!d || d.error) { errors.push(s.label + ': ' + ((d && d.error) || 'no answer')); return; }
-                occ += d.occurrences || 0;
+                if (d.cached === false && !d.words) { missing.push(s.label); return; }
+                s.ok = true;
+                if (d.cached) fromCache++;
+                if (d.parsed_at && (!oldest || d.parsed_at < oldest)) oldest = d.parsed_at;
                 if (d.stage === 'ok') staged.push(s.label);
                 s.n = 0;
                 (d.words || []).forEach(function(x) {
@@ -3600,7 +3626,17 @@ function itParse() {
     function done() {
         itBusy = false;
         document.getElementById('it-parse').disabled = false;
-        itScope = scope;
+        var loaded = scope.filter(function(s) { return s.ok; });
+        if (cachedOnly && !loaded.length) {
+            itProg(missing.length ? '<div>The books of the last Parse have changed since it was made — click <b>Parse</b> to list their words again.</div>' : '');
+            return;
+        }
+        if (!cachedOnly) {
+            try {
+                localStorage.setItem(IT_LAST_STORE, JSON.stringify(loaded.map(function(s) { return {vk: s.vk, chaps: s.chaps}; })));
+            } catch (e) {}
+        }
+        itScope = loaded;
         itWords = Object.keys(merged).map(function(w) { return merged[w]; });
         itGlossLang = {};
         itWords.forEach(function(x) { if (x.l) itGlossLang[x.w] = x.l; });
@@ -3609,7 +3645,14 @@ function itParse() {
         itWords.forEach(function(x) { if (itChoice[x.w]) keep[x.w] = itChoice[x.w]; });
         itChoice = keep;
         itShown = itPageSize();
-        itProg((errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : '')
+        var when = oldest ? new Date(oldest).toLocaleString() : '';
+        itProg((cachedOnly
+                ? '<div>Showing the last Parse' + (when ? ' (made ' + esc(when) + ')' : '') + ' of ' + loaded.length + ' book' + (loaded.length === 1 ? '' : 's')
+                  + ', from the cache — no parsing needed.</div>'
+                : (fromCache ? '<div>' + fromCache + ' of ' + loaded.length + ' book' + (loaded.length === 1 ? '' : 's')
+                  + ' came from the cache (their DOCX has not changed since the last parse).</div>' : ''))
+            + (missing.length ? '<div class="it-err">Changed since the last Parse, so not shown — click <b>Parse</b> to include: ' + esc(missing.join(', ')) + '.</div>' : '')
+            + (errors.length ? '<div class="it-err">' + errors.map(esc).join('<br>') + '</div>' : '')
             + (staged.length ? '<div>Read the staged (queued, not yet committed) DOCX of: ' + esc(staged.join(', ')) + '.</div>' : ''));
         document.getElementById('it-res').hidden = false;
         itRender();

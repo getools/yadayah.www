@@ -2079,7 +2079,8 @@ function cleanupFindLike(string $q): string {
  *
  * GET  ?action=italic_books                    series → books that have a DOCX, + the saved choices
  * GET  ?action=italic_books&volume=N           that book's chapters (key 0 = front matter)
- * GET  ?action=italic_scan&volume=N[&chaps=K,…] the book's italic words that are not in Yada Towrah-Times
+ * GET  ?action=italic_scan&volume=N[&chaps=K,…][&cached=1] the book's italic words that are not in Yada Towrah-Times
+ *        (cached per book + chapters in u/books-word-staged/.italiccache until its DOCX changes; cached=1 = never parse)
  * POST ?action=italic_choices {choices: {word: 'H'|'G'|'A'|'X'|'und'}, words: {word: 'H'|'G'|'A'}}
  *        remember each word's Language choice (yy_italic_font_choice.italic_choice_font holds the code):
  *        H = Hebrew (Yada Towrah-Times in the books), G = Greek, A = Arabic, X = leave it alone in the
@@ -2170,9 +2171,33 @@ function cleanupItalicScan(): void {
     if (!$paths['name'] || !is_file($paths['live'])) errorResponse($vol['label'] . ': no DOCX on the server');
     [$chapters, $titles] = cleanupItalicScope($db, $vk, $_GET['chaps'] ?? null);
     $stage = cleanupStageState($paths);
-    $res = cleanupRunItalicScript(['mode' => 'scan', 'docx_in' => $stage === 'ok' ? $paths['staged'] : $paths['live'],
-                                   'chapters' => $chapters, 'titles' => $titles]);
-    if (empty($res['ok'])) errorResponse($vol['label'] . ': could not read the DOCX — ' . ($res['error'] ?? 'no output'), 500);
+    $src = $stage === 'ok' ? $paths['staged'] : $paths['live'];
+    // The script's result is cached per book and chapter set, keyed by the DOCX it read (path, size,
+    // mtime, inode — a new staged copy is a new inode), the chapter titles and the script itself, so
+    // a reload or a re-Parse reads only books whose DOCX changed. &cached=1 = cache only, never parse.
+    // The glossary flags below are worked out fresh every time.
+    clearstatcache(true, $src);
+    $script = __DIR__ . '/_docx_italic.py';
+    $sig = [$src, @filesize($src), @filemtime($src), @fileinode($src), @filemtime($script), @filesize($script), $titles];
+    $cdir = $paths['root'] . '/u/books-word-staged/.italiccache';
+    $cfile = $cdir . '/' . $vk . '-' . substr(md5(json_encode($chapters)), 0, 12) . '.json';
+    $cache = is_file($cfile) ? json_decode((string)@file_get_contents($cfile), true) : null;
+    $fromCache = is_array($cache) && ($cache['sig'] ?? null) == json_decode(json_encode($sig), true) && !empty($cache['res']['ok']);
+    if ($fromCache) {
+        $res = $cache['res'];
+    } elseif (!empty($_GET['cached'])) {
+        jsonResponse(['volume_key' => $vk, 'label' => $vol['label'], 'cached' => false, 'stale' => is_array($cache)]);
+    } else {
+        $res = cleanupRunItalicScript(['mode' => 'scan', 'docx_in' => $src, 'chapters' => $chapters, 'titles' => $titles]);
+        if (empty($res['ok'])) errorResponse($vol['label'] . ': could not read the DOCX — ' . ($res['error'] ?? 'no output'), 500);
+        if (!is_dir($cdir)) @mkdir($cdir, 0775, true);
+        $tmp = $cfile . '.' . getmypid() . '.tmp';
+        if (@file_put_contents($tmp, json_encode(['sig' => $sig, 'at' => date('c'), 'res' => $res], JSON_UNESCAPED_UNICODE)) !== false) {
+            @rename($tmp, $cfile);
+        } else {
+            @unlink($tmp);
+        }
+    }
     // Flag the words the glossary knows as a transliteration.
     $gloss = [];
     foreach ($db->query('SELECT DISTINCT word_translit_text FROM yy_word_translit') as $r) {
@@ -2198,7 +2223,7 @@ function cleanupItalicScan(): void {
                     'l' => $langOf[mb_strtolower(trim($w['w']), 'UTF-8')] ?? null];
     }
     jsonResponse(['volume_key' => $vk, 'label' => $vol['label'], 'words' => $words, 'occurrences' => (int)$res['occurrences'],
-                  'stage' => $stage, 'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null]);
+                  'stage' => $stage, 'cached' => $fromCache, 'parsed_at' => $fromCache ? ($cache['at'] ?? null) : date('c'), 'locked_by' => $vol['volume_locked_flag'] ? ($vol['volume_locked_by_name'] ?: 'another admin') : null]);
 }
 
 function cleanupItalicChoices(array $authUser): void {
