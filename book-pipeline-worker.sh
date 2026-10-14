@@ -186,6 +186,28 @@ convert_via_onlyoffice() {
     fi
     chmod 644 "$stage_path"
 
+    # Pagination fit (2026-10-14). ONLYOFFICE ignores <w:kern>, so its lines
+    # run ~1-2% wide and chapters drift late against the page numbers Word
+    # printed in the book's TOC (s03v99: 275pp vs Word 271, ornament spilled
+    # onto its own page). oo_fit_pagination.py tightens letter spacing by
+    # 0.05pt, per chapter if needed, until every chapter starts on its TOC
+    # page. rc 0 = matches Word, 10 = PDF written but still differs,
+    # 11 = PDF written, no TOC to check. Anything else: plain conversion.
+    local fit_rc=0
+    python3 /opt/yada-www/parsers/oo_fit_pagination.py \
+        --docx "$stage_path" --ref-docx "$docx_path" --out "$pdf_dest" \
+        >> /var/log/book-pipeline.log 2>&1 || fit_rc=$?
+    fit_rc=${fit_rc:-0}
+    if { [ "$fit_rc" -eq 0 ] || [ "$fit_rc" -eq 10 ] || [ "$fit_rc" -eq 11 ]; } \
+       && [ -s "$pdf_dest" ]; then
+        rm -f "$stage_path"
+        chmod 644 "$pdf_dest" 2>/dev/null
+        log "ONLYOFFICE pagination fit rc=$fit_rc for $(basename "$docx_path")"
+        return 0
+    fi
+    log "ONLYOFFICE pagination fit failed (rc=$fit_rc) - plain ONLYOFFICE conversion"
+    rm -f "$pdf_dest"
+
     # Make sure the in-container helper script is current (idempotent on
     # subsequent runs — survives container recreates this way).
     docker cp /opt/yada-www/oo-convert.py "$ONLYOFFICE_CONTAINER":/tmp/oo-convert.py >/dev/null 2>&1
@@ -558,6 +580,21 @@ process_job() {
             return
         fi
         chmod 644 "$PDF_DIR/$pdf_name" 2>/dev/null
+
+        # Pagination check (all renderers): do chapters start on the pages
+        # Word printed in the book's own TOC, and does the page count match
+        # Word's saved count? Non-blocking; 'info' so auto-fix ignores it (a
+        # stale TOC needs a human to re-save the docx in Word).
+        local pg_out pg_rc=0
+        pg_out=$(python3 /opt/yada-www/parsers/pdf_pagination_check.py \
+            "$docx_path" "$PDF_DIR/$pdf_name" 2>&1) || pg_rc=$?
+        pg_rc=${pg_rc:-0}
+        log "$docx_name: $pg_out"
+        if [ "$pg_rc" -eq 1 ]; then
+            log_monitor_event "book_pagination" "info" \
+                "PDF pagination differs from Word's TOC for $docx_name" \
+                "$(echo "$pg_out" | tail -1 | sed 's/^\[pagination\] //')"
+        fi
         log "PDF generated for $docx_name ($(stat -c%s "$PDF_DIR/$pdf_name") bytes)"
     fi
 
