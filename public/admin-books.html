@@ -153,7 +153,7 @@
         .form-body input[type=text], .form-body input[type=number], .form-body select, .form-body textarea {
             width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
         }
-        .form-body input[type=number] { width: 100px; }
+        .form-body input[type=number], #f-number, #f-sort, #f-pages { width: 100px; }
         .form-body .form-row { display: flex; gap: 12px; }
         .form-body .form-row .field { flex: 1; }
         .form-body .form-actions { display: flex; gap: 8px; margin-top: 16px; }
@@ -1145,9 +1145,9 @@
             </div>
             <div class="field"><label>Label</label><input type="text" id="f-label" placeholder="e.g. Dabarym-Words"></div>
             <div class="form-row">
-                <div class="field"><label>Volume #</label><input type="number" id="f-number" value="0"></div>
-                <div class="field"><label>Sort</label><input type="number" id="f-sort" value="0"></div>
-                <div class="field"><label>Pages <span style="font-weight:400;color:#888;font-size:0.72rem;">(auto)</span></label><input type="number" id="f-pages" value="0" readonly title="Derived from the docx parser — not editable" style="background:#f5f5f5;color:#666;cursor:not-allowed;"></div>
+                <div class="field"><label>Volume #</label><input type="text" id="f-number" value="0" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+                <div class="field"><label>Sort</label><input type="text" id="f-sort" value="0" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+                <div class="field"><label>Pages <span style="font-weight:400;color:#888;font-size:0.72rem;">(auto)</span></label><input type="text" id="f-pages" value="0" inputmode="numeric" readonly title="Derived from the docx parser — not editable" style="background:#f5f5f5;color:#666;cursor:not-allowed;"></div>
             </div>
             <div class="field"><label>Book Code <span style="font-weight:400;color:#888;font-size:0.78rem;">(canonical root — drives DOCX, PDF, and flipbook URL)</span></label>
                 <input type="text" id="f-code" placeholder="e.g. YY-s01v01-An-Intro-to-God-Dabarym-Words">
@@ -1158,46 +1158,40 @@
                 <div style="font-size:0.74rem;color:#888;margin-top:3px;">A full Amazon /dp/ URL is reduced to the ASIN on save. Amazon link will appear when ASIN is present.</div>
             </div>
             <input type="hidden" id="f-pdf">
-            <div class="field">
+            <div class="field" style="margin-bottom:4px;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">DOCX</label>
-                    <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()">
+                    <span id="f-docx-current" style="flex:1;font-size:0.88rem;color:#666;word-break:break-all;">—</span>
+                    <input type="file" id="f-docx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="uploadDocx()" style="display:none;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="f-docx-upload-btn" onclick="document.getElementById('f-docx-file').click()" title="Upload a new .docx for this book" style="white-space:nowrap;flex-shrink:0;">⬆ Upload File</button>
                 </div>
-                <div id="f-docx-current" style="font-size:0.82rem;color:#666;margin-top:6px;"></div>
-                <div id="f-docx-status" style="margin-top:6px;font-size:0.82rem;"></div>
+                <div id="f-docx-status" style="margin-top:2px;font-size:0.82rem;"></div>
             </div>
-            <div class="field">
+            <div class="field" style="margin-bottom:4px;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">PDF</label>
                     <a id="f-pdf-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
                     <button type="button" class="btn btn-secondary btn-sm" id="f-regen-pdf" onclick="regeneratePdfFromForm(this)" title="Regenerate the PDF from this book's DOCX" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
-                <div id="f-pdf-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
+                <div id="f-pdf-status" style="font-size:0.78rem;color:#888;margin-top:2px;"></div>
             </div>
-            <div class="field">
+            <div class="field" style="margin-bottom:4px;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">FLIP</label>
                     <a id="f-flip-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
                     <button type="button" class="btn btn-secondary btn-sm" id="f-regen-flip" onclick="regenerateFlipbookFromForm(this)" title="Rebuild the flipbook from this book's PDF" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
-                <div id="f-flip-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
+                <div id="f-flip-status" style="font-size:0.78rem;color:#888;margin-top:2px;"></div>
             </div>
-            <div class="field">
+            <div class="field" style="margin-bottom:4px;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <label style="margin:0;">TTS</label>
                     <a id="f-tts-link" href="#" target="_blank" rel="noopener" style="flex:1;font-size:0.88rem;text-decoration:none;color:#31345A;word-break:break-all;">—</a>
                     <button type="button" class="btn btn-secondary btn-sm" id="f-regen-tts" onclick="openTtsForVolume(this)" title="Open TTS narration for this book" style="white-space:nowrap;flex-shrink:0;">↻ Regen</button>
                 </div>
-                <div id="f-tts-status" style="font-size:0.78rem;color:#888;margin-top:4px;"></div>
+                <div id="f-tts-status" style="font-size:0.78rem;color:#888;margin-top:2px;"></div>
             </div>
-            <div class="field">
-                <label style="margin:0;">Checkout / Lock</label>
-                <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-                    <span id="f-lock-state" style="font-size:0.85rem;color:#666;flex:1;">—</span>
-                    <button type="button" class="btn btn-secondary btn-sm" id="f-lock-btn" onclick="toggleLockFromForm(this)" style="white-space:nowrap;flex-shrink:0;">🔓 Check out</button>
-                </div>
-                <div style="font-size:0.74rem;color:#888;margin-top:4px;">While checked out, other admins can't upload a new DOCX for this book.</div>
-            </div>
+            <div style="height:10px;"></div>
             <div class="field">
                 <label style="display:block;margin-bottom:6px;">Status
                     <select id="f-status" style="margin-left:6px;">
@@ -1228,6 +1222,8 @@
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" id="f-save" onclick="saveVolume()">Save</button>
                 <button class="btn btn-secondary btn-sm" onclick="closeForm()">Cancel</button>
+                <span id="f-lock-state" style="display:none;"></span>
+                <button type="button" class="btn btn-secondary btn-sm" id="f-lock-btn" onclick="toggleLockFromForm(this)" style="white-space:nowrap;margin-left:auto;" title="While checked out, other admins can't upload a new DOCX for this book.">🔓 Check out</button>
             </div>
         </div>
     </div>
@@ -2511,7 +2507,7 @@ function showVolumeForm(record) {
     // DOCX status
     var docxCur = document.getElementById('f-docx-current');
     if (r.volume_docx) {
-        docxCur.innerHTML = 'Current: <a href="/u/books-word/' + esc(r.volume_docx) + '" target="_blank">' + esc(r.volume_docx) + '</a>';
+        docxCur.innerHTML = '<a href="/u/books-word/' + esc(r.volume_docx) + '" target="_blank" rel="noopener" style="text-decoration:none;color:#31345A;">/u/books-word/' + esc(r.volume_docx) + '</a>';
     } else {
         docxCur.textContent = 'No .docx uploaded yet';
     }
@@ -2627,6 +2623,7 @@ function renderFormLock(r) {
         btn.textContent = '🔒 Check out';
         btn.dataset.wantLock = '1';
     }
+    btn.title = stateEl.textContent + ' — while checked out, other admins cannot upload a new DOCX for this book.';
 }
 
 // Edit-form Checkout/Lock button → toggleLock, then refresh the form row from
@@ -2978,6 +2975,8 @@ function uploadDocx() {
 var docxUploading = false;
 function setDocxUploading(on) {
     docxUploading = on;
+    var upBtn = document.getElementById('f-docx-upload-btn');
+    if (upBtn) upBtn.disabled = on;
     var btn = document.getElementById('f-save');
     if (!btn) return;
     btn.classList.toggle('save-uploading', on);
