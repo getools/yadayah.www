@@ -82,7 +82,13 @@
     // mid-page, its own injected scripts can throw "Can't find variable:
     // DarkReader" attributed to the host page URL. Yadayah.com has no
     // DarkReader calls; all such errors originate from the extension itself.
-    /DarkReader/i
+    /DarkReader/i,
+    // WKWebView (iOS/macOS) fires this when the native app side of the
+    // webkit.messageHandlers bridge receives a postMessage but no handler is
+    // registered for it. Always originates from third-party injected scripts
+    // (Facebook, Instagram, TikTok in-app browsers, etc.); yadayah.com has
+    // no WKWebView messageHandlers calls of its own.
+    /WKWebView API client did not respond to this postMessage/i
   ];
 
   // Files whose errors we should not report (third-party bundles)
