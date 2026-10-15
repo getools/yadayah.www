@@ -313,7 +313,10 @@ try {
         try {
             // VACUUM cannot run inside a transaction; PDO autocommit mode handles this fine.
             // relname comes from pg_stat_user_tables (system catalog) — safe to quote directly.
-            $db->exec("VACUUM ANALYZE \"" . str_replace('"', '""', $t['relname']) . "\"");
+            // PARALLEL 0 avoids POSIX shared memory allocation that exceeds Docker's 64MB /dev/shm limit.
+            $safe = '"' . str_replace('"', '""', $t['relname']) . '"';
+            $db->exec("VACUUM (PARALLEL 0) $safe");
+            $db->exec("ANALYZE $safe");
             $vacuumed = true;
         } catch (Throwable $ve) {
             $vacuumErr = $ve->getMessage();
@@ -322,8 +325,8 @@ try {
             'message'  => "Table {$t['relname']} has {$t['n_dead_tup']} dead rows — consider VACUUM",
             'severity' => 'warning',
             'action'   => $vacuumed
-                ? "Auto-ran VACUUM ANALYZE {$t['relname']}"
-                : "VACUUM ANALYZE failed: $vacuumErr",
+                ? "Auto-ran VACUUM (PARALLEL 0) + ANALYZE {$t['relname']}"
+                : "VACUUM failed: $vacuumErr",
             'resolved' => $vacuumed,
         ];
     }
