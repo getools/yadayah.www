@@ -416,6 +416,19 @@
         .it-h { font-weight: 700; color: #a04000; }
         .it-rad { display: inline-flex; gap: 10px; white-space: nowrap; }
         .it-rad label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; font-weight: 600; }
+        /* Helper line over the Language heading, with an ⓘ popover listing the options (filled by itInit from IT_LANGS). */
+        .it-table th { vertical-align: bottom; }
+        .it-lang-help { font-weight: 400; font-size: 0.75rem; color: #666; white-space: nowrap; margin-bottom: 2px; }
+        .it-info { position: relative; display: inline-block; margin-left: 3px; color: #1f5f9e; cursor: help; font-size: 0.9rem; line-height: 1; }
+        .it-info:focus { outline: 2px solid #9cc3ea; outline-offset: 1px; border-radius: 50%; }
+        .it-pop { display: none; position: absolute; top: calc(100% + 6px); right: -8px; z-index: 30; width: 340px; max-width: calc(100vw - 32px);
+            background: #fff; color: #333; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+            padding: 10px 12px; font-size: 0.8rem; line-height: 1.4; white-space: normal; text-align: left; cursor: default; }
+        .it-info:hover .it-pop, .it-info:focus .it-pop, .it-info:focus-within .it-pop { display: block; }
+        .it-pop p { margin: 0 0 6px; }
+        .it-pop dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; }
+        .it-pop dt { font-weight: 700; text-align: center; }
+        .it-pop dd { margin: 0; }
         .it-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
         .it-foot #it-save-slot { margin-left: auto; display: inline-flex; gap: 8px; }
         @media (max-width: 700px) { .it-ex { max-width: 240px; } }
@@ -1027,10 +1040,10 @@
                 </div>
                 <p class="cl-note">Parse lists every italic word in the chosen books and chapters that is not already in <b>Yada Towrah-Times</b>.
                    Words in the Yada Towrah glyph font, Hebrew letters and running headers / footers are left out; half rings (ʾ ʿ) count as part of the word.
-                   For each word pick a <b>Language</b>: <b>?</b> (undecided), <b>H</b> (Hebrew: Yada Towrah-Times throughout the books), <b>G</b> (Greek),
+                   For each word pick a <b>Language</b>: <b>?</b> (undecided), <b>H</b> (Hebrew: Yada Towrah-Times throughout the books), <b>G</b> (Greek), <b>R</b> (Aramaic),
                    <b>A</b> (Arabic), <b>L</b> (Latin) or <b>X</b> (leave it alone in the books — this does not say what language it is, and does not change its glossary language).
-                   A word whose spelling the glossary already labels Hebrew, Greek, Arabic or Latin starts with that language.
-                   <b>Save</b> remembers the choices and puts each H, G, A or L word in the glossary as a <b>Books</b> word labelled with that language;
+                   A word whose spelling the glossary already labels Hebrew, Greek, Aramaic, Arabic or Latin starts with that language.
+                   <b>Save</b> remembers the choices and puts each H, G, R, A or L word in the glossary as a <b>Books</b> word labelled with that language;
                    the Word files are not touched. <b>Apply to Books</b> then switches every place a saved H word
                    appears in the parsed books and chapters, in a staged copy of each book's DOCX, queued on the <i>Changes</i> tab as an <b>Italic font</b> change
                    until you commit it.</p>
@@ -1042,7 +1055,7 @@
                     <label title="Only words the glossary has as a transliteration"><input type="checkbox" id="it-f-gloss"> Glossary words</label>
                     <label title="Only words with a half ring (ʾ ʿ) or a backtick"><input type="checkbox" id="it-f-ring"> With ʾ ʿ `</label>
                     <label title="Only words with this Language choice">Language
-                        <select id="it-f-font"><option value="">All</option><option value="und">?</option><option value="H">H</option><option value="G">G</option><option value="A">A</option><option value="L">L</option><option value="X">X</option></select></label>
+                        <select id="it-f-font"><option value="">All</option><option value="und">?</option><option value="H">H</option><option value="G">G</option><option value="R">R</option><option value="A">A</option><option value="L">L</option><option value="X">X</option></select></label>
                     <label title="How many words the list shows at a time (Show more adds the next lot)">Show <select id="it-psize"></select> at a time</label>
                 </div>
                 <div class="it-sum" id="it-sum"></div>
@@ -1053,9 +1066,13 @@
                             <th data-sort="n" class="num" title="Sort by how many times it appears in the parsed books">Count</th>
                             <th data-sort="b" class="num" title="Sort by how many books it appears in">Books</th>
                             <th title="The font the word's letters are in now">Font now</th>
-                            <th data-sort="g" title="H / G / A / L = the glossary has this spelling labelled Hebrew / Greek / Arabic / Latin (the word starts with that Language) · ✓ = a glossary transliteration. Click to sort.">Glossary</th>
+                            <th data-sort="g" title="H / G / R / A / L = the glossary has this spelling labelled Hebrew / Greek / Aramaic / Arabic / Latin (the word starts with that Language) · ✓ = a glossary transliteration. Click to sort.">Glossary</th>
                             <th title="The word in its first paragraph">Example</th>
-                            <th data-sort="c" title="? = undecided · H = Hebrew: Yada Towrah-Times in the books · G = Greek · A = Arabic · L = Latin · X = leave alone in the books (says nothing about its language). Click to sort.">Language</th>
+                            <th data-sort="c" class="it-lang-th">
+                                <div class="it-lang-help">Define each word's language
+                                    <span class="it-info" tabindex="0" role="button" aria-label="What the Language options mean" aria-describedby="it-lang-pop">&#9432;
+                                        <span class="it-pop" id="it-lang-pop" role="tooltip"></span></span></div>
+                                Language</th>
                         </tr></thead>
                         <tbody id="it-body"></tbody>
                     </table>
@@ -3306,7 +3323,7 @@ function initFlipbookTab() {
 // book) and lists the italic words not already in Yada Towrah-Times, merged
 // across the books. Each word gets a "Language": ? (und — nobody has decided;
 // stored as NO row), H (Hebrew: Yada Towrah-Times in the books, Books/H in the
-// glossary), G (Greek) / A (Arabic) / L (Latin: Books/G, /A or /L in the glossary, the books
+// glossary), G (Greek) / R (Aramaic) / A (Arabic) / L (Latin: Books/G, /R, /A or /L in the glossary, the books
 // untouched) or X (leave it alone in the books; it says nothing about the
 // language, so it never touches yy_word). Save remembers the choices
 // (italic_choices); Apply to Books switches the saved H words in the staged
@@ -3316,9 +3333,10 @@ var IT_LANGS = {und: ['?', 'Undecided — nobody has decided yet what language t
                 H: ['H', 'Hebrew — put it in Yada Towrah-Times throughout the books, and in the glossary as a Books word labelled H'],
                 G: ['G', 'Greek — in the glossary as a Books word labelled G; the books are left as they are'],
                 A: ['A', 'Arabic — in the glossary as a Books word labelled A; the books are left as they are'],
+                R: ['R', 'Aramaic — in the glossary as a Books word labelled R; the books are left as they are'],
                 L: ['L', 'Latin — in the glossary as a Books word labelled L; the books are left as they are'],
                 X: ['X', 'Leave it alone in the books — this does not say what language it is; its glossary language is not changed']};
-var IT_LANG_ORDER = ['und', 'H', 'G', 'A', 'L', 'X'];
+var IT_LANG_ORDER = ['und', 'H', 'G', 'R', 'A', 'L', 'X'];
 var IT_STORE = 'admin-books:italics:books';
 // Rows shown at a time (the "Show N at a time" select; 0 = all), remembered per browser.
 var IT_PAGE_STORE = 'admin-books:italics:page';
@@ -3329,8 +3347,8 @@ function itPageSize() { return itPage || Infinity; }
 var itBound = false;
 var itBkSaved = null;      // saved tree selection, used until the tree is built
 var itBkBuilt = false;
-var itSaved = {};          // word → 'H' | 'G' | 'A' | 'L' | 'X', as saved before (yy_italic_font_choice); absent = ?
-var itChoice = {};         // word → 'und' | 'H' | 'G' | 'A' | 'L' | 'X', picked on this page
+var itSaved = {};          // word → 'H' | 'G' | 'R' | 'A' | 'L' | 'X', as saved before (yy_italic_font_choice); absent = ?
+var itChoice = {};         // word → 'und' | 'H' | 'G' | 'R' | 'A' | 'L' | 'X', picked on this page
 var itWords = [];          // [{w, n, books: {vk: n}, fonts: {}, ex: [[pre, w, post]], g}]
 var itScope = [];          // the last Parse: [{vk, label, chaps: [chapter keys] | null}]
 var itShown = itPageSize();
@@ -3338,7 +3356,7 @@ var itSort = {k: 'n', dir: -1};
 var itBusy = false;
 var itBookLabels = {};     // volume key → label
 var itRadioSeq = 0;        // unique radio-group names across renders
-var itGlossLang = {};      // word → 'H' | 'G' | 'A' | 'L' when a yy_word record with that language has its spelling (its default)
+var itGlossLang = {};      // word → 'H' | 'G' | 'R' | 'A' | 'L' when a yy_word record with that language has its spelling (its default)
 
 function itInit() {
     if (itBound) return;
@@ -3351,7 +3369,7 @@ function itInit() {
     // wires Save (it would sit disabled until a field "changed").
     var slot = document.getElementById('it-save-slot');
     slot.innerHTML = '<button type="button" class="btn btn-primary btn-sm" id="it-save" onclick="itSave()" disabled'
-        + ' title="Remember the Language chosen for each word, and put every H, G, A or L word in the glossary as a Books word labelled with it. The Word files are not touched.">Save</button> '
+        + ' title="Remember the Language chosen for each word, and put every H, G, R, A or L word in the glossary as a Books word labelled with it. The Word files are not touched.">Save</button> '
         + '<button type="button" class="btn btn-primary btn-sm" id="it-apply" onclick="itApply()" disabled'
         + ' title="Switch every place the SAVED H words appear in the parsed books and chapters to Yada Towrah-Times, in each book\'s staged DOCX (queued until you commit it on Changes)">Apply to Books</button>';
     document.getElementById('it-save')._dirtyEntry = {skip: true};
@@ -3378,6 +3396,11 @@ function itInit() {
     ['it-f-gloss', 'it-f-ring', 'it-f-font'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', function() { itShown = itPageSize(); itRender(); });
     });
+    // The Language heading's ⓘ: what each option means, from IT_LANGS (the same text as the radios' tooltips).
+    document.getElementById('it-lang-pop').innerHTML = '<p>Every word should have its language defined. The options:</p><dl>'
+        + IT_LANG_ORDER.map(function(v) { return '<dt>' + esc(IT_LANGS[v][0]) + '</dt><dd>' + esc(IT_LANGS[v][1]) + '</dd>'; }).join('')
+        + '</dl><p style="margin:6px 0 0">Only <b>H</b> changes the books (on Apply to Books). Save puts H, G, R, A and L words in the glossary with that language.</p>';
+    document.querySelector('#cl-pane-italics .it-info').addEventListener('click', function(e) { e.stopPropagation(); });   // not a sort click
     document.querySelectorAll('#cl-pane-italics th[data-sort]').forEach(function(th) {
         th.addEventListener('click', function() {
             var k = th.getAttribute('data-sort');
@@ -3662,7 +3685,7 @@ function itRun(scope, cachedOnly) {
 
 /* ── List ── */
 // A word's Language: picked on the page, else saved, else its default — the
-// language (H / G / A / L) of a yy_word record with this spelling (x.l from
+// language (H / G / R / A / L) of a yy_word record with this spelling (x.l from
 // italic_scan), otherwise ?.
 function itDefault(w) { return itGlossLang[w] || 'und'; }
 function itFontOf(w) { return itChoice[w] || itSaved[w] || itDefault(w); }
@@ -3700,7 +3723,7 @@ function itSorted(list) {
     });
 }
 
-var IT_LANG_NAME = {H: 'Hebrew', G: 'Greek', A: 'Arabic', L: 'Latin'};
+var IT_LANG_NAME = {H: 'Hebrew', G: 'Greek', R: 'Aramaic', A: 'Arabic', L: 'Latin'};
 
 function itRender() {
     var list = itSorted(itFiltered());
@@ -3743,7 +3766,7 @@ function itMore() { itShown += itPageSize(); itRender(); }
 function itSummary(nShown) {
     if (nShown === undefined) nShown = itFiltered().length;
     var occ = itWords.reduce(function(n, x) { return n + x.n; }, 0);
-    var cnt = {und: 0, H: 0, G: 0, A: 0, L: 0, X: 0}, hocc = 0, byDefault = 0;
+    var cnt = {und: 0, H: 0, G: 0, R: 0, A: 0, L: 0, X: 0}, hocc = 0, byDefault = 0;
     itWords.forEach(function(x) {
         var f = itFontOf(x.w); cnt[f]++;
         if (f === 'H') hocc += x.n;
@@ -3754,7 +3777,7 @@ function itSummary(nShown) {
     var ready = itApplyWords();
     document.getElementById('it-sum').innerHTML = itWords.length + ' word' + (itWords.length === 1 ? '' : 's') + ' (' + occ + ' place' + (occ === 1 ? '' : 's') + ') in '
         + books + ' book' + (books === 1 ? '' : 's') + (nShown !== itWords.length ? ' · ' + nShown + ' shown' : '')
-        + ' · ? <b>' + cnt.und + '</b> · H <b>' + cnt.H + '</b> (' + hocc + ' place' + (hocc === 1 ? '' : 's') + ') · G <b>' + cnt.G + '</b> · A <b>' + cnt.A + '</b> · L <b>' + cnt.L + '</b> · X <b>' + cnt.X + '</b>'
+        + ' · ? <b>' + cnt.und + '</b> · H <b>' + cnt.H + '</b> (' + hocc + ' place' + (hocc === 1 ? '' : 's') + ') · G <b>' + cnt.G + '</b> · R <b>' + cnt.R + '</b> · A <b>' + cnt.A + '</b> · L <b>' + cnt.L + '</b> · X <b>' + cnt.X + '</b>'
         + (nPicks ? ' · <b>' + nPicks + '</b> unsaved' + (byDefault ? ' (' + byDefault + ' by default: the glossary labels the spelling)' : '') : '');
     var save = document.getElementById('it-save');
     save.disabled = itBusy || !nPicks;
@@ -3779,7 +3802,7 @@ function itApplyWords() {
 }
 
 /* ── Save: the choices, and the glossary ── */
-// What Save did in the glossary (cleanupItalicLexicon): Books words added / relabelled H, G, A or L.
+// What Save did in the glossary (cleanupItalicLexicon): Books words added / relabelled H, G, R, A or L.
 function itLexHtml(lex) {
     if (!lex) return '';
     var words = function(list) { return list.map(function(x) { return esc(x.word || x) + (x.lang ? ' (' + x.lang + ')' : ''); }).join(', '); };
@@ -3795,7 +3818,7 @@ function itLexHtml(lex) {
 }
 
 // Save remembers each changed pick (yy_italic_font_choice) and gives every
-// H / G / A / L word a Books glossary row labelled with it (X and ? never touch
+// H / G / R / A / L word a Books glossary row labelled with it (X and ? never touch
 // the glossary). The Word files are not touched — that is Apply to Books.
 // then(ok) runs after it finishes.
 function itSave(then) {
@@ -3816,7 +3839,7 @@ function itSave(then) {
     };
     clPost('italic_choices', {choices: picks, words: langs}).then(function(d) {
         if (!d || d.error) return fail((d && d.error) || 'no answer');
-        var c = {und: 0, H: 0, G: 0, A: 0, L: 0, X: 0};
+        var c = {und: 0, H: 0, G: 0, R: 0, A: 0, L: 0, X: 0};
         Object.keys(picks).forEach(function(w) {
             c[picks[w]]++;
             if (picks[w] === 'und') delete itSaved[w]; else itSaved[w] = picks[w];   // ? = no saved row
@@ -3825,7 +3848,7 @@ function itSave(then) {
         itBusy = false;
         document.getElementById('it-parse').disabled = false;
         var n = Object.keys(picks).length;
-        itProg('<div>Saved <b>' + n + '</b> choice' + (n === 1 ? '' : 's') + ' (? ' + c.und + ', H ' + c.H + ', G ' + c.G + ', A ' + c.A + ', L ' + c.L + ', X ' + c.X + ').'
+        itProg('<div>Saved <b>' + n + '</b> choice' + (n === 1 ? '' : 's') + ' (? ' + c.und + ', H ' + c.H + ', G ' + c.G + ', R ' + c.R + ', A ' + c.A + ', L ' + c.L + ', X ' + c.X + ').'
             + (then || !c.H ? '' : ' Click <b>Apply to Books</b> to put the H words in Yada Towrah-Times in the Word files.') + '</div>' + itLexHtml(d.lexicon));
         itRender();
         if (then) then(true);

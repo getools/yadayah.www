@@ -1233,8 +1233,8 @@ var LX_KEYBOARDS = {
 };
 
 /* Base is typed right-to-left in these. */
-var LX_RTL = { H: 1, A: 1 };
-var LX_LANG_TAG = { H: 'he', A: 'ar', G: 'el', L: 'la' };
+var LX_RTL = { H: 1, R: 1, A: 1 };
+var LX_LANG_TAG = { H: 'he', R: 'arc', A: 'ar', G: 'el', L: 'la' };
 
 var LX_PUNCT = [
     ['־', 'maqaf'], ['׃', 'sof pasuq'], ['׳', 'geresh'], ['״', 'gershayim'],
@@ -2282,9 +2282,10 @@ function lxCollectTranslits() {
 
 function lxLang() { return document.getElementById('lx-language').value; }
 
-/* The keys for a language, or null when it has none. */
+/* The keys for a language, or null when it has none. Aramaic (R) is written
+   in the same square script, so it gets the Hebrew letters and marks. */
 function lxKeyboardFor(lang) {
-    if (lang === 'H') {
+    if (lang === 'H' || lang === 'R') {
         return {
             letters: (lxMeta.letters || []).map(function(l) { return [l.letter_hebrew, l.letter_label || '']; }),
             marks: LX_MARKS, punct: LX_PUNCT
@@ -2339,7 +2340,7 @@ function lxBuildKeyboard() {
 
     var html = '';
     if (layout.letters.length) html += '<h4>Letters</h4><div class="lx-keys">' + keys(layout.letters, 'letter') + '</div>';
-    if (layout.marks.length)   html += '<h4>' + (lang === 'H' ? 'Vowels &amp; marks' : 'Marks') + '</h4><div class="lx-keys">' + keys(layout.marks, 'mark') + '</div>';
+    if (layout.marks.length)   html += '<h4>' + (lang === 'H' || lang === 'R' ? 'Vowels &amp; marks' : 'Marks') + '</h4><div class="lx-keys">' + keys(layout.marks, 'mark') + '</div>';
     if (layout.punct.length)   html += '<h4>Punctuation</h4><div class="lx-keys">' + keys(layout.punct, 'punct') + '</div>';
     kb.innerHTML = html;
 

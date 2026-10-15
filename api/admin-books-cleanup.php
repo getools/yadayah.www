@@ -2081,9 +2081,9 @@ function cleanupFindLike(string $q): string {
  * GET  ?action=italic_books&volume=N           that book's chapters (key 0 = front matter)
  * GET  ?action=italic_scan&volume=N[&chaps=K,…][&cached=1] the book's italic words that are not in Yada Towrah-Times
  *        (cached per book + chapters in u/books-word-staged/.italiccache until its DOCX changes; cached=1 = never parse)
- * POST ?action=italic_choices {choices: {word: 'H'|'G'|'A'|'L'|'X'|'und'}, words: {word: 'H'|'G'|'A'|'L'}}
+ * POST ?action=italic_choices {choices: {word: 'H'|'G'|'R'|'A'|'L'|'X'|'und'}, words: {word: 'H'|'G'|'R'|'A'|'L'}}
  *        remember each word's Language choice (yy_italic_font_choice.italic_choice_font holds the code):
- *        H = Hebrew (Yada Towrah-Times in the books), G = Greek, A = Arabic, L = Latin, X = leave it alone in the
+ *        H = Hebrew (Yada Towrah-Times in the books), G = Greek, R = Aramaic, A = Arabic, L = Latin, X = leave it alone in the
  *        books (says nothing about its language), und = "?" nobody decided → no row (clears a saved one).
  *        Older pages' 'ytt' / 'tnr' are read as H / X. `words` get a Books glossary row labelled with
  *        that language — see cleanupItalicLexicon(). Only H words are ever switched in the DOCX.
@@ -2204,15 +2204,15 @@ function cleanupItalicScan(): void {
         $gloss[cleanupItalicNorm((string)$r['word_translit_text'])] = true;
     }
     // l: the language of the yy_word record(s) with this spelling (exact, any case — as
-    // cleanupItalicLexicon matches), any source, not "Not a word"; H wins over G over A over L when
+    // cleanupItalicLexicon matches), any source, not "Not a word"; H wins over G over R over A over L when
     // records disagree. The page defaults the word's Language to it.
     $langOf = [];
-    $rank = ['H' => 4, 'G' => 3, 'A' => 2, 'L' => 1];
+    $rank = ['H' => 5, 'G' => 4, 'R' => 3, 'A' => 2, 'L' => 1];
     foreach ($db->query("SELECT DISTINCT lower(trim(s.txt)) AS lc, w.word_language
                            FROM yy_word w
                            JOIN (SELECT word_key, word_translit AS txt FROM yy_word
                                  UNION SELECT word_key, word_translit_text FROM yy_word_translit) s ON s.word_key = w.word_key
-                          WHERE w.word_language IN ('H', 'G', 'A', 'L') AND NOT w.word_excluded_flag AND trim(coalesce(s.txt, '')) <> ''") as $r) {
+                          WHERE w.word_language IN ('H', 'G', 'R', 'A', 'L') AND NOT w.word_excluded_flag AND trim(coalesce(s.txt, '')) <> ''") as $r) {
         $l = trim((string)$r['word_language']);
         if (!isset($langOf[$r['lc']]) || $rank[$l] > $rank[$langOf[$r['lc']]]) $langOf[$r['lc']] = $l;
     }
@@ -2251,26 +2251,26 @@ function cleanupItalicChoices(array $authUser): void {
         $up->execute([$w, $f, (int)($authUser['user_key'] ?? 0), (string)($authUser['user_name'] ?? '')]);
         $n += $up->rowCount();
     }
-    // H / G / A / L words go in the glossary as Books words labelled with that language (X never touches it).
+    // H / G / R / A / L words go in the glossary as Books words labelled with that language (X never touches it).
     // `words` is {word: language}; an older page sends a plain list, which meant Hebrew.
     $wordLangs = [];
     foreach ((array)($in['words'] ?? []) as $k => $v) {
         if (is_int($k)) $wordLangs[(string)$v] = 'H';
-        elseif (in_array($l = cleanupItalicCode((string)$v), ['H', 'G', 'A', 'L'], true)) $wordLangs[(string)$k] = $l;
+        elseif (in_array($l = cleanupItalicCode((string)$v), ['H', 'G', 'R', 'A', 'L'], true)) $wordLangs[(string)$k] = $l;
     }
     $lex = cleanupItalicLexicon($db, $wordLangs);
     $db->commit();
     jsonResponse(['saved' => $n, 'lexicon' => $lex]);
 }
 
-/** A Language choice code: H | G | A | L | X, or null. 'ytt' / 'tnr' are the older Y / N (Hebrew / leave alone). */
+/** A Language choice code: H | G | R | A | L | X, or null. 'ytt' / 'tnr' are the older Y / N (Hebrew / leave alone). */
 function cleanupItalicCode(string $f): ?string {
     $f = ['ytt' => 'H', 'tnr' => 'X'][$f] ?? $f;
-    return in_array($f, ['H', 'G', 'A', 'L', 'X'], true) ? $f : null;
+    return in_array($f, ['H', 'G', 'R', 'A', 'L', 'X'], true) ? $f : null;
 }
 
 /**
- * The words given a language on the Italics tab (H, G, A or L), in the glossary:
+ * The words given a language on the Italics tab (H, G, R, A or L), in the glossary:
  * each needs a yy_word row with source 'books' and that language. Matched the
  * way the word harvest (_word_harvest.php, Books coverage) matches — the exact
  * lower-cased spelling in word_translit or any yy_word_translit row of a 'books' word.
@@ -2284,10 +2284,10 @@ function cleanupItalicCode(string $f): ?string {
  */
 function cleanupItalicLexicon(PDO $db, array $wordLangs): array {
     $out = ['created' => [], 'relabelled' => [], 'already' => 0, 'not_a_word' => []];
-    $words = [];   // word → H | G | A | L
+    $words = [];   // word → H | G | R | A | L
     foreach ($wordLangs as $w => $l) {
         $w = trim((string)$w);
-        if ($w !== '' && mb_strlen($w) <= 200 && in_array($l, ['H', 'G', 'A', 'L'], true)) $words[$w] = $l;
+        if ($w !== '' && mb_strlen($w) <= 200 && in_array($l, ['H', 'G', 'R', 'A', 'L'], true)) $words[$w] = $l;
     }
     if (!$words) return $out;
     // lower-cased spelling → the 'books' / "Not a word" rows that own it
