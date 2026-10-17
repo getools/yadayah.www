@@ -12,6 +12,18 @@ require_once __DIR__ . '/config.php';
 $user = requireAuth();
 $db = getDb();
 $method = $_SERVER['REQUEST_METHOD'];
+
+// One edit-log row per transcript for a bulk speaker relabel (rename / assign
+// profile), so whoever did it shows up as an editor. action 'speaker',
+// no segment; the text columns hold the old and new labels.
+function logSpeakerRelabel(PDO $db, array $itemKeys, ?string $from, ?string $to, $userKey): void {
+    $st = $db->prepare("SELECT 1 FROM yy_feed_item_transcript WHERE feed_item_key = ? AND feed_item_transcript_speaker IS NOT DISTINCT FROM ? LIMIT 1");
+    $ins = $db->prepare("INSERT INTO yy_transcript_edit_log (feed_item_key, edit_segment, edit_original_text, edit_new_text, edit_action, edit_user_key) VALUES (?, NULL, ?, ?, 'speaker', ?)");
+    foreach ($itemKeys as $ik) {
+        $st->execute([(int)$ik, $to]);
+        if ($st->fetchColumn()) $ins->execute([(int)$ik, $from, $to, $userKey]);
+    }
+}
 $userKey = $user['user_key'] ?? null;
 
 function intervalToSeconds(string $interval): int {
@@ -164,7 +176,7 @@ if ($method === 'GET') {
                      AND sk.skip_dtime >= lj.job_created))
           AND NOT EXISTS (SELECT 1 FROM yy_feed_item_transcript_status es WHERE es.feed_item_key = $itemKey AND es.edit_status = 'Editing')
           AND NOT EXISTS (SELECT 1 FROM yy_feed_item_transcript_validation v WHERE v.feed_item_key = $itemKey
-                 AND (v.validation_status IN ('Approved', 'Errors') OR COALESCE(v.validation_bookmark_seconds, 0) > 0))
+                 AND (v.validation_status IN ('Finished', 'Approved', 'Errors') OR COALESCE(v.validation_bookmark_seconds, 0) > 0))
           AND (SELECT fi.feed_item_yt_caption_uploaded_dtime FROM yy_feed_item fi WHERE fi.feed_item_key = $itemKey) IS NULL
     ");
     $aiPending = (bool)$aiStmt->fetchColumn();
@@ -384,6 +396,10 @@ if ($method === 'POST') {
                         $updStmt->execute([$segment, $textTrim, $rowSort, $newSpk, $userKey, $key, $itemKey]);
                         if ($txtChanged || $segChanged) {
                             $logStmt->execute([$itemKey, $segment, $old['text'], $textTrim, 'edit', $userKey]);
+                        } elseif ($spkChanged) {
+                            // Speaker-only change: log it (old → new label) so the
+                            // person shows up as an editor of this transcript.
+                            $logStmt->execute([$itemKey, $segment, $old['speaker'], $newSpk, 'speaker', $userKey]);
                         }
                         // Layer 4: learn from the admin's own segment edits, not
                         // just find/replace (admin-transcript-replace.php) and
@@ -424,8 +440,10 @@ if ($method === 'POST') {
     if ($action === 'save_validation') {
         $status = trim($data['status'] ?? 'Pending');
         $note   = trim($data['note'] ?? '');
-        if (!in_array($status, ['Pending', 'Approved', 'Errors'], true)) {
-            errorResponse('status must be Pending, Approved, or Errors');
+        // Pending = being edited (shown as "Editing"), Finished = essentially
+        // complete, Approved = reviewed and ready to post back to YouTube.
+        if (!in_array($status, ['Pending', 'Finished', 'Approved', 'Errors'], true)) {
+            errorResponse('status must be Pending, Finished, Approved, or Errors');
         }
         // Approving the transcript clears any in-progress validation bookmark
         // — the user is done with this item, so the resume marker is moot.
@@ -483,6 +501,7 @@ if ($method === 'POST') {
         $upd->execute(array_merge([$to], $itemKeys, [$from]));
         $changed = $upd->rowCount();
         if ($changed > 0) foreach ($itemKeys as $ik) markTranscriptEditing($db, (int)$ik);
+        if ($changed > 0) logSpeakerRelabel($db, $itemKeys, $from, $to, $userKey);
         // Keep captured voice embeddings addressable by the new label so
         // "save as profile" and auto-match keep working after a rename.
         if ($to !== null) {
@@ -706,6 +725,7 @@ if ($method === 'POST') {
             $db->prepare("UPDATE yy_feed_item_speaker_embedding SET label=? WHERE feed_item_key=? AND label=? AND NOT EXISTS (SELECT 1 FROM yy_feed_item_speaker_embedding ex WHERE ex.feed_item_key = yy_feed_item_speaker_embedding.feed_item_key AND ex.model = yy_feed_item_speaker_embedding.model AND ex.label = ?)")->execute([$toLabel, (int)$ik, $fromLabel, $toLabel]);
         }
         if ($changed > 0) foreach ($itemKeys as $ik) markTranscriptEditing($db, (int)$ik);
+        if ($changed > 0) logSpeakerRelabel($db, $itemKeys, $fromLabel, $toLabel, $userKey);
         $learn = $changed > 0 ? speakerProfileLearnFromLabel($db, $itemKeys, $toLabel, 'assign') : null;   // learn (2026-10-13)
         jsonResponse(['assigned' => true, 'from' => $fromLabel, 'to' => $toLabel, 'name' => $prof['nm'], 'changed' => $changed, 'profile_learn' => $learn]);
     }

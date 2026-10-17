@@ -116,8 +116,9 @@ if (!$itemKey) { fwrite(STDERR, "usage: transcript-tail-rebuild.php --list | <it
 [$cut, $src] = $opt['cut'] !== null ? [$opt['cut'], '--cut'] : ttCutPoint($db, $itemKey);
 $vs = $db->prepare("SELECT validation_status FROM yy_feed_item_transcript_validation WHERE feed_item_key = ? ORDER BY validation_dtime DESC LIMIT 1");
 $vs->execute([$itemKey]);
-if ($vs->fetchColumn() === 'Approved' && !in_array('--force', $args, true)) {
-    echo "item $itemKey is Approved — refusing (add --force to override)\n"; exit(1);
+$vsStatus = $vs->fetchColumn();
+if (in_array($vsStatus, ['Approved', 'Finished'], true) && !in_array('--force', $args, true)) {
+    echo "item $itemKey is $vsStatus — refusing (add --force to override)\n"; exit(1);
 }
 $live = cfLoadLive($db, $itemKey);
 if (!$live) { echo "item $itemKey has no live transcript\n"; exit(1); }

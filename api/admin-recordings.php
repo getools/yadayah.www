@@ -160,6 +160,7 @@ $sttAny = "EXISTS(SELECT 1 FROM yy_feed_item_transcript_job cj WHERE cj.feed_ite
 //   failed     latest build errored and there is no transcript (or nobody is editing it)
 //   none       no transcript
 //   approved   latest review Approved, and no upload or the upload is older
+//   finished   latest review Finished (essentially complete, not yet Approved)
 //   uploaded   on YouTube as captions
 //   editing    an admin changed it (edit_status 'Editing'), left a bookmark, or flagged Errors
 //   ai_queued  built fast and the AI cleanup pass (transcript-llm-backfill.php) hasn't run
@@ -192,6 +193,7 @@ $txStateSql = "(CASE
     WHEN NOT EXISTS(SELECT 1 FROM yy_feed_item_transcript t WHERE t.feed_item_key = fi.feed_item_key)
          THEN CASE WHEN $txInit = 'error' THEN 'failed' ELSE 'none' END
     WHEN $txVal = 'Approved' AND ($txUpl IS NULL OR $txValDt > $txUpl) THEN 'approved'
+    WHEN $txVal = 'Finished' THEN 'finished'
     WHEN $txUpl IS NOT NULL THEN 'uploaded'
     WHEN EXISTS(SELECT 1 FROM yy_feed_item_transcript_status es WHERE es.feed_item_key = fi.feed_item_key AND es.edit_status = 'Editing')
          OR COALESCE($txValBm, 0) > 0 OR $txVal = 'Errors' THEN 'editing'
@@ -201,12 +203,12 @@ $txStateSql = "(CASE
   END)";
 if (!empty($captionStatuses)) {
     $legacy = ['captions' => ['uploaded'], 'reviewed' => ['approved'], 'pending' => ['ai_queued', 'ready', 'editing'],
-               'missing' => ['none'], 'editable' => ['ai_queued', 'ready', 'editing', 'approved', 'uploaded'],
+               'missing' => ['none'], 'editable' => ['ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded'],
                'generating' => ['processing']];
     $want = [];
     foreach ($captionStatuses as $cs) foreach ($legacy[$cs] ?? [$cs] as $w) $want[$w] = true;
     $want = array_values(array_intersect(array_keys($want),
-        ['nomp3', 'none', 'queued', 'processing', 'failed', 'ai_queued', 'ready', 'editing', 'approved', 'uploaded']));
+        ['nomp3', 'none', 'queued', 'processing', 'failed', 'ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded']));
     if ($want) {
         $where .= " AND $txStateSql IN (" . implode(',', array_fill(0, count($want), '?')) . ")";
         array_push($params, ...$want);

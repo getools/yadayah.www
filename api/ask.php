@@ -251,8 +251,13 @@ $transcriptSql = "
         FROM yy_feed_item_transcript
         WHERE feed_item_transcript_tsv @@ %s('english', ?)
     ),
+    -- Hand-reviewed transcripts are more reliable: Approved x1.5, Finished x1.25.
     top_per_video AS (
-        SELECT * FROM ranked WHERE rn = 1 ORDER BY rank DESC LIMIT 10
+        SELECT r.* FROM ranked r
+          LEFT JOIN yy_feed_item_transcript_validation rv ON rv.feed_item_key = r.feed_item_key
+         WHERE r.rn = 1
+         ORDER BY r.rank * CASE rv.validation_status WHEN 'Approved' THEN 1.5 WHEN 'Finished' THEN 1.25 ELSE 1 END DESC
+         LIMIT 10
     ),
     windowed AS (
         SELECT t.feed_item_key, t.rank, t.feed_item_transcript_segment AS hit_seg,
@@ -266,10 +271,12 @@ $transcriptSql = "
     )
     SELECT w.feed_item_key, w.rank, w.hit_seg, w.excerpt,
            COALESCE(fi.feed_item_title_override, fi.feed_item_title_import) AS title,
-           to_char(fi.feed_item_publish_import_dtime, 'YYYY/MM') AS pub_date
+           to_char(fi.feed_item_publish_import_dtime, 'YYYY/MM') AS pub_date,
+           rv.validation_status AS review_status
     FROM windowed w
     JOIN yy_feed_item fi ON fi.feed_item_key = w.feed_item_key
-    ORDER BY w.rank DESC
+    LEFT JOIN yy_feed_item_transcript_validation rv ON rv.feed_item_key = w.feed_item_key
+    ORDER BY w.rank * CASE rv.validation_status WHEN 'Approved' THEN 1.5 WHEN 'Finished' THEN 1.25 ELSE 1 END DESC
 ";
 
 $tStmt = $pdo->prepare(sprintf($transcriptSql, 'plainto_tsquery', 'plainto_tsquery', 'plainto_tsquery'));
@@ -307,7 +314,9 @@ foreach ($transcriptRows as $row) {
     if (!$text) continue;
     if (strlen($text) > 800) $text = substr($text, 0, 800) . '...';
     $date = $row['pub_date'] ?? '';
-    $transcriptBlock .= "[Video: {$row['title']}" . ($date ? ", $date" : "") . "]\n{$text}\n\n";
+    $rev = ($row['review_status'] ?? '') === 'Approved' ? ', reviewed transcript'
+         : (($row['review_status'] ?? '') === 'Finished' ? ', edited transcript' : ', automatic transcript');
+    $transcriptBlock .= "[Video: {$row['title']}" . ($date ? ", $date" : "") . $rev . "]\n{$text}\n\n";
 }
 
 // --- Mow'ed Miqra'ey date table detector ---
@@ -462,6 +471,7 @@ When answering questions:
 - You calculated the dates for every Mow'ed Miqra' (Called-Out Assembly / Festival) — Pesach, Matsah, Bikuwrym, Shabuw'ah, Taruw'ah, Kipurym, and Sukah — and published them in "Shanah / Years — Yada Yahowah, Volume 1, Chapter 1." When asked about festival dates, answer from your own calculations.
 - Use the provided excerpts to inform your answers but speak from them naturally — as from memory, not as if reading. You can mention a specific volume or chapter when directing someone to read more, but don't preface answers with "In my book..." or "According to my transcript..."
 - Your most recent thinking (2025–2026 video transcripts) takes priority when your views have evolved. But your books provide deeper, more thorough treatment — use them for foundational depth.
+- Video excerpts are labelled by transcript reliability: "reviewed transcript" (edited and approved), "edited transcript" (edited, essentially complete), or "automatic transcript" (machine speech-to-text that may mishear names, Hebrew terms or numbers). Prefer the wording of reviewed/edited excerpts when they conflict, and don't build an answer on an odd word that appears only in an automatic transcript.
 - Keep responses focused and substantive — typically 2-6 paragraphs. Be thorough but don't ramble.
 - When translating or discussing Hebrew terms, provide the transliteration, meaning, and significance.
 

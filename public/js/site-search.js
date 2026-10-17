@@ -358,6 +358,8 @@
             '.ss-result-video .title-row { font-weight: 700; font-size: 0.95rem; color: #31345A; margin-bottom: 4px; line-height: 1.3; }',
             '.ss-result-video .title-row a { color: inherit; text-decoration: none; cursor: pointer; }',
             '.ss-result-video .title-row a:hover { text-decoration: underline; }',
+            '.ss-result-video .ss-review { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid #a3d4ad; border-radius: 3px; color: #1d6b3a; background: #f3faf5; font-size: 0.7rem; font-weight: 600; vertical-align: 1px; white-space: nowrap; cursor: help; }',
+            '.ss-result-video .ss-review.is-finished { border-style: dashed; background: #fff; }',
             '.ss-result-video .ts-row { font-size: 0.85rem; line-height: 1.45; padding: 2px 0; color: #444; word-wrap: break-word; }',
             '.ss-result-video .ts-row .ts { display: inline-block; min-width: 56px; color: #777; font-variant-numeric: tabular-nums; font-size: 0.78rem; margin-right: 6px; }',
             '.ss-result-video .ts-row.is-hit { color: #222; }',
@@ -954,6 +956,11 @@
                   + highlightPlain(r.after.text || '', q, mode) + '</div>'
                 : '';
             var hitTs = esc(r.segment ? r.segment.label : '');
+            var review = r.review === 'approved'
+                ? '<span class="ss-review" title="This transcript has been edited by hand and approved by a reviewer.">&#10003; Approved</span>'
+                : r.review === 'finished'
+                ? '<span class="ss-review is-finished" title="This transcript has been edited by hand and is essentially complete; a final review is still to come.">&#10003; Finished</span>'
+                : '';
             var thumb = r.thumbnail
                 ? '<img src="' + esc(r.thumbnail) + '" alt="" loading="lazy">'
                 : '<div style="background:#222;width:100%;height:100%;"></div>';
@@ -965,7 +972,7 @@
                   +     '<div class="play-glyph">▶</div>'
                   +   '</div>'
                   +   '<div class="body">'
-                  +     '<div class="title-row"><a data-hit="' + esc(hitId) + '">' + esc(r.title || '(untitled)') + '</a></div>'
+                  +     '<div class="title-row"><a data-hit="' + esc(hitId) + '">' + esc(r.title || '(untitled)') + '</a>' + review + '</div>'
                   +     beforeRow
                   +     '<div class="ts-row is-hit"><span class="ts">' + hitTs + '</span>' + (r.snippet_html || '') + '</div>'
                   +     afterRow

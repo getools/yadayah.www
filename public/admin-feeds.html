@@ -339,8 +339,9 @@
                             <label title="The last transcript build failed. Open it to see the error, then re-run the build."><input type="checkbox" value="failed" onchange="loadRecordings(1)"> Build failed</label>
                             <label title="AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand."><input type="checkbox" value="ai_queued" onchange="loadRecordings(1)"> AI cleanup</label>
                             <label title="Ready to edit. The baseline transcript is built and AI-cleaned, and no one has edited it yet."><input type="checkbox" value="ready" onchange="loadRecordings(1)"> Ready to edit</label>
-                            <label title="Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but it hasn't been Approved yet."><input type="checkbox" value="editing" onchange="loadRecordings(1)"> Editing</label>
-                            <label title="Approved by a reviewer but not on YouTube yet, or approved again after the last upload (re-upload to update the captions)."><input type="checkbox" value="approved" onchange="loadRecordings(1)"> Approved</label>
+                            <label title="Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but hasn't marked it Finished yet."><input type="checkbox" value="editing" onchange="loadRecordings(1)"> Editing</label>
+                            <label title="Finished. The editor marked this transcript as essentially complete. It still needs a final review; click Approve in the editor once it has been reviewed enough to post back to the video."><input type="checkbox" value="finished" onchange="loadRecordings(1)"> Finished</label>
+                            <label title="Approved. Reviewed enough to post back to the original video, but not on YouTube yet (or approved again after the last upload; re-upload to update the captions)."><input type="checkbox" value="approved" onchange="loadRecordings(1)"> Approved</label>
                             <label title="Approved and uploaded to YouTube as the video's captions."><input type="checkbox" value="uploaded" onchange="loadRecordings(1)"> On YouTube</label>
                         </div>
                     </th>
@@ -711,6 +712,9 @@ function transcribeBtnHtml(it) {
     if (status === 'Approved') {
         bg = '#d4edda'; fg = '#155724'; border = '#a3d4ad';
         label = '&#10003; Approved'; title = 'Transcript approved';
+    } else if (status === 'Finished') {
+        bg = '#fff'; fg = '#1d6b3a'; border = '#a3d4ad';
+        label = '&#10003; Finished'; title = 'Transcript essentially complete; waiting for Approve';
     } else if (status === 'Errors') {
         bg = '#f8d7da'; fg = '#721c24'; border = '#e0a0a8';
         label = '&#9888; Errors'; title = 'Transcript flagged as having errors';
@@ -725,9 +729,9 @@ function transcribeBtnHtml(it) {
         var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
         var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
         var bookmarkText = h > 0 ? pad(h) + ':' + pad(m) + ':' + pad(x) : pad(m) + ':' + pad(x);
-        label = sec > 0 ? 'Pending &middot; ' + bookmarkText : 'Pending';
+        label = sec > 0 ? 'Editing &middot; ' + bookmarkText : 'Editing';
         title = sec > 0
-            ? 'Pending review — resume at ' + bookmarkText
+            ? 'Editing — resume at ' + bookmarkText
             : 'Transcript exists; review not yet started';
     } else {
         // Never transcribed
@@ -1880,20 +1884,23 @@ function openTranscript(itemKey) {
             // continue to read/write t-val-status without rewiring; the
             // visible buttons just push values into it.
             + '<select id="t-val-status" style="display:none;">'
-            + '<option value="Pending">Pending</option>'
+            + '<option value="Pending">Editing</option>'
+            + '<option value="Finished">Finished</option>'
             + '<option value="Approved">Approved</option>'
             + '<option value="Errors">Errors</option>'
             + '</select>'
             + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
             + '<div id="t-val-toggle" role="radiogroup" aria-label="Validation Status" style="display:inline-flex;border:1px solid #ccc;border-radius:4px;overflow:hidden;align-self:flex-start;">'
-            + '<button type="button" data-status="Pending"  onclick="setValidationStatus(\'Pending\')"  style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;border-right:1px solid #ccc;">Pending</button>'
-            + '<button type="button" data-status="Approved" onclick="setValidationStatus(\'Approved\')" style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;">Approved</button>'
+            + '<button type="button" data-status="Pending"  onclick="setValidationStatus(\'Pending\', true)" title="Still being edited" style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;border-right:1px solid #ccc;">Editing</button>'
+            // Stage button: Finish → (once Finished) Approve → ✓ Approved.
+            + '<button type="button" id="t-val-next" onclick="advanceValidationStatus()" style="padding:6px 14px;border:0;background:#fff;color:#333;font-size:0.85rem;font-weight:600;cursor:pointer;">Finish</button>'
             + '</div>'
             // Reset — clears the reviewer resume bookmark back to 0:00:00 and
             // drops the status to Pending, so the Feeds list shows a plain
             // "Pending" badge with no left-off timestamp.
-            + '<button type="button" id="t-val-reset" onclick="resetTranscriptProgress()" title="Reset review progress: clear the resume position (back to 0:00:00) and set the status to Pending. The Feeds list will show a plain \'Pending\' badge with no timestamp." style="padding:6px 12px;border:1px solid #ccc;background:#fff;color:#666;font-size:0.82rem;font-weight:600;cursor:pointer;border-radius:4px;">&#8635; Reset</button>'
+            + '<button type="button" id="t-val-reset" onclick="resetTranscriptProgress()" title="Reset review progress: clear the resume position (back to 0:00:00) and set the status back to Editing. The Feeds list will show a plain \'Editing\' badge with no timestamp." style="padding:6px 12px;border:1px solid #ccc;background:#fff;color:#666;font-size:0.82rem;font-weight:600;cursor:pointer;border-radius:4px;">&#8635; Reset</button>'
             + '</div>'
+            + '<div id="t-val-stage" style="font-size:0.74rem;color:#666;"></div>'
             + '</div>'
             + '<div style="display:flex;flex-direction:column;gap:4px;">'
             + '<label style="font-size:0.74rem;color:#666;font-weight:600;">Validation Note <span style="font-weight:400;color:#999;">(optional)</span></label>'
@@ -2475,8 +2482,9 @@ var REC_TX_STATES = {
     ai_queued:  { label: '◷ AI cleanup',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand.' },
     failed:     { label: '✗ Build failed',  fg: '#a52a2a', border: '#e0a0a8', bg: '#fdecea', title: 'The last transcript build failed. Open it to see the error, then re-run the build.' },
     ready:      { label: '✎ Ready to edit', fg: '#5b2d8a', border: '#c9b3e6', bg: '#f4edfb', title: 'Ready to edit. The baseline transcript is built and AI-cleaned, and no one has edited it yet.' },
-    editing:    { label: '✎ Editing',       fg: '#fff',    border: '#7c4a00', bg: '#a36100', title: 'Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but it hasn\'t been Approved yet.' },
-    approved:   { label: '✓ Approved',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#eaf6ee', title: 'Approved by a reviewer but not on YouTube yet, or approved again after the last upload (re-upload to update the captions).' },
+    editing:    { label: '✎ Editing',       fg: '#fff',    border: '#7c4a00', bg: '#a36100', title: 'Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but hasn\'t marked it Finished yet.' },
+    finished:   { label: '✓ Finished',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#fff',    dashed: true, title: 'Finished. The editor marked this transcript as essentially complete. It still needs a final review; click Approve in the editor once it has been reviewed enough to post back to the video.' },
+    approved:   { label: '✓ Approved',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#eaf6ee', title: 'Approved. Reviewed enough to post back to the original video, but not on YouTube yet (or approved again after the last upload; re-upload to update the captions).' },
     uploaded:   { label: '✓ On YouTube',    fg: '#fff',    border: '#155724', bg: '#1d6b3a', title: 'Approved and uploaded to YouTube as the video\'s captions.' }
 };
 // Editors column: everyone in yy_transcript_edit_log for this item (system
@@ -2535,6 +2543,8 @@ function recTranscriptCell(it) {
             sub = 'left off at ' + (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(x);
         }
         if (it.transcript_validation_status === 'Errors') { sub = '⚠ flagged errors' + (sub ? ' · ' + sub : ''); }
+    } else if (state === 'finished') {
+        sub = recTranscriptCellFmtDate(it.transcript_validation_dtime);
     } else if (state === 'approved') {
         sub = recTranscriptCellFmtDate(it.transcript_validation_dtime);
         if (it.yt_caption_uploaded_dtime) title = 'Approved again after the YouTube upload (' + recTranscriptCellFmtDate(it.yt_caption_uploaded_dtime) + ') — re-upload to update the captions';
@@ -2866,7 +2876,7 @@ function _restoreRecFiltersFromStorage() {
         if (saved.capCaptions) tx.push('uploaded');
         if (saved.capReviewed) tx.push('approved');
         if (saved.capPending) tx.push('ai_queued', 'ready', 'editing');
-        if (saved.capEditable) tx.push('ai_queued', 'ready', 'editing', 'approved', 'uploaded');
+        if (saved.capEditable) tx.push('ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded');
         if (saved.capMissing) tx.push('none');
         recSetChecked('rec-f-cap', tx);
     }
@@ -5589,27 +5599,51 @@ function deleteUploadedSource() {
 // truth, and repaints the buttons so the active one is visually
 // highlighted. The Approved button uses the same green palette as the
 // row badge for consistency; Pending uses an amber palette.
-function setValidationStatus(status) {
+// Stages: Pending (shown as "Editing") → Finished (essentially complete) →
+// Approved (reviewed enough to post back to the video). The stage button
+// reads Finish, then Approve, then ✓ Approved. Finish/Approve save at once.
+// Every stage stays searchable; Finished/Approved just mark it as more reliable.
+function setValidationStatus(status, save) {
     var sel = document.getElementById('t-val-status');
     if (!sel) return;
     sel.value = status;
     paintValidationToggle();
+    if (save) saveValidation();
+}
+function advanceValidationStatus() {
+    var sel = document.getElementById('t-val-status');
+    if (!sel) return;
+    var cur = sel.value || 'Pending';
+    if (cur === 'Approved') return;
+    setValidationStatus(cur === 'Finished' ? 'Approved' : 'Finished', true);
 }
 function paintValidationToggle() {
     var sel = document.getElementById('t-val-status');
     if (!sel) return;
     var current = sel.value || 'Pending';
-    var btns = document.querySelectorAll('#t-val-toggle button[data-status]');
-    btns.forEach(function(b) {
-        var active = b.getAttribute('data-status') === current;
-        if (active) {
-            if (current === 'Approved') { b.style.background = '#27ae60'; b.style.color = '#fff'; }
-            else                        { b.style.background = '#a36100'; b.style.color = '#fff'; }
+    var ed = document.querySelector('#t-val-toggle button[data-status="Pending"]');
+    var nx = document.getElementById('t-val-next');
+    var stage = document.getElementById('t-val-stage');
+    var editing = current !== 'Finished' && current !== 'Approved';
+    if (ed) { ed.style.background = editing ? '#a36100' : '#fff'; ed.style.color = editing ? '#fff' : '#333'; }
+    if (nx) {
+        if (current === 'Approved') {
+            nx.innerHTML = '&#10003; Approved'; nx.style.background = '#27ae60'; nx.style.color = '#fff'; nx.style.cursor = 'default';
+            nx.title = 'Approved: reviewed enough to post back to the original video. Click Editing to reopen it.';
+        } else if (current === 'Finished') {
+            nx.textContent = 'Approve'; nx.style.background = '#eaf6ee'; nx.style.color = '#1d6b3a'; nx.style.cursor = 'pointer';
+            nx.title = 'Approve once it has been reviewed enough to post back to the original video';
         } else {
-            b.style.background = '#fff';
-            b.style.color      = '#333';
+            nx.textContent = 'Finish'; nx.style.background = '#fff'; nx.style.color = '#333'; nx.style.cursor = 'pointer';
+            nx.title = 'Mark the transcript as essentially complete';
         }
-    });
+    }
+    if (stage) {
+        stage.innerHTML = current === 'Approved' ? '<b style="color:#1d6b3a;">&#10003; Approved</b> &middot; ready to post back to the video'
+            : current === 'Finished' ? '<b style="color:#1d6b3a;">&#10003; Finished</b> &middot; essentially complete; click Approve once reviewed'
+            : current === 'Errors' ? '<b style="color:#a52a2a;">&#9888; Flagged errors</b> &middot; still being edited'
+            : 'Still being edited; click Finish when it is essentially complete';
+    }
 }
 
 function populateValidation(v) {
@@ -5681,7 +5715,7 @@ function clearBookmark() {
 // list. Persists both changes, then repaints the in-page Feeds button.
 function resetTranscriptProgress() {
     if (!_transcriptItemKey) return;
-    if (!confirm('Reset review progress?\n\nThis clears the resume position (back to 0:00:00) and sets the status to Pending.')) return;
+    if (!confirm('Reset review progress?\n\nThis clears the resume position (back to 0:00:00) and sets the status back to Editing.')) return;
     var itemKey = _transcriptItemKey;
     // Flip the visible toggle + hidden <select> back to Pending so
     // saveValidation() writes Pending and doneTranscript() stays consistent.

@@ -115,12 +115,14 @@ if ($total > 0) {
             fi.feed_item_url                AS video_url,
             fi.feed_item_embed_id           AS embed_id,
             fi.feed_item_duration_seconds   AS duration_seconds,
+            rv.validation_status            AS review_status,
             prev.feed_item_transcript_segment AS prev_segment,
             prev.feed_item_transcript_text    AS prev_text,
             next.feed_item_transcript_segment AS next_segment,
             next.feed_item_transcript_text    AS next_text
         FROM yy_feed_item_transcript t
         JOIN yy_feed_item fi ON fi.feed_item_key = t.feed_item_key
+        LEFT JOIN yy_feed_item_transcript_validation rv ON rv.feed_item_key = t.feed_item_key
         LEFT JOIN LATERAL (
             SELECT p.feed_item_transcript_segment, p.feed_item_transcript_text
             FROM yy_feed_item_transcript p
@@ -142,13 +144,17 @@ if ($total > 0) {
             LIMIT 1
         ) next ON TRUE
         $whereSql
-        ORDER BY rank DESC, t.feed_item_key, t.feed_item_transcript_sort,
+        -- Hand-reviewed transcripts are more reliable: Approved hits rank x1.5,
+        -- Finished x1.25. Every stage stays searchable.
+        ORDER BY ts_rank(t.feed_item_transcript_tsv, $tsqSql)
+                 * CASE rv.validation_status WHEN 'Approved' THEN 1.5 WHEN 'Finished' THEN 1.25 ELSE 1 END DESC,
+                 t.feed_item_key, t.feed_item_transcript_sort,
                  t.feed_item_transcript_segment
         LIMIT ? OFFSET ?
     ";
 
-    // Param order: ts_headline tsq, ts_rank tsq, WHERE params, LIMIT, OFFSET
-    $stmtParams = array_merge([$tsqParam, $tsqParam], $params, [$limit, $offset]);
+    // Param order: ts_headline tsq, ts_rank tsq, WHERE params, ORDER BY tsq, LIMIT, OFFSET
+    $stmtParams = array_merge([$tsqParam, $tsqParam], $params, [$tsqParam, $limit, $offset]);
     $stmt = $pdo->prepare($sql);
     $stmt->execute($stmtParams);
     $rows = $stmt->fetchAll();
@@ -194,6 +200,10 @@ if ($total > 0) {
             'video_url'        => $r['video_url'],
             'embed_id'         => $r['embed_id'],
             'duration_seconds' => $r['duration_seconds'] !== null ? (int)$r['duration_seconds'] : null,
+            // 'approved' / 'finished' once an editor has signed it off; null = still
+            // being edited or automatic speech-to-text.
+            'review'           => $r['review_status'] === 'Approved' ? 'approved'
+                                : ($r['review_status'] === 'Finished' ? 'finished' : null),
             'segment'          => $intervalBag($r['segment']),
             // popover playback start = previous segment if it exists,
             // otherwise the matching segment itself (handles first-row
