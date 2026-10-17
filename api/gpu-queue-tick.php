@@ -47,6 +47,15 @@ foreach ($db->query("SELECT feed_item_transcript_job_key k, job_worker_pid pid F
                    WHERE feed_item_transcript_job_key = ? AND job_status = 'running'")->execute([$o['k']]);
 }
 
+// Queue missing / failed transcripts on the auto-transcribed channels (at most
+// every 30 min, 10 items, 3 tries each): what the list shows as "Generating".
+require_once __DIR__ . '/transcript-gap-sweep.php';
+try {
+    foreach (transcriptGapSweep($db) as $line) echo "$ts gap sweep: $line\n";
+} catch (\Throwable $e) {
+    echo "$ts gap sweep failed: " . $e->getMessage() . "\n";
+}
+
 $s = gpuSttCounts($db);
 if (!$s['pending'] || $s['running']) exit(0);   // nothing to start, or the worker is already going
 $why = gpuGateReason($db, 'stt');

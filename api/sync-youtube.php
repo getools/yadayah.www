@@ -93,10 +93,21 @@ foreach ($feeds as $feed) {
                     if (empty($v['description'])) {
                         $v['description'] = $details[$v['id']]['description'];
                     }
+                    // videos.list title is authoritative: playlistItems can return
+                    // a "Deleted video"/"Private video" placeholder for a video that
+                    // is still public (seen 2026-10-17, 166 titles overwritten).
+                    if (($details[$v['id']]['title'] ?? '') !== '') {
+                        $v['title'] = $details[$v['id']]['title'];
+                    }
                 }
             }
             unset($v);
         }
+
+        // Never import a placeholder title. Truly gone videos are handled by the
+        // restricted sweep below; the existing row keeps its real title.
+        $videos = array_values(array_filter($videos, fn($v) =>
+            !preg_match('/^(Deleted|Private) video$/i', trim((string)($v['title'] ?? '')))));
 
         $totalFound = count($videos);
 
@@ -478,6 +489,7 @@ function fetchYouTubeVideoDetails(array $videoIds, string $apiKey): array {
             $details[$id] = [
                 'seconds' => $isLive ? 0 : $seconds,
                 'formatted' => $isLive ? 'LIVE' : formatDuration($seconds),
+                'title' => $item['snippet']['title'] ?? '',
                 'description' => $item['snippet']['description'] ?? '',
                 'orientation' => $orient,
             ];

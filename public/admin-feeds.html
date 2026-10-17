@@ -333,11 +333,8 @@
                         <span>Transcript</span>
                         <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;font-weight:normal;">
                             <label title="No MP3 yet. Transcription needs a finished recording or an uploaded audio file, so there is nothing to transcribe."><input type="checkbox" value="nomp3" onchange="loadRecordings(1)"> No MP3</label>
-                            <label title="Has an MP3 but no transcript, and nothing is queued. Click the button to start transcription."><input type="checkbox" value="none" onchange="loadRecordings(1)"> None</label>
-                            <label title="Waiting in line. The speech-to-text engines (or the build that merges their results into the editable transcript) haven't started yet. The GPU box runs one job at a time."><input type="checkbox" value="queued" onchange="loadRecordings(1)"> Queued</label>
-                            <label title="Running now. The speech-to-text engines are transcribing the audio, or the build is merging their results into the editable transcript."><input type="checkbox" value="processing" onchange="loadRecordings(1)"> Processing</label>
-                            <label title="The last transcript build failed. Open it to see the error, then re-run the build."><input type="checkbox" value="failed" onchange="loadRecordings(1)"> Build failed</label>
-                            <label title="AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand."><input type="checkbox" value="ai_queued" onchange="loadRecordings(1)"> AI cleanup</label>
+                            <label title="Generating. The machine is still working on this transcript; there is nothing to do yet. Covers waiting in line, speech-to-text, building the editable transcript, AI cleanup, and automatic retries."><input type="checkbox" value="generating" onchange="loadRecordings(1)"> Generating</label>
+                            <label title="Not transcribed. This channel isn't transcribed automatically (only @YahowahsHerald is). Open it and click Generate to transcribe it by hand."><input type="checkbox" value="notx" onchange="loadRecordings(1)"> Not transcribed</label>
                             <label title="Ready to edit. The baseline transcript is built and AI-cleaned, and no one has edited it yet."><input type="checkbox" value="ready" onchange="loadRecordings(1)"> Ready to edit</label>
                             <label title="Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but hasn't marked it Finished yet."><input type="checkbox" value="editing" onchange="loadRecordings(1)"> Editing</label>
                             <label title="Finished. The editor marked this transcript as essentially complete. It still needs a final review; click Approve in the editor once it has been reviewed enough to post back to the video."><input type="checkbox" value="finished" onchange="loadRecordings(1)"> Finished</label>
@@ -2476,11 +2473,12 @@ function recTranscriptCellFmtDate(s) {
 // machine work, lavender = ready for a human, amber = a human is on it,
 // green = done (solid once it is on YouTube).
 var REC_TX_STATES = {
-    none:       { label: 'None',            fg: '#666',    border: '#ccc',    bg: '#fff',    title: 'Has an MP3 but no transcript, and nothing is queued. Click the button to start transcription.' },
-    queued:     { label: '◷ Queued',        fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Waiting in line. The speech-to-text engines (or the build that merges their results into the editable transcript) haven\'t started yet. The GPU box runs one job at a time.' },
-    processing: { label: '⟳ Processing',    fg: '#fff',    border: '#2d58ad', bg: '#3b6fd4', busy: true,   title: 'Running now. The speech-to-text engines are transcribing the audio, or the build is merging their results into the editable transcript.' },
-    ai_queued:  { label: '◷ AI cleanup',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand.' },
-    failed:     { label: '✗ Build failed',  fg: '#a52a2a', border: '#e0a0a8', bg: '#fdecea', title: 'The last transcript build failed. Open it to see the error, then re-run the build.' },
+    none:       { label: '◷ Generating',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Generating. The machine is still working on this transcript; there is nothing to do yet. Not started yet; it is queued automatically within about 30 minutes.' },
+    queued:     { label: '◷ Generating',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Generating. The machine is still working on this transcript; there is nothing to do yet. Waiting its turn: the GPU box runs one job at a time.' },
+    processing: { label: '◷ Generating',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, busy: true, title: 'Generating. The machine is still working on this transcript; there is nothing to do yet. Running now: speech-to-text engines, or building the editable transcript from their results.' },
+    ai_queued:  { label: '◷ Generating',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Generating. The machine is still working on this transcript; there is nothing to do yet. Built; the AI cleanup still has to clean the wording. It runs when the GPU is idle, and the transcript is read-only until then (the cleanup skips text edited by hand).' },
+    failed:     { label: '◷ Generating',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Generating. The machine is still working on this transcript; there is nothing to do yet. The last build failed; it is retried automatically.' },
+    notx:       { label: 'Not transcribed', fg: '#666',    border: '#ccc',    bg: '#fff',    title: 'Not transcribed. This channel isn\'t transcribed automatically (only @YahowahsHerald is). Click to open it, then Generate to transcribe it by hand.' },
     ready:      { label: '✎ Ready to edit', fg: '#5b2d8a', border: '#c9b3e6', bg: '#f4edfb', title: 'Ready to edit. The baseline transcript is built and AI-cleaned, and no one has edited it yet.' },
     editing:    { label: '✎ Editing',       fg: '#fff',    border: '#7c4a00', bg: '#a36100', title: 'Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but hasn\'t marked it Finished yet.' },
     finished:   { label: '✓ Finished',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#fff',    dashed: true, title: 'Finished. The editor marked this transcript as essentially complete. It still needs a final review; click Approve in the editor once it has been reviewed enough to post back to the video.' },
@@ -2520,6 +2518,10 @@ function recTranscriptCell(it) {
     // agree. The 30s running-jobs poll can move a row into Queued /
     // Processing between list reloads.
     var state = it.transcript_state || 'none';
+    // Missing/failed on a channel that isn't auto-transcribed: nothing will
+    // generate it, so don't call it Generating (gap sweep: TX_AUTO_FEED_KEYS).
+    var auto = it.transcript_auto === true || it.transcript_auto === 't' || it.transcript_auto === 1;
+    if ((state === 'none' || state === 'failed') && !auto) state = 'notx';
     var running = (typeof _genTxRunningJobs === 'object' && _genTxRunningJobs && _genTxRunningJobs[it.feed_item_key]) || null;
     if (running) state = running.job_status === 'running' ? 'processing' : 'queued';
     var S = REC_TX_STATES[state] || REC_TX_STATES.none;
@@ -2530,10 +2532,15 @@ function recTranscriptCell(it) {
         sub = (running.job_status === 'running' ? 'Generating ' + (parseInt(running.job_progress, 10) || 0) + '%' : 'STT waiting')
             + (rModel ? ' · ' + rModel : '');
         if (running.job_message) title += '\n' + running.job_message;
-    } else if (state === 'queued' || state === 'processing' || state === 'failed' || state === 'ready') {
+    } else if (state === 'queued' || state === 'processing' || state === 'ready') {
         if (stage) { sub = stage.text; if (stage.title) title += '\n\n' + stage.title; }
+    } else if (state === 'none' || state === 'failed') {
+        var stalled = it.transcript_stalled === true || it.transcript_stalled === 't';
+        sub = stalled ? '⚠ stalled · reported' : (state === 'failed' ? 'retrying' : 'starting soon');
+        if (stalled) title += '\n\nAutomatic retries gave up; this has been reported to the developers.';
+        if (stage && stage.title) title += '\n\n' + stage.title;
     } else if (state === 'ai_queued') {
-        sub = 'queued · runs when GPU idle';
+        sub = 'AI cleanup · when GPU idle';
         if (stage && stage.title) title += '\n\n' + stage.title;
     } else if (state === 'editing') {
         var sec = Math.max(0, Math.floor(Number(it.transcript_bookmark_seconds) || 0));
@@ -2870,7 +2877,7 @@ function _restoreRecFiltersFromStorage() {
     if (Array.isArray(saved.categoryKeys)) window._recRestoredCategoryKeys = saved.categoryKeys;
     setChk('rec-f-mp3-yes', saved.mp3Yes);
     setChk('rec-f-mp3-no', saved.mp3No);
-    if (Array.isArray(saved.txStatus)) recSetChecked('rec-f-cap', saved.txStatus);
+    if (Array.isArray(saved.txStatus)) recSetChecked('rec-f-cap', recTxMigrate(saved.txStatus));
     else {
         var tx = [];
         if (saved.capCaptions) tx.push('uploaded');
@@ -2878,7 +2885,7 @@ function _restoreRecFiltersFromStorage() {
         if (saved.capPending) tx.push('ai_queued', 'ready', 'editing');
         if (saved.capEditable) tx.push('ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded');
         if (saved.capMissing) tx.push('none');
-        recSetChecked('rec-f-cap', tx);
+        recSetChecked('rec-f-cap', recTxMigrate(tx));
     }
     setVal('rec-f-episode', saved.episode);
 }
@@ -3079,6 +3086,16 @@ var REC_STATUS_DEFAULT = ['new', 'partial', 'recording', 'queued', 'encoding'];
 function recCheckedVals(id) {
     return Array.prototype.map.call(document.querySelectorAll('#' + id + ' input[type=checkbox]:checked'), function(cb){ return cb.value; });
 }
+// Saved Transcript filters from before 2026-10-17 used one box per machine
+// state; those are now the single "Generating" box.
+function recTxMigrate(vals) {
+    var out = [];
+    vals.forEach(function(v) {
+        var m = ['none', 'queued', 'processing', 'failed', 'ai_queued'].indexOf(v) >= 0 ? 'generating' : v;
+        if (out.indexOf(m) < 0) out.push(m);
+    });
+    return out;
+}
 function recSetChecked(id, vals) {
     document.querySelectorAll('#' + id + ' input[type=checkbox]').forEach(function(cb){ cb.checked = vals.indexOf(cb.value) >= 0; });
 }
@@ -3109,7 +3126,7 @@ function populateRecEditorFilter(editors, currentSelections) {
     var sel = {};
     (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
     var row = function(val, label, tip) {
-        return '<label title="' + esc(tip) + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        return '<label title="' + esc(tip) + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;line-height:1.45;padding-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
              + '<input type="checkbox" value="' + esc(String(val)) + '" onchange="loadRecordings(1)"' + (sel[String(val)] ? ' checked' : '') + '> '
              + esc(label) + '</label>';
     };
@@ -3130,7 +3147,7 @@ function populateRecFeedFilter(feeds, currentSelections) {
     (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
     var html = '';
     feeds.forEach(function(f) {
-        html += '<label title="' + esc(f.feed_name) + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        html += '<label title="' + esc(f.feed_name) + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;line-height:1.45;padding-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
               + '<input type="checkbox" value="' + f.feed_key + '" onchange="loadRecordings(1)"' + (sel[String(f.feed_key)] ? ' checked' : '') + '> '
               + esc(f.feed_name.replace(/^YouTube - /, ''))
               + '</label>';

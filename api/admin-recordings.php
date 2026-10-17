@@ -17,6 +17,10 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/_transcript_stage.php';
+require_once __DIR__ . '/transcript-gap-sweep.php';   // TX_AUTO_FEED_KEYS
+// Channels transcribed automatically: their missing/failed transcripts show as
+// "Generating" (the gap sweep queues them); other channels show "Not transcribed".
+$autoFeedsSql = implode(',', array_map('intval', TX_AUTO_FEED_KEYS));
 $user = requireAuth();
 $db = getDb();
 
@@ -32,6 +36,9 @@ $feedKey     = (int)($_GET['feed_key'] ?? 0);
 $feedKeys    = array_values(array_unique(array_filter(array_map('intval',
     explode(',', (string)($_GET['feed_keys'] ?? ''))), function($n){ return $n > 0; })));
 if ($feedKey > 0 && !in_array($feedKey, $feedKeys, true)) $feedKeys[] = $feedKey;
+// An "editor" = someone who changed the transcript by hand: edited/added/deleted
+// a line or set a speaker. Find/replace batches and AI-cleanup runs don't count.
+$EDITOR_HAND = "l.edit_user_key > 0 AND l.edit_batch_key IS NULL AND l.edit_action IN ('edit', 'add', 'delete', 'speaker')";
 // editors filter: comma-separated user_keys from yy_transcript_edit_log (any of),
 // plus 'none' = nobody has edited it (system fixes don't count).
 $editorParts = array_map('trim', explode(',', (string)($_GET['editors'] ?? '')));
@@ -81,7 +88,7 @@ $sortMap = [
     'published'  => 'COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime)',
     'duration'   => 'fi.feed_item_duration_seconds',
     'feed'       => 'f.feed_name',
-    'editors'    => "(SELECT MAX(l.edit_dtime) FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key AND l.edit_user_key > 0)",
+    'editors'    => "(SELECT MAX(l.edit_dtime) FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key AND $EDITOR_HAND)",
     'key'        => 'fi.feed_item_key',
     'processed'  => "CASE
                        WHEN fi.feed_item_audio_file IS NOT NULL THEN 2
@@ -121,10 +128,10 @@ if ($editorKeys || $editorNone) {
     $edOrs = [];
     if ($editorKeys) {
         $edOrs[] = "EXISTS (SELECT 1 FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key
-                     AND l.edit_user_key IN (" . implode(',', array_fill(0, count($editorKeys), '?')) . "))";
+                     AND $EDITOR_HAND AND l.edit_user_key IN (" . implode(',', array_fill(0, count($editorKeys), '?')) . "))";
         array_push($params, ...$editorKeys);
     }
-    if ($editorNone) $edOrs[] = "NOT EXISTS (SELECT 1 FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key AND l.edit_user_key > 0)";
+    if ($editorNone) $edOrs[] = "NOT EXISTS (SELECT 1 FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key AND $EDITOR_HAND)";
     $where .= " AND (" . implode(' OR ', $edOrs) . ")";
 }
 if ($durMin !== null && $durMin >= 0) { $where .= " AND fi.feed_item_duration_seconds >= ?"; $params[] = $durMin; }
@@ -157,7 +164,8 @@ $sttAny = "EXISTS(SELECT 1 FROM yy_feed_item_transcript_job cj WHERE cj.feed_ite
 //   nomp3      no MP3 on disk
 //   processing STT job or editable-transcript build running
 //   queued     STT job or build pending
-//   failed     latest build errored and there is no transcript (or nobody is editing it)
+//   failed     latest build errored and there is no transcript (shown as "Generating" on
+//              auto-transcribed channels, where the gap sweep retries it)
 //   none       no transcript
 //   approved   latest review Approved, and no upload or the upload is older
 //   finished   latest review Finished (essentially complete, not yet Approved)
@@ -197,22 +205,26 @@ $txStateSql = "(CASE
     WHEN $txUpl IS NOT NULL THEN 'uploaded'
     WHEN EXISTS(SELECT 1 FROM yy_feed_item_transcript_status es WHERE es.feed_item_key = fi.feed_item_key AND es.edit_status = 'Editing')
          OR COALESCE($txValBm, 0) > 0 OR $txVal = 'Errors' THEN 'editing'
-    WHEN $txInit = 'error' THEN 'failed'
     WHEN $txAiPending THEN 'ai_queued'
     ELSE 'ready'
   END)";
 if (!empty($captionStatuses)) {
+    // 'generating' = the machine is on it (queued / processing / AI cleanup, plus
+    // missing or failed transcripts on auto-transcribed channels, which the gap
+    // sweep picks up). 'notx' = missing or failed on any other channel.
     $legacy = ['captions' => ['uploaded'], 'reviewed' => ['approved'], 'pending' => ['ai_queued', 'ready', 'editing'],
-               'missing' => ['none'], 'editable' => ['ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded'],
-               'generating' => ['processing']];
-    $want = [];
+               'missing' => ['none'], 'editable' => ['ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded']];
+    $want = []; $ors = [];
     foreach ($captionStatuses as $cs) foreach ($legacy[$cs] ?? [$cs] as $w) $want[$w] = true;
+    if (isset($want['generating'])) $ors[] = "($txStateSql IN ('queued', 'processing', 'ai_queued') OR ($txStateSql IN ('none', 'failed') AND fi.feed_key IN ($autoFeedsSql)))";
+    if (isset($want['notx']))       $ors[] = "($txStateSql IN ('none', 'failed') AND fi.feed_key NOT IN ($autoFeedsSql))";
     $want = array_values(array_intersect(array_keys($want),
         ['nomp3', 'none', 'queued', 'processing', 'failed', 'ai_queued', 'ready', 'editing', 'finished', 'approved', 'uploaded']));
     if ($want) {
-        $where .= " AND $txStateSql IN (" . implode(',', array_fill(0, count($want), '?')) . ")";
+        $ors[] = "$txStateSql IN (" . implode(',', array_fill(0, count($want), '?')) . ")";
         array_push($params, ...$want);
     }
+    if ($ors) $where .= " AND (" . implode(' OR ', $ors) . ")";
 }
 
 // Status filter (Recording column): new, partial, recording, queued,
@@ -335,19 +347,23 @@ $stmt = $db->prepare("
            " . txStageSelectSql('fi.feed_item_key') . " AS transcript_stage,
            -- Transcript button state — the same expression the Transcript filter uses
            $txStateSql AS transcript_state,
-           -- People who have changed this transcript (yy_transcript_edit_log),
-           -- most recent first. user 0 = system-automated fixes, left out.
-           -- n = hand edits, b = find/replace changes.
+           (fi.feed_key IN ($autoFeedsSql)) AS transcript_auto,
+           EXISTS (SELECT 1 FROM yy_transcript_gap_sweep gs WHERE gs.feed_item_key = fi.feed_item_key
+                      AND gs.gave_up_dtime IS NOT NULL AND gs.last_action = 'gave up') AS transcript_stalled,
+           -- People who edited this transcript by hand (see EDITOR_HAND), most
+           -- recent hand edit first. n = hand edits; b = their find/replace
+           -- changes here (shown in the tooltip, but don't make anyone an editor).
            (SELECT json_agg(json_build_object(
                        'name', COALESCE(NULLIF(btrim(u.user_name_display), ''), NULLIF(btrim(u.user_display_name), ''), u.user_code),
                        'n', e.n, 'b', e.b, 'last', e.last) ORDER BY e.last DESC)
               FROM (SELECT l.edit_user_key,
-                           COUNT(*) FILTER (WHERE l.edit_batch_key IS NULL)     AS n,
+                           COUNT(*) FILTER (WHERE $EDITOR_HAND)                 AS n,
                            COUNT(*) FILTER (WHERE l.edit_batch_key IS NOT NULL) AS b,
-                           MAX(l.edit_dtime) AS last
+                           MAX(l.edit_dtime) FILTER (WHERE $EDITOR_HAND)        AS last
                       FROM yy_transcript_edit_log l
                      WHERE l.feed_item_key = fi.feed_item_key AND l.edit_user_key > 0
-                     GROUP BY l.edit_user_key) e
+                     GROUP BY l.edit_user_key
+                    HAVING COUNT(*) FILTER (WHERE $EDITOR_HAND) > 0) e
               JOIN yy_user u ON u.user_key = e.edit_user_key) AS transcript_editors,
            (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
               WHERE v.feed_item_key = fi.feed_item_key
@@ -498,8 +514,8 @@ $editorsStmt = $db->query("
     SELECT e.edit_user_key AS user_key,
            COALESCE(NULLIF(btrim(u.user_name_display), ''), NULLIF(btrim(u.user_display_name), ''), u.user_code) AS name,
            e.items
-      FROM (SELECT edit_user_key, COUNT(DISTINCT feed_item_key) AS items
-              FROM yy_transcript_edit_log WHERE edit_user_key > 0 GROUP BY edit_user_key) e
+      FROM (SELECT l.edit_user_key, COUNT(DISTINCT l.feed_item_key) AS items
+              FROM yy_transcript_edit_log l WHERE $EDITOR_HAND GROUP BY l.edit_user_key) e
       JOIN yy_user u ON u.user_key = e.edit_user_key
      ORDER BY 2
 ");
