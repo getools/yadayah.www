@@ -146,12 +146,36 @@ if ($method === 'GET') {
     $snapStmt->execute(array_merge($itemKeys, $itemKeys));
     $hasSnapshot = (bool)$snapStmt->fetchColumn();
 
+    // AI cleanup still pending: the latest build was fast (llm_reconcile off)
+    // and transcript-llm-backfill.php hasn't run on it since, and nobody has
+    // started on it. Mirrors the 'ai_queued' transcript_state in
+    // admin-recordings.php. The editor opens read-only so a hand edit can't
+    // make the backfill skip the text it is about to clean.
+    $aiStmt = $db->query("
+        SELECT EXISTS (SELECT 1 FROM (SELECT ij.job_status, ij.job_params, ij.job_created
+                                        FROM yy_feed_item_transcript_init_job ij
+                                       WHERE ij.job_item_key = $itemKey ORDER BY ij.job_key DESC LIMIT 1) lj
+            WHERE lj.job_status = 'done'
+              AND (lj.job_params LIKE '%\"llm_reconcile\": false%' OR lj.job_params LIKE '%\"llm_reconcile\":false%')
+              AND NOT EXISTS (SELECT 1 FROM yy_transcript_snapshot sn WHERE sn.feed_item_key = $itemKey
+                     AND sn.snapshot_reason LIKE 'pre auto LLM reconcile%' AND sn.snapshot_reason NOT LIKE '%incomplete%'
+                     AND sn.snapshot_dtime >= lj.job_created)
+              AND NOT EXISTS (SELECT 1 FROM yy_transcript_llm_backfill_skip sk WHERE sk.feed_item_key = $itemKey
+                     AND sk.skip_dtime >= lj.job_created))
+          AND NOT EXISTS (SELECT 1 FROM yy_feed_item_transcript_status es WHERE es.feed_item_key = $itemKey AND es.edit_status = 'Editing')
+          AND NOT EXISTS (SELECT 1 FROM yy_feed_item_transcript_validation v WHERE v.feed_item_key = $itemKey
+                 AND (v.validation_status IN ('Approved', 'Errors') OR COALESCE(v.validation_bookmark_seconds, 0) > 0))
+          AND (SELECT fi.feed_item_yt_caption_uploaded_dtime FROM yy_feed_item fi WHERE fi.feed_item_key = $itemKey) IS NULL
+    ");
+    $aiPending = (bool)$aiStmt->fetchColumn();
+
     jsonResponse([
         'item' => $item,
         'rows' => $rows,
         'job' => $job ?: null,
         'validation' => $validation,
         'has_snapshot' => $hasSnapshot,
+        'ai_pending' => $aiPending,
         'view' => $view,
         'available_views' => $availableViews,
     ]);

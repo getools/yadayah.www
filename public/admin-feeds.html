@@ -251,6 +251,7 @@
                Transcripts has no Record / Download above Recording. */
             html.chores #rec-table .rec-col-actions, html.chores #rec-table td.actions { display: none; }
             html.chores-mp3 #rec-table .rec-col-tx, html.chores-mp3 #rec-table td.tx-cell-td { display: none; }
+            html.chores-mp3 #rec-table .rec-col-editors, html.chores-mp3 #rec-table td.editors-td { display: none; }
             html.chores-transcripts #rec-process-btn, html.chores-transcripts #rec-stop-btn, html.chores-transcripts #rec-download-btn { display: none !important; }
         </style>
         <!-- Hidden file input used by per-row MP3 upload icons in the
@@ -279,6 +280,7 @@
                         <button class="btn btn-primary btn-sm" id="rec-tx-generate-btn" onclick="openGenerateStudio()" title="Generate baselines + build editable transcripts for selected rows" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">&#9881; Generate</button>
                         <button class="btn btn-primary btn-sm" id="rec-tx-download-btn" onclick="downloadSelectedTranscripts()" title="Download .vtt files for selected items whose transcript is Approved, Reviewed, or already Uploaded" style="margin-top:6px;background:#31345A;border-color:#31345A;color:#fff;white-space:nowrap;">⬇ Download</button>
                     </th>
+                    <th class="rec-col-editors" style="background:#fafafa;border-bottom:0;"></th>
                     <th colspan="5" id="rec-action-tail" style="background:#fafafa;border-bottom:0;"></th>
                 </tr>
                 <tr>
@@ -330,16 +332,22 @@
                     <th class="rec-col-tx" style="width:140px;" title="Transcript / caption-upload state">
                         <span>Transcript</span>
                         <div id="rec-f-cap" class="rec-status-checks" onclick="event.stopPropagation()" style="margin-top:3px;font-weight:normal;">
-                            <label title="No MP3 yet, so nothing to transcribe"><input type="checkbox" value="nomp3" onchange="loadRecordings(1)"> No MP3</label>
-                            <label title="Has an MP3; no transcript and nothing queued"><input type="checkbox" value="none" onchange="loadRecordings(1)"> None</label>
-                            <label title="Waiting for the speech-to-text engines or the transcript build"><input type="checkbox" value="queued" onchange="loadRecordings(1)"> Queued</label>
-                            <label title="Speech-to-text engines or the transcript build running now"><input type="checkbox" value="processing" onchange="loadRecordings(1)"> Processing</label>
-                            <label title="The last transcript build failed"><input type="checkbox" value="failed" onchange="loadRecordings(1)"> Build failed</label>
-                            <label title="Built fast; waiting for the AI cleanup pass (runs when the GPU is idle)"><input type="checkbox" value="ai_queued" onchange="loadRecordings(1)"> AI cleanup</label>
-                            <label title="Baseline transcript built and AI-cleaned; no one has edited it yet"><input type="checkbox" value="ready" onchange="loadRecordings(1)"> Ready to edit</label>
-                            <label title="An admin has started editing; not Approved yet"><input type="checkbox" value="editing" onchange="loadRecordings(1)"> Editing</label>
-                            <label title="Approved; not on YouTube yet, or approved again after the last upload"><input type="checkbox" value="approved" onchange="loadRecordings(1)"> Approved</label>
-                            <label title="Approved and uploaded to YouTube as captions"><input type="checkbox" value="uploaded" onchange="loadRecordings(1)"> On YouTube</label>
+                            <label title="No MP3 yet. Transcription needs a finished recording or an uploaded audio file, so there is nothing to transcribe."><input type="checkbox" value="nomp3" onchange="loadRecordings(1)"> No MP3</label>
+                            <label title="Has an MP3 but no transcript, and nothing is queued. Click the button to start transcription."><input type="checkbox" value="none" onchange="loadRecordings(1)"> None</label>
+                            <label title="Waiting in line. The speech-to-text engines (or the build that merges their results into the editable transcript) haven't started yet. The GPU box runs one job at a time."><input type="checkbox" value="queued" onchange="loadRecordings(1)"> Queued</label>
+                            <label title="Running now. The speech-to-text engines are transcribing the audio, or the build is merging their results into the editable transcript."><input type="checkbox" value="processing" onchange="loadRecordings(1)"> Processing</label>
+                            <label title="The last transcript build failed. Open it to see the error, then re-run the build."><input type="checkbox" value="failed" onchange="loadRecordings(1)"> Build failed</label>
+                            <label title="AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand."><input type="checkbox" value="ai_queued" onchange="loadRecordings(1)"> AI cleanup</label>
+                            <label title="Ready to edit. The baseline transcript is built and AI-cleaned, and no one has edited it yet."><input type="checkbox" value="ready" onchange="loadRecordings(1)"> Ready to edit</label>
+                            <label title="Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but it hasn't been Approved yet."><input type="checkbox" value="editing" onchange="loadRecordings(1)"> Editing</label>
+                            <label title="Approved by a reviewer but not on YouTube yet, or approved again after the last upload (re-upload to update the captions)."><input type="checkbox" value="approved" onchange="loadRecordings(1)"> Approved</label>
+                            <label title="Approved and uploaded to YouTube as the video's captions."><input type="checkbox" value="uploaded" onchange="loadRecordings(1)"> On YouTube</label>
+                        </div>
+                    </th>
+                    <th class="rec-col-editors rec-sortable" data-col="editors" style="width:130px;">
+                        <span class="rec-sortable-label" onclick="recSort('editors', event)" title="Everyone who has changed this transcript, most recent first. Hover a name for how many changes they made and when they last edited.&#10;&#10;Click to sort by the most recent edit; Shift+click to add as a secondary sort.">Editors</span>
+                        <div id="rec-f-editors" class="rec-status-checks" onclick="event.stopPropagation()" title="Show transcripts edited by any of the ticked people. None ticked = all." style="max-height:130px;overflow-y:auto;border:1px solid #eee;border-radius:3px;padding:3px;margin-top:3px;font-weight:normal;">
+                            <em style="font-size:0.7rem;color:#999;">loading…</em>
                         </div>
                     </th>
                     <th style="width:110px;">
@@ -692,7 +700,7 @@ function transcribeBtnHtml(it) {
     var hasMp3 = !!(it.feed_item_audio_file && String(it.feed_item_audio_file).trim() !== '');
     if (!hasMp3) {
         return '<button disabled '
-            + 'title="No MP3 yet — transcription needs a completed or uploaded audio file" '
+            + 'title="No MP3 yet. Transcription needs a finished recording or an uploaded audio file, so there is nothing to transcribe." '
             + 'style="background:#f1f1f1;color:#aaa;border:1px solid #ddd;font-size:0.72rem;padding:4px 10px;border-radius:4px;cursor:not-allowed;font-weight:600;white-space:nowrap;">'
             + 'No MP3</button>';
     }
@@ -1751,6 +1759,29 @@ var _viewSelectLoading = false;
 // model code (e.g. 'whisper-1-segment') and renders _auto rows read-only.
 var _transcriptView = '';
 var _transcriptReadonly = false;
+var _transcriptAiLocked = false;     // read-only because AI cleanup is still pending
+var _transcriptAiOverride = {};      // item_key -> true once the admin chose "Edit anyway"
+function renderTranscriptAiLock() {
+    var c = document.getElementById('t-rows-container');
+    if (!c) return;
+    var b = document.getElementById('t-ai-lock');
+    if (!_transcriptAiLocked) { if (b) b.remove(); return; }
+    if (!b) {
+        b = document.createElement('div');
+        b.id = 't-ai-lock';
+        b.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px;padding:8px 12px;border:1px dashed #8fa8e0;background:#f5f8ff;color:#1d4d8a;border-radius:6px;font-size:0.85rem;';
+        c.parentNode.insertBefore(b, c);
+    }
+    b.title = 'AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand.';
+    b.innerHTML = '<span style="flex:1;min-width:240px;"><b>◷ AI cleanup pending.</b> This transcript is read-only because the AI will redo the text when it processes the transcript (when the GPU is idle). Note: the cleanup skips any text that has been edited by hand.</span>'
+        + '<button type="button" onclick="transcriptAiEditAnyway()" style="border:1px solid #a36100;background:#fff;color:#a36100;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">Edit anyway</button>';
+}
+function transcriptAiEditAnyway() {
+    if (!_transcriptItemKey) return;
+    if (!confirm('Edit before the AI cleanup runs?\n\nThe AI cleanup only touches text nobody has edited. Once you change this transcript it is treated as hand-edited, and the cleanup will only run (after a week with no edits) on the lines after your last edit.')) return;
+    _transcriptAiOverride[_transcriptItemKey] = true;
+    loadTranscript();
+}
 var _modelCatalog = [];          // [{code,label,last_run}, …] cached for popover use
 // ETA state for the Transcribe Audio progress bar.
 var _txDurationSec = 0;       // video length in seconds (from feed_item_duration_seconds)
@@ -2438,16 +2469,30 @@ function recTranscriptCellFmtDate(s) {
 // machine work, lavender = ready for a human, amber = a human is on it,
 // green = done (solid once it is on YouTube).
 var REC_TX_STATES = {
-    none:       { label: 'None',            fg: '#666',    border: '#ccc',    bg: '#fff',    title: 'No transcript yet and nothing queued — click to start' },
-    queued:     { label: '◷ Queued',        fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Waiting for the speech-to-text engines or the transcript build' },
-    processing: { label: '⟳ Processing',    fg: '#fff',    border: '#2d58ad', bg: '#3b6fd4', busy: true,   title: 'Speech-to-text engines or the transcript build running now' },
-    ai_queued:  { label: '◷ AI cleanup',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Baseline built fast; the AI cleanup pass has not run yet, so it is not ready to edit' },
-    failed:     { label: '✗ Build failed',  fg: '#a52a2a', border: '#e0a0a8', bg: '#fdecea', title: 'The last transcript build failed' },
-    ready:      { label: '✎ Ready to edit', fg: '#5b2d8a', border: '#c9b3e6', bg: '#f4edfb', title: 'Baseline transcript built and AI-cleaned; no one has edited it yet' },
-    editing:    { label: '✎ Editing',       fg: '#fff',    border: '#7c4a00', bg: '#a36100', title: 'An admin has started editing; not Approved yet' },
-    approved:   { label: '✓ Approved',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#eaf6ee', title: 'Approved; not uploaded to YouTube yet' },
-    uploaded:   { label: '✓ On YouTube',    fg: '#fff',    border: '#155724', bg: '#1d6b3a', title: 'Approved and uploaded to YouTube as captions' }
+    none:       { label: 'None',            fg: '#666',    border: '#ccc',    bg: '#fff',    title: 'Has an MP3 but no transcript, and nothing is queued. Click the button to start transcription.' },
+    queued:     { label: '◷ Queued',        fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'Waiting in line. The speech-to-text engines (or the build that merges their results into the editable transcript) haven\'t started yet. The GPU box runs one job at a time.' },
+    processing: { label: '⟳ Processing',    fg: '#fff',    border: '#2d58ad', bg: '#3b6fd4', busy: true,   title: 'Running now. The speech-to-text engines are transcribing the audio, or the build is merging their results into the editable transcript.' },
+    ai_queued:  { label: '◷ AI cleanup',    fg: '#1d4d8a', border: '#8fa8e0', bg: '#f5f8ff', dashed: true, title: 'AI cleanup pending. A quick baseline transcript was built from the speech-to-text engines with only structural fixes (line breaks, timing, duplicates). An on-box AI pass still has to clean the wording (names, Hebrew terms, punctuation, your saved corrections). It runs automatically when the GPU is idle; text-to-speech, media generation and speech-to-text jobs go first. Until it finishes, the transcript is read-only, because the AI will redo the text when it processes the transcript. Note: the cleanup skips any text that has been edited by hand.' },
+    failed:     { label: '✗ Build failed',  fg: '#a52a2a', border: '#e0a0a8', bg: '#fdecea', title: 'The last transcript build failed. Open it to see the error, then re-run the build.' },
+    ready:      { label: '✎ Ready to edit', fg: '#5b2d8a', border: '#c9b3e6', bg: '#f4edfb', title: 'Ready to edit. The baseline transcript is built and AI-cleaned, and no one has edited it yet.' },
+    editing:    { label: '✎ Editing',       fg: '#fff',    border: '#7c4a00', bg: '#a36100', title: 'Editing in progress. An admin has changed the text, left a bookmark or flagged errors, but it hasn\'t been Approved yet.' },
+    approved:   { label: '✓ Approved',      fg: '#1d6b3a', border: '#a3d4ad', bg: '#eaf6ee', title: 'Approved by a reviewer but not on YouTube yet, or approved again after the last upload (re-upload to update the captions).' },
+    uploaded:   { label: '✓ On YouTube',    fg: '#fff',    border: '#155724', bg: '#1d6b3a', title: 'Approved and uploaded to YouTube as the video\'s captions.' }
 };
+// Editors column: everyone in yy_transcript_edit_log for this item (system
+// fixes excluded), most recent first; hover for counts + last edit time.
+function recEditorsCell(it) {
+    var eds = it.transcript_editors;
+    if (typeof eds === 'string') { try { eds = JSON.parse(eds); } catch (e) { eds = null; } }
+    if (!Array.isArray(eds) || !eds.length) return '<span style="color:#bbb;">—</span>';
+    return eds.map(function(e) {
+        var n = parseInt(e.n, 10) || 0, b = parseInt(e.b, 10) || 0, parts = [];
+        if (n) parts.push(n + ' change' + (n === 1 ? '' : 's') + ' in the editor');
+        if (b) parts.push(b + ' find/replace change' + (b === 1 ? '' : 's'));
+        var tip = (e.name || '?') + ': ' + (parts.join(', ') || 'changes') + '\nLast edit: ' + recTranscriptCellFmtDate(e.last);
+        return '<div title="' + esc(tip) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#7c4a00;">' + esc(e.name || '?') + '</div>';
+    }).join('');
+}
 function recTranscriptCell(it) {
     // Gate: transcription requires a complete MP3 on disk — one produced by
     // a finished recording or an explicit upload. Without an audio file
@@ -2456,7 +2501,7 @@ function recTranscriptCell(it) {
     var hasMp3 = !!(it.feed_item_audio_file && String(it.feed_item_audio_file).trim() !== '');
     if (!hasMp3) {
         return '<button disabled '
-            + 'title="No MP3 yet — transcription needs a completed or uploaded audio file" '
+            + 'title="No MP3 yet. Transcription needs a finished recording or an uploaded audio file, so there is nothing to transcribe." '
             + 'style="border:1px solid #ddd;background:#f1f1f1;color:#aaa;'
             +        'padding:4px 10px;border-radius:4px;cursor:not-allowed;font-family:inherit;'
             +        'font-size:0.78rem;font-weight:600;width:100%;box-sizing:border-box;text-align:center;line-height:1.2;">'
@@ -2770,7 +2815,7 @@ function _persistRecFilters() {
     adminUI.save('feeds', 'recFilters', {
         key: v('rec-f-key'), title: v('rec-f-title'),
         pubFrom: v('rec-f-pub-from'), pubTo: v('rec-f-pub-to'),
-        feedKeys: feedKeys, durMin: v('rec-f-dur-min'), durMax: v('rec-f-dur-max'),
+        feedKeys: feedKeys, editorKeys: recCheckedEditors(), durMin: v('rec-f-dur-min'), durMax: v('rec-f-dur-max'),
         recStatus: recCheckedVals('rec-f-status'),
         iActive: c('rec-f-istatus-active'), iRestricted: c('rec-f-istatus-restricted'), iInactive: c('rec-f-istatus-inactive'),
         pageKeys: pageKeys,
@@ -2792,6 +2837,7 @@ function _restoreRecFiltersFromStorage() {
     setVal('rec-f-pub-from', saved.pubFrom); setVal('rec-f-pub-to', saved.pubTo);
     if (Array.isArray(saved.feedKeys)) window._recRestoredFeedKeys = saved.feedKeys.map(String);
     else if (saved.feed) window._recRestoredFeedKeys = [String(saved.feed)];
+    if (Array.isArray(saved.editorKeys)) window._recRestoredEditorKeys = saved.editorKeys.map(String);
     setVal('rec-f-dur-min', saved.durMin); setVal('rec-f-dur-max', saved.durMax);
     if (Array.isArray(saved.recStatus)) recSetChecked('rec-f-status', saved.recStatus);
     else if (saved.sComplete !== undefined || saved.sPartial !== undefined || saved.sNew !== undefined) {
@@ -2844,6 +2890,8 @@ function recClearFilters() {
         var el = document.getElementById(id); if (el) el.value = '';
     });
     document.querySelectorAll('#rec-f-feeds input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
+    document.querySelectorAll('#rec-f-editors input[type=checkbox]').forEach(function(cb){ cb.checked = false; });
+    window._recRestoredEditorKeys = [];
     recSetChecked('rec-f-status', REC_STATUS_DEFAULT);
     var ia = document.getElementById('rec-f-istatus-active');     if (ia) ia.checked = true;
     var ir = document.getElementById('rec-f-istatus-restricted'); if (ir) ir.checked = false;
@@ -2889,6 +2937,8 @@ function loadRecordings(page) {
     if (v('rec-f-pub-to'))   qs += '&pub_to=' + encodeURIComponent(v('rec-f-pub-to'));
     var checkedFeeds = recCheckedFeeds();
     if (checkedFeeds.length) qs += '&feed_keys=' + encodeURIComponent(checkedFeeds.join(','));
+    var checkedEditors = recCheckedEditors();
+    if (checkedEditors.length) qs += '&editors=' + encodeURIComponent(checkedEditors.join(','));
     if (durMin !== null && durMin > 0) qs += '&dur_min_s=' + durMin;
     if (durMax !== null && durMax > 0) qs += '&dur_max_s=' + durMax;
     if (statuses.length) qs += '&status=' + encodeURIComponent(statuses.join(','));
@@ -2940,6 +2990,7 @@ function loadRecordings(page) {
             }
             _recItems = d.items || [];
             populateRecFeedFilter(d.feeds || [], checkedFeeds);
+            populateRecEditorFilter(d.editors || [], checkedEditors);
             populateRecPageFilter(d.pages || [], checkedPages);
             populateRecCategoryFilter(d.categories || [], checkedCats);
             // The item editor's per-section category pickers read
@@ -3028,6 +3079,36 @@ function recCheckedFeeds() {
         return Array.prototype.map.call(box.querySelectorAll('input[type=checkbox]:checked'), function(cb){ return cb.value; });
     }
     return Array.isArray(window._recRestoredFeedKeys) ? window._recRestoredFeedKeys.slice() : [];
+}
+// Ticked Editors checkboxes; before the first render, the restored selection.
+function recCheckedEditors() {
+    var box = document.getElementById('rec-f-editors');
+    if (box && box.dataset.populated === '1') {
+        return Array.prototype.map.call(box.querySelectorAll('input[type=checkbox]:checked'), function(cb){ return cb.value; });
+    }
+    return Array.isArray(window._recRestoredEditorKeys) ? window._recRestoredEditorKeys.slice() : [];
+}
+// Editors filter: one box per person in the edit log, plus "No editors".
+function populateRecEditorFilter(editors, currentSelections) {
+    var box = document.getElementById('rec-f-editors');
+    if (!box) return;
+    var sig = editors.map(function(e){ return e.user_key; }).join(',');
+    if (box.dataset.populated === '1' && box.dataset.sig === sig) return;
+    box.dataset.populated = '1';
+    box.dataset.sig = sig;
+    var sel = {};
+    (currentSelections || []).forEach(function(k){ sel[String(k)] = true; });
+    var row = function(val, label, tip) {
+        return '<label title="' + esc(tip) + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+             + '<input type="checkbox" value="' + esc(String(val)) + '" onchange="loadRecordings(1)"' + (sel[String(val)] ? ' checked' : '') + '> '
+             + esc(label) + '</label>';
+    };
+    var html = row('none', 'No editors', 'Transcripts nobody has edited yet (automated system fixes do not count)');
+    editors.forEach(function(e) {
+        var n = parseInt(e.items, 10) || 0;
+        html += row(e.user_key, e.name || ('user ' + e.user_key), (e.name || '') + ' has edited ' + n + ' transcript' + (n === 1 ? '' : 's'));
+    });
+    box.innerHTML = html;
 }
 function populateRecFeedFilter(feeds, currentSelections) {
     var box = document.getElementById('rec-f-feeds');
@@ -3201,6 +3282,7 @@ function renderRecordings(d) {
                     : '<button onclick="recMp3UploadClick(' + it.feed_item_key + ')" title="Upload MP3 for this video" style="background:none;border:none;cursor:pointer;font-size:1rem;color:#31345A;padding:2px 6px;">&#11014;</button>') + '</td>'
             +     '<td style="font-size:0.78rem;">' + processed + '</td>'
             +     '<td class="tx-cell-td" data-item-key="' + it.feed_item_key + '" style="font-size:0.78rem;text-align:center;">' + recTranscriptCell(it) + '</td>'
+            +     '<td class="editors-td" style="font-size:0.75rem;line-height:1.35;">' + recEditorsCell(it) + '</td>'
             +     '<td style="text-align:center;">' + iStatusBadge + '</td>'
             +     '<td style="line-height:1.4;">' + pageBadges + '</td>'
             +     '<td style="font-size:0.75rem;color:#888;">' + itemCategoriesHtml(it.sections_on) + '</td>'
@@ -5403,7 +5485,12 @@ function loadTranscript() {
             // close (yt-dlp ~2s/min + Whisper API ~13s/min + setup).
             _txDurationSec = parseInt(d.item.feed_item_duration_seconds, 10) || 0;
             _txEtaTotalSec = _txDurationSec ? Math.round(_txDurationSec * 0.25 + 8) : 0;
-            _transcriptReadonly = !!d.view;
+            // AI cleanup still pending (d.ai_pending): open read-only, because
+            // the backfill skips hand-edited text. "Edit anyway" overrides it
+            // for this item until the page reloads.
+            _transcriptAiLocked = !d.view && !!d.ai_pending && !_transcriptAiOverride[_transcriptItemKey];
+            _transcriptReadonly = !!d.view || _transcriptAiLocked;
+            renderTranscriptAiLock();
             updateTranscriptRerunBtn();
             renderTranscriptRows(d.rows || []);
             // Bookmarks load asynchronously and refresh the per-row note

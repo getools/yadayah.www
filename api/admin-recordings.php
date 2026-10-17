@@ -32,6 +32,11 @@ $feedKey     = (int)($_GET['feed_key'] ?? 0);
 $feedKeys    = array_values(array_unique(array_filter(array_map('intval',
     explode(',', (string)($_GET['feed_keys'] ?? ''))), function($n){ return $n > 0; })));
 if ($feedKey > 0 && !in_array($feedKey, $feedKeys, true)) $feedKeys[] = $feedKey;
+// editors filter: comma-separated user_keys from yy_transcript_edit_log (any of),
+// plus 'none' = nobody has edited it (system fixes don't count).
+$editorParts = array_map('trim', explode(',', (string)($_GET['editors'] ?? '')));
+$editorNone  = in_array('none', $editorParts, true);
+$editorKeys  = array_values(array_unique(array_filter(array_map('intval', $editorParts), function($n){ return $n > 0; })));
 $durMin      = isset($_GET['dur_min_s']) && $_GET['dur_min_s'] !== '' ? (int)$_GET['dur_min_s'] : null;
 $durMax      = isset($_GET['dur_max_s']) && $_GET['dur_max_s'] !== '' ? (int)$_GET['dur_max_s'] : null;
 $statusRaw   = trim((string)($_GET['status'] ?? ''));
@@ -76,6 +81,7 @@ $sortMap = [
     'published'  => 'COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime)',
     'duration'   => 'fi.feed_item_duration_seconds',
     'feed'       => 'f.feed_name',
+    'editors'    => "(SELECT MAX(l.edit_dtime) FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key AND l.edit_user_key > 0)",
     'key'        => 'fi.feed_item_key',
     'processed'  => "CASE
                        WHEN fi.feed_item_audio_file IS NOT NULL THEN 2
@@ -111,6 +117,16 @@ if ($titleQ !== '') { $where .= " AND COALESCE(fi.feed_item_title_override, fi.f
 if ($pubFrom !== '') { $where .= " AND COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) >= ?"; $params[] = $pubFrom; }
 if ($pubTo !== '')   { $where .= " AND COALESCE(fi.feed_item_publish_override_dtime, fi.feed_item_publish_import_dtime) < (?::date + INTERVAL '1 day')"; $params[] = $pubTo; }
 if ($feedKeys)      { $where .= " AND fi.feed_key IN (" . implode(',', array_fill(0, count($feedKeys), '?')) . ")"; array_push($params, ...$feedKeys); }
+if ($editorKeys || $editorNone) {
+    $edOrs = [];
+    if ($editorKeys) {
+        $edOrs[] = "EXISTS (SELECT 1 FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key
+                     AND l.edit_user_key IN (" . implode(',', array_fill(0, count($editorKeys), '?')) . "))";
+        array_push($params, ...$editorKeys);
+    }
+    if ($editorNone) $edOrs[] = "NOT EXISTS (SELECT 1 FROM yy_transcript_edit_log l WHERE l.feed_item_key = fi.feed_item_key AND l.edit_user_key > 0)";
+    $where .= " AND (" . implode(' OR ', $edOrs) . ")";
+}
 if ($durMin !== null && $durMin >= 0) { $where .= " AND fi.feed_item_duration_seconds >= ?"; $params[] = $durMin; }
 if ($durMax !== null && $durMax > 0)  { $where .= " AND fi.feed_item_duration_seconds <= ?"; $params[] = $durMax; }
 if ($episodeQ !== '')                 { $where .= " AND fi.feed_item_episode ILIKE ?"; $params[] = '%' . $episodeQ . '%'; }
@@ -317,6 +333,20 @@ $stmt = $db->prepare("
            " . txStageSelectSql('fi.feed_item_key') . " AS transcript_stage,
            -- Transcript button state — the same expression the Transcript filter uses
            $txStateSql AS transcript_state,
+           -- People who have changed this transcript (yy_transcript_edit_log),
+           -- most recent first. user 0 = system-automated fixes, left out.
+           -- n = hand edits, b = find/replace changes.
+           (SELECT json_agg(json_build_object(
+                       'name', COALESCE(NULLIF(btrim(u.user_name_display), ''), NULLIF(btrim(u.user_display_name), ''), u.user_code),
+                       'n', e.n, 'b', e.b, 'last', e.last) ORDER BY e.last DESC)
+              FROM (SELECT l.edit_user_key,
+                           COUNT(*) FILTER (WHERE l.edit_batch_key IS NULL)     AS n,
+                           COUNT(*) FILTER (WHERE l.edit_batch_key IS NOT NULL) AS b,
+                           MAX(l.edit_dtime) AS last
+                      FROM yy_transcript_edit_log l
+                     WHERE l.feed_item_key = fi.feed_item_key AND l.edit_user_key > 0
+                     GROUP BY l.edit_user_key) e
+              JOIN yy_user u ON u.user_key = e.edit_user_key) AS transcript_editors,
            (SELECT v.validation_status FROM yy_feed_item_transcript_validation v
               WHERE v.feed_item_key = fi.feed_item_key
               ORDER BY v.validation_dtime DESC LIMIT 1) AS transcript_validation_status,
@@ -461,6 +491,17 @@ $allCategoriesStmt = $db->query("
      ORDER BY p.page_title, s.section_sort, s.section_key, c.category_sort, c.category_title");
 $allCategories = $allCategoriesStmt->fetchAll();
 
+// Everyone who has ever edited a transcript, for the Editors filter.
+$editorsStmt = $db->query("
+    SELECT e.edit_user_key AS user_key,
+           COALESCE(NULLIF(btrim(u.user_name_display), ''), NULLIF(btrim(u.user_display_name), ''), u.user_code) AS name,
+           e.items
+      FROM (SELECT edit_user_key, COUNT(DISTINCT feed_item_key) AS items
+              FROM yy_transcript_edit_log WHERE edit_user_key > 0 GROUP BY edit_user_key) e
+      JOIN yy_user u ON u.user_key = e.edit_user_key
+     ORDER BY 2
+");
+
 $feedsStmt = $db->query("
     SELECT DISTINCT f.feed_key, f.feed_name
       FROM yy_feed f
@@ -478,6 +519,7 @@ jsonResponse([
     'sort' => $sort, 'dir' => strtolower($dir),
     'sorts' => implode(',', array_map(function ($c, $d) { return "$c:$d"; }, array_keys($sortsApplied), $sortsApplied)),
     'feeds' => $feedsStmt->fetchAll(),
+    'editors' => $editorsStmt->fetchAll(),
     'pages' => $allPages,
     'categories' => $allCategories,
     'filters' => [
@@ -485,6 +527,7 @@ jsonResponse([
         'pub_from' => $pubFrom, 'pub_to' => $pubTo,
         'feed_key' => $feedKey,
         'feed_keys' => $feedKeys,
+        'editors' => array_merge($editorKeys, $editorNone ? ['none'] : []),
         'dur_min_s' => $durMin, 'dur_max_s' => $durMax,
         'status' => $statuses,
         'item_status' => $itemStatuses,
